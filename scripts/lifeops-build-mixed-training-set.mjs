@@ -10,7 +10,7 @@
  * fail rows preserve the prompts the prompt needs to handle.
  *
  * Output is `eliza_native_v1` JSONL (matches
- * plugins/app-training/src/backends/native.ts:parseJsonlDataset).
+ * plugins/plugin-training/src/backends/native.ts:parseJsonlDataset).
  *
  * Usage:
  *   node scripts/lifeops-build-mixed-training-set.mjs \
@@ -40,7 +40,7 @@ const failFrom = resolve(arg("--fail-from", ""));
 const output = resolve(
   arg(
     "--output",
-    "/Users/shawwalters/milaidy/eliza/plugins/app-training/datasets/lifeops_mixed_action_planner.jsonl",
+    "/Users/shawwalters/milaidy/eliza/plugins/plugin-training/datasets/lifeops_mixed_action_planner.jsonl",
   ),
 );
 

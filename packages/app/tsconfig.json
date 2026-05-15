@@ -4,18 +4,18 @@
   "compilerOptions": {
     "paths": {
       "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
-      "@elizaos/app-task-coordinator": [
-        "../../plugins/app-task-coordinator/src/index.ts"
+      "@elizaos/plugin-elizamaker": ["../../plugins/plugin-elizamaker/src/index.ts"],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
-      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
-      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
-      "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
-      "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
-      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
-      "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],
-      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/plugin-companion": ["../../plugins/plugin-companion/src/index.ts"],
+      "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-shopify-ui": ["../../plugins/plugin-shopify-ui/src/index.ts"],
+      "@elizaos/plugin-steward-app": ["../../plugins/plugin-steward-app/src/index.ts"],
+      "@elizaos/plugin-training": ["../../plugins/plugin-training/src/index.ts"],
+      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
@@ -81,7 +81,7 @@
       ],
       "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
       "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
-      "@elizaos/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
+      "@elizaos/plugin-clawville": ["../../plugins/plugin-clawville/src/index.ts"]
     }
   }
 }

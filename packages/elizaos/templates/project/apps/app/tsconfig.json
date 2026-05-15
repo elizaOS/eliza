@@ -8,26 +8,26 @@
     "moduleResolution": "bundler",
     "paths": {
       "@elizaos/app-core": ["./src/type-stubs/app-core/index.d.ts"],
-      "@elizaos/app-lifeops": ["./src/type-stubs/eliza-apps/lifeops.d.ts"],
+      "@elizaos/plugin-lifeops": ["./src/type-stubs/eliza-apps/lifeops.d.ts"],
       "@elizaos/core": ["./src/type-stubs/core/index.d.ts"],
       "@elizaos/shared": ["./src/type-stubs/shared/index.d.ts"],
-      "@elizaos/app-2004scape": [
-        "../../../../../../plugins/app-2004scape/src/index.ts"
+      "@elizaos/plugin-2004scape": [
+        "../../../../../../plugins/plugin-2004scape/src/index.ts"
       ],
-      "@elizaos/app-babylon": [
-        "../../../../../../plugins/app-babylon/src/index.ts"
+      "@elizaos/plugin-babylon": [
+        "../../../../../../plugins/plugin-babylon/src/index.ts"
       ],
-      "@elizaos/app-defense-of-the-agents": [
-        "../../../../../../plugins/app-defense-of-the-agents/src/index.ts"
+      "@elizaos/plugin-defense-of-the-agents": [
+        "../../../../../../plugins/plugin-defense-of-the-agents/src/index.ts"
       ],
-      "@elizaos/app-hyperscape": [
-        "../../../../../../plugins/app-hyperscape/src/index.ts"
+      "@elizaos/plugin-hyperscape": [
+        "../../../../../../plugins/plugin-hyperscape/src/index.ts"
       ],
-      "@elizaos/app-scape": [
-        "../../../../../../plugins/app-scape/src/index.ts"
+      "@elizaos/plugin-scape": [
+        "../../../../../../plugins/plugin-scape/src/index.ts"
       ],
-      "@elizaos/app-task-coordinator": [
-        "../../../../../../plugins/app-task-coordinator/src/index.ts"
+      "@elizaos/plugin-task-coordinator": [
+        "../../../../../../plugins/plugin-task-coordinator/src/index.ts"
       ]
     },
     "allowImportingTsExtensions": true,

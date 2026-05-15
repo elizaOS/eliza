@@ -99,7 +99,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createOngoingTasksProvider(),
   ];
 
-  // PLAY_EMOTE lives in @elizaos/app-companion (emote catalog + action).
+  // PLAY_EMOTE lives in @elizaos/plugin-companion (emote catalog + action).
 
   const plugin: Plugin = {
     name: "eliza",

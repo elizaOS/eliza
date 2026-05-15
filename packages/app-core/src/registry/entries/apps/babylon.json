@@ -2,7 +2,7 @@
   "id": "babylon",
   "name": "Babylon",
   "description": "Babylon.js scene host for embodied agents.",
-  "npmName": "@elizaos/app-babylon",
+  "npmName": "@elizaos/plugin-babylon",
   "source": "bundled",
   "tags": [],
   "config": {},

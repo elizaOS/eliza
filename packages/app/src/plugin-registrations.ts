@@ -5,56 +5,56 @@ type SideEffectAppModuleLoader = {
 
 export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
   [
-    { key: "@elizaos/app-babylon", load: () => import("@elizaos/app-babylon") },
-    { key: "@elizaos/app-scape", load: () => import("@elizaos/app-scape") },
+    { key: "@elizaos/plugin-babylon", load: () => import("@elizaos/plugin-babylon") },
+    { key: "@elizaos/plugin-scape", load: () => import("@elizaos/plugin-scape") },
     {
-      key: "@elizaos/app-hyperscape",
-      load: () => import("@elizaos/app-hyperscape"),
+      key: "@elizaos/plugin-hyperscape",
+      load: () => import("@elizaos/plugin-hyperscape"),
     },
     {
-      key: "@elizaos/app-2004scape",
-      load: () => import("@elizaos/app-2004scape"),
+      key: "@elizaos/plugin-2004scape",
+      load: () => import("@elizaos/plugin-2004scape"),
     },
     {
-      key: "@elizaos/app-defense-of-the-agents",
-      load: () => import("@elizaos/app-defense-of-the-agents"),
+      key: "@elizaos/plugin-defense-of-the-agents",
+      load: () => import("@elizaos/plugin-defense-of-the-agents"),
     },
     {
-      key: "@elizaos/app-clawville",
-      load: () => import("@elizaos/app-clawville"),
+      key: "@elizaos/plugin-clawville",
+      load: () => import("@elizaos/plugin-clawville"),
     },
     {
-      key: "@elizaos/app-trajectory-logger",
-      load: () => import("@elizaos/app-trajectory-logger"),
+      key: "@elizaos/plugin-trajectory-logger",
+      load: () => import("@elizaos/plugin-trajectory-logger"),
     },
-    { key: "@elizaos/app-shopify", load: () => import("@elizaos/app-shopify") },
+    { key: "@elizaos/plugin-shopify-ui", load: () => import("@elizaos/plugin-shopify-ui") },
     {
-      key: "@elizaos/app-hyperliquid",
-      load: () => import("@elizaos/app-hyperliquid"),
-    },
-    {
-      key: "@elizaos/app-polymarket",
-      load: () => import("@elizaos/app-polymarket"),
-    },
-    { key: "@elizaos/app-wallet", load: () => import("@elizaos/app-wallet") },
-    {
-      key: "@elizaos/app-contacts/register",
-      load: () => import("@elizaos/app-contacts/register"),
+      key: "@elizaos/plugin-hyperliquid-app",
+      load: () => import("@elizaos/plugin-hyperliquid-app"),
     },
     {
-      key: "@elizaos/app-device-settings/register",
-      load: () => import("@elizaos/app-device-settings/register"),
+      key: "@elizaos/plugin-polymarket-app",
+      load: () => import("@elizaos/plugin-polymarket-app"),
+    },
+    { key: "@elizaos/plugin-wallet-ui", load: () => import("@elizaos/plugin-wallet-ui") },
+    {
+      key: "@elizaos/plugin-contacts/register",
+      load: () => import("@elizaos/plugin-contacts/register"),
     },
     {
-      key: "@elizaos/app-messages/register",
-      load: () => import("@elizaos/app-messages/register"),
+      key: "@elizaos/plugin-device-settings/register",
+      load: () => import("@elizaos/plugin-device-settings/register"),
     },
     {
-      key: "@elizaos/app-phone/register",
-      load: () => import("@elizaos/app-phone/register"),
+      key: "@elizaos/plugin-messages/register",
+      load: () => import("@elizaos/plugin-messages/register"),
     },
     {
-      key: "@elizaos/app-wifi/register",
-      load: () => import("@elizaos/app-wifi/register"),
+      key: "@elizaos/plugin-phone/register",
+      load: () => import("@elizaos/plugin-phone/register"),
+    },
+    {
+      key: "@elizaos/plugin-wifi/register",
+      load: () => import("@elizaos/plugin-wifi/register"),
     },
   ];

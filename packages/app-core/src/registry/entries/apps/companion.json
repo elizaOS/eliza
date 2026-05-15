@@ -2,7 +2,7 @@
   "id": "companion",
   "name": "Companion",
   "description": "The companion overlay shell for ambient agent presence.",
-  "npmName": "@elizaos/app-companion",
+  "npmName": "@elizaos/plugin-companion",
   "source": "bundled",
   "tags": [],
   "config": {},

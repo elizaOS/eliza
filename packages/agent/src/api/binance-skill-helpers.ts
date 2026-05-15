@@ -40,7 +40,7 @@ type RuntimeActionLike = Pick<
   "name" | "similes" | "validate" | "handler"
 >;
 
-const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops";
+const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/plugin-lifeops";
 
 let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
 

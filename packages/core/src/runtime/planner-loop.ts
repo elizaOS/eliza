@@ -1812,7 +1812,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	const functionName =
 		typeof record.function === "string" ? record.function : rawFunction?.name;
 	const name = normalizeToolCallName(
-		record.name ?? record.toolName ?? record.tool ?? record.action,
+		record.name ?? record.toolName ?? record.tool ?? record.action ?? functionName,
 	);
 	if (!name) {
 		return null;
@@ -1824,7 +1824,8 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.arguments ??
 			record.params ??
 			record.parameters ??
-			rawFunction?.input,
+			rawFunction?.input ??
+			rawFunction?.arguments,
 	);
 
 	return {

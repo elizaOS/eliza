@@ -13,21 +13,6 @@
  * which is out of scope for a coding sub-agent dispatch.
  */
 
-/**
- * @module plugin-app-control/actions/views-edit
- *
- * edit sub-mode of the VIEWS action.
- *
- * Resolves the target view by id/label/plugin, locates its source directory,
- * and dispatches a coding sub-agent (START_CODING_TASK) to perform the
- * requested edit. After the agent completes and emits PLUGIN_CREATE_DONE the
- * view registry picks up bundle changes automatically on the next request.
- *
- * Metadata edits (label, description, tags) that don't require UI changes
- * are not yet supported via this handler — those require plugin config surgery
- * which is out of scope for a coding sub-agent dispatch.
- */
-
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type {
@@ -39,9 +24,9 @@ import type {
 } from "@elizaos/core";
 import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
-import { isRestrictedPlatform } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { scoreView } from "./views-search.js";
+import { isRestrictedPlatform } from "./views.js";
 
 const PLUGINS_DIR_CANDIDATES = ["eliza/plugins", "plugins"] as const;
 
@@ -61,10 +46,7 @@ export interface ViewsEditInput {
 function resolveTargetView(
 	target: string,
 	views: readonly ViewSummary[],
-):
-	| { kind: "match"; view: ViewSummary }
-	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
+): { kind: "match"; view: ViewSummary } | { kind: "ambiguous"; candidates: ViewSummary[] } | { kind: "none" } {
 	const q = target.toLowerCase();
 
 	const byId = views.find((v) => v.id.toLowerCase() === q);
@@ -73,11 +55,7 @@ function resolveTargetView(
 	const byLabel = views.find((v) => v.label.toLowerCase() === q);
 	if (byLabel) return { kind: "match", view: byLabel };
 
-	const byPlugin = views.find(
-		(v) =>
-			v.pluginName.toLowerCase() === q ||
-			v.pluginName.replace(/^@[^/]+\//, "").toLowerCase() === q,
-	);
+	const byPlugin = views.find((v) => v.pluginName.toLowerCase() === q || v.pluginName.replace(/^@[^/]+\//, "").toLowerCase() === q);
 	if (byPlugin) return { kind: "match", view: byPlugin };
 
 	const scored = views
@@ -108,15 +86,7 @@ function extractEditTarget(
 	);
 }
 
-const EDIT_VERBS = [
-	"edit",
-	"update",
-	"modify",
-	"change",
-	"fix",
-	"improve",
-	"rewrite",
-];
+const EDIT_VERBS = ["edit", "update", "modify", "change", "fix", "improve", "rewrite"];
 const FILLER = new Set(["the", "view", "plugin", "a", "an"]);
 
 function extractTargetFromText(text: string): string | null {
@@ -148,15 +118,11 @@ async function locatePluginSourceDir(
 ): Promise<string | null> {
 	const pluginBasename = view.pluginName.replace(/^@[^/]+\//, "").trim();
 	const candidates = [
-		...PLUGINS_DIR_CANDIDATES.map((d) =>
-			path.join(repoRoot, d, pluginBasename),
-		),
+		...PLUGINS_DIR_CANDIDATES.map((d) => path.join(repoRoot, d, pluginBasename)),
 		path.join(repoRoot, "eliza", "apps", pluginBasename),
 	];
 	for (const candidate of candidates) {
-		const stat = await (fs as unknown as typeof import("node:fs").promises)
-			.stat(candidate)
-			.catch(() => null);
+		const stat = await fs.stat(candidate).catch(() => null);
 		if (stat?.isDirectory()) return candidate;
 	}
 	return null;
@@ -209,8 +175,7 @@ async function dispatchEditAgent({
 		runtime.actions?.find((a) => a.name === "START_CODING_TASK") ??
 		runtime.actions?.find((a) => a.name === "CREATE_TASK");
 	if (!createTask) {
-		const text =
-			"START_CODING_TASK action not registered; cannot dispatch a coding agent.";
+		const text = "START_CODING_TASK action not registered; cannot dispatch a coding agent.";
 		await callback?.({ text });
 		return { success: false, text };
 	}
@@ -251,17 +216,12 @@ async function dispatchEditAgent({
 
 	const result = await spawnWithTrajectoryLink(
 		runtime,
-		{
-			source: "plugin-app-control:views-edit",
-			metadata: { viewId: view.id, label, workdir },
-		},
+		{ source: "plugin-app-control:views-edit", metadata: { viewId: view.id, label, workdir } },
 		async (trajectory) => {
 			if (trajectory.parentStepId) {
 				const parameters = handlerOptions.parameters as Record<string, unknown>;
 				const existingMeta =
-					parameters.metadata &&
-					typeof parameters.metadata === "object" &&
-					!Array.isArray(parameters.metadata)
+					parameters.metadata && typeof parameters.metadata === "object" && !Array.isArray(parameters.metadata)
 						? (parameters.metadata as Record<string, unknown>)
 						: {};
 				parameters.metadata = {
@@ -270,13 +230,7 @@ async function dispatchEditAgent({
 					trajectoryLinkSource: "plugin-app-control:views-edit",
 				};
 			}
-			const r = await createTask.handler(
-				runtime,
-				fakeMessage,
-				undefined,
-				handlerOptions,
-				callback,
-			);
+			const r = await createTask.handler(runtime, fakeMessage, undefined, handlerOptions, callback);
 			for (const agent of readTaskAgents(r)) {
 				await trajectory.linkChild(agent.sessionId);
 			}
@@ -287,11 +241,7 @@ async function dispatchEditAgent({
 	if (!result?.success) {
 		const text = `Could not dispatch a coding agent to edit ${view.label}: ${result?.text ?? "START_CODING_TASK failed"}.`;
 		await callback?.({ text });
-		return {
-			success: false,
-			text,
-			data: { suppressActionResultClipboard: true },
-		};
+		return { success: false, text, data: { suppressActionResultClipboard: true } };
 	}
 
 	const agents = readTaskAgents(result);
@@ -304,21 +254,12 @@ async function dispatchEditAgent({
 	const task = agents[0];
 	const text = `Started view edit task for ${view.label} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
 	await callback?.({ text });
-	logger.info(
-		`[plugin-app-control] VIEWS/edit viewId=${view.id} workdir=${workdir} session=${task.sessionId}`,
-	);
+	logger.info(`[plugin-app-control] VIEWS/edit viewId=${view.id} workdir=${workdir} session=${task.sessionId}`);
 
 	return {
 		success: true,
 		text,
-		values: {
-			mode: "edit",
-			viewId: view.id,
-			label: view.label,
-			workdir,
-			taskStatus: task.status,
-			taskSessionId: task.sessionId,
-		},
+		values: { mode: "edit", viewId: view.id, label: view.label, workdir, taskStatus: task.status, taskSessionId: task.sessionId },
 		data: { view, workdir, task, agents, suppressActionResultClipboard: true },
 	};
 }
@@ -358,24 +299,14 @@ export async function runViewsEdit({
 	}
 
 	if (resolution.kind === "ambiguous") {
-		const list = resolution.candidates
-			.map((v) => `- ${v.label} (${v.id})`)
-			.join("\n");
+		const list = resolution.candidates.map((v) => `- ${v.label} (${v.id})`).join("\n");
 		const text = `"${targetStr}" matches multiple views:\n${list}\nWhich one did you mean?`;
 		await callback?.({ text });
-		return {
-			success: false,
-			text,
-			data: { candidates: resolution.candidates },
-		};
+		return { success: false, text, data: { candidates: resolution.candidates } };
 	}
 
 	const view = resolution.view;
-	const intent = (
-		readStringOption(options, "intent") ??
-		message.content?.text ??
-		""
-	).trim();
+	const intent = (readStringOption(options, "intent") ?? message.content?.text ?? "").trim();
 	if (!intent) {
 		const text = `What change should I make to ${view.label}?`;
 		await callback?.({ text });
@@ -389,14 +320,6 @@ export async function runViewsEdit({
 		return { success: false, text };
 	}
 
-	const roomId =
-		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	return dispatchEditAgent({
-		runtime,
-		view,
-		intent,
-		workdir,
-		originRoomId: roomId,
-		callback,
-	});
+	const roomId = typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+	return dispatchEditAgent({ runtime, view, intent, workdir, originRoomId: roomId, callback });
 }

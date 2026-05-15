@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appCoreSrcRoot = path.resolve(__dirname, "../../src");
 const appStewardSrcRoot = path.resolve(
 	__dirname,
-	"../../../../plugins/app-steward/src",
+	"../../../../plugins/plugin-steward-app/src",
 );
 const carrotsSrcRoot = path.resolve(
 	__dirname,

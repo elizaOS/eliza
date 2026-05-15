@@ -4,7 +4,7 @@
 /**
  * `usbeliza` plugin — bundles all usbeliza-specific Actions into one
  * @elizaos/core Plugin. This is the same pattern milady's apps use
- * (`@elizaos/app-companion`, `@elizaos/app-task-coordinator`): a Plugin
+ * (`@elizaos/plugin-companion`, `@elizaos/plugin-task-coordinator`): a Plugin
  * is just `{ name, description, actions, providers, services }` and the
  * runtime calls `registerPlugin` to wire each member into its registries.
  */

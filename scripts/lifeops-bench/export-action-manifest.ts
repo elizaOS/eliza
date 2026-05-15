@@ -121,30 +121,30 @@ const DEFAULT_INCLUDED: ReadonlySet<string> = new Set([
 const PLUGIN_SOURCES: PluginSource[] = [
   {
     id: "app-lifeops",
-    label: "@elizaos/app-lifeops",
+    label: "@elizaos/plugin-lifeops",
     load: async () => {
       const mod: { appLifeOpsPlugin?: Plugin } = await import(
-        "../../plugins/app-lifeops/src/plugin.ts"
+        "../../plugins/plugin-lifeops/src/plugin.ts"
       );
       return { plugin: mod.appLifeOpsPlugin ?? null };
     },
   },
   {
     id: "app-phone",
-    label: "@elizaos/app-phone",
+    label: "@elizaos/plugin-phone",
     load: async () => {
       const mod: { appPhonePlugin?: Plugin } = await import(
-        "../../plugins/app-phone/src/plugin.ts"
+        "../../plugins/plugin-phone/src/plugin.ts"
       );
       return { plugin: mod.appPhonePlugin ?? null };
     },
   },
   {
     id: "app-contacts",
-    label: "@elizaos/app-contacts",
+    label: "@elizaos/plugin-contacts",
     load: async () => {
       const mod: { appContactsPlugin?: Plugin } = await import(
-        "../../plugins/app-contacts/src/plugin.ts"
+        "../../plugins/plugin-contacts/src/plugin.ts"
       );
       return { plugin: mod.appContactsPlugin ?? null };
     },

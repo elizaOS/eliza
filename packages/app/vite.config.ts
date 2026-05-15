@@ -234,10 +234,10 @@ const BRANDED_ENV = {
   viteSettingsDebug: `VITE_${APP_ENV_PREFIX}_SETTINGS_DEBUG`,
 };
 const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/app-vincent",
-  "@elizaos/app-shopify",
-  "@elizaos/app-steward",
-  "@elizaos/app-lifeops",
+  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-lifeops",
   "@elizaos/plugin-github",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-elizacloud",
@@ -855,14 +855,14 @@ function watchWorkspacePackagesPlugin(): Plugin {
 }
 
 /**
- * Serve @elizaos/app-companion's public/ assets alongside the app's own
+ * Serve @elizaos/plugin-companion's public/ assets alongside the app's own
  * public/ directory. In dev the companion dir is served as a fallback
  * middleware; in build the files are copied into the output.
  */
 function companionAssetsPlugin(): Plugin {
   const companionPublic = path.resolve(
     elizaRoot,
-    "plugins/app-companion/public",
+    "plugins/plugin-companion/public",
   );
   return {
     name: "companion-assets",

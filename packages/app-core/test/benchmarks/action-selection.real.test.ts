@@ -111,7 +111,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   // Load the LifeOps plugin after any mock env setup has happened so
   // client modules that read env-based mock endpoints do not capture the
   // production URLs during module evaluation.
-  const { appLifeOpsPlugin } = await import("@elizaos/app-lifeops");
+  const { appLifeOpsPlugin } = await import("@elizaos/plugin-lifeops");
   const { computerUsePlugin } = await import(computerUsePluginSpecifier);
   const { createRealTestRuntime } = await import("../helpers/real-runtime.ts");
 

@@ -1,9 +1,9 @@
 const DEFAULT_BRANDED_PREFIX = "ELIZA";
 const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/app-vincent",
-  "@elizaos/app-shopify",
-  "@elizaos/app-steward",
-  "@elizaos/app-lifeops",
+  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-lifeops",
   "@elizaos/plugin-github",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-elizacloud",

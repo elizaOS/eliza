@@ -41,7 +41,7 @@ This directory hosts the **fine-tune + eval pipeline** for those models:
   YODAS Thai EOU subset for Thai support (v2 only).
 
 All data goes through the workspace privacy filter
-(`eliza/plugins/app-training/src/core/privacy-filter.ts`) before it lands
+(`eliza/plugins/plugin-training/src/core/privacy-filter.ts`) before it lands
 on disk. No raw user transcript or audio escapes that boundary.
 
 ## Quick start (smoke)

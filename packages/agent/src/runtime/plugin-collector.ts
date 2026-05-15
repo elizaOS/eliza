@@ -233,12 +233,12 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   "browser-bridge": "@elizaos/plugin-browser",
   browserBridge: "@elizaos/plugin-browser",
   /** Native Polymarket app runtime plugin. */
-  polymarket: "@elizaos/app-polymarket",
-  "app-polymarket": "@elizaos/app-polymarket",
-  appPolymarket: "@elizaos/app-polymarket",
+  polymarket: "@elizaos/plugin-polymarket-app",
+  "app-polymarket": "@elizaos/plugin-polymarket-app",
+  appPolymarket: "@elizaos/plugin-polymarket-app",
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
-  selfcontrol: "@elizaos/app-lifeops",
+  selfcontrol: "@elizaos/plugin-lifeops",
   cua: "@elizaos/plugin-cua",
   computeruse: "@elizaos/plugin-computeruse",
   obsidian: "@elizaos/plugin-obsidian",
@@ -389,7 +389,7 @@ export function collectPluginNames(
   // ElizaOS-only: add the system-surface overlay app plugins (WiFi,
   // Contacts, Phone). These wrap privileged Android system APIs available
   // only in the custom AOSP build, not in the stock Android APK. The overlay
-  // UI registration happens in the renderer via @elizaos/app-*/register
+  // UI registration happens in the renderer via @elizaos/plugin-*/register
   // imports — these are the *runtime* plugin halves that expose actions
   // to the agent for `Connect to wifi`, `Find contact`, `Call so-and-so`.
   if (onElizaOsAndroid) {

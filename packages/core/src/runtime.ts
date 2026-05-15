@@ -4522,12 +4522,18 @@ export class AgentRuntime implements IAgentRuntime {
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
 		const resolvedProviderName = resolvedModel?.provider;
+		const streamStructuredOnNonLocalProvider =
+			paramsAsStreaming?.streamStructured === true &&
+			explicitStream !== true &&
+			(!resolvedProviderName || !isLocalProvider(resolvedProviderName));
 
 		// stream: false = force no stream, otherwise stream if any callback exists
 		const shouldStream =
 			explicitStream === false
 				? false
-				: !!(paramsChunk || ctxChunk || explicitStream);
+				: streamStructuredOnNonLocalProvider
+					? false
+					: !!(paramsChunk || ctxChunk || explicitStream);
 		const structuredStreamFields =
 			shouldStream && paramsAsStreaming?.streamStructured === true
 				? resolveResponseSkeletonStreamFields(

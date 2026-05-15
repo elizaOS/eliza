@@ -1192,7 +1192,7 @@ async function executeTickTurn(args: {
         })
       : undefined;
   const startedAt = Date.now();
-  const appLifeOpsSpecifier = "@elizaos/app-lifeops" as string;
+  const appLifeOpsSpecifier = "@elizaos/plugin-lifeops" as string;
   const { executeLifeOpsSchedulerTask } = (await import(
     appLifeOpsSpecifier
   )) as {

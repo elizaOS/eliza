@@ -414,7 +414,7 @@ interface RuntimeHookModule {
   registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
 }
 
-const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/app-training";
+const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
 
 async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,
@@ -426,7 +426,7 @@ async function registerTrainingRuntimeHooks(
     )) as RuntimeHookModule;
   } catch (err) {
     logger.warn(
-      `[eliza] @elizaos/app-training not installed, skipping runtime hooks: ${err instanceof Error ? err.message : String(err)}`,
+      `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks: ${err instanceof Error ? err.message : String(err)}`,
     );
     return;
   }

@@ -24,9 +24,9 @@
       "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../packages/ui/dist/*"],
       "@elizaos/plugin-task-coordinator": [
-        "./app-task-coordinator/dist/index.d.ts"
+        "./plugin-task-coordinator/dist/index.d.ts"
       ],
-      "@elizaos/plugin-task-coordinator/*": ["./app-task-coordinator/dist/*"],
+      "@elizaos/plugin-task-coordinator/*": ["./plugin-task-coordinator/dist/*"],
       "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
       "@elizaos/app-core/*": ["../packages/app-core/dist/*"],
       "@elizaos/agent": [

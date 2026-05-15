@@ -2,7 +2,7 @@
   "id": "defense-of-the-agents",
   "name": "Defense of the Agents",
   "description": "MOBA-style arena for agent strategy and combat.",
-  "npmName": "@elizaos/app-defense-of-the-agents",
+  "npmName": "@elizaos/plugin-defense-of-the-agents",
   "source": "bundled",
   "tags": [],
   "config": {},

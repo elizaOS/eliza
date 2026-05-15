@@ -166,7 +166,7 @@ export async function ensureInterceptorRuntimeHooks(): Promise<void> {
   approvalQueuePatchPromise = (async () => {
     try {
       const approvalQueueUrl = new URL(
-        "../../../plugins/app-lifeops/src/lifeops/approval-queue.ts",
+        "../../../plugins/plugin-lifeops/src/lifeops/approval-queue.ts",
         import.meta.url,
       );
       const moduleRecord = (await import(approvalQueueUrl.href)) as Record<
