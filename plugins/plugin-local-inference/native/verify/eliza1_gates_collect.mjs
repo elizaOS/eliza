@@ -72,6 +72,7 @@ const ACTIVE_VISION_TIERS = new Set([
   "9b",
   "27b",
   "27b-256k",
+  "27b-1m",
 ]);
 const ACTIVE_DFLASH_TIERS = new Set([
   "2b",
@@ -79,6 +80,7 @@ const ACTIVE_DFLASH_TIERS = new Set([
   "9b",
   "27b",
   "27b-256k",
+  "27b-1m",
 ]);
 const DFLASH_GATE_NAMES = new Set(["dflash_acceptance", "dflash_speedup"]);
 

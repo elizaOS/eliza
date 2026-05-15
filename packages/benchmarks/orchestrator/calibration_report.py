@@ -24,14 +24,40 @@ NON_LEADERBOARD_AGENTS: set[str] = {
     "smoke-default",
     "full-sweep",
 }
+STALE_COMPATIBILITY_REASONS: set[str] = {
+    "harness_not_in_compatibility",
+    "latest_row_violates_current_compatibility",
+}
 
 
-def _latest_by_benchmark_agent(conn) -> dict[tuple[str, str], dict[str, Any]]:
+def _is_stale_compatibility_incompatible_run(
+    run: dict[str, Any],
+    compatibility: dict[str, tuple[str, ...]],
+) -> bool:
+    if run.get("status") != "incompatible":
+        return False
+    benchmark_id = str(run.get("benchmark_id") or "")
+    agent = str(run.get("agent") or "").strip().lower()
+    supported = compatibility.get(benchmark_id)
+    if supported is None or agent not in supported:
+        return False
+    metrics = run.get("metrics") or {}
+    reason = metrics.get("reason") if isinstance(metrics, dict) else None
+    return reason in STALE_COMPATIBILITY_REASONS
+
+
+def _latest_by_benchmark_agent(
+    conn,
+    *,
+    compatibility: dict[str, tuple[str, ...]],
+) -> dict[tuple[str, str], dict[str, Any]]:
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for row in list_runs(conn, limit=None):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
         if row.get("status") == "skipped":
+            continue
+        if _is_stale_compatibility_incompatible_run(row, compatibility):
             continue
         if not benchmark_id or not agent:
             continue
@@ -125,17 +151,17 @@ def build_calibration_report(
     benchmark_ids: set[str] | None = None,
     agent_compatibility: dict[str, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
-    db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
-    conn = connect_database(db_path)
-    initialize_database(conn)
-    latest = _latest_by_benchmark_agent(conn)
-    conn.close()
-
     compatibility = (
         dict(agent_compatibility)
         if agent_compatibility is not None
         else _discover_agent_compatibility(workspace_root)
     )
+    db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    conn = connect_database(db_path)
+    initialize_database(conn)
+    latest = _latest_by_benchmark_agent(conn, compatibility=compatibility)
+    conn.close()
+
     benchmarks = sorted(
         benchmark_ids
         or set(compatibility)

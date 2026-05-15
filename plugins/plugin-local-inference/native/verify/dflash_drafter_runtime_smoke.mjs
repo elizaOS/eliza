@@ -21,7 +21,7 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DFLASH_TIERS = new Set(["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]);
+const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k", "27b-1m"]);
 const DEFAULT_TIER = "2b";
 const DEFAULT_BUNDLE = path.join(MODELS_ROOT, `eliza-1-${DEFAULT_TIER}.bundle`);
 const DEFAULT_TARGET = firstExisting(
