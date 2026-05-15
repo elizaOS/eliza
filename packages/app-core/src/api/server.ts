@@ -141,7 +141,8 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-routes";
-import { handlePluginsCompatRoutes } from "./plugins-routes";
+// Phase 4F: plugin compat routes moved to @elizaos/plugin-registry.
+import { handlePluginsCompatRoutes } from "@elizaos/plugin-registry";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
@@ -823,7 +824,9 @@ async function handleCompatRoute(
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
-    const { buildPluginListResponse } = await import("./plugins-routes");
+    const { buildPluginListResponse } = await import(
+      "@elizaos/plugin-registry"
+    );
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);
     if (!plugin) {

@@ -207,7 +207,8 @@ import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallbac
 import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-import { handlePluginRoutes } from "./plugin-routes.ts";
+// Phase 4F: plugin routes moved to @elizaos/plugin-registry.
+import { handlePluginRoutes } from "@elizaos/plugin-registry";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
@@ -242,8 +243,27 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-import { handleWalletRoutes } from "./wallet-routes.ts";
-import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
+// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
+import { handleWalletRoutes } from "@elizaos/plugin-wallet";
+import { isCloudWalletEnabled } from "../config/feature-flags.ts";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import { persistConfigEnv } from "./config-env.ts";
+import {
+  deriveSolanaAddress,
+  fetchEvmBalances,
+  fetchSolanaBalances,
+  fetchSolanaNativeBalanceViaRpc,
+  generateWalletForChain,
+  importWallet,
+  setSolanaWalletEnv,
+  validatePrivateKey,
+} from "./wallet.ts";
+import {
+  applyWalletRpcConfigUpdate,
+  getStoredWalletRpcSelections,
+  resolveWalletNetworkMode,
+  resolveWalletRpcReadiness,
+} from "./wallet-rpc.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
@@ -2157,6 +2177,28 @@ async function handleRequest(
         json,
         error,
         runtime: state.runtime ?? null,
+        // === Phase 4D: inject agent-internal helpers into the extracted
+        // route handler so `@elizaos/plugin-wallet` stays free of any
+        // `@elizaos/agent` imports.
+        deps: {
+          getWalletAddresses,
+          fetchEvmBalances,
+          fetchSolanaBalances,
+          fetchSolanaNativeBalanceViaRpc,
+          validatePrivateKey,
+          importWallet,
+          generateWalletForChain,
+          deriveSolanaAddress,
+          setSolanaWalletEnv,
+          resolveWalletRpcReadiness,
+          resolveWalletNetworkMode,
+          getStoredWalletRpcSelections,
+          applyWalletRpcConfigUpdate,
+          resolveWalletCapabilityStatus,
+          isCloudWalletEnabled,
+          persistConfigEnv,
+          createIntegrationTelemetrySpan,
+        },
       })
     ) {
       return;
