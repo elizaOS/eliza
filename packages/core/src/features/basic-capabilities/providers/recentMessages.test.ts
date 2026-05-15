@@ -16,6 +16,7 @@ function makeMemory(
 	text: string,
 	source: string,
 	createdAt: number,
+	metadata?: Record<string, unknown>,
 ): Memory {
 	return {
 		id,
@@ -23,7 +24,7 @@ function makeMemory(
 		roomId: ROOM_ID,
 		entityId,
 		createdAt,
-		content: { text, source },
+		content: { text, source, ...(metadata ? { metadata } : {}) },
 	} as Memory;
 }
 
@@ -73,6 +74,33 @@ describe("recentMessagesProvider", () => {
 		expect(result.data?.recentMessages).toHaveLength(2);
 		expect(result.text).toContain("Agent: done");
 		expect(result.text?.match(/Agent: done/g)).toHaveLength(1);
+	});
+
+	it("omits prior sub-agent router transcripts from dialogue history", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "build the app", "discord", 1000),
+			makeMemory(
+				"msg-2",
+				"00000000-0000-0000-0000-000000000004",
+				"[sub-agent: app build (opencode) — task_complete]\n[tool output: list files]\nnoisy transcript",
+				"acpx:sub-agent-router",
+				2000,
+				{ subAgent: true },
+			),
+			makeMemory("msg-3", AGENT_ID, "https://example.com/app", "discord", 3000),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "next task", "discord", 4000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(2);
+		expect(result.text).toContain("User: build the app");
+		expect(result.text).toContain("Agent: https://example.com/app");
+		expect(result.text).not.toContain("[sub-agent:");
+		expect(result.text).not.toContain("noisy transcript");
 	});
 
 	it("omits consecutive duplicate dialogue rows from the same sender", async () => {

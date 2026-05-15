@@ -802,6 +802,10 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
+	// Runtime model identity is baseline state for self-model/provider questions.
+	// Without it, the response handler has to infer from training data or old
+	// chat history and can confidently claim a model the runtime is not using.
+	"RUNTIME_MODEL_CONTEXT",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
@@ -1559,6 +1563,25 @@ function asProviderRecord(value: unknown):
 	};
 }
 
+const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
+	"acpx:sub-agent-router",
+	"swarm_synthesis",
+]);
+
+function isInternalBridgeDialogueMemory(memory: Memory): boolean {
+	const source =
+		typeof memory.content?.source === "string"
+			? memory.content.source.trim()
+			: "";
+	const metadata =
+		memory.content?.metadata && typeof memory.content.metadata === "object"
+			? (memory.content.metadata as Record<string, unknown>)
+			: {};
+	return (
+		INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source) || metadata.subAgent === true
+	);
+}
+
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
@@ -1586,6 +1609,7 @@ function appendPriorDialogueEvents(
 			if (!memory || typeof memory !== "object") return false;
 			const m = memory as Memory;
 			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+			if (isInternalBridgeDialogueMemory(m)) return false;
 			const contentType =
 				m.content && typeof m.content === "object"
 					? (m.content as { type?: string }).type
@@ -1659,6 +1683,7 @@ function getRecentConversationSearchText(
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
 			}
+			if (isInternalBridgeDialogueMemory(memory)) return false;
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))

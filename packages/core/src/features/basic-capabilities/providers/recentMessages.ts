@@ -19,14 +19,23 @@ const spec = requireProviderSpec("RECENT_MESSAGES");
 const MAX_RECENT_MESSAGES_LOOKBACK = 50;
 const MAX_RECENT_INTERACTIONS = 20;
 const MAX_COMPACT_LEDGER_CHARS = 4000;
-const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set(["swarm_synthesis"]);
+const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
+	"acpx:sub-agent-router",
+	"swarm_synthesis",
+]);
 
 function isInternalBridgeMessage(memory: Memory): boolean {
 	const source =
 		typeof memory.content?.source === "string"
 			? memory.content.source.trim()
 			: "";
-	return INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source);
+	const metadata =
+		memory.content?.metadata && typeof memory.content.metadata === "object"
+			? (memory.content.metadata as Record<string, unknown>)
+			: {};
+	return (
+		INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source) || metadata.subAgent === true
+	);
 }
 
 function normalizeDialogueText(memory: Memory): string {

@@ -1007,6 +1007,17 @@ describe("runV5MessageRuntimeStage1", () => {
 									createdAt: 1,
 									content: { text: longUserText },
 								},
+								{
+									id: "00000000-0000-0000-0000-00000000aaab" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000fffe" as UUID,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 2,
+									content: {
+										text: "[sub-agent: old build (opencode) — task_complete]\n[tool output: ls]\nstale raw transcript",
+										source: "acpx:sub-agent-router",
+										metadata: { subAgent: true },
+									},
+								},
 							],
 						},
 						providerName: "RECENT_MESSAGES",
@@ -1020,10 +1031,20 @@ describe("runV5MessageRuntimeStage1", () => {
 						data: { secrets: { API_KEY: "secret leak" } },
 						providerName: "CHARACTER",
 					},
+					RUNTIME_MODEL_CONTEXT: {
+						text: "# Runtime Model Context\n- Response handler model: gpt-oss-120b",
+						providerName: "RUNTIME_MODEL_CONTEXT",
+					},
 				},
 			},
 			text: "fallback text should not be needed",
 		};
+		state.data.providerOrder = [
+			"RECENT_MESSAGES",
+			"RUNTIME_MODEL_CONTEXT",
+			"PROVIDERS",
+			"CHARACTER",
+		];
 
 		await runV5MessageRuntimeStage1({
 			runtime,
@@ -1069,9 +1090,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).not.toContain("full recent provider text");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
+		expect(userContent).not.toContain("[sub-agent: old build");
+		expect(userContent).not.toContain("stale raw transcript");
 		expect(userContent).toContain("Can you check my calendar?");
 		expect(userContent).not.toContain("user_role:");
 		const fullPrompt = `${params.prompt ?? ""}\n${systemContent}\n${userContent}`;
+		expect(fullPrompt).toContain("# Runtime Model Context");
+		expect(fullPrompt).toContain("Response handler model: gpt-oss-120b");
 		expect(fullPrompt).not.toContain("values:");
 		expect(fullPrompt).not.toContain("data:");
 		expect(fullPrompt).not.toContain("provider: PROVIDERS");
@@ -1136,6 +1161,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const providerNames = composeState.mock.calls[0]?.[1] as string[];
 		expect(providerNames).toContain("DOCUMENTS");
 		expect(providerNames).toContain("RECENT_MESSAGES");
+		expect(providerNames).toContain("RUNTIME_MODEL_CONTEXT");
 		expect(providerNames).not.toContain("PROVIDERS");
 		expect(providerNames).not.toContain("CHARACTER");
 	});
