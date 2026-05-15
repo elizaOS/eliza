@@ -328,6 +328,10 @@ class ElizaBridgeWebShopAgent:
                 action_history.append("[invalid action]")
                 continue
 
+            action_line = _normalize_action_for_environment(
+                action_line,
+                list(observation.available_actions),
+            )
             if not _looks_like_webshop_action(action_line):
                 logger.warning(
                     "[webshop-bridge] turn %d: scoring invalid action %r",
