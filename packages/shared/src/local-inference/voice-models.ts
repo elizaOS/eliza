@@ -151,18 +151,18 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "turn-detector-intl",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T11:15:08Z",
-    hfRepo: "elizaos/eliza-1-voice-turn",
-    hfRevision: "7ec50ce4b65943ccc32a14959c54181f57a0a284",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
     ggufAssets: [
       {
-        filename: "intl/model_q8.onnx",
+        filename: "voice/turn/intl/model_q8.onnx",
         sha256:
           "af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66",
         sizeBytes: 262031196,
         quant: "onnx-int8",
       },
       {
-        filename: "intl/turn-detector-intl-q8.gguf",
+        filename: "voice/turn/intl/turn-detector-intl-q8.gguf",
         sha256:
           "5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79",
         sizeBytes: 281016768,
@@ -365,6 +365,36 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "kokoro",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-15T11:27:44Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
+    ggufAssets: [
+      {
+        // af_sam — mel-fit voice clone anchor=0.2; shipped per user override.
+        // evalGatePass=false: WER=1.0, UTMOS=2.32, SpkSim=0.15 (all fail gates).
+        // Production sam voice is OmniVoice preset; this is Kokoro experimental slot.
+        filename: "voice/kokoro/voices/af_sam.bin",
+        sha256:
+          "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        sizeBytes: 522_240,
+        quant: "fp16",
+      },
+    ],
+    evalDeltas: {
+      // Negative delta vs baseline af_bella: UTMOS -1.88, WER +1.0, SpkSim +0.23.
+      // netImprovement=false — quality regression. Auto-updater will not recommend swap.
+      mosDelta: -1.88,
+      werDelta: 1.0,
+      netImprovement: false,
+    },
+    changelogEntry:
+      "0.2.0 — af_sam shipped per user override (I2); eval WER=1.0/UTMOS=2.32/SpkSim=0.15, gate=FAIL. OmniVoice preset remains production sam voice. compute-gated: needs ≥3h corpus for real quality.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "kokoro",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
@@ -384,16 +414,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
         sizeBytes: 522_240,
         quant: "fp16",
       },
-      {
-        filename: "voice/kokoro/voices/af_same.bin",
-        sha256:
-          "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
-        sizeBytes: 522_240,
-        quant: "fp16",
-      },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — kokoro 82M voice-embedding same clone.",
+    changelogEntry: "Initial release — kokoro 82M voice-embedding af_bella preset.",
     minBundleVersion: "0.0.0",
   },
   {
