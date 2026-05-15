@@ -453,6 +453,10 @@ describe("view-user-journeys scenario library", () => {
       "capabilities",
       "plugin-install",
       "desktop",
+      "voice",
+      "interaction",
+      "multi-turn",
+      "e2e",
     ]);
     for (const s of VIEW_USER_JOURNEYS) {
       for (const tag of s.tags) {
