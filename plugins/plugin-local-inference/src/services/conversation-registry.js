@@ -31,178 +31,172 @@ const DEFAULT_HANDLE_TTL_MS = 60 * 60 * 1000;
  * decide which slot to pin to.
  */
 export class ConversationRegistry {
-    handles = new Map();
-    /** Per-slot reference count; lowest-loaded slot wins on next open. */
-    slotLoad = new Map();
-    /** Largest concurrent open count seen; the engine reads this for parallel auto-tune. */
-    highWaterMark = 0;
-    /**
-     * Lookup / open a conversation handle. Idempotent for the same
-     * conversation id + model id; callers can call this on every turn
-     * without leaking handles. When the call is reusing an existing handle,
-     * `lastUsedMs` is bumped for LRU-style eviction tracking.
-     */
-    open(args) {
-        if (!args.conversationId) {
-            throw new Error("[conversation-registry] conversationId is required");
-        }
-        if (!args.modelId) {
-            throw new Error("[conversation-registry] modelId is required");
-        }
-        const compositeKey = this.compositeKey(args.conversationId, args.modelId);
-        const existing = this.handles.get(compositeKey);
-        if (existing && !existing.closed) {
-            existing.lastUsedMs = Date.now();
-            return existing;
-        }
-        const parallel = typeof args.parallel === "number" && args.parallel > 0
-            ? Math.floor(args.parallel)
-            : 1;
-        const slotId = this.pickLowestLoadedSlot(parallel, args.conversationId);
-        const now = Date.now();
-        const handle = {
-            conversationId: args.conversationId,
-            modelId: args.modelId,
-            slotId,
-            openedAtMs: now,
-            lastUsedMs: now,
-            ttlMs: args.ttlMs ?? DEFAULT_HANDLE_TTL_MS,
-            closed: false,
-        };
-        this.handles.set(compositeKey, handle);
-        this.slotLoad.set(slotId, (this.slotLoad.get(slotId) ?? 0) + 1);
-        if (this.handles.size > this.highWaterMark) {
-            this.highWaterMark = this.handles.size;
-        }
-        return handle;
-    }
-    /**
-     * Lookup an open handle by conversation+model. Returns null when the
-     * conversation has not been opened or has already been closed. Bumps
-     * `lastUsedMs` so an LRU sweep treats reads as activity.
-     */
-    get(conversationId, modelId) {
-        const handle = this.handles.get(this.compositeKey(conversationId, modelId));
-        if (!handle || handle.closed)
-            return null;
-        handle.lastUsedMs = Date.now();
-        return handle;
-    }
-    /**
-     * Close + drop a handle. Idempotent — closing an unknown / already-closed
-     * handle is a no-op so callers can call this from cleanup paths
-     * unconditionally.
-     */
-    close(conversationId, modelId) {
-        const compositeKey = this.compositeKey(conversationId, modelId);
-        const handle = this.handles.get(compositeKey);
-        if (!handle)
-            return;
-        handle.closed = true;
-        this.handles.delete(compositeKey);
-        const remaining = (this.slotLoad.get(handle.slotId) ?? 0) - 1;
-        if (remaining <= 0) {
-            this.slotLoad.delete(handle.slotId);
-        }
-        else {
-            this.slotLoad.set(handle.slotId, remaining);
-        }
-    }
-    /**
-     * Sweep handles whose `lastUsedMs` is older than their TTL. Returns the
-     * conversation ids dropped so callers can persist final KV state to
-     * disk, etc. Safe to call on a timer.
-     */
-    evictIdle(now = Date.now()) {
-        const dropped = [];
-        for (const [compositeKey, handle] of this.handles) {
-            if (now - handle.lastUsedMs > handle.ttlMs) {
-                handle.closed = true;
-                this.handles.delete(compositeKey);
-                const remaining = (this.slotLoad.get(handle.slotId) ?? 0) - 1;
-                if (remaining <= 0) {
-                    this.slotLoad.delete(handle.slotId);
-                }
-                else {
-                    this.slotLoad.set(handle.slotId, remaining);
-                }
-                dropped.push(handle.conversationId);
-            }
-        }
-        return dropped;
-    }
-    /**
-     * Snapshot every currently-open handle. Used by the shutdown path to
-     * emit a save-state request per slot.
-     */
-    snapshot() {
-        return [...this.handles.values()];
-    }
-    /** Largest concurrent open count seen since the registry was created. */
-    highWater() {
-        return this.highWaterMark;
-    }
-    /** Number of currently-open handles. */
-    size() {
-        return this.handles.size;
-    }
-    /**
-     * Recommended `--parallel` slot count given the observed high-water mark
-     * of concurrently-open conversations plus a small headroom (max(2, 25%)).
-     * The engine's auto-tune (J4) compares this against the running server's
-     * slot count: when this is larger AND there's RAM headroom, it restarts
-     * llama-server with the higher value so new conversations get their own
-     * KV slots instead of thrashing.
-     *
-     * `running` is the currently-configured slot count; when the high-water
-     * mark hasn't outgrown it, this returns `running` (no resize needed) so
-     * callers can compare against equality without a second branch.
-     */
-    recommendedParallel(running) {
-        const headroom = Math.max(2, Math.ceil(this.highWaterMark * 0.25));
-        const desired = Math.max(1, this.highWaterMark + headroom);
-        return Math.max(running, desired);
-    }
-    /**
-     * Drop every handle and reset the high-water mark + slot-load bookkeeping.
-     * Test-only — the module singleton leaks state across files when the suite
-     * runs together; call this in `beforeEach` to isolate. Not part of the
-     * runtime contract.
-     */
-    __resetForTests() {
-        for (const handle of this.handles.values())
-            handle.closed = true;
-        this.handles.clear();
-        this.slotLoad.clear();
-        this.highWaterMark = 0;
-    }
-    /**
-     * Pick the slot with the fewest in-flight handles. Ties are broken by a
-     * deterministic hash of the conversation id, which avoids consistently
-     * loading slot 0 when N concurrent opens race.
-     */
-    pickLowestLoadedSlot(parallel, conversationId) {
-        if (parallel <= 1)
-            return 0;
-        let bestSlot = 0;
-        let bestLoad = Number.POSITIVE_INFINITY;
-        for (let slot = 0; slot < parallel; slot += 1) {
-            const load = this.slotLoad.get(slot) ?? 0;
-            if (load < bestLoad) {
-                bestLoad = load;
-                bestSlot = slot;
-            }
-        }
-        if (bestLoad === 0)
-            return bestSlot;
-        // All slots are loaded equally — use the conversation hash for a
-        // deterministic tie-break. Same conversation, same slot when reopened.
-        const digest = createHash("sha256").update(conversationId).digest();
-        return digest.readUInt32BE(0) % parallel;
-    }
-    compositeKey(conversationId, modelId) {
-        return `${modelId}::${conversationId}`;
-    }
+	handles = new Map();
+	/** Per-slot reference count; lowest-loaded slot wins on next open. */
+	slotLoad = new Map();
+	/** Largest concurrent open count seen; the engine reads this for parallel auto-tune. */
+	highWaterMark = 0;
+	/**
+	 * Lookup / open a conversation handle. Idempotent for the same
+	 * conversation id + model id; callers can call this on every turn
+	 * without leaking handles. When the call is reusing an existing handle,
+	 * `lastUsedMs` is bumped for LRU-style eviction tracking.
+	 */
+	open(args) {
+		if (!args.conversationId) {
+			throw new Error("[conversation-registry] conversationId is required");
+		}
+		if (!args.modelId) {
+			throw new Error("[conversation-registry] modelId is required");
+		}
+		const compositeKey = this.compositeKey(args.conversationId, args.modelId);
+		const existing = this.handles.get(compositeKey);
+		if (existing && !existing.closed) {
+			existing.lastUsedMs = Date.now();
+			return existing;
+		}
+		const parallel =
+			typeof args.parallel === "number" && args.parallel > 0
+				? Math.floor(args.parallel)
+				: 1;
+		const slotId = this.pickLowestLoadedSlot(parallel, args.conversationId);
+		const now = Date.now();
+		const handle = {
+			conversationId: args.conversationId,
+			modelId: args.modelId,
+			slotId,
+			openedAtMs: now,
+			lastUsedMs: now,
+			ttlMs: args.ttlMs ?? DEFAULT_HANDLE_TTL_MS,
+			closed: false,
+		};
+		this.handles.set(compositeKey, handle);
+		this.slotLoad.set(slotId, (this.slotLoad.get(slotId) ?? 0) + 1);
+		if (this.handles.size > this.highWaterMark) {
+			this.highWaterMark = this.handles.size;
+		}
+		return handle;
+	}
+	/**
+	 * Lookup an open handle by conversation+model. Returns null when the
+	 * conversation has not been opened or has already been closed. Bumps
+	 * `lastUsedMs` so an LRU sweep treats reads as activity.
+	 */
+	get(conversationId, modelId) {
+		const handle = this.handles.get(this.compositeKey(conversationId, modelId));
+		if (!handle || handle.closed) return null;
+		handle.lastUsedMs = Date.now();
+		return handle;
+	}
+	/**
+	 * Close + drop a handle. Idempotent — closing an unknown / already-closed
+	 * handle is a no-op so callers can call this from cleanup paths
+	 * unconditionally.
+	 */
+	close(conversationId, modelId) {
+		const compositeKey = this.compositeKey(conversationId, modelId);
+		const handle = this.handles.get(compositeKey);
+		if (!handle) return;
+		handle.closed = true;
+		this.handles.delete(compositeKey);
+		const remaining = (this.slotLoad.get(handle.slotId) ?? 0) - 1;
+		if (remaining <= 0) {
+			this.slotLoad.delete(handle.slotId);
+		} else {
+			this.slotLoad.set(handle.slotId, remaining);
+		}
+	}
+	/**
+	 * Sweep handles whose `lastUsedMs` is older than their TTL. Returns the
+	 * conversation ids dropped so callers can persist final KV state to
+	 * disk, etc. Safe to call on a timer.
+	 */
+	evictIdle(now = Date.now()) {
+		const dropped = [];
+		for (const [compositeKey, handle] of this.handles) {
+			if (now - handle.lastUsedMs > handle.ttlMs) {
+				handle.closed = true;
+				this.handles.delete(compositeKey);
+				const remaining = (this.slotLoad.get(handle.slotId) ?? 0) - 1;
+				if (remaining <= 0) {
+					this.slotLoad.delete(handle.slotId);
+				} else {
+					this.slotLoad.set(handle.slotId, remaining);
+				}
+				dropped.push(handle.conversationId);
+			}
+		}
+		return dropped;
+	}
+	/**
+	 * Snapshot every currently-open handle. Used by the shutdown path to
+	 * emit a save-state request per slot.
+	 */
+	snapshot() {
+		return [...this.handles.values()];
+	}
+	/** Largest concurrent open count seen since the registry was created. */
+	highWater() {
+		return this.highWaterMark;
+	}
+	/** Number of currently-open handles. */
+	size() {
+		return this.handles.size;
+	}
+	/**
+	 * Recommended `--parallel` slot count given the observed high-water mark
+	 * of concurrently-open conversations plus a small headroom (max(2, 25%)).
+	 * The engine's auto-tune (J4) compares this against the running server's
+	 * slot count: when this is larger AND there's RAM headroom, it restarts
+	 * llama-server with the higher value so new conversations get their own
+	 * KV slots instead of thrashing.
+	 *
+	 * `running` is the currently-configured slot count; when the high-water
+	 * mark hasn't outgrown it, this returns `running` (no resize needed) so
+	 * callers can compare against equality without a second branch.
+	 */
+	recommendedParallel(running) {
+		const headroom = Math.max(2, Math.ceil(this.highWaterMark * 0.25));
+		const desired = Math.max(1, this.highWaterMark + headroom);
+		return Math.max(running, desired);
+	}
+	/**
+	 * Drop every handle and reset the high-water mark + slot-load bookkeeping.
+	 * Test-only — the module singleton leaks state across files when the suite
+	 * runs together; call this in `beforeEach` to isolate. Not part of the
+	 * runtime contract.
+	 */
+	__resetForTests() {
+		for (const handle of this.handles.values()) handle.closed = true;
+		this.handles.clear();
+		this.slotLoad.clear();
+		this.highWaterMark = 0;
+	}
+	/**
+	 * Pick the slot with the fewest in-flight handles. Ties are broken by a
+	 * deterministic hash of the conversation id, which avoids consistently
+	 * loading slot 0 when N concurrent opens race.
+	 */
+	pickLowestLoadedSlot(parallel, conversationId) {
+		if (parallel <= 1) return 0;
+		let bestSlot = 0;
+		let bestLoad = Number.POSITIVE_INFINITY;
+		for (let slot = 0; slot < parallel; slot += 1) {
+			const load = this.slotLoad.get(slot) ?? 0;
+			if (load < bestLoad) {
+				bestLoad = load;
+				bestSlot = slot;
+			}
+		}
+		if (bestLoad === 0) return bestSlot;
+		// All slots are loaded equally — use the conversation hash for a
+		// deterministic tie-break. Same conversation, same slot when reopened.
+		const digest = createHash("sha256").update(conversationId).digest();
+		return digest.readUInt32BE(0) % parallel;
+	}
+	compositeKey(conversationId, modelId) {
+		return `${modelId}::${conversationId}`;
+	}
 }
 /**
  * Module-singleton registry. The engine reads this on every generate; the

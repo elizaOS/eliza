@@ -25,93 +25,92 @@
  */
 import { logger } from "@elizaos/core";
 class BoundedRing {
-    cap;
-    buf;
-    head = 0;
-    filled = 0;
-    constructor(cap) {
-        this.cap = cap;
-        this.buf = new Array(cap).fill(0);
-    }
-    push(v) {
-        if (!Number.isFinite(v))
-            return;
-        this.buf[this.head] = v;
-        this.head = (this.head + 1) % this.cap;
-        if (this.filled < this.cap)
-            this.filled += 1;
-    }
-    summary() {
-        if (this.filled === 0)
-            return { count: 0, p50: null, p95: null, mean: null };
-        const slice = this.buf.slice(0, this.filled).sort((a, b) => a - b);
-        const pct = (q) => {
-            const rank = Math.ceil((q / 100) * slice.length);
-            return slice[Math.min(slice.length - 1, Math.max(0, rank - 1))];
-        };
-        const sum = slice.reduce((a, b) => a + b, 0);
-        return {
-            count: this.filled,
-            p50: pct(50),
-            p95: pct(95),
-            mean: sum / this.filled,
-        };
-    }
+	cap;
+	buf;
+	head = 0;
+	filled = 0;
+	constructor(cap) {
+		this.cap = cap;
+		this.buf = new Array(cap).fill(0);
+	}
+	push(v) {
+		if (!Number.isFinite(v)) return;
+		this.buf[this.head] = v;
+		this.head = (this.head + 1) % this.cap;
+		if (this.filled < this.cap) this.filled += 1;
+	}
+	summary() {
+		if (this.filled === 0)
+			return { count: 0, p50: null, p95: null, mean: null };
+		const slice = this.buf.slice(0, this.filled).sort((a, b) => a - b);
+		const pct = (q) => {
+			const rank = Math.ceil((q / 100) * slice.length);
+			return slice[Math.min(slice.length - 1, Math.max(0, rank - 1))];
+		};
+		const sum = slice.reduce((a, b) => a + b, 0);
+		return {
+			count: this.filled,
+			p50: pct(50),
+			p95: pct(95),
+			mean: sum / this.filled,
+		};
+	}
 }
 export class InferenceTelemetry {
-    rings = new Map();
-    capacity;
-    constructor(capacity = 256) {
-        this.capacity = capacity;
-    }
-    /**
-     * Record a scalar observation. Never throws — telemetry must be
-     * instrumentation, never a fault path.
-     *
-     * @param name  Dot-separated metric name, e.g. `"inference.ttfa_ms"`.
-     * @param value Numeric value (non-finite values are silently dropped).
-     * @param tags  Optional key/value labels emitted in the log line.
-     */
-    record(name, value, tags) {
-        try {
-            let ring = this.rings.get(name);
-            if (!ring) {
-                ring = new BoundedRing(this.capacity);
-                this.rings.set(name, ring);
-            }
-            ring.push(value);
-            const tagStr = tags
-                ? " " +
-                    Object.entries(tags)
-                        .map(([k, v]) => `${k}=${v}`)
-                        .join(" ")
-                : "";
-            logger.debug(`[InferenceTelemetry] ${name}=${value}${tagStr}`);
-        }
-        catch {
-            // Swallow — telemetry must never surface as a runtime error.
-        }
-    }
-    /**
-     * Summary statistics for a named metric over the retained ring of samples.
-     * Returns `{ count: 0, ... }` when the metric has never been recorded.
-     */
-    summary(name) {
-        return (this.rings.get(name)?.summary() ?? {
-            count: 0,
-            p50: null,
-            p95: null,
-            mean: null,
-        });
-    }
-    /** Names of all metrics that have received at least one sample. */
-    metricNames() {
-        return [...this.rings.keys()];
-    }
-    /** Reset all retained samples. Useful in tests. */
-    reset() {
-        this.rings.clear();
-    }
+	rings = new Map();
+	capacity;
+	constructor(capacity = 256) {
+		this.capacity = capacity;
+	}
+	/**
+	 * Record a scalar observation. Never throws — telemetry must be
+	 * instrumentation, never a fault path.
+	 *
+	 * @param name  Dot-separated metric name, e.g. `"inference.ttfa_ms"`.
+	 * @param value Numeric value (non-finite values are silently dropped).
+	 * @param tags  Optional key/value labels emitted in the log line.
+	 */
+	record(name, value, tags) {
+		try {
+			let ring = this.rings.get(name);
+			if (!ring) {
+				ring = new BoundedRing(this.capacity);
+				this.rings.set(name, ring);
+			}
+			ring.push(value);
+			const tagStr = tags
+				? " " +
+					Object.entries(tags)
+						.map(([k, v]) => `${k}=${v}`)
+						.join(" ")
+				: "";
+			logger.debug(`[InferenceTelemetry] ${name}=${value}${tagStr}`);
+		} catch {
+			// Swallow — telemetry must never surface as a runtime error.
+		}
+	}
+	/**
+	 * Summary statistics for a named metric over the retained ring of samples.
+	 * Returns `{ count: 0, ... }` when the metric has never been recorded.
+	 */
+	summary(name) {
+		return (
+			this.rings.get(name)?.summary() ?? {
+				count: 0,
+				p50: null,
+				p95: null,
+				mean: null,
+			}
+		);
+	}
+	/** Names of all metrics that have received at least one sample. */
+	metricNames() {
+		return [...this.rings.keys()];
+	}
+	/** Reset all retained samples. Useful in tests. */
+	reset() {
+		this.rings.clear();
+	}
 }
 /** Process-wide singleton used by dflash-server and voice scheduler. */
 export const inferenceTelemetry = new InferenceTelemetry();

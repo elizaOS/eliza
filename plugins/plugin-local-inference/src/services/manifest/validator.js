@@ -21,7 +21,17 @@
 // validator REFUSES the combination of `defaultEligible: true` and any
 // failing contract rule. This mirrors the publish-side gate in
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
-import { Eliza1ManifestSchema, EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD, EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT, EMOTION_CLASSIFIER_MELD_F1_THRESHOLD, REQUIRED_KERNELS_BY_TIER, SUPPORTED_BACKENDS_BY_TIER, TURN_DETECTOR_F1_THRESHOLD, TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT, VOICE_PRESET_CACHE_PATH, } from "./schema";
+import {
+	Eliza1ManifestSchema,
+	EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD,
+	EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT,
+	EMOTION_CLASSIFIER_MELD_F1_THRESHOLD,
+	REQUIRED_KERNELS_BY_TIER,
+	SUPPORTED_BACKENDS_BY_TIER,
+	TURN_DETECTOR_F1_THRESHOLD,
+	TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT,
+	VOICE_PRESET_CACHE_PATH,
+} from "./schema";
 /**
  * Schema + contract validation. Returns a Result-shaped object so callers
  * can inspect every error rather than catching the first thrown one.
@@ -31,18 +41,20 @@ import { Eliza1ManifestSchema, EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD, EMOTION_
  * surface as Zod issues, not exceptions.
  */
 export function validateManifest(input) {
-    const parsed = Eliza1ManifestSchema.safeParse(input);
-    if (!parsed.success) {
-        return {
-            ok: false,
-            errors: parsed.error.issues.map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`),
-        };
-    }
-    const errors = collectContractErrors(parsed.data);
-    if (errors.length > 0) {
-        return { ok: false, errors };
-    }
-    return { ok: true, manifest: parsed.data };
+	const parsed = Eliza1ManifestSchema.safeParse(input);
+	if (!parsed.success) {
+		return {
+			ok: false,
+			errors: parsed.error.issues.map(
+				(i) => `${i.path.join(".") || "<root>"}: ${i.message}`,
+			),
+		};
+	}
+	const errors = collectContractErrors(parsed.data);
+	if (errors.length > 0) {
+		return { ok: false, errors };
+	}
+	return { ok: true, manifest: parsed.data };
 }
 /**
  * Throws on invalid input. Use this from boot paths where a structured
@@ -50,11 +62,13 @@ export function validateManifest(input) {
  * code should prefer `validateManifest`.
  */
 export function parseManifestOrThrow(input) {
-    const result = validateManifest(input);
-    if (result.ok === false) {
-        throw new Error(`Invalid Eliza-1 manifest:\n  - ${result.errors.join("\n  - ")}`);
-    }
-    return result.manifest;
+	const result = validateManifest(input);
+	if (result.ok === false) {
+		throw new Error(
+			`Invalid Eliza-1 manifest:\n  - ${result.errors.join("\n  - ")}`,
+		);
+	}
+	return result.manifest;
 }
 /**
  * `canSetAsDefault` is the recommendation-engine gate. A manifest that
@@ -85,17 +99,18 @@ export function parseManifestOrThrow(input) {
  * but not runnable on this device.
  */
 export function canSetAsDefault(manifest, device) {
-    if (collectContractErrors(manifest).length > 0)
-        return false;
-    if (manifest.ramBudgetMb.min > device.ramMb)
-        return false;
-    // The device must expose at least one backend that the manifest verified
-    // pass on. Pre-check against the tier's supported set so we don't accept
-    // a tier-server bundle on a Mac via the cpu fallback alone.
-    const supported = new Set(SUPPORTED_BACKENDS_BY_TIER[manifest.tier]);
-    const overlapping = device.availableBackends.filter((b) => supported.has(b) &&
-        manifest.kernels.verifiedBackends[b].status === "pass");
-    return overlapping.length > 0;
+	if (collectContractErrors(manifest).length > 0) return false;
+	if (manifest.ramBudgetMb.min > device.ramMb) return false;
+	// The device must expose at least one backend that the manifest verified
+	// pass on. Pre-check against the tier's supported set so we don't accept
+	// a tier-server bundle on a Mac via the cpu fallback alone.
+	const supported = new Set(SUPPORTED_BACKENDS_BY_TIER[manifest.tier]);
+	const overlapping = device.availableBackends.filter(
+		(b) =>
+			supported.has(b) &&
+			manifest.kernels.verifiedBackends[b].status === "pass",
+	);
+	return overlapping.length > 0;
 }
 /**
  * Strict release identifier: a `defaultEligible: true` manifest. The
@@ -104,7 +119,7 @@ export function canSetAsDefault(manifest, device) {
  * publish-side `eliza1_gates.yaml` strict bar.
  */
 export function isStrictReleaseManifest(manifest) {
-    return manifest.defaultEligible === true;
+	return manifest.defaultEligible === true;
 }
 // ---------------------------------------------------------------------------
 // Internal: contract rules from AGENTS.md §3 + §6
@@ -121,247 +136,276 @@ export function isStrictReleaseManifest(manifest) {
 // refinement already enforces that for the base-v1 channel; the validator now
 // honours the release-state vocabulary instead of applying the auto-default
 // bar to every manifest).
-const STRICT_RELEASE_STATES = new Set([
-    "base-v1",
-    "finetuned-v2",
-    "final",
-]);
+const STRICT_RELEASE_STATES = new Set(["base-v1", "finetuned-v2", "final"]);
 function collectContractErrors(m) {
-    const errors = [];
-    const releaseState = m.provenance?.releaseState;
-    const strictRelease = m.defaultEligible === true ||
-        releaseState === undefined ||
-        STRICT_RELEASE_STATES.has(releaseState);
-    // Required-kernel coverage.
-    const declaredRequired = new Set(m.kernels.required);
-    const tierRequired = REQUIRED_KERNELS_BY_TIER[m.tier];
-    for (const k of tierRequired) {
-        if (!declaredRequired.has(k)) {
-            errors.push(`kernels.required: missing required kernel for tier ${m.tier}: ${k}`);
-        }
-    }
-    // Long-context tiers MUST require turbo3_tcq once any text variant has
-    // ctx > 64k. AGENTS.md §3 Required for desktop/pro/server (#6).
-    const hasLongContextVariant = m.files.text.some((f) => typeof f.ctx === "number" && f.ctx > 65536);
-    if (hasLongContextVariant) {
-        if (!declaredRequired.has("turbo3_tcq")) {
-            errors.push("kernels.required: text variant with ctx > 64k requires turbo3_tcq");
-        }
-    }
-    // Backend kernel-verify coverage. A production release must verify every
-    // backend the tier supports; a candidate/staging bundle need only verify at
-    // least one supported backend (the device-side `canSetAsDefault` /
-    // installability check then matches the device's available backends against
-    // the verified-`pass` set, so a CUDA-only candidate installs on CUDA hosts
-    // and is rejected on a Mac whose Metal it never verified).
-    const supportedBackends = SUPPORTED_BACKENDS_BY_TIER[m.tier];
-    if (strictRelease) {
-        for (const b of supportedBackends) {
-            const status = m.kernels.verifiedBackends[b].status;
-            if (status !== "pass") {
-                errors.push(`kernels.verifiedBackends.${b}: status is "${status}", expected "pass" for tier ${m.tier}`);
-            }
-        }
-    }
-    else if (!supportedBackends.some((b) => m.kernels.verifiedBackends[b].status === "pass")) {
-        errors.push(`kernels.verifiedBackends: a publishable bundle must report status="pass" on at least one supported backend for tier ${m.tier} (got [${supportedBackends
-            .map((b) => `${b}:${m.kernels.verifiedBackends[b].status}`)
-            .join(", ")}])`);
-    }
-    // The precomputed default-voice speaker preset (`cache/voice-preset-default.bin`)
-    // is a mandatory bundle artifact — `EngineVoiceBridge.start()` hard-fails
-    // without it (AGENTS.md §4 / inference/AGENTS.md §2). It must be listed in
-    // `files.cache` so the downloader fetches it, and when the manifest declares
-    // a `voice` block its `cache.speakerPreset` must point at the same path.
-    if (!m.files.cache.some((f) => f.path === VOICE_PRESET_CACHE_PATH)) {
-        errors.push(`files.cache: missing required ${VOICE_PRESET_CACHE_PATH}`);
-    }
-    if (m.voice && m.voice.cache.speakerPreset !== VOICE_PRESET_CACHE_PATH) {
-        errors.push(`voice.cache.speakerPreset: must be ${VOICE_PRESET_CACHE_PATH}, got ${m.voice.cache.speakerPreset}`);
-    }
-    // Eval gates. Enforced as pass/fail only for a production release; a
-    // candidate/staging bundle still carries the eval blobs (Zod-shape-checked,
-    // measured-or-`not-run`) but a non-green eval does not block publish/install
-    // — only `defaultEligible` promotion (which requires `strictRelease`).
-    if (strictRelease) {
-        if (!m.evals.textEval.passed)
-            errors.push("evals.textEval.passed: false");
-        if (!m.evals.voiceRtf.passed)
-            errors.push("evals.voiceRtf.passed: false");
-        if (!m.evals.e2eLoopOk)
-            errors.push("evals.e2eLoopOk: false");
-        if (!m.evals.thirtyTurnOk)
-            errors.push("evals.thirtyTurnOk: false");
-    }
-    // Optional component slots must be internally consistent: a shipped
-    // component needs auditable lineage, and lineage may not point at a
-    // component absent from the bundle. Components that affect runtime quality
-    // also require their own publish gate to pass.
-    if (m.defaultEligible) {
-        if ((m.files.asr ?? []).length === 0) {
-            errors.push("files.asr: required for defaultEligible local voice bundles");
-        }
-        if ((m.files.vad ?? []).length === 0) {
-            errors.push("files.vad: required for defaultEligible local voice bundles");
-        }
-    }
-    for (const slot of [
-        "asr",
-        "embedding",
-        "vision",
-        "vad",
-        "wakeword",
-        "turn",
-        "emotion",
-    ]) {
-        const files = m.files[slot] ?? [];
-        const lineage = m.lineage[slot];
-        if (files.length > 0 && !lineage) {
-            errors.push(`lineage.${slot}: required when files.${slot} is non-empty`);
-        }
-        if (lineage && files.length === 0) {
-            errors.push(`files.${slot}: required when lineage.${slot} is present`);
-        }
-    }
-    if ((m.files.asr ?? []).length > 0) {
-        if (!m.evals.asrWer) {
-            errors.push("evals.asrWer: required when files.asr is non-empty");
-        }
-        else if (strictRelease && !m.evals.asrWer.passed) {
-            errors.push("evals.asrWer.passed: false");
-        }
-    }
-    if ((m.files.embedding ?? []).length > 0) {
-        if (!m.evals.embedMteb) {
-            errors.push("evals.embedMteb: required when files.embedding is non-empty");
-        }
-        else if (strictRelease && !m.evals.embedMteb.passed) {
-            errors.push("evals.embedMteb.passed: false");
-        }
-    }
-    if ((m.files.vad ?? []).length > 0) {
-        if (!m.evals.vadLatencyMs) {
-            errors.push("evals.vadLatencyMs: required when files.vad is non-empty");
-        }
-        else if (strictRelease && !m.evals.vadLatencyMs.passed) {
-            errors.push("evals.vadLatencyMs.passed: false");
-        }
-    }
-    // Voice Wave 2 (2026-05-14): turn-detector eval gate. When the bundle
-    // ships `files.turn` (the LiveKit/Turnsense ONNX) the manifest MUST
-    // declare a `turnDetector` eval block; a strict release additionally
-    // requires `passed=true` AND the precomputed `passed` field to be
-    // internally consistent with the threshold constants.
-    if ((m.files.turn ?? []).length > 0) {
-        const td = m.evals.turnDetector;
-        if (!td) {
-            errors.push("evals.turnDetector: required when files.turn is non-empty");
-        }
-        else {
-            const gateMet = td.f1 >= TURN_DETECTOR_F1_THRESHOLD &&
-                td.meanLatencyMs <= TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT;
-            if (td.passed !== gateMet) {
-                errors.push(`evals.turnDetector.passed: ${td.passed} disagrees with measured gate (f1=${td.f1} ≥ ${TURN_DETECTOR_F1_THRESHOLD} && meanLatencyMs=${td.meanLatencyMs} ≤ ${TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT} → ${gateMet})`);
-            }
-            if (strictRelease && !td.passed) {
-                errors.push("evals.turnDetector.passed: false");
-            }
-        }
-    }
-    const expressiveVoice = m.voice?.capabilities.includes("emotion-tags") ||
-        m.voice?.capabilities.includes("singing");
-    if (expressiveVoice) {
-        if (!m.evals.expressive) {
-            errors.push("evals.expressive: required when voice capabilities include emotion-tags or singing");
-        }
-        else if (strictRelease && !m.evals.expressive.passed) {
-            errors.push("evals.expressive.passed: false");
-        }
-    }
-    // Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gate. Same
-    // shape as `turnDetector`: a bundle that ships `files.emotion` MUST
-    // declare a precomputed `emotionClassifier` block; a strict release
-    // additionally requires `passed=true` and internal consistency with the
-    // threshold constants. The MELD bar is intentionally low (~0.35) per
-    // R3-emotion §6 — refusing to publish a real improvement is worse than
-    // admitting 7-class conversational SER is hard.
-    if ((m.files.emotion ?? []).length > 0) {
-        const ec = m.evals.emotionClassifier;
-        if (!ec) {
-            errors.push("evals.emotionClassifier: required when files.emotion is non-empty");
-        }
-        else {
-            const gateMet = ec.macroF1Meld >= EMOTION_CLASSIFIER_MELD_F1_THRESHOLD &&
-                ec.macroF1Iemocap >= EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD &&
-                ec.meanLatencyMs <= EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT;
-            if (ec.passed !== gateMet) {
-                errors.push(`evals.emotionClassifier.passed: ${ec.passed} disagrees with measured gate (` +
-                    `macroF1Meld=${ec.macroF1Meld} ≥ ${EMOTION_CLASSIFIER_MELD_F1_THRESHOLD} && ` +
-                    `macroF1Iemocap=${ec.macroF1Iemocap} ≥ ${EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD} && ` +
-                    `meanLatencyMs=${ec.meanLatencyMs} ≤ ${EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT} → ${gateMet})`);
-            }
-            if (strictRelease && !ec.passed) {
-                errors.push("evals.emotionClassifier.passed: false");
-            }
-        }
-    }
-    // base-v1 provenance coverage. A `base-v1` manifest (the upstream base
-    // models, GGUF-converted + fully optimized, NOT fine-tuned) MUST record
-    // where every shipped component comes from — that is the whole point of
-    // the release state.
-    if (m.provenance) {
-        if (m.provenance.releaseState === "base-v1" &&
-            m.provenance.finetuned !== false) {
-            errors.push("provenance.finetuned: must be false for releaseState=base-v1");
-        }
-        if (m.provenance.releaseState === "base-v1") {
-            const requiredSlots = [
-                "text",
-                "voice",
-                "drafter",
-            ];
-            for (const slot of ["asr", "vad", "embedding", "vision"]) {
-                if ((m.files[slot] ?? []).length > 0)
-                    requiredSlots.push(slot);
-            }
-            for (const slot of requiredSlots) {
-                if (!m.provenance.sourceModels[slot]) {
-                    errors.push(`provenance.sourceModels.${slot}: required for releaseState=base-v1 (component is in files.${slot})`);
-                }
-            }
-        }
-    }
-    // DFlash bench. Staging manifests may record missing or failing DFlash
-    // measurements, but a default bundle is not eligible unless speculative
-    // decoding was actually measured and passed.
-    if (!m.evals.dflash) {
-        if (m.defaultEligible) {
-            errors.push("evals.dflash: required when defaultEligible=true");
-        }
-    }
-    else {
-        if (m.evals.dflash.passed &&
-            (m.evals.dflash.acceptanceRate === null ||
-                m.evals.dflash.speedup === null)) {
-            errors.push("evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass");
-        }
-        if (m.defaultEligible) {
-            if (!m.evals.dflash.passed) {
-                errors.push("evals.dflash.passed: false for defaultEligible manifest");
-            }
-            if (m.evals.dflash.acceptanceRate === null ||
-                m.evals.dflash.speedup === null) {
-                errors.push("evals.dflash: defaultEligible requires measured acceptanceRate and speedup");
-            }
-        }
-    }
-    // The strongest claim: defaultEligible. If anything above failed, this
-    // flag must be false. (Contract errors are already accumulated; we add
-    // an explicit message so callers can identify the violation cleanly.)
-    if (m.defaultEligible && errors.length > 0) {
-        errors.unshift("defaultEligible: true requires all required kernels, supported backends, and evals to pass");
-    }
-    return errors;
+	const errors = [];
+	const releaseState = m.provenance?.releaseState;
+	const strictRelease =
+		m.defaultEligible === true ||
+		releaseState === undefined ||
+		STRICT_RELEASE_STATES.has(releaseState);
+	// Required-kernel coverage.
+	const declaredRequired = new Set(m.kernels.required);
+	const tierRequired = REQUIRED_KERNELS_BY_TIER[m.tier];
+	for (const k of tierRequired) {
+		if (!declaredRequired.has(k)) {
+			errors.push(
+				`kernels.required: missing required kernel for tier ${m.tier}: ${k}`,
+			);
+		}
+	}
+	// Long-context tiers MUST require turbo3_tcq once any text variant has
+	// ctx > 64k. AGENTS.md §3 Required for desktop/pro/server (#6).
+	const hasLongContextVariant = m.files.text.some(
+		(f) => typeof f.ctx === "number" && f.ctx > 65536,
+	);
+	if (hasLongContextVariant) {
+		if (!declaredRequired.has("turbo3_tcq")) {
+			errors.push(
+				"kernels.required: text variant with ctx > 64k requires turbo3_tcq",
+			);
+		}
+	}
+	// Backend kernel-verify coverage. A production release must verify every
+	// backend the tier supports; a candidate/staging bundle need only verify at
+	// least one supported backend (the device-side `canSetAsDefault` /
+	// installability check then matches the device's available backends against
+	// the verified-`pass` set, so a CUDA-only candidate installs on CUDA hosts
+	// and is rejected on a Mac whose Metal it never verified).
+	const supportedBackends = SUPPORTED_BACKENDS_BY_TIER[m.tier];
+	if (strictRelease) {
+		for (const b of supportedBackends) {
+			const status = m.kernels.verifiedBackends[b].status;
+			if (status !== "pass") {
+				errors.push(
+					`kernels.verifiedBackends.${b}: status is "${status}", expected "pass" for tier ${m.tier}`,
+				);
+			}
+		}
+	} else if (
+		!supportedBackends.some(
+			(b) => m.kernels.verifiedBackends[b].status === "pass",
+		)
+	) {
+		errors.push(
+			`kernels.verifiedBackends: a publishable bundle must report status="pass" on at least one supported backend for tier ${m.tier} (got [${supportedBackends
+				.map((b) => `${b}:${m.kernels.verifiedBackends[b].status}`)
+				.join(", ")}])`,
+		);
+	}
+	// The precomputed default-voice speaker preset (`cache/voice-preset-default.bin`)
+	// is a mandatory bundle artifact — `EngineVoiceBridge.start()` hard-fails
+	// without it (AGENTS.md §4 / inference/AGENTS.md §2). It must be listed in
+	// `files.cache` so the downloader fetches it, and when the manifest declares
+	// a `voice` block its `cache.speakerPreset` must point at the same path.
+	if (!m.files.cache.some((f) => f.path === VOICE_PRESET_CACHE_PATH)) {
+		errors.push(`files.cache: missing required ${VOICE_PRESET_CACHE_PATH}`);
+	}
+	if (m.voice && m.voice.cache.speakerPreset !== VOICE_PRESET_CACHE_PATH) {
+		errors.push(
+			`voice.cache.speakerPreset: must be ${VOICE_PRESET_CACHE_PATH}, got ${m.voice.cache.speakerPreset}`,
+		);
+	}
+	// Eval gates. Enforced as pass/fail only for a production release; a
+	// candidate/staging bundle still carries the eval blobs (Zod-shape-checked,
+	// measured-or-`not-run`) but a non-green eval does not block publish/install
+	// — only `defaultEligible` promotion (which requires `strictRelease`).
+	if (strictRelease) {
+		if (!m.evals.textEval.passed) errors.push("evals.textEval.passed: false");
+		if (!m.evals.voiceRtf.passed) errors.push("evals.voiceRtf.passed: false");
+		if (!m.evals.e2eLoopOk) errors.push("evals.e2eLoopOk: false");
+		if (!m.evals.thirtyTurnOk) errors.push("evals.thirtyTurnOk: false");
+	}
+	// Optional component slots must be internally consistent: a shipped
+	// component needs auditable lineage, and lineage may not point at a
+	// component absent from the bundle. Components that affect runtime quality
+	// also require their own publish gate to pass.
+	if (m.defaultEligible) {
+		if ((m.files.asr ?? []).length === 0) {
+			errors.push(
+				"files.asr: required for defaultEligible local voice bundles",
+			);
+		}
+		if ((m.files.vad ?? []).length === 0) {
+			errors.push(
+				"files.vad: required for defaultEligible local voice bundles",
+			);
+		}
+	}
+	for (const slot of [
+		"asr",
+		"embedding",
+		"vision",
+		"vad",
+		"wakeword",
+		"turn",
+		"emotion",
+	]) {
+		const files = m.files[slot] ?? [];
+		const lineage = m.lineage[slot];
+		if (files.length > 0 && !lineage) {
+			errors.push(`lineage.${slot}: required when files.${slot} is non-empty`);
+		}
+		if (lineage && files.length === 0) {
+			errors.push(`files.${slot}: required when lineage.${slot} is present`);
+		}
+	}
+	if ((m.files.asr ?? []).length > 0) {
+		if (!m.evals.asrWer) {
+			errors.push("evals.asrWer: required when files.asr is non-empty");
+		} else if (strictRelease && !m.evals.asrWer.passed) {
+			errors.push("evals.asrWer.passed: false");
+		}
+	}
+	if ((m.files.embedding ?? []).length > 0) {
+		if (!m.evals.embedMteb) {
+			errors.push(
+				"evals.embedMteb: required when files.embedding is non-empty",
+			);
+		} else if (strictRelease && !m.evals.embedMteb.passed) {
+			errors.push("evals.embedMteb.passed: false");
+		}
+	}
+	if ((m.files.vad ?? []).length > 0) {
+		if (!m.evals.vadLatencyMs) {
+			errors.push("evals.vadLatencyMs: required when files.vad is non-empty");
+		} else if (strictRelease && !m.evals.vadLatencyMs.passed) {
+			errors.push("evals.vadLatencyMs.passed: false");
+		}
+	}
+	// Voice Wave 2 (2026-05-14): turn-detector eval gate. When the bundle
+	// ships `files.turn` (the LiveKit/Turnsense ONNX) the manifest MUST
+	// declare a `turnDetector` eval block; a strict release additionally
+	// requires `passed=true` AND the precomputed `passed` field to be
+	// internally consistent with the threshold constants.
+	if ((m.files.turn ?? []).length > 0) {
+		const td = m.evals.turnDetector;
+		if (!td) {
+			errors.push("evals.turnDetector: required when files.turn is non-empty");
+		} else {
+			const gateMet =
+				td.f1 >= TURN_DETECTOR_F1_THRESHOLD &&
+				td.meanLatencyMs <= TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT;
+			if (td.passed !== gateMet) {
+				errors.push(
+					`evals.turnDetector.passed: ${td.passed} disagrees with measured gate (f1=${td.f1} ≥ ${TURN_DETECTOR_F1_THRESHOLD} && meanLatencyMs=${td.meanLatencyMs} ≤ ${TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT} → ${gateMet})`,
+				);
+			}
+			if (strictRelease && !td.passed) {
+				errors.push("evals.turnDetector.passed: false");
+			}
+		}
+	}
+	const expressiveVoice =
+		m.voice?.capabilities.includes("emotion-tags") ||
+		m.voice?.capabilities.includes("singing");
+	if (expressiveVoice) {
+		if (!m.evals.expressive) {
+			errors.push(
+				"evals.expressive: required when voice capabilities include emotion-tags or singing",
+			);
+		} else if (strictRelease && !m.evals.expressive.passed) {
+			errors.push("evals.expressive.passed: false");
+		}
+	}
+	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gate. Same
+	// shape as `turnDetector`: a bundle that ships `files.emotion` MUST
+	// declare a precomputed `emotionClassifier` block; a strict release
+	// additionally requires `passed=true` and internal consistency with the
+	// threshold constants. The MELD bar is intentionally low (~0.35) per
+	// R3-emotion §6 — refusing to publish a real improvement is worse than
+	// admitting 7-class conversational SER is hard.
+	if ((m.files.emotion ?? []).length > 0) {
+		const ec = m.evals.emotionClassifier;
+		if (!ec) {
+			errors.push(
+				"evals.emotionClassifier: required when files.emotion is non-empty",
+			);
+		} else {
+			const gateMet =
+				ec.macroF1Meld >= EMOTION_CLASSIFIER_MELD_F1_THRESHOLD &&
+				ec.macroF1Iemocap >= EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD &&
+				ec.meanLatencyMs <= EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT;
+			if (ec.passed !== gateMet) {
+				errors.push(
+					`evals.emotionClassifier.passed: ${ec.passed} disagrees with measured gate (` +
+						`macroF1Meld=${ec.macroF1Meld} ≥ ${EMOTION_CLASSIFIER_MELD_F1_THRESHOLD} && ` +
+						`macroF1Iemocap=${ec.macroF1Iemocap} ≥ ${EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD} && ` +
+						`meanLatencyMs=${ec.meanLatencyMs} ≤ ${EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT} → ${gateMet})`,
+				);
+			}
+			if (strictRelease && !ec.passed) {
+				errors.push("evals.emotionClassifier.passed: false");
+			}
+		}
+	}
+	// base-v1 provenance coverage. A `base-v1` manifest (the upstream base
+	// models, GGUF-converted + fully optimized, NOT fine-tuned) MUST record
+	// where every shipped component comes from — that is the whole point of
+	// the release state.
+	if (m.provenance) {
+		if (
+			m.provenance.releaseState === "base-v1" &&
+			m.provenance.finetuned !== false
+		) {
+			errors.push(
+				"provenance.finetuned: must be false for releaseState=base-v1",
+			);
+		}
+		if (m.provenance.releaseState === "base-v1") {
+			const requiredSlots = ["text", "voice", "drafter"];
+			for (const slot of ["asr", "vad", "embedding", "vision"]) {
+				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
+			}
+			for (const slot of requiredSlots) {
+				if (!m.provenance.sourceModels[slot]) {
+					errors.push(
+						`provenance.sourceModels.${slot}: required for releaseState=base-v1 (component is in files.${slot})`,
+					);
+				}
+			}
+		}
+	}
+	// DFlash bench. Staging manifests may record missing or failing DFlash
+	// measurements, but a default bundle is not eligible unless speculative
+	// decoding was actually measured and passed.
+	if (!m.evals.dflash) {
+		if (m.defaultEligible) {
+			errors.push("evals.dflash: required when defaultEligible=true");
+		}
+	} else {
+		if (
+			m.evals.dflash.passed &&
+			(m.evals.dflash.acceptanceRate === null ||
+				m.evals.dflash.speedup === null)
+		) {
+			errors.push(
+				"evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
+			);
+		}
+		if (m.defaultEligible) {
+			if (!m.evals.dflash.passed) {
+				errors.push("evals.dflash.passed: false for defaultEligible manifest");
+			}
+			if (
+				m.evals.dflash.acceptanceRate === null ||
+				m.evals.dflash.speedup === null
+			) {
+				errors.push(
+					"evals.dflash: defaultEligible requires measured acceptanceRate and speedup",
+				);
+			}
+		}
+	}
+	// The strongest claim: defaultEligible. If anything above failed, this
+	// flag must be false. (Contract errors are already accumulated; we add
+	// an explicit message so callers can identify the violation cleanly.)
+	if (m.defaultEligible && errors.length > 0) {
+		errors.unshift(
+			"defaultEligible: true requires all required kernels, supported backends, and evals to pass",
+		);
+	}
+	return errors;
 }
 /**
  * Convenience: list missing required kernels for a tier without doing
@@ -369,7 +413,7 @@ function collectContractErrors(m) {
  * "this bundle is broken" diagnostics.
  */
 export function missingRequiredKernels(tier, declaredRequired) {
-    const declared = new Set(declaredRequired);
-    return REQUIRED_KERNELS_BY_TIER[tier].filter((k) => !declared.has(k));
+	const declared = new Set(declaredRequired);
+	return REQUIRED_KERNELS_BY_TIER[tier].filter((k) => !declared.has(k));
 }
 //# sourceMappingURL=validator.js.map

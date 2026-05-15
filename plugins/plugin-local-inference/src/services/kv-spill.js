@@ -65,10 +65,10 @@ export const KV_SPILL_TEXT_LATENCY_BUDGET_MS = 1500;
  *                     practice this tier fails the gate immediately.)
  */
 const KV_RESTORE_BANDWIDTH_BYTES_PER_MS = {
-    "cpu-apple": 40_000_000,
-    "cpu-pcie": 12_000_000,
-    "disk-nvme": 1_500_000,
-    "disk-sata": 250_000,
+	"cpu-apple": 40_000_000,
+	"cpu-pcie": 12_000_000,
+	"disk-nvme": 1_500_000,
+	"disk-sata": 250_000,
 };
 /**
  * Fallback per-token KV estimate when the manifest doesn't carry an explicit
@@ -79,20 +79,19 @@ const KV_RESTORE_BANDWIDTH_BYTES_PER_MS = {
  * the catalog's per-tier `ramBudgetMb` was sized against.
  */
 const QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS = {
-    "0.8B": 1_400,
-    "2B": 2_400,
-    "4B": 4_800,
-    "9B": 9_000,
-    "27B": 22_000,
+	"0.8B": 1_400,
+	"2B": 2_400,
+	"4B": 4_800,
+	"9B": 9_000,
+	"27B": 22_000,
 };
 export function estimateQuantizedKvBytesPerToken(params) {
-    const known = QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS[params];
-    if (known !== undefined)
-        return known;
-    // Unknown param string — fail closed by assuming the largest tier's
-    // footprint so a mis-tagged bundle errs toward refusing spill rather than
-    // toward over-promising residency.
-    return QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS["27B"];
+	const known = QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS[params];
+	if (known !== undefined) return known;
+	// Unknown param string — fail closed by assuming the largest tier's
+	// footprint so a mis-tagged bundle errs toward refusing spill rather than
+	// toward over-promising residency.
+	return QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS["27B"];
 }
 /**
  * Structured error thrown when spill cannot meet the latency budget. The
@@ -100,16 +99,18 @@ export function estimateQuantizedKvBytesPerToken(params) {
  * `details` intact — there is NO silent-slow fallback (AGENTS.md §3).
  */
 export class KvSpillUnsupportedError extends Error {
-    code = "kv-spill-unsupported";
-    details;
-    constructor(details) {
-        super(`KV-cache spill for a ${details.requestedContext}-token context cannot ` +
-            `meet the ${details.voiceEnabled ? "voice" : "text"} latency budget on this device: worst-case cold-page restore is ` +
-            `${details.worstCaseRestoreMs.toFixed(1)}ms vs a ${details.latencyBudgetMs}ms budget (${details.restoreClass}, ${(details.spillBytes / 1024 / 1024).toFixed(0)} MiB would spill). Use a smaller context variant or a ` +
-            `device with more RAM / faster storage.`);
-        this.name = "KvSpillUnsupportedError";
-        this.details = details;
-    }
+	code = "kv-spill-unsupported";
+	details;
+	constructor(details) {
+		super(
+			`KV-cache spill for a ${details.requestedContext}-token context cannot ` +
+				`meet the ${details.voiceEnabled ? "voice" : "text"} latency budget on this device: worst-case cold-page restore is ` +
+				`${details.worstCaseRestoreMs.toFixed(1)}ms vs a ${details.latencyBudgetMs}ms budget (${details.restoreClass}, ${(details.spillBytes / 1024 / 1024).toFixed(0)} MiB would spill). Use a smaller context variant or a ` +
+				`device with more RAM / faster storage.`,
+		);
+		this.name = "KvSpillUnsupportedError";
+		this.details = details;
+	}
 }
 /**
  * Slice the resident-KV budget out of a model's `RamBudget`. The recommended
@@ -120,10 +121,12 @@ export class KvSpillUnsupportedError extends Error {
  */
 export const RESIDENT_KV_BUDGET_FRACTION = 0.25;
 export function residentKvBudgetFromRamBudget(budget) {
-    return Math.floor(budget.recommendedMb * 1024 * 1024 * RESIDENT_KV_BUDGET_FRACTION);
+	return Math.floor(
+		budget.recommendedMb * 1024 * 1024 * RESIDENT_KV_BUDGET_FRACTION,
+	);
 }
 function pagesForTokens(tokens) {
-    return Math.ceil(tokens / KV_PAGE_TOKENS);
+	return Math.ceil(tokens / KV_PAGE_TOKENS);
 }
 /**
  * Decide the KV-cache placement for a requested context.
@@ -137,85 +140,95 @@ function pagesForTokens(tokens) {
  * is no spill at short context, by contract.
  */
 export function planKvSpill(input) {
-    const { requestedContext, geometry, residentKvBudgetBytes } = input;
-    if (!Number.isFinite(requestedContext) ||
-        requestedContext <= 0 ||
-        !Number.isFinite(geometry.bytesPerToken) ||
-        geometry.bytesPerToken <= 0) {
-        throw new Error(`[kv-spill] planKvSpill needs a positive context and bytesPerToken; got context=${requestedContext}, bytesPerToken=${geometry.bytesPerToken}`);
-    }
-    if (residentKvBudgetBytes <= 0) {
-        throw new Error(`[kv-spill] residentKvBudgetBytes must be positive; got ${residentKvBudgetBytes}`);
-    }
-    const pageBytes = geometry.bytesPerToken * KV_PAGE_TOKENS;
-    const totalPages = pagesForTokens(requestedContext);
-    const totalKvBytes = totalPages * pageBytes;
-    // Whole cache fits resident — no spill, regardless of context length.
-    if (totalKvBytes <= residentKvBudgetBytes) {
-        return {
-            mode: "resident",
-            totalKvBytes,
-            residentBytes: totalKvBytes,
-        };
-    }
-    // Below the contract floor, spill is not on the table: a 64k-or-less
-    // context that doesn't fit the resident budget is a wrong-tier-for-device
-    // situation, not a spill case. The recommender's RAM gate should have
-    // already excluded this; treat it as unsupported with the same structured
-    // error so the engine surfaces it cleanly rather than half-loading.
-    if (requestedContext < KV_SPILL_MIN_CONTEXT) {
-        throw new KvSpillUnsupportedError({
-            requestedContext,
-            totalKvBytes,
-            residentBytes: residentKvBudgetBytes,
-            spillBytes: totalKvBytes - residentKvBudgetBytes,
-            worstCaseRestoreMs: 0,
-            latencyBudgetMs: 0,
-            restoreClass: input.restoreClass,
-            voiceEnabled: geometry.voiceEnabled,
-        });
-    }
-    const residentPages = Math.max(1, Math.floor(residentKvBudgetBytes / pageBytes));
-    const spillPages = totalPages - residentPages;
-    const residentBytes = residentPages * pageBytes;
-    const spillBytes = spillPages * pageBytes;
-    const tier = input.cpuSpillAvailable ? "cpu" : "disk";
-    // When CPU spill isn't available the only restore class that makes sense is
-    // a disk one; if the caller handed us a `cpu-*` class, downgrade to NVMe.
-    const restoreClass = tier === "disk" && input.restoreClass.startsWith("cpu-")
-        ? "disk-nvme"
-        : input.restoreClass;
-    const bandwidth = KV_RESTORE_BANDWIDTH_BYTES_PER_MS[restoreClass];
-    // Worst case at decode time: a single cold page faulted back in. (Spilling
-    // by page keeps this bounded — a smaller `KV_PAGE_TOKENS` is the lever for
-    // cutting the worst case if a device class needs it.)
-    const worstCaseRestoreMs = pageBytes / bandwidth;
-    const latencyBudgetMs = geometry.voiceEnabled
-        ? KV_SPILL_VOICE_LATENCY_BUDGET_MS
-        : KV_SPILL_TEXT_LATENCY_BUDGET_MS;
-    if (worstCaseRestoreMs > latencyBudgetMs) {
-        throw new KvSpillUnsupportedError({
-            requestedContext,
-            totalKvBytes,
-            residentBytes,
-            spillBytes,
-            worstCaseRestoreMs,
-            latencyBudgetMs,
-            restoreClass,
-            voiceEnabled: geometry.voiceEnabled,
-        });
-    }
-    return {
-        mode: "spill",
-        tier,
-        residentPages,
-        spillPages,
-        residentBytes,
-        spillBytes,
-        totalKvBytes,
-        worstCaseRestoreMs,
-        latencyBudgetMs,
-    };
+	const { requestedContext, geometry, residentKvBudgetBytes } = input;
+	if (
+		!Number.isFinite(requestedContext) ||
+		requestedContext <= 0 ||
+		!Number.isFinite(geometry.bytesPerToken) ||
+		geometry.bytesPerToken <= 0
+	) {
+		throw new Error(
+			`[kv-spill] planKvSpill needs a positive context and bytesPerToken; got context=${requestedContext}, bytesPerToken=${geometry.bytesPerToken}`,
+		);
+	}
+	if (residentKvBudgetBytes <= 0) {
+		throw new Error(
+			`[kv-spill] residentKvBudgetBytes must be positive; got ${residentKvBudgetBytes}`,
+		);
+	}
+	const pageBytes = geometry.bytesPerToken * KV_PAGE_TOKENS;
+	const totalPages = pagesForTokens(requestedContext);
+	const totalKvBytes = totalPages * pageBytes;
+	// Whole cache fits resident — no spill, regardless of context length.
+	if (totalKvBytes <= residentKvBudgetBytes) {
+		return {
+			mode: "resident",
+			totalKvBytes,
+			residentBytes: totalKvBytes,
+		};
+	}
+	// Below the contract floor, spill is not on the table: a 64k-or-less
+	// context that doesn't fit the resident budget is a wrong-tier-for-device
+	// situation, not a spill case. The recommender's RAM gate should have
+	// already excluded this; treat it as unsupported with the same structured
+	// error so the engine surfaces it cleanly rather than half-loading.
+	if (requestedContext < KV_SPILL_MIN_CONTEXT) {
+		throw new KvSpillUnsupportedError({
+			requestedContext,
+			totalKvBytes,
+			residentBytes: residentKvBudgetBytes,
+			spillBytes: totalKvBytes - residentKvBudgetBytes,
+			worstCaseRestoreMs: 0,
+			latencyBudgetMs: 0,
+			restoreClass: input.restoreClass,
+			voiceEnabled: geometry.voiceEnabled,
+		});
+	}
+	const residentPages = Math.max(
+		1,
+		Math.floor(residentKvBudgetBytes / pageBytes),
+	);
+	const spillPages = totalPages - residentPages;
+	const residentBytes = residentPages * pageBytes;
+	const spillBytes = spillPages * pageBytes;
+	const tier = input.cpuSpillAvailable ? "cpu" : "disk";
+	// When CPU spill isn't available the only restore class that makes sense is
+	// a disk one; if the caller handed us a `cpu-*` class, downgrade to NVMe.
+	const restoreClass =
+		tier === "disk" && input.restoreClass.startsWith("cpu-")
+			? "disk-nvme"
+			: input.restoreClass;
+	const bandwidth = KV_RESTORE_BANDWIDTH_BYTES_PER_MS[restoreClass];
+	// Worst case at decode time: a single cold page faulted back in. (Spilling
+	// by page keeps this bounded — a smaller `KV_PAGE_TOKENS` is the lever for
+	// cutting the worst case if a device class needs it.)
+	const worstCaseRestoreMs = pageBytes / bandwidth;
+	const latencyBudgetMs = geometry.voiceEnabled
+		? KV_SPILL_VOICE_LATENCY_BUDGET_MS
+		: KV_SPILL_TEXT_LATENCY_BUDGET_MS;
+	if (worstCaseRestoreMs > latencyBudgetMs) {
+		throw new KvSpillUnsupportedError({
+			requestedContext,
+			totalKvBytes,
+			residentBytes,
+			spillBytes,
+			worstCaseRestoreMs,
+			latencyBudgetMs,
+			restoreClass,
+			voiceEnabled: geometry.voiceEnabled,
+		});
+	}
+	return {
+		mode: "spill",
+		tier,
+		residentPages,
+		spillPages,
+		residentBytes,
+		spillBytes,
+		totalKvBytes,
+		worstCaseRestoreMs,
+		latencyBudgetMs,
+	};
 }
 /**
  * Map a `HardwareProbe`-shaped descriptor to the KV restore bandwidth class.
@@ -224,10 +237,8 @@ export function planKvSpill(input) {
  * memcpy bounded by the same order as a fast SSD on the conservative side).
  */
 export function restoreClassForHardware(input) {
-    if (input.appleSilicon)
-        return "cpu-apple";
-    if (input.hasDiscreteGpu)
-        return "cpu-pcie";
-    return "disk-nvme";
+	if (input.appleSilicon) return "cpu-apple";
+	if (input.hasDiscreteGpu) return "cpu-pcie";
+	return "disk-nvme";
 }
 //# sourceMappingURL=kv-spill.js.map

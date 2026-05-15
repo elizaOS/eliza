@@ -14,11 +14,11 @@
  * would be a cycle).
  */
 export class VoiceStartupError extends Error {
-    code;
-    constructor(code, message) {
-        super(message);
-        this.name = "VoiceStartupError";
-        this.code = code;
-    }
+	code;
+	constructor(code, message) {
+		super(message);
+		this.name = "VoiceStartupError";
+		this.code = code;
+	}
 }
 //# sourceMappingURL=errors.js.map

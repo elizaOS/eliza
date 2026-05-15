@@ -408,8 +408,7 @@ export class LocalInferenceService {
 									"[vision/llama-server] describe returned empty text",
 								);
 							}
-							const title =
-								trimmed.split(/[.!?]/, 1)[0]?.trim() || "Image";
+							const title = trimmed.split(/[.!?]/, 1)[0]?.trim() || "Image";
 							return {
 								title,
 								description: trimmed,

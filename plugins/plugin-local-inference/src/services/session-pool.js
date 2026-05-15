@@ -23,104 +23,99 @@
  */
 export const DEFAULT_SESSION_KEY = "_default";
 export class SessionPool {
-    maxSize;
-    factory;
-    /**
-     * Insertion order = LRU order. We re-key on each access so the most
-     * recently used entry is always last in iteration order.
-     */
-    entries = new Map();
-    constructor(args) {
-        if (!Number.isFinite(args.maxSize) || args.maxSize < 1) {
-            throw new Error(`[session-pool] maxSize must be >= 1, got ${args.maxSize}`);
-        }
-        this.maxSize = Math.floor(args.maxSize);
-        this.factory = args.factory;
-    }
-    /**
-     * Get-or-create the session for `key`. Promotes the entry to MRU.
-     * On eviction, the oldest entry's `dispose()` is awaited before the
-     * new entry is returned so the caller never holds two live sessions
-     * over the same KV memory.
-     */
-    async acquire(key) {
-        const existing = this.entries.get(key);
-        if (existing) {
-            this.entries.delete(key);
-            existing.lastUsedMs = Date.now();
-            this.entries.set(key, existing);
-            return existing.session;
-        }
-        while (this.entries.size >= this.maxSize) {
-            const oldestKey = this.entries.keys().next().value;
-            if (oldestKey === undefined)
-                break;
-            const oldest = this.entries.get(oldestKey);
-            this.entries.delete(oldestKey);
-            if (oldest)
-                await this.disposeQuietly(oldest.session);
-        }
-        const session = await this.factory(key);
-        this.entries.set(key, {
-            key,
-            session,
-            lastUsedMs: Date.now(),
-        });
-        return session;
-    }
-    /** Number of live sessions, for diagnostics. */
-    size() {
-        return this.entries.size;
-    }
-    /** Snapshot of live keys ordered LRU → MRU. */
-    keys() {
-        return [...this.entries.keys()];
-    }
-    /**
-     * Drop a single session by key. Used when the caller knows the prefix
-     * has gone stale (e.g. system prompt changed) and the cached KV is no
-     * longer valid.
-     */
-    async drop(key) {
-        const entry = this.entries.get(key);
-        if (!entry)
-            return;
-        this.entries.delete(key);
-        await this.disposeQuietly(entry.session);
-    }
-    /**
-     * Tear down every cached session. Called by the engine on model
-     * unload. After `close()` the pool is empty but reusable.
-     */
-    async close() {
-        const entries = [...this.entries.values()];
-        this.entries.clear();
-        for (const entry of entries) {
-            await this.disposeQuietly(entry.session);
-        }
-    }
-    async disposeQuietly(session) {
-        if (typeof session.dispose !== "function")
-            return;
-        try {
-            await session.dispose();
-        }
-        catch {
-            // Eviction is best-effort: if the underlying binding throws, we still
-            // need the slot freed in the pool.
-        }
-    }
+	maxSize;
+	factory;
+	/**
+	 * Insertion order = LRU order. We re-key on each access so the most
+	 * recently used entry is always last in iteration order.
+	 */
+	entries = new Map();
+	constructor(args) {
+		if (!Number.isFinite(args.maxSize) || args.maxSize < 1) {
+			throw new Error(
+				`[session-pool] maxSize must be >= 1, got ${args.maxSize}`,
+			);
+		}
+		this.maxSize = Math.floor(args.maxSize);
+		this.factory = args.factory;
+	}
+	/**
+	 * Get-or-create the session for `key`. Promotes the entry to MRU.
+	 * On eviction, the oldest entry's `dispose()` is awaited before the
+	 * new entry is returned so the caller never holds two live sessions
+	 * over the same KV memory.
+	 */
+	async acquire(key) {
+		const existing = this.entries.get(key);
+		if (existing) {
+			this.entries.delete(key);
+			existing.lastUsedMs = Date.now();
+			this.entries.set(key, existing);
+			return existing.session;
+		}
+		while (this.entries.size >= this.maxSize) {
+			const oldestKey = this.entries.keys().next().value;
+			if (oldestKey === undefined) break;
+			const oldest = this.entries.get(oldestKey);
+			this.entries.delete(oldestKey);
+			if (oldest) await this.disposeQuietly(oldest.session);
+		}
+		const session = await this.factory(key);
+		this.entries.set(key, {
+			key,
+			session,
+			lastUsedMs: Date.now(),
+		});
+		return session;
+	}
+	/** Number of live sessions, for diagnostics. */
+	size() {
+		return this.entries.size;
+	}
+	/** Snapshot of live keys ordered LRU → MRU. */
+	keys() {
+		return [...this.entries.keys()];
+	}
+	/**
+	 * Drop a single session by key. Used when the caller knows the prefix
+	 * has gone stale (e.g. system prompt changed) and the cached KV is no
+	 * longer valid.
+	 */
+	async drop(key) {
+		const entry = this.entries.get(key);
+		if (!entry) return;
+		this.entries.delete(key);
+		await this.disposeQuietly(entry.session);
+	}
+	/**
+	 * Tear down every cached session. Called by the engine on model
+	 * unload. After `close()` the pool is empty but reusable.
+	 */
+	async close() {
+		const entries = [...this.entries.values()];
+		this.entries.clear();
+		for (const entry of entries) {
+			await this.disposeQuietly(entry.session);
+		}
+	}
+	async disposeQuietly(session) {
+		if (typeof session.dispose !== "function") return;
+		try {
+			await session.dispose();
+		} catch {
+			// Eviction is best-effort: if the underlying binding throws, we still
+			// need the slot freed in the pool.
+		}
+	}
 }
 /**
  * Resolve the pool size from env, with a sane default. Bound by 1..64.
  */
 export function resolveDefaultPoolSize(envValue) {
-    const raw = (envValue ?? "").trim();
-    if (!raw)
-        return 8;
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0)
-        return 8;
-    return Math.min(64, Math.max(1, parsed));
+	const raw = (envValue ?? "").trim();
+	if (!raw) return 8;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) return 8;
+	return Math.min(64, Math.max(1, parsed));
 }
 //# sourceMappingURL=session-pool.js.map
