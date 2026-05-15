@@ -277,6 +277,65 @@ df -h / /home
 		expect(result.messageToUser).toContain("165G available");
 	});
 
+	it("does not finish a successful tool turn with internal evaluator narration", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Fetched current Bitcoin price (USD) from CoinGecko API and provided it to the user."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [
+					{
+						id: "msg",
+						type: "message",
+						message: {
+							role: "user",
+							content: { text: "what is btc at rn?" },
+						},
+					},
+				],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "SHELL",
+							params: {
+								command:
+									"curl -s 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd'",
+							},
+						},
+						result: {
+							success: true,
+							text: '{"bitcoin":{"usd":80565}}',
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.thought).toContain("without a user-facing message");
+	});
+
 	it("recovers evaluator tool-attempt text as CONTINUE without parse failure", async () => {
 		const runtime = {
 			useModel: vi.fn(
