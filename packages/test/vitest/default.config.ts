@@ -63,8 +63,9 @@ const cloudRoutingSourceRoot = path.join(
 );
 const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "cloud/packages/sdk/src",
+  "packages/cloud-sdk/src",
 );
+const vaultSourceRoot = path.join(elizaWorkspaceRoot, "packages/vault/src");
 const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
@@ -275,6 +276,14 @@ const vitestResolveAlias: ModuleAlias[] = [
   {
     find: /^@elizaos\/cloud-sdk$/,
     replacement: path.join(cloudSdkSourceRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/vault$/,
+    replacement: path.join(vaultSourceRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/vault\/(.+)$/,
+    replacement: path.join(vaultSourceRoot, "$1"),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
