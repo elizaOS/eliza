@@ -50,14 +50,12 @@ interface ArbiterImageGen {
 /* --------------------------------------------------------------------- */
 
 const ONE_PX_PNG: Buffer = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-  0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-  0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89,
-  0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54,
-  0x78, 0x9c, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05,
-  0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4,
-  0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
+  0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
+  0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44,
+  0x41, 0x54, 0x78, 0x9c, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d,
+  0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42,
+  0x60, 0x82,
 ]);
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -71,13 +69,34 @@ function isPng(buf: Buffer): boolean {
 }
 
 const PER_TIER_DEFAULT: Record<string, { modelId: string; file: string }> = {
-  "eliza-1-0_8b": { modelId: "imagegen-sd-1_5-q5_0", file: "imagegen/sd-1.5-Q5_0.gguf" },
-  "eliza-1-2b":   { modelId: "imagegen-sd-1_5-q5_0", file: "imagegen/sd-1.5-Q5_0.gguf" },
-  "eliza-1-4b":   { modelId: "imagegen-sd-1_5-q5_0", file: "imagegen/sd-1.5-Q5_0.gguf" },
-  "eliza-1-9b":   { modelId: "imagegen-z-image-turbo-q4_k_m", file: "imagegen/z-image-turbo-Q4_K_M.gguf" },
-  "eliza-1-27b":  { modelId: "imagegen-z-image-turbo-q4_k_m", file: "imagegen/z-image-turbo-Q4_K_M.gguf" },
-  "eliza-1-27b-256k": { modelId: "imagegen-z-image-turbo-q4_k_m", file: "imagegen/z-image-turbo-Q4_K_M.gguf" },
-  "eliza-1-27b-1m":   { modelId: "imagegen-z-image-turbo-q4_k_m", file: "imagegen/z-image-turbo-Q4_K_M.gguf" },
+  "eliza-1-0_8b": {
+    modelId: "imagegen-sd-1_5-q5_0",
+    file: "imagegen/sd-1.5-Q5_0.gguf",
+  },
+  "eliza-1-2b": {
+    modelId: "imagegen-sd-1_5-q5_0",
+    file: "imagegen/sd-1.5-Q5_0.gguf",
+  },
+  "eliza-1-4b": {
+    modelId: "imagegen-sd-1_5-q5_0",
+    file: "imagegen/sd-1.5-Q5_0.gguf",
+  },
+  "eliza-1-9b": {
+    modelId: "imagegen-z-image-turbo-q4_k_m",
+    file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+  },
+  "eliza-1-27b": {
+    modelId: "imagegen-z-image-turbo-q4_k_m",
+    file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+  },
+  "eliza-1-27b-256k": {
+    modelId: "imagegen-z-image-turbo-q4_k_m",
+    file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+  },
+  "eliza-1-27b-1m": {
+    modelId: "imagegen-z-image-turbo-q4_k_m",
+    file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+  },
 };
 
 function stubArbiter(): ArbiterImageGen {
@@ -144,9 +163,9 @@ describe("golden path: prompt → arbiter image-gen → PNG bytes", () => {
 
   it("rejects an empty prompt deterministically", () => {
     const arbiter = stubArbiter();
-    expect(() =>
-      arbiter.generate({ prompt: "", tier: "eliza-1-2b" }),
-    ).toThrow(/empty prompt/);
+    expect(() => arbiter.generate({ prompt: "", tier: "eliza-1-2b" })).toThrow(
+      /empty prompt/,
+    );
     expect(() =>
       arbiter.generate({ prompt: "   ", tier: "eliza-1-2b" }),
     ).toThrow(/empty prompt/);

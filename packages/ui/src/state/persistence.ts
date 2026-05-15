@@ -692,9 +692,7 @@ export function saveWalletEnabled(value: boolean): void {
 const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
 type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
 
-function normalizeContinuousChatMode(
-  value: unknown,
-): ContinuousChatModeValue {
+function normalizeContinuousChatMode(value: unknown): ContinuousChatModeValue {
   if (value === "vad-gated" || value === "always-on") return value;
   return "off";
 }

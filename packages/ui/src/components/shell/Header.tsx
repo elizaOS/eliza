@@ -5,7 +5,6 @@ import type {
   ReactNode,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { OwnerBadge } from "../composites/OwnerBadge";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
@@ -26,6 +25,7 @@ import { useApp } from "../../state";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
+import { OwnerBadge } from "../composites/OwnerBadge";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";

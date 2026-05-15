@@ -147,9 +147,11 @@ def _load_config(config_arg: str) -> dict[str, Any]:
 
     config_path = Path(config_arg)
     if not config_path.is_absolute():
-        config_path = ROOT / "configs" / config_arg
-        if not config_path.exists():
-            config_path = Path(config_arg)
+        # Try: (1) config_arg as-is (relative to cwd), (2) ROOT/configs/<name>
+        if config_path.exists():
+            pass  # found relative to cwd
+        elif (ROOT / "configs" / config_arg).exists():
+            config_path = ROOT / "configs" / config_arg
 
     if not config_path.exists():
         log.warning("config not found: %s — using defaults", config_arg)

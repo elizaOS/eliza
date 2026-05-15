@@ -30,8 +30,8 @@ import {
   DEFAULT_ACCOUNT_ID,
   listEnabledSignalAccounts,
   normalizeAccountId as normalizeSignalAccountId,
-  resolveDefaultSignalAccountId,
   type ResolvedSignalAccount,
+  resolveDefaultSignalAccountId,
 } from "./accounts";
 import {
   createSignalEventStream,
@@ -1228,8 +1228,7 @@ export class SignalService extends Service implements ISignalService {
       groupId: typeof raw.groupId === "string" ? raw.groupId : undefined,
       attachments: Array.isArray(raw.attachments) ? (raw.attachments as SignalAttachment[]) : [],
       reaction: raw.reaction as SignalReactionInfo | undefined,
-      expiresInSeconds:
-        typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : undefined,
+      expiresInSeconds: typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : undefined,
       viewOnce: raw.viewOnce === true,
       quote: raw.quote as SignalQuote | undefined,
     };
@@ -2149,7 +2148,9 @@ export class SignalService extends Service implements ISignalService {
     const memory = await runtime.getMemoryById(messageId).catch(() => null);
     const metadata = memory?.metadata as Record<string, unknown> | undefined;
     const sender = metadata?.sender as Record<string, unknown> | undefined;
-    const targetTimestamp = Number(metadata?.messageIdFull ?? metadata?.timestamp ?? memory?.createdAt);
+    const targetTimestamp = Number(
+      metadata?.messageIdFull ?? metadata?.timestamp ?? memory?.createdAt
+    );
     const targetAuthor =
       typeof sender?.id === "string"
         ? sender.id

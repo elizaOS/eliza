@@ -16,7 +16,13 @@
     },
     "timezone": "Asia/Shanghai",
     "activeDays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
-    "holidays": ["2026-01-29", "2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02"],
+    "holidays": [
+      "2026-01-29",
+      "2026-01-30",
+      "2026-01-31",
+      "2026-02-01",
+      "2026-02-02"
+    ],
     "backupTransport": "DiDi ride-hailing"
   },
   "weatherAlerts": {

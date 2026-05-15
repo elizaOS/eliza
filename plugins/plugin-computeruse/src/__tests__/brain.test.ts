@@ -22,14 +22,20 @@ import {
   brainPromptFor,
   parseBrainOutput,
 } from "../actor/brain.js";
-import type { Scene } from "../scene/scene-types.js";
 import type { DisplayCapture } from "../platform/capture.js";
+import type { Scene } from "../scene/scene-types.js";
 
 function dummyScene(): Scene {
   return {
     timestamp: 1,
     displays: [
-      { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake" },
+      {
+        id: 0,
+        bounds: [0, 0, 1920, 1080],
+        scaleFactor: 1,
+        primary: true,
+        name: "fake",
+      },
     ],
     focused_window: {
       app: "Test",
@@ -40,7 +46,13 @@ function dummyScene(): Scene {
     },
     apps: [],
     ocr: [
-      { id: "t0-1", text: "Save", bbox: [100, 100, 80, 32], conf: 0.97, displayId: 0 },
+      {
+        id: "t0-1",
+        text: "Save",
+        bbox: [100, 100, 80, 32],
+        conf: 0.97,
+        displayId: 0,
+      },
     ],
     ax: [],
     vlm_scene: null,
@@ -77,7 +89,12 @@ describe("parseBrainOutput", () => {
         scene_summary: "S",
         target_display_id: 0,
         roi: [{ displayId: 0, bbox: [10, 10, 20, 20], reason: "r" }],
-        proposed_action: { kind: "click", ref: "t0-1", args: {}, rationale: "y" },
+        proposed_action: {
+          kind: "click",
+          ref: "t0-1",
+          args: {},
+          rationale: "y",
+        },
       }),
     );
     expect(out.scene_summary).toBe("S");
@@ -88,7 +105,8 @@ describe("parseBrainOutput", () => {
   });
 
   it("strips ```json fences", () => {
-    const fenced = "```json\n" +
+    const fenced =
+      "```json\n" +
       JSON.stringify({
         scene_summary: "fenced",
         target_display_id: 0,
@@ -187,7 +205,9 @@ describe("Brain.observeAndPlan", () => {
       captures: captures(),
     });
     expect(calls).toBe(1);
-    expect(lastArgs[0]?.imageUrl.startsWith("data:image/png;base64,")).toBe(true);
+    expect(lastArgs[0]?.imageUrl.startsWith("data:image/png;base64,")).toBe(
+      true,
+    );
     expect(out.scene_summary).toBe("OK");
     expect(out.target_display_id).toBe(0);
     expect(out.roi).toHaveLength(1);

@@ -7,10 +7,7 @@
     "last_run": "2026-03-26T02:00:00Z",
     "last_status": "success",
     "description": "Full database backup every day at 2:00 AM",
-    "tags": [
-      "backup",
-      "daily"
-    ],
+    "tags": ["backup", "daily"],
     "cron_expression": "0 2 * * *",
     "enabled": true,
     "action": "Full database backup every day at 2:00 AM",
@@ -34,10 +31,7 @@
     "last_status": "failed",
     "error_message": "SMTP connection timeout: Connection to smtp.company.com:587 timed out after 30s",
     "description": "Check pending email queue and batch send every 10 minutes",
-    "tags": [
-      "notification",
-      "email"
-    ],
+    "tags": ["notification", "email"],
     "failure_count": 12,
     "first_failure": "2026-03-19T10:00:00",
     "cron_expression": "*/10 * * * *",
@@ -63,10 +57,7 @@
     "last_status": "failed",
     "error_message": "Sync timeout: ETL pipeline exceeded 1800s limit, partial sync completed (72%)",
     "description": "Incremental sync from production data to data warehouse every 30 minutes",
-    "tags": [
-      "etl",
-      "sync"
-    ],
+    "tags": ["etl", "sync"],
     "failure_count": 6,
     "first_failure": "2026-03-23T12:00:00",
     "cron_expression": "*/30 * * * *",
@@ -91,10 +82,7 @@
     "last_run": "2026-03-26T09:55:00Z",
     "last_status": "success",
     "description": "Check service health status and report every 5 minutes",
-    "tags": [
-      "monitoring",
-      "health"
-    ],
+    "tags": ["monitoring", "health"],
     "cron_expression": "*/5 * * * *",
     "enabled": true,
     "action": "Check service health status and report every 5 minutes",
@@ -117,10 +105,7 @@
     "last_run": "2026-03-26T03:00:00Z",
     "last_status": "success",
     "description": "Clean up archived logs older than 30 days every day at 3:00 AM",
-    "tags": [
-      "maintenance",
-      "cleanup"
-    ],
+    "tags": ["maintenance", "cleanup"],
     "cron_expression": "0 3 * * *",
     "enabled": true,
     "action": "Clean up archived logs older than 30 days every day at 3:00 AM",
@@ -143,10 +128,7 @@
     "last_run": "2026-03-20T08:00:00Z",
     "last_status": "success",
     "description": "Generate daily business and operations reports at 8:00 AM",
-    "tags": [
-      "report",
-      "daily"
-    ],
+    "tags": ["report", "daily"],
     "disabled_reason": "Manually disabled - report module under maintenance upgrade, expected to resume March 28",
     "disabled_by": "admin",
     "disabled_at": "2026-03-21T10:00:00",

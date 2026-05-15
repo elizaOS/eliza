@@ -1889,7 +1889,8 @@ function ensureCheckout(cacheDir, ref) {
       );
     }
   }
-  const hasSwaSpecDecodeFallback = sourceContainsSwaSpecDecodeFallback(cacheDir);
+  const hasSwaSpecDecodeFallback =
+    sourceContainsSwaSpecDecodeFallback(cacheDir);
   const swaFallback = spawnSync(
     "git",
     ["merge-base", "--is-ancestor", SWA_SPEC_DECODE_FALLBACK_COMMIT, "HEAD"],

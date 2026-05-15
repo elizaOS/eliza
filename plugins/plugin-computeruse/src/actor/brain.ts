@@ -28,13 +28,13 @@
  */
 
 import {
-  ModelType,
   type IAgentRuntime,
   type ImageDescriptionResult,
+  ModelType,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
-import { serializeSceneForPrompt } from "../scene/serialize.js";
 import type { Scene } from "../scene/scene-types.js";
+import { serializeSceneForPrompt } from "../scene/serialize.js";
 import type { BrainOutput, BrainRoi } from "./types.js";
 
 export const BRAIN_MAX_PIXELS = 1_310_720; // 1280 * 32 * 32 ≈ 1.3 MP cap
@@ -114,7 +114,11 @@ export class Brain {
     const parsed = tryParse(rawFirst);
     if (parsed) return enforceCaps(parsed);
     // Strict retry — same image, stricter prompt.
-    const strictPrompt = brainPromptFor(compactScene, input.goal, /*strict*/ true);
+    const strictPrompt = brainPromptFor(
+      compactScene,
+      input.goal,
+      /*strict*/ true,
+    );
     const second = await this.invoke({
       imageUrl: dataUrl,
       prompt: strictPrompt,
@@ -222,17 +226,24 @@ export function parseBrainOutput(raw: string): BrainOutput {
     throw new BrainParseError("Brain response is not an object", raw);
   }
   const obj = parsed as Record<string, unknown>;
-  const summary = typeof obj.scene_summary === "string" ? obj.scene_summary : "";
+  const summary =
+    typeof obj.scene_summary === "string" ? obj.scene_summary : "";
   const targetDisplay =
     typeof obj.target_display_id === "number" ? obj.target_display_id : 0;
   const rois = Array.isArray(obj.roi) ? obj.roi : [];
-  const proposed = (obj.proposed_action ?? null) as Record<string, unknown> | null;
+  const proposed = (obj.proposed_action ?? null) as Record<
+    string,
+    unknown
+  > | null;
   if (!proposed || typeof proposed !== "object") {
     throw new BrainParseError("Brain response missing proposed_action", raw);
   }
   const kind = proposed.kind;
   if (typeof kind !== "string") {
-    throw new BrainParseError("proposed_action.kind missing or not a string", raw);
+    throw new BrainParseError(
+      "proposed_action.kind missing or not a string",
+      raw,
+    );
   }
   const rationale =
     typeof proposed.rationale === "string" ? proposed.rationale : "";
@@ -262,7 +273,8 @@ export function parseBrainOutput(raw: string): BrainOutput {
           return null;
         }
         return {
-          displayId: typeof ro.displayId === "number" ? ro.displayId : targetDisplay,
+          displayId:
+            typeof ro.displayId === "number" ? ro.displayId : targetDisplay,
           bbox: [x, y, width, height],
           reason: typeof ro.reason === "string" ? ro.reason : "",
         };

@@ -1,10 +1,15 @@
 @import url("hide.css");
 
-span.standalone, a.standalone {
+span.standalone,
+a.standalone {
   display: inline;
 }
 
-div.standalone, img.standalone, p.standalone, h1.standalone, h2.standalone {
+div.standalone,
+img.standalone,
+p.standalone,
+h1.standalone,
+h2.standalone {
   display: block;
 }
 

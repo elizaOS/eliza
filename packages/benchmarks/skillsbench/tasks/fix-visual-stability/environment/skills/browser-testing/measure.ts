@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium } from "playwright";
 
 interface RequestTiming {
   url: string;
@@ -21,15 +21,15 @@ async function measure(url: string): Promise<MeasurementResult> {
   const client = await page.context().newCDPSession(page);
 
   // Enable CDP domains we need
-  await client.send('Performance.enable');
-  await client.send('Network.enable');
+  await client.send("Performance.enable");
+  await client.send("Network.enable");
 
   // Track network requests with timestamps
   const requests: RequestTiming[] = [];
 
   // Network.requestWillBeSent fires when browser is about to send a request
   // We record the URL and start timestamp to build the waterfall
-  client.on('Network.requestWillBeSent', (event) => {
+  client.on("Network.requestWillBeSent", (event) => {
     requests.push({
       url: event.request.url,
       start: event.timestamp,
@@ -38,8 +38,8 @@ async function measure(url: string): Promise<MeasurementResult> {
 
   // Network.responseReceived fires when response headers arrive
   // We find the matching request and record when it completed
-  client.on('Network.responseReceived', (event) => {
-    const req = requests.find(r => r.url === event.response.url && !r.end);
+  client.on("Network.responseReceived", (event) => {
+    const req = requests.find((r) => r.url === event.response.url && !r.end);
     if (req) {
       req.end = event.timestamp;
     }
@@ -47,7 +47,7 @@ async function measure(url: string): Promise<MeasurementResult> {
 
   // Measure total page load time
   const start = Date.now();
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.goto(url, { waitUntil: "networkidle" });
   const totalMs = Date.now() - start;
 
   // Performance.getMetrics returns Chrome's internal performance counters:
@@ -56,12 +56,12 @@ async function measure(url: string): Promise<MeasurementResult> {
   // - RecalcStyleCount: Number of style recalculations
   // - ScriptDuration: Total time spent executing JavaScript
   // - TaskDuration: Total time spent on main thread tasks
-  const perfMetrics = await client.send('Performance.getMetrics');
+  const perfMetrics = await client.send("Performance.getMetrics");
 
   await browser.close();
 
   // Convert timestamps to milliseconds duration
-  const requestTimings = requests.map(r => ({
+  const requestTimings = requests.map((r) => ({
     url: r.url,
     ms: r.end ? (r.end - r.start) * 1000 : null,
   }));
@@ -81,10 +81,10 @@ async function measure(url: string): Promise<MeasurementResult> {
 }
 
 // Main
-const url = process.argv[2] || 'http://localhost:3000';
+const url = process.argv[2] || "http://localhost:3000";
 measure(url)
-  .then(result => console.log(JSON.stringify(result, null, 2)))
-  .catch(err => {
-    console.error('Measurement failed:', err.message);
+  .then((result) => console.log(JSON.stringify(result, null, 2)))
+  .catch((err) => {
+    console.error("Measurement failed:", err.message);
     process.exit(1);
   });

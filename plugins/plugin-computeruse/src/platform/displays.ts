@@ -115,7 +115,8 @@ function fallbackPrimary(): DisplayInfo {
 //   0: +*eDP-1 2560/390x1600/240+0+0  eDP-1
 //   1: +HDMI-0 3840/600x2160/340+2560+0  HDMI-0
 
-const XRANDR_LINE = /^\s*(\d+):\s*\+(\*?)\S*\s+(\d+)\/\d+x(\d+)\/\d+([+-]\d+)([+-]\d+)\s+(\S+)/;
+const XRANDR_LINE =
+  /^\s*(\d+):\s*\+(\*?)\S*\s+(\d+)\/\d+x(\d+)\/\d+([+-]\d+)([+-]\d+)\s+(\S+)/;
 
 export function parseXrandrMonitors(output: string): DisplayInfo[] {
   const displays: DisplayInfo[] = [];
@@ -328,9 +329,10 @@ export function parseDarwinDisplays(output: string): DisplayInfo[] {
       bounds: [x, y, w, h],
       scaleFactor: Number.isFinite(scale) && scale > 0 ? scale : 1,
       primary: Boolean(item.primary) || idx === 0,
-      name: typeof item.name === "string" && item.name.length > 0
-        ? item.name
-        : `display-${idx}`,
+      name:
+        typeof item.name === "string" && item.name.length > 0
+          ? item.name
+          : `display-${idx}`,
     });
     idx += 1;
   }
@@ -399,7 +401,12 @@ function enumerateDarwin(): DisplayInfo[] {
     return [
       {
         id: Number.isFinite(j.id) ? j.id : 0,
-        bounds: [Math.round(j.x), Math.round(j.y), Math.round(j.w), Math.round(j.h)],
+        bounds: [
+          Math.round(j.x),
+          Math.round(j.y),
+          Math.round(j.w),
+          Math.round(j.h),
+        ],
         scaleFactor: Number.isFinite(scale) && scale > 0 ? scale : 1,
         primary: true,
         name: "main",
@@ -448,8 +455,10 @@ export function parseSystemProfilerDisplays(output: string): DisplayInfo[] {
     const drivers = card.spdisplays_ndrvs;
     if (!Array.isArray(drivers)) continue;
     for (const d of drivers) {
-      const logicalText = d.spdisplays_resolution ?? d._spdisplays_resolution ?? "";
-      const pixelText = d.spdisplays_pixelresolution ?? d._spdisplays_pixelresolution ?? "";
+      const logicalText =
+        d.spdisplays_resolution ?? d._spdisplays_resolution ?? "";
+      const pixelText =
+        d.spdisplays_pixelresolution ?? d._spdisplays_pixelresolution ?? "";
       const logicalMatch = SP_RES.exec(logicalText);
       const pixelMatch = SP_RES.exec(pixelText);
       if (!logicalMatch && !pixelMatch) continue;
@@ -499,7 +508,9 @@ export function parseWindowsScreens(output: string): DisplayInfo[] {
   } catch {
     return [];
   }
-  const items: WinScreen[] = Array.isArray(raw) ? (raw as WinScreen[]) : [raw as WinScreen];
+  const items: WinScreen[] = Array.isArray(raw)
+    ? (raw as WinScreen[])
+    : [raw as WinScreen];
   const displays: DisplayInfo[] = [];
   let idx = 0;
   for (const s of items) {

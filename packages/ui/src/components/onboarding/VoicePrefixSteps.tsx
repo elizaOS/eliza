@@ -412,7 +412,8 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
       type: recorder.mimeType || "audio/webm",
     });
     chunksRef.current = [];
-    const durationMs = (session.prompts[state.currentPromptIndex]?.targetSeconds ?? 5) * 1000;
+    const durationMs =
+      (session.prompts[state.currentPromptIndex]?.targetSeconds ?? 5) * 1000;
 
     try {
       const audioBase64 = await blobToBase64(blob);
@@ -637,26 +638,15 @@ async function recordAudioBlob(durationMs: number): Promise<Blob> {
     };
     recorder.onerror = (e) => {
       for (const track of stream.getTracks()) track.stop();
-      reject((e as MediaRecorderErrorEvent).error ?? new Error("MediaRecorder error"));
+      reject(
+        (e as Event & { error?: Error }).error ??
+          new Error("MediaRecorder error"),
+      );
     };
     recorder.start();
     setTimeout(() => {
       if (recorder.state !== "inactive") recorder.stop();
     }, durationMs);
-  });
-}
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const commaIdx = result.indexOf(",");
-      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
-    };
-    reader.onerror = () =>
-      reject(reader.error ?? new Error("Failed to read blob"));
-    reader.readAsDataURL(blob);
   });
 }
 
@@ -667,7 +657,9 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [draftRelationship, setDraftRelationship] = React.useState("family");
   const [captureError, setCaptureError] = React.useState<string | null>(null);
   const [countdown, setCountdown] = React.useState(0);
-  const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   React.useEffect(
     () => () => {
@@ -686,7 +678,8 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
     countdownRef.current = setInterval(() => {
       setCountdown((n) => {
         if (n <= 1) {
-          if (countdownRef.current !== null) clearInterval(countdownRef.current);
+          if (countdownRef.current !== null)
+            clearInterval(countdownRef.current);
           countdownRef.current = null;
           return 0;
         }
@@ -714,9 +707,12 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
           durationMs: DURATION_MS,
         });
         // Then finalize to get back a profile + entity.
-        const result = await props.profilesClient.finalizeOwnerCapture(sessionId, {
-          displayName: draftName.trim(),
-        });
+        const result = await props.profilesClient.finalizeOwnerCapture(
+          sessionId,
+          {
+            displayName: draftName.trim(),
+          },
+        );
         profileId = result.profileId;
         entityId = result.entityId;
       } catch {
@@ -738,9 +734,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
       setDraftRelationship("family");
       setPhase("idle");
     } catch (err) {
-      setCaptureError(
-        err instanceof Error ? err.message : "Recording failed.",
-      );
+      setCaptureError(err instanceof Error ? err.message : "Recording failed.");
       setPhase("idle");
     }
   }, [draftName, draftRelationship, props.profilesClient]);
@@ -783,7 +777,10 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-muted" data-testid="voice-prefix-family-empty">
+        <p
+          className="text-xs text-muted"
+          data-testid="voice-prefix-family-empty"
+        >
           No additional people captured yet.
         </p>
       )}
@@ -813,7 +810,10 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
             />
           </label>
           {captureError ? (
-            <p className="text-xs text-danger" data-testid="voice-prefix-family-error">
+            <p
+              className="text-xs text-danger"
+              data-testid="voice-prefix-family-error"
+            >
               {captureError}
             </p>
           ) : null}

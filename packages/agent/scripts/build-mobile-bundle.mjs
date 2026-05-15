@@ -374,10 +374,7 @@ if (TARGET === "ios-jsc") {
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-agent-orchestrator": path.join(
-    stubsDir,
-    "null-plugin.cjs",
-  ),
+  "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-commands": path.join(stubsDir, "null-plugin.cjs"),

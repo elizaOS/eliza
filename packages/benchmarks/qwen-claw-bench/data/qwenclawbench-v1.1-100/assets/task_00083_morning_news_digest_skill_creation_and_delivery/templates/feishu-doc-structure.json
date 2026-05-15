@@ -5,37 +5,39 @@
     {
       "block_type": 2,
       "heading1": {
-        "elements": [{"text_run": {"content": "☀️ Morning News Digest — {{DATE}}"}}]
+        "elements": [
+          { "text_run": { "content": "☀️ Morning News Digest — {{DATE}}" } }
+        ]
       }
     },
     {
       "block_type": 3,
       "heading2": {
-        "elements": [{"text_run": {"content": "🌍 Top Headlines"}}]
+        "elements": [{ "text_run": { "content": "🌍 Top Headlines" } }]
       }
     },
     {
       "block_type": 17,
       "bulleted_list": {
-        "elements": [{"text_run": {"content": "{{PLACEHOLDER_HEADLINES}}"}}]
+        "elements": [{ "text_run": { "content": "{{PLACEHOLDER_HEADLINES}}" } }]
       }
     },
     {
       "block_type": 3,
       "heading2": {
-        "elements": [{"text_run": {"content": "💻 Tech & Hacker News"}}]
+        "elements": [{ "text_run": { "content": "💻 Tech & Hacker News" } }]
       }
     },
     {
       "block_type": 17,
       "bulleted_list": {
-        "elements": [{"text_run": {"content": "{{PLACEHOLDER_TECH}}"}}]
+        "elements": [{ "text_run": { "content": "{{PLACEHOLDER_TECH}}" } }]
       }
     },
     {
       "block_type": 3,
       "heading2": {
-        "elements": [{"text_run": {"content": "📈 Markets"}}]
+        "elements": [{ "text_run": { "content": "📈 Markets" } }]
       }
     },
     {
@@ -47,7 +49,7 @@
     {
       "block_type": 3,
       "heading2": {
-        "elements": [{"text_run": {"content": "🌤️ Weather"}}]
+        "elements": [{ "text_run": { "content": "🌤️ Weather" } }]
       }
     }
   ]

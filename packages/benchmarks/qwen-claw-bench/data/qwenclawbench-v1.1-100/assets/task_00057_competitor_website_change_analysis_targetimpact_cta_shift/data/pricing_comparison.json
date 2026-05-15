@@ -46,11 +46,11 @@
     }
   ],
   "ranking_by_change_magnitude": [
-    {"rank": 1, "name": "MailReach", "change_magnitude": 150},
-    {"rank": 2, "name": "SendGrid Pro", "change_magnitude": 89},
-    {"rank": 3, "name": "TargetImpact", "change_magnitude": 74},
-    {"rank": 4, "name": "Drip+", "change_magnitude": 41},
-    {"rank": 5, "name": "CampaignForge", "change_magnitude": 23}
+    { "rank": 1, "name": "MailReach", "change_magnitude": 150 },
+    { "rank": 2, "name": "SendGrid Pro", "change_magnitude": 89 },
+    { "rank": 3, "name": "TargetImpact", "change_magnitude": 74 },
+    { "rank": 4, "name": "Drip+", "change_magnitude": 41 },
+    { "rank": 5, "name": "CampaignForge", "change_magnitude": 23 }
   ],
   "summary": "TargetImpact ranks 3rd in website change activity this period with a magnitude of 74, indicating substantial modifications to their web presence. This level of change is notable and warrants further investigation into strategic intent."
 }

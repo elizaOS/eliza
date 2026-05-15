@@ -1,10 +1,15 @@
 @import url("usb.css");
 
-span.linux, a.linux {
+span.linux,
+a.linux {
   display: inline;
 }
 
-div.linux, img.linux, p.linux, h1.linux, h2.linux {
+div.linux,
+img.linux,
+p.linux,
+h1.linux,
+h2.linux {
   display: block;
 }
 
@@ -13,5 +18,5 @@ li.linux {
 }
 
 h1.step:before {
-  content: counter(step)'/7';
+  content: counter(step) "/7";
 }

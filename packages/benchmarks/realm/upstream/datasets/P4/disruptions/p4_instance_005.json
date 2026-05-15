@@ -1,14 +1,7 @@
 {
   "instance_id": "p4_instance_005",
   "city_map": {
-    "locations": [
-      "stadium",
-      "mall",
-      "park",
-      "airport",
-      "university",
-      "suburb"
-    ],
+    "locations": ["stadium", "mall", "park", "airport", "university", "suburb"],
     "distances": {
       "stadium-mall": 22,
       "mall-stadium": 22,
@@ -47,70 +40,49 @@
       "passenger_id": "p001",
       "pickup": "university",
       "dropoff": "mall",
-      "time_window": [
-        10.0,
-        10.3
-      ],
+      "time_window": [10.0, 10.3],
       "deadline": 59
     },
     {
       "passenger_id": "p002",
       "pickup": "suburb",
       "dropoff": "stadium",
-      "time_window": [
-        14.5,
-        14.75
-      ],
+      "time_window": [14.5, 14.75],
       "deadline": 23
     },
     {
       "passenger_id": "p003",
       "pickup": "university",
       "dropoff": "stadium",
-      "time_window": [
-        9.0,
-        9.566666666666666
-      ],
+      "time_window": [9.0, 9.566666666666666],
       "deadline": 30
     },
     {
       "passenger_id": "p004",
       "pickup": "mall",
       "dropoff": "stadium",
-      "time_window": [
-        12.75,
-        12.383333333333333
-      ],
+      "time_window": [12.75, 12.383333333333333],
       "deadline": 46
     },
     {
       "passenger_id": "p005",
       "pickup": "airport",
       "dropoff": "park",
-      "time_window": [
-        10.0,
-        10.733333333333333
-      ],
+      "time_window": [10.0, 10.733333333333333],
       "deadline": 58
     },
     {
       "passenger_id": "p006",
       "pickup": "suburb",
       "dropoff": "stadium",
-      "time_window": [
-        12.0,
-        12.4
-      ],
+      "time_window": [12.0, 12.4],
       "deadline": 37
     },
     {
       "passenger_id": "p007",
       "pickup": "university",
       "dropoff": "park",
-      "time_window": [
-        14.75,
-        14.166666666666666
-      ],
+      "time_window": [14.75, 14.166666666666666],
       "deadline": 33
     }
   ],

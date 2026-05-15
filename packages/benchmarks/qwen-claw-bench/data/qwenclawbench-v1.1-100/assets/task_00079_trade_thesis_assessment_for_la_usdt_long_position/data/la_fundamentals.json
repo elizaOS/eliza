@@ -21,9 +21,7 @@
   "token_unlock_next": "none within 30 days",
   "circulating_supply": "450M",
   "total_supply": "1B",
-  "partnerships_recent": [
-    "Integration with ChainBridge announced Nov 19"
-  ],
+  "partnerships_recent": ["Integration with ChainBridge announced Nov 19"],
   "github_commits_7d": 47,
   "github_contributors_active": 18,
   "last_updated": "2024-11-20T13:45:00Z",

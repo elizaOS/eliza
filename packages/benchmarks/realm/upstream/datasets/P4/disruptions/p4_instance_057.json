@@ -1,14 +1,7 @@
 {
   "instance_id": "p4_instance_057",
   "city_map": {
-    "locations": [
-      "stadium",
-      "airport",
-      "mall",
-      "park",
-      "downtown",
-      "suburb"
-    ],
+    "locations": ["stadium", "airport", "mall", "park", "downtown", "suburb"],
     "distances": {
       "stadium-airport": 45,
       "airport-stadium": 45,
@@ -47,40 +40,28 @@
       "passenger_id": "p001",
       "pickup": "suburb",
       "dropoff": "stadium",
-      "time_window": [
-        16.0,
-        16.566666666666666
-      ],
+      "time_window": [16.0, 16.566666666666666],
       "deadline": 43
     },
     {
       "passenger_id": "p002",
       "pickup": "suburb",
       "dropoff": "stadium",
-      "time_window": [
-        12.5,
-        12.1
-      ],
+      "time_window": [12.5, 12.1],
       "deadline": 31
     },
     {
       "passenger_id": "p003",
       "pickup": "park",
       "dropoff": "mall",
-      "time_window": [
-        15.25,
-        15.933333333333334
-      ],
+      "time_window": [15.25, 15.933333333333334],
       "deadline": 22
     },
     {
       "passenger_id": "p004",
       "pickup": "park",
       "dropoff": "mall",
-      "time_window": [
-        16.0,
-        16.583333333333332
-      ],
+      "time_window": [16.0, 16.583333333333332],
       "deadline": 27
     }
   ],

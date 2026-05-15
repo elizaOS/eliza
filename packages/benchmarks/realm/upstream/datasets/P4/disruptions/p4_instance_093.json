@@ -47,40 +47,28 @@
       "passenger_id": "p001",
       "pickup": "hospital",
       "dropoff": "park",
-      "time_window": [
-        11.5,
-        11.2
-      ],
+      "time_window": [11.5, 11.2],
       "deadline": 60
     },
     {
       "passenger_id": "p002",
       "pickup": "downtown",
       "dropoff": "park",
-      "time_window": [
-        15.75,
-        15.45
-      ],
+      "time_window": [15.75, 15.45],
       "deadline": 33
     },
     {
       "passenger_id": "p003",
       "pickup": "university",
       "dropoff": "downtown",
-      "time_window": [
-        15.5,
-        15.983333333333333
-      ],
+      "time_window": [15.5, 15.983333333333333],
       "deadline": 27
     },
     {
       "passenger_id": "p004",
       "pickup": "hospital",
       "dropoff": "university",
-      "time_window": [
-        8.25,
-        8.933333333333334
-      ],
+      "time_window": [8.25, 8.933333333333334],
       "deadline": 25
     }
   ],

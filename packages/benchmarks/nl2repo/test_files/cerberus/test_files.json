@@ -1,1 +1,5 @@
-["cerberus/tests","cerberus/benchmarks/test_overall_performance_1.py","cerberus/benchmarks/test_overall_performance_2.py"]
+[
+  "cerberus/tests",
+  "cerberus/benchmarks/test_overall_performance_1.py",
+  "cerberus/benchmarks/test_overall_performance_2.py"
+]

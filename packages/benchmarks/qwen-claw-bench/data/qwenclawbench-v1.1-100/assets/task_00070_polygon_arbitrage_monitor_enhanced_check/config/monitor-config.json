@@ -39,7 +39,7 @@
     "pol_min_balance": 50.0,
     "usdc_min_balance": 100.0,
     "slippage_warn_pct": 1.5,
-    "min_profit_usd": 0.50,
+    "min_profit_usd": 0.5,
     "max_gas_gwei": 200
   },
   "notifications": {

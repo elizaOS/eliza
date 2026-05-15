@@ -67,10 +67,7 @@ function makeMockBinding(
     if (options.throwOnStep !== undefined && stepIdx === options.throwOnStep) {
       throw new Error("[mock-binding] step boom");
     }
-    if (
-      options.cancelAfter !== undefined &&
-      stepIdx === options.cancelAfter
-    ) {
+    if (options.cancelAfter !== undefined && stepIdx === options.cancelAfter) {
       cancelled = true;
     }
     if (stepIdx >= steps.length) {

@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --font-custom: 'CustomFont', sans-serif;
+  --font-custom: "CustomFont", sans-serif;
   --color-card-light: #f5f5f5;
   --color-card-dark: #2a2a2a;
 }
 
 @font-face {
-  font-family: 'CustomFont';
-  src: url('/fonts/custom.ttf') format('truetype');
+  font-family: "CustomFont";
+  src: url("/fonts/custom.ttf") format("truetype");
 }
 
 @layer base {
@@ -16,10 +16,12 @@
     font-family: var(--font-custom);
     background-color: #ffffff;
     color: #000000;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+      background-color 0.3s,
+      color 0.3s;
   }
 
-  [data-theme='dark'] body {
+  [data-theme="dark"] body {
     background-color: #1a1a1a;
     color: #ffffff;
   }
@@ -31,7 +33,7 @@
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
 
-  [data-theme='dark'] {
+  [data-theme="dark"] {
     --card-bg: #262626;
     --border-color: #404040;
     --text-muted: #a3a3a3;
@@ -40,6 +42,11 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }

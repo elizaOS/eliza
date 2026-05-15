@@ -1,6 +1,6 @@
-document.addEventListener("DOMContentLoaded", function() {
-
-  var URLofJsonFileContainingChecksums="https://tails.net/install/v2/Tails/amd64/stable/latest.json";
+document.addEventListener("DOMContentLoaded", () => {
+  var URLofJsonFileContainingChecksums =
+    "https://tails.net/install/v2/Tails/amd64/stable/latest.json";
   var sha256;
 
   /* Generic functions */
@@ -39,10 +39,22 @@ document.addEventListener("DOMContentLoaded", function() {
       } else {
         scenario = url[url.lastIndexOf("install") + 1];
       }
-      version = document.getElementById("tails-version").textContent.replace("\n", "");
+      version = document
+        .getElementById("tails-version")
+        .textContent.replace("\n", "");
       cachebust = Math.round(new Date().getTime() / 1000);
-      fetch(counter_url + "?scenario=" + scenario + "&version=" + version + "&status=" + status + "&cachebust=" + cachebust);
-    } catch (e) { } // Ignore if we fail to hit the download counter
+      fetch(
+        counter_url +
+          "?scenario=" +
+          scenario +
+          "&version=" +
+          version +
+          "&status=" +
+          status +
+          "&cachebust=" +
+          cachebust,
+      );
+    } catch (e) {} // Ignore if we fail to hit the download counter
   }
 
   /* Display logic functions */
@@ -66,7 +78,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
   function showVerificationProgress(percentage) {
     document.getElementById("progress-bar").style.width = percentage + "%";
-    document.getElementById("progress-bar").setAttribute("aria-valuenow", percentage.toString());
+    document
+      .getElementById("progress-bar")
+      .setAttribute("aria-valuenow", percentage.toString());
   }
 
   function showVerificationResult(result) {
@@ -75,18 +89,16 @@ document.addEventListener("DOMContentLoaded", function() {
     hitCounter(result);
     if (result === "successful") {
       show(document.getElementById("verification-successful"));
-    }
-    else if (result === "failed") {
+    } else if (result === "failed") {
       show(document.getElementById("verification-failed"));
-    }
-    else if (result === "error-file") {
+    } else if (result === "error-file") {
       show(document.getElementById("verification-error-file"));
-    }
-    else if (result === "error-json") {
+    } else if (result === "error-json") {
       show(document.getElementById("verification-error-json"));
-      document.getElementById("checksum-file").setAttribute("href", URLofJsonFileContainingChecksums);
-    }
-    else if (result === "error-image") {
+      document
+        .getElementById("checksum-file")
+        .setAttribute("href", URLofJsonFileContainingChecksums);
+    } else if (result === "error-image") {
       show(document.getElementById("verification-error-image"));
     }
   }
@@ -105,34 +117,37 @@ document.addEventListener("DOMContentLoaded", function() {
   /* Verification logic functions */
 
   async function verifyFile(e, elm) {
-
     try {
       file = elm.files[0];
       showVerifyingDownload(file.name);
-    } catch(err) {
+    } catch (err) {
       showVerificationResult("error-file");
       return;
     }
 
     try {
-      var response=await fetch(URLofJsonFileContainingChecksums);
-      var checksumjson=await response.text();
-    } catch(err) {
+      var response = await fetch(URLofJsonFileContainingChecksums);
+      var checksumjson = await response.text();
+    } catch (err) {
       showVerificationResult("error-json");
       return;
     }
 
     try {
-      sha256=forge.md.sha256.create();
+      sha256 = forge.md.sha256.create();
       await readFile(file);
       var fileactualchecksum = sha256.digest().toHex();
-    } catch(err) {
+    } catch (err) {
       showVerificationResult("error-image");
       return;
     }
 
     //If downloaded file is valid, then fileactualchecksum should be 64 hex characters in length, and should be contained within checksumjson.  Otherwise, consider downloaded file to be invalid.
-    if(fileactualchecksum.length==64 && (checksumjson.includes(fileactualchecksum.toUpperCase()) || checksumjson.includes(fileactualchecksum.toLowerCase()))) {
+    if (
+      fileactualchecksum.length == 64 &&
+      (checksumjson.includes(fileactualchecksum.toUpperCase()) ||
+        checksumjson.includes(fileactualchecksum.toLowerCase()))
+    ) {
       showVerificationResult("successful");
     } else {
       showVerificationResult("failed");
@@ -140,28 +155,30 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   async function readFile(file) {
-    var CHUNK_SIZE = 2 * 1024 *1024;
+    var CHUNK_SIZE = 2 * 1024 * 1024;
     var offset = 0;
-    lastCalculatedPercentage=0;
-    while(true) {
+    lastCalculatedPercentage = 0;
+    while (true) {
       var chunk = await readChunk(file, offset, CHUNK_SIZE);
       sha256.update(chunk);
-      offset+=chunk.length;
+      offset += chunk.length;
 
-      var progressPercent = parseInt(offset * 100.0 / file.size);
-      if (progressPercent!=lastCalculatedPercentage) {
+      var progressPercent = parseInt((offset * 100.0) / file.size);
+      if (progressPercent != lastCalculatedPercentage) {
         lastCalculatedPercentage = progressPercent;
         showVerificationProgress(progressPercent);
       }
 
-      if (chunk.length < CHUNK_SIZE) { return; }
+      if (chunk.length < CHUNK_SIZE) {
+        return;
+      }
     }
   }
 
   function readChunk(file, chunk_offset, chunk_size) {
-    return new Promise(function(resolve, reject) {
-      let fr = new FileReader();
-      fr.onload = e => {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = (e) => {
         resolve(e.target.result);
       };
 
@@ -169,7 +186,7 @@ document.addEventListener("DOMContentLoaded", function() {
       fr.onerror = (e) => {
         reject(e);
       };
-      let slice = file.slice(chunk_offset, chunk_offset + chunk_size);
+      const slice = file.slice(chunk_offset, chunk_offset + chunk_size);
 
       // This API is non-standard: https://developer.mozilla.org/en-US/docs/Web/API/FileReader/readAsBinaryString
       // We use it for performance reasons, see #15059.
@@ -180,12 +197,20 @@ document.addEventListener("DOMContentLoaded", function() {
   /* Initialize event handlers */
 
   // Direct download
-  document.getElementById("download-img").onclick = function(e) { download(e, this); }
-  document.getElementById("download-iso").onclick = function(e) { download(e, this); }
+  document.getElementById("download-img").onclick = function (e) {
+    download(e, this);
+  };
+  document.getElementById("download-iso").onclick = function (e) {
+    download(e, this);
+  };
 
   // Download again after failure
-  document.getElementById("download-img-again").onclick = function(e) { download(e, this); }
-  document.getElementById("download-iso-again").onclick = function(e) { download(e, this); }
+  document.getElementById("download-img-again").onclick = function (e) {
+    download(e, this);
+  };
+  document.getElementById("download-iso-again").onclick = function (e) {
+    download(e, this);
+  };
 
   function download(e, elm) {
     resetVerificationResult();
@@ -193,11 +218,19 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   // Trigger verification when file is chosen
-  document.getElementById("verify-file").onchange = function(e) { verifyFile(e, this); }
+  document.getElementById("verify-file").onchange = function (e) {
+    verifyFile(e, this);
+  };
 
   // Retry after error during verification
-  document.getElementById("retry-json").onclick = function(e) { resetVerificationResult(); showVerifyButton(); }
-  document.getElementById("retry-image").onclick = function(e) { resetVerificationResult(); showVerifyButton(); }
+  document.getElementById("retry-json").onclick = (e) => {
+    resetVerificationResult();
+    showVerifyButton();
+  };
+  document.getElementById("retry-image").onclick = (e) => {
+    resetVerificationResult();
+    showVerifyButton();
+  };
 
   // Display elements of the JavaScript version
   toggleDisplay(document.getElementsByClassName("no-js"), "hide");
@@ -205,7 +238,10 @@ document.addEventListener("DOMContentLoaded", function() {
   show(document.getElementById("download-iso"));
 
   // Internet Explorer
-  if ( navigator.userAgent.indexOf("MSIE") > -1 || navigator.userAgent.indexOf("Trident") > -1 ) {
+  if (
+    navigator.userAgent.indexOf("MSIE") > -1 ||
+    navigator.userAgent.indexOf("Trident") > -1
+  ) {
     show(document.getElementById("ie"));
   } else {
     showVerifyButton();
@@ -219,5 +255,4 @@ document.addEventListener("DOMContentLoaded", function() {
   // showVerificationResult("error-json");
   // showVerificationResult("error-image");
   // verifyFile(null, null);
-
 });

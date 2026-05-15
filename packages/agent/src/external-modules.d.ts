@@ -539,8 +539,18 @@ declare module "isomorphic-git" {
     oid: string;
     commit: {
       message: string;
-      author: { name: string; email: string; timestamp: number; timezoneOffset: number };
-      committer: { name: string; email: string; timestamp: number; timezoneOffset: number };
+      author: {
+        name: string;
+        email: string;
+        timestamp: number;
+        timezoneOffset: number;
+      };
+      committer: {
+        name: string;
+        email: string;
+        timestamp: number;
+        timezoneOffset: number;
+      };
       parent: string[];
       tree: string;
     };
@@ -549,7 +559,10 @@ declare module "isomorphic-git" {
   export type AuthCallback = (
     url: string,
     auth: { username?: string; password?: string },
-  ) => { username?: string; password?: string } | void | Promise<{ username?: string; password?: string } | void>;
+  ) =>
+    | { username?: string; password?: string }
+    | void
+    | Promise<{ username?: string; password?: string } | void>;
   // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
   const git: any;
   export default git;

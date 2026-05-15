@@ -166,6 +166,8 @@
     "bench:three-agent": "bun run --cwd packages/benchmarks/three-agent-dialogue bench",
     "bench:voice": "node scripts/bench-voice.mjs",
     "bench:voice:smoke": "node scripts/bench-voice.mjs --smoke",
+    "bench:voice-speaker": "python3 -m pytest packages/benchmarks/voice-speaker-validation/tests/ -v --tb=short",
+    "bench:voice-speaker:smoke": "python3 -m pytest packages/benchmarks/voice-speaker-validation/tests/test_diarization.py::TestDiarization::test_single_speaker_control -v",
     "bench:three-agent:smoke": "bun run --cwd packages/benchmarks/three-agent-dialogue bench:smoke",
     "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",
     "lifeops:prompts:inventory": "node scripts/lifeops-prompt-inventory.mjs",

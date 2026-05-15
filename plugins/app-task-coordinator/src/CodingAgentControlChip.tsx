@@ -1,7 +1,7 @@
 import { Button, client, useApp } from "@elizaos/ui";
+import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { Square, Terminal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 
 const TERMINAL_STATUSES = new Set(["completed", "stopped", "error", "errored"]);
 

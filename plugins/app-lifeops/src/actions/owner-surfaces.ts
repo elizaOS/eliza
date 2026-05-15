@@ -384,8 +384,10 @@ export const ownerRoutinesAction: Action = {
       makeOwnerLifeAction({
         name: "OWNER_ROUTINES",
         similes: [],
-        description: "Owner routines: recurring habits and scheduled routine occurrences.",
-        descriptionCompressed: "owner routines create|update|delete|complete|skip|snooze|review|schedule",
+        description:
+          "Owner routines: recurring habits and scheduled routine occurrences.",
+        descriptionCompressed:
+          "owner routines create|update|delete|complete|skip|snooze|review|schedule",
         defaultKind: "definition",
       }).parameters ?? []
     ).filter((parameter) => parameter.name !== "action"),

@@ -55,13 +55,7 @@
       "location": "reception_venue"
     }
   ],
-  "errands": [
-    "flowers",
-    "cake",
-    "decorations",
-    "photographer",
-    "music"
-  ],
+  "errands": ["flowers", "cake", "decorations", "photographer", "music"],
   "constraints": {
     "wedding_deadline": "18:00",
     "gift_store_opens": "12:00",

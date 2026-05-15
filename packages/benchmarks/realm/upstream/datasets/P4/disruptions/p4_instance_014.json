@@ -1,13 +1,7 @@
 {
   "instance_id": "p4_instance_014",
   "city_map": {
-    "locations": [
-      "airport",
-      "stadium",
-      "hospital",
-      "university",
-      "park"
-    ],
+    "locations": ["airport", "stadium", "hospital", "university", "park"],
     "distances": {
       "airport-stadium": 15,
       "stadium-airport": 15,
@@ -36,80 +30,56 @@
       "passenger_id": "p001",
       "pickup": "hospital",
       "dropoff": "park",
-      "time_window": [
-        16.25,
-        16.533333333333335
-      ],
+      "time_window": [16.25, 16.533333333333335],
       "deadline": 38
     },
     {
       "passenger_id": "p002",
       "pickup": "airport",
       "dropoff": "park",
-      "time_window": [
-        13.25,
-        13.95
-      ],
+      "time_window": [13.25, 13.95],
       "deadline": 47
     },
     {
       "passenger_id": "p003",
       "pickup": "park",
       "dropoff": "university",
-      "time_window": [
-        17.75,
-        17.433333333333334
-      ],
+      "time_window": [17.75, 17.433333333333334],
       "deadline": 35
     },
     {
       "passenger_id": "p004",
       "pickup": "university",
       "dropoff": "park",
-      "time_window": [
-        11.0,
-        11.533333333333333
-      ],
+      "time_window": [11.0, 11.533333333333333],
       "deadline": 48
     },
     {
       "passenger_id": "p005",
       "pickup": "university",
       "dropoff": "airport",
-      "time_window": [
-        12.25,
-        12.95
-      ],
+      "time_window": [12.25, 12.95],
       "deadline": 31
     },
     {
       "passenger_id": "p006",
       "pickup": "university",
       "dropoff": "stadium",
-      "time_window": [
-        16.75,
-        16.333333333333332
-      ],
+      "time_window": [16.75, 16.333333333333332],
       "deadline": 43
     },
     {
       "passenger_id": "p007",
       "pickup": "airport",
       "dropoff": "stadium",
-      "time_window": [
-        10.75,
-        10.1
-      ],
+      "time_window": [10.75, 10.1],
       "deadline": 45
     },
     {
       "passenger_id": "p008",
       "pickup": "airport",
       "dropoff": "park",
-      "time_window": [
-        9.0,
-        9.65
-      ],
+      "time_window": [9.0, 9.65],
       "deadline": 25
     }
   ],

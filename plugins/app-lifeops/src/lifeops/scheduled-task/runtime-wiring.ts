@@ -9,11 +9,10 @@
 
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent";
+import { getHostExecutionCapabilities } from "@elizaos/app-core";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
-import { getHostExecutionCapabilities } from "@elizaos/app-core";
 
 import { createGlobalPauseStore } from "../global-pause/store.js";
 import {

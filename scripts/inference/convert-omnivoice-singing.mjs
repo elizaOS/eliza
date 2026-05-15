@@ -36,7 +36,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, stat, writeFile, readdir } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -129,7 +129,9 @@ function probePython() {
   const ver = spawnSync(py, ["--version"], { encoding: "utf8" });
   const match = (ver.stdout || ver.stderr || "").match(/(\d+)\.(\d+)/);
   if (!match) {
-    throw new Error(`Could not parse python version from "${ver.stdout}${ver.stderr}".`);
+    throw new Error(
+      `Could not parse python version from "${ver.stdout}${ver.stderr}".`,
+    );
   }
   const major = Number(match[1]);
   const minor = Number(match[2]);
@@ -276,7 +278,10 @@ async function main() {
   }
 
   if (args.dryRun) {
-    log("info", "Dry run — not executing. Re-run without --dry-run to perform the conversion.");
+    log(
+      "info",
+      "Dry run — not executing. Re-run without --dry-run to perform the conversion.",
+    );
     return;
   }
 
@@ -361,7 +366,9 @@ async function main() {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   log("info", `Wrote ${manifestPath}`);
   for (const f of manifest.files) {
-    process.stderr.write(`  - ${f.name}  ${f.bytes} bytes  sha256=${f.sha256}\n`);
+    process.stderr.write(
+      `  - ${f.name}  ${f.bytes} bytes  sha256=${f.sha256}\n`,
+    );
   }
   log("info", "Done.");
 }

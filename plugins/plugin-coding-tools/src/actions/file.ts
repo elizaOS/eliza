@@ -305,8 +305,7 @@ export const fileAction: Action = {
     },
     {
       name: "replace_all",
-      description:
-        "For action=edit: replace all matches, not exactly one.",
+      description: "For action=edit: replace all matches, not exactly one.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -375,8 +374,7 @@ export const fileAction: Action = {
     },
     {
       name: "show_line_numbers",
-      description:
-        "For action=grep: include 1-based line numbers.",
+      description: "For action=grep: include 1-based line numbers.",
       required: false,
       schema: { type: "boolean" },
     },

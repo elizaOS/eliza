@@ -258,11 +258,11 @@ export const communityInvestorRoutes: Route[] = [
 		handler: communityInvestorPanelHandler,
 		public: true, // Show the leaderboard panel
 	},
-		{
-			type: "GET",
-			name: "Trust Assets",
-			path: "/assets/*", // To serve frontend assets
-			handler: communityInvestorAssetsHandler,
-			public: true, // Assets need to be public - REINSTATED
+	{
+		type: "GET",
+		name: "Trust Assets",
+		path: "/assets/*", // To serve frontend assets
+		handler: communityInvestorAssetsHandler,
+		public: true, // Assets need to be public - REINSTATED
 	},
 ];

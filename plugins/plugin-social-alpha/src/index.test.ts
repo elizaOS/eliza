@@ -20,7 +20,7 @@ describe("socialAlphaPlugin", () => {
 					path: "display",
 					component: "LeaderboardPanelPage",
 				}),
-			])
+			]),
 		);
 	});
 });

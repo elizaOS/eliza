@@ -24,11 +24,7 @@
     {
       "incident_id": "CONF-2024-0001",
       "timestamp": "2024-09-25T17:01:00Z",
-      "agents_involved": [
-        "customer_agent",
-        "analytics_agent",
-        "coding_agent"
-      ],
+      "agents_involved": ["customer_agent", "analytics_agent", "coding_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_002",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -41,11 +37,7 @@
     {
       "incident_id": "CONF-2024-0002",
       "timestamp": "2024-09-27T10:21:00Z",
-      "agents_involved": [
-        "ops_agent",
-        "coding_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["ops_agent", "coding_agent", "customer_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_004",
       "conflict_type": "schema_drift",
       "resolution": "rollback",
@@ -58,11 +50,7 @@
     {
       "incident_id": "CONF-2024-0003",
       "timestamp": "2024-10-01T15:48:00Z",
-      "agents_involved": [
-        "analytics_agent",
-        "ops_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["analytics_agent", "ops_agent", "customer_agent"],
       "shared_resource_id": "shared.workflow_state/wf_002",
       "conflict_type": "schema_drift",
       "resolution": "manual",
@@ -75,11 +63,7 @@
     {
       "incident_id": "CONF-2024-0004",
       "timestamp": "2024-10-03T19:59:00Z",
-      "agents_involved": [
-        "customer_agent",
-        "ops_agent",
-        "research_agent"
-      ],
+      "agents_involved": ["customer_agent", "ops_agent", "research_agent"],
       "shared_resource_id": "shared.entity_store/ent_312",
       "conflict_type": "schema_drift",
       "resolution": "rollback",
@@ -109,10 +93,7 @@
     {
       "incident_id": "CONF-2024-0006",
       "timestamp": "2024-10-09T16:47:00Z",
-      "agents_involved": [
-        "coding_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["coding_agent", "customer_agent"],
       "shared_resource_id": "shared.entity_store/ent_205",
       "conflict_type": "concurrent_write",
       "resolution": "rollback",
@@ -125,10 +106,7 @@
     {
       "incident_id": "CONF-2024-0007",
       "timestamp": "2024-10-12T17:52:00Z",
-      "agents_involved": [
-        "coding_agent",
-        "analytics_agent"
-      ],
+      "agents_involved": ["coding_agent", "analytics_agent"],
       "shared_resource_id": "shared.config_cache/cfg_035",
       "conflict_type": "schema_drift",
       "resolution": "manual",
@@ -141,10 +119,7 @@
     {
       "incident_id": "CONF-2024-0008",
       "timestamp": "2024-10-17T12:02:00Z",
-      "agents_involved": [
-        "analytics_agent",
-        "coding_agent"
-      ],
+      "agents_involved": ["analytics_agent", "coding_agent"],
       "shared_resource_id": "shared.entity_store/ent_205",
       "conflict_type": "schema_drift",
       "resolution": "manual",
@@ -157,10 +132,7 @@
     {
       "incident_id": "CONF-2024-0009",
       "timestamp": "2024-10-18T06:06:00Z",
-      "agents_involved": [
-        "ops_agent",
-        "research_agent"
-      ],
+      "agents_involved": ["ops_agent", "research_agent"],
       "shared_resource_id": "shared.entity_store/ent_312",
       "conflict_type": "schema_drift",
       "resolution": "manual",
@@ -190,10 +162,7 @@
     {
       "incident_id": "CONF-2024-0011",
       "timestamp": "2024-10-18T19:33:00Z",
-      "agents_involved": [
-        "ops_agent",
-        "coding_agent"
-      ],
+      "agents_involved": ["ops_agent", "coding_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_003",
       "conflict_type": "schema_drift",
       "resolution": "rollback",
@@ -206,10 +175,7 @@
     {
       "incident_id": "CONF-2024-0012",
       "timestamp": "2024-10-20T11:23:00Z",
-      "agents_involved": [
-        "research_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["research_agent", "customer_agent"],
       "shared_resource_id": "shared.entity_store/ent_312",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -222,10 +188,7 @@
     {
       "incident_id": "CONF-2024-0013",
       "timestamp": "2024-10-22T19:48:00Z",
-      "agents_involved": [
-        "customer_agent",
-        "ops_agent"
-      ],
+      "agents_involved": ["customer_agent", "ops_agent"],
       "shared_resource_id": "shared.config_cache/cfg_010",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -238,11 +201,7 @@
     {
       "incident_id": "CONF-2024-0014",
       "timestamp": "2024-10-24T11:48:00Z",
-      "agents_involved": [
-        "ops_agent",
-        "research_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["ops_agent", "research_agent", "customer_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_002",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -255,11 +214,7 @@
     {
       "incident_id": "CONF-2024-0015",
       "timestamp": "2024-10-25T14:47:00Z",
-      "agents_involved": [
-        "ops_agent",
-        "research_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["ops_agent", "research_agent", "customer_agent"],
       "shared_resource_id": "shared.workflow_state/wf_003",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -289,11 +244,7 @@
     {
       "incident_id": "CONF-2024-0017",
       "timestamp": "2024-10-29T21:56:00Z",
-      "agents_involved": [
-        "ops_agent",
-        "research_agent",
-        "coding_agent"
-      ],
+      "agents_involved": ["ops_agent", "research_agent", "coding_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_004",
       "conflict_type": "schema_drift",
       "resolution": "manual",
@@ -306,11 +257,7 @@
     {
       "incident_id": "CONF-2024-0018",
       "timestamp": "2024-10-31T18:38:00Z",
-      "agents_involved": [
-        "analytics_agent",
-        "customer_agent",
-        "coding_agent"
-      ],
+      "agents_involved": ["analytics_agent", "customer_agent", "coding_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_011",
       "conflict_type": "version_mismatch",
       "resolution": "manual",
@@ -323,11 +270,7 @@
     {
       "incident_id": "CONF-2024-0019",
       "timestamp": "2024-10-31T20:42:00Z",
-      "agents_involved": [
-        "analytics_agent",
-        "coding_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["analytics_agent", "coding_agent", "customer_agent"],
       "shared_resource_id": "shared.workflow_state/wf_003",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -340,10 +283,7 @@
     {
       "incident_id": "CONF-2024-0020",
       "timestamp": "2024-11-04T09:56:00Z",
-      "agents_involved": [
-        "coding_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["coding_agent", "customer_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_013",
       "conflict_type": "version_mismatch",
       "resolution": "merge",
@@ -356,10 +296,7 @@
     {
       "incident_id": "CONF-2024-0021",
       "timestamp": "2024-11-04T13:30:00Z",
-      "agents_involved": [
-        "analytics_agent",
-        "research_agent"
-      ],
+      "agents_involved": ["analytics_agent", "research_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_013",
       "conflict_type": "concurrent_write",
       "resolution": "manual",
@@ -372,11 +309,7 @@
     {
       "incident_id": "CONF-2024-0022",
       "timestamp": "2024-11-05T16:47:00Z",
-      "agents_involved": [
-        "customer_agent",
-        "analytics_agent",
-        "ops_agent"
-      ],
+      "agents_involved": ["customer_agent", "analytics_agent", "ops_agent"],
       "shared_resource_id": "shared.workflow_state/wf_003",
       "conflict_type": "version_mismatch",
       "resolution": "rollback",
@@ -389,10 +322,7 @@
     {
       "incident_id": "CONF-2024-0023",
       "timestamp": "2024-11-06T13:15:00Z",
-      "agents_involved": [
-        "coding_agent",
-        "customer_agent"
-      ],
+      "agents_involved": ["coding_agent", "customer_agent"],
       "shared_resource_id": "shared.config_cache/cfg_010",
       "conflict_type": "concurrent_write",
       "resolution": "last_write_wins",
@@ -405,10 +335,7 @@
     {
       "incident_id": "CONF-2024-0024",
       "timestamp": "2024-11-10T18:02:00Z",
-      "agents_involved": [
-        "coding_agent",
-        "analytics_agent"
-      ],
+      "agents_involved": ["coding_agent", "analytics_agent"],
       "shared_resource_id": "shared.knowledge_base/kg_013",
       "conflict_type": "concurrent_write",
       "resolution": "manual",

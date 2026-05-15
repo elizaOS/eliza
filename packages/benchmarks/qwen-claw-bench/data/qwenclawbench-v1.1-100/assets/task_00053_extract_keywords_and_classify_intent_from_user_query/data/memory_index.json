@@ -20,7 +20,7 @@
       "keywords": ["项目分析", "project analysis", "project_v3.prproj", "渲染"],
       "summary": "Detailed analysis of project_v3.prproj including render settings and sequence structure",
       "timestamp": "2026-03-15T14:45:00Z",
-      "relevance_score": 0.90
+      "relevance_score": 0.9
     },
     {
       "id": "mem_004",
@@ -83,7 +83,7 @@
       "keywords": ["字幕", "subtitle", "caption", "文字动画"],
       "summary": "Subtitle creation and text animation techniques in Premiere Pro",
       "timestamp": "2026-02-10T11:30:00Z",
-      "relevance_score": 0.50
+      "relevance_score": 0.5
     },
     {
       "id": "mem_013",

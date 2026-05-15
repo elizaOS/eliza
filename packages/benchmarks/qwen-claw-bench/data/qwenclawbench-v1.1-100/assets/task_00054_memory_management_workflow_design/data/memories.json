@@ -6,11 +6,7 @@
     "created_at": "2024-06-14T12:01:00Z",
     "last_accessed": "2024-08-02T14:41:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "social",
-      "schedule"
-    ],
+    "tags": ["personal", "social", "schedule"],
     "expired": false
   },
   {
@@ -20,11 +16,7 @@
     "created_at": "2024-07-17T14:22:00Z",
     "last_accessed": "2024-05-23T14:50:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "health",
-      "dental"
-    ],
+    "tags": ["personal", "health", "dental"],
     "expired": true
   },
   {
@@ -34,11 +26,7 @@
     "created_at": "2024-09-21T10:13:00Z",
     "last_accessed": "2024-09-18T13:07:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "meetings",
-      "standup"
-    ],
+    "tags": ["work", "meetings", "standup"],
     "expired": false
   },
   {
@@ -48,11 +36,7 @@
     "created_at": "2024-06-02T21:20:00Z",
     "last_accessed": "2024-05-12T18:39:00Z",
     "priority": "low",
-    "tags": [
-      "work",
-      "social",
-      "food"
-    ],
+    "tags": ["work", "social", "food"],
     "expired": true
   },
   {
@@ -62,11 +46,7 @@
     "created_at": "2024-03-20T21:32:00Z",
     "last_accessed": "2024-09-22T06:09:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "projects",
-      "deadlines"
-    ],
+    "tags": ["work", "projects", "deadlines"],
     "expired": false
   },
   {
@@ -76,11 +56,7 @@
     "created_at": "2024-07-07T23:27:00Z",
     "last_accessed": "2024-06-26T14:49:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "errands",
-      "routine"
-    ],
+    "tags": ["personal", "errands", "routine"],
     "expired": true
   },
   {
@@ -90,11 +66,7 @@
     "created_at": "2024-06-22T08:29:00Z",
     "last_accessed": "2024-08-07T07:30:00Z",
     "priority": "high",
-    "tags": [
-      "personal",
-      "health",
-      "medication"
-    ],
+    "tags": ["personal", "health", "medication"],
     "expired": false
   },
   {
@@ -104,11 +76,7 @@
     "created_at": "2024-07-04T07:49:00Z",
     "last_accessed": "2024-05-11T20:22:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "tech",
-      "backup"
-    ],
+    "tags": ["personal", "tech", "backup"],
     "expired": true
   },
   {
@@ -118,11 +86,7 @@
     "created_at": "2024-07-29T01:23:00Z",
     "last_accessed": "2024-08-18T21:55:00Z",
     "priority": "medium",
-    "tags": [
-      "personal",
-      "shopping",
-      "gifts"
-    ],
+    "tags": ["personal", "shopping", "gifts"],
     "expired": false
   },
   {
@@ -132,11 +96,7 @@
     "created_at": "2024-08-11T04:42:00Z",
     "last_accessed": "2024-09-15T17:57:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "meetings",
-      "product"
-    ],
+    "tags": ["work", "meetings", "product"],
     "expired": false
   },
   {
@@ -146,11 +106,7 @@
     "created_at": "2024-04-29T17:36:00Z",
     "last_accessed": "2024-09-03T10:23:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "reference",
-      "technical"
-    ],
+    "tags": ["work", "reference", "technical"],
     "expired": false
   },
   {
@@ -160,11 +116,7 @@
     "created_at": "2024-09-17T21:53:00Z",
     "last_accessed": "2024-05-02T23:02:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "shopping",
-      "groceries"
-    ],
+    "tags": ["personal", "shopping", "groceries"],
     "expired": true
   },
   {
@@ -174,11 +126,7 @@
     "created_at": "2024-08-03T06:08:00Z",
     "last_accessed": "2024-08-30T13:13:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "meetings",
-      "marketing"
-    ],
+    "tags": ["work", "meetings", "marketing"],
     "expired": false
   },
   {
@@ -188,11 +136,7 @@
     "created_at": "2024-05-17T19:08:00Z",
     "last_accessed": "2024-10-01T11:14:00Z",
     "priority": "high",
-    "tags": [
-      "personal",
-      "health",
-      "appointments"
-    ],
+    "tags": ["personal", "health", "appointments"],
     "expired": false
   },
   {
@@ -202,11 +146,7 @@
     "created_at": "2024-04-06T21:53:00Z",
     "last_accessed": "2024-08-20T02:13:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "contacts",
-      "preferences"
-    ],
+    "tags": ["work", "contacts", "preferences"],
     "expired": false
   },
   {
@@ -216,11 +156,7 @@
     "created_at": "2024-06-19T08:27:00Z",
     "last_accessed": "2024-09-20T03:19:00Z",
     "priority": "high",
-    "tags": [
-      "personal",
-      "travel",
-      "flights"
-    ],
+    "tags": ["personal", "travel", "flights"],
     "expired": false
   },
   {
@@ -230,11 +166,7 @@
     "created_at": "2024-07-09T01:02:00Z",
     "last_accessed": "2024-09-18T12:14:00Z",
     "priority": "high",
-    "tags": [
-      "personal",
-      "health",
-      "medication"
-    ],
+    "tags": ["personal", "health", "medication"],
     "expired": false
   },
   {
@@ -244,11 +176,7 @@
     "created_at": "2024-04-14T10:15:00Z",
     "last_accessed": "2024-09-07T23:07:00Z",
     "priority": "low",
-    "tags": [
-      "work",
-      "reference",
-      "facilities"
-    ],
+    "tags": ["work", "reference", "facilities"],
     "expired": false
   },
   {
@@ -258,11 +186,7 @@
     "created_at": "2024-08-27T08:48:00Z",
     "last_accessed": "2024-09-04T05:48:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "contacts",
-      "preferences"
-    ],
+    "tags": ["work", "contacts", "preferences"],
     "expired": false
   },
   {
@@ -272,11 +196,7 @@
     "created_at": "2024-04-26T18:07:00Z",
     "last_accessed": "2024-09-10T02:45:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "reference",
-      "technical"
-    ],
+    "tags": ["work", "reference", "technical"],
     "expired": false
   },
   {
@@ -286,11 +206,7 @@
     "created_at": "2024-07-27T01:04:00Z",
     "last_accessed": "2024-05-29T19:25:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "preferences",
-      "food"
-    ],
+    "tags": ["personal", "preferences", "food"],
     "expired": true
   },
   {
@@ -300,11 +216,7 @@
     "created_at": "2024-08-05T15:42:00Z",
     "last_accessed": "2024-06-25T06:08:00Z",
     "priority": "low",
-    "tags": [
-      "work",
-      "preferences",
-      "dining"
-    ],
+    "tags": ["work", "preferences", "dining"],
     "expired": true
   },
   {
@@ -314,11 +226,7 @@
     "created_at": "2024-05-09T18:22:00Z",
     "last_accessed": "2024-08-05T13:52:00Z",
     "priority": "medium",
-    "tags": [
-      "personal",
-      "errands",
-      "deadlines"
-    ],
+    "tags": ["personal", "errands", "deadlines"],
     "expired": false
   },
   {
@@ -328,11 +236,7 @@
     "created_at": "2024-05-14T17:21:00Z",
     "last_accessed": "2024-08-02T00:37:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "reference",
-      "IT"
-    ],
+    "tags": ["work", "reference", "IT"],
     "expired": false
   },
   {
@@ -342,11 +246,7 @@
     "created_at": "2024-06-19T02:27:00Z",
     "last_accessed": "2024-09-05T01:31:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "meetings",
-      "design"
-    ],
+    "tags": ["work", "meetings", "design"],
     "expired": false
   },
   {
@@ -356,11 +256,7 @@
     "created_at": "2024-06-19T18:13:00Z",
     "last_accessed": "2024-09-18T02:40:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "email",
-      "daily"
-    ],
+    "tags": ["work", "email", "daily"],
     "expired": false
   },
   {
@@ -370,11 +266,7 @@
     "created_at": "2024-05-08T08:42:00Z",
     "last_accessed": "2024-08-02T01:20:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "team",
-      "onboarding"
-    ],
+    "tags": ["work", "team", "onboarding"],
     "expired": false
   },
   {
@@ -384,11 +276,7 @@
     "created_at": "2024-04-04T03:58:00Z",
     "last_accessed": "2024-09-25T19:03:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "meetings",
-      "leadership"
-    ],
+    "tags": ["work", "meetings", "leadership"],
     "expired": false
   },
   {
@@ -398,11 +286,7 @@
     "created_at": "2024-08-19T14:49:00Z",
     "last_accessed": "2024-09-07T03:08:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "meetings",
-      "finance"
-    ],
+    "tags": ["work", "meetings", "finance"],
     "expired": false
   },
   {
@@ -412,11 +296,7 @@
     "created_at": "2024-04-12T02:41:00Z",
     "last_accessed": "2024-08-10T03:06:00Z",
     "priority": "high",
-    "tags": [
-      "personal",
-      "reminders",
-      "family"
-    ],
+    "tags": ["personal", "reminders", "family"],
     "expired": false
   },
   {
@@ -426,11 +306,7 @@
     "created_at": "2024-08-01T07:09:00Z",
     "last_accessed": "2024-09-21T19:35:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "deadlines",
-      "reports"
-    ],
+    "tags": ["work", "deadlines", "reports"],
     "expired": false
   },
   {
@@ -440,11 +316,7 @@
     "created_at": "2024-04-05T08:12:00Z",
     "last_accessed": "2024-09-04T12:02:00Z",
     "priority": "medium",
-    "tags": [
-      "personal",
-      "finance",
-      "health"
-    ],
+    "tags": ["personal", "finance", "health"],
     "expired": false
   },
   {
@@ -454,11 +326,7 @@
     "created_at": "2024-05-23T11:40:00Z",
     "last_accessed": "2024-09-28T15:06:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "meetings",
-      "retro"
-    ],
+    "tags": ["work", "meetings", "retro"],
     "expired": false
   },
   {
@@ -468,11 +336,7 @@
     "created_at": "2024-05-31T12:43:00Z",
     "last_accessed": "2024-09-02T12:19:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "deadlines",
-      "conferences"
-    ],
+    "tags": ["work", "deadlines", "conferences"],
     "expired": false
   },
   {
@@ -482,11 +346,7 @@
     "created_at": "2024-05-09T02:43:00Z",
     "last_accessed": "2024-09-27T08:08:00Z",
     "priority": "low",
-    "tags": [
-      "personal",
-      "shopping",
-      "groceries"
-    ],
+    "tags": ["personal", "shopping", "groceries"],
     "expired": false
   },
   {
@@ -496,11 +356,7 @@
     "created_at": "2024-08-21T07:22:00Z",
     "last_accessed": "2024-09-24T18:14:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "projects",
-      "agile"
-    ],
+    "tags": ["work", "projects", "agile"],
     "expired": false
   },
   {
@@ -510,11 +366,7 @@
     "created_at": "2024-07-25T18:36:00Z",
     "last_accessed": "2024-09-07T13:38:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "reference",
-      "technical"
-    ],
+    "tags": ["work", "reference", "technical"],
     "expired": false
   },
   {
@@ -524,11 +376,7 @@
     "created_at": "2024-04-17T08:20:00Z",
     "last_accessed": "2024-09-22T18:17:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "admin",
-      "timesheets"
-    ],
+    "tags": ["work", "admin", "timesheets"],
     "expired": false
   },
   {
@@ -538,11 +386,7 @@
     "created_at": "2024-05-17T09:45:00Z",
     "last_accessed": "2024-08-14T09:15:00Z",
     "priority": "medium",
-    "tags": [
-      "personal",
-      "pets",
-      "appointments"
-    ],
+    "tags": ["personal", "pets", "appointments"],
     "expired": false
   },
   {
@@ -552,11 +396,7 @@
     "created_at": "2024-07-12T19:18:00Z",
     "last_accessed": "2024-09-28T02:32:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "meetings",
-      "standup"
-    ],
+    "tags": ["work", "meetings", "standup"],
     "expired": false
   },
   {
@@ -566,11 +406,7 @@
     "created_at": "2024-06-04T16:40:00Z",
     "last_accessed": "2024-08-21T18:44:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "deadlines",
-      "reports"
-    ],
+    "tags": ["work", "deadlines", "reports"],
     "expired": false
   },
   {
@@ -580,11 +416,7 @@
     "created_at": "2024-06-09T22:30:00Z",
     "last_accessed": "2024-09-03T06:13:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "projects",
-      "deadlines"
-    ],
+    "tags": ["work", "projects", "deadlines"],
     "expired": false
   },
   {
@@ -594,11 +426,7 @@
     "created_at": "2024-06-07T01:38:00Z",
     "last_accessed": "2024-06-27T13:51:00Z",
     "priority": "low",
-    "tags": [
-      "work",
-      "reference",
-      "access"
-    ],
+    "tags": ["work", "reference", "access"],
     "expired": true
   },
   {
@@ -608,11 +436,7 @@
     "created_at": "2024-08-26T00:40:00Z",
     "last_accessed": "2024-09-04T11:01:00Z",
     "priority": "high",
-    "tags": [
-      "work",
-      "meetings",
-      "clients"
-    ],
+    "tags": ["work", "meetings", "clients"],
     "expired": false
   },
   {
@@ -622,11 +446,7 @@
     "created_at": "2024-09-16T15:42:00Z",
     "last_accessed": "2024-09-20T13:48:00Z",
     "priority": "medium",
-    "tags": [
-      "work",
-      "admin",
-      "expenses"
-    ],
+    "tags": ["work", "admin", "expenses"],
     "expired": false
   }
 ]

@@ -185,7 +185,16 @@
             "action": {
               "type": "string",
               "description": "write, create, update, complete, cancel, delete, list, clear.",
-              "enum": ["write", "create", "update", "complete", "cancel", "delete", "list", "clear"]
+              "enum": [
+                "write",
+                "create",
+                "update",
+                "complete",
+                "cancel",
+                "delete",
+                "list",
+                "clear"
+              ]
             },
             "id": {
               "type": "string",
@@ -214,10 +223,13 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "id": {"type": "string"},
-                  "content": {"type": "string"},
-                  "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "cancelled"]},
-                  "activeForm": {"type": "string"}
+                  "id": { "type": "string" },
+                  "content": { "type": "string" },
+                  "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "cancelled"]
+                  },
+                  "activeForm": { "type": "string" }
                 },
                 "required": ["content", "status"]
               }
@@ -239,12 +251,28 @@
       "_source": "plugins/plugin-todos/src/actions/todo.ts",
       "_plugin": "@elizaos/plugin-todos",
       "_similes": [
-        "TODO_WRITE", "WRITE_TODOS", "SET_TODOS", "UPDATE_TODOS",
-        "TODO_CREATE", "CREATE_TODO", "TODO_UPDATE", "UPDATE_TODO",
-        "TODO_COMPLETE", "COMPLETE_TODO", "FINISH_TODO",
-        "TODO_CANCEL", "CANCEL_TODO", "TODO_DELETE", "DELETE_TODO", "REMOVE_TODO",
-        "TODO_LIST", "LIST_TODOS", "GET_TODOS", "SHOW_TODOS",
-        "TODO_CLEAR", "CLEAR_TODOS"
+        "TODO_WRITE",
+        "WRITE_TODOS",
+        "SET_TODOS",
+        "UPDATE_TODOS",
+        "TODO_CREATE",
+        "CREATE_TODO",
+        "TODO_UPDATE",
+        "UPDATE_TODO",
+        "TODO_COMPLETE",
+        "COMPLETE_TODO",
+        "FINISH_TODO",
+        "TODO_CANCEL",
+        "CANCEL_TODO",
+        "TODO_DELETE",
+        "DELETE_TODO",
+        "REMOVE_TODO",
+        "TODO_LIST",
+        "LIST_TODOS",
+        "GET_TODOS",
+        "SHOW_TODOS",
+        "TODO_CLEAR",
+        "CLEAR_TODOS"
       ]
     },
     {
@@ -259,9 +287,14 @@
               "type": "string",
               "description": "GitHub operation to run.",
               "enum": [
-                "pr_list", "pr_review",
-                "issue_create", "issue_assign", "issue_close", "issue_reopen",
-                "issue_comment", "issue_label",
+                "pr_list",
+                "pr_review",
+                "issue_create",
+                "issue_assign",
+                "issue_close",
+                "issue_reopen",
+                "issue_comment",
+                "issue_label",
                 "notification_triage"
               ]
             },
@@ -299,12 +332,12 @@
             "assignees": {
               "type": "array",
               "description": "GitHub usernames to assign.",
-              "items": {"type": "string"}
+              "items": { "type": "string" }
             },
             "labels": {
               "type": "array",
               "description": "Labels to apply on issue create or issue_label.",
-              "items": {"type": "string"}
+              "items": { "type": "string" }
             },
             "as": {
               "type": "string",
@@ -330,8 +363,12 @@
       "_source": "plugins/plugin-github/src/actions/github.ts",
       "_plugin": "@elizaos/plugin-github",
       "_similes": [
-        "GITHUB_PR_OP", "GITHUB_ISSUE_OP", "GITHUB_NOTIFICATION_TRIAGE",
-        "GITHUB_PULL_REQUEST", "GITHUB_ISSUE", "GITHUB_NOTIFICATIONS"
+        "GITHUB_PR_OP",
+        "GITHUB_ISSUE_OP",
+        "GITHUB_NOTIFICATION_TRIAGE",
+        "GITHUB_PULL_REQUEST",
+        "GITHUB_ISSUE",
+        "GITHUB_NOTIFICATIONS"
       ]
     },
     {
@@ -346,9 +383,17 @@
               "type": "string",
               "description": "Operation to perform.",
               "enum": [
-                "create_issue", "get_issue", "update_issue", "delete_issue",
-                "create_comment", "update_comment", "delete_comment", "list_comments",
-                "get_activity", "clear_activity", "search_issues"
+                "create_issue",
+                "get_issue",
+                "update_issue",
+                "delete_issue",
+                "create_comment",
+                "update_comment",
+                "delete_comment",
+                "list_comments",
+                "get_activity",
+                "clear_activity",
+                "search_issues"
               ]
             },
             "accountId": {
@@ -364,14 +409,27 @@
       "_source": "plugins/plugin-linear/src/actions/linear.ts",
       "_plugin": "@elizaos/plugin-linear",
       "_similes": [
-        "LINEAR_ISSUE", "LINEAR_ISSUES", "LINEAR_COMMENT", "LINEAR_COMMENTS",
-        "LINEAR_WORKFLOW", "LINEAR_ACTIVITY", "LINEAR_SEARCH",
-        "GET_LINEAR_ISSUE", "UPDATE_LINEAR_ISSUE", "DELETE_LINEAR_ISSUE",
-        "MANAGE_LINEAR_ISSUE", "MANAGE_LINEAR_ISSUES",
-        "CREATE_LINEAR_COMMENT", "COMMENT_LINEAR_ISSUE",
-        "UPDATE_LINEAR_COMMENT", "DELETE_LINEAR_COMMENT", "LIST_LINEAR_COMMENTS",
-        "GET_LINEAR_ACTIVITY", "CLEAR_LINEAR_ACTIVITY",
-        "SEARCH_LINEAR_ISSUES", "LINEAR_WORKFLOW_SEARCH"
+        "LINEAR_ISSUE",
+        "LINEAR_ISSUES",
+        "LINEAR_COMMENT",
+        "LINEAR_COMMENTS",
+        "LINEAR_WORKFLOW",
+        "LINEAR_ACTIVITY",
+        "LINEAR_SEARCH",
+        "GET_LINEAR_ISSUE",
+        "UPDATE_LINEAR_ISSUE",
+        "DELETE_LINEAR_ISSUE",
+        "MANAGE_LINEAR_ISSUE",
+        "MANAGE_LINEAR_ISSUES",
+        "CREATE_LINEAR_COMMENT",
+        "COMMENT_LINEAR_ISSUE",
+        "UPDATE_LINEAR_COMMENT",
+        "DELETE_LINEAR_COMMENT",
+        "LIST_LINEAR_COMMENTS",
+        "GET_LINEAR_ACTIVITY",
+        "CLEAR_LINEAR_ACTIVITY",
+        "SEARCH_LINEAR_ISSUES",
+        "LINEAR_WORKFLOW_SEARCH"
       ]
     },
     {
@@ -386,12 +444,12 @@
               "type": "object",
               "description": "Structured Linear issue fields.",
               "properties": {
-                "title": {"type": "string"},
-                "description": {"type": "string"},
-                "priority": {"type": "number"},
-                "teamId": {"type": "string"},
-                "assigneeId": {"type": "string"},
-                "labelIds": {"type": "array", "items": {"type": "string"}}
+                "title": { "type": "string" },
+                "description": { "type": "string" },
+                "priority": { "type": "number" },
+                "teamId": { "type": "string" },
+                "assigneeId": { "type": "string" },
+                "labelIds": { "type": "array", "items": { "type": "string" } }
               }
             },
             "accountId": {
@@ -406,7 +464,11 @@
       },
       "_source": "plugins/plugin-linear/src/actions/createIssue.ts",
       "_plugin": "@elizaos/plugin-linear",
-      "_similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
+      "_similes": [
+        "create-linear-issue",
+        "new-linear-issue",
+        "add-linear-issue"
+      ]
     },
     {
       "type": "function",
@@ -420,12 +482,25 @@
               "type": "string",
               "description": "Verb-shaped subaction.",
               "enum": [
-                "play", "pause", "resume", "skip", "stop",
-                "queue_view", "queue_add", "queue_clear",
-                "playlist_play", "playlist_save",
-                "search", "play_query", "download", "play_audio",
-                "set_routing", "set_zone",
-                "generate", "extend", "custom_generate"
+                "play",
+                "pause",
+                "resume",
+                "skip",
+                "stop",
+                "queue_view",
+                "queue_add",
+                "queue_clear",
+                "playlist_play",
+                "playlist_save",
+                "search",
+                "play_query",
+                "download",
+                "play_audio",
+                "set_routing",
+                "set_zone",
+                "generate",
+                "extend",
+                "custom_generate"
               ]
             },
             "query": {
@@ -466,9 +541,15 @@
       "_source": "plugins/plugin-music/src/actions/music.ts",
       "_plugin": "@elizaos/plugin-music",
       "_similes": [
-        "GENERATE_MUSIC", "CREATE_MUSIC", "MAKE_MUSIC",
-        "COMPOSE_MUSIC", "CUSTOM_GENERATE_MUSIC", "EXTEND_AUDIO",
-        "PLAY_MUSIC", "PAUSE_MUSIC", "RESUME_MUSIC"
+        "GENERATE_MUSIC",
+        "CREATE_MUSIC",
+        "MAKE_MUSIC",
+        "COMPOSE_MUSIC",
+        "CUSTOM_GENERATE_MUSIC",
+        "EXTEND_AUDIO",
+        "PLAY_MUSIC",
+        "PAUSE_MUSIC",
+        "RESUME_MUSIC"
       ]
     },
     {
@@ -483,13 +564,37 @@
               "type": "string",
               "description": "Browser action to perform.",
               "enum": [
-                "back", "click", "close", "context", "forward", "get",
-                "get_context", "hide", "info", "list_tabs", "navigate",
-                "open", "open_tab", "press", "reload", "screenshot",
-                "show", "snapshot", "state", "tab", "type", "wait",
-                "close_tab", "switch_tab",
-                "realistic_click", "realistic_fill", "realistic_type", "realistic_press",
-                "cursor_move", "cursor_hide", "autofill_login"
+                "back",
+                "click",
+                "close",
+                "context",
+                "forward",
+                "get",
+                "get_context",
+                "hide",
+                "info",
+                "list_tabs",
+                "navigate",
+                "open",
+                "open_tab",
+                "press",
+                "reload",
+                "screenshot",
+                "show",
+                "snapshot",
+                "state",
+                "tab",
+                "type",
+                "wait",
+                "close_tab",
+                "switch_tab",
+                "realistic_click",
+                "realistic_fill",
+                "realistic_type",
+                "realistic_press",
+                "cursor_move",
+                "cursor_hide",
+                "autofill_login"
               ]
             },
             "tabAction": {
@@ -547,12 +652,22 @@
       "_source": "plugins/plugin-browser/src/actions/browser.ts",
       "_plugin": "@elizaos/plugin-browser",
       "_similes": [
-        "BROWSE_SITE", "BROWSER_SESSION", "CONTROL_BROWSER",
-        "CONTROL_BROWSER_SESSION", "MANAGE_ELIZA_BROWSER_WORKSPACE",
-        "NAVIGATE_SITE", "OPEN_SITE", "USE_BROWSER", "BROWSER_ACTION",
-        "BROWSER_AUTOFILL_LOGIN", "AGENT_AUTOFILL", "AUTOFILL_BROWSER_LOGIN",
-        "AUTOFILL_LOGIN", "FILL_BROWSER_CREDENTIALS",
-        "LOG_INTO_SITE", "SIGN_IN_TO_SITE"
+        "BROWSE_SITE",
+        "BROWSER_SESSION",
+        "CONTROL_BROWSER",
+        "CONTROL_BROWSER_SESSION",
+        "MANAGE_ELIZA_BROWSER_WORKSPACE",
+        "NAVIGATE_SITE",
+        "OPEN_SITE",
+        "USE_BROWSER",
+        "BROWSER_ACTION",
+        "BROWSER_AUTOFILL_LOGIN",
+        "AGENT_AUTOFILL",
+        "AUTOFILL_BROWSER_LOGIN",
+        "AUTOFILL_LOGIN",
+        "FILL_BROWSER_CREDENTIALS",
+        "LOG_INTO_SITE",
+        "SIGN_IN_TO_SITE"
       ]
     },
     {
@@ -593,12 +708,26 @@
             "action": {
               "type": "string",
               "description": "Operation to perform.",
-              "enum": ["describe", "capture", "set_mode", "name_entity", "identify_person", "track_entity"]
+              "enum": [
+                "describe",
+                "capture",
+                "set_mode",
+                "name_entity",
+                "identify_person",
+                "track_entity"
+              ]
             },
             "subaction": {
               "type": "string",
               "description": "Legacy alias for action.",
-              "enum": ["describe", "capture", "set_mode", "name_entity", "identify_person", "track_entity"]
+              "enum": [
+                "describe",
+                "capture",
+                "set_mode",
+                "name_entity",
+                "identify_person",
+                "track_entity"
+              ]
             },
             "detailLevel": {
               "type": "string",
@@ -637,10 +766,20 @@
       "_source": "plugins/plugin-vision/src/action.ts",
       "_plugin": "@elizaos/plugin-vision",
       "_similes": [
-        "DESCRIBE_SCENE", "CAPTURE_IMAGE", "SET_VISION_MODE",
-        "NAME_ENTITY", "IDENTIFY_PERSON", "TRACK_ENTITY",
-        "ANALYZE_SCENE", "WHAT_DO_YOU_SEE", "VISION_CHECK", "LOOK_AROUND",
-        "TAKE_PHOTO", "SCREENSHOT", "CAPTURE_FRAME", "TAKE_PICTURE"
+        "DESCRIBE_SCENE",
+        "CAPTURE_IMAGE",
+        "SET_VISION_MODE",
+        "NAME_ENTITY",
+        "IDENTIFY_PERSON",
+        "TRACK_ENTITY",
+        "ANALYZE_SCENE",
+        "WHAT_DO_YOU_SEE",
+        "VISION_CHECK",
+        "LOOK_AROUND",
+        "TAKE_PHOTO",
+        "SCREENSHOT",
+        "CAPTURE_FRAME",
+        "TAKE_PICTURE"
       ]
     },
     {
@@ -654,7 +793,14 @@
             "action": {
               "type": "string",
               "description": "Wallet operation to perform.",
-              "enum": ["transfer", "swap", "bridge", "gov", "token_info", "search_address"]
+              "enum": [
+                "transfer",
+                "swap",
+                "bridge",
+                "gov",
+                "token_info",
+                "search_address"
+              ]
             },
             "target": {
               "type": "string",
@@ -713,10 +859,19 @@
       "_source": "plugins/plugin-wallet/src/chains/wallet-action.ts",
       "_plugin": "@elizaos/plugin-wallet",
       "_similes": [
-        "SWAP", "SWAP_SOLANA", "TRANSFER", "TRANSFER_TOKEN",
-        "WALLET_SWAP", "WALLET_TRANSFER", "CROSS_CHAIN_TRANSFER",
-        "PREPARE_TRANSFER", "WALLET_ACTION", "WALLET_GOV",
-        "TOKEN_INFO", "BIRDEYE_LOOKUP", "BIRDEYE_SEARCH",
+        "SWAP",
+        "SWAP_SOLANA",
+        "TRANSFER",
+        "TRANSFER_TOKEN",
+        "WALLET_SWAP",
+        "WALLET_TRANSFER",
+        "CROSS_CHAIN_TRANSFER",
+        "PREPARE_TRANSFER",
+        "WALLET_ACTION",
+        "WALLET_GOV",
+        "TOKEN_INFO",
+        "BIRDEYE_LOOKUP",
+        "BIRDEYE_SEARCH",
         "WALLET_SEARCH_ADDRESS"
       ]
     },
@@ -731,7 +886,12 @@
             "action": {
               "type": "string",
               "description": "MCP operation.",
-              "enum": ["call_tool", "read_resource", "search_actions", "list_connections"]
+              "enum": [
+                "call_tool",
+                "read_resource",
+                "search_actions",
+                "list_connections"
+              ]
             },
             "serverName": {
               "type": "string",
@@ -762,13 +922,27 @@
       "_source": "plugins/plugin-mcp/src/actions/mcp.ts",
       "_plugin": "@elizaos/plugin-mcp",
       "_similes": [
-        "MCP_ACTION", "MCP_ROUTER", "USE_MCP",
-        "CALL_MCP_TOOL", "CALL_TOOL", "USE_TOOL", "USE_MCP_TOOL",
-        "EXECUTE_TOOL", "EXECUTE_MCP_TOOL", "RUN_TOOL", "RUN_MCP_TOOL",
-        "INVOKE_TOOL", "INVOKE_MCP_TOOL",
-        "READ_MCP_RESOURCE", "READ_RESOURCE", "GET_RESOURCE", "GET_MCP_RESOURCE",
-        "FETCH_RESOURCE", "FETCH_MCP_RESOURCE",
-        "ACCESS_RESOURCE", "ACCESS_MCP_RESOURCE"
+        "MCP_ACTION",
+        "MCP_ROUTER",
+        "USE_MCP",
+        "CALL_MCP_TOOL",
+        "CALL_TOOL",
+        "USE_TOOL",
+        "USE_MCP_TOOL",
+        "EXECUTE_TOOL",
+        "EXECUTE_MCP_TOOL",
+        "RUN_TOOL",
+        "RUN_MCP_TOOL",
+        "INVOKE_TOOL",
+        "INVOKE_MCP_TOOL",
+        "READ_MCP_RESOURCE",
+        "READ_RESOURCE",
+        "GET_RESOURCE",
+        "GET_MCP_RESOURCE",
+        "FETCH_RESOURCE",
+        "FETCH_MCP_RESOURCE",
+        "ACCESS_RESOURCE",
+        "ACCESS_MCP_RESOURCE"
       ]
     }
   ]

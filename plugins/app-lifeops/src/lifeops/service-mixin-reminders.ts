@@ -3,15 +3,23 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
+  registerEscalationChannel,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
-import { registerEscalationChannel } from "@elizaos/agent";
 import {
   type IAgentRuntime,
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import {
+  buildSleepRecapFromSchedule,
+  deriveSleepWakeEvents,
+  type LifeOpsDerivedEvent,
+  normalizeHealthSignal,
+  shouldRunMorningCheckinFromSleepCycle,
+  shouldRunNightCheckinFromSleepCycle,
+} from "@elizaos/plugin-health";
+import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
 import type {
@@ -45,13 +53,13 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
 } from "../contracts/index.js";
-import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import {
   LIFEOPS_CHANNEL_TYPES,
   LIFEOPS_CIRCADIAN_STATES,
   LIFEOPS_MANUAL_OVERRIDE_KINDS,
   LIFEOPS_UNCLEAR_REASONS,
 } from "../contracts/index.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -69,11 +77,6 @@ import {
   type CheckinSourceService,
 } from "./checkin/checkin-service.js";
 import { resolveCheckinSchedule } from "./checkin/schedule-resolver.js";
-import {
-  buildSleepRecapFromSchedule,
-  shouldRunMorningCheckinFromSleepCycle,
-  shouldRunNightCheckinFromSleepCycle,
-} from "@elizaos/plugin-health";
 import {
   type ContactRoutePurpose,
   resolveContactRouteCandidates,
@@ -95,7 +98,6 @@ import {
   type LifeOpsScheduleObservationRecord,
 } from "./repository.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
-import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
@@ -112,6 +114,7 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
+import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
   DEFAULT_REMINDER_PROCESS_LIMIT,
@@ -169,8 +172,8 @@ import {
   normalizeReminderIntensityInput,
   normalizeOptionalIdleState as normalizeReminderOptionalIdleState,
   parseReminderOwnerResponseSemanticClassification,
-  type ReminderRouteCandidate,
   type ReminderReviewResponseEvidence,
+  type ReminderRouteCandidate,
   readReminderAttemptLifecycle,
   readReminderEscalationProfile,
   readReminderPreferenceSettingFromMetadata,
@@ -189,7 +192,6 @@ import type {
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
-import type { ReminderActivityProfileSnapshot } from "./service-types.js";
 import {
   fail,
   lifeOpsErrorMessage,
@@ -197,11 +199,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  normalizeHealthSignal,
-  deriveSleepWakeEvents,
-  type LifeOpsDerivedEvent,
-} from "@elizaos/plugin-health";
+import type { ReminderActivityProfileSnapshot } from "./service-types.js";
 import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
@@ -514,11 +512,7 @@ const LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT = {
     "[lifeops] Failed to load owner contacts; using empty owner contacts config.",
 } as const;
 
-const LIFEOPS_SCHEDULE_MEAL_LABELS = [
-  "breakfast",
-  "lunch",
-  "dinner",
-] as const;
+const LIFEOPS_SCHEDULE_MEAL_LABELS = ["breakfast", "lunch", "dinner"] as const;
 
 function normalizeOptionalScheduleMealLabel(
   value: unknown,
@@ -1901,16 +1895,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             record.windowEndAt,
             `observations[${index}].windowEndAt`,
           ),
-          mealLabel:
-            normalizeOptionalScheduleMealLabel(
-              record.mealLabel,
-              `observations[${index}].mealLabel`,
-            ),
-          snapshot:
-            normalizeOptionalScheduleObservationSnapshot(
-              record.snapshot,
-              `observations[${index}].snapshot`,
-            ),
+          mealLabel: normalizeOptionalScheduleMealLabel(
+            record.mealLabel,
+            `observations[${index}].mealLabel`,
+          ),
+          snapshot: normalizeOptionalScheduleObservationSnapshot(
+            record.snapshot,
+            `observations[${index}].snapshot`,
+          ),
           metadata:
             record.metadata === undefined
               ? undefined
@@ -2433,7 +2425,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                   : "unknown",
           capturedAt: now.toISOString(),
           sourceFreshnessMs:
-            lastSeenAt !== null ? Math.max(0, now.getTime() - lastSeenAt) : null,
+            lastSeenAt !== null
+              ? Math.max(0, now.getTime() - lastSeenAt)
+              : null,
           sourceConfidence: schedule?.stateConfidence ?? null,
           privacyMode: "unknown",
           socialContext: "unknown",
@@ -2667,10 +2661,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             }
             return (
               (await this.resolveRuntimeReminderTarget(
-              channel,
-              policy,
-              ownerContacts,
-              ownerContactHints,
+                channel,
+                policy,
+                ownerContacts,
+                ownerContactHints,
               )) !== null
             );
           },
@@ -5020,11 +5014,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         const existingAttempts = await this.repository.listReminderAttempts(
           this.agentId(),
         );
-        const activityProfile =
-          await this.readReminderActivityProfileSnapshot({
-            now,
-            timezone: ownerTimezone,
-          });
+        const activityProfile = await this.readReminderActivityProfileSnapshot({
+          now,
+          timezone: ownerTimezone,
+        });
 
         const dueAttempts: LifeOpsReminderAttempt[] = [];
         dueAttempts.push(

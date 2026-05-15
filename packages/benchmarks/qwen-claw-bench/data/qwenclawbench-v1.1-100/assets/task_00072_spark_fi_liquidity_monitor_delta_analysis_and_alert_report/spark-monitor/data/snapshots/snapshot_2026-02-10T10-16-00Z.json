@@ -46,7 +46,7 @@
     {
       "symbol": "USDC",
       "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-      "price_usd": 1.0000,
+      "price_usd": 1.0,
       "total_supply_usd": 700000000,
       "total_borrowed_usd": 658700000,
       "available_liquidity_usd": 41300000,
@@ -57,7 +57,7 @@
     {
       "symbol": "USDS",
       "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
-      "price_usd": 1.0000,
+      "price_usd": 1.0,
       "total_supply_usd": 356000000,
       "total_borrowed_usd": 295900000,
       "available_liquidity_usd": 60100000,
@@ -68,7 +68,7 @@
     {
       "symbol": "DAI",
       "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
-      "price_usd": 1.0000,
+      "price_usd": 1.0,
       "total_supply_usd": 285000000,
       "total_borrowed_usd": 225400000,
       "available_liquidity_usd": 59600000,
@@ -114,7 +114,7 @@
     "sUSDS": {
       "vault": "0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD",
       "tvl_usd": 1820000000,
-      "apy": 0.0280,
+      "apy": 0.028,
       "status": "active"
     },
     "sUSDC": {

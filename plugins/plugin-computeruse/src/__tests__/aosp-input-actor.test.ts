@@ -11,10 +11,10 @@
 import { describe, expect, it } from "vitest";
 import {
   AospInputActor,
+  type AospPrivilegedInputBridge,
   MOTION_EVENT_ACTION_DOWN,
   MOTION_EVENT_ACTION_MOVE,
   MOTION_EVENT_ACTION_UP,
-  type AospPrivilegedInputBridge,
 } from "../actor/aosp-input-actor.js";
 import type { ProposedAction } from "../actor/types.js";
 
@@ -47,7 +47,10 @@ function fakeBridge(opts: { failAt?: number } = {}): {
 describe("AospInputActor — happy paths", () => {
   it("click → DOWN then UP at the same point", async () => {
     const { bridge, calls } = fakeBridge();
-    const actor = new AospInputActor({ getBridge: () => bridge, now: () => 1000 });
+    const actor = new AospInputActor({
+      getBridge: () => bridge,
+      now: () => 1000,
+    });
     const action: ProposedAction = {
       kind: "click",
       displayId: 0,
@@ -58,8 +61,17 @@ describe("AospInputActor — happy paths", () => {
     const result = await actor.execute(action);
     expect(result.success).toBe(true);
     expect(calls).toHaveLength(2);
-    expect(calls[0]).toMatchObject({ x: 100, y: 200, action: MOTION_EVENT_ACTION_DOWN, downTimeMs: 1000 });
-    expect(calls[1]).toMatchObject({ x: 100, y: 200, action: MOTION_EVENT_ACTION_UP });
+    expect(calls[0]).toMatchObject({
+      x: 100,
+      y: 200,
+      action: MOTION_EVENT_ACTION_DOWN,
+      downTimeMs: 1000,
+    });
+    expect(calls[1]).toMatchObject({
+      x: 100,
+      y: 200,
+      action: MOTION_EVENT_ACTION_UP,
+    });
     expect(calls[1]?.downTimeMs).toBeGreaterThan(1000);
   });
 
@@ -84,7 +96,10 @@ describe("AospInputActor — happy paths", () => {
 
   it("drag → DOWN/MOVE/UP across path endpoints", async () => {
     const { bridge, calls } = fakeBridge();
-    const actor = new AospInputActor({ getBridge: () => bridge, now: () => 5_000 });
+    const actor = new AospInputActor({
+      getBridge: () => bridge,
+      now: () => 5_000,
+    });
     const action: ProposedAction = {
       kind: "drag",
       displayId: 0,
@@ -106,7 +121,10 @@ describe("AospInputActor — happy paths", () => {
 
   it("scroll → DOWN/MOVE/UP with inverted sign convention", async () => {
     const { bridge, calls } = fakeBridge();
-    const actor = new AospInputActor({ getBridge: () => bridge, now: () => 5_000 });
+    const actor = new AospInputActor({
+      getBridge: () => bridge,
+      now: () => 5_000,
+    });
     await actor.execute({
       kind: "scroll",
       displayId: 0,
@@ -125,8 +143,16 @@ describe("AospInputActor — happy paths", () => {
   it("wait / finish are no-ops with success:true", async () => {
     const { bridge, calls } = fakeBridge();
     const actor = new AospInputActor({ getBridge: () => bridge });
-    const r1 = await actor.execute({ kind: "wait", displayId: 0, rationale: "" });
-    const r2 = await actor.execute({ kind: "finish", displayId: 0, rationale: "" });
+    const r1 = await actor.execute({
+      kind: "wait",
+      displayId: 0,
+      rationale: "",
+    });
+    const r2 = await actor.execute({
+      kind: "finish",
+      displayId: 0,
+      rationale: "",
+    });
     expect(r1.success).toBe(true);
     expect(r2.success).toBe(true);
     expect(calls).toHaveLength(0);
@@ -138,7 +164,11 @@ describe("AospInputActor — invalid args + driver_error", () => {
     const { bridge } = fakeBridge();
     const actor = new AospInputActor({ getBridge: () => bridge });
     for (const kind of ["type", "key", "hotkey"] as const) {
-      const r = await actor.execute({ kind, displayId: 0, rationale: "" } as ProposedAction);
+      const r = await actor.execute({
+        kind,
+        displayId: 0,
+        rationale: "",
+      } as ProposedAction);
       expect(r.success).toBe(false);
       expect(r.error?.code).toBe("invalid_args");
     }
@@ -161,7 +191,11 @@ describe("AospInputActor — invalid args + driver_error", () => {
   it("missing click coords → invalid_args", async () => {
     const { bridge } = fakeBridge();
     const actor = new AospInputActor({ getBridge: () => bridge });
-    const r = await actor.execute({ kind: "click", displayId: 0, rationale: "" });
+    const r = await actor.execute({
+      kind: "click",
+      displayId: 0,
+      rationale: "",
+    });
     expect(r.error?.code).toBe("invalid_args");
   });
 

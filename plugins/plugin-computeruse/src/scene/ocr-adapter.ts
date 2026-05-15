@@ -36,9 +36,9 @@
  *     module doesn't have to take a `@elizaos/core` dep itself.
  */
 
-import type { SceneOcrBox } from "./scene-types.js";
 import type { OcrLine, OcrProvider } from "../mobile/ocr-provider.js";
 import { listOcrProviders } from "../mobile/ocr-provider.js";
+import type { SceneOcrBox } from "./scene-types.js";
 
 let logFn: (message: string) => void = () => {};
 export function setOcrLoggingHook(fn: (message: string) => void): void {
@@ -54,10 +54,7 @@ export function makeOcrIdState(): OcrAdapterIdState {
   return { perDisplay: new Map() };
 }
 
-export function nextOcrId(
-  state: OcrAdapterIdState,
-  displayId: number,
-): string {
+export function nextOcrId(state: OcrAdapterIdState, displayId: number): string {
   const cur = state.perDisplay.get(displayId) ?? 0;
   const next = cur + 1;
   state.perDisplay.set(displayId, next);
@@ -127,7 +124,11 @@ export async function runOcrOnRegions(
     try {
       const result = await provider.recognize({
         kind: "bytes",
-        data: new Uint8Array(crop.png.buffer, crop.png.byteOffset, crop.png.byteLength),
+        data: new Uint8Array(
+          crop.png.buffer,
+          crop.png.byteOffset,
+          crop.png.byteLength,
+        ),
       });
       for (const line of result.lines) {
         const offset = crop.bbox;

@@ -40,12 +40,7 @@ const jitSymbols = [
 ];
 
 const machoMagic = new Set([
-  0xfeedface,
-  0xfeedfacf,
-  0xcefaedfe,
-  0xcffaedfe,
-  0xcafebabe,
-  0xbebafeca,
+  0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
 ]);
 
 function fail(message) {

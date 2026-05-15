@@ -60,50 +60,35 @@
       "passenger_id": "p001",
       "pickup": "mall",
       "dropoff": "stadium",
-      "time_window": [
-        13.0,
-        13.35
-      ],
+      "time_window": [13.0, 13.35],
       "deadline": 44
     },
     {
       "passenger_id": "p002",
       "pickup": "stadium",
       "dropoff": "downtown",
-      "time_window": [
-        12.25,
-        12.983333333333333
-      ],
+      "time_window": [12.25, 12.983333333333333],
       "deadline": 41
     },
     {
       "passenger_id": "p003",
       "pickup": "airport",
       "dropoff": "university",
-      "time_window": [
-        12.5,
-        12.066666666666666
-      ],
+      "time_window": [12.5, 12.066666666666666],
       "deadline": 50
     },
     {
       "passenger_id": "p004",
       "pickup": "airport",
       "dropoff": "hospital",
-      "time_window": [
-        10.0,
-        10.466666666666667
-      ],
+      "time_window": [10.0, 10.466666666666667],
       "deadline": 23
     },
     {
       "passenger_id": "p005",
       "pickup": "hospital",
       "dropoff": "suburb",
-      "time_window": [
-        8.0,
-        8.616666666666667
-      ],
+      "time_window": [8.0, 8.616666666666667],
       "deadline": 51
     }
   ],

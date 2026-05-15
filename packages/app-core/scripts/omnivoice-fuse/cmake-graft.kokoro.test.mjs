@@ -10,24 +10,24 @@
 //   - `appendKokoroCmakeGraft` writes the snippet on a clean tree and
 //      no-ops on re-run.
 
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  KOKORO_CMAKE_GRAFT_SENTINEL,
   appendKokoroCmakeGraft,
   fusedExtraCmakeFlags,
   hasKokoroCmakeGraft,
   hasKokoroSourcesInTree,
+  KOKORO_CMAKE_GRAFT_SENTINEL,
 } from "./cmake-graft.mjs";
 
 describe("hasKokoroSourcesInTree", () => {
   it("returns false for a non-existent fork root", () => {
-    expect(
-      hasKokoroSourcesInTree("/definitely/not/here/" + Date.now()),
-    ).toBe(false);
+    expect(hasKokoroSourcesInTree("/definitely/not/here/" + Date.now())).toBe(
+      false,
+    );
   });
 
   it("returns false for a fork root without omnivoice/src", () => {
@@ -136,9 +136,9 @@ describe("hasKokoroCmakeGraft", () => {
   });
 
   it("returns true when the Kokoro sentinel is present", () => {
-    expect(hasKokoroCmakeGraft(`prelude\n${KOKORO_CMAKE_GRAFT_SENTINEL}\n`)).toBe(
-      true,
-    );
+    expect(
+      hasKokoroCmakeGraft(`prelude\n${KOKORO_CMAKE_GRAFT_SENTINEL}\n`),
+    ).toBe(true);
   });
 });
 
@@ -170,18 +170,16 @@ describe("appendKokoroCmakeGraft", () => {
   it("is idempotent on re-run (sentinel guard)", () => {
     const first = appendKokoroCmakeGraft({ llamaCppRoot: root });
     expect(first).toBe(true);
-    const sizeAfterFirst = fs.statSync(
-      path.join(root, "CMakeLists.txt"),
-    ).size;
+    const sizeAfterFirst = fs.statSync(path.join(root, "CMakeLists.txt")).size;
     const second = appendKokoroCmakeGraft({ llamaCppRoot: root });
     expect(second).toBe(false);
-    const sizeAfterSecond = fs.statSync(
-      path.join(root, "CMakeLists.txt"),
-    ).size;
+    const sizeAfterSecond = fs.statSync(path.join(root, "CMakeLists.txt")).size;
     expect(sizeAfterSecond).toBe(sizeAfterFirst);
   });
 
   it("rejects missing llamaCppRoot", () => {
-    expect(() => appendKokoroCmakeGraft({})).toThrow(/llamaCppRoot is required/);
+    expect(() => appendKokoroCmakeGraft({})).toThrow(
+      /llamaCppRoot is required/,
+    );
   });
 });

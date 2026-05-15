@@ -1,4 +1,5 @@
-#scenarios, #scenarios .scenarios-group {
+#scenarios,
+#scenarios .scenarios-group {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -49,7 +50,8 @@
   margin: 2em 0;
 }
 
-#clone, #mobile {
+#clone,
+#mobile {
   margin: 2em 0;
   border: 1px solid var(--light-gray);
   border-radius: 5px;
@@ -58,9 +60,11 @@
 }
 
 #clone {
-  background: url('install/inc/icons/tails.png') var(--background-gray) no-repeat left 50%;
+  background: url("install/inc/icons/tails.png") var(--background-gray)
+    no-repeat left 50%;
 }
 
 #mobile {
-  background: url('install/inc/icons/phone.png') var(--background-gray) no-repeat left 50%;
+  background: url("install/inc/icons/phone.png") var(--background-gray)
+    no-repeat left 50%;
 }

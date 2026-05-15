@@ -6,7 +6,11 @@
     "phone": "13900001001",
     "department": "Management",
     "title": "CEO",
-    "responsibilities": ["Corporate strategy", "Major decisions", "Investor relations"]
+    "responsibilities": [
+      "Corporate strategy",
+      "Major decisions",
+      "Investor relations"
+    ]
   },
   {
     "contact_id": "CON-1202",
@@ -15,7 +19,11 @@
     "phone": "13900001002",
     "department": "Management",
     "title": "CTO",
-    "responsibilities": ["Technology strategy", "Product development", "AI capability development"]
+    "responsibilities": [
+      "Technology strategy",
+      "Product development",
+      "AI capability development"
+    ]
   },
   {
     "contact_id": "CON-1203",
@@ -33,6 +41,10 @@
     "phone": "13900001004",
     "department": "Management",
     "title": "VP Sales",
-    "responsibilities": ["Sales team management", "Key account strategy", "Channel development"]
+    "responsibilities": [
+      "Sales team management",
+      "Key account strategy",
+      "Channel development"
+    ]
   }
 ]

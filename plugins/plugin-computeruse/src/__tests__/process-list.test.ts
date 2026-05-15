@@ -39,7 +39,9 @@ describe("process-list — Linux /proc (real host)", () => {
     const procEntries = readdirSync("/proc").filter((e) => /^\d+$/.test(e));
     // Some pids may have vanished between the two reads, but the count
     // should be in the same order of magnitude.
-    expect(procs.length).toBeGreaterThanOrEqual(Math.floor(procEntries.length * 0.5));
+    expect(procs.length).toBeGreaterThanOrEqual(
+      Math.floor(procEntries.length * 0.5),
+    );
     expect(procs.length).toBeLessThanOrEqual(procEntries.length + 10);
   });
 });
@@ -78,9 +80,7 @@ describe("process-list — parseWindowsProcessJson", () => {
 
   it("tolerates a single-object form", () => {
     const json = JSON.stringify({ Id: 1, ProcessName: "System" });
-    expect(parseWindowsProcessJson(json)).toEqual([
-      { pid: 1, name: "System" },
-    ]);
+    expect(parseWindowsProcessJson(json)).toEqual([{ pid: 1, name: "System" }]);
   });
 
   it("returns [] for malformed input", () => {

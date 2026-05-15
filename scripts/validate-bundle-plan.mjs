@@ -30,7 +30,11 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
 
-const PLAN_PATH = path.join(REPO_ROOT, "docs", "ELIZA_1_GGUF_PLATFORM_PLAN.json");
+const PLAN_PATH = path.join(
+  REPO_ROOT,
+  "docs",
+  "ELIZA_1_GGUF_PLATFORM_PLAN.json",
+);
 const EXTRAS_PATH = path.join(REPO_ROOT, "docs", "ELIZA_1_BUNDLE_EXTRAS.json");
 const CATALOG_PATH = path.join(
   REPO_ROOT,
@@ -67,8 +71,7 @@ function gap(where, message) {
  */
 function assertPublishingState(where, entry) {
   const hasUrl =
-    typeof entry?.url === "string" &&
-    /^https?:\/\//i.test(entry.url.trim());
+    typeof entry?.url === "string" && /^https?:\/\//i.test(entry.url.trim());
   const staged = entry?.staged === true;
   if (!hasUrl && !staged) {
     err(
@@ -87,18 +90,12 @@ function assertPublishingState(where, entry) {
   if (staged) {
     const plan = entry.buildPlan;
     if (!plan || typeof plan !== "object") {
-      err(
-        where,
-        "staged entry missing `buildPlan` object",
-      );
+      err(where, "staged entry missing `buildPlan` object");
       return;
     }
     for (const key of ["tool", "source", "command"]) {
       if (typeof plan[key] !== "string" || !plan[key].trim()) {
-        err(
-          where,
-          `staged entry buildPlan.${key} must be a non-empty string`,
-        );
+        err(where, `staged entry buildPlan.${key} must be a non-empty string`);
         return;
       }
     }
@@ -167,7 +164,9 @@ function parseCatalogTierFacts() {
     return null;
   }
   const src = fs.readFileSync(CATALOG_PATH, "utf8");
-  const tierIdsMatch = src.match(/ELIZA_1_TIER_IDS\s*=\s*\[([\s\S]*?)\]\s*as\s+const;/);
+  const tierIdsMatch = src.match(
+    /ELIZA_1_TIER_IDS\s*=\s*\[([\s\S]*?)\]\s*as\s+const;/,
+  );
   if (!tierIdsMatch) {
     err("catalog", "could not locate ELIZA_1_TIER_IDS array literal");
     return null;
@@ -181,7 +180,9 @@ function parseCatalogTierFacts() {
   for (const tierId of tierIds) {
     facts.set(tierId, { hasEmbedding: false, hasVision: false });
   }
-  const specsMatch = src.match(/TIER_SPECS:\s*Readonly<[\s\S]*?>\s*=\s*\{([\s\S]*?)\n\};/);
+  const specsMatch = src.match(
+    /TIER_SPECS:\s*Readonly<[\s\S]*?>\s*=\s*\{([\s\S]*?)\n\};/,
+  );
   if (specsMatch) {
     const block = specsMatch[1];
     const tierBlocks = block.split(/"eliza-1-[^"]+":\s*\{/g);
@@ -231,8 +232,8 @@ if (plan && catalogFacts) {
       err("plan", `tier "${planKey}": required_files is not an array`);
       continue;
     }
-    const claimsVision = entry.required_files.some((f) =>
-      typeof f === "string" && f.startsWith("vision/mmproj-"),
+    const claimsVision = entry.required_files.some(
+      (f) => typeof f === "string" && f.startsWith("vision/mmproj-"),
     );
     const catalogHasVision = catalogFacts.get(catalogId)?.hasVision === true;
     if (claimsVision && !catalogHasVision) {
@@ -274,21 +275,12 @@ if (extras && catalogFacts) {
     }
     const entry = imagegenTiers[tierId];
     if (!entry?.default?.file) {
-      err(
-        "extras.imagegen",
-        `tier "${tierId}" missing default.file`,
-      );
+      err("extras.imagegen", `tier "${tierId}" missing default.file`);
     } else {
-      assertPublishingState(
-        `extras.imagegen.${tierId}.default`,
-        entry.default,
-      );
+      assertPublishingState(`extras.imagegen.${tierId}.default`, entry.default);
     }
     if (!Array.isArray(entry?.optional)) {
-      err(
-        "extras.imagegen",
-        `tier "${tierId}" optional is not an array`,
-      );
+      err("extras.imagegen", `tier "${tierId}" optional is not an array`);
     } else {
       for (let i = 0; i < entry.optional.length; i += 1) {
         const opt = entry.optional[i];
@@ -350,7 +342,10 @@ if (extras && catalogFacts) {
   }
 
   // OCR + person-detect block sanity
-  if (!Array.isArray(extras.ocr?.components) || extras.ocr.components.length === 0) {
+  if (
+    !Array.isArray(extras.ocr?.components) ||
+    extras.ocr.components.length === 0
+  ) {
     err("extras.ocr", "ocr.components missing or empty");
   }
   if (

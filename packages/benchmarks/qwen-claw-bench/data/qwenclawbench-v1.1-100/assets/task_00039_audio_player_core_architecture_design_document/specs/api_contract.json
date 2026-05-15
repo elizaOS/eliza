@@ -8,8 +8,13 @@
         "add_track": {
           "description": "Add a track to the queue",
           "params": [
-            {"name": "track", "type": "Track", "required": true},
-            {"name": "position", "type": "Option<usize>", "required": false, "default": "None (append to end)"}
+            { "name": "track", "type": "Track", "required": true },
+            {
+              "name": "position",
+              "type": "Option<usize>",
+              "required": false,
+              "default": "None (append to end)"
+            }
           ],
           "return_type": "Result<usize, PlayerError>",
           "return_description": "Index where the track was inserted",
@@ -18,7 +23,7 @@
         "remove_track": {
           "description": "Remove a track from the queue by index or ID",
           "params": [
-            {"name": "target", "type": "QueueTarget", "required": true}
+            { "name": "target", "type": "QueueTarget", "required": true }
           ],
           "return_type": "Result<Track, PlayerError>",
           "return_description": "The removed track",
@@ -27,8 +32,8 @@
         "reorder": {
           "description": "Move a track from one position to another",
           "params": [
-            {"name": "from_index", "type": "usize", "required": true},
-            {"name": "to_index", "type": "usize", "required": true}
+            { "name": "from_index", "type": "usize", "required": true },
+            { "name": "to_index", "type": "usize", "required": true }
           ],
           "return_type": "Result<(), PlayerError>",
           "errors": ["IndexOutOfBounds"]
@@ -90,7 +95,7 @@
         "seek": {
           "description": "Seek to a position in the current track",
           "params": [
-            {"name": "position_ms", "type": "u64", "required": true}
+            { "name": "position_ms", "type": "u64", "required": true }
           ],
           "return_type": "Result<u64, PlayerError>",
           "return_description": "Actual position after seeking (clamped to duration)",
@@ -99,7 +104,12 @@
         "set_speed": {
           "description": "Set playback speed",
           "params": [
-            {"name": "speed", "type": "f32", "required": true, "constraints": {"min": 0.25, "max": 4.0}}
+            {
+              "name": "speed",
+              "type": "f32",
+              "required": true,
+              "constraints": { "min": 0.25, "max": 4.0 }
+            }
           ],
           "return_type": "Result<f32, PlayerError>",
           "return_description": "Actual speed set (clamped to valid range)",
@@ -125,7 +135,7 @@
         "prefetch": {
           "description": "Prefetch upcoming tracks into cache",
           "params": [
-            {"name": "track_ids", "type": "Vec<String>", "required": true}
+            { "name": "track_ids", "type": "Vec<String>", "required": true }
           ],
           "return_type": "Result<Vec<CachePrefetchResult>, PlayerError>",
           "errors": ["CacheFull", "TrackNotFound"]
@@ -133,7 +143,7 @@
         "evict": {
           "description": "Manually evict a track from cache",
           "params": [
-            {"name": "track_id", "type": "String", "required": true}
+            { "name": "track_id", "type": "String", "required": true }
           ],
           "return_type": "Result<bool, PlayerError>",
           "return_description": "true if track was in cache and evicted"
@@ -141,7 +151,7 @@
         "get_cached": {
           "description": "Retrieve cached audio data for a track",
           "params": [
-            {"name": "track_id", "type": "String", "required": true}
+            { "name": "track_id", "type": "String", "required": true }
           ],
           "return_type": "Option<CachedTrackData>"
         },
@@ -159,7 +169,7 @@
         "save_state": {
           "description": "Save the current player state",
           "params": [
-            {"name": "state", "type": "PlayerState", "required": true}
+            { "name": "state", "type": "PlayerState", "required": true }
           ],
           "return_type": "Result<(), PlayerError>",
           "errors": ["StorageError", "SerializationError"]

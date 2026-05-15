@@ -63,7 +63,9 @@ let activeProvider: AccessibilityProvider | null = null;
  * Replace the active provider (used by Android/WS8 to inject the native
  * `AccessibilityService` adapter, and by tests).
  */
-export function setAccessibilityProvider(provider: AccessibilityProvider): void {
+export function setAccessibilityProvider(
+  provider: AccessibilityProvider,
+): void {
   activeProvider = provider;
 }
 
@@ -238,12 +240,19 @@ export function parseHyprlandClients(text: string): SceneAxNode[] {
     if (!item || typeof item !== "object") continue;
     const at = Array.isArray(item.at) ? item.at : [0, 0];
     const size = Array.isArray(item.size) ? item.size : [0, 0];
-    const displayId = Number.isFinite(Number(item.monitor)) ? Number(item.monitor) : 0;
+    const displayId = Number.isFinite(Number(item.monitor))
+      ? Number(item.monitor)
+      : 0;
     out.push({
       id: `a${displayId}-${idx + 1}`,
       role: "window",
       label: item.title || item.class || "unknown",
-      bbox: [Number(at[0] ?? 0), Number(at[1] ?? 0), Number(size[0] ?? 0), Number(size[1] ?? 0)],
+      bbox: [
+        Number(at[0] ?? 0),
+        Number(at[1] ?? 0),
+        Number(size[0] ?? 0),
+        Number(size[1] ?? 0),
+      ],
       actions: ["focus", "close"],
       displayId,
     });
@@ -315,7 +324,9 @@ function mapAtspiNode(raw: Record<string, unknown>, idx: number): SceneAxNode {
     ? (raw.bbox as unknown[]).map((v) => Number(v))
     : [0, 0, 0, 0];
   const actions = Array.isArray(raw.actions)
-    ? (raw.actions as unknown[]).filter((v): v is string => typeof v === "string")
+    ? (raw.actions as unknown[]).filter(
+        (v): v is string => typeof v === "string",
+      )
     : [];
   return {
     id: `a0-${idx + 1}`,
@@ -363,7 +374,11 @@ export class DarwinAccessibilityProvider implements AccessibilityProvider {
       const text = execFileSync(
         "osascript",
         ["-l", "JavaScript", "-e", script],
-        { timeout: 8000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        {
+          timeout: 8000,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
       );
       const parsed = JSON.parse(text || "[]");
       if (!Array.isArray(parsed)) return [];
@@ -373,7 +388,12 @@ export class DarwinAccessibilityProvider implements AccessibilityProvider {
           id: `a0-${i + 1}`,
           role: "window",
           label: typeof n?.title === "string" ? n.title : n?.app,
-          bbox: [Number(bbox[0]) || 0, Number(bbox[1]) || 0, Number(bbox[2]) || 0, Number(bbox[3]) || 0],
+          bbox: [
+            Number(bbox[0]) || 0,
+            Number(bbox[1]) || 0,
+            Number(bbox[2]) || 0,
+            Number(bbox[3]) || 0,
+          ],
           actions: ["focus", "close"],
           displayId: 0,
         } as SceneAxNode;
@@ -417,11 +437,11 @@ while ($child -and $count -lt 50) {
 $out | ConvertTo-Json -Depth 4 -Compress
 `;
     try {
-      const text = execFileSync(
-        "powershell",
-        ["-NoProfile", "-Command", ps],
-        { timeout: 10_000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-      );
+      const text = execFileSync("powershell", ["-NoProfile", "-Command", ps], {
+        timeout: 10_000,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
       const parsed = JSON.parse(text || "[]");
       const list = Array.isArray(parsed) ? parsed : [parsed];
       return list
@@ -432,7 +452,12 @@ $out | ConvertTo-Json -Depth 4 -Compress
             id: `a0-${i + 1}`,
             role: typeof n.role === "string" ? n.role : "unknown",
             label: typeof n.label === "string" ? n.label : undefined,
-            bbox: [Number(bbox[0]) || 0, Number(bbox[1]) || 0, Number(bbox[2]) || 0, Number(bbox[3]) || 0],
+            bbox: [
+              Number(bbox[0]) || 0,
+              Number(bbox[1]) || 0,
+              Number(bbox[2]) || 0,
+              Number(bbox[3]) || 0,
+            ],
             actions: [],
             displayId: 0,
           } as SceneAxNode;

@@ -8,29 +8,14 @@
     "schema": "new_issuance"
   },
   "export": {
-    "format": [
-      "csv",
-      "json",
-      "xlsx"
-    ],
+    "format": ["csv", "json", "xlsx"],
     "default_path": "/shared/exports/new_issuance/",
     "date_format": "YYYY-MM-DD"
   },
   "permissions": {
-    "read": [
-      "analyst",
-      "associate",
-      "vp",
-      "md"
-    ],
-    "write": [
-      "vp",
-      "md"
-    ],
-    "admin": [
-      "md",
-      "system_admin"
-    ]
+    "read": ["analyst", "associate", "vp", "md"],
+    "write": ["vp", "md"],
+    "admin": ["md", "system_admin"]
   },
   "fields": {
     "deal_id": {

@@ -8,7 +8,7 @@
 }
 
 #tor-check a {
-  background: var(--medium-light-green) url('home/onion.png') no-repeat 20px !important;
+  background: var(--medium-light-green) url("home/onion.png") no-repeat 20px !important;
   padding-left: 60px;
   padding-right: 30px !important;
 }
@@ -43,7 +43,8 @@
 /* Survey message */
 
 .survey {
-  background: var(--background-purple) url('lib/survey.png') no-repeat top 50% left 2em !important;
+  background: var(--background-purple) url("lib/survey.png") no-repeat top 50%
+    left 2em !important;
   border: none !important;
   padding-left: 9em !important;
 }

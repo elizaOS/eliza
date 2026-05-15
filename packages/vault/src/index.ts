@@ -83,12 +83,12 @@ export type {
   BackendStatus,
   CreateManagerOptions,
   ListAllSavedLoginsOptions,
-  ManagerPreferences,
-  ManagerSetOptions,
-  SecretsManager,
   LoginListEntry,
   LoginListResult,
   LoginReveal,
+  ManagerPreferences,
+  ManagerSetOptions,
+  SecretsManager,
 } from "./manager.js";
 export {
   createManager,

@@ -47,40 +47,28 @@
       "passenger_id": "p001",
       "pickup": "stadium",
       "dropoff": "suburb",
-      "time_window": [
-        10.25,
-        10.9
-      ],
+      "time_window": [10.25, 10.9],
       "deadline": 59
     },
     {
       "passenger_id": "p002",
       "pickup": "airport",
       "dropoff": "stadium",
-      "time_window": [
-        17.75,
-        17.4
-      ],
+      "time_window": [17.75, 17.4],
       "deadline": 36
     },
     {
       "passenger_id": "p003",
       "pickup": "park",
       "dropoff": "suburb",
-      "time_window": [
-        13.75,
-        13.116666666666667
-      ],
+      "time_window": [13.75, 13.116666666666667],
       "deadline": 43
     },
     {
       "passenger_id": "p004",
       "pickup": "downtown",
       "dropoff": "airport",
-      "time_window": [
-        14.25,
-        14.766666666666667
-      ],
+      "time_window": [14.25, 14.766666666666667],
       "deadline": 53
     }
   ],

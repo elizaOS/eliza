@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,7 +53,7 @@ interface ProcessedTrial {
   model: string;
   provider: string;
   reward: number | null;
-  status: 'pass' | 'fail' | 'error' | 'timeout';
+  status: "pass" | "fail" | "error" | "timeout";
   costUsd: number | null;
   durationMs: number;
   inputTokens: number | null;
@@ -72,7 +72,7 @@ interface ProcessedTrial {
 
 interface JobSummary {
   jobName: string;
-  jobStatus: 'running' | 'completed';
+  jobStatus: "running" | "completed";
   expectedTrials: number;
   completedTrials: number;
   passedTrials: number;
@@ -98,23 +98,33 @@ interface MetricsRegistry {
   errorGroups: ErrorGroup[];
 }
 
-const TRAJECTORIES_DIR = path.resolve(__dirname, '../../../skillsbench-trajectories/jobs');
-const OUTPUT_PATH = path.resolve(__dirname, '../src/data/metrics-registry.json');
+const TRAJECTORIES_DIR = path.resolve(
+  __dirname,
+  "../../../skillsbench-trajectories/jobs",
+);
+const OUTPUT_PATH = path.resolve(
+  __dirname,
+  "../src/data/metrics-registry.json",
+);
 
-function getStatus(trial: TrialResult): 'pass' | 'fail' | 'error' | 'timeout' {
+function getStatus(trial: TrialResult): "pass" | "fail" | "error" | "timeout" {
   if (trial.exception_info) {
-    if (trial.exception_info.exception_type.toLowerCase().includes('timeout')) {
-      return 'timeout';
+    if (trial.exception_info.exception_type.toLowerCase().includes("timeout")) {
+      return "timeout";
     }
-    return 'error';
+    return "error";
   }
   if (trial.verifier_result) {
-    return trial.verifier_result.rewards.reward >= 1.0 ? 'pass' : 'fail';
+    return trial.verifier_result.rewards.reward >= 1.0 ? "pass" : "fail";
   }
-  return 'fail';
+  return "fail";
 }
 
-function processTrialResult(trial: TrialResult, jobName: string, trialPath: string): ProcessedTrial {
+function processTrialResult(
+  trial: TrialResult,
+  jobName: string,
+  trialPath: string,
+): ProcessedTrial {
   const startMs = new Date(trial.started_at).getTime();
   const endMs = new Date(trial.finished_at).getTime();
 
@@ -126,7 +136,7 @@ function processTrialResult(trial: TrialResult, jobName: string, trialPath: stri
     trialPath,
     agent: trial.agent_info.name,
     model: trial.agent_info.model_info?.name ?? trial.config.agent.model_name,
-    provider: trial.agent_info.model_info?.provider ?? 'unknown',
+    provider: trial.agent_info.model_info?.provider ?? "unknown",
     reward: trial.verifier_result?.rewards.reward ?? null,
     status: getStatus(trial),
     costUsd: trial.agent_result?.cost_usd ?? null,
@@ -155,11 +165,11 @@ function findResultFiles(dir: string): string[] {
 
     if (entry.isDirectory()) {
       // Check for result.json in this directory (trial directory)
-      const resultPath = path.join(fullPath, 'result.json');
+      const resultPath = path.join(fullPath, "result.json");
       if (fs.existsSync(resultPath)) {
         // Skip job-level result.json (they don't have task_name)
         try {
-          const content = JSON.parse(fs.readFileSync(resultPath, 'utf-8'));
+          const content = JSON.parse(fs.readFileSync(resultPath, "utf-8"));
           if (content.task_name) {
             results.push(resultPath);
           }
@@ -174,7 +184,7 @@ function findResultFiles(dir: string): string[] {
 }
 
 function generateMetricsRegistry(): void {
-  console.log('Generating metrics registry...');
+  console.log("Generating metrics registry...");
   console.log(`Scanning: ${TRAJECTORIES_DIR}`);
 
   const registry: MetricsRegistry = {
@@ -193,7 +203,8 @@ function generateMetricsRegistry(): void {
     return;
   }
 
-  const jobDirs = fs.readdirSync(TRAJECTORIES_DIR, { withFileTypes: true })
+  const jobDirs = fs
+    .readdirSync(TRAJECTORIES_DIR, { withFileTypes: true })
     .filter((d) => d.isDirectory());
 
   console.log(`Found ${jobDirs.length} job directories`);
@@ -206,9 +217,9 @@ function generateMetricsRegistry(): void {
     const resultFiles = findResultFiles(jobPath);
 
     // Check job status by looking for job-level result.json
-    const jobResultPath = path.join(jobPath, 'result.json');
-    const jobConfigPath = path.join(jobPath, 'config.json');
-    let jobStatus: 'running' | 'completed' = 'running';
+    const jobResultPath = path.join(jobPath, "result.json");
+    const jobConfigPath = path.join(jobPath, "config.json");
+    let jobStatus: "running" | "completed" = "running";
     let expectedTrials = 0;
     let finishedAt: string | null = null;
 
@@ -219,9 +230,9 @@ function generateMetricsRegistry(): void {
     // Check if job is completed (has result.json at job level)
     if (fs.existsSync(jobResultPath)) {
       try {
-        const jobResult = JSON.parse(fs.readFileSync(jobResultPath, 'utf-8'));
+        const jobResult = JSON.parse(fs.readFileSync(jobResultPath, "utf-8"));
         if (jobResult.finished_at) {
-          jobStatus = 'completed';
+          jobStatus = "completed";
           finishedAt = jobResult.finished_at;
         }
         expectedTrials = jobResult.n_total_trials || 0;
@@ -233,14 +244,16 @@ function generateMetricsRegistry(): void {
     // Try to get expected trials from config if not found in result
     if (expectedTrials === 0 && fs.existsSync(jobConfigPath)) {
       try {
-        const jobConfig = JSON.parse(fs.readFileSync(jobConfigPath, 'utf-8'));
+        const jobConfig = JSON.parse(fs.readFileSync(jobConfigPath, "utf-8"));
         expectedTrials = jobConfig.n_total_trials || 0;
       } catch {
         // Ignore parse errors
       }
     }
 
-    console.log(`  ${jobDir.name}: ${resultFiles.length} trials (${jobStatus}, expected: ${expectedTrials})`);
+    console.log(
+      `  ${jobDir.name}: ${resultFiles.length} trials (${jobStatus}, expected: ${expectedTrials})`,
+    );
 
     // Initialize job summary
     jobSummaries.set(jobDir.name, {
@@ -253,14 +266,14 @@ function generateMetricsRegistry(): void {
       erroredTrials: 0,
       passRate: 0,
       totalCost: 0,
-      startedAt: '',
+      startedAt: "",
       finishedAt,
       lastModified,
     });
 
     for (const resultFile of resultFiles) {
       try {
-        const content = fs.readFileSync(resultFile, 'utf-8');
+        const content = fs.readFileSync(resultFile, "utf-8");
         const trial: TrialResult = JSON.parse(content);
         // Get relative path from trajectories dir to trial dir
         const trialDir = path.dirname(resultFile);
@@ -272,9 +285,9 @@ function generateMetricsRegistry(): void {
         summary.completedTrials++;
         summary.totalCost += processed.costUsd ?? 0;
 
-        if (processed.status === 'pass') {
+        if (processed.status === "pass") {
           summary.passedTrials++;
-        } else if (processed.status === 'fail') {
+        } else if (processed.status === "fail") {
           summary.failedTrials++;
         } else {
           summary.erroredTrials++;
@@ -300,12 +313,16 @@ function generateMetricsRegistry(): void {
 
   // Calculate pass rates
   for (const summary of jobSummaries.values()) {
-    summary.passRate = summary.completedTrials > 0 ? summary.passedTrials / summary.completedTrials : 0;
+    summary.passRate =
+      summary.completedTrials > 0
+        ? summary.passedTrials / summary.completedTrials
+        : 0;
   }
 
   // Sort by lastModified (most recent first)
-  registry.jobs = Array.from(jobSummaries.values())
-    .sort((a, b) => b.lastModified.localeCompare(a.lastModified));
+  registry.jobs = Array.from(jobSummaries.values()).sort((a, b) =>
+    b.lastModified.localeCompare(a.lastModified),
+  );
 
   // Build error groups
   registry.errorGroups = Array.from(errorGroupsMap.entries())

@@ -96,22 +96,46 @@ export const computerusePlugin = computerUsePlugin;
 
 export default computerUsePlugin;
 
-export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
-export { handleSandboxRoute } from "./routes/sandbox-routes.js";
-export { ComputerUseService } from "./services/computer-use-service.js";
-
-// iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
-export * from "./mobile/index.js";
-
-// WS7: Brain / Actor / Cascade / Dispatch — autonomous desktop loop.
-export * from "./actor/index.js";
 export {
-  computerUseAgentAction,
-  runComputerUseAgentLoop,
   type ComputerUseAgentParams,
   type ComputerUseAgentReport,
+  computerUseAgentAction,
+  runComputerUseAgentLoop,
 } from "./actions/use-computer-agent.js";
-
+// WS7: Brain / Actor / Cascade / Dispatch — autonomous desktop loop.
+export * from "./actor/index.js";
+// iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
+export * from "./mobile/index.js";
+export {
+  listProcesses,
+  type ProcessInfo,
+  parsePsOutput,
+  parseWindowsProcessJson,
+} from "./platform/process-list.js";
+export { sceneProvider } from "./providers/scene.js";
+export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
+export { handleSandboxRoute } from "./routes/sandbox-routes.js";
+export {
+  type AccessibilityProvider,
+  DarwinAccessibilityProvider,
+  LinuxAccessibilityProvider,
+  NullAccessibilityProvider,
+  parseHyprlandClients,
+  parseSwayTree,
+  resolveAccessibilityProvider,
+  setAccessibilityProvider,
+  WindowsAccessibilityProvider,
+} from "./scene/a11y-provider.js";
+export { enumerateApps, joinAppsAndWindows } from "./scene/apps.js";
+export {
+  type BlockGrid,
+  blockGrid,
+  type DirtyBlock,
+  decodePng,
+  diffBlocks,
+  frameDhash,
+  hamming,
+} from "./scene/dhash.js";
 // WS6: scene-builder surface — consumed by WS7 (Brain) and WS10 verifiers.
 export {
   _resetDefaultSceneBuilderForTests,
@@ -130,34 +154,7 @@ export type {
   SceneVlmElement,
 } from "./scene/scene-types.js";
 export { serializeSceneForPrompt } from "./scene/serialize.js";
-export {
-  type BlockGrid,
-  blockGrid,
-  decodePng,
-  diffBlocks,
-  type DirtyBlock,
-  frameDhash,
-  hamming,
-} from "./scene/dhash.js";
-export { enumerateApps, joinAppsAndWindows } from "./scene/apps.js";
-export {
-  type AccessibilityProvider,
-  DarwinAccessibilityProvider,
-  LinuxAccessibilityProvider,
-  NullAccessibilityProvider,
-  parseHyprlandClients,
-  parseSwayTree,
-  resolveAccessibilityProvider,
-  setAccessibilityProvider,
-  WindowsAccessibilityProvider,
-} from "./scene/a11y-provider.js";
-export {
-  listProcesses,
-  parsePsOutput,
-  parseWindowsProcessJson,
-  type ProcessInfo,
-} from "./platform/process-list.js";
-export { sceneProvider } from "./providers/scene.js";
+export { ComputerUseService } from "./services/computer-use-service.js";
 export type {
   DesktopControlCapabilities,
   DesktopControlCapability,

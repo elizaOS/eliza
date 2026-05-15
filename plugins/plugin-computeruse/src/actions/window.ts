@@ -109,8 +109,7 @@ export const windowAction: Action = {
     },
     {
       name: "arrangement",
-      description:
-        "For arrange: tile, cascade, vertical, horizontal.",
+      description: "For arrange: tile, cascade, vertical, horizontal.",
       required: false,
       schema: { type: "string" },
     },

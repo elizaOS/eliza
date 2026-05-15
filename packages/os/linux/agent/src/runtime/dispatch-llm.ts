@@ -29,11 +29,10 @@
  * every visible turn comes from the model rather than a template.
  */
 
-import { ModelType, type IAgentRuntime } from "@elizaos/core";
-
-import { isSignedIn } from "./auth/state.ts";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import type { CalibrationBlock } from "../persona.ts";
 import { buildSystemPrompt } from "../persona.ts";
+import { isSignedIn } from "./auth/state.ts";
 
 const REPHRASE_TIMEOUT_MS = 8000;
 const REPHRASE_MAX_TOKENS = 220;
@@ -45,24 +44,24 @@ const REPHRASE_MAX_TOKENS = 220;
  * Forced on with `USBELIZA_LLM_REPLIES=1`, off with `=0`.
  */
 export function llmRepliesEnabled(): boolean {
-    const env = process.env.USBELIZA_LLM_REPLIES;
-    if (env === "1" || env === "true") return true;
-    if (env === "0" || env === "false") return false;
-    // Default: on when we have a fast cloud model signed in
-    return isSignedIn("claude") || isSignedIn("codex");
+  const env = process.env.USBELIZA_LLM_REPLIES;
+  if (env === "1" || env === "true") return true;
+  if (env === "0" || env === "false") return false;
+  // Default: on when we have a fast cloud model signed in
+  return isSignedIn("claude") || isSignedIn("codex");
 }
 
 export interface ActionContext {
-    /** Action that just fired (e.g., "HELP", "LIST_APPS", "SETUP_PERSISTENCE"). */
-    actionName: string;
-    /** The user's exact message that selected this action. */
-    userMessage: string;
-    /** The factual data the action wants to communicate. JSON-stringify-safe. */
-    data: unknown;
-    /** Preset fallback prose, returned verbatim when the model is slow or fails. */
-    suggestedText: string;
-    /** User's calibration block — name, work focus, style preferences. */
-    calibration: CalibrationBlock | null;
+  /** Action that just fired (e.g., "HELP", "LIST_APPS", "SETUP_PERSISTENCE"). */
+  actionName: string;
+  /** The user's exact message that selected this action. */
+  userMessage: string;
+  /** The factual data the action wants to communicate. JSON-stringify-safe. */
+  data: unknown;
+  /** Preset fallback prose, returned verbatim when the model is slow or fails. */
+  suggestedText: string;
+  /** User's calibration block — name, work focus, style preferences. */
+  calibration: CalibrationBlock | null;
 }
 
 /**
@@ -71,30 +70,30 @@ export interface ActionContext {
  * model error / empty reply. Never throws.
  */
 export async function rephraseAsEliza(
-    runtime: IAgentRuntime,
-    ctx: ActionContext,
+  runtime: IAgentRuntime,
+  ctx: ActionContext,
 ): Promise<string> {
-    if (!llmRepliesEnabled()) {
-        return ctx.suggestedText;
-    }
-    const prompt = buildRephrasePrompt(ctx);
-    try {
-        const reply = await raceWithTimeout(
-            runtime.useModel(ModelType.TEXT_LARGE, {
-                prompt,
-                stopSequences: [],
-                maxTokens: REPHRASE_MAX_TOKENS,
-                temperature: 0.6,
-            }),
-            REPHRASE_TIMEOUT_MS,
-        );
-        if (typeof reply !== "string") return ctx.suggestedText;
-        const trimmed = reply.trim();
-        if (trimmed.length === 0) return ctx.suggestedText;
-        return trimmed;
-    } catch {
-        return ctx.suggestedText;
-    }
+  if (!llmRepliesEnabled()) {
+    return ctx.suggestedText;
+  }
+  const prompt = buildRephrasePrompt(ctx);
+  try {
+    const reply = await raceWithTimeout(
+      runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+        stopSequences: [],
+        maxTokens: REPHRASE_MAX_TOKENS,
+        temperature: 0.6,
+      }),
+      REPHRASE_TIMEOUT_MS,
+    );
+    if (typeof reply !== "string") return ctx.suggestedText;
+    const trimmed = reply.trim();
+    if (trimmed.length === 0) return ctx.suggestedText;
+    return trimmed;
+  } catch {
+    return ctx.suggestedText;
+  }
 }
 
 /**
@@ -105,31 +104,31 @@ export async function rephraseAsEliza(
  * model needs to render a faithful reply.
  */
 function buildRephrasePrompt(ctx: ActionContext): string {
-    const systemPrompt = buildSystemPrompt(ctx.calibration);
-    const contextBlock = [
-        `Action: ${ctx.actionName}`,
-        `User said: ${JSON.stringify(ctx.userMessage)}`,
-        `What you need to communicate (structured):`,
-        JSON.stringify(ctx.data, null, 2),
-        `Preset draft (use it if you can't phrase something better):`,
-        ctx.suggestedText,
-        ``,
-        `Now reply in your voice. One or two sentences of warm prose. No`,
-        `markdown formatting. No bullet lists. Do not narrate that you ran`,
-        `an action — just say what's true. Use the user's name if it's in`,
-        `the calibration block above. Keep it under 300 characters.`,
-    ].join("\n");
-    return `${systemPrompt}\n\n${contextBlock}`;
+  const systemPrompt = buildSystemPrompt(ctx.calibration);
+  const contextBlock = [
+    `Action: ${ctx.actionName}`,
+    `User said: ${JSON.stringify(ctx.userMessage)}`,
+    `What you need to communicate (structured):`,
+    JSON.stringify(ctx.data, null, 2),
+    `Preset draft (use it if you can't phrase something better):`,
+    ctx.suggestedText,
+    ``,
+    `Now reply in your voice. One or two sentences of warm prose. No`,
+    `markdown formatting. No bullet lists. Do not narrate that you ran`,
+    `an action — just say what's true. Use the user's name if it's in`,
+    `the calibration block above. Keep it under 300 characters.`,
+  ].join("\n");
+  return `${systemPrompt}\n\n${contextBlock}`;
 }
 
 async function raceWithTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
-    });
-    try {
-        return await Promise.race([p, timeout]);
-    } finally {
-        if (timer !== undefined) clearTimeout(timer);
-    }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

@@ -32,7 +32,7 @@
  *     outputs.
  */
 
-import type { TokenTreeDescriptor, TokenSequence } from "./definitions";
+import type { TokenSequence, TokenTreeDescriptor } from "./definitions";
 
 const MAGIC = 0x544b5452; // "RTKT" (Runtime Token Tree)
 const VERSION = 1;
@@ -107,7 +107,8 @@ export function serializeTokenTree(
     bodySize += 4 /* tokenId */ + 1 /* terminal */ + 4 /* num_children */;
     bodySize += node.children.size * 4;
   }
-  const headerSize = 4 /* magic */ + 4 /* version */ + 4 /* path_len */ + pathBytes.length;
+  const headerSize =
+    4 /* magic */ + 4 /* version */ + 4 /* path_len */ + pathBytes.length;
   const buf = new ArrayBuffer(headerSize + bodySize);
   const view = new DataView(buf);
   const bytes = new Uint8Array(buf);
@@ -163,7 +164,10 @@ function collectLeaves(flat: FlatNode[], rootIdx: number): TokenSequence[] {
     const frame = stack.pop()!;
     const node = flat[frame.idx];
     if (!node) continue;
-    const path = node.tokenId === ROOT_TOKEN_ID ? frame.path : [...frame.path, node.tokenId];
+    const path =
+      node.tokenId === ROOT_TOKEN_ID
+        ? frame.path
+        : [...frame.path, node.tokenId];
     if (node.terminal && path.length > 0) {
       out.push({ name: path.join(","), tokens: path });
     }
@@ -211,7 +215,9 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
   if (offset + pathLen + 4 > input.byteLength) {
     throw new Error("deserializeTokenTree: truncated path / node-count");
   }
-  const path = new TextDecoder().decode(input.subarray(offset, offset + pathLen));
+  const path = new TextDecoder().decode(
+    input.subarray(offset, offset + pathLen),
+  );
   offset += pathLen;
   const totalNodes = view.getUint32(offset, true);
   offset += 4;
@@ -230,9 +236,7 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
     const numChildren = view.getUint32(offset, true);
     offset += 4;
     if (offset + numChildren * 4 > input.byteLength) {
-      throw new Error(
-        `deserializeTokenTree: truncated children for node ${i}`,
-      );
+      throw new Error(`deserializeTokenTree: truncated children for node ${i}`);
     }
     const childPtrs: number[] = [];
     for (let c = 0; c < numChildren; c++) {

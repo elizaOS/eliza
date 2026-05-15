@@ -1,8 +1,8 @@
 import {
 	asUUID,
 	ChannelType,
-	createUniqueUuid,
 	logger as coreLogger,
+	createUniqueUuid,
 	type Memory,
 	ModelType,
 	withStandaloneTrajectory,
@@ -12,12 +12,12 @@ import { TRUST_LEADERBOARD_WORLD_SEED } from "./config";
 import type { CommunityInvestorService } from "./service";
 import {
 	type Conviction,
+	type MessageReceivedHandlerParams,
 	type Recommendation,
 	ServiceType,
 	SupportedChain,
 	TRUST_MARKETPLACE_COMPONENT_TYPE,
 	type UserTrustProfile,
-	type MessageReceivedHandlerParams,
 } from "./types";
 
 function logValue(value: unknown): string {
@@ -171,9 +171,9 @@ const messageReceivedHandler = async ({
 	}
 
 	try {
-			// Create a simple roomId for this message context if none provided
-			const messageRoomId =
-				roomId || createUniqueUuid(runtime, currentMessageSenderId);
+		// Create a simple roomId for this message context if none provided
+		const messageRoomId =
+			roomId || createUniqueUuid(runtime, currentMessageSenderId);
 
 		logger.debug(
 			`[CommunityInvestor] Processing message from user ${currentMessageSenderId} in room ${messageRoomId}`,
@@ -182,11 +182,11 @@ const messageReceivedHandler = async ({
 		// Ensure the agent's world exists before creating components within it
 		try {
 			await runtime.ensureWorldExists({
-					id: componentWorldId, // This is now runtime.agentId
-					name: `Social Alpha World for Agent ${componentWorldId}`,
-					agentId: runtime.agentId, // The agent responsible for this world
-					metadata: {},
-				});
+				id: componentWorldId, // This is now runtime.agentId
+				name: `Social Alpha World for Agent ${componentWorldId}`,
+				agentId: runtime.agentId, // The agent responsible for this world
+				metadata: {},
+			});
 		} catch (error) {
 			logger.debug(
 				`[CommunityInvestor] World ${componentWorldId} already exists or error ensuring world: ${error}`,
@@ -210,9 +210,9 @@ const messageReceivedHandler = async ({
 			);
 			if (
 				agentUserState === "MUTED" &&
-					!content.text
-						?.toLowerCase()
-						.includes((runtime.character.name ?? "").toLowerCase())
+				!content.text
+					?.toLowerCase()
+					.includes((runtime.character.name ?? "").toLowerCase())
 			) {
 				logger.debug(
 					"[CommunityInvestor] Agent muted and not mentioned. Ignoring.",

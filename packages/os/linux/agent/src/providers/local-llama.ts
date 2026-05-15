@@ -62,49 +62,49 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 
 import {
-    type CatalogModel,
-    findCatalogModel,
-    findDflashDrafter,
+  type CatalogModel,
+  findCatalogModel,
+  findDflashDrafter,
 } from "../local-inference/catalog.ts";
 
 const LIBLLAMA_DIR_DEFAULT = "/opt/usbeliza/lib";
 
 export class LocalLlamaError extends Error {
-    constructor(
-        message: string,
-        public code:
-            | "missing-libllama"
-            | "missing-shim"
-            | "missing-model"
-            | "load-failed"
-            | "not-implemented"
-            | "bad-tokenizer-pair",
-    ) {
-        super(message);
-        this.name = "LocalLlamaError";
-    }
+  constructor(
+    message: string,
+    public code:
+      | "missing-libllama"
+      | "missing-shim"
+      | "missing-model"
+      | "load-failed"
+      | "not-implemented"
+      | "bad-tokenizer-pair",
+  ) {
+    super(message);
+    this.name = "LocalLlamaError";
+  }
 }
 
 export interface LocalLlamaContext {
-    /** Active chat target model. */
-    readonly target: CatalogModel;
-    /** DFlash drafter, if `target.dflashDrafter` set + present on disk. */
-    readonly drafter?: CatalogModel;
-    /** Resolved libllama.so path. */
-    readonly libllamaPath: string;
-    /** Resolved libeliza-llama-shim.so path. */
-    readonly shimPath: string;
-    /** Resolved GGUF model file path. */
-    readonly modelPath: string;
+  /** Active chat target model. */
+  readonly target: CatalogModel;
+  /** DFlash drafter, if `target.dflashDrafter` set + present on disk. */
+  readonly drafter?: CatalogModel;
+  /** Resolved libllama.so path. */
+  readonly libllamaPath: string;
+  /** Resolved libeliza-llama-shim.so path. */
+  readonly shimPath: string;
+  /** Resolved GGUF model file path. */
+  readonly modelPath: string;
 }
 
 export interface LocalLlamaProbe {
-    /** Returns the context when all required artifacts are present. */
-    readonly ready: boolean;
-    /** Human-readable reason — used by status reports + the chat handler's fallback message. */
-    readonly reason: string;
-    /** Whether the user explicitly opted into the llama backend. */
-    readonly forced: boolean;
+  /** Returns the context when all required artifacts are present. */
+  readonly ready: boolean;
+  /** Human-readable reason — used by status reports + the chat handler's fallback message. */
+  readonly reason: string;
+  /** Whether the user explicitly opted into the llama backend. */
+  readonly forced: boolean;
 }
 
 /**
@@ -114,46 +114,53 @@ export interface LocalLlamaProbe {
  * This is what the chat handler's backend-selection code calls to
  * decide between `local-llama` and `ollama` providers.
  */
-export function probeLocalLlama(targetModelId: string, modelsDir: string): LocalLlamaProbe {
-    const forced = (process.env.USBELIZA_LOCAL_BACKEND ?? "").toLowerCase() === "llama";
-    const dir = process.env.USBELIZA_LIBLLAMA_DIR ?? LIBLLAMA_DIR_DEFAULT;
-    const libllamaPath = path.join(dir, "libllama.so");
-    const shimPath = path.join(dir, "libeliza-llama-shim.so");
-    if (!existsSync(libllamaPath)) {
-        return {
-            ready: false,
-            forced,
-            reason: `libllama.so not found at ${libllamaPath} (built by 0511-usbeliza-libllama.hook.chroot)`,
-        };
-    }
-    if (!existsSync(shimPath)) {
-        return {
-            ready: false,
-            forced,
-            reason: `libeliza-llama-shim.so not found at ${shimPath}`,
-        };
-    }
-    const target = findCatalogModel(targetModelId);
-    if (target === undefined) {
-        return {
-            ready: false,
-            forced,
-            reason: `target model ${targetModelId} not in catalog`,
-        };
-    }
-    const modelPath = path.join(modelsDir, target.ggufFile.split("/").pop() ?? "");
-    if (!existsSync(modelPath)) {
-        return {
-            ready: false,
-            forced,
-            reason: `model GGUF missing at ${modelPath} — run the model downloader for ${target.id}`,
-        };
-    }
+export function probeLocalLlama(
+  targetModelId: string,
+  modelsDir: string,
+): LocalLlamaProbe {
+  const forced =
+    (process.env.USBELIZA_LOCAL_BACKEND ?? "").toLowerCase() === "llama";
+  const dir = process.env.USBELIZA_LIBLLAMA_DIR ?? LIBLLAMA_DIR_DEFAULT;
+  const libllamaPath = path.join(dir, "libllama.so");
+  const shimPath = path.join(dir, "libeliza-llama-shim.so");
+  if (!existsSync(libllamaPath)) {
     return {
-        ready: true,
-        forced,
-        reason: `libllama.so + ${target.displayName} ready at ${modelPath}`,
+      ready: false,
+      forced,
+      reason: `libllama.so not found at ${libllamaPath} (built by 0511-usbeliza-libllama.hook.chroot)`,
     };
+  }
+  if (!existsSync(shimPath)) {
+    return {
+      ready: false,
+      forced,
+      reason: `libeliza-llama-shim.so not found at ${shimPath}`,
+    };
+  }
+  const target = findCatalogModel(targetModelId);
+  if (target === undefined) {
+    return {
+      ready: false,
+      forced,
+      reason: `target model ${targetModelId} not in catalog`,
+    };
+  }
+  const modelPath = path.join(
+    modelsDir,
+    target.ggufFile.split("/").pop() ?? "",
+  );
+  if (!existsSync(modelPath)) {
+    return {
+      ready: false,
+      forced,
+      reason: `model GGUF missing at ${modelPath} — run the model downloader for ${target.id}`,
+    };
+  }
+  return {
+    ready: true,
+    forced,
+    reason: `libllama.so + ${target.displayName} ready at ${modelPath}`,
+  };
 }
 
 /**
@@ -169,62 +176,74 @@ export function probeLocalLlama(targetModelId: string, modelsDir: string): Local
  * Ollama is what answered" surprise becomes invisible.
  */
 export function loadLocalLlama(
-    targetModelId: string,
-    modelsDir: string,
+  targetModelId: string,
+  modelsDir: string,
 ): LocalLlamaContext {
-    const probe = probeLocalLlama(targetModelId, modelsDir);
-    if (!probe.ready) {
-        throw new LocalLlamaError(probe.reason, "missing-libllama");
-    }
+  const probe = probeLocalLlama(targetModelId, modelsDir);
+  if (!probe.ready) {
+    throw new LocalLlamaError(probe.reason, "missing-libllama");
+  }
 
-    const target = findCatalogModel(targetModelId);
-    if (target === undefined) {
-        throw new LocalLlamaError(`target ${targetModelId} not in catalog`, "missing-model");
-    }
-
-    const modelPath = path.join(modelsDir, target.ggufFile.split("/").pop() ?? "");
-
-    const drafter = findDflashDrafter(target);
-    if (drafter !== undefined) {
-        const candidate = path.join(modelsDir, drafter.ggufFile.split("/").pop() ?? "");
-        if (!existsSync(candidate)) {
-            throw new LocalLlamaError(
-                `DFlash target ${target.id} requires drafter ${drafter.id} but it isn't downloaded yet`,
-                "missing-model",
-            );
-        }
-        if (drafter.tokenizerFamily !== target.tokenizerFamily) {
-            throw new LocalLlamaError(
-                `drafter ${drafter.id} (${drafter.tokenizerFamily}) cannot draft for target ${target.id} (${target.tokenizerFamily})`,
-                "bad-tokenizer-pair",
-            );
-        }
-    }
-
-    // Sanity-check the GGUF magic so we fail with a useful error before
-    // dlopen if the user pointed us at a non-GGUF file. The GGUF v3
-    // format magic is `GGUF` (0x47475546 little-endian).
-    const stat = statSync(modelPath);
-    if (stat.size < 8) {
-        throw new LocalLlamaError(`${modelPath} is too small to be a GGUF file`, "load-failed");
-    }
-
-    // TODO Phase 1.5: bun:ffi binding. The full implementation imports
-    // `bun:ffi` dynamically (Bun built-in; Node test bundlers can't
-    // resolve it statically) and dlopen()s libllama.so + the shim from
-    // `process.env.USBELIZA_LIBLLAMA_DIR ?? LIBLLAMA_DIR_DEFAULT`, then
-    // calls the symbol pin set listed in the module header. See milady's
-    // aosp-llama-adapter.ts (~1200 LOC) for the canonical shape.
-    //
-    // This stub validates all artifacts and inputs so the agent's
-    // bootstrap pipeline can be wired and tested end-to-end. Until the
-    // cross-compile pipeline lands and ships a real libllama.so to bind
-    // to, we throw `not-implemented` so the agent falls back to Ollama
-    // visibly rather than appearing to use local-llama while silently
-    // serving the wrong backend.
+  const target = findCatalogModel(targetModelId);
+  if (target === undefined) {
     throw new LocalLlamaError(
-        "local-llama adapter wired but libllama.so binding not yet compiled — staying on Ollama. " +
-            "Track Phase 1.5 milestone for the cross-compile pipeline.",
-        "not-implemented",
+      `target ${targetModelId} not in catalog`,
+      "missing-model",
     );
+  }
+
+  const modelPath = path.join(
+    modelsDir,
+    target.ggufFile.split("/").pop() ?? "",
+  );
+
+  const drafter = findDflashDrafter(target);
+  if (drafter !== undefined) {
+    const candidate = path.join(
+      modelsDir,
+      drafter.ggufFile.split("/").pop() ?? "",
+    );
+    if (!existsSync(candidate)) {
+      throw new LocalLlamaError(
+        `DFlash target ${target.id} requires drafter ${drafter.id} but it isn't downloaded yet`,
+        "missing-model",
+      );
+    }
+    if (drafter.tokenizerFamily !== target.tokenizerFamily) {
+      throw new LocalLlamaError(
+        `drafter ${drafter.id} (${drafter.tokenizerFamily}) cannot draft for target ${target.id} (${target.tokenizerFamily})`,
+        "bad-tokenizer-pair",
+      );
+    }
+  }
+
+  // Sanity-check the GGUF magic so we fail with a useful error before
+  // dlopen if the user pointed us at a non-GGUF file. The GGUF v3
+  // format magic is `GGUF` (0x47475546 little-endian).
+  const stat = statSync(modelPath);
+  if (stat.size < 8) {
+    throw new LocalLlamaError(
+      `${modelPath} is too small to be a GGUF file`,
+      "load-failed",
+    );
+  }
+
+  // TODO Phase 1.5: bun:ffi binding. The full implementation imports
+  // `bun:ffi` dynamically (Bun built-in; Node test bundlers can't
+  // resolve it statically) and dlopen()s libllama.so + the shim from
+  // `process.env.USBELIZA_LIBLLAMA_DIR ?? LIBLLAMA_DIR_DEFAULT`, then
+  // calls the symbol pin set listed in the module header. See milady's
+  // aosp-llama-adapter.ts (~1200 LOC) for the canonical shape.
+  //
+  // This stub validates all artifacts and inputs so the agent's
+  // bootstrap pipeline can be wired and tested end-to-end. Until the
+  // cross-compile pipeline lands and ships a real libllama.so to bind
+  // to, we throw `not-implemented` so the agent falls back to Ollama
+  // visibly rather than appearing to use local-llama while silently
+  // serving the wrong backend.
+  throw new LocalLlamaError(
+    "local-llama adapter wired but libllama.so binding not yet compiled — staying on Ollama. " +
+      "Track Phase 1.5 milestone for the cross-compile pipeline.",
+    "not-implemented",
+  );
 }

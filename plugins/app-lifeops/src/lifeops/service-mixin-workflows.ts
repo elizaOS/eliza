@@ -11,6 +11,12 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { LIFEOPS_WORKFLOW_STATUSES } from "../contracts/index.js";
+import {
+  getWorkflowStepRegistry,
+  UnknownWorkflowStepError,
+  type WorkflowStepExecuteArgs,
+  type WorkflowStepExecuteContext,
+} from "./registries/workflow-step-registry.js";
 import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
 import {
   createLifeOpsWorkflowDefinition,
@@ -18,12 +24,6 @@ import {
   type LifeOpsScheduleMergedStateRecord,
 } from "./repository.js";
 import { parseWorkflowSchedulerState } from "./service-helpers-browser.js";
-import {
-  getWorkflowStepRegistry,
-  UnknownWorkflowStepError,
-  type WorkflowStepExecuteArgs,
-  type WorkflowStepExecuteContext,
-} from "./registries/workflow-step-registry.js";
 import {
   isRecord,
   normalizeOptionalRecord,
@@ -78,7 +78,10 @@ type LifeOpsWorkflowEvent = {
   payload: Record<string, unknown>;
 };
 
-type WorkflowEventSchedule = Extract<LifeOpsWorkflowSchedule, { kind: "event" }>;
+type WorkflowEventSchedule = Extract<
+  LifeOpsWorkflowSchedule,
+  { kind: "event" }
+>;
 
 type WorkflowMixinDependencies = LifeOpsServiceBase & {
   readEffectiveScheduleState(args?: {

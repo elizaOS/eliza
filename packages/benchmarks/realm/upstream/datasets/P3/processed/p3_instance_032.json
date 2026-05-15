@@ -47,30 +47,21 @@
       "passenger_id": "p001",
       "pickup": "airport",
       "dropoff": "hospital",
-      "time_window": [
-        14.0,
-        14.266666666666667
-      ],
+      "time_window": [14.0, 14.266666666666667],
       "deadline": 47
     },
     {
       "passenger_id": "p002",
       "pickup": "suburb",
       "dropoff": "university",
-      "time_window": [
-        9.0,
-        9.466666666666667
-      ],
+      "time_window": [9.0, 9.466666666666667],
       "deadline": 47
     },
     {
       "passenger_id": "p003",
       "pickup": "airport",
       "dropoff": "hospital",
-      "time_window": [
-        8.0,
-        8.366666666666667
-      ],
+      "time_window": [8.0, 8.366666666666667],
       "deadline": 60
     }
   ],

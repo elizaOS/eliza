@@ -5,7 +5,8 @@
   gap: 30px;
 }
 
-.testimonials .quote, .testimonials .logos {
+.testimonials .quote,
+.testimonials .logos {
   width: 70%;
   margin: 0 auto;
 }
@@ -31,7 +32,7 @@
 
 @media (min-width: 768px) {
   .testimonials .quote {
-    width: calc((100% - 60px)/3);
+    width: calc((100% - 60px) / 3);
   }
 }
 

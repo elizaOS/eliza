@@ -27,9 +27,9 @@
 }
 
 .personas a blockquote:before {
-  content: '« ';
+  content: "« ";
 }
 
 .personas a blockquote:after {
-  content: ' »';
+  content: " »";
 }

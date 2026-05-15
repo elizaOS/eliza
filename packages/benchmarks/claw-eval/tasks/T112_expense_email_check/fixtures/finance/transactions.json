@@ -2,7 +2,7 @@
   {
     "transaction_id": "TXN-701",
     "date": "2026-03-24",
-    "amount": 3200.00,
+    "amount": 3200.0,
     "currency": "CNY",
     "type": "Travel expense reimbursement",
     "category": "Expense reimbursement",
@@ -13,7 +13,7 @@
   {
     "transaction_id": "TXN-702",
     "date": "2026-03-24",
-    "amount": 680.00,
+    "amount": 680.0,
     "currency": "CNY",
     "type": "Office supplies reimbursement",
     "category": "Expense reimbursement",
@@ -24,7 +24,7 @@
   {
     "transaction_id": "TXN-703",
     "date": "2026-03-24",
-    "amount": 5000.00,
+    "amount": 5000.0,
     "currency": "CNY",
     "type": "Training fee reimbursement",
     "category": "Expense reimbursement",
@@ -35,7 +35,7 @@
   {
     "transaction_id": "TXN-704",
     "date": "2026-03-24",
-    "amount": 420.00,
+    "amount": 420.0,
     "currency": "CNY",
     "type": "Meal expense reimbursement",
     "category": "Expense reimbursement",
@@ -46,7 +46,7 @@
   {
     "transaction_id": "TXN-705",
     "date": "2026-03-20",
-    "amount": 12000.00,
+    "amount": 12000.0,
     "currency": "CNY",
     "type": "Utilities",
     "category": "Operating costs",
@@ -57,7 +57,7 @@
   {
     "transaction_id": "TXN-706",
     "date": "2026-03-25",
-    "amount": 350000.00,
+    "amount": 350000.0,
     "currency": "CNY",
     "type": "Employee payroll",
     "category": "Personnel costs",

@@ -10,10 +10,10 @@
  * non-blank audio and non-null transcripts end-to-end.
  */
 
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
@@ -22,9 +22,9 @@ const REPO_ROOT = resolve(PKG_DIR, "../../..");
 // We import the runner for unit-mode testing of the bus / verification logic.
 // The real runtime is only exercised when GROQ_API_KEY is set.
 import {
+  AudioBus,
   estimateWavDurationSec,
   isAudioNonBlank,
-  AudioBus,
 } from "../runner/audio-bus.ts";
 import { verifyRun } from "../verify/verify-run.ts";
 
@@ -48,7 +48,12 @@ describe("AudioBus", () => {
   });
 
   it("flush writes turn files and mix.wav to a temp dir", async () => {
-    const tmpDir = join(REPO_ROOT, "artifacts", "three-agent-dialogue", "_smoke-bus-test");
+    const tmpDir = join(
+      REPO_ROOT,
+      "artifacts",
+      "three-agent-dialogue",
+      "_smoke-bus-test",
+    );
     mkdirSync(tmpDir, { recursive: true });
 
     try {
@@ -103,7 +108,9 @@ describe("AudioBus", () => {
     const pcm = new Uint8Array(22050 * 2);
     const view = new DataView(pcm.buffer);
     for (let i = 0; i < 22050; i++) {
-      const sample = Math.round(Math.sin((2 * Math.PI * 440 * i) / 22050) * 16000);
+      const sample = Math.round(
+        Math.sin((2 * Math.PI * 440 * i) / 22050) * 16000,
+      );
       view.setInt16(i * 2, sample, true);
     }
     expect(isAudioNonBlank(pcm)).toBe(true);
@@ -119,7 +126,12 @@ describe("Canonical scenario", () => {
     const scenarioPath = join(PKG_DIR, "scenarios", "canonical.json");
     expect(existsSync(scenarioPath)).toBe(true);
     const scenario = JSON.parse(readFileSync(scenarioPath, "utf-8")) as {
-      turns: Array<{ turnIdx: number; speaker: string; prompt: string; expectedEmotion: string }>;
+      turns: Array<{
+        turnIdx: number;
+        speaker: string;
+        prompt: string;
+        expectedEmotion: string;
+      }>;
       smokeSubset: number[];
       verificationThresholds: {
         minNonEmptyTranscripts: number;
@@ -140,7 +152,9 @@ describe("Canonical scenario", () => {
       expect(turn.prompt.length).toBeGreaterThan(0);
     }
 
-    expect(scenario.verificationThresholds.minNonEmptyTranscripts).toBeGreaterThan(0);
+    expect(
+      scenario.verificationThresholds.minNonEmptyTranscripts,
+    ).toBeGreaterThan(0);
     expect(scenario.verificationThresholds.minDistinctSpeakers).toBe(3);
   });
 
@@ -150,7 +164,9 @@ describe("Canonical scenario", () => {
       turns: Array<{ turnIdx: number; speaker: string }>;
       smokeSubset: number[];
     };
-    const smokeTurns = scenario.turns.filter((t) => scenario.smokeSubset.includes(t.turnIdx));
+    const smokeTurns = scenario.turns.filter((t) =>
+      scenario.smokeSubset.includes(t.turnIdx),
+    );
     const speakers = new Set(smokeTurns.map((t) => t.speaker));
     expect(speakers.size).toBeGreaterThanOrEqual(3);
   });
@@ -240,8 +256,12 @@ describe.skipIf(!GROQ_KEY_SET)(
         expect(report.transcriptCount).toBeGreaterThan(0);
         expect(report.mixWavExists).toBe(true);
         expect(report.mixWavDurationSec).toBeGreaterThan(0);
-        expect(report.verification.distinctSpeakersDetected).toBeGreaterThanOrEqual(3);
-        expect(report.verification.emotionDetectedFraction).toBeGreaterThanOrEqual(0.8);
+        expect(
+          report.verification.distinctSpeakersDetected,
+        ).toBeGreaterThanOrEqual(3);
+        expect(
+          report.verification.emotionDetectedFraction,
+        ).toBeGreaterThanOrEqual(0.8);
         expect(report.verification.turnsTaken).toBeGreaterThanOrEqual(4);
 
         // Check the run result directly

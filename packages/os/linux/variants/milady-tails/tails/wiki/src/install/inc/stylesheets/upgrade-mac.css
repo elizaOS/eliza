@@ -1,10 +1,15 @@
 @import url("upgrade-os.css");
 
-span.upgrade-mac, a.upgrade-mac {
+span.upgrade-mac,
+a.upgrade-mac {
   display: inline;
 }
 
-div.upgrade-mac, img.upgrade-mac, p.upgrade-mac, h1.upgrade-mac, h2.upgrade-mac {
+div.upgrade-mac,
+img.upgrade-mac,
+p.upgrade-mac,
+h1.upgrade-mac,
+h2.upgrade-mac {
   display: block;
 }
 
@@ -12,6 +17,7 @@ li.upgrade-mac {
   display: list-item;
 }
 
-h1.step:before, span.next-counter:before {
-  content: counter(step)'/7';
+h1.step:before,
+span.next-counter:before {
+  content: counter(step) "/7";
 }

@@ -17,7 +17,7 @@
     "usdc_balance_warn": 100,
     "daily_profit_target": 25,
     "max_failed_tx_per_hour": 3,
-    "min_arb_profit_usdc": 0.50,
+    "min_arb_profit_usdc": 0.5,
     "max_gas_price_gwei": 150,
     "slippage_tolerance": 0.005
   },
@@ -25,9 +25,5 @@
   "alert_webhook": "",
   "monitor_interval_seconds": 900,
   "cron_task_id": "a2ce4b5b-63bf-4235-a84d-5a66cf18532f",
-  "enabled_pairs": [
-    "POL/USDC",
-    "WETH/USDC",
-    "POL/WETH"
-  ]
+  "enabled_pairs": ["POL/USDC", "WETH/USDC", "POL/WETH"]
 }

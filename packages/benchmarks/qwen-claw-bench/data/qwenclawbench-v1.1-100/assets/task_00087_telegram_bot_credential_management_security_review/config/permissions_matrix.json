@@ -16,10 +16,7 @@
   },
   "transaction_bot": {
     "bot_name": "txn_monitor_bot",
-    "permissions": [
-      "send_message",
-      "read_group"
-    ],
+    "permissions": ["send_message", "read_group"],
     "scope": "transaction_channel_only",
     "description": "Monitors and reports completed transactions to the transaction log channel",
     "added_date": "2023-08-20",

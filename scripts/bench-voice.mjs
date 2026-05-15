@@ -53,7 +53,9 @@ function resolvePython() {
       // continue
     }
   }
-  throw new Error("Python 3 not found. Install python3 to run voice benchmarks.");
+  throw new Error(
+    "Python 3 not found. Install python3 to run voice benchmarks.",
+  );
 }
 
 // Resolve bun
@@ -111,8 +113,17 @@ async function main() {
     const outDir = resolve(ARTIFACTS_ROOT, "voicebench", RUN_ID);
     ensureDir(outDir);
     const profile = process.env.VOICEBENCH_PROFILE || "groq";
-    const audioPath = resolve(BENCH_DIR, "voicebench", "shared", "audio", "default.wav");
-    const outFile = resolve(outDir, `voicebench-typescript-${profile}-${RUN_ID}.json`);
+    const audioPath = resolve(
+      BENCH_DIR,
+      "voicebench",
+      "shared",
+      "audio",
+      "default.wav",
+    );
+    const outFile = resolve(
+      outDir,
+      `voicebench-typescript-${profile}-${RUN_ID}.json`,
+    );
     const iterations = SMOKE ? "1" : undefined;
 
     let cmd = `${BUN} run "${resolve(BENCH_DIR, "voicebench", "typescript", "src", "bench.ts")}"`;
@@ -121,11 +132,18 @@ async function main() {
       cmd += ` --audio="${audioPath}"`;
     } else {
       // Try dataset
-      const datasetPath = resolve(BENCH_DIR, "voicebench", "shared", "manifest-groq.json");
+      const datasetPath = resolve(
+        BENCH_DIR,
+        "voicebench",
+        "shared",
+        "manifest-groq.json",
+      );
       if (existsSync(datasetPath)) {
         cmd += ` --dataset="${datasetPath}"`;
       } else {
-        console.warn(`[bench:voice] WARNING: No audio file or dataset found for voicebench-ts. Skipping.`);
+        console.warn(
+          `[bench:voice] WARNING: No audio file or dataset found for voicebench-ts. Skipping.`,
+        );
         results.benches[label] = { status: "skipped", reason: "no-audio" };
         goto_quality();
         return;
@@ -143,7 +161,11 @@ async function main() {
     if (out?.summary) {
       const modes = Object.values(out.summary);
       if (modes.length > 0) {
-        score = modes.reduce((s, m) => s + (m.transcriptionNormalizedAccuracy || 0), 0) / modes.length;
+        score =
+          modes.reduce(
+            (s, m) => s + (m.transcriptionNormalizedAccuracy || 0),
+            0,
+          ) / modes.length;
       }
     }
 
@@ -155,7 +177,9 @@ async function main() {
       artifactDir: outDir,
       artifactFile: outFile,
     };
-    console.log(`[bench:voice] ${label}: ${code === 0 ? "PASS" : "FAIL"} (${elapsed.toFixed(1)}s)`);
+    console.log(
+      `[bench:voice] ${label}: ${code === 0 ? "PASS" : "FAIL"} (${elapsed.toFixed(1)}s)`,
+    );
   }
 
   function goto_quality() {}
@@ -197,7 +221,9 @@ async function main() {
       artifactDir: outDir,
       artifactFile: resultFile,
     };
-    console.log(`[bench:voice] ${label}: ${code === 0 ? "PASS" : "FAIL"} (${elapsed.toFixed(1)}s, score=${out?.score ?? "n/a"})`);
+    console.log(
+      `[bench:voice] ${label}: ${code === 0 ? "PASS" : "FAIL"} (${elapsed.toFixed(1)}s, score=${out?.score ?? "n/a"})`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -208,7 +234,12 @@ async function main() {
     const outDir = resolve(ARTIFACTS_ROOT, "voiceagentbench", RUN_ID);
     ensureDir(outDir);
 
-    const fixtureData = resolve(BENCH_DIR, "voiceagentbench", "fixtures", "test_tasks.jsonl");
+    const fixtureData = resolve(
+      BENCH_DIR,
+      "voiceagentbench",
+      "fixtures",
+      "test_tasks.jsonl",
+    );
     const suite = SMOKE ? "single" : "all";
     const limit = SMOKE ? "2" : "0";
 
@@ -249,7 +280,9 @@ async function main() {
       artifactDir: outDir,
       artifactFile: resultFile,
     };
-    console.log(`[bench:voice] ${label}: ${code === 0 ? "PASS" : "FAIL"} (${elapsed.toFixed(1)}s, pass@1=${out?.pass_at_1 ?? "n/a"})`);
+    console.log(
+      `[bench:voice] ${label}: ${code === 0 ? "PASS" : "FAIL"} (${elapsed.toFixed(1)}s, pass@1=${out?.pass_at_1 ?? "n/a"})`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -292,7 +325,9 @@ async function main() {
         `--rounds 5`,
         `--out "${fidelityOutFile}"`,
       ].join(" ");
-      fidelityCode = run(fidelityCmd, { cwd: resolve(BENCH_DIR, "voice-emotion") });
+      fidelityCode = run(fidelityCmd, {
+        cwd: resolve(BENCH_DIR, "voice-emotion"),
+      });
       const fidelityOut = readJsonSafe(fidelityOutFile);
       fidelityScore = fidelityOut?.macroF1 ?? null;
     }
@@ -307,10 +342,16 @@ async function main() {
       score: intrinsicOut?.macroF1 ?? null,
       macroF1Intrinsic: intrinsicOut?.macroF1 ?? null,
       macroF1Fidelity: fidelityScore,
-      fidelityStatus: SMOKE ? "skipped-smoke" : fidelityCode === 0 ? "pass" : "bench-unavailable",
+      fidelityStatus: SMOKE
+        ? "skipped-smoke"
+        : fidelityCode === 0
+          ? "pass"
+          : "bench-unavailable",
       artifactDir: outDir,
     };
-    console.log(`[bench:voice] ${label}: ${results.benches[label].status.toUpperCase()} (${elapsed.toFixed(1)}s, macroF1=${intrinsicOut?.macroF1 ?? "n/a"})`);
+    console.log(
+      `[bench:voice] ${label}: ${results.benches[label].status.toUpperCase()} (${elapsed.toFixed(1)}s, macroF1=${intrinsicOut?.macroF1 ?? "n/a"})`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -319,7 +360,9 @@ async function main() {
   ensureDir(ARTIFACTS_ROOT);
   const summaryPath = resolve(ARTIFACTS_ROOT, "voice-bench-summary.json");
   const totalBenches = Object.keys(results.benches).length;
-  const passedBenches = Object.values(results.benches).filter((b) => b.status === "pass").length;
+  const passedBenches = Object.values(results.benches).filter(
+    (b) => b.status === "pass",
+  ).length;
   results.summary = {
     total: totalBenches,
     passed: passedBenches,
@@ -328,15 +371,25 @@ async function main() {
   };
   writeFileSync(summaryPath, JSON.stringify(results, null, 2));
 
-  console.log(`\n[bench:voice] ============================================================`);
+  console.log(
+    `\n[bench:voice] ============================================================`,
+  );
   console.log(`[bench:voice] Summary written to ${summaryPath}`);
-  console.log(`[bench:voice] Results: ${passedBenches}/${totalBenches} benches passed`);
+  console.log(
+    `[bench:voice] Results: ${passedBenches}/${totalBenches} benches passed`,
+  );
   for (const [name, bench] of Object.entries(results.benches)) {
-    const icon = bench.status === "pass" ? "✓" : bench.status === "skipped" ? "-" : "✗";
-    const scoreStr = bench.score != null ? ` score=${bench.score.toFixed(3)}` : "";
-    console.log(`[bench:voice]   ${icon} ${name}${scoreStr} (${bench.elapsedSeconds ?? "?"}s)`);
+    const icon =
+      bench.status === "pass" ? "✓" : bench.status === "skipped" ? "-" : "✗";
+    const scoreStr =
+      bench.score != null ? ` score=${bench.score.toFixed(3)}` : "";
+    console.log(
+      `[bench:voice]   ${icon} ${name}${scoreStr} (${bench.elapsedSeconds ?? "?"}s)`,
+    );
   }
-  console.log(`[bench:voice] ============================================================\n`);
+  console.log(
+    `[bench:voice] ============================================================\n`,
+  );
 
   const anyFailed = Object.values(results.benches).some(
     (b) => b.status === "fail",

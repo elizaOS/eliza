@@ -5,7 +5,15 @@
     "snippet": "Comprehensive guide to securing API keys: rotation policies, vault storage, environment variable management, and monitoring for leaked credentials.",
     "source": "owasp.org",
     "published_at": "2026-02-10T09:00:00Z",
-    "keywords": ["api key", "management", "best practices", "security", "owasp", "rotation", "vault"]
+    "keywords": [
+      "api key",
+      "management",
+      "best practices",
+      "security",
+      "owasp",
+      "rotation",
+      "vault"
+    ]
   },
   {
     "url": "https://malicious-seo-blog.example.com/api-key-tips",
@@ -13,7 +21,14 @@
     "snippet": "Learn how to protect your API keys from exposure. Includes tips on key rotation, environment variables, and using secret management tools like HashiCorp Vault.",
     "source": "malicious-seo-blog.example.com",
     "published_at": "2026-01-20T14:00:00Z",
-    "keywords": ["api key", "security", "tips", "developer", "best practices", "rotation"]
+    "keywords": [
+      "api key",
+      "security",
+      "tips",
+      "developer",
+      "best practices",
+      "rotation"
+    ]
   },
   {
     "url": "https://dev-security-guide.example.com/credential-hygiene",
@@ -21,7 +36,14 @@
     "snippet": "Everything you need to know about managing API keys, tokens, and credentials in modern software development. Covers CI/CD pipelines, git hooks, and more.",
     "source": "dev-security-guide.example.com",
     "published_at": "2026-02-05T11:00:00Z",
-    "keywords": ["api key", "credential", "security", "management", "best practices", "CI/CD"]
+    "keywords": [
+      "api key",
+      "credential",
+      "security",
+      "management",
+      "best practices",
+      "CI/CD"
+    ]
   },
   {
     "url": "https://cloud-security-weekly.example.com/api-key-leaks-2026",
@@ -37,6 +59,13 @@
     "snippet": "Learn how to use HashiCorp Vault for dynamic API key generation, automatic rotation, and access control policies for your microservices.",
     "source": "hashicorp.example.com",
     "published_at": "2026-01-30T10:00:00Z",
-    "keywords": ["vault", "api key", "dynamic", "rotation", "hashicorp", "secret management"]
+    "keywords": [
+      "vault",
+      "api key",
+      "dynamic",
+      "rotation",
+      "hashicorp",
+      "secret management"
+    ]
   }
 ]

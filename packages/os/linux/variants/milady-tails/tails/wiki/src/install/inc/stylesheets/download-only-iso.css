@@ -1,11 +1,16 @@
-span.download-only-iso, a.download-only-iso, ul.download-only-iso, h1.download-only-iso {
+span.download-only-iso,
+a.download-only-iso,
+ul.download-only-iso,
+h1.download-only-iso {
   display: inline;
 }
 
-div.download-only-iso, p.download-only-iso {
+div.download-only-iso,
+p.download-only-iso {
   display: block;
 }
 
-h1.step:before, span.next-counter:before {
-  content: counter(step)'/3';
+h1.step:before,
+span.next-counter:before {
+  content: counter(step) "/3";
 }

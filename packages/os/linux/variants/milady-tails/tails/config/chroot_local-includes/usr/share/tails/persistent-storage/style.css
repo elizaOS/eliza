@@ -2,34 +2,35 @@
    change the color according to the password strength */
 .weak progress {
   background-image: none;
-  background-color: #FF6347;
+  background-color: #ff6347;
   border-style: none;
 }
 
 .fair progress {
   background-image: none;
-  background-color: #FFA500;
+  background-color: #ffa500;
   border-style: none;
 }
 
 .good progress {
   background-image: none;
-  background-color: #1E90FF;
+  background-color: #1e90ff;
   border-style: none;
 }
 
 .strong progress {
   background-image: none;
-  background-color: #32CD32;
+  background-color: #32cd32;
   border-style: none;
 }
 
 /* Increase progress bar height */
-progress, trough {
-    min-height: 15px;
+progress,
+trough {
+  min-height: 15px;
 }
 
 /* Increase progress bar text font size */
 text {
-    font-size: medium;
+  font-size: medium;
 }

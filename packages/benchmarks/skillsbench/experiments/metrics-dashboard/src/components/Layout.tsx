@@ -1,26 +1,26 @@
-import { ReactNode, useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Sun, Moon, LayoutGrid } from 'lucide-react'
+import { LayoutGrid, Moon, Sun } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface LayoutProps {
-  children: ReactNode
+  children: ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
   const [isDark, setIsDark] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches
+    if (typeof window !== "undefined") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches;
     }
-    return false
-  })
+    return false;
+  });
 
   useEffect(() => {
     if (isDark) {
-      document.documentElement.classList.add('dark')
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark')
+      document.documentElement.classList.remove("dark");
     }
-  }, [isDark])
+  }, [isDark]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -34,7 +34,7 @@ export function Layout({ children }: LayoutProps) {
 
             <div className="flex items-center gap-1">
               <Button
-                variant={!isDark ? 'secondary' : 'ghost'}
+                variant={!isDark ? "secondary" : "ghost"}
                 size="icon"
                 onClick={() => setIsDark(false)}
                 title="Light mode"
@@ -42,7 +42,7 @@ export function Layout({ children }: LayoutProps) {
                 <Sun className="w-4 h-4" />
               </Button>
               <Button
-                variant={isDark ? 'secondary' : 'ghost'}
+                variant={isDark ? "secondary" : "ghost"}
                 size="icon"
                 onClick={() => setIsDark(true)}
                 title="Dark mode"
@@ -58,5 +58,5 @@ export function Layout({ children }: LayoutProps) {
         {children}
       </main>
     </div>
-  )
+  );
 }
