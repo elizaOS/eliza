@@ -3,10 +3,7 @@ import { oxapayPaymentAdapter } from "./payment-adapters/oxapay";
 import { createStripePaymentAdapter } from "./payment-adapters/stripe";
 import { walletNativePaymentAdapter } from "./payment-adapters/wallet-native";
 import { x402PaymentAdapter } from "./payment-adapters/x402";
-import {
-  createPaymentRequestsService,
-  type PaymentRequestsService,
-} from "./payment-requests";
+import { createPaymentRequestsService, type PaymentRequestsService } from "./payment-requests";
 
 let singleton: PaymentRequestsService | null = null;
 

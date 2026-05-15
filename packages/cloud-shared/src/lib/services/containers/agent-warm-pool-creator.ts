@@ -16,9 +16,9 @@
 import { randomUUID } from "node:crypto";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { WARM_POOL_ORG_ID } from "../../../db/schemas/agent-sandboxes";
-import type { PoolContainerCreator } from "./agent-warm-pool";
-import { elizaSandboxService } from "../eliza-sandbox";
 import { logger } from "../../utils/logger";
+import { elizaSandboxService } from "../eliza-sandbox";
+import type { PoolContainerCreator } from "./agent-warm-pool";
 
 const HEALTH_PROBE_TIMEOUT_MS = 5_000;
 

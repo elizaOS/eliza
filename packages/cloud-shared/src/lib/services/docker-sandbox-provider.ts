@@ -14,16 +14,11 @@ import type { DockerNode } from "../../db/schemas/docker-nodes";
 import { containersEnv } from "../config/containers-env";
 import { getAgentBaseDomain } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
+import { logger } from "../utils/logger";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { dockerNodeManager } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
-import { DockerSSHClient } from "./docker-ssh";
-import {
-  ensureStewardTenant,
-  resolveStewardTenantCredentials,
-} from "./steward-tenant-config";
-import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
-import { logger } from "../utils/logger";
 import {
   allocatePort,
   BRIDGE_PORT_MAX,
@@ -43,8 +38,10 @@ import {
   WEBUI_PORT_MAX,
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
+import { DockerSSHClient } from "./docker-ssh";
 import { headscaleIntegration } from "./headscale-integration";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
+import { ensureStewardTenant, resolveStewardTenantCredentials } from "./steward-tenant-config";
 
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata

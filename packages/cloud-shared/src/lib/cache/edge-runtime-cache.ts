@@ -7,8 +7,8 @@
  * Tracks runtime warm state (is warm, embedding dimension set, request count).
  */
 
-import { cache } from "./client";
 import { logger } from "../utils/logger";
+import { cache } from "./client";
 
 const EDGE_CACHE_PREFIX = "edge:runtime:";
 

@@ -5,10 +5,9 @@
  */
 
 import type { Context, MiddlewareHandler } from "hono";
-
+import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
 import { logger } from "../utils/logger";
-import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
 
 export interface RateLimitConfig {
   windowMs: number;

@@ -5,8 +5,8 @@
  */
 
 import type { ExecutionContext as HonoExecutionContext } from "hono";
-import { logger } from "../utils/logger";
 import type { Bindings } from "../../types/cloud-worker-env";
+import { logger } from "../utils/logger";
 
 /**
  * Legacy map: cron schedule → single URL path (prefer `CRON_FANOUT` for multiple paths).

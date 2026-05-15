@@ -5,7 +5,6 @@
  * for Blooio iMessage/SMS integration. Follows the Telegram automation pattern.
  */
 
-import { secretsService } from "../secrets";
 import {
   type BlooioSendMessageRequest,
   type BlooioSendMessageResponse,
@@ -13,6 +12,7 @@ import {
   validateBlooioChatId,
 } from "../../utils/blooio-api";
 import { logger } from "../../utils/logger";
+import { secretsService } from "../secrets";
 
 // Use ELIZA_API_URL (ngrok) for local dev webhooks, otherwise NEXT_PUBLIC_APP_URL
 const WEBHOOK_BASE_URL =

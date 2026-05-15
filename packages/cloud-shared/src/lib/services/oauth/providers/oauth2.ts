@@ -8,11 +8,14 @@
 import { and, eq, sql } from "drizzle-orm";
 import { dbWrite } from "../../../../db/client";
 import { writeTransaction } from "../../../../db/helpers";
-import { platformCredentials, platformCredentialTypeEnum } from "../../../../db/schemas/platform-credentials";
+import {
+  platformCredentials,
+  platformCredentialTypeEnum,
+} from "../../../../db/schemas/platform-credentials";
 import { cache } from "../../../cache/client";
 import { getCloudAwareEnv } from "../../../runtime/cloud-bindings";
-import { secretsService } from "../../secrets";
 import { logger } from "../../../utils/logger";
+import { secretsService } from "../../secrets";
 import type { OAuthProviderConfig, UserInfoMapping } from "../provider-registry";
 import {
   getCallbackUrl,

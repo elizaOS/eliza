@@ -4,10 +4,10 @@
  * Provides methods to invalidate caches when data changes.
  */
 
+import { logger } from "../utils/logger";
 import { cache } from "./client";
 import { CacheKeys } from "./keys";
 import { memoryCache } from "./memory-cache";
-import { logger } from "../utils/logger";
 
 /**
  * Static methods for cache invalidation based on data mutations.

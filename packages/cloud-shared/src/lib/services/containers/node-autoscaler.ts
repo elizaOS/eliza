@@ -20,15 +20,7 @@
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { containersEnv } from "../../config/containers-env";
-import {
-  getHetznerCloudClient,
-  HetznerCloudError,
-  isHetznerCloudConfigured,
-} from "./hetzner-cloud-api";
-import {
-  buildContainerNodeUserData,
-  type NodeBootstrapInput,
-} from "./node-bootstrap";
+import { logger } from "../../utils/logger";
 import {
   countAllocatedWorkloadsOnNode,
   countRetainedWorkloadsOnNode,
@@ -38,7 +30,12 @@ import {
   inferNodeArchitectureFromMetadata,
   isArchitectureCompatibleWithPlatform,
 } from "../docker-sandbox-utils";
-import { logger } from "../../utils/logger";
+import {
+  getHetznerCloudClient,
+  HetznerCloudError,
+  isHetznerCloudConfigured,
+} from "./hetzner-cloud-api";
+import { buildContainerNodeUserData, type NodeBootstrapInput } from "./node-bootstrap";
 
 // ---------------------------------------------------------------------------
 // Types

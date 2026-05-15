@@ -9,10 +9,9 @@
 
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
-import { countAllocatedWorkloadsOnNode } from "./docker-node-workloads";
-import { DockerSSHClient } from "./docker-ssh";
-import { logger } from "../utils/logger";
 import { containersEnv } from "../config/containers-env";
+import { logger } from "../utils/logger";
+import { countAllocatedWorkloadsOnNode } from "./docker-node-workloads";
 import {
   dockerPlatformFlag,
   inferNodeArchitectureFromMetadata,
@@ -21,6 +20,7 @@ import {
   requiredArchitectureForPlatform,
   shellQuote,
 } from "./docker-sandbox-utils";
+import { DockerSSHClient } from "./docker-ssh";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -1,6 +1,6 @@
 import { cache } from "../cache/client";
-import { usageService } from "./usage";
 import { logger } from "../utils/logger";
+import { usageService } from "./usage";
 
 export interface HostedBrowserAuthContext {
   apiKeyId?: string | null;

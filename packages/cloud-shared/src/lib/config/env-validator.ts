@@ -4,8 +4,8 @@
  * Validates required environment variables on application startup.
  */
 
-import { shouldBlockDevnetBypass } from "./deployment-environment";
 import { logger } from "../utils/logger";
+import { shouldBlockDevnetBypass } from "./deployment-environment";
 
 /**
  * Error information for a validation failure.

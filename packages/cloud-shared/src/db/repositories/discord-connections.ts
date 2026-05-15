@@ -1,4 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { getEncryptionService } from "../../lib/services/secrets/encryption";
+import { logger } from "../../lib/utils/logger";
 import { db } from "../client";
 import { sqlRows } from "../execute-helpers";
 import {
@@ -6,8 +8,6 @@ import {
   type DiscordConnection,
   discordConnections,
 } from "../schemas/discord-connections";
-import { getEncryptionService } from "../../lib/services/secrets/encryption";
-import { logger } from "../../lib/utils/logger";
 
 interface CreateConnectionInput {
   organizationId: string;

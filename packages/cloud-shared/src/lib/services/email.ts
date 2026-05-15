@@ -217,9 +217,7 @@ class EmailService {
    * @returns True if sent successfully.
    */
   async sendPurchaseConfirmationEmail(data: PurchaseConfirmationEmailData): Promise<boolean> {
-    const { renderPurchaseConfirmationTemplate } = await import(
-      "../email/utils/template-renderer"
-    );
+    const { renderPurchaseConfirmationTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderPurchaseConfirmationTemplate(data);
 
     return this.send({

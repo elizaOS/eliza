@@ -24,9 +24,9 @@ import { discordConnectionsRepository, userCharactersRepository } from "../../..
 import { AgentMode } from "../../eliza/agent-mode-types";
 import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
-import { getEncryptionService } from "../secrets/encryption";
 import { DISCORD_API_BASE, discordBotHeaders } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
+import { getEncryptionService } from "../secrets/encryption";
 import {
   DISCORD_RATE_LIMIT_DEFAULT_RETRY_MS,
   DISCORD_RATE_LIMIT_MAX_QUEUE,

@@ -19,16 +19,13 @@
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import { containersEnv } from "../../config/containers-env";
+import { logger } from "../../utils/logger";
 import {
   computeForecast,
   DEFAULT_WARM_POOL_POLICY,
   type WarmPoolPolicy,
 } from "./agent-warm-pool-forecast";
-import {
-  type ImageRolloutSummary,
-  summarizeImageRollout,
-} from "./image-rollout-status";
-import { logger } from "../../utils/logger";
+import { type ImageRolloutSummary, summarizeImageRollout } from "./image-rollout-status";
 
 // ---------------------------------------------------------------------------
 // Pure decisions (tested without a DB).

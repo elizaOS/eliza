@@ -4,9 +4,9 @@ import { verifyMessage } from "viem";
 import { db } from "../../db/client";
 import { type AgentServerWallet, agentServerWallets } from "../../db/schemas/agent-server-wallets";
 import { cache } from "../cache/client";
+import { logger } from "../utils/logger";
 import { createStewardClient } from "./steward-client";
 import { resolveStewardTenantCredentials } from "./steward-tenant-config";
-import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Error classes

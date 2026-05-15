@@ -18,13 +18,13 @@ import {
   WHATSAPP_PHONE_NUMBER_ID,
   WHATSAPP_VERIFY_TOKEN,
 } from "../../constants/secrets";
-import { secretsService } from "../secrets";
 import { logger } from "../../utils/logger";
 import {
   sendWhatsAppMessage,
   verifyWhatsAppSignature,
   WHATSAPP_API_BASE,
 } from "../../utils/whatsapp-api";
+import { secretsService } from "../secrets";
 
 // Use ELIZA_API_URL (ngrok) for local dev webhooks, otherwise NEXT_PUBLIC_APP_URL
 const WEBHOOK_BASE_URL =

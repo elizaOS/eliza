@@ -8,9 +8,9 @@
 import { and, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../../../db/client";
 import { platformCredentials } from "../../../../db/schemas/platform-credentials";
+import { logger } from "../../../utils/logger";
 import { secretsService } from "../../secrets";
 import { DecryptionError } from "../../secrets/encryption";
-import { logger } from "../../../utils/logger";
 import { incrementOAuthVersion } from "../cache-version";
 import { Errors } from "../errors";
 import { getProvider } from "../provider-registry";
