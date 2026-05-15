@@ -133,9 +133,9 @@
     {
       "id": "omnivoice",
       "displayName": "OmniVoice frozen conditioning",
-      "purpose": "primary TTS path with sam voice preset",
+      "purpose": "primary TTS path with same voice preset",
       "runtime": "llama.cpp",
-      "currentVersion": "0.1.1",
+      "currentVersion": "0.2.0",
       "license": "Apache-2.0",
       "attribution": "OmniVoice architecture; elizaOS llama.cpp fork integration",
       "introducedIn": "R6/I6",
@@ -143,7 +143,8 @@
         { "variantId": "omnivoice-base-q4_k_m", "filename": "omnivoice-base-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 388000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
         { "variantId": "omnivoice-tokenizer-q4_k_m", "filename": "omnivoice-tokenizer-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 51200000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
         { "variantId": "omnivoice-base-q8_0", "filename": "omnivoice-base-q8_0.gguf", "format": "gguf", "precision": "q8_0", "approxSizeBytes": 620000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "omnivoice-sam-preset", "filename": "presets/voice-preset-sam.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 8192, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+        { "variantId": "omnivoice-same-preset", "filename": "voice-preset.elz2", "installAs": "cache/voice-preset-same.bin", "format": "elz2", "presetFormatVersion": 2, "precision": "fp16", "approxSizeBytes": 716, "sizeBytes": 716, "sha256": "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6", "assetStatus": "available", "sourceRepo": "elizaos/eliza-1-voice-omnivoice-same-v01", "sourcePath": "voice-preset.elz2", "sourceRevision": "fd0d04439d48826abc89dcfc03d9d1f31d29bf20", "license": "research-only (Her-derivative; non-commercial use only)" },
+        { "variantId": "omnivoice-sam-preset", "filename": "presets/voice-preset-sam.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 8192, "sizeBytes": null, "sha256": null, "assetStatus": "superseded", "missingReason": "superseded by omnivoice-same-preset (voice-preset.elz2 in elizaos/eliza-1-voice-omnivoice-same-v01)" }
       ]
     },
     {
