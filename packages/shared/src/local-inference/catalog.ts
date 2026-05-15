@@ -482,6 +482,7 @@ function runtimeForTier(
       parallel: 4,
       flashAttention: true,
       requiresKernel,
+      unsupportedKernels: ["openvino"],
       ctxCheckpoints: 4,
       ctxCheckpointInterval: 4096,
     },

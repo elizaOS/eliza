@@ -179,6 +179,11 @@ function kernelRequirementsSatisfied(
   model: CatalogModel,
   binaryKernels: Partial<Record<string, boolean>> | null,
 ): boolean {
+  const unsupported = model.runtime?.optimizations?.unsupportedKernels ?? [];
+  if (unsupported.includes("openvino") && binaryKernels?.openvino === true) {
+    return false;
+  }
+
   const required = model.runtime?.optimizations?.requiresKernel ?? [];
   if (required.length === 0) return true;
   if (!binaryKernels) return true;
