@@ -38,16 +38,16 @@ describe("startup integration script drift", () => {
       const e2eCommand = expectScript("test:selfcontrol:e2e");
 
       expect(startupCommand).toContain(
-        "eliza/plugins/app-lifeops/test/selfcontrol-chat.live.e2e.test.ts",
+        "eliza/plugins/plugin-lifeops/test/selfcontrol-chat.live.e2e.test.ts",
       );
       expect(startupCommand).toContain(
-        "eliza/plugins/app-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
+        "eliza/plugins/plugin-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
       );
       expect(e2eCommand).toContain(
-        "eliza/plugins/app-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
+        "eliza/plugins/plugin-lifeops/test/selfcontrol-dev.live.e2e.test.ts",
       );
       expect(e2eCommand).toContain(
-        "eliza/plugins/app-lifeops/test/selfcontrol-desktop.live.e2e.test.ts",
+        "eliza/plugins/plugin-lifeops/test/selfcontrol-desktop.live.e2e.test.ts",
       );
 
       for (const relativePath of new Set([

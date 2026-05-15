@@ -1,4 +1,4 @@
-declare module "@elizaos/app-companion" {
+declare module "@elizaos/plugin-companion" {
   export const CompanionShell: import("react").ComponentType<
     import("@elizaos/ui").CompanionShellComponentProps
   >;
@@ -19,13 +19,13 @@ declare module "@elizaos/app-companion" {
   export function useCompanionSceneStatus(): import("@elizaos/ui").CompanionSceneStatus;
 }
 
-declare module "@elizaos/app-phone" {
+declare module "@elizaos/plugin-phone" {
   export const PhoneCompanionApp: import("react").ComponentType<
     Record<string, never>
   >;
 }
 
-declare module "@elizaos/app-steward" {
+declare module "@elizaos/plugin-steward-app" {
   export const ApprovalQueue: import("react").ComponentType<
     import("@elizaos/ui").StewardApprovalQueueProps
   >;
@@ -37,7 +37,7 @@ declare module "@elizaos/app-steward" {
   >;
 }
 
-declare module "@elizaos/app-task-coordinator" {
+declare module "@elizaos/plugin-task-coordinator" {
   export const CodingAgentControlChip: import("react").ComponentType<
     Record<string, never>
   >;
@@ -49,13 +49,13 @@ declare module "@elizaos/app-task-coordinator" {
   >;
 }
 
-declare module "@elizaos/app-training" {
+declare module "@elizaos/plugin-training" {
   export const FineTuningView: import("react").ComponentType<
     import("@elizaos/ui").FineTuningViewProps
   >;
 }
 
-declare module "@elizaos/app-vincent" {
+declare module "@elizaos/plugin-vincent" {
   export function useVincentState(
     args: import("@elizaos/ui").VincentStateHookArgs,
   ): import("@elizaos/ui").VincentStateHookResult;

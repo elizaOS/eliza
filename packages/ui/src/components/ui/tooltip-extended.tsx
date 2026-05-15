@@ -3,7 +3,7 @@ import { cn } from "../../lib/utils";
 
 /**
  * Hover-only tooltip with optional shortcut hint. Used as the icon-button
- * affordance pattern in plugins/app-companion. The other extended-tooltip
+ * affordance pattern in plugins/plugin-companion. The other extended-tooltip
  * primitives (HoverTooltip, Spotlight, useGuidedTour, TourStep) were
  * deleted as zero-consumer in the Layer 5b sweep — their last shipping
  * surface was a guided-tour feature that was never wired up.

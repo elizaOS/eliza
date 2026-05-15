@@ -162,4 +162,4 @@ tests/
 - `packages/core/src/runtime/turn-controller.ts` — turn-scoped abort.
 - `packages/core/src/runtime/room-handler-queue.ts` — per-room serialization.
 - `packages/core/src/runtime/cleanup-scope.ts` — graceful-abort wrap-up.
-- `plugins/app-lifeops/src/lifeops/work-threads/field-evaluator-thread-ops.ts` — real `threadOps` evaluator (mirrored here).
+- `plugins/plugin-lifeops/src/lifeops/work-threads/field-evaluator-thread-ops.ts` — real `threadOps` evaluator (mirrored here).

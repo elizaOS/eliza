@@ -126,7 +126,7 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  *   RUNTIME       — packages/agent/src/actions/runtime.ts:405 (op:"restart"
  *                   replaces the old RESTART_AGENT)
  *   SHELL         — packages/agent/src/actions/terminal.ts:261
- *   PLAY_EMOTE    — plugins/app-companion/src/actions/emote.ts:22
+ *   PLAY_EMOTE    — plugins/plugin-companion/src/actions/emote.ts:22
  *
  * GitHub issue ops live under GITHUB_ISSUE in plugin-github but that plugin
  * isn't loaded by default — kept out of the map to avoid validator noise; it

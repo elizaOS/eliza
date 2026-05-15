@@ -38,9 +38,9 @@
       "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],
       "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
       "@elizaos/capacitor-phone": ["../native-plugins/phone/src/index.ts"],
-      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
-      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
-      "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
+      "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-elizamaker": ["../../plugins/plugin-elizamaker/src/index.ts"],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
@@ -49,22 +49,22 @@
         "../../plugins/plugin-registry/src/index.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/app-wifi": ["../../plugins/app-wifi/src/index.ts"],
+      "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
-      "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
-      "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],
+      "@elizaos/plugin-steward-app": ["../../plugins/plugin-steward-app/src/index.ts"],
+      "@elizaos/plugin-shopify-ui": ["../../plugins/plugin-shopify-ui/src/index.ts"],
+      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
+      "@elizaos/plugin-companion": ["../../plugins/plugin-companion/src/index.ts"],
       "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
-      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
-      "@elizaos/app-task-coordinator": [
-        "../../plugins/app-task-coordinator/src/index.ts"
+      "@elizaos/plugin-training": ["../../plugins/plugin-training/src/index.ts"],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-contacts": ["../../plugins/app-contacts/src/index.ts"],
+      "@elizaos/plugin-contacts": ["../../plugins/plugin-contacts/src/index.ts"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/src/index.ts"],
       "@elizaos/plugin-coding-tools": [

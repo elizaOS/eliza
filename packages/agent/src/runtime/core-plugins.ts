@@ -55,9 +55,9 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
  * `android`.
  */
 export const ELIZAOS_ANDROID_CORE_PLUGINS: readonly string[] = [
-  "@elizaos/app-wifi",
-  "@elizaos/app-contacts",
-  "@elizaos/app-phone",
+  "@elizaos/plugin-wifi",
+  "@elizaos/plugin-contacts",
+  "@elizaos/plugin-phone",
 ];
 
 /**
@@ -81,7 +81,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // local Eliza-1 inference (text + embeddings + voice) — required for memory + on-device generation
   // @elizaos/plugin-form — standalone form plugin; load via plugin registry/config
-  "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
+  "@elizaos/plugin-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
@@ -90,7 +90,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
-  "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
+  "@elizaos/plugin-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):

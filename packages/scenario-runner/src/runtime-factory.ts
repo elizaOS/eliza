@@ -314,12 +314,12 @@ export async function createScenarioRuntime(
     );
   }
 
-  // Default-load @elizaos/app-lifeops after agent-skills (LifeOps action
+  // Default-load @elizaos/plugin-lifeops after agent-skills (LifeOps action
   // routing depends on agent-skills). Graceful-degrade on resolution failure.
   // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
   // plugin to load — they only gate individual action execution at call time.
   try {
-    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops" as string;
+    const lifeOpsPluginSpecifier = "@elizaos/plugin-lifeops" as string;
     const lifeOpsModule = (await import(lifeOpsPluginSpecifier)) as Record<
       string,
       unknown
@@ -332,12 +332,12 @@ export async function createScenarioRuntime(
       await runtime.registerPlugin(lifeOpsPlugin);
     } else {
       logger.warn(
-        "[scenario-runner] @elizaos/app-lifeops did not export a Plugin; skipping",
+        "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin; skipping",
       );
     }
   } catch (err) {
     logger.warn(
-      `[scenario-runner] @elizaos/app-lifeops unavailable: ${
+      `[scenario-runner] @elizaos/plugin-lifeops unavailable: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

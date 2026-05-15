@@ -15,7 +15,7 @@ describe("Real Runtime Helper Regressions", () => {
   let runtimeResult: Awaited<ReturnType<typeof createRealTestRuntime>>;
 
   beforeAll(async () => {
-    const { appLifeOpsPlugin } = await import("@elizaos/app-lifeops");
+    const { appLifeOpsPlugin } = await import("@elizaos/plugin-lifeops");
     runtimeResult = await createRealTestRuntime({
       withLLM: canRunLiveTests,
       preferredProvider: selectedLiveProvider?.name,

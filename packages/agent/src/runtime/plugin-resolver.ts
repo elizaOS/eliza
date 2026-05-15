@@ -65,16 +65,16 @@ type GlobalWithLastFailedPluginNames = typeof globalThis & {
 };
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
-  "@elizaos/app-companion",
-  "@elizaos/app-contacts",
-  "@elizaos/app-elizamaker",
-  "@elizaos/app-lifeops",
-  "@elizaos/app-phone",
-  "@elizaos/app-polymarket",
-  "@elizaos/app-shopify",
-  "@elizaos/app-steward",
-  "@elizaos/app-vincent",
-  "@elizaos/app-wifi",
+  "@elizaos/plugin-companion",
+  "@elizaos/plugin-contacts",
+  "@elizaos/plugin-elizamaker",
+  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-phone",
+  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-vincent",
+  "@elizaos/plugin-wifi",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1226,7 +1226,8 @@ async function stagePluginImportRoot(params: {
   });
   const shouldLinkHoistedWorkspaceDeps =
     stageAllHoistedNodeModulesEnabled() ||
-    params.packageName.startsWith("@elizaos/app-");
+    params.packageName.startsWith("@elizaos/app-") ||
+    params.packageName.startsWith("@elizaos/plugin-");
   if (shouldLinkHoistedWorkspaceDeps) {
     await linkAncestorNodeModulesIfNeeded({
       installRoot: params.installRoot,

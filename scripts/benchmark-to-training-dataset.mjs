@@ -6,7 +6,7 @@
  * JSONL dataset that the native training backend accepts.
  *
  * Output shape (one per line — matches `GeminiTuningExample` expected by
- * plugins/app-training/src/backends/native.ts `parseJsonlDataset`):
+ * plugins/plugin-training/src/backends/native.ts `parseJsonlDataset`):
  *   {
  *     "messages": [
  *       { "role": "system", "content": "<optional> " },

@@ -19,7 +19,7 @@
  *     to the CLI via LIFEOPS_LIVE_JUDGE_MIN_SCORE.
  *   - SCENARIO_FILTER: comma-separated scenario IDs (forwards as --scenario).
  *   - SCENARIO_ROOT: scenario directory, relative to repo root or absolute
- *     (default: plugins/app-lifeops/test/scenarios).
+ *     (default: plugins/plugin-lifeops/test/scenarios).
  *   - SCENARIO_INCLUDE_PENDING=1: include scenarios marked status="pending".
  *   - SCENARIO_ENFORCE_GATE=0: keep the workflow green while still writing
  *     the report when scenario assertions fail.

@@ -25,9 +25,9 @@
         "../../plugins/plugin-registry/src/index.ts"
       ],
       "@elizaos/app-core": ["./src/index.ts"],
-      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
+      "@elizaos/plugin-training": ["../../plugins/plugin-training/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
@@ -72,8 +72,8 @@
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/app-task-coordinator": [
-        "../../plugins/app-task-coordinator/src/index.ts"
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
       "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
       "@elizaos/plugin-telegram": [

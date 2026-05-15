@@ -115,10 +115,10 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.13",
     "@clack/prompts": "^1.0.0",
-    "@elizaos/app-contacts": "workspace:*",
+    "@elizaos/plugin-contacts": "workspace:*",
     "@elizaos/app-core": "workspace:*",
-    "@elizaos/app-phone": "workspace:*",
-    "@elizaos/app-wifi": "workspace:*",
+    "@elizaos/plugin-phone": "workspace:*",
+    "@elizaos/plugin-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",

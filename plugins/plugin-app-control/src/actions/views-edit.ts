@@ -13,7 +13,7 @@
  * which is out of scope for a coding sub-agent dispatch.
  */
 
-import { promises as fs } from "node:path";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import type {
 	ActionResult,
@@ -122,7 +122,7 @@ async function locatePluginSourceDir(
 		path.join(repoRoot, "eliza", "apps", pluginBasename),
 	];
 	for (const candidate of candidates) {
-		const stat = await (fs as unknown as typeof import("node:fs").promises).stat(candidate).catch(() => null);
+		const stat = await fs.stat(candidate).catch(() => null);
 		if (stat?.isDirectory()) return candidate;
 	}
 	return null;

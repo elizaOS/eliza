@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Regenerate eliza/packages/docs/rest/lifeops.md from the actual route declarations
- * in eliza/plugins/app-lifeops/src/routes/.
+ * in eliza/plugins/plugin-lifeops/src/routes/.
  *
  * Source of truth:
  *  - plugin.ts: all 7 RouteSpec[] arrays (LIFEOPS_STATIC_ROUTES, LIFEOPS_DYNAMIC_ROUTES,
@@ -20,11 +20,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
 const PLUGIN_TS = resolve(
   REPO_ROOT,
-  "plugins/app-lifeops/src/routes/plugin.ts",
+  "plugins/plugin-lifeops/src/routes/plugin.ts",
 );
 const SCHEDULED_TASKS_TS = resolve(
   REPO_ROOT,
-  "plugins/app-lifeops/src/routes/scheduled-tasks.ts",
+  "plugins/plugin-lifeops/src/routes/scheduled-tasks.ts",
 );
 const OUTPUT = resolve(REPO_ROOT, "packages/docs/rest/lifeops.md");
 
@@ -169,7 +169,7 @@ function buildMarkdown(routes) {
 
   let body = "";
   body += "## Endpoint Index\n\n";
-  body += `> This index is auto-generated from the route declarations in \`eliza/plugins/app-lifeops/src/routes/plugin.ts\` and \`scheduled-tasks.ts\` by \`eliza/scripts/generate-lifeops-rest-docs.mjs\`. Do not hand-edit; rerun the generator instead.\n\n`;
+  body += `> This index is auto-generated from the route declarations in \`eliza/plugins/plugin-lifeops/src/routes/plugin.ts\` and \`scheduled-tasks.ts\` by \`eliza/scripts/generate-lifeops-rest-docs.mjs\`. Do not hand-edit; rerun the generator instead.\n\n`;
   body += `Total documented routes: **${routes.length}**.\n\n`;
   for (const key of sortedKeys) {
     const arr = groups.get(key);
@@ -188,7 +188,7 @@ function buildMarkdown(routes) {
   body += `- Public OAuth + connector callback routes (e.g. \`GET /api/lifeops/connectors/health/:provider/callback\`) are unauthenticated by design.\n`;
   body += `- Scheduled-task verbs (\`/api/lifeops/scheduled-tasks/:id/{snooze,skip,complete,dismiss,escalate,acknowledge,reopen,edit}\`) post no body when the verb is unambiguous; some accept JSON for context.\n`;
   body += `- Cadence kinds supported by definitions: \`once\`, \`daily\`, \`times_per_day\`, \`interval\`, \`weekly\`. Reminder channels: \`in_app\`, \`sms\`, \`voice\`, \`telegram\`, \`discord\`, \`signal\`, \`whatsapp\`, \`imessage\`, \`email\`, \`push\`.\n`;
-  body += `- For request/response shape details, see \`eliza/plugins/app-lifeops/src/routes/lifeops-routes.ts\` and the corresponding handler in \`src/routes/{entities,relationships,scheduled-tasks,sleep-routes,website-blocker-routes}.ts\`. Each handler validates input via Zod schemas declared at module top.\n`;
+  body += `- For request/response shape details, see \`eliza/plugins/plugin-lifeops/src/routes/lifeops-routes.ts\` and the corresponding handler in \`src/routes/{entities,relationships,scheduled-tasks,sleep-routes,website-blocker-routes}.ts\`. Each handler validates input via Zod schemas declared at module top.\n`;
   return body;
 }
 

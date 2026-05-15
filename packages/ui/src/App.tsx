@@ -26,7 +26,10 @@ import {
   useMemo,
   useState,
 } from "react";
-import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
+import {
+  invokeDesktopBridgeRequest,
+  subscribeDesktopBridgeEvent,
+} from "./bridge/electrobun-rpc";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
@@ -430,7 +433,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
 /**
  * Render a dynamically-resolved plugin page. Honors:
  *   1. An in-process registration (`registerAppShellPage`) — preferred.
- *   2. A `componentExport` import-spec like `"@elizaos/app-wallet#InventoryView"`,
+ *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet-ui#InventoryView"`,
  *      loaded with dynamic `import()` and rendered via Suspense.
  *
  * Plugins that declare a `componentExport` without a matching
@@ -941,6 +944,26 @@ export function App() {
       }
       if (path === "/apps") {
         setTab("apps");
+        return;
+      }
+      // open-window: launch view in a separate Electrobun window.
+      if (detail.action === "open-window" && detail.viewId) {
+        const entry = availableViewsForDesktopTabs.find(
+          (v) => v.id === detail.viewId,
+        );
+        const viewPath = entry?.path ?? `/apps/${detail.viewId}`;
+        const viewLabel = entry?.label ?? detail.viewId;
+        void invokeDesktopBridgeRequest<{ id: string }>({
+          rpcMethod: "desktopOpenAppWindow",
+          ipcChannel: "desktop:openAppWindow",
+          params: {
+            title: viewLabel,
+            path: viewPath,
+            alwaysOnTop: false,
+          },
+        }).catch(() => {
+          // Not in Electrobun runtime — fall through to URL navigation.
+        });
         return;
       }
       // Auto-open as a desktop tab when the action is "pin-tab" or when the

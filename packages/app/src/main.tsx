@@ -141,50 +141,50 @@ function importAppCore() {
 
 function importAppCompanion() {
   return cachedDynamicImport(
-    "@elizaos/app-companion",
-    () => import("@elizaos/app-companion"),
+    "@elizaos/plugin-companion",
+    () => import("@elizaos/plugin-companion"),
   );
 }
 
 function importAppLifeOps() {
   return cachedDynamicImport(
-    "@elizaos/app-lifeops",
-    () => import("@elizaos/app-lifeops"),
+    "@elizaos/plugin-lifeops",
+    () => import("@elizaos/plugin-lifeops"),
   );
 }
 
 function importAppPhone() {
   return cachedDynamicImport(
-    "@elizaos/app-phone",
-    () => import("@elizaos/app-phone"),
+    "@elizaos/plugin-phone",
+    () => import("@elizaos/plugin-phone"),
   );
 }
 
 function importAppSteward() {
   return cachedDynamicImport(
-    "@elizaos/app-steward",
-    () => import("@elizaos/app-steward"),
+    "@elizaos/plugin-steward-app",
+    () => import("@elizaos/plugin-steward-app"),
   );
 }
 
 function importAppTaskCoordinator() {
   return cachedDynamicImport(
-    "@elizaos/app-task-coordinator",
-    () => import("@elizaos/app-task-coordinator"),
+    "@elizaos/plugin-task-coordinator",
+    () => import("@elizaos/plugin-task-coordinator"),
   );
 }
 
 function importAppTraining() {
   return cachedDynamicImport(
-    "@elizaos/app-training",
-    () => import("@elizaos/app-training"),
+    "@elizaos/plugin-training",
+    () => import("@elizaos/plugin-training"),
   );
 }
 
 function importAppVincent() {
   return cachedDynamicImport(
-    "@elizaos/app-vincent",
-    () => import("@elizaos/app-vincent"),
+    "@elizaos/plugin-vincent",
+    () => import("@elizaos/plugin-vincent"),
   );
 }
 

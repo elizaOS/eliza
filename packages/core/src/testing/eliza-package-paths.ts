@@ -24,9 +24,9 @@ function getRepoLocalWorkspaceRoot(
 			"../eliza/packages/app-core",
 		],
 		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
-		"@elizaos/app-companion": [
-			"eliza/plugins/app-companion",
-			"../eliza/plugins/app-companion",
+		"@elizaos/plugin-companion": [
+			"eliza/plugins/plugin-companion",
+			"../eliza/plugins/plugin-companion",
 		],
 	};
 

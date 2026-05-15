@@ -689,7 +689,7 @@ export function GameView() {
   const hasOperatorSurface = Boolean(OperatorSurface);
   const openOperatorPanelByDefault =
     activeGameApp !== "@hyperscape/plugin-hyperscape" &&
-    activeGameApp !== "@elizaos/app-hyperscape";
+    activeGameApp !== "@elizaos/plugin-hyperscape";
   const resolvedActiveGameViewerUrl = useMemo(
     () => resolveEmbeddedViewerUrl(activeGameViewerUrl),
     [activeGameViewerUrl],
