@@ -52,7 +52,7 @@ enabled = true
 crons = [
   "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning
-  "*/10 * * * *",   # cleanup-expired-crypto-payments
+  "*/10 * * * *",   # cleanup-expired-crypto-payments + cleanup-expired-app-auth-codes
   "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog
   "0 * * * *",      # agent-billing
   "0 */6 * * *",    # cleanup-anonymous-sessions

@@ -42,7 +42,7 @@ export const goalsProvider: Provider = {
         "scape_game",
       ) as ScapeGameService | null;
       if (!service) return { text: "" };
-      const journal = service.getJournalService?.();
+      const journal = service.getJournalService();
       if (!journal) return { text: "" };
 
       const active = journal.getActiveGoal();

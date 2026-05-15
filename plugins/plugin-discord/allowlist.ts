@@ -253,7 +253,7 @@ export function resolveDiscordGuildEntry(params: {
 	}
 
 	// Check by slug
-	const slug = normalizeDiscordSlug(guild.name ?? "");
+	const slug = normalizeDiscordSlug(guild.name);
 	const bySlug = guildEntries[slug];
 	if (bySlug) {
 		return { ...bySlug, id: guild.id, slug: slug || bySlug.slug };

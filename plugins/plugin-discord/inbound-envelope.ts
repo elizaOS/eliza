@@ -68,7 +68,7 @@ function getSenderName(message: DiscordMessage): string {
 	if (message.author.globalName) {
 		return message.author.globalName;
 	}
-	return message.author.displayName ?? message.author.username;
+	return message.author.displayName;
 }
 
 function buildChannelLabel(
@@ -83,10 +83,10 @@ function buildChannelLabel(
 	let channelPart: string;
 	if (chatType === "thread" || chatType === "forum") {
 		const thread = message.channel as ThreadChannel;
-		channelPart = `#${thread.parent?.name ?? "unknown"} › ${thread.name ?? "thread"}`;
+		channelPart = `#${thread.parent?.name ?? "unknown"} › ${thread.name}`;
 	} else {
 		const channel = message.channel as TextChannel;
-		channelPart = `#${channel.name ?? message.channel.id}`;
+		channelPart = `#${channel.name}`;
 	}
 
 	return guildName ? `${channelPart} | ${guildName}` : channelPart;
@@ -99,17 +99,14 @@ export async function formatInboundEnvelope(
 	const chatType = detectChatType(message);
 	const channelLabel = buildChannelLabel(message, chatType);
 	const senderName = getSenderName(message);
-	const timestamp = formatTimestamp(message.createdTimestamp ?? Date.now());
+	const timestamp = formatTimestamp(message.createdTimestamp);
 
 	let replyContext = "";
 	if (message.reference?.messageId) {
 		try {
 			const refMessage = await message.fetchReference();
-			const refAuthor =
-				refMessage.author?.displayName ??
-				refMessage.author?.username ??
-				"unknown";
-			const refContent = refMessage.content ?? "";
+			const refAuthor = refMessage.author.displayName;
+			const refContent = refMessage.content;
 			const truncated =
 				refContent.length > 200 ? `${refContent.slice(0, 200)}...` : refContent;
 			// Put the reply quote AFTER the user's actual message so Stage 1

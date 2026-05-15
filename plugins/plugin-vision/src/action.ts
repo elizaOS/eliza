@@ -1482,7 +1482,7 @@ export const visionAction: Action = {
       params.action ?? params.subaction ?? params.op,
     );
     const inferredOp =
-      explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
+      explicitOp ?? inferOpFromMessage(message.content.text ?? "");
 
     if (!inferredOp) {
       const text = `VISION could not determine the operation. Specify one of: ${VISION_OPS.join(", ")}.`;

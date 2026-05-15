@@ -10,7 +10,7 @@ function isFeatureEnabled(
   config: PluginAutoEnableContext["config"],
   key: string,
 ): boolean {
-  const f = (config?.features as Record<string, unknown> | undefined)?.[key];
+  const f = (config.features as Record<string, unknown> | undefined)?.[key];
   if (f === true) return true;
   if (f && typeof f === "object" && f !== null) {
     return (f as Record<string, unknown>).enabled !== false;
@@ -24,6 +24,6 @@ function isFeatureEnabled(
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   if (isFeatureEnabled(ctx.config, "vision")) return true;
-  const visionProvider = ctx.config?.media?.vision?.provider;
+  const visionProvider = ctx.config.media?.vision?.provider;
   return typeof visionProvider === "string" && visionProvider.length > 0;
 }

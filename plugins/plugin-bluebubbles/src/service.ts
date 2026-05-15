@@ -273,7 +273,7 @@ function filterMemoriesByQuery(
 	return memories
 		.filter((memory) => {
 			const text =
-				typeof memory.content?.text === "string" ? memory.content.text : "";
+				typeof memory.content.text === "string" ? memory.content.text : "";
 			return text.toLowerCase().includes(normalized);
 		})
 		.slice(0, limit);
@@ -859,9 +859,9 @@ export class BlueBubblesService extends Service {
 						.slice(0, limit);
 				},
 				searchMessages: async (context, params) => {
-					const limit = normalizeConnectorLimit(params?.limit);
+					const limit = normalizeConnectorLimit(params.limit);
 					const messages = await registration.fetchMessages?.(context, {
-						target: params?.target ?? context.target,
+						target: params.target ?? context.target,
 						limit: Math.max(limit, 100),
 					});
 					return filterMemoriesByQuery(messages ?? [], params.query, limit);

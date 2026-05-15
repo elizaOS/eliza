@@ -124,7 +124,7 @@ export class DiscordTestSuite implements TestSuite {
 			await this.waitForVoiceManagerReady(this.discordClient);
 
 			const channel = await this.getTestChannel(runtime);
-			if (!channel?.isTextBased()) {
+			if (!channel.isTextBased()) {
 				throw new Error("Invalid test channel for slash command test.");
 			}
 
@@ -180,7 +180,7 @@ export class DiscordTestSuite implements TestSuite {
 			await this.waitForVoiceManagerReady(this.discordClient);
 
 			const channel = await this.getTestChannel(runtime);
-			if (!channel?.isTextBased()) {
+			if (!channel.isTextBased()) {
 				throw new Error("Invalid test channel for slash command test.");
 			}
 
@@ -287,7 +287,7 @@ export class DiscordTestSuite implements TestSuite {
 		}
 		try {
 			const channel = await this.getTestChannel(runtime);
-			if (!channel?.isTextBased()) {
+			if (!channel.isTextBased()) {
 				throw new Error("Cannot send message to a non-text channel.");
 			}
 			const attachment = new AttachmentBuilder(TEST_IMAGE_URL);
@@ -409,7 +409,7 @@ export class DiscordTestSuite implements TestSuite {
 		files: AttachmentBuilder[],
 	) {
 		try {
-			if (!channel?.isTextBased()) {
+			if (!channel.isTextBased()) {
 				throw new Error(
 					"Channel is not a text-based channel or does not exist.",
 				);
@@ -512,7 +512,7 @@ export class DiscordTestSuite implements TestSuite {
 		}
 
 		const voiceManager = discordClient.voiceManager;
-		if (!voiceManager?.isReady()) {
+		if (!voiceManager.isReady()) {
 			await new Promise<void>((resolve, reject) => {
 				if (voiceManager) {
 					voiceManager.once("ready", resolve);

@@ -595,7 +595,7 @@ export class DiscordLocalService extends Service {
 			? (response.data as DiscordLocalGuild[])
 			: [];
 		for (const guild of guilds) {
-			if (guild?.id) {
+			if (guild.id) {
 				this.guildCache.set(guild.id, guild);
 			}
 		}
@@ -611,7 +611,7 @@ export class DiscordLocalService extends Service {
 			? (response.data as DiscordLocalChannel[])
 			: [];
 		for (const channel of channels) {
-			if (channel?.id) {
+			if (channel.id) {
 				this.channelCache.set(channel.id, channel);
 			}
 		}

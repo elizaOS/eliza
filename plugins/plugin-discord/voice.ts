@@ -699,12 +699,12 @@ export class VoiceManager extends EventEmitter {
 		member: GuildMember,
 		channel: BaseGuildVoiceChannel,
 	) {
-		const entityId = member?.id;
-		const memberUser = member?.user;
-		const userName = memberUser?.username;
-		const name = memberUser?.displayName;
-		const memberGuild = member?.guild;
-		const memberGuildId = memberGuild?.id;
+		const entityId = member.id;
+		const memberUser = member.user;
+		const userName = memberUser.username;
+		const name = memberUser.displayName;
+		const memberGuild = member.guild;
+		const memberGuildId = memberGuild.id;
 		const connection = this.getVoiceConnection(memberGuildId);
 
 		const connectionReceiver = connection?.receiver;
@@ -841,7 +841,7 @@ export class VoiceManager extends EventEmitter {
 				{
 					src: "plugin:discord:service:voice",
 					agentId: this.runtime.agentId,
-					member: member?.displayName || undefined,
+					member: member.displayName || undefined,
 				},
 				"Voice stream closed",
 			);
@@ -853,7 +853,7 @@ export class VoiceManager extends EventEmitter {
 				{
 					src: "plugin:discord:service:voice",
 					agentId: this.runtime.agentId,
-					member: member?.displayName || undefined,
+					member: member.displayName || undefined,
 				},
 				"Opus decoder closed",
 			);

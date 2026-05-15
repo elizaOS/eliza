@@ -33,7 +33,7 @@ function purposeForAccount(_account: ResolvedFeishuAccount): string[] {
 }
 
 function accessGateForAccount(account: ResolvedFeishuAccount): string {
-	const dmPolicy = account.config?.dmPolicy;
+	const dmPolicy = account.config.dmPolicy;
 	if (dmPolicy === "pairing") return "pairing";
 	if (dmPolicy === "disabled") return "disabled";
 	return "open";
@@ -54,8 +54,8 @@ function toConnectorAccount(account: ResolvedFeishuAccount): ConnectorAccount {
 		updatedAt: now,
 		metadata: {
 			tokenSource: account.tokenSource,
-			dmPolicy: account.config?.dmPolicy ?? "open",
-			groupPolicy: account.config?.groupPolicy ?? "allowlist",
+			dmPolicy: account.config.dmPolicy ?? "open",
+			groupPolicy: account.config.groupPolicy ?? "allowlist",
 			appId: account.appId || "",
 		},
 	};

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { DiscordSettings } from "./types";
 
 function getEnvBoolean(name: string, fallback: boolean): boolean {
-	const value = process.env?.[name];
+	const value = process.env[name];
 	if (!value) {
 		return fallback;
 	}
@@ -12,7 +12,7 @@ function getEnvBoolean(name: string, fallback: boolean): boolean {
 }
 
 function getEnvArray(name: string, fallback: string[]): string[] {
-	const value = process.env?.[name];
+	const value = process.env[name];
 	if (!value || value.trim() === "") {
 		return fallback;
 	}
@@ -36,7 +36,7 @@ export const DISCORD_DEFAULTS = {
 		true,
 	),
 	ALLOWED_CHANNEL_IDS: getEnvArray("CHANNEL_IDS", []),
-	DM_POLICY: (process.env?.DISCORD_DM_POLICY || "pairing") as
+	DM_POLICY: (process.env.DISCORD_DM_POLICY || "pairing") as
 		| "open"
 		| "allowlist"
 		| "pairing"

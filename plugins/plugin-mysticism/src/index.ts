@@ -94,7 +94,7 @@ export const mysticismPlugin: Plugin = {
           "channel",
         ];
         const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-        const __recentMessages = (state?.recentMessagesData || []) as Memory[];
+        const __recentMessages = (state.recentMessagesData || []) as Memory[];
         const __isRelevant =
           validateActionKeywords(message, __recentMessages, __providerKeywords) ||
           validateActionRegex(message, __recentMessages, __providerRegex);
@@ -144,7 +144,7 @@ export const mysticismPlugin: Plugin = {
           "channel",
         ];
         const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-        const __recentMessages = (state?.recentMessagesData || []) as Memory[];
+        const __recentMessages = (state.recentMessagesData || []) as Memory[];
         const __isRelevant =
           validateActionKeywords(message, __recentMessages, __providerKeywords) ||
           validateActionRegex(message, __recentMessages, __providerRegex);
@@ -194,7 +194,7 @@ export const mysticismPlugin: Plugin = {
           "room",
         ];
         const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-        const __recentMessages = (state?.recentMessagesData || []) as Memory[];
+        const __recentMessages = (state.recentMessagesData || []) as Memory[];
         const __isRelevant =
           validateActionKeywords(message, __recentMessages, __providerKeywords) ||
           validateActionRegex(message, __recentMessages, __providerRegex);

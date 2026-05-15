@@ -419,7 +419,7 @@ function renderFeishuPost(ir: MarkdownIR): FeishuPostContent {
  * Convert markdown to Feishu Post format
  */
 export function markdownToFeishuPost(markdown: string): FeishuPostContent {
-	const ir = parseMarkdownToIR(markdown ?? "");
+	const ir = parseMarkdownToIR(markdown);
 	return renderFeishuPost(ir);
 }
 
@@ -492,7 +492,7 @@ export function chunkFeishuText(
 ): string[] {
 	const limit = opts.limit ?? FEISHU_TEXT_CHUNK_LIMIT;
 
-	if (!text?.trim()) {
+	if (!text.trim()) {
 		return [];
 	}
 

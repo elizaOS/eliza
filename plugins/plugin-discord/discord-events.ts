@@ -245,14 +245,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			}
 
 			let anchor: Message | undefined;
-			const botId = service.client?.user?.id;
+			const botId = service.client.user?.id;
 			if (botId) {
 				anchor = messages.find((message) =>
 					isDiscordUserAddressed({
 						text: message.content,
 						userId: botId,
 						hasMessageReference: Boolean(message.reference?.messageId),
-						repliedUserId: message.mentions?.repliedUser?.id,
+						repliedUserId: message.mentions.repliedUser?.id,
 					}),
 				);
 			}
@@ -282,10 +282,10 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				void service.messageManager.handleMessage(anchor);
 			} else {
 				const contextLines = messages
-					.filter((message) => message.id !== anchor?.id)
+					.filter((message) => message.id !== anchor.id)
 					.map(
 						(message) =>
-							`${message.member?.displayName ?? message.author.globalName ?? message.author.displayName ?? message.author.username}: ${message.content}`,
+							`${message.member?.displayName ?? message.author.globalName ?? message.author.displayName}: ${message.content}`,
 					);
 				const combinedText =
 					contextLines.length > 0
@@ -308,7 +308,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		{
 			debounceMs: effectiveChannelDebounceMs,
 			responseCooldownMs,
-			getBotUserId: () => service.client?.user?.id,
+			getBotUserId: () => service.client.user?.id,
 			coalesceEnabled: messageCoalesce.enabled,
 			maxBatch: messageCoalesce.maxBatch,
 		},
@@ -319,7 +319,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 	// ── messageCreate ──────────────────────────────────────────────────
 	service.client.on("messageCreate", async (message) => {
-		const clientUser = service.client?.user;
+		const clientUser = service.client.user;
 		if (
 			(clientUser && message.author.id === clientUser.id) ||
 			(message.author.bot && service.discordSettings.shouldIgnoreBotMessages)
@@ -416,7 +416,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				}
 			} else {
 				if (
-					channel?.isTextBased &&
+					channel.isTextBased &&
 					typeof channel.isTextBased === "function" &&
 					channel.isTextBased()
 				) {
@@ -470,7 +470,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 	// ── messageReactionAdd ─────────────────────────────────────────────
 	service.client.on("messageReactionAdd", async (reaction, user) => {
-		const clientUser = service.client?.user;
+		const clientUser = service.client.user;
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
@@ -497,7 +497,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 	// ── messageReactionRemove ──────────────────────────────────────────
 	service.client.on("messageReactionRemove", async (reaction, user) => {
-		const clientUser = service.client?.user;
+		const clientUser = service.client.user;
 		if (clientUser && user.id === clientUser.id) {
 			return;
 		}
@@ -578,7 +578,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 		const bypassChannelRestriction =
 			isSlashCommand &&
-			service.allowAllSlashCommands.has(interaction.commandName ?? "");
+			service.allowAllSlashCommands.has(interaction.commandName);
 
 		service.runtime.logger.debug(
 			{
@@ -759,7 +759,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	service.client.on(
 		"userStream",
 		(entityId, name, userName, channel, opusDecoder) => {
-			const clientUser = service.client?.user;
+			const clientUser = service.client.user;
 			if (clientUser && entityId !== clientUser.id) {
 				if (service.voiceManager) {
 					service.voiceManager.handleUserStream(
@@ -830,7 +830,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						service.runtime,
 					);
 
-					const clientUser = service.client?.user;
+					const clientUser = service.client.user;
 					if (
 						audit?.executorId &&
 						clientUser &&
@@ -900,7 +900,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					service.runtime,
 				);
 
-				const clientUser = service.client?.user;
+				const clientUser = service.client.user;
 				if (
 					audit?.executorId &&
 					clientUser &&
@@ -960,7 +960,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					service.runtime,
 				);
 
-				const clientUser = service.client?.user;
+				const clientUser = service.client.user;
 				if (
 					audit?.executorId &&
 					clientUser &&
@@ -1008,7 +1008,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					service.runtime,
 				);
 
-				const clientUser = service.client?.user;
+				const clientUser = service.client.user;
 				if (
 					audit?.executorId &&
 					clientUser &&
@@ -1050,7 +1050,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					service.runtime,
 				);
 
-				const clientUser = service.client?.user;
+				const clientUser = service.client.user;
 				if (
 					audit?.executorId &&
 					clientUser &&

@@ -317,8 +317,8 @@ export class LineService extends Service implements ILineService {
           return readStoredMessagesForTargets(context.runtime, targets, limit);
         },
         searchMessages: async (context, params) => {
-          const limit = normalizeConnectorLimit(params?.limit);
-          const target = params?.target ?? context.target;
+          const limit = normalizeConnectorLimit(params.limit);
+          const target = params.target ?? context.target;
           const messages = target?.roomId
             ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
             : await readStoredMessagesForTargets(

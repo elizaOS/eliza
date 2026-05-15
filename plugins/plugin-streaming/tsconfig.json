@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
     "lib": ["ESNext", "dom"],
     "types": ["node"],
     "target": "ESNext",
@@ -24,7 +24,11 @@
     "allowArbitraryExtensions": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "allowUnusedLabels": true
+    "allowUnusedLabels": true,
+    "paths": {
+      "@elizaos/cloud-shared": ["../../packages/cloud-shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../../packages/cloud-shared/src/*"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": [
