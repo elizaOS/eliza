@@ -484,8 +484,8 @@ function normalizeAccount(
 		label: typeof full.label === "string" ? full.label : undefined,
 		role: normalizeConnectorAccountRole(full.role),
 		purpose: normalizeStringArray(full.purpose),
-		accessGate: full.accessGate ?? "open",
-		status: full.status ?? "connected",
+		accessGate: (full.accessGate ?? "open") as ConnectorAccountAccessGate,
+		status: (full.status ?? "connected") as ConnectorAccountStatus,
 		externalId:
 			typeof full.externalId === "string" && full.externalId
 				? full.externalId
