@@ -206,19 +206,17 @@ describe("local inference catalog", () => {
 			]);
 		}
 
-		// Phone-class tiers are Kokoro-only; 9B keeps OmniVoice plus Kokoro;
+		// 0_8b/2b/4b default to Kokoro for small-device latency/memory.
+		// 9B keeps OmniVoice plus Kokoro;
 		// large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
 		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
-			"omnivoice",
 			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual([
-			"omnivoice",
 			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
-			"omnivoice",
 			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
