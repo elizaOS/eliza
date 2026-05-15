@@ -79,7 +79,7 @@
     "test:e2e:upgrade": "bash __tests__/migration/e2e/run-upgrade-test.sh",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "build:clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "build:clean": "node ../../../packages/scripts/rm-path-recursive.mjs dist",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
   },

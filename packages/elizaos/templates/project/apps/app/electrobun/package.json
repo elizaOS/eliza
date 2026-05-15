@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bunx vitest run --config vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
-    "build:preload": "node ../../../scripts/build-electrobun-preload.mjs",
+    "build:preload": "node ../../../../../../scripts/build-electrobun-preload.mjs",
     "build:native-effects": "bash scripts/build-macos-effects.sh"
   },
   "dependencies": {

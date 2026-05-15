@@ -240,7 +240,7 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
 export function chunkWhatsAppText(text: string, opts: ChunkWhatsAppTextOpts = {}): string[] {
   const limit = opts.limit ?? WHATSAPP_TEXT_CHUNK_LIMIT;
 
-  if (!text?.trim()) {
+  if (!text.trim()) {
     return [];
   }
 

@@ -920,7 +920,7 @@ export class AgentSkillsService extends Service {
 						type: "bin",
 						missing: bin,
 						message: `Required binary '${bin}' not found in PATH`,
-						suggestion: this.getSuggestionForBinary(bin, metadata?.install),
+						suggestion: this.getSuggestionForBinary(bin, metadata.install),
 					});
 				}
 			}

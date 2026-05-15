@@ -8,8 +8,9 @@
  * minimum bundle version each voice version is compatible with.
  *
  * The publish pipeline writes both this file AND the matching H3 in
- * `models/voice/CHANGELOG.md`. The publish gate refuses to land one
- * without the other. The runtime auto-update checker reads only this file.
+ * the sibling `voice-models/CHANGELOG.md`. The publish gate refuses to
+ * land one without the other. The runtime auto-update checker reads
+ * only this file.
  *
  * Spec: `.swarm/research/R5-versioning.md` §2.
  */
@@ -112,6 +113,15 @@ export interface VoiceModelEvalDeltas {
   readonly netImprovement: boolean;
 }
 
+/**
+ * Runtime backend label for a voice model version.
+ * - `"ggml"` — the elizaOS llama.cpp fork (canonical single-runtime policy).
+ * - `"onnx"` — onnxruntime-node (one-release deprecation runway only; do not add new models here).
+ * - `"ffi"` — direct bun:ffi into libelizainference (VAD, wake-word).
+ * - `"llama-server"` — fork's llama-server HTTP route (Kokoro, OmniVoice TTS, EOT text model).
+ */
+export type VoiceModelBackend = "ggml" | "onnx" | "ffi" | "llama-server";
+
 export interface VoiceModelVersion {
   /** Stable id. */
   readonly id: VoiceModelId;
@@ -125,13 +135,28 @@ export interface VoiceModelVersion {
   readonly hfRepo: string;
   /** Git revision (commit SHA or tag) of the HF repo at publish time. */
   readonly hfRevision: string;
+  /**
+   * Preferred runtime backend for this version. When set, the runtime
+   * prefers the named backend over any default. K7 policy: set to `"ggml"` /
+   * `"llama-server"` / `"ffi"` as each model migrates off ONNX. Assets with
+   * `quant: "onnx-*"` that are NOT the preferred backend are on the
+   * one-release deprecation runway.
+   */
+  readonly preferredBackend?: VoiceModelBackend;
+  /**
+   * Backends that are deprecated in this version and will be removed in the
+   * next release. The download manager surfaces these to the user; the
+   * runtime emits a deprecation warning when the deprecated backend is
+   * selected explicitly via env override.
+   */
+  readonly deprecatedBackends?: ReadonlyArray<VoiceModelBackend>;
   /** Per-asset SHA256 + size + quant. */
   readonly ggufAssets: ReadonlyArray<VoiceModelGgufAsset>;
   /** Expected assets that were not available for sha256/size verification. */
   readonly missingAssets?: ReadonlyArray<VoiceModelMissingAsset>;
   /** Eval gates vs parentVersion (or baseline for initial releases). */
   readonly evalDeltas: VoiceModelEvalDeltas;
-  /** First line of the matching H3 in `models/voice/CHANGELOG.md`. */
+  /** First line of the matching H3 in the sibling `voice-models/CHANGELOG.md`. */
   readonly changelogEntry: string;
   /** Minimum `eliza1Manifest.version` this voice version is compatible with. */
   readonly minBundleVersion: string;
@@ -154,6 +179,10 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T11:15:08Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
+    // K7: GGUF path live via LiveKitGgmlTurnDetector (J1.d). ONNX file
+    // stays on HF for one release per HF asset policy.
+    preferredBackend: "ggml",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/turn/intl/model_q8.onnx",
@@ -182,6 +211,10 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T05:17:55Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    // K7: GGUF path live via LiveKitGgmlTurnDetector (J1.d). ONNX file
+    // stays on HF for one release per HF asset policy.
+    preferredBackend: "ggml",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/turn-detector/onnx/model_q8.onnx",
@@ -210,6 +243,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T04:50:24Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    // K7: OmniVoice is fully on the fork via libelizainference FFI (W3-3).
+    // No ONNX path ever existed for OmniVoice.
+    preferredBackend: "llama-server",
     ggufAssets: [
       {
         filename: "voice/omnivoice/omnivoice-base-q4_k_m.gguf",
@@ -331,7 +367,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "voice/voice-emotion/wav2small-cls7-int8.onnx",
+        filename: "voice/emotion/wav2small-cls7-int8.onnx",
         sha256:
           "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
         sizeBytes: 524_750,
@@ -362,6 +398,61 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     evalDeltas: { f1Delta: 0.0042, netImprovement: true },
     changelogEntry:
       "v0.2.0 — Wav2Small cls7 head shipped (macro-F1=0.355 > 0.35 gate). V-A-D projection metric on the legacy vad head capped at 0.319 due to the teacher's compressed V-A-D distribution; runtime now auto-detects the head contract by ONNX output dim.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    // J2 (2026-05-15): Kokoro GGUF asset for the fork-side inference path.
+    // The fork's `tools/kokoro/` subtree implements a standalone StyleTTS-2
+    // + iSTFTNet inference pipeline (LLM_ARCH_KOKORO arch + GGML graph +
+    // CPU iSTFT vocoder). The runtime selector (`pickKokoroRuntimeBackend`)
+    // defaults `KOKORO_BACKEND=fork` and POSTs to llama-server's
+    // /v1/audio/speech route; ONNX path remains as one-release deprecation.
+    //
+    // Quality gap: the from-scratch port runs at lower acoustic quality
+    // vs the ONNX baseline (the predictor convs + ResBlock decoder need
+    // a follow-up per-tensor weight-mapping pass). Documented in
+    // .swarm/impl/J2-kokoro-port-notes.md; ship continues per brief override.
+    //
+    // missingAssets carries the planned ladder; the GGUF push to the
+    // consolidated elizaos/eliza-1 repo lands once the full PyTorch
+    // checkpoint walks through convert_kokoro_pth_to_gguf.py with the full
+    // _PTH_KEY_RULES map (Q3..Q8 ladder via gguf_kokoro_apply.py from W3-1).
+    id: "kokoro",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-05-15T05:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
+    // K7: runtime defaults to KOKORO_BACKEND=fork (pick-runtime.ts). ONNX
+    // path is one-release deprecation runway (KOKORO_BACKEND=onnx env only).
+    // GGUF conversion pending (K4 scope; missingAssets carries the target).
+    preferredBackend: "llama-server",
+    deprecatedBackends: ["onnx"],
+    ggufAssets: [
+      {
+        filename: "voice/kokoro/voices/af_sam.bin",
+        sha256:
+          "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        sizeBytes: 522_240,
+        quant: "fp16",
+      },
+    ],
+    missingAssets: [
+      {
+        filename: "voice/kokoro/kokoro-v1.0-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 60_000_000,
+        reason: "missing-from-local-staging",
+      },
+    ],
+    evalDeltas: {
+      // Same af_sam embedding ships as in 0.2.0. The version bump tracks
+      // the runtime path move (ONNX → fork llama-server) not an embedding
+      // change. netImprovement=false until the acoustic-quality gap closes.
+      netImprovement: false,
+    },
+    changelogEntry:
+      "0.3.0 — J2: fork-side Kokoro inference path (LLM_ARCH_KOKORO graph + tools/kokoro/). Runtime selector defaults to KOKORO_BACKEND=fork → llama-server /v1/audio/speech. ONNX path retained for one release. Quality gap vs ONNX baseline documented; compute-gated follow-up for full per-tensor weight mapping.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -464,6 +555,11 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    // K7: VAD is fully on fork FFI (eliza_inference_vad_* in libelizainference).
+    // vad.ts imports SileroVadGgml only; onnxruntime-node NOT imported.
+    // ONNX file stays on HF for one release per HF asset policy.
+    preferredBackend: "ffi",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/vad/silero-vad-int8.onnx",
@@ -490,6 +586,11 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    // K7: wake-word is fully on fork FFI (eliza_inference_wakeword_* in
+    // libelizainference). wake-word.ts uses GgmlWakeWordModel only;
+    // onnxruntime-node NOT imported. ONNX files stay on HF for one release.
+    preferredBackend: "ffi",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/wakeword/melspectrogram.onnx",

@@ -1,3 +1,5 @@
+/// <reference path="./capacitor-llama.d.ts" />
+
 /**
  * Registers the standalone llama.cpp engine as the runtime handler for
  * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE`.

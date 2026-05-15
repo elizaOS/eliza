@@ -20,8 +20,8 @@
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
@@ -31,6 +31,24 @@
       ],
       "@elizaos/plugin-capacitor-bridge/*": [
         "../plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-app-manager": [
+        "../plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager/*": [
+        "../plugin-app-manager/src/*"
+      ],
+      "@elizaos/plugin-wallet": [
+        "../plugin-wallet/src/index.ts"
+      ],
+      "@elizaos/plugin-wallet/*": [
+        "../plugin-wallet/src/*"
+      ],
+      "@elizaos/plugin-registry": [
+        "./src/index.ts"
+      ],
+      "@elizaos/plugin-registry/*": [
+        "./src/*"
       ]
     }
   },

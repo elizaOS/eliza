@@ -246,7 +246,7 @@ export const visionProvider: Provider = {
           perceptionText += `Resolution: ${screenCapture.width}x${screenCapture.height}\n`;
 
           const enhanced = sceneDescription as EnhancedSceneDescription;
-          if (enhanced?.screenAnalysis) {
+          if (enhanced.screenAnalysis) {
             const tileAnalysis = enhanced.screenAnalysis.activeTile;
             if (tileAnalysis) {
               if (tileAnalysis.summary) {

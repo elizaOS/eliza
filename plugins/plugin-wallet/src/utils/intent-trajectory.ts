@@ -83,14 +83,14 @@ export async function runIntentModel(
       },
       async () => {
         const response = await runtime.useModel(modelType, modelParams);
-        return typeof response === "string" ? response : String(response ?? "");
+        return typeof response === "string" ? response : String(response);
       },
     );
   }
 
   const startedAt = Date.now();
   const response = await runtime.useModel(modelType, modelParams);
-  const text = typeof response === "string" ? response : String(response ?? "");
+  const text = typeof response === "string" ? response : String(response);
   logActiveTrajectoryLlmCall(runtime, {
     model: modelLabel,
     systemPrompt,

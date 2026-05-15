@@ -54,4 +54,4 @@ function Button({
   return <button data-slot="button" className={classNames} {...props} />;
 }
 
-export { Button, buttonVariants };
+export { Button };

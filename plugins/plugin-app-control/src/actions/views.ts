@@ -330,7 +330,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			runtime: IAgentRuntime,
 			message: Memory,
 		): Promise<boolean> => {
-			const text = message.content?.text ?? "";
+			const text = message.content.text ?? "";
 			const roomId =
 				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 
@@ -367,7 +367,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const client = clientFactory();
-			const text = message.content?.text ?? "";
+			const text = message.content.text ?? "";
 			const roomId =
 				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 

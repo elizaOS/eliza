@@ -118,7 +118,7 @@ function filterMemoriesByQuery(
   return memories
     .filter((memory) => {
       const text =
-        typeof memory.content?.text === "string" ? memory.content.text : "";
+        typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -2091,15 +2091,15 @@ export class TelegramService extends Service {
       .map((memory: Memory) => ({
         entityId: memory.entityId,
         name:
-          typeof memory.content?.name === "string"
+          typeof memory.content.name === "string"
             ? memory.content.name
             : undefined,
-        text: memory.content?.text ?? "",
+        text: memory.content.text ?? "",
         timestamp: memory.createdAt,
         metadata: {
           memoryId: memory.id,
           accountId,
-          source: memory.content?.source,
+          source: memory.content.source,
         },
       }))
       .filter((message) => message.text.trim().length > 0);
@@ -2183,7 +2183,7 @@ export class TelegramService extends Service {
     runtime: IAgentRuntime,
     serviceInstance: TelegramService,
   ) {
-    if (serviceInstance?.bot) {
+    if (serviceInstance.bot) {
       const registerConnector = (accountId?: string) => {
         const normalizedAccountId = accountId
           ? normalizeTelegramAccountId(accountId)

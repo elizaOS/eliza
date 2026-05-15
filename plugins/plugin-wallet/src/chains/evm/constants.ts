@@ -10,6 +10,7 @@ export const TX_CONFIRMATION_TIMEOUT_MS = 60000;
 export const BRIDGE_POLL_INTERVAL_MS = 5000;
 export const MAX_BRIDGE_POLL_ATTEMPTS = 60 as const;
 export const NATIVE_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+export const KYBERSWAP_NATIVE_SENTINEL = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as const;
 
 export const BEBOP_CHAIN_MAP: Readonly<Record<string, string>> = {
   mainnet: "ethereum",
@@ -18,6 +19,24 @@ export const BEBOP_CHAIN_MAP: Readonly<Record<string, string>> = {
   arbitrum: "arbitrum",
   base: "base",
   linea: "linea",
+} as const;
+
+export const KYBERSWAP_CHAIN_MAP: Readonly<Record<string, string>> = {
+  mainnet: "ethereum",
+  arbitrum: "arbitrum",
+  base: "base",
+  polygon: "polygon",
+  optimism: "optimism",
+  bsc: "bsc",
+  linea: "linea",
+  avalanche: "avalanche",
+  mantle: "mantle",
+  zksync: "zksync",
+  scroll: "scroll",
+  blast: "blast",
+  mode: "mode",
+  sonic: "sonic",
+  berachain: "berachain",
 } as const;
 
 export const DEFAULT_CHAINS = ["mainnet", "base", "bsc"] as const;

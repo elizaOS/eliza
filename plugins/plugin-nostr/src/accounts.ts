@@ -23,7 +23,7 @@ function stringSetting(runtime: IAgentRuntime, key: string): string | undefined 
 }
 
 function characterConfig(runtime: IAgentRuntime): NostrMultiAccountConfig {
-  const settings = runtime.character?.settings as Record<string, unknown> | undefined;
+  const settings = runtime.character.settings as Record<string, unknown> | undefined;
   const raw = settings?.nostr;
   return raw && typeof raw === "object" ? (raw as NostrMultiAccountConfig) : {};
 }

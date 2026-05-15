@@ -42,7 +42,7 @@ function stringSetting(runtime: IAgentRuntime, key: string): string | undefined 
 }
 
 function characterConfig(runtime: IAgentRuntime): FarcasterMultiAccountConfig {
-  const settings = runtime.character?.settings as Record<string, unknown> | undefined;
+  const settings = runtime.character.settings as Record<string, unknown> | undefined;
   const raw = settings?.farcaster;
   return raw && typeof raw === "object" ? (raw as FarcasterMultiAccountConfig) : {};
 }

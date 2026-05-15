@@ -237,27 +237,27 @@ else
 fi
 
 log "Running repository postinstall"
-if [[ -f scripts/setup-upstreams.mjs ]]; then
+if [[ -f packages/scripts/setup-upstreams.mjs ]]; then
   SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node "$APP_CORE_SCRIPTS_DIR/run-repo-setup.mjs"
 else
-  node scripts/patch-nested-core-dist.mjs || true
+  node packages/scripts/patch-nested-core-dist.mjs || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-shared-i18n-data.mjs"
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
-node scripts/patch-tsup-dts.mjs || true
+node packages/scripts/patch-tsup-dts.mjs || true
 
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
-  "$BUN_BIN" run build.ts --node-only
+  "$BUN_BIN" run build:node
   popd >/dev/null
-  node scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
+  node packages/scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
   CORE_NODE_MODULE="node_modules/@elizaos/core"
   rm -rf "$CORE_NODE_MODULE"
   mkdir -p "$(dirname "$CORE_NODE_MODULE")"
   ln -s "../../$TYPESCRIPT_DIR" "$CORE_NODE_MODULE"
-  node scripts/patch-nested-core-dist.mjs || true
+  node packages/scripts/patch-nested-core-dist.mjs || true
 else
   log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi

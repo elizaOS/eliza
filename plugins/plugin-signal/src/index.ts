@@ -44,7 +44,7 @@ const signalPlugin: Plugin = {
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
     const cliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string;
-    const effectiveCliPath = (cliPath ?? "").trim() || DEFAULT_SIGNAL_CLI_PATH;
+    const effectiveCliPath = cliPath.trim() || DEFAULT_SIGNAL_CLI_PATH;
     const ignoreGroups = runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES") as string;
 
     // Log configuration status

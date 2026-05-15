@@ -19,6 +19,29 @@ declare module "@elizaos/plugin-companion" {
   export function useCompanionSceneStatus(): import("@elizaos/ui").CompanionSceneStatus;
 }
 
+declare module "@elizaos/plugin-lifeops" {
+  export const AppBlockerSettingsCard: import("react").ComponentType<
+    import("@elizaos/ui").AppBlockerSettingsCardProps
+  >;
+  export const LifeOpsActivitySignalsEffect: import("react").ComponentType<
+    Record<string, never>
+  >;
+  export const LifeOpsBrowserSetupPanel: import("react").ComponentType<
+    Record<string, never>
+  >;
+  export const LifeOpsPageView: import("react").ComponentType<
+    Record<string, never>
+  >;
+  export const WebsiteBlockerSettingsCard: import("react").ComponentType<
+    import("@elizaos/ui").WebsiteBlockerSettingsCardProps
+  >;
+  export function dispatchQueuedLifeOpsGithubCallbackFromUrl(
+    url: string,
+  ): void | Promise<void>;
+  export const lifeOpsPlugin: unknown;
+  export default lifeOpsPlugin;
+}
+
 declare module "@elizaos/plugin-phone" {
   export const PhoneCompanionApp: import("react").ComponentType<
     Record<string, never>

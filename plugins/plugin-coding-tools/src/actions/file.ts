@@ -432,11 +432,7 @@ export const fileAction: Action = {
       callback,
     );
     return (
-      result ??
-      failureToActionResult({
-        reason: "internal",
-        message: `FILE action=${operation} returned no result`,
-      })
+      result
     );
   },
   examples: [

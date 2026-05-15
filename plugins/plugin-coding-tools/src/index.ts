@@ -52,7 +52,7 @@ export const codingToolsPlugin: Plugin = {
   // or via the legacy "coding-agent" feature key (the plugin was renamed).
   autoEnable: {
     shouldEnable: (env, config) => {
-      const features = config?.features as Record<string, unknown> | undefined;
+      const features = config.features as Record<string, unknown> | undefined;
       const isFeatureEnabled = (f: unknown) =>
         f === true ||
         (typeof f === "object" &&

@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
+import type { AppManager } from "@elizaos/plugin-app-manager";
 import type {
   AgentAutomationMode,
   AgentStartupDiagnostics,
@@ -14,7 +15,7 @@ import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 export type CloudManagerLike = unknown;
-export type AppManagerLike = unknown;
+export type AppManagerLike = AppManager;
 
 export interface StoppablePairingSession {
   stop: () => void | Promise<void>;

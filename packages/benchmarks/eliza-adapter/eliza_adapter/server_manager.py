@@ -70,6 +70,52 @@ def _server_command(server_script: Path) -> list[str]:
     return ["node", "--import", "tsx", str(server_script)]
 
 
+def _normalize_model_env(env: dict[str, str]) -> None:
+    """Expose benchmark provider/model settings to the TypeScript bridge.
+
+    The TS runtime's OpenAI plugin reads OPENAI_* settings, while benchmark
+    launchers commonly set BENCHMARK_MODEL_* / CEREBRAS_* instead.
+    """
+    provider = (
+        env.get("BENCHMARK_MODEL_PROVIDER")
+        or env.get("ELIZA_PROVIDER")
+        or ""
+    ).strip().lower()
+    model = (
+        env.get("BENCHMARK_MODEL_NAME")
+        or env.get("MODEL_NAME")
+        or env.get("CEREBRAS_MODEL")
+        or ""
+    ).strip()
+    if provider == "cerebras" and model.startswith("openai/"):
+        model = model.split("/", 1)[1]
+
+    cerebras_key = env.get("CEREBRAS_API_KEY", "").strip()
+    if cerebras_key and (
+        provider == "cerebras"
+        or env.get("CEREBRAS_BASE_URL", "").strip()
+        or not env.get("OPENAI_API_KEY", "").strip()
+    ):
+        env.setdefault("ELIZA_PROVIDER", "cerebras")
+        env.setdefault(
+            "OPENAI_BASE_URL",
+            env.get("CEREBRAS_BASE_URL", "").strip() or "https://api.cerebras.ai/v1",
+        )
+        env.setdefault("OPENAI_API_KEY", cerebras_key)
+        model = model or "gpt-oss-120b"
+
+    if not model:
+        return
+
+    env.setdefault("BENCHMARK_MODEL_NAME", model)
+    env.setdefault("MODEL_NAME", model)
+    env.setdefault("OPENAI_SMALL_MODEL", model)
+    env.setdefault("OPENAI_LARGE_MODEL", model)
+    env.setdefault("OPENAI_RESPONSE_HANDLER_MODEL", model)
+    env.setdefault("OPENAI_ACTION_PLANNER_MODEL", model)
+    env.setdefault("OPENAI_MEDIUM_MODEL", model)
+
+
 class ElizaServerManager:
     """Start and stop the eliza benchmark server subprocess.
 
@@ -181,6 +227,7 @@ class ElizaServerManager:
             "ELIZA_BENCH_PORT": str(self.port),
             "ELIZA_BENCH_TOKEN": self._token,
         }
+        _normalize_model_env(env)
         # Stub embeddings are diagnostic-only. The server manager preserves an
         # explicit caller-provided ELIZA_BENCH_ALLOW_STUB_EMBEDDING value but
         # never enables it by default.

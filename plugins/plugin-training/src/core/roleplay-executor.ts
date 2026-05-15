@@ -538,7 +538,7 @@ function resolveMessageRoutingFallback(message: Memory): {
   secondaryContexts: string[];
 } {
   const metadata =
-    message.content?.metadata && typeof message.content.metadata === "object"
+    message.content.metadata && typeof message.content.metadata === "object"
       ? (message.content.metadata as Record<string, unknown>)
       : {};
   const responseContext =
@@ -848,7 +848,7 @@ export async function executeRoleplayEpisode(
     blueprintId: episode.blueprintId,
     agentName: episode.agentName,
     pattern:
-      typeof episode.metadata?.pattern === "string"
+      typeof episode.metadata.pattern === "string"
         ? episode.metadata.pattern
         : undefined,
     evaluationTurnId: episode.evaluationTurnId,

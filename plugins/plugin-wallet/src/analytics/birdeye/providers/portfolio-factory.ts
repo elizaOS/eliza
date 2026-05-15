@@ -74,7 +74,7 @@ function normalizePortfolioResponse(
 
 export const formatPortfolio = (response: WalletPortfolioResponse) => {
   const portfolio = normalizePortfolioResponse(response);
-  const items = portfolio.items ?? [];
+  const items = portfolio.items;
   if (!items.length) return "holdings[0]: []";
 
   return formatJsonTable(
@@ -112,7 +112,7 @@ function formatPortfolioProviderText({
   trades?: TradesResult;
 }): string {
   const normalized = normalizePortfolioResponse(portfolio);
-  const holdings = normalized.items ?? [];
+  const holdings = normalized.items;
   const tradeRows = Array.isArray(trades) ? trades : undefined;
   const lines = [
     "birdeye_wallet_portfolio:",
@@ -203,9 +203,7 @@ export function createBirdeyePortfolioProvider(
           runtime.getSetting("BIRDEYE_WALLET_ADDR"),
         );
         if (!walletAddr) {
-          runtime.logger?.error(
-            "BIRDEYE_WALLET_ADDR setting is not configured",
-          );
+          runtime.logger.error("BIRDEYE_WALLET_ADDR setting is not configured");
           return {
             values: {},
             text: statusJson(
@@ -223,7 +221,7 @@ export function createBirdeyePortfolioProvider(
         const chain = extractChain(walletAddr, explicitChain);
         const beService = getPortfolioService(runtime, includeTrades);
         if (!beService) {
-          runtime.logger?.error(
+          runtime.logger.error(
             "Birdeye service is unavailable or missing required portfolio methods",
           );
           return {
@@ -268,7 +266,7 @@ export function createBirdeyePortfolioProvider(
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        runtime.logger?.error(
+        runtime.logger.error(
           `Error fetching Birdeye portfolio: ${errorMessage}`,
         );
 

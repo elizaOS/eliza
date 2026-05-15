@@ -110,8 +110,7 @@ function resolveVoiceClassifierLibrary(opts: {
 	libraryPath?: string;
 	repoRoot?: string;
 }): string | null {
-	const explicit =
-		opts.libraryPath ?? process.env.ELIZA_VOICE_CLASSIFIER_LIB;
+	const explicit = opts.libraryPath ?? process.env.ELIZA_VOICE_CLASSIFIER_LIB;
 	if (explicit) return existsSync(explicit) ? path.resolve(explicit) : null;
 	const repoRoot = opts.repoRoot ?? process.cwd();
 	const buildDir = path.join(

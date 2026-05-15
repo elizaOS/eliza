@@ -3,7 +3,7 @@
 This is the deterministic "finalize" step the publish pipeline runs after
 weights are staged: it (a) regenerates the licenses/ set + sidecar with
 verbatim upstream SPDX text, (b) recomputes the `final.*` flags from the
-artifacts actually present, (c) writes the per-platform evidence stubs
+artifacts actually present, (c) writes the per-platform pending evidence reports
 (`evidence/platform/<target>.json`) so the publish gate sees a complete
 set and reports precisely which targets are pending, (d) refreshes the
 checksums manifest, and (e) re-derives `releaseState`, `publishEligible`,
@@ -39,6 +39,7 @@ try:
     )
     from scripts.manifest.eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         validate_manifest,
     )
@@ -48,15 +49,14 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_licenses import verify_bundle_licenses, write_bundle_licenses  # type: ignore
-    from eliza1_manifest import ELIZA_1_HF_REPO, SUPPORTED_BACKENDS_BY_TIER, validate_manifest  # type: ignore
+    from eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_VISION_TIERS, SUPPORTED_BACKENDS_BY_TIER, validate_manifest  # type: ignore
     from eliza1_platform_plan import (  # type: ignore
         REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
         _target_backend,
     )
 
 
-# How an operator produces each kind of evidence (used in the "pending"
-# stubs). Keyed by backend.
+# How an operator produces each kind of evidence. Keyed by backend.
 _RUNNER_BY_BACKEND: Final[Mapping[str, str]] = {
     "metal": (
         "on a real Apple-silicon device: build the fork "
@@ -145,16 +145,17 @@ def _detect_tier(bundle_dir: Path) -> str:
 
 
 def _detect_components(bundle_dir: Path) -> list[str]:
+    tier = _detect_tier(bundle_dir)
     components = ["text", "voice", "asr", "vad", "dflash"]
-    if (bundle_dir / "vision").is_dir() and any((bundle_dir / "vision").iterdir()):
-        components.append("vision")
-    elif (bundle_dir / "licenses" / "LICENSE.vision").is_file():
+    if (
+        tier in ELIZA_1_VISION_TIERS
+        and (bundle_dir / "vision").is_dir()
+        and any((bundle_dir / "vision").iterdir())
+    ):
         components.append("vision")
     if (bundle_dir / "embedding").is_dir() and any((bundle_dir / "embedding").iterdir()):
         components.append("embedding")
-    elif (bundle_dir / "licenses" / "LICENSE.embedding").is_file():
-        components.append("embedding")
-    if (bundle_dir / "wakeword").is_dir() or (bundle_dir / "licenses" / "LICENSE.wakeword").is_file():
+    if (bundle_dir / "wakeword").is_dir() and any((bundle_dir / "wakeword").iterdir()):
         components.append("wakeword")
     return components
 
@@ -207,14 +208,14 @@ _DEV_WORKSTATION_PARTIAL: Final[Mapping[str, Mapping[str, Any]]] = {
 }
 
 
-def write_platform_evidence_stubs(
+def write_platform_pending_evidence(
     bundle_dir: Path, tier: str, commit: str
 ) -> tuple[list[str], list[str]]:
     """Write a `evidence/platform/<target>.json` for every required target.
 
     Returns `(passing_targets, pending_targets)`. Existing reports with a
     `pass` status are left untouched; everything else is (re)written as a
-    `pending` stub recording the exact command to produce real evidence
+    `pending` report recording the exact command to produce real evidence
     (plus any real partial evidence captured on the dev workstation).
     """
     platform_dir = bundle_dir / "evidence" / "platform"
@@ -229,7 +230,7 @@ def write_platform_evidence_stubs(
             passing.append(target)
             continue
         backend = _target_backend(target)
-        stub: dict[str, Any] = {
+        pending_report: dict[str, Any] = {
             "schemaVersion": 1,
             "target": target,
             "backend": backend,
@@ -249,15 +250,15 @@ def write_platform_evidence_stubs(
         }
         partial = _DEV_WORKSTATION_PARTIAL.get(target)
         if partial is not None:
-            stub["device"] = partial["device"]
-            stub["partialEvidence"] = partial["partialEvidence"]
-            stub["reason"] = partial["missing"]
-        path.write_text(json.dumps(stub, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            pending_report["device"] = partial["device"]
+            pending_report["partialEvidence"] = partial["partialEvidence"]
+            pending_report["reason"] = partial["missing"]
+        path.write_text(json.dumps(pending_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         pending.append(target)
     return sorted(passing), sorted(pending)
 
 
-def write_dispatch_stubs(
+def write_dispatch_pending_evidence(
     bundle_dir: Path, tier: str, commit: str
 ) -> tuple[list[str], list[str]]:
     """Ensure a `evals/<backend>_dispatch.json` exists for every supported backend.
@@ -276,7 +277,7 @@ def write_dispatch_stubs(
         if existing and existing.get("runtimeReady") is True and existing.get("status") == "pass":
             ready.append(backend)
             continue
-        stub: dict[str, Any] = {
+        pending_report: dict[str, Any] = {
             "schemaVersion": 1,
             "backend": backend,
             "tier": tier,
@@ -292,20 +293,20 @@ def write_dispatch_stubs(
             "howToProduce": _RUNNER_BY_BACKEND.get(backend, "run verify-on-device against the staged bytes"),
         }
         if backend == "cpu":
-            stub["partialEvidence"] = {
+            pending_report["partialEvidence"] = {
                 "referenceTest": "make -C packages/inference/verify reference-test — clean (gen_fixture --self-test all finite)",
                 "kernelContract": "node packages/inference/verify/check_kernel_contract.mjs — OK kernels=6 targets=23",
                 "note": "CPU reference path verified on the dev workstation against synthetic fixtures; not yet against the staged bundle GGUFs",
                 "evidenceFiles": ["packages/inference/verify/hardware-results/linux-thismachine-cpu-baseline-2026-05-11.json"],
             }
         elif backend == "vulkan":
-            stub["partialEvidence"] = {
+            pending_report["partialEvidence"] = {
                 "vulkanDispatchSmoke": "make -C packages/inference/verify vulkan-dispatch-smoke — 7/7 PASS on Intel ANV (GGML_OP_ATTN_SCORE_QJL/_TBQ x3/_POLAR x2/FUSED_ATTN_QJL_TBQ)",
                 "vulkanVerify": "vulkan-verify 8/8 + multi-block 8/8 + fused 1920/1920 on Intel ANV against synthetic fixtures",
                 "note": "kernel dispatch verified on the dev workstation Intel ANV iGPU against synthetic fixtures; not yet a verify-on-device pass against the staged bundle GGUFs",
                 "evidenceFiles": ["packages/inference/verify/hardware-results/linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json"],
             }
-        path.write_text(json.dumps(stub, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(pending_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         pending.append(backend)
     return sorted(ready), sorted(pending)
 
@@ -468,9 +469,9 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     license_problems = verify_bundle_licenses(bundle_dir / "licenses", components)
     licenses_ok = not license_problems
 
-    # 2. Platform + dispatch evidence stubs.
-    passing_targets, pending_targets = write_platform_evidence_stubs(bundle_dir, tier, commit)
-    ready_backends, pending_backends = write_dispatch_stubs(bundle_dir, tier, commit)
+    # 2. Platform + dispatch pending evidence.
+    passing_targets, pending_targets = write_platform_pending_evidence(bundle_dir, tier, commit)
+    ready_backends, pending_backends = write_dispatch_pending_evidence(bundle_dir, tier, commit)
 
     # 3. Checksums (after the above writes so the manifest is fresh).
     regenerate_checksums(bundle_dir)
@@ -591,7 +592,11 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     ]
     if (bundle_dir / "asr").is_dir() and any((bundle_dir / "asr").iterdir()):
         license_files.append("licenses/LICENSE.asr")
-    if (bundle_dir / "vision").is_dir() and any((bundle_dir / "vision").iterdir()):
+    if (
+        tier in ELIZA_1_VISION_TIERS
+        and (bundle_dir / "vision").is_dir()
+        and any((bundle_dir / "vision").iterdir())
+    ):
         license_files.append("licenses/LICENSE.vision")
     if (bundle_dir / "vad").is_dir() and any((bundle_dir / "vad").iterdir()):
         license_files.append("licenses/LICENSE.vad")
@@ -610,7 +615,13 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     hf = dict(evidence.get("hf") or {})
     hf["repoId"] = ELIZA_1_HF_REPO
     hf.setdefault("pathPrefix", f"bundles/{tier}")
-    hf["status"] = "ready" if publish_eligible else f"blocked-{release_state}"
+    if publish_eligible:
+        if hf.get("status") == "uploaded" and isinstance(hf.get("uploadEvidence"), dict):
+            hf["status"] = "uploaded"
+        else:
+            hf["status"] = "pending-upload"
+    else:
+        hf["status"] = f"blocked-{release_state}"
     evidence["hf"] = hf
 
     rel_path.parent.mkdir(parents=True, exist_ok=True)

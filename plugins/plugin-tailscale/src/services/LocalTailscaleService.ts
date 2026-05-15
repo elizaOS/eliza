@@ -32,8 +32,8 @@ function runCommand(cmd: string, args: string[]): Promise<SpawnResult> {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
-    child.stdout?.on("data", (chunk: Buffer) => out.push(chunk));
-    child.stderr?.on("data", (chunk: Buffer) => err.push(chunk));
+    child.stdout.on("data", (chunk: Buffer) => out.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => err.push(chunk));
     child.on("error", reject);
     child.on("exit", (code) =>
       resolve({

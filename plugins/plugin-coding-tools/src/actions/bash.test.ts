@@ -85,6 +85,21 @@ describe("shellAction", () => {
     expect(result.text).toContain("[exit 0]");
   });
 
+  it("marks empty stdout and stderr explicitly for successful commands", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "true" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("[exit 0]");
+    expect(result.text).toContain("--- stdout ---\n(empty)");
+    expect(result.text).toContain("--- stderr ---\n(empty)");
+  });
+
   it("rejects a cwd under the blocklist", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const blocked = path.join(tmpRoot, `blocked-${Date.now()}`);

@@ -68,6 +68,21 @@ describe("defaultVoiceQuantForTier", () => {
 });
 
 describe("Eliza-1 runtime quant metadata", () => {
+  it("ships every text tier at the 128k floor or native 256k tier", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.contextLength).toBeGreaterThanOrEqual(131072);
+      expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
+      if (id === "eliza-1-27b-256k") {
+        expect(entry?.contextLength).toBe(262144);
+        expect(entry?.ggufFile).toBe("text/eliza-1-27b-256k.gguf");
+      } else {
+        expect(entry?.contextLength).toBe(131072);
+        expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
+      }
+    }
+  });
+
   it("uses QJL K-cache and TurboQuant V-cache for every chat tier", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);

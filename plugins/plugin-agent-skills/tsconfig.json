@@ -13,6 +13,11 @@
     "types": [
       "node"
     ],
+    "paths": {
+      "@elizaos/agent": [
+        "./src/agent-runtime-shim.ts"
+      ]
+    },
     "outDir": "./dist",
     "rootDir": "./src"
   },

@@ -35,34 +35,30 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - "cloud/services/gateway-discord/**"
-      - "cloud/services/gateway-discord/terraform/**"
-      - "cloud/services/gateway-discord/chart/**"
-      - "cloud/packages/lib/services/gateway-discord/**"
-      - "cloud/packages/lib/auth/jwks.ts"
-      - "cloud/packages/lib/auth/jwt-internal.ts"
-      - "cloud/packages/lib/auth/internal-api.ts"
-      - "cloud/app/api/v1/discord/**"
-      - "cloud/app/api/internal/discord/**"
-      - "cloud/app/api/internal/auth/**"
-      - "cloud/app/api/.well-known/jwks.json/**"
-      - "cloud/packages/tests/unit/discord-connections*"
+      - "packages/cloud-services/gateway-discord/**"
+      - "packages/cloud-shared/packages/lib/services/gateway-discord/**"
+      - "packages/cloud-shared/packages/lib/auth/jwks.ts"
+      - "packages/cloud-shared/packages/lib/auth/jwt-internal.ts"
+      - "packages/cloud-shared/packages/lib/auth/internal-api.ts"
+      - "packages/cloud-api/v1/discord/**"
+      - "packages/cloud-api/internal/discord/**"
+      - "packages/cloud-api/internal/auth/**"
+      - "packages/cloud-api/.well-known/jwks.json/**"
+      - "packages/cloud-shared/packages/tests/unit/discord-connections*"
       - ".github/workflows/cloud-gateway-discord.yml"
   pull_request:
     branches: [main, develop]
     paths:
-      - "cloud/services/gateway-discord/**"
-      - "cloud/services/gateway-discord/terraform/**"
-      - "cloud/services/gateway-discord/chart/**"
-      - "cloud/packages/lib/services/gateway-discord/**"
-      - "cloud/packages/lib/auth/jwks.ts"
-      - "cloud/packages/lib/auth/jwt-internal.ts"
-      - "cloud/packages/lib/auth/internal-api.ts"
-      - "cloud/app/api/v1/discord/**"
-      - "cloud/app/api/internal/discord/**"
-      - "cloud/app/api/internal/auth/**"
-      - "cloud/app/api/.well-known/jwks.json/**"
-      - "cloud/packages/tests/unit/discord-connections*"
+      - "packages/cloud-services/gateway-discord/**"
+      - "packages/cloud-shared/packages/lib/services/gateway-discord/**"
+      - "packages/cloud-shared/packages/lib/auth/jwks.ts"
+      - "packages/cloud-shared/packages/lib/auth/jwt-internal.ts"
+      - "packages/cloud-shared/packages/lib/auth/internal-api.ts"
+      - "packages/cloud-api/v1/discord/**"
+      - "packages/cloud-api/internal/discord/**"
+      - "packages/cloud-api/internal/auth/**"
+      - "packages/cloud-api/.well-known/jwks.json/**"
+      - "packages/cloud-shared/packages/tests/unit/discord-connections*"
       - ".github/workflows/cloud-gateway-discord.yml"
   workflow_dispatch:
     inputs:
@@ -87,14 +83,14 @@ on:
 
 defaults:
   run:
-    working-directory: cloud
+    working-directory: packages/cloud-shared
 
 env:
-  BUN_VERSION: "1.3.5"
+  BUN_VERSION: "1.3.13"
   TF_VERSION: "1.7.0"
   IMAGE_REPO: ghcr.io/elizaos/cloud/gateway-discord
   REGISTRY: ghcr.io
-  TF_WORKING_DIR: cloud/services/gateway-discord/terraform
+  TF_WORKING_DIR: packages/cloud-services/gateway-discord/terraform
 
 jobs:
   # =============================================================================
@@ -123,21 +119,21 @@ jobs:
           base: ${{ github.event.before }}
           filters: |
             terraform:
-              - 'cloud/services/gateway-discord/terraform/**'
+              - 'packages/cloud-services/gateway-discord/terraform/**'
             app:
-              - 'cloud/services/gateway-discord/src/**'
-              - 'cloud/services/gateway-discord/chart/**'
-              - 'cloud/services/gateway-discord/Dockerfile'
-              - 'cloud/services/gateway-discord/package.json'
-              - 'cloud/services/gateway-discord/tsconfig.json'
-              - 'cloud/packages/lib/services/gateway-discord/**'
-              - 'cloud/packages/lib/auth/jwks.ts'
-              - 'cloud/packages/lib/auth/jwt-internal.ts'
-              - 'cloud/packages/lib/auth/internal-api.ts'
-              - 'cloud/app/api/v1/discord/**'
-              - 'cloud/app/api/internal/discord/**'
-              - 'cloud/app/api/internal/auth/**'
-              - 'cloud/packages/tests/unit/discord-connections*'
+              - 'packages/cloud-services/gateway-discord/src/**'
+              - 'packages/cloud-services/gateway-discord/chart/**'
+              - 'packages/cloud-services/gateway-discord/Dockerfile'
+              - 'packages/cloud-services/gateway-discord/package.json'
+              - 'packages/cloud-services/gateway-discord/tsconfig.json'
+              - 'packages/cloud-shared/packages/lib/services/gateway-discord/**'
+              - 'packages/cloud-shared/packages/lib/auth/jwks.ts'
+              - 'packages/cloud-shared/packages/lib/auth/jwt-internal.ts'
+              - 'packages/cloud-shared/packages/lib/auth/internal-api.ts'
+              - 'packages/cloud-api/v1/discord/**'
+              - 'packages/cloud-api/internal/discord/**'
+              - 'packages/cloud-api/internal/auth/**'
+              - 'packages/cloud-shared/packages/tests/unit/discord-connections*'
 
       - name: Determine target environment
         id: env
@@ -204,7 +200,7 @@ jobs:
       pull-requests: write
     defaults:
       run:
-        working-directory: cloud/services/gateway-discord/terraform
+        working-directory: packages/cloud-services/gateway-discord/terraform
     outputs:
       cluster_name: ${{ steps.outputs.outputs.cluster_name }}
       cluster_endpoint: ${{ steps.outputs.outputs.cluster_endpoint }}
@@ -220,7 +216,7 @@ jobs:
       # Run tfsec BEFORE AWS auth - it's static analysis and doesn't need credentials
       - name: Security Scan with tfsec
         id: tfsec
-        working-directory: cloud/services/gateway-discord/terraform
+        working-directory: packages/cloud-services/gateway-discord/terraform
         run: |
           # Install tfsec
           curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
@@ -235,7 +231,7 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: cloud/services/gateway-discord/terraform/tfsec-results.sarif
+          sarif_file: packages/cloud-services/gateway-discord/terraform/tfsec-results.sarif
         continue-on-error: true
 
       - name: Terraform Format Check
@@ -417,14 +413,11 @@ jobs:
         run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Install service dependencies
-        run: |
-          cd services/gateway-discord
-          bun install --no-save
-          cd ../..
-          git diff --exit-code -- bun.lock services/gateway-discord/bun.lock
+        working-directory: packages/cloud-services/gateway-discord
+        run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Run service tests
-        working-directory: cloud/services/gateway-discord
+        working-directory: packages/cloud-services/gateway-discord
         run: bun test tests/ --timeout 60000
         env:
           SKIP_SERVER_CHECK: "true"
@@ -484,7 +477,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v7
         with:
-          context: cloud/services/gateway-discord
+          context: packages/cloud-services/gateway-discord
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -564,10 +557,10 @@ jobs:
           fi
 
           # Note: Namespace is created by Terraform (k8s-resources module)
-          helm upgrade --install gateway-discord ./services/gateway-discord/chart \
+          helm upgrade --install gateway-discord ../cloud-services/gateway-discord/chart \
             --namespace gateway-discord \
-            -f ./services/gateway-discord/chart/values.yaml \
-            -f ./services/gateway-discord/chart/${{ needs.detect-changes.outputs.values_file }} \
+            -f ../cloud-services/gateway-discord/chart/values.yaml \
+            -f ../cloud-services/gateway-discord/chart/${{ needs.detect-changes.outputs.values_file }} \
             --set image.repository=${{ env.IMAGE_REPO }} \
             $DIGEST_ARG \
             --wait \

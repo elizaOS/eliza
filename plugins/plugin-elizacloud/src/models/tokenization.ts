@@ -56,12 +56,12 @@ export async function handleTokenizerEncode(
   _runtime: IAgentRuntime,
   { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams
 ): Promise<number[]> {
-  return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
+  return await tokenizeText(modelType, prompt);
 }
 
 export async function handleTokenizerDecode(
   _runtime: IAgentRuntime,
   { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams
 ): Promise<string> {
-  return await detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
+  return await detokenizeText(modelType, tokens);
 }

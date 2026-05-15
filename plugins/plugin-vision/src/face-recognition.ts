@@ -119,7 +119,7 @@ export class FaceRecognition {
     // Validate input parameters
     if (!imageData || imageData.length === 0 || width <= 0 || height <= 0) {
       logger.warn(
-        `[FaceRecognition] Invalid input parameters: dataLength=${imageData?.length || 0}, width=${width}, height=${height}`,
+        `[FaceRecognition] Invalid input parameters: dataLength=${imageData.length || 0}, width=${width}, height=${height}`,
       );
       return [];
     }

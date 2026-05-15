@@ -276,7 +276,7 @@ export class NostrService extends Service implements INostrService {
    */
   async stop(): Promise<void> {
     logger.info("Stopping Nostr service...");
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       await Promise.all(Array.from(this.accountServices.values()).map((service) => service.stop()));
       this.accountServices.clear();
       logger.info("Nostr service stopped");
@@ -296,7 +296,7 @@ export class NostrService extends Service implements INostrService {
   }
 
   private getAccountServiceList(): NostrService[] {
-    return this.accountServices?.size > 0 ? Array.from(this.accountServices.values()) : [this];
+    return this.accountServices.size > 0 ? Array.from(this.accountServices.values()) : [this];
   }
 
   private getDefaultAccountService(): NostrService {
@@ -515,7 +515,7 @@ export class NostrService extends Service implements INostrService {
    * Check if the service is connected.
    */
   isConnected(): boolean {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return Array.from(this.accountServices.values()).some((service) => service.isConnected());
     }
     return this.connected;
@@ -525,14 +525,14 @@ export class NostrService extends Service implements INostrService {
    * Get the bot's public key in hex format.
    */
   getPublicKey(): string {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return this.getDefaultAccountService().getPublicKey();
     }
     return this.settings?.publicKey || "";
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return this.getDefaultAccountService().getAccountId(runtime);
     }
     return normalizeNostrAccountId(
@@ -552,7 +552,7 @@ export class NostrService extends Service implements INostrService {
    * Get connected relays.
    */
   getRelays(): string[] {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return this.getDefaultAccountService().getRelays();
     }
     return this.settings?.relays || [];
@@ -566,7 +566,7 @@ export class NostrService extends Service implements INostrService {
     const requestedAccountId = normalizeNostrAccountId(
       target.accountId ?? readNostrAccountId(content, target) ?? this.getAccountId()
     );
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       await this.getAccountService(requestedAccountId).handleSendMessage(_runtime, target, content);
       return;
     }
@@ -606,7 +606,7 @@ export class NostrService extends Service implements INostrService {
     const requestedAccountId = normalizeNostrAccountId(
       readNostrAccountId(content) ?? this.getAccountId()
     );
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return this.getAccountService(requestedAccountId).handleSendPost(runtime, content);
     }
 
@@ -674,7 +674,7 @@ export class NostrService extends Service implements INostrService {
     context: PostConnectorQueryContext,
     params: { query: string; limit?: number; cursor?: string }
   ): Promise<Memory[]> {
-    const query = params.query?.trim();
+    const query = params.query.trim();
     if (!query) {
       throw new Error("Nostr searchPosts connector requires a query.");
     }
@@ -948,7 +948,7 @@ export class NostrService extends Service implements INostrService {
    * Send a DM to a pubkey.
    */
   async sendDm(options: NostrDmSendOptions): Promise<NostrSendResult> {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       const accountId = normalizeNostrAccountId(
         (options as NostrDmSendOptions & { accountId?: string }).accountId ?? this.getAccountId()
       );
@@ -1050,7 +1050,7 @@ export class NostrService extends Service implements INostrService {
    * Publish profile (kind:0).
    */
   async publishProfile(profile: NostrProfile): Promise<NostrSendResult> {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       const accountId = normalizeNostrAccountId(
         (profile as NostrProfile & { accountId?: string }).accountId ?? this.getAccountId()
       );
@@ -1137,7 +1137,7 @@ export class NostrService extends Service implements INostrService {
    * Publish a text note (kind:1).
    */
   async publishNote(text: string, tags: string[][] = []): Promise<NostrSendResult> {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return this.getDefaultAccountService().publishNote(text, tags);
     }
 
@@ -1209,7 +1209,7 @@ export class NostrService extends Service implements INostrService {
    * Get the settings.
    */
   getSettings(): NostrSettings | null {
-    if (this.accountServices?.size > 0) {
+    if (this.accountServices.size > 0) {
       return this.getDefaultAccountService().getSettings();
     }
     return this.settings;

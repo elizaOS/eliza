@@ -656,7 +656,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(markdown).not.toContain("csk-secret-for-markdown-test");
 	});
 
-	it("output JSON is structurally compatible with scripts/run-cerebras.ts LocalRecorder", async () => {
+	it("output JSON is structurally compatible with packages/scripts/run-cerebras.ts LocalRecorder", async () => {
 		// Smoke test: produce a minimal trajectory and assert every top-level
 		// field expected by the schema in PLAN.md §18.1 is present and typed.
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });

@@ -109,7 +109,7 @@ export class Broadcast extends EventEmitter implements IAudioBroadcast {
     // Get a consumer stream from the multiplexer
     const stream = this.multiplexer.addConsumer(consumerId);
     logger.info(
-      `[Broadcast:${this.guildId}] Got stream for ${consumerId}, readable: ${stream?.readable}`,
+      `[Broadcast:${this.guildId}] Got stream for ${consumerId}, readable: ${stream.readable}`,
     );
 
     // Create subscription object

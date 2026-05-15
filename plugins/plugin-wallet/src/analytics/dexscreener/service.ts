@@ -1,7 +1,7 @@
 import {
   cloudServiceApisBaseUrl,
   toRuntimeSettings,
-} from "@elizaos/cloud-routing";
+} from "@elizaos/cloud-shared/routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { dexScreenerErrorMessage } from "./errors";
 import type {
@@ -271,15 +271,15 @@ export class DexScreenerService extends Service {
         pairs.sort((a, b) => {
           switch (params.sortBy) {
             case "volume":
-              return (b.volume?.h24 || 0) - (a.volume?.h24 || 0);
+              return (b.volume.h24 || 0) - (a.volume.h24 || 0);
             case "liquidity":
               return (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0);
             case "priceChange":
-              return (b.priceChange?.h24 || 0) - (a.priceChange?.h24 || 0);
+              return (b.priceChange.h24 || 0) - (a.priceChange.h24 || 0);
             case "txns":
               return (
-                (b.txns?.h24.buys + b.txns?.h24.sells || 0) -
-                (a.txns?.h24.buys + a.txns?.h24.sells || 0)
+                (b.txns.h24.buys + b.txns.h24.sells || 0) -
+                (a.txns.h24.buys + a.txns.h24.sells || 0)
               );
             default:
               return 0;
@@ -326,7 +326,7 @@ export class DexScreenerService extends Service {
       // Filter by chain if specified
       const filteredProfiles = params.chain
         ? profiles.filter(
-            (p) => p.chainId?.toLowerCase() === params.chain?.toLowerCase(),
+            (p) => p.chainId.toLowerCase() === params.chain?.toLowerCase(),
           )
         : profiles;
 
@@ -390,7 +390,7 @@ export class DexScreenerService extends Service {
         : [responseData];
 
       const profile = profiles.find(
-        (p) => p.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase(),
+        (p) => p.tokenAddress.toLowerCase() === tokenAddress.toLowerCase(),
       );
 
       if (!profile) {

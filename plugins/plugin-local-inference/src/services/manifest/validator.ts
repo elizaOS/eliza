@@ -190,6 +190,8 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"27b-256k",
 ]);
 
+const MIN_TEXT_CONTEXT = 131072;
+
 function collectContractErrors(m: Eliza1Manifest): string[] {
 	const errors: string[] = [];
 
@@ -206,6 +208,21 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		if (!declaredRequired.has(k)) {
 			errors.push(
 				`kernels.required: missing required kernel for tier ${m.tier}: ${k}`,
+			);
+		}
+	}
+
+	for (const [i, entry] of m.files.text.entries()) {
+		if (typeof entry.ctx !== "number") {
+			errors.push(`files.text[${i}].ctx: required for text GGUFs`);
+		} else if (entry.ctx < MIN_TEXT_CONTEXT) {
+			errors.push(
+				`files.text[${i}].ctx: ${entry.ctx} is below the 128k text GGUF floor`,
+			);
+		}
+		if (/-(32k|64k)\.gguf$/i.test(entry.path)) {
+			errors.push(
+				`files.text[${i}].path: 32k/64k text GGUFs are below the Eliza-1 release floor`,
 			);
 		}
 	}
@@ -510,6 +527,21 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 					"evals.dflash: defaultEligible requires measured acceptanceRate and speedup",
 				);
 			}
+		}
+	}
+
+	// EAGLE3 bench metadata is always optional and independent from DFlash. When
+	// present, it may record a not-run/failure state; only a passing claim must
+	// include measured acceptance/speedup values.
+	if (m.evals.eagle3) {
+		const eagle3Passed = m.evals.eagle3.passed ?? m.evals.eagle3.pass;
+		if (
+			eagle3Passed === true &&
+			(m.evals.eagle3.acceptanceRate == null || m.evals.eagle3.speedup == null)
+		) {
+			errors.push(
+				"evals.eagle3: passed=true requires measured acceptanceRate and speedup",
+			);
 		}
 	}
 

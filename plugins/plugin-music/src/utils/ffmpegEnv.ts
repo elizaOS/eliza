@@ -17,7 +17,7 @@ function tryFfmpegStaticPath(): string | null {
 function tryFfprobeStaticPath(): string | null {
   try {
     const mod = require("ffprobe-static") as { path?: string } | string;
-    const p = typeof mod === "string" ? mod : mod?.path;
+    const p = typeof mod === "string" ? mod : mod.path;
     if (typeof p === "string" && p.length > 0 && existsSync(p)) return p;
   } catch {
     /* optional */

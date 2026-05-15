@@ -211,7 +211,13 @@ describe("AcpService", () => {
     const reg = nextProc();
     const service = new AcpService(runtime());
     const events: string[] = [];
-    service.onSessionEvent((_sid, event) => events.push(event));
+    const taskCompletePayloads: Array<{ response?: string }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push(event);
+      if (event === "task_complete") {
+        taskCompletePayloads.push(payload as { response?: string });
+      }
+    });
     await service.start();
 
     const promise = service.spawnSession({
@@ -256,7 +262,9 @@ describe("AcpService", () => {
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     const agentArgIndex = args?.indexOf("--agent") ?? -1;
     expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toMatch(/bench-shim.*opencode.* acp$/);
+    expect(args?.[agentArgIndex + 1]).toMatch(
+      /plugin-agent-orchestrator\/bin.*opencode.* acp$/,
+    );
     expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
@@ -328,7 +336,13 @@ describe("AcpService", () => {
     const create = nextProc();
     const service = new AcpService(runtime());
     const events: string[] = [];
-    service.onSessionEvent((_sid, event) => events.push(event));
+    const taskCompletePayloads: Array<{ response?: string }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push(event);
+      if (event === "task_complete") {
+        taskCompletePayloads.push(payload as { response?: string });
+      }
+    });
     await service.start();
     const spawned = service.spawnSession({
       name: "s2",
@@ -389,6 +403,7 @@ describe("AcpService", () => {
     expect(result.response).toContain("[tool output: Read home usage]");
     expect(result.response).toContain("/home            387G");
     expect(result.response).not.toContain('"metadata"');
+    expect(taskCompletePayloads[0]?.response).toBe("done");
     expect(result.stopReason).toBe("end_turn");
     expect(events).toEqual(
       expect.arrayContaining([

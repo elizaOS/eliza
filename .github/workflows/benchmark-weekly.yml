@@ -195,7 +195,7 @@ jobs:
           BENCHMARK_REPORT_PATH: artifacts/benchmark-report.md
         # Trajectory data and ephemeral state land under ~/.eliza per
         # eliza-native ELIZA_STATE_DIR convention.
-        run: node scripts/run-scenario-benchmark.mjs
+        run: node packages/scripts/run-scenario-benchmark.mjs
 
       - name: Upload benchmark report
         if: always()

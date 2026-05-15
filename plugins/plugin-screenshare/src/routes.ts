@@ -336,12 +336,12 @@ function readRequestToken(ctx: RouteContext): string | null {
   }
 
   const req = ctx.req;
-  const headerToken = req?.headers["x-screenshare-token"];
+  const headerToken = req.headers["x-screenshare-token"];
   if (typeof headerToken === "string" && headerToken.trim()) {
     return headerToken.trim();
   }
 
-  const authorization = req?.headers.authorization;
+  const authorization = req.headers.authorization;
   if (typeof authorization === "string") {
     const match = authorization.match(/^Bearer\s+(.+)$/i);
     const token = match?.[1]?.trim();

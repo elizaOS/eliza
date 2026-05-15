@@ -922,8 +922,8 @@ function createMergeNode(): INodeType {
       ] as never,
     },
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-      const first = this.getInputData(0) ?? [];
-      const second = this.getInputData(1) ?? [];
+      const first = this.getInputData(0);
+      const second = this.getInputData(1);
       return [[...first, ...second]];
     },
   };
@@ -1010,7 +1010,7 @@ function createDateTimeNode(): INodeType {
       const now = new Date().toISOString();
       return [
         inputItems.map((item, index) => ({
-          json: { ...(item.json ?? {}), [fieldName]: now } as INodeExecutionData['json'],
+          json: { ...item.json, [fieldName]: now } as INodeExecutionData['json'],
           pairedItem: item.pairedItem ?? { item: index },
         })),
       ];
@@ -1046,7 +1046,7 @@ function createCryptoNode(): INodeType {
             raw === '' || typeof raw === 'undefined' ? JSON.stringify(item.json) : String(raw);
           return {
             json: {
-              ...(item.json ?? {}),
+              ...item.json,
               [fieldName]: createHash(algorithm).update(source).digest('hex'),
             } as INodeExecutionData['json'],
             pairedItem: item.pairedItem ?? { item: index },
@@ -1193,7 +1193,7 @@ function createRespondToEventNode(): INodeType {
 
       const autonomyService = resolveAutonomyService(runtime);
       if (!autonomyService) {
-        runtime.logger?.warn?.(
+        runtime.logger.warn(
           { src: 'plugin:workflow:respondToEvent', nodeName: node.name, executionId },
           '[respondToEvent] Autonomy service not registered — skipping injection'
         );
@@ -1202,7 +1202,7 @@ function createRespondToEventNode(): INodeType {
 
       const roomId = resolveAutonomyRoomId(autonomyService);
       if (!roomId) {
-        runtime.logger?.warn?.(
+        runtime.logger.warn(
           { src: 'plugin:workflow:respondToEvent', nodeName: node.name, executionId },
           '[respondToEvent] No autonomy room resolvable — skipping injection'
         );
@@ -1990,7 +1990,7 @@ export class EmbeddedWorkflowService extends Service {
       tags: [WORKFLOW_TASK_TAG],
       agentIds: [this.runtime.agentId],
     });
-    if (!tasks?.length) return 0;
+    if (!tasks.length) return 0;
     let removed = 0;
     for (const task of tasks) {
       if (!task.id) continue;
@@ -2088,7 +2088,7 @@ export class EmbeddedWorkflowService extends Service {
       tags: [WORKFLOW_TASK_TAG],
       agentIds: [this.runtime.agentId],
     });
-    if (!tasks?.length) return;
+    if (!tasks.length) return;
     for (const task of tasks) {
       if (
         task.id &&
@@ -2137,16 +2137,16 @@ export class EmbeddedWorkflowService extends Service {
     workflowData: WorkflowDefinition
   ): Map<string, IncomingConnection[]> {
     const incoming = new Map<string, IncomingConnection[]>();
-    for (const [source, outputsByType] of Object.entries(workflowData.connections ?? {})) {
-      const mainOutputs = outputsByType.main ?? [];
+    for (const [source, outputsByType] of Object.entries(workflowData.connections)) {
+      const mainOutputs = outputsByType.main;
       mainOutputs.forEach((connections, sourceOutputIndex) => {
-        for (const connection of connections ?? []) {
+        for (const connection of connections) {
           if (connection.type !== 'main') continue;
           const destination = incoming.get(connection.node) ?? [];
           destination.push({
             source,
             sourceOutputIndex,
-            destinationInputIndex: connection.index ?? 0,
+            destinationInputIndex: connection.index,
           });
           incoming.set(connection.node, destination);
         }

@@ -21,6 +21,95 @@ from unittest.mock import patch
 
 from elizaos_tau_bench.runner import TauBenchRunner
 from elizaos_tau_bench.types import TauBenchConfig
+from elizaos_tau_bench.upstream.envs.user import GroundedUserSimulationEnv
+
+
+def test_eliza_tau_prompt_context_stays_stateful_and_compact():
+    """Regression for live Eliza TAU context blow-up.
+
+    The Eliza benchmark server stores each turn in a room. The adapter must not
+    also resend the full chat-completions transcript in context.messages every
+    turn, or long TAU tasks exceed Cerebras' context limit.
+    """
+    from eliza_adapter import tau_bench as eliza_tau
+
+    long_rules = "policy " * 2000
+    long_tool_result = "tool-result " * 2000
+    messages = [
+        {"role": "system", "content": long_rules},
+        {"role": "user", "content": "initial customer request"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": "{}"},
+                }
+            ],
+            "reasoning_content": "provider-only",
+        },
+        {"role": "tool", "name": "lookup", "content": long_tool_result},
+        {"role": "user", "content": long_tool_result},
+    ]
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "lookup",
+                "description": "description " * 200,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}},
+                    "required": ["id"],
+                },
+            },
+        }
+    ]
+
+    prompt = eliza_tau._build_eliza_turn_text(messages)
+    compact_tools = eliza_tau._compact_tool_schemas_for_eliza(tools)
+    scrubbed = eliza_tau._scrub_history_for_cerebras(messages)
+
+    assert "Domain rules" not in prompt
+    assert "Latest customer/tool observation" in prompt
+    assert len(prompt) < 9000
+    assert compact_tools[0]["function"]["parameters"] == tools[0]["function"]["parameters"]
+    assert len(compact_tools[0]["function"]["description"]) < 400
+    assert "reasoning_content" not in scrubbed[2]
+
+
+def test_eliza_tau_prompt_uses_latest_tool_observation():
+    from eliza_adapter import tau_bench as eliza_tau
+
+    messages = [
+        {"role": "system", "content": "rules"},
+        {"role": "user", "content": "original customer request"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "get_order_details", "arguments": "{}"},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "name": "get_order_details",
+            "content": "{\"status\":\"delivered\"}",
+        },
+    ]
+
+    prompt = eliza_tau._build_eliza_turn_text(messages)
+
+    assert "Tool result from get_order_details" in prompt
+    assert "\"status\":\"delivered\"" in prompt
+    assert "Original customer request" in prompt
+    assert "original customer request" in prompt
 
 
 def test_mock_smoke_retail_and_airline(tmp_path):
@@ -42,6 +131,56 @@ def test_mock_smoke_retail_and_airline(tmp_path):
     # Each result has tool calls (sample tasks have at least 1 ground-truth tool)
     for r in report.results:
         assert r.num_tool_calls >= 1, f"{r.domain}#{r.task_id} ran 0 tools"
+
+
+def test_grounded_sample_user_does_not_hallucinate_email():
+    user = GroundedUserSimulationEnv()
+    user.reset(
+        "You are Yusuf Rossi in 19122. You received your order #W2378156 "
+        "and wish to exchange the mechanical keyboard."
+    )
+
+    answer = user.step("Can you give me the email address on your account?")
+
+    assert "@" not in answer
+    assert "Yusuf Rossi" in answer
+    assert "19122" in answer
+
+
+def test_sample_cli_defaults_to_grounded_user(tmp_path):
+    from elizaos_tau_bench.cli import build_config, parse_args
+
+    cfg = build_config(
+        parse_args(
+            [
+                "--use-sample-tasks",
+                "--output-dir",
+                str(tmp_path / "out"),
+            ]
+        )
+    )
+
+    assert cfg.user_strategy == "grounded"
+
+
+def test_sample_runner_defaults_to_grounded_user(monkeypatch):
+    from elizaos_tau_bench import runner as runner_mod
+
+    captured = {}
+
+    def fake_get_env(**kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("stop after env construction args")
+
+    monkeypatch.setattr(runner_mod, "get_env", fake_get_env)
+    cfg = TauBenchConfig(domains=["retail"], use_sample_tasks=True, use_mock=False)
+
+    try:
+        TauBenchRunner(cfg)._make_env("retail", 0)
+    except RuntimeError as exc:
+        assert "stop after env construction args" in str(exc)
+
+    assert captured["user_strategy"] == "grounded"
 
 
 # --- Real-LLM-shaped smoke test (litellm patched) -----------------------------

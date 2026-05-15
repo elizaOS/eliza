@@ -1,5 +1,5 @@
-silero_vad_stub_smoke 4 0.000428588
-silero_vad_state_test 4 0.000324041
-silero_vad_resample_test 4 0.00034167
-silero_vad_runtime_test 3 0.00225523
+silero_vad_stub_smoke 1 0.00314707
+silero_vad_state_test 1 0.00119775
+silero_vad_resample_test 1 0.00105727
+silero_vad_runtime_test 1 0.00331007
 ---

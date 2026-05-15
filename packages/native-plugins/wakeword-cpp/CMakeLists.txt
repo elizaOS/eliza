@@ -73,3 +73,23 @@ add_test(NAME wakeword_runtime_test
                  ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.melspec.gguf
                  ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.embedding.gguf
                  ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.classifier.gguf)
+
+# Optional parity test: drives the C runtime AND the openWakeWord
+# ONNX bundle through onnxruntime, asserts agreement within ±0.15 per
+# chunk on three synthetic clips. Requires `python3`, `onnxruntime`,
+# `numpy`, `onnx`, the three GGUFs, and the matching ONNX bundle.
+# The test exit-codes 77 (CMake's SKIP) when prerequisites are
+# missing, so a CI without onnxruntime + ONNX bundle does not block
+# the rest of the suite.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME wakeword_parity_test
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/test/wakeword_parity_test.py
+                     --libwakeword       ${CMAKE_BINARY_DIR}/libwakeword.so
+                     --gguf-dir          ${CMAKE_BINARY_DIR}/wakeword
+                     --phrase-slug       hey-eliza
+                     --onnx-dir          ${CMAKE_SOURCE_DIR}/../../../artifacts/hf-eliza1-voice-consolidation/voice/wakeword
+                     --classifier-onnx   hey-eliza-int8.onnx)
+    set_tests_properties(wakeword_parity_test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

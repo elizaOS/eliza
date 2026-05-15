@@ -296,7 +296,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     uiShellMode,
     tab,
     agentStatus,
-    conversations,
     activeConversationId,
     companionMessageCutoffTs,
     conversationMessages,

@@ -362,7 +362,7 @@ export class SignalPairingSession {
     let qrCode: QrCodeModule;
     try {
       const importedQrCode = await import("qrcode");
-      qrCode = (importedQrCode.default ?? importedQrCode) as QrCodeModule;
+      qrCode = importedQrCode.default as QrCodeModule;
     } catch (err) {
       const message = `Failed to load QR dependency: ${String(err)}`;
       this.lastError = message;

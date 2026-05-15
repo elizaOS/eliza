@@ -726,7 +726,7 @@ export function LiveEventsPanel({
         ) : (
           events.map((event) => (
             <div
-              key={`${event.ts}-${event.kind}-${String(event.message ?? "")}`}
+              key={`${event.ts}-${event.kind}-${String(event.message)}`}
               className="px-3 py-2 text-sm"
             >
               <span className="mr-2 font-mono text-xs text-muted">

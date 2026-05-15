@@ -41,7 +41,7 @@ export const DESKTOP_PARITY: Readonly<
     browser: { status: "verified" },
     terminal: { status: "verified" },
     fileSystem: { status: "verified" },
-    clipboard: { status: "code-parity", note: "wl-clipboard / xclip / xsel" },
+    clipboard: { status: "verified", note: "wl-clipboard / xclip / xsel" },
   },
   darwin: {
     screenshot: { status: "code-parity", note: "screencapture (built-in)" },

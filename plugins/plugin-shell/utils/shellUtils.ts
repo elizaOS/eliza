@@ -365,11 +365,11 @@ export function formatSpawnError(err: unknown): string {
   }
   const details = err as NodeJS.ErrnoException;
   const parts: string[] = [];
-  const message = err.message?.trim();
+  const message = err.message.trim();
   if (message) {
     parts.push(message);
   }
-  if (details.code && !message?.includes(details.code)) {
+  if (details.code && !message.includes(details.code)) {
     parts.push(details.code);
   }
   if (details.syscall) {

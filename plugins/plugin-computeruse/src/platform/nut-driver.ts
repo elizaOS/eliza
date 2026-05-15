@@ -16,6 +16,7 @@ import { readFileSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type {} from "@nut-tree-fork/nut-js";
 import type { ScreenRegion } from "../types.js";
 import { canonicalKeyName, validateInt, validateText } from "./helpers.js";
 

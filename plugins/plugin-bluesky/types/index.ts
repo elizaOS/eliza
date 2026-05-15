@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import * as zod from "zod";
 
-const z = zod.z ?? zod;
+const z = zod.z;
 
 export const BLUESKY_SERVICE_URL = "https://bsky.social";
 export const BLUESKY_MAX_POST_LENGTH = 300;

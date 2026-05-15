@@ -205,7 +205,7 @@ async function dispatchOp(
       return await service.executeAction({ action: "eatFood", slot });
     }
     case "set_goal": {
-      const journal = service.getJournalService?.();
+      const journal = service.getJournalService();
       if (!journal) return { success: false, message: "journal unavailable" };
       const title = str(params, "title");
       if (!title) return { success: false, message: "missing title" };
@@ -214,7 +214,7 @@ async function dispatchOp(
       return { success: true, message: `goal set: "${goal.title}"` };
     }
     case "complete_goal": {
-      const journal = service.getJournalService?.();
+      const journal = service.getJournalService();
       if (!journal) return { success: false, message: "journal unavailable" };
       const statusRaw = str(params, "status").toLowerCase() || "completed";
       if (statusRaw !== "completed" && statusRaw !== "abandoned") {
@@ -242,7 +242,7 @@ async function dispatchOp(
       return { success: true, message: `goal -> ${statusRaw}` };
     }
     case "remember": {
-      const journal = service.getJournalService?.();
+      const journal = service.getJournalService();
       if (!journal) return { success: false, message: "journal unavailable" };
       const text = str(params, "notes") || str(params, "text");
       if (!text) return { success: false, message: "missing notes" };

@@ -54,8 +54,8 @@ function toConnectorAccount(settings: NostrSettings): ConnectorAccount {
     createdAt: now,
     updatedAt: now,
     metadata: {
-      relays: settings.relays ?? [],
-      dmPolicy: settings.dmPolicy ?? "pairing",
+      relays: settings.relays,
+      dmPolicy: settings.dmPolicy,
       hasProfile: Boolean(settings.profile),
     },
   };

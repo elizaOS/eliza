@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizaos/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
 point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizaos/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
+   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -72,8 +72,10 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_DFLASH_TIERS,
     ELIZA_1_HF_REPO,
     ELIZA_1_PROVENANCE_SLOTS,
+    ELIZA_1_VISION_TIERS,
     ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
@@ -575,6 +577,113 @@ def _validate_dflash_release_metadata(
         )
 
 
+def _validate_dflash_disabled_metadata(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+) -> None:
+    """Validate the explicit no-DFlash release policy for non-DFlash tiers."""
+
+    meta_path = ctx.bundle_dir / "dflash" / "target-meta.json"
+    if not meta_path.is_file():
+        raise OrchestratorError(
+            "DFlash disabled metadata: missing dflash/target-meta.json",
+            EXIT_MISSING_FILE,
+        )
+    meta = _read_sidecar(meta_path)
+    errors: list[str] = []
+
+    if meta.get("schemaVersion") != 2:
+        errors.append("schemaVersion must be 2")
+    if meta.get("tier") != ctx.tier:
+        errors.append(f"tier must be {ctx.tier!r}")
+    if meta.get("status") != "disabled":
+        errors.append("status must be 'disabled'")
+    if meta.get("dflashEnabled") is not False:
+        errors.append("dflashEnabled must be false")
+    if meta.get("publishEligible") is True:
+        errors.append("publishEligible must not be true when DFlash is disabled")
+    if meta.get("drafter") is not None:
+        errors.append("drafter must be null when DFlash is disabled")
+    if meta.get("acceptanceRate") is not None:
+        errors.append("acceptanceRate must be null when DFlash is disabled")
+    if meta.get("acceptanceWindow") is not None:
+        errors.append("acceptanceWindow must be null when DFlash is disabled")
+
+    dflash_ggufs = sorted(
+        str(path.relative_to(ctx.bundle_dir))
+        for path in layout.get("dflash", [])
+        if path.suffix == ".gguf"
+    )
+    if dflash_ggufs:
+        errors.append(
+            "DFlash is disabled for this tier; remove shipped drafter GGUF(s): "
+            f"{dflash_ggufs}"
+        )
+
+    text_paths = {
+        str(path.relative_to(ctx.bundle_dir)): path
+        for path in layout.get("text", [])
+        if path.is_file()
+    }
+    target_text = meta.get("targetText")
+    if not isinstance(target_text, dict):
+        errors.append("targetText must be an object")
+    else:
+        target_path = target_text.get("path")
+        if not isinstance(target_path, str) or target_path not in text_paths:
+            errors.append("targetText.path must point at a shipped text/*.gguf")
+        else:
+            actual = _sha256_file(text_paths[target_path])
+            if target_text.get("sha256") != actual:
+                errors.append(
+                    f"targetText.sha256 mismatch for {target_path}: "
+                    f"recorded {target_text.get('sha256')!r}, actual {actual}"
+                )
+
+    disabled_policy = meta.get("disabledPolicy")
+    if not isinstance(disabled_policy, dict):
+        errors.append("disabledPolicy must be an object")
+    else:
+        policy_path = disabled_policy.get("path")
+        if not isinstance(policy_path, str):
+            errors.append("disabledPolicy.path must be recorded")
+        else:
+            policy_file = ctx.bundle_dir / policy_path
+            if not policy_file.is_file():
+                errors.append(f"disabledPolicy.path does not exist: {policy_path}")
+            else:
+                recorded = disabled_policy.get("sha256")
+                actual = _sha256_file(policy_file)
+                if recorded != actual:
+                    errors.append(
+                        f"disabledPolicy.sha256 mismatch for {policy_path}: "
+                        f"recorded {recorded!r}, actual {actual}"
+                    )
+                policy = _read_sidecar(policy_file)
+                if policy.get("kind") != "dflash-release-policy":
+                    errors.append("disabledPolicy file kind must be 'dflash-release-policy'")
+                if policy.get("tier") != ctx.tier:
+                    errors.append(f"disabledPolicy file tier must be {ctx.tier!r}")
+                if policy.get("status") != "disabled":
+                    errors.append("disabledPolicy file status must be 'disabled'")
+                if policy.get("requiresDrafter") is not False:
+                    errors.append("disabledPolicy file requiresDrafter must be false")
+                if policy.get("releaseEligibleWithoutDrafter") is not True:
+                    errors.append(
+                        "disabledPolicy file releaseEligibleWithoutDrafter must be true"
+                    )
+        if disabled_policy.get("requiresDrafter") is not False:
+            errors.append("disabledPolicy.requiresDrafter must be false")
+        if disabled_policy.get("releaseMode") != "fail-open-no-drafter":
+            errors.append("disabledPolicy.releaseMode must be 'fail-open-no-drafter'")
+
+    if errors:
+        raise OrchestratorError(
+            "DFlash disabled metadata invalid:\n  - " + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     """Enforce the §2 layout. Populates ``ctx.layout_files`` and returns it.
 
@@ -619,12 +728,16 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             f"{missing_tts}",
             EXIT_MISSING_FILE,
         )
-    if not out["dflash"]:
-        raise OrchestratorError(
-            "bundle layout: dflash/ must contain at least one .gguf",
-            EXIT_BUNDLE_LAYOUT_FAIL,
-        )
-    _validate_dflash_release_metadata(ctx, out)
+    dflash_ggufs = [path for path in out["dflash"] if path.suffix == ".gguf"]
+    if ctx.tier in ELIZA_1_DFLASH_TIERS:
+        if not dflash_ggufs:
+            raise OrchestratorError(
+                "bundle layout: dflash/ must contain at least one .gguf",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        _validate_dflash_release_metadata(ctx, out)
+    else:
+        _validate_dflash_disabled_metadata(ctx, out)
     if not out["asr"]:
         raise OrchestratorError(
             "bundle layout: asr/ must contain at least one model file",
@@ -652,10 +765,13 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
 
-    # Optional but if present must not be empty.
+    # Optional runtime payloads. Ignore stale unsupported optional files on disk
+    # so a non-vision tier is judged by the manifest-supported payload.
     for opt in ("vision", "embedding", "wakeword"):
         d = bundle / opt
-        if d.is_dir():
+        if opt == "vision" and ctx.tier not in ELIZA_1_VISION_TIERS:
+            out[opt] = []
+        elif d.is_dir():
             files = sorted(p for p in d.iterdir() if p.is_file())
             out[opt] = files
         else:
@@ -682,9 +798,9 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     license_components = ["text", "voice", "asr", "vad", "dflash"]
     if out.get("vision"):
         license_components.append("vision")
-    if (licenses_dir / "LICENSE.embedding").is_file() or out.get("embedding"):
+    if out.get("embedding"):
         license_components.append("embedding")
-    if (licenses_dir / "LICENSE.wakeword").is_file() or out.get("wakeword"):
+    if out.get("wakeword"):
         license_components.append("wakeword")
     license_problems = verify_bundle_licenses(licenses_dir, license_components)
     if license_problems:
@@ -724,6 +840,13 @@ def validate_destination_repo(ctx: PublishContext) -> None:
 
 def _relative_file_paths(paths: Sequence[Path], bundle_root: Path) -> list[str]:
     return [str(p.relative_to(bundle_root)) for p in paths]
+
+
+def _release_blocking_reasons(evidence: Mapping[str, Any]) -> list[str]:
+    reasons = evidence.get("publishBlockingReasons")
+    if not isinstance(reasons, list):
+        return []
+    return [reason for reason in reasons if isinstance(reason, str) and reason.strip()]
 
 
 def _expected_payload_paths(
@@ -1084,6 +1207,10 @@ def validate_release_evidence(
     evidence = _read_sidecar(evidence_path)
 
     errors: list[str] = []
+    release_blockers = _release_blocking_reasons(evidence)
+    use_release_blockers = (
+        evidence.get("publishEligible") is not True and bool(release_blockers)
+    )
     if evidence.get("schemaVersion") != 1:
         errors.append("schemaVersion must be 1")
     if evidence.get("tier") != ctx.tier:
@@ -1093,7 +1220,8 @@ def validate_release_evidence(
 
     release_state = evidence.get("releaseState")
     if release_state not in {"base-v1", "upload-candidate", "final"}:
-        errors.append("releaseState must be 'base-v1', 'upload-candidate', or 'final'")
+        if not use_release_blockers:
+            errors.append("releaseState must be 'base-v1', 'upload-candidate', or 'final'")
     elif release_state == "base-v1":
         _validate_base_v1_provenance(
             evidence=evidence,
@@ -1112,8 +1240,16 @@ def validate_release_evidence(
             else REQUIRED_RELEASE_FINAL_FLAGS
         )
         for flag in required_final_flags:
-            if final.get(flag) is not True:
+            if final.get(flag) is not True and not use_release_blockers:
                 errors.append(f"final.{flag} must be true")
+
+    if use_release_blockers:
+        errors.extend(
+            f"publishBlockingReasons: {reason}"
+            for reason in release_blockers
+        )
+    elif evidence.get("publishEligible") is False:
+        errors.append("publishEligible must be true")
 
     checksum_manifest = evidence.get("checksumManifest")
     if checksum_manifest != str(CHECKSUMS_PATH):
@@ -1123,15 +1259,19 @@ def validate_release_evidence(
     if not isinstance(weights, list) or not all(isinstance(p, str) for p in weights):
         errors.append("weights must be an array of bundle-relative paths")
     else:
-        shipped_weight_paths = set(
-            _relative_file_paths(
-                [
-                    p
-                    for kind in ("text", "tts", "asr", "vision", "dflash")
-                    for p in layout.get(kind, [])
-                ],
-                ctx.bundle_dir,
+        shipped_weight_files = [
+            p
+            for kind in ("text", "tts", "asr")
+            for p in layout.get(kind, [])
+        ]
+        if ctx.tier in ELIZA_1_VISION_TIERS:
+            shipped_weight_files.extend(layout.get("vision", []))
+        if ctx.tier in ELIZA_1_DFLASH_TIERS:
+            shipped_weight_files.extend(
+                p for p in layout.get("dflash", []) if p.suffix == ".gguf"
             )
+        shipped_weight_paths = set(
+            _relative_file_paths(shipped_weight_files, ctx.bundle_dir)
         )
         missing_weights = sorted(shipped_weight_paths - set(weights))
         if missing_weights:

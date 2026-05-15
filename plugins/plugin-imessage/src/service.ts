@@ -165,7 +165,7 @@ function normalizeIMessageConnectorHandle(value: string): string {
 
 function firstAttachmentUrl(content: Content): string | undefined {
   const attachment = content.attachments?.find(
-    (item) => typeof item?.url === "string" && item.url.trim().length > 0
+    (item) => typeof item.url === "string" && item.url.trim().length > 0
   );
   return attachment?.url?.trim();
 }
@@ -230,7 +230,7 @@ function filterMemoriesByQuery(memories: Memory[], query: string, limit: number)
   }
   return memories
     .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      const text = typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -243,11 +243,11 @@ function publicIMessageToMemory(
   accountId = IMESSAGE_LOCAL_ACCOUNT_ID
 ): Memory {
   const normalizedAccountId = assertLocalIMessageAccount(accountId);
-  const handle = normalizeIMessageConnectorHandle(message.handle ?? "");
+  const handle = normalizeIMessageConnectorHandle(message.handle);
   const entityId = message.isFromMe
     ? runtime.agentId
     : (createUniqueUuid(runtime, handle || message.chatId || message.id) as UUID);
-  const channelType = message.chatId?.includes(";+;") ? ChannelType.GROUP : ChannelType.DM;
+  const channelType = message.chatId.includes(";+;") ? ChannelType.GROUP : ChannelType.DM;
 
   return {
     id: createUniqueUuid(runtime, `imessage-public:${message.id}`) as UUID,
@@ -344,8 +344,7 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
   const label =
     chat.displayName ??
     contactName ??
-    (isGroup ? participants.filter(Boolean).join(", ") : primaryHandle) ??
-    chat.chatId;
+    (isGroup ? participants.filter(Boolean).join(", ") : primaryHandle);
   const target: TargetInfo = targetWithAccount(
     {
       source: "imessage",
@@ -500,7 +499,7 @@ export class IMessageService extends Service implements IIMessageService {
       // settings (runtime.getSetting), the raw process env, and the
       // character's settings object. Whichever arrives first wins.
       const settingFromRuntime =
-        typeof service.runtime?.getSetting === "function"
+        typeof service.runtime.getSetting === "function"
           ? service.runtime.getSetting("IMESSAGE_BACKFILL")
           : undefined;
       const settingFromEnv = process.env.IMESSAGE_BACKFILL;
@@ -644,11 +643,8 @@ export class IMessageService extends Service implements IIMessageService {
                   },
                   IMESSAGE_LOCAL_ACCOUNT_ID
                 ),
-                label:
-                  contacts.get(normalizeContactHandle(handle))?.name ??
-                  message.handle ??
-                  message.chatId,
-                kind: message.chatId?.includes(";+;") ? "group" : contactKind(handle),
+                label: contacts.get(normalizeContactHandle(handle))?.name ?? message.handle,
+                kind: message.chatId.includes(";+;") ? "group" : contactKind(handle),
                 score: 0.68,
                 metadata: {
                   accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
@@ -700,8 +696,8 @@ export class IMessageService extends Service implements IIMessageService {
         return [];
       },
       searchMessages: async (context, params) => {
-        const limit = normalizeConnectorLimit(params?.limit);
-        const target = params?.target ?? context.target;
+        const limit = normalizeConnectorLimit(params.limit);
+        const target = params.target ?? context.target;
         const accountId = assertLocalIMessageAccount(
           readTargetAccountId(target) ?? readContextAccountId(context)
         );
@@ -1042,7 +1038,7 @@ export class IMessageService extends Service implements IIMessageService {
 
   private recordContactsPermissionBlock(action: string): void {
     if (getLastContactsFailure() !== "permission") return;
-    const registry = this.runtime?.getService?.("eliza_permissions_registry") as
+    const registry = this.runtime.getService("eliza_permissions_registry") as
       | {
           recordBlock?: (id: string, feature: { action: string; app: string }) => void;
         }
@@ -1120,7 +1116,7 @@ export class IMessageService extends Service implements IIMessageService {
     }
 
     const getStringSetting = (key: string, envKey: string, defaultValue = ""): string => {
-      const value = this.runtime?.getSetting(key);
+      const value = this.runtime.getSetting(key);
       if (typeof value === "string") return value;
       return process.env[envKey] || defaultValue;
     };
@@ -1486,10 +1482,10 @@ export class IMessageService extends Service implements IIMessageService {
         chatId: roomKey,
         chatType: row.chatType,
       },
-      name: resolvedName ?? row.displayName ?? row.handle ?? undefined,
+      name: resolvedName ?? row.displayName ?? row.handle,
       ...(row.handle ? { userId: row.handle as UUID } : {}),
       worldName: row.displayName ? `imessage-chat-${row.displayName}` : `imessage-chat-${roomKey}`,
-      userName: resolvedName ?? row.handle ?? undefined,
+      userName: resolvedName ?? row.handle,
     });
     if (typeof this.runtime.ensureRoomExists === "function") {
       await this.runtime.ensureRoomExists({
@@ -1618,8 +1614,8 @@ export class IMessageService extends Service implements IIMessageService {
         provider: "imessage",
         accountId,
         timestamp: row.timestamp || Date.now(),
-        entityName: resolvedName ?? row.displayName ?? row.handle ?? undefined,
-        entityUserName: row.handle ?? undefined,
+        entityName: resolvedName ?? row.displayName ?? row.handle,
+        entityUserName: row.handle,
         fromBot: row.isFromMe,
         fromId: row.handle,
         sourceId: entityId,
@@ -1627,8 +1623,8 @@ export class IMessageService extends Service implements IIMessageService {
         messageIdFull: row.guid,
         sender: {
           id: row.handle,
-          name: resolvedName ?? row.displayName ?? row.handle ?? undefined,
-          username: row.handle ?? undefined,
+          name: resolvedName ?? row.displayName ?? row.handle,
+          username: row.handle,
         },
         imessage: {
           accountId,
@@ -1636,7 +1632,7 @@ export class IMessageService extends Service implements IIMessageService {
           userId: row.handle,
           username: row.handle,
           userName: row.handle,
-          name: resolvedName ?? row.displayName ?? row.handle ?? undefined,
+          name: resolvedName ?? row.displayName ?? row.handle,
           chatId: roomKey,
           guid: row.guid,
           rowId: row.rowId,
@@ -2011,7 +2007,7 @@ export function chatDbMessageToPublicShape(row: ChatDbMessage): IMessageMessage 
  */
 export function parseMessagesFromAppleScript(result: string): IMessageMessage[] {
   const messages: IMessageMessage[] = [];
-  if (!result?.trim()) {
+  if (!result.trim()) {
     return messages;
   }
 
@@ -2059,7 +2055,7 @@ export function parseMessagesFromAppleScript(result: string): IMessageMessage[] 
  */
 export function parseChatsFromAppleScript(result: string): IMessageChat[] {
   const chats: IMessageChat[] = [];
-  if (!result?.trim()) {
+  if (!result.trim()) {
     return chats;
   }
 

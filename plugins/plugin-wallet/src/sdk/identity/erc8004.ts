@@ -443,7 +443,7 @@ export class ERC8004Client {
 
     if (logs.length === 0) return null;
     const latestLog = logs[logs.length - 1];
-    const agentId = BigInt(latestLog.args?.agentId ?? 0);
+    const agentId = BigInt(latestLog.args.agentId ?? 0);
     return this.lookupAgentIdentity(agentId);
   }
 

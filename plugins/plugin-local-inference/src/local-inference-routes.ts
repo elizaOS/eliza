@@ -15,11 +15,6 @@ import {
 	sendJsonError,
 } from "@elizaos/core";
 import {
-	getMobileDeviceBridgeStatus,
-	loadMobileDeviceBridgeModel,
-	unloadMobileDeviceBridgeModel,
-} from "@elizaos/plugin-capacitor-bridge";
-import {
 	buildHuggingFaceResolveUrl,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
@@ -41,6 +36,40 @@ type DownloadState =
 	| "completed"
 	| "failed"
 	| "cancelled";
+
+type MobileDeviceBridgeApi = {
+	getMobileDeviceBridgeStatus: () => MobileDeviceBridgeStatus;
+	loadMobileDeviceBridgeModel: (
+		modelPath: string,
+		modelId: string,
+	) => Promise<void>;
+	unloadMobileDeviceBridgeModel: () => Promise<void>;
+};
+
+type MobileDeviceBridgeStatus = {
+	enabled?: boolean;
+	connected?: boolean;
+	reason?: string;
+	devices: Array<{ loadedPath?: string | null }>;
+};
+
+let mobileDeviceBridgeApiPromise: Promise<MobileDeviceBridgeApi> | null = null;
+
+function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
+	mobileDeviceBridgeApiPromise ??= import(
+		"@elizaos/plugin-capacitor-bridge"
+	) as Promise<MobileDeviceBridgeApi>;
+	return mobileDeviceBridgeApiPromise;
+}
+
+function getMobileDeviceBridgeStatusUnavailable(): MobileDeviceBridgeStatus {
+	return {
+		enabled: false,
+		connected: false,
+		reason: "mobile device bridge is not loaded",
+		devices: [],
+	};
+}
 
 export type LocalInferenceCommandIntent =
 	| "retry"
@@ -594,7 +623,9 @@ async function installedSnapshot(): Promise<InstalledModel[]> {
 export async function getLocalInferenceActiveSnapshot(): Promise<
 	typeof activeModelState
 > {
-	const bridgeStatus = getMobileDeviceBridgeStatus();
+	const bridgeStatus = await getMobileDeviceBridgeApi()
+		.then((api) => api.getMobileDeviceBridgeStatus())
+		.catch(() => getMobileDeviceBridgeStatusUnavailable());
 	const loadedPath = bridgeStatus.devices.find((device) =>
 		Boolean(device.loadedPath),
 	)?.loadedPath;
@@ -838,6 +869,7 @@ async function activateInstalledModel(
 		status: "loading",
 	};
 	try {
+		const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
 		await loadMobileDeviceBridgeModel(installed.path, installed.id);
 		activeModelState = {
 			modelId: installed.id,
@@ -1147,11 +1179,16 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/device") {
-		sendJson(res, getMobileDeviceBridgeStatus());
+		const bridge = await getMobileDeviceBridgeApi()
+			.then((api) => api.getMobileDeviceBridgeStatus())
+			.catch(() => getMobileDeviceBridgeStatusUnavailable());
+		sendJson(res, bridge);
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/providers") {
-		const bridge = getMobileDeviceBridgeStatus();
+		const bridge = await getMobileDeviceBridgeApi()
+			.then((api) => api.getMobileDeviceBridgeStatus())
+			.catch(() => getMobileDeviceBridgeStatusUnavailable());
 		const installed = await installedSnapshot();
 		sendJson(res, {
 			providers: [
@@ -1340,6 +1377,7 @@ export async function handleLocalInferenceRoutes(
 				loadedAt: null,
 				status: "loading",
 			};
+			const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
 			await loadMobileDeviceBridgeModel(installed.path, installed.id);
 			activeModelState = {
 				modelId: installed.id,
@@ -1364,6 +1402,8 @@ export async function handleLocalInferenceRoutes(
 	}
 	if (method === "DELETE" && pathname === "/api/local-inference/active") {
 		try {
+			const { unloadMobileDeviceBridgeModel } =
+				await getMobileDeviceBridgeApi();
 			await unloadMobileDeviceBridgeModel();
 			activeModelState = { modelId: null, loadedAt: null, status: "idle" };
 			sendJson(res, activeModelState);

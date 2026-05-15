@@ -224,7 +224,7 @@ export const searchSkillsAction = {
 		const query =
 			typeof opts?.parameters?.query === "string"
 				? opts.parameters.query
-				: message.content?.text || "";
+				: message.content.text || "";
 		const limit =
 			typeof opts?.parameters?.limit === "number" &&
 			Number.isFinite(opts.parameters.limit)

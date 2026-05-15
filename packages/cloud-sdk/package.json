@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/cloud-sdk",
+  "version": "2.0.0-beta.2",
+  "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build": "bun run build.ts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  }
+}

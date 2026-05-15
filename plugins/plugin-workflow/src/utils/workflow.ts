@@ -171,7 +171,7 @@ export function validateNodeParameters(workflow: WorkflowDefinition): string[] {
         continue;
       }
 
-      const value = node.parameters?.[prop.name];
+      const value = node.parameters[prop.name];
       if (value === undefined || value === null || value === '') {
         const label = prop.displayName || prop.name;
         // Include the catalog property description in parentheses when
@@ -257,7 +257,7 @@ function isPropertyVisible(prop: NodeProperty, parameters: Record<string, unknow
       if (!Array.isArray(allowedValues)) {
         continue;
       }
-      const paramValue = parameters?.[key];
+      const paramValue = parameters[key];
       if (!allowedValues.includes(paramValue)) {
         return false;
       }
@@ -270,7 +270,7 @@ function isPropertyVisible(prop: NodeProperty, parameters: Record<string, unknow
       if (!Array.isArray(hiddenValues)) {
         continue;
       }
-      const paramValue = parameters?.[key];
+      const paramValue = parameters[key];
       if (hiddenValues.includes(paramValue)) {
         return false;
       }
@@ -398,8 +398,8 @@ export function validateOutputReferences(workflow: WorkflowDefinition): OutputRe
       schemaCache.set(sourceName, null);
       return null;
     }
-    const resource = (sourceNode.parameters?.resource as string) || '';
-    const operation = (sourceNode.parameters?.operation as string) || '';
+    const resource = (sourceNode.parameters.resource as string) || '';
+    const operation = (sourceNode.parameters.operation as string) || '';
     const schemaResult = isTriggerNode(sourceNode.type)
       ? loadTriggerOutputSchema(sourceNode.type, sourceNode.parameters as Record<string, unknown>)
       : loadOutputSchema(sourceNode.type, resource, operation);
@@ -442,8 +442,8 @@ export function validateOutputReferences(workflow: WorkflowDefinition): OutputRe
 
       const exists = fieldExistsInSchema(expr.path, cached.schema);
       if (!exists) {
-        const resource = (cached.node.parameters?.resource as string) || '';
-        const operation = (cached.node.parameters?.operation as string) || '';
+        const resource = (cached.node.parameters.resource as string) || '';
+        const operation = (cached.node.parameters.operation as string) || '';
         invalidRefs.push({
           nodeName: node.name,
           expression: expr.fullExpression,
@@ -821,7 +821,7 @@ export function injectMissingCredentialBlocks(
     // workflows nodes typically gate credentials by `displayOptions.show.authentication`
     // (e.g. discord's discordBotApi shows when authentication=botToken).
     const auth =
-      typeof node.parameters?.authentication === 'string'
+      typeof node.parameters.authentication === 'string'
         ? (node.parameters.authentication as string)
         : null;
     const candidate = def.credentials.find((c) => {

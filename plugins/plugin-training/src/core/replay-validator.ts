@@ -38,11 +38,11 @@ function getTuningMessages(
   };
   if (row.format === ELIZA_NATIVE_TRAJECTORY_FORMAT) {
     const out: TuningMessage[] = [];
-    const system = row.request?.system;
+    const system = row.request.system;
     if (typeof system === "string" && system.length > 0) {
       out.push({ role: "system", content: system });
     }
-    const msgs = row.request?.messages;
+    const msgs = row.request.messages;
     if (Array.isArray(msgs)) {
       for (const msg of msgs as TuningMessage[]) {
         if (
@@ -58,7 +58,7 @@ function getTuningMessages(
     }
     if (
       !out.some((msg) => msg.role === "user") &&
-      typeof row.request?.prompt === "string" &&
+      typeof row.request.prompt === "string" &&
       row.request.prompt.length > 0
     ) {
       out.push({ role: "user", content: row.request.prompt });
@@ -276,8 +276,8 @@ export function validateElizaNativeExample(jsonLine: string): {
   if (messages.length < 2) {
     errors.push("Need at least 2 request messages (e.g. system + user)");
   }
-  const text = native.response?.text;
-  const toolCalls = native.response?.toolCalls;
+  const text = native.response.text;
+  const toolCalls = native.response.toolCalls;
   if (
     (typeof text !== "string" || text.trim().length === 0) &&
     !Array.isArray(toolCalls)

@@ -97,7 +97,7 @@ function topPairs(
     .slice(0, limit)
     .map((pair, index) => {
       const price = service.formatPrice(pair.priceUsd || pair.priceNative);
-      const volume = pair.volume?.h24
+      const volume = pair.volume.h24
         ? service.formatUsdValue(pair.volume.h24)
         : "n/a";
       const liquidity = pair.liquidity?.usd
@@ -190,8 +190,8 @@ async function executeDexScreener(
           `${mainPair.baseToken.name} (${mainPair.baseToken.symbol})`,
           `Address: ${mainPair.baseToken.address}`,
           `Price: ${service.formatPrice(mainPair.priceUsd || mainPair.priceNative)}`,
-          `24h change: ${service.formatPriceChange(mainPair.priceChange?.h24 ?? 0)}`,
-          `24h volume: ${service.formatUsdValue(mainPair.volume?.h24 ?? 0)}`,
+          `24h change: ${service.formatPriceChange(mainPair.priceChange.h24)}`,
+          `24h volume: ${service.formatUsdValue(mainPair.volume.h24)}`,
           `Top pairs:\n${topPairs(service, pairs, 3)}`,
         ].join("\n");
         return emit(
@@ -344,9 +344,9 @@ function formatBirdeyeWallet(
   result: WalletPortfolioResponse,
   address: string,
 ): string {
-  const tokens = result?.data?.items?.slice(0, 10) ?? [];
+  const tokens = result.data.items.slice(0, 10);
   const totalValue =
-    typeof result?.data?.totalUsd === "number"
+    typeof result.data.totalUsd === "number"
       ? result.data.totalUsd
       : tokens.reduce(
           (sum: number, token: BirdeyePortfolioToken) =>
@@ -359,7 +359,7 @@ function formatBirdeyeWallet(
         `- ${String(token.symbol ?? "TOKEN").toUpperCase()}: $${Number(token.valueUsd ?? 0).toLocaleString()} (${token.uiAmount ?? "n/a"})`,
     )
     .join("\n");
-  return `Wallet ${address}\nTotal value: $${Number(totalValue ?? 0).toLocaleString()}\nTop holdings:\n${holdings}`;
+  return `Wallet ${address}\nTotal value: $${Number(totalValue).toLocaleString()}\nTop holdings:\n${holdings}`;
 }
 
 async function executeBirdeye(

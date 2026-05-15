@@ -31,7 +31,7 @@ function readWorkflowService(runtime: IAgentRuntime): WorkflowService | null {
 }
 
 function buildRespondToEventWorkflow(task: Task): WorkflowDefinition {
-  const displayName = task.name?.trim().length ? task.name : 'Workbench Task';
+  const displayName = task.name.trim().length ? task.name : 'Workbench Task';
   const instructions = task.description?.trim().length ? task.description : displayName;
 
   return {

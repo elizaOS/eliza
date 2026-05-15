@@ -386,7 +386,7 @@ function knownWhatsAppTargetToConnectorTarget(
   known: KnownWhatsAppTarget,
   score = 0.72
 ): MessageConnectorTarget {
-  const accountId = known.accountId ?? DEFAULT_ACCOUNT_ID;
+  const accountId = known.accountId;
   return {
     target: targetWithAccount(
       {
@@ -457,7 +457,7 @@ async function resolveWhatsAppSendTarget(
       service.getKnownTarget(normalized, targetAccountId) ??
       service.findKnownChatByParticipant(normalized, targetAccountId);
     if (known) {
-      return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
+      return { accountId: known.accountId, chatId: known.chatId };
     }
     return isWhatsAppAddress(normalized)
       ? { accountId: targetAccountId, chatId: normalized }
@@ -467,7 +467,7 @@ async function resolveWhatsAppSendTarget(
     const normalized = normalizeWhatsAppConnectorTarget(target.entityId);
     const known = service.findKnownChatByParticipant(normalized, targetAccountId);
     if (known) {
-      return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
+      return { accountId: known.accountId, chatId: known.chatId };
     }
     return isWhatsAppAddress(normalized)
       ? { accountId: targetAccountId, chatId: normalized }
@@ -481,7 +481,7 @@ async function resolveWhatsAppSendTarget(
         service.getKnownTarget(normalized, targetAccountId) ??
         service.findKnownChatByParticipant(normalized, targetAccountId);
       if (known) {
-        return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
+        return { accountId: known.accountId, chatId: known.chatId };
       }
       return isWhatsAppAddress(normalized)
         ? { accountId: targetAccountId, chatId: normalized }
@@ -862,18 +862,18 @@ export class WhatsAppConnectorService extends Service {
   }
 
   async handleWebhook(event: WhatsAppWebhookEvent): Promise<void> {
-    for (const entry of event.entry ?? []) {
-      for (const change of entry.changes ?? []) {
+    for (const entry of event.entry) {
+      for (const change of entry.changes) {
         const value = change.value;
-        const accountId = this.resolveWebhookAccountId(value?.metadata?.phone_number_id);
-        if (typeof value?.metadata?.display_phone_number === "string") {
+        const accountId = this.resolveWebhookAccountId(value.metadata.phone_number_id);
+        if (typeof value.metadata.display_phone_number === "string") {
           this.phoneNumbers.set(accountId, value.metadata.display_phone_number);
           if (accountId === this.defaultAccountId) {
             this.phoneNumber = value.metadata.display_phone_number;
           }
         }
 
-        for (const message of value?.messages ?? []) {
+        for (const message of value.messages ?? []) {
           await this.handleIncomingWebhookMessage(message, accountId);
         }
       }
@@ -1203,8 +1203,7 @@ export class WhatsAppConnectorService extends Service {
           accountId
         );
         const externalResponseId =
-          response.messages?.[0]?.id ??
-          `${params.externalMessageId}:response:${index}:${Date.now()}`;
+          response.messages[0]?.id ?? `${params.externalMessageId}:response:${index}:${Date.now()}`;
 
         responseMemories.push({
           id: toMemoryId(
@@ -1373,7 +1372,7 @@ export class WhatsAppConnectorService extends Service {
     const after = params.after ? Number(params.after) : undefined;
 
     return memories
-      .filter((memory) => memory.content?.source === "whatsapp")
+      .filter((memory) => memory.content.source === "whatsapp")
       .filter((memory) => this.metadataMatchesAccount(memory, accountId))
       .filter((memory) => {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
@@ -1411,8 +1410,8 @@ export class WhatsAppConnectorService extends Service {
     });
     return memories
       .filter((memory) => {
-        const text = String(memory.content?.text ?? "").toLowerCase();
-        const from = String(memory.content?.from ?? "").toLowerCase();
+        const text = String(memory.content.text ?? "").toLowerCase();
+        const from = String(memory.content.from ?? "").toLowerCase();
         return text.includes(query) || from.includes(query);
       })
       .slice(0, params.limit ?? 25);

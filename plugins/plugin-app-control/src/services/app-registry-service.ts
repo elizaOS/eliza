@@ -528,7 +528,7 @@ export class AppRegistryService extends Service {
 		} else {
 			grants.grants[slug] = {
 				namespaces: sortedNamespaces,
-				grantedAt: previous?.grantedAt ?? now,
+				grantedAt: previous?.grantedAt,
 				lastUpdatedAt: now,
 			};
 		}
@@ -564,7 +564,7 @@ export class AppRegistryService extends Service {
 
 	private getWorkerHostService(): AppWorkerHostServiceLike | null {
 		return (
-			(this.runtime?.getService?.("app-worker-host") as
+			(this.runtime.getService("app-worker-host") as
 				| AppWorkerHostServiceLike
 				| null
 				| undefined) ?? null
@@ -627,7 +627,7 @@ function buildViewFromGrants(
 		requestedPermissions,
 		recognisedNamespaces: recognised,
 		grantedNamespaces,
-		grantedAt: grant?.grantedAt ?? null,
+		grantedAt: grant?.grantedAt,
 	};
 }
 

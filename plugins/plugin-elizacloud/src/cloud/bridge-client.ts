@@ -136,7 +136,7 @@ function formatApiErrorBody(text: string): string | null {
     const details = Array.isArray(parsed.details)
       ? parsed.details
           .map((detail) =>
-            typeof detail?.message === "string" ? detail.message.trim() : "",
+            typeof detail.message === "string" ? detail.message.trim() : "",
           )
           .filter((message) => message.length > 0)
       : [];

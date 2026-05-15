@@ -224,7 +224,7 @@ function filterMemoriesByQuery(
   return memories
     .filter((memory) => {
       const text =
-        typeof memory.content?.text === "string" ? memory.content.text : "";
+        typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -283,7 +283,7 @@ function registerWechatMessageConnector(
                   : (target.score ?? 0.4),
             };
           })
-          .filter((target) => !normalized || (target.score ?? 0) >= 0.8)
+          .filter((target) => !normalized || (target.score) >= 0.8)
           .slice(0, 25);
       },
       listRecentTargets: async () =>

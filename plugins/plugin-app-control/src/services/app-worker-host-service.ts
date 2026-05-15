@@ -217,7 +217,7 @@ export class AppWorkerHostService extends Service {
 		| { ok: true; snapshot: SpawnedWorkerSnapshot }
 		| { ok: false; reason: string }
 	> {
-		const registry = this.runtime?.getService(APP_REGISTRY_SERVICE_TYPE) as
+		const registry = this.runtime.getService(APP_REGISTRY_SERVICE_TYPE) as
 			| AppRegistryService
 			| null
 			| undefined;
@@ -430,7 +430,7 @@ export class AppWorkerHostService extends Service {
 	}
 
 	private async bootstrapRegisteredWorkers(): Promise<void> {
-		let registry = this.runtime?.getService(APP_REGISTRY_SERVICE_TYPE) as
+		let registry = this.runtime.getService(APP_REGISTRY_SERVICE_TYPE) as
 			| AppRegistryService
 			| null
 			| undefined;
@@ -462,7 +462,7 @@ export class AppWorkerHostService extends Service {
 	private snapshot(spawned: SpawnedWorker): SpawnedWorkerSnapshot {
 		return {
 			slug: spawned.slug,
-			pid: spawned.worker.threadId ?? null,
+			pid: spawned.worker.threadId,
 			bootedAt: new Date(spawned.bootedAt).toISOString(),
 			readyMs:
 				spawned.readyAt !== null ? spawned.readyAt - spawned.bootedAt : null,

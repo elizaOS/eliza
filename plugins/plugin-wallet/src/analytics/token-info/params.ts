@@ -100,7 +100,7 @@ export function inferTokenInfoSubaction(
   state?: State,
 ): TokenInfoSubaction {
   const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof message.content.text === "string" ? message.content.text : "",
     typeof state?.values?.recentMessages === "string"
       ? state.values.recentMessages
       : "",
@@ -137,7 +137,7 @@ export function parseTokenInfoParams(
 ): TokenInfoParams {
   const raw = readParams(options);
   const content =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const subaction =
     normalizeTokenInfoSubaction(
       raw.subaction ?? raw.action ?? raw.operation ?? raw.kind,

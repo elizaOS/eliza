@@ -120,6 +120,63 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("prefers grounded completion prose over a model-invented URL reply", async () => {
+    const context = makeContext({
+      text: "[sub-agent: tweet app (opencode) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt the random tweet generator.\nPublic URL https://example.test/apps/random-tweet/",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply:
+            "Glad to hear the random tweet generator is live at https://example.test/apps/random-tweet/.",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "Built the random tweet generator.\nPublic URL https://example.test/apps/random-tweet/",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("uses verified URLs instead of leaking raw tool transcripts", async () => {
+    const context = makeContext({
+      text: "[sub-agent: nebula app (opencode) — task_complete]\n[tool output: find files]\n/home/user/project/.git/config\n/home/user/project/data/apps/nebula/index.html\n[/tool output]\nI'll follow redirect.\nThe app is live at https://example.test/apps/nebula/.",
+      metadata: {
+        subAgentVerifiedUrls: ["https://example.test/apps/nebula/"],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply:
+            "The app is live at https://example.test/apps/nebula/. Let me know if you'd like tweaks.",
+          requiresTool: true,
+          candidateActions: ["SHELL"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "https://example.test/apps/nebula/",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
   it("uses non-URL sub-agent completion text instead of a generic model reply", async () => {
     const context = makeContext({
       text: "[sub-agent: disk check (opencode) — task_complete]\nRoot / is 84% used. /home is 57% used.",
@@ -192,6 +249,34 @@ describe("subAgentCompletionResponseEvaluator", () => {
       clearCandidateActions: true,
       clearParentActionHints: true,
       reply: "Root / is 84% used with 7.0G available.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("promotes ignored verified task_complete messages into direct replies", async () => {
+    const context = makeContext({
+      text: "[sub-agent: tweet app (opencode) — task_complete]\n[tool output: Check external]\nHTTP/2 200\n[/tool output]\nBuilt data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
+      messageHandler: {
+        processMessage: "IGNORE",
+        plan: {
+          contexts: ["general"],
+          reply: "",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      processMessage: "RESPOND",
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "Built data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
       ],

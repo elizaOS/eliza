@@ -19,33 +19,19 @@
  * HealthKit). There's no separate `sleep` permission.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-
 import type { PermissionState, Prober } from "../contracts.js";
-import { buildState, IS_DARWIN, platformUnsupportedState } from "./_bridge.js";
+import {
+  buildState,
+  hasEmbeddedProvisioningEntitlement,
+  IS_DARWIN,
+  platformUnsupportedState,
+} from "./_bridge.js";
 
 const ID = "health" as const;
+const HEALTHKIT_ENTITLEMENT = "com.apple.developer.healthkit";
 
-/**
- * Best-effort check for the HealthKit entitlement in the running bundle's
- * embedded provisioning profile. In dev (unsigned) the embedded profile is
- * missing, so this returns false.
- */
 function hasHealthKitEntitlement(): boolean {
-  try {
-    const macOsDir = path.dirname(path.resolve(process.execPath));
-    const contentsDir = path.resolve(macOsDir, "..");
-    const embedded = path.join(contentsDir, "embedded.provisionprofile");
-    if (!existsSync(embedded)) return false;
-    // The provisioning profile is a CMS-signed plist; a quick string
-    // scan for the entitlement key is enough — we never invoke the
-    // framework on a false positive.
-    const buf = readFileSync(embedded);
-    return buf.includes(Buffer.from("com.apple.developer.healthkit"));
-  } catch {
-    return false;
-  }
+  return hasEmbeddedProvisioningEntitlement(HEALTHKIT_ENTITLEMENT);
 }
 
 export const healthProber: Prober = {

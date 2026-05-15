@@ -8,15 +8,12 @@
  *   - a bundle with no `asr/` region hard-fails the transcriber (AGENTS.md
  *     §3 — no silent cloud fallback), so `runVoiceTurn` rejects
  *   - barge-in during a turn cancels it and drains audio
- *   - the merged HTTP route descriptor: `dflashLlamaServer.audioSpeechRoute()`
- *     is null when no fused server is running
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { dflashLlamaServer } from "./dflash-server";
 import { LocalInferenceEngine } from "./engine";
 import type {
 	AudioChunk,
@@ -208,14 +205,5 @@ describe("EngineVoiceBridge.runVoiceTurn (wired pipeline)", () => {
 		expect(reason).toBe("cancelled");
 		expect(bridge.scheduler.bargeIn.cancelSignal().cancelled).toBe(true);
 		await engine.stopVoice();
-	});
-});
-
-describe("merged HTTP route descriptor", () => {
-	it("audioSpeechRoute() is null when no fused server is running", () => {
-		// No llama-server loaded in unit tests — the route is null (TTS goes
-		// through the FFI path instead). The fused-server case is only
-		// reachable with a real omnivoice-mergedd binary on disk.
-		expect(dflashLlamaServer.audioSpeechRoute()).toBeNull();
 	});
 });

@@ -193,6 +193,60 @@
   },
   "kernels": [
     {
+      "id": "istft",
+      "family": "iSTFT",
+      "manifestKernelNames": [],
+      "runtimeCapabilityKeys": [],
+      "description": "Native GGML_OP_ISTFT (inverse short-time Fourier transform). Promotes J2's CPU post-graph iSTFT to a backend-dispatched graph op. Enables Vulkan/CUDA acceleration for the Kokoro iSTFTNet vocoder head. Not a KV-cache kernel; not in requiredRuntimeCapabilityKeys or manifestKernelNames until all backends report runtime-ready smoke.",
+      "fixtures": [
+        {
+          "path": "verify/fixtures/istft.json",
+          "kernelField": "istft",
+          "shape": "cases",
+          "requiredFields": [
+            "n_fft",
+            "hop_length",
+            "win_length",
+            "cases"
+          ],
+          "caseRequiredFields": [
+            "mag",
+            "phase",
+            "expected_pcm"
+          ]
+        }
+      ],
+      "metal": {
+        "source": "ggml/src/ggml-metal/eliza-kernels/istft.metal",
+        "verifySymbol": "kernel_istft_f32"
+      },
+      "vulkan": {
+        "source": "ggml/src/ggml-vulkan/vulkan-shaders/istft.comp",
+        "spirvName": "istft_f32"
+      },
+      "cuda": {
+        "source": "ggml/src/ggml-cuda/istft.cu",
+        "opFunction": "ggml_cuda_op_istft"
+      },
+      "verifyHarness": {
+        "cpp": "verify/istft-verify.cpp",
+        "mjs": "verify/istft-verify.mjs",
+        "makeTargets": [
+          "kernel-contract",
+          "reference-test",
+          "cpu-bench"
+        ],
+        "tolerance": 1e-3
+      },
+      "runtimeStatus": {
+        "metal": "authored-only",
+        "vulkan": "authored",
+        "cuda": "authored",
+        "cpu": "authored"
+      },
+      "notes": "K5 wave: CPU + Vulkan + CUDA kernels authored. Metal authored only — hardware blocked (no Mac available). Kokoro wiring: ggml_istft() replaces the CPU post-graph call; falls back to CPU overlap-add when backend does not support the op. Verify harness generates 10 random (n_fft, hop, win, T) cases and checks max-abs error <= 1e-3 across CPU/Vulkan/CUDA."
+    },
+    {
       "id": "turbo3",
       "family": "TurboQuant",
       "manifestKernelNames": [

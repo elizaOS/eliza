@@ -141,17 +141,6 @@ export interface DflashServerPlan {
 	 * the GGUF compatibility probe rejects the drafter before spawn.
 	 */
 	disabledDrafterReason?: string;
-	/**
-	 * Absolute paths to the bundle's OmniVoice GGUFs (`tts/omnivoice-*.gguf`
-	 * and `tts/omnivoice-tokenizer-*.gguf`). When BOTH are set AND the
-	 * resolved `llama-server` is the omnivoice-mergedd build, `start()` passes
-	 * `--omnivoice-model` / `--omnivoice-codec` so the same process serves
-	 * `POST /v1/audio/speech` (AGENTS.md §4 — fused, not an IPC second
-	 * process). Absent on non-voice bundles or non-fused builds, in which
-	 * case TTS goes through the FFI `ttsSynthesize` path instead.
-	 */
-	ttsModelPath?: string;
-	ttsCodecPath?: string;
 	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
 	mmprojPath?: string;
 }
@@ -413,38 +402,6 @@ function envWithBinaryLibraryPath(binaryPath: string): NodeJS.ProcessEnv {
 	return env;
 }
 
-/**
- * Honor `model.runtime.optimizations.unsupportedKernels` at spawn time.
- *
- * When a text tier declares OpenVINO as unsupported, we keep the GGML
- * OpenVINO backend out of layer placement for *this* spawn. Two signals
- * are set on the child env:
- *
- *   - `GGML_OPENVINO_DISABLE=1` — checked by the elizaOS/llama.cpp fork's
- *     `ggml_backend_openvino_get_device_count()` to return 0 (i.e. don't
- *     register the backend at all). This is the strict guarantee.
- *   - `GGML_OPENVINO_DEVICE=NONE` — falls back through the upstream
- *     "device not available, fallback to CPU" path on any build that
- *     doesn't carry the disable patch yet. The OpenVINO CPU device's
- *     `supports_op` does not accept the dynamic autoregressive ops our
- *     text path emits, so it loses backend scoring to the native CPU /
- *     CUDA / Metal / Vulkan backend in practice.
- *
- * The setting is per-spawn: the ASR Whisper worker runs in a separate
- * process tree and is unaffected.
- */
-export function applyUnsupportedKernelEnv(
-	env: NodeJS.ProcessEnv,
-	optimizations: LocalRuntimeOptimizations | null | undefined,
-): NodeJS.ProcessEnv {
-	const unsupported = optimizations?.unsupportedKernels ?? [];
-	if (unsupported.includes("openvino")) {
-		env.GGML_OPENVINO_DISABLE = "1";
-		env.GGML_OPENVINO_DEVICE = "NONE";
-	}
-	return env;
-}
-
 function allowZeroDraftForDiagnostics(): boolean {
 	return readBool("ELIZA_DFLASH_ALLOW_ZERO_DRAFT");
 }
@@ -572,12 +529,11 @@ function managedDflashBinaryPath(): string {
 
 /**
  * Backend keys whose fused (`omnivoice-grafted`) build directory we probe
- * for a `llama-server` that also serves `/v1/audio/speech` in-process. The
- * fused build links `omnivoice-core` into `llama-server`, so launching it
- * means text + DFlash + TTS run in one process — `packages/inference/
- * AGENTS.md` §4 ("We do not run text and voice in two processes
- * communicating over IPC"). We prefer the fused binary over the stock one
- * whenever both exist for the active backend.
+ * for a `llama-server`. The fused build links `omnivoice-core` into the
+ * binary; we prefer it on disk-presence grounds so that a single installed
+ * binary covers text+DFlash regardless of whether voice is in use, but
+ * OmniVoice TTS itself does NOT ride this server's HTTP — synthesis goes
+ * through the in-process `bun:ffi` binding in `plugin-omnivoice`.
  */
 /**
  * Resolve the llama-server fork backend tag for the current host.
@@ -642,9 +598,9 @@ function managedFusedDflashDir(): string {
  * fused/llama-server`), or null when no fused build is installed for the
  * active backend or its `CAPABILITIES.json` does not advertise the
  * omnivoice fusion (`fused: true` / `omnivoice` non-null). When this
- * returns a path the spawn layer launches it as the single fused server
- * instead of the stock `llama-server` + a second `llama-omnivoice-server`
- * process.
+ * returns a path the spawn layer launches it as the preferred `llama-server`
+ * for text/DFlash. Voice TTS is not served by this binary — synthesis goes
+ * through `plugin-omnivoice`'s in-process `bun:ffi` binding.
  */
 export function resolveFusedDflashBinary(): string | null {
 	if (readBool("ELIZA_DFLASH_DISABLE_FUSED_SERVER")) return null;
@@ -703,9 +659,11 @@ export interface DflashBinaryCapabilities {
 	/** Draft-model GGUF architecture names the binary advertises as loadable. */
 	draftArchitectures?: string[];
 	/**
-	 * True for `*-fused` targets — the omnivoice-grafted build where
-	 * `llama-server` links `omnivoice-core` and serves `/v1/audio/speech`
-	 * in-process. Absent on older / non-fused builds.
+	 * True for `*-fused` targets — the omnivoice-grafted build that links
+	 * `omnivoice-core` into `llama-server`. Voice synthesis still goes
+	 * through the in-process `bun:ffi` binding in `plugin-omnivoice`; this
+	 * flag exists for build-provenance tracking only. Absent on older /
+	 * non-fused builds.
 	 */
 	fused?: boolean;
 	/**
@@ -843,7 +801,7 @@ function capabilitiesAdvertiseDflashSpecType(binaryPath: string): boolean {
 	return Boolean(
 		capabilitiesAreFreshForBinary(binaryPath) &&
 			caps.publishable === true &&
-			caps.kernels.dflash === true &&
+			caps.kernels?.dflash === true &&
 			caps.dflashDraftArchitecture === true &&
 			(caps.missingRequiredKernels?.length ?? 0) === 0 &&
 			caps.binaries.includes("llama-server") &&
@@ -959,7 +917,7 @@ export function probeCtxCheckpointsSupported(binaryPath: string): boolean {
 			timeout: 30_000,
 			maxBuffer: 4 * 1024 * 1024,
 		});
-		const text = `${result.stdout}\n${result.stderr}`;
+		const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 		supported = /--ctx-checkpoints\b/.test(text);
 	} catch {
 		supported = false;
@@ -1057,7 +1015,7 @@ function llamaServerHelpText(binaryPath: string): string {
 			timeout: 30_000,
 			maxBuffer: 4 * 1024 * 1024,
 		});
-		return `${result.stdout}\n${result.stderr}`;
+		return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 	} catch {
 		return "";
 	}
@@ -1224,8 +1182,9 @@ export function dflashEnabled(): boolean {
 	// See dflashDevDisabled() — this is a debug-only hatch, never a product path.
 	if (dflashDevDisabled()) return false;
 	if (readBool("ELIZA_DFLASH_ENABLED")) return true;
-	// A fused build's `llama-server` (omnivoice-grafted, serves
-	// `/v1/audio/speech` in-process) counts as an installed managed binary.
+	// A fused build's `llama-server` (omnivoice-grafted; voice still goes
+	// through the in-process `bun:ffi` binding, not this binary's HTTP)
+	// counts as an installed managed binary for the text/DFlash path.
 	if (
 		!fs.existsSync(managedDflashBinaryPath()) &&
 		resolveFusedDflashBinary() === null
@@ -1242,9 +1201,10 @@ export function dflashRequired(): boolean {
 function candidateBinaryPaths(): string[] {
 	const explicit = process.env.ELIZA_DFLASH_LLAMA_SERVER?.trim();
 	const out = explicit ? [explicit] : [];
-	// Prefer the fused `llama-server` whenever a fused build is installed:
-	// it serves text/DFlash AND `/v1/audio/speech` from one process, which
-	// is the product target (AGENTS.md §4 — no IPC second TTS process). An
+	// Prefer the fused `llama-server` whenever a fused build is installed
+	// (text/DFlash workloads can use either binary; we pick the fused one for
+	// disk-presence reasons). Voice TTS does not ride this server's HTTP —
+	// synthesis goes through `plugin-omnivoice`'s `bun:ffi` binding. An
 	// explicit override (ELIZA_DFLASH_LLAMA_SERVER) still wins.
 	if (!explicit) {
 		const fused = resolveFusedDflashBinary();
@@ -1387,39 +1347,6 @@ export function appendKvOffloadFlags(
 /** True when `id` is one of the Eliza-1 tier ids (bundles that ship voice). */
 function isEliza1TierCatalogId(id: string): boolean {
 	return ELIZA_1_PLACEHOLDER_IDS.has(id);
-}
-
-/**
- * Resolve a bundle's OmniVoice GGUFs from the text model path. An Eliza-1
- * bundle is laid out `<bundle>/text/<text>.gguf` + `<bundle>/tts/
- * omnivoice-<size>.gguf` + `<bundle>/tts/omnivoice-tokenizer-<size>.gguf`
- * (see packages/inference/AGENTS.md §2 bundle layout). Returns `null` when
- * the layout doesn't match or either GGUF is missing — the caller then
- * leaves `ttsModelPath`/`ttsCodecPath` unset and TTS uses the FFI path.
- */
-export function findBundleOmnivoiceAssets(
-	textModelPath: string,
-): { modelPath: string; codecPath: string } | null {
-	const textDir = path.dirname(textModelPath);
-	if (path.basename(textDir) !== "text") return null;
-	const ttsDir = path.join(path.dirname(textDir), "tts");
-	let entries: string[];
-	try {
-		entries = fs.readdirSync(ttsDir);
-	} catch {
-		return null;
-	}
-	const tokenizer = entries.find((e) =>
-		/^omnivoice-tokenizer-[^/]*\.gguf$/i.test(e),
-	);
-	const model = entries.find(
-		(e) => /^omnivoice-[^/]*\.gguf$/i.test(e) && !/tokenizer/i.test(e),
-	);
-	if (!model || !tokenizer) return null;
-	return {
-		modelPath: path.join(ttsDir, model),
-		codecPath: path.join(ttsDir, tokenizer),
-	};
 }
 
 /**
@@ -2793,9 +2720,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	/**
 	 * Absolute path of the `llama-server` binary the running process was
 	 * spawned from (the fused omnivoice-grafted build when one is installed,
-	 * else the stock build). Used to read the matching `CAPABILITIES.json`
-	 * — which lives next to the binary, not at the canonical non-fused path
-	 * — when reporting `audioSpeechRoute()`.
+	 * else the stock build). Used by tests / diagnostics to confirm which
+	 * build was loaded.
 	 */
 	private loadedBinaryPath: string | null = null;
 	/**
@@ -3008,114 +2934,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		return this.loadedBinaryPath;
 	}
 
-	/** CAPABILITIES.json for the binary the running server was launched from. */
-	private runningBinaryCapabilities(): DflashBinaryCapabilities | null {
-		if (this.loadedBinaryPath) {
-			const caps = readCapabilitiesAt(
-				path.join(path.dirname(this.loadedBinaryPath), "CAPABILITIES.json"),
-			);
-			if (caps) return caps;
-		}
-		return readDflashBinaryCapabilities();
-	}
-
-	/**
-	 * Merged HTTP route descriptor for the fused build (`packages/inference/
-	 * AGENTS.md` §4 + remaining-work-ledger P0 #3): when the running
-	 * `llama-server` is the omnivoice-mergedd build it serves `/v1/audio/speech`
-	 * *itself*, in the same process as `/completion` + `/v1/chat/completions`
-	 * + the DFlash speculative loop — there is no compat
-	 * `llama-omnivoice-server` second process and no IPC tax. Returns the
-	 * route info (loopback base URL + the `/v1/audio/speech` path, `fused:
-	 * true`) only when a fused server is running; returns `null` for a stock
-	 * llama-server (text/DFlash only — TTS goes through the FFI
-	 * `ttsSynthesize` path instead) or when no server is up.
-	 *
-	 * "Fused" is detected from `CAPABILITIES.json` next to the running
-	 * binary: the fused build sets `fused: true` and its `binaries` list
-	 * includes `llama-omnivoice-server` / `libelizainference`.
-	 */
-	audioSpeechRoute(): {
-		baseUrl: string;
-		speechPath: "/v1/audio/speech";
-		fused: true;
-	} | null {
-		if (!this.baseUrl || !this.hasLoadedModel()) return null;
-		const caps = this.runningBinaryCapabilities();
-		if (!caps) return null;
-		const fused =
-			caps.fused === true ||
-			caps.binaries.some(
-				(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
-			);
-		if (!fused) return null;
-		return {
-			baseUrl: this.baseUrl,
-			speechPath: "/v1/audio/speech",
-			fused: true,
-		};
-	}
-
-	/**
-	 * Synthesize speech through the fused server's in-process
-	 * `POST /v1/audio/speech` route (OpenAI Audio Speech shape). Returns the
-	 * 24 kHz mono PCM as a `Float32Array` plus the sample rate; the request
-	 * asks the server for raw `f32` PCM (`response_format: "pcm"`) so there
-	 * is no WAV decode step on the JS side.
-	 *
-	 * Throws when no fused server is running (`audioSpeechRoute()` is null) —
-	 * callers MUST check that first and fall back to the FFI `ttsSynthesize`
-	 * path. There is no silent fallback here (AGENTS.md §3).
-	 */
-	async synthesizeSpeech(args: {
-		text: string;
-		voice?: string;
-		signal?: AbortSignal;
-	}): Promise<{ pcm: Float32Array; sampleRate: number }> {
-		const route = this.audioSpeechRoute();
-		if (!route) {
-			throw new Error(
-				"[dflash] synthesizeSpeech requires a fused omnivoice llama-server; " +
-					"none is running (audioSpeechRoute() === null). Build a *-fused target " +
-					"and reload, or route TTS through the FFI ttsSynthesize path.",
-			);
-		}
-		const controller = new AbortController();
-		const onAbort = () => controller.abort(args.signal?.reason);
-		if (args.signal?.aborted) onAbort();
-		args.signal?.addEventListener("abort", onAbort, { once: true });
-		try {
-			const res = await fetch(`${route.baseUrl}${route.speechPath}`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					input: args.text,
-					...(args.voice ? { voice: args.voice } : {}),
-					response_format: "pcm",
-				}),
-				signal: controller.signal,
-			});
-			if (!res.ok) {
-				const body = await res.text().catch(() => "");
-				throw new Error(
-					`[dflash] /v1/audio/speech HTTP ${res.status}${body ? `: ${body}` : ""}`,
-				);
-			}
-			const buf = await res.arrayBuffer();
-			const sampleRate = Number(res.headers.get("X-Sample-Rate") ?? "24000");
-			// The fused route emits little-endian f32 mono PCM for
-			// `response_format: "pcm"`. Copy into an aligned Float32Array.
-			const aligned = new ArrayBuffer(buf.byteLength);
-			new Uint8Array(aligned).set(new Uint8Array(buf));
-			return {
-				pcm: new Float32Array(aligned),
-				sampleRate: Number.isFinite(sampleRate) ? sampleRate : 24000,
-			};
-		} finally {
-			args.signal?.removeEventListener("abort", onAbort);
-		}
-	}
-
 	/**
 	 * Scrape the running llama-server's `/metrics` endpoint and return a
 	 * `DflashMetricsSnapshot` with `drafted` / `accepted` / `decoded` counts.
@@ -3326,15 +3144,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			voiceEnabled: catalog ? isEliza1TierCatalogId(catalog.id) : false,
 		});
 
-		// For an Eliza-1 bundle (`<bundle>/text/eliza-1-<tier>-<ctx>.gguf`) the
-		// OmniVoice GGUFs live at `<bundle>/tts/`. When the resolved server is
-		// the fused build, pass them so the same process serves
-		// `/v1/audio/speech` (AGENTS.md §4). Non-bundle layouts / non-voice
-		// tiers / non-fused builds: leave them unset and TTS uses the FFI path.
-		const ttsAssets =
-			catalog && isEliza1TierCatalogId(catalog.id)
-				? findBundleOmnivoiceAssets(target.path)
-				: null;
+		// TTS is not served by the spawned llama-server. OmniVoice synthesis
+		// always runs through the in-process `bun:ffi` binding in
+		// `plugin-omnivoice` (`libomnivoice.{dylib,so,dll}`). No
+		// `--omnivoice-model` / `--omnivoice-codec` are passed, and no
+		// `/v1/audio/speech` HTTP route is invoked.
 
 		await this.start(
 			{
@@ -3357,9 +3171,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				cacheTypeV,
 				disableThinking: dflash.disableThinking,
 				kvSpillPlan,
-				params: catalog.params,
-				ttsModelPath: ttsAssets?.modelPath,
-				ttsCodecPath: ttsAssets?.codecPath,
+				params: catalog?.params,
 				mmprojPath: overrides?.mmprojPath,
 			},
 			optimizations,
@@ -3587,24 +3399,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
 		appendBackendSafeStartupFlags(args, status.binaryPath);
 
-		// Fused omnivoice TTS: when the resolved binary is the omnivoice-mergedd
-		// `llama-server` and the bundle ships its TTS GGUFs, hand them to the
-		// server so it mounts `POST /v1/audio/speech` in-process (AGENTS.md §4
-		// — one process, not a second `llama-omnivoice-server` over IPC). The
-		// route handler in the fork's `server.cpp` (guarded by
-		// `#ifdef ELIZA_FUSE_OMNIVOICE`) lazy-`ov_init`s from these paths.
-		const runningBinaryIsFused =
-			resolveFusedDflashBinary() !== null &&
-			path.resolve(status.binaryPath) ===
-				path.resolve(resolveFusedDflashBinary() ?? "");
-		if (
-			runningBinaryIsFused &&
-			effectivePlan.ttsModelPath &&
-			effectivePlan.ttsCodecPath
-		) {
-			args.push("--omnivoice-model", effectivePlan.ttsModelPath);
-			args.push("--omnivoice-codec", effectivePlan.ttsCodecPath);
-		}
+		// TTS does not ride the spawned llama-server. OmniVoice synthesis
+		// goes through the in-process `bun:ffi` binding in `plugin-omnivoice`
+		// (`libomnivoice.{dylib,so,dll}`), so `--omnivoice-model` /
+		// `--omnivoice-codec` are intentionally never passed even when the
+		// resolved binary is the fused build.
 
 		const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
 		if (extra) {
@@ -3630,10 +3429,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
 		this.stderrTail = [];
 		const child = spawn(status.binaryPath, args, {
-			env: applyUnsupportedKernelEnv(
-				envWithBinaryLibraryPath(status.binaryPath),
-				optimizations ?? null,
-			),
+			env: envWithBinaryLibraryPath(status.binaryPath),
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		this.child = child;
@@ -3649,8 +3445,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			binaryPath: status.binaryPath,
 		};
 
-		child.stdout.on("data", (chunk) => this.captureLog(chunk));
-		child.stderr.on("data", (chunk) => this.captureLog(chunk));
+		child.stdout?.on("data", (chunk) => this.captureLog(chunk));
+		child.stderr?.on("data", (chunk) => this.captureLog(chunk));
 		child.on("exit", (code, signal) => {
 			if (this.child && (code !== null || signal !== null)) {
 				this.child = null;

@@ -167,7 +167,7 @@ function isGuildTextBasedChannel(
 		isTextBased?: () => boolean;
 		guild?: unknown;
 	};
-	return candidate.isTextBased?.() === true && Boolean(candidate.guild);
+	return candidate.isTextBased() === true && Boolean(candidate.guild);
 }
 
 type ConnectorFetchMessagesParams = {
@@ -321,7 +321,7 @@ function isDiscordTextTarget(channel: unknown): boolean {
 		isVoiceBased?: () => boolean;
 	};
 	return Boolean(
-		maybeChannel?.isTextBased?.() && !maybeChannel?.isVoiceBased?.(),
+		maybeChannel.isTextBased?.() && !maybeChannel.isVoiceBased?.(),
 	);
 }
 
@@ -455,7 +455,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async refreshOwnerDiscordUserIds(
 		client: DiscordJsClient,
 	): Promise<void> {
-		const explicitSetting = this.runtime.getSetting?.(
+		const explicitSetting = this.runtime.getSetting(
 			"ELIZA_DISCORD_OWNER_USER_IDS_JSON",
 		);
 		const hasExplicitSetting =
@@ -508,7 +508,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		const existingWhitelist = getConnectorAdminWhitelist(this.runtime);
 		const nextDiscordAdmins = [
-			...new Set([...(existingWhitelist.discord ?? []), ...ownerIds]),
+			...new Set([...(existingWhitelist.discord), ...ownerIds]),
 		];
 		setConnectorAdminWhitelist(this.runtime, {
 			...existingWhitelist,
@@ -623,7 +623,7 @@ export class DiscordService extends Service implements IDiscordService {
 					...transformedGuildOnlyCommands,
 				];
 
-				const clientApp = client?.application;
+				const clientApp = client.application;
 				if (!clientApp) {
 					throw new Error("Discord client application is not available");
 				}
@@ -642,7 +642,7 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 				}
 
-				const guilds = client?.guilds.cache;
+				const guilds = client.guilds.cache;
 				if (guilds && transformedAllGeneralCommands.length > 0) {
 					await Promise.all(
 						[...guilds].map(async ([guildId, guild]) => {
@@ -893,11 +893,11 @@ export class DiscordService extends Service implements IDiscordService {
 		const requested = accountId
 			? normalizeAccountId(accountId)
 			: this.defaultAccountId;
-		return this.accountPool?.get?.(requested) ?? null;
+		return this.accountPool.get(requested) ?? null;
 	}
 
 	private getDefaultAccountState(): DiscordAccountClientState | null {
-		return this.accountPool?.getDefault?.() ?? null;
+		return this.accountPool.getDefault() ?? null;
 	}
 
 	private requireAccountState(
@@ -925,11 +925,11 @@ export class DiscordService extends Service implements IDiscordService {
 	}
 
 	public getDefaultAccountId(): string {
-		return this.defaultAccountId ?? DEFAULT_ACCOUNT_ID;
+		return this.defaultAccountId;
 	}
 
 	public getAccountIds(): string[] {
-		return this.accountPool?.listAccountIds?.() ?? [];
+		return this.accountPool.listAccountIds();
 	}
 
 	public getClient(accountId?: string | null): DiscordJsClient | null {
@@ -939,8 +939,8 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		const requested = accountId
 			? normalizeAccountId(accountId)
-			: (this.defaultAccountId ?? DEFAULT_ACCOUNT_ID);
-		const defaultAccountId = this.defaultAccountId ?? DEFAULT_ACCOUNT_ID;
+			: (this.defaultAccountId);
+		const defaultAccountId = this.defaultAccountId;
 		return requested === defaultAccountId ? (this.client ?? null) : null;
 	}
 
@@ -1459,9 +1459,9 @@ export class DiscordService extends Service implements IDiscordService {
 						roomName:
 							"name" in targetChannel && typeof targetChannel.name === "string"
 								? targetChannel.name
-								: clientUser?.displayName || clientUser?.username || undefined,
-						userName: clientUser?.username ? clientUser.username : undefined,
-						name: clientUser?.displayName || clientUser?.username || undefined,
+								: clientUser.displayName || clientUser.username || undefined,
+						userName: clientUser.username ? clientUser.username : undefined,
+						name: clientUser.displayName || clientUser.username || undefined,
 						source: "discord",
 						channelId: targetChannel.id,
 						messageServerId: stringToUuid(serverId),
@@ -1551,7 +1551,7 @@ export class DiscordService extends Service implements IDiscordService {
 			typeof channelRecord.parentId === "string"
 				? channelRecord.parentId
 				: undefined;
-		const isThread = Boolean(channelRecord.isThread?.());
+		const isThread = Boolean(channelRecord.isThread());
 		const state = this.getAccountState(accountId);
 		if (
 			state?.allowedChannelIds &&
@@ -1908,7 +1908,7 @@ export class DiscordService extends Service implements IDiscordService {
 			try {
 				const fetched = await channelRecord.messages.fetch({ limit: 10 });
 				for (const message of Array.from(fetched.values()).reverse()) {
-					if (!message.content?.trim()) {
+					if (!message.content.trim()) {
 						continue;
 					}
 					recentMessages.push({
@@ -2166,8 +2166,8 @@ export class DiscordService extends Service implements IDiscordService {
 		});
 		return memories
 			.filter((memory) => {
-				const text = String(memory.content?.text ?? "").toLowerCase();
-				const name = String(memory.content?.name ?? "").toLowerCase();
+				const text = String(memory.content.text ?? "").toLowerCase();
+				const name = String(memory.content.name ?? "").toLowerCase();
 				const metadata = memory.metadata as Record<string, unknown> | undefined;
 				const sender = metadata?.sender as Record<string, unknown> | undefined;
 				const username = String(sender?.username ?? "").toLowerCase();
@@ -2728,7 +2728,7 @@ export class DiscordService extends Service implements IDiscordService {
 					return (
 						channel
 							.permissionsFor(member)
-							?.has(PermissionsBitField.Flags.ViewChannel) || false
+							.has(PermissionsBitField.Flags.ViewChannel) || false
 					);
 				})
 				.map((member: GuildMember) => ({

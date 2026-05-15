@@ -35,7 +35,7 @@ function purposeForAccount(_account: ResolvedIMessageAccount): string[] {
 }
 
 function accessGateForAccount(account: ResolvedIMessageAccount): string {
-  const dmPolicy = account.config?.dmPolicy;
+  const dmPolicy = account.config.dmPolicy;
   if (dmPolicy === "disabled") return "disabled";
   if (dmPolicy === "pairing") return "pairing";
   return "open";
@@ -61,8 +61,8 @@ function toConnectorAccount(account: ResolvedIMessageAccount): ConnectorAccount 
     metadata: {
       cliPath: account.cliPath,
       dbPath: account.dbPath ?? null,
-      dmPolicy: account.config?.dmPolicy ?? "pairing",
-      groupPolicy: account.config?.groupPolicy ?? "allowlist",
+      dmPolicy: account.config.dmPolicy ?? "pairing",
+      groupPolicy: account.config.groupPolicy ?? "allowlist",
     },
   };
 }

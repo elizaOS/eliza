@@ -16,7 +16,7 @@ function normalizeMixamoRigName(name: string): string {
 }
 
 function isVrm0(vrm: VRM): boolean {
-  const mv = String(vrm.meta?.metaVersion ?? "");
+  const mv = String(vrm.meta?.metaVersion);
   return mv.startsWith("0");
 }
 
@@ -59,7 +59,7 @@ export function retargetMixamoGltfToVrm(
   );
   const motionHipsHeight = Math.abs(motionHipsNode?.position.y ?? 0);
   const vrmHipsHeight = Math.abs(
-    vrm.humanoid?.normalizedRestPose.hips?.position?.[1] ?? 0,
+    vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 0,
   );
   const hipsPositionScale =
     motionHipsHeight > 1e-6 && vrmHipsHeight > 1e-6
@@ -81,7 +81,7 @@ export function retargetMixamoGltfToVrm(
     const vrmBoneName = mixamoVRMRigMap[normalizedRigName];
     if (!vrmBoneName) continue;
 
-    const vrmNode = vrm.humanoid?.getNormalizedBoneNode(
+    const vrmNode = vrm.humanoid.getNormalizedBoneNode(
       vrmBoneName as VRMHumanBoneName,
     );
     if (!vrmNode) continue;
@@ -125,7 +125,7 @@ export function retargetMixamoGltfToVrm(
     ) {
       const isHips =
         vrmNode ===
-        vrm.humanoid?.getNormalizedBoneNode("hips" as VRMHumanBoneName);
+        vrm.humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName);
 
       if (!isHips) continue;
 
@@ -144,7 +144,7 @@ export function retargetMixamoGltfToVrm(
 
   const hasHipsTrack = tracks.some((track) =>
     track.name.startsWith(
-      `${vrm.humanoid?.getNormalizedBoneNode("hips" as VRMHumanBoneName)?.name ?? "__missing__"}.`,
+      `${vrm.humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName)?.name ?? "__missing__"}.`,
     ),
   );
   if (!hasHipsTrack) {
@@ -154,7 +154,7 @@ export function retargetMixamoGltfToVrm(
     );
   }
 
-  const name = clipName ?? sourceClip.name ?? "retargeted";
+  const name = clipName ?? sourceClip.name;
   const clip = new THREE.AnimationClip(name, sourceClip.duration, tracks);
   clip.optimize();
   return clip;

@@ -217,6 +217,32 @@ voice_gguf_loader_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_gguf_loader_test.dir/build.make CMakeFiles/voice_gguf_loader_test.dir/build
 .PHONY : voice_gguf_loader_test/fast
 
+#=============================================================================
+# Target rules for targets named voice_diarizer_parity_test
+
+# Build rule for target.
+voice_diarizer_parity_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 voice_diarizer_parity_test
+.PHONY : voice_diarizer_parity_test
+
+# fast build rule for target.
+voice_diarizer_parity_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_diarizer_parity_test.dir/build.make CMakeFiles/voice_diarizer_parity_test.dir/build
+.PHONY : voice_diarizer_parity_test/fast
+
+#=============================================================================
+# Target rules for targets named voice_speaker_parity_test
+
+# Build rule for target.
+voice_speaker_parity_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 voice_speaker_parity_test
+.PHONY : voice_speaker_parity_test
+
+# fast build rule for target.
+voice_speaker_parity_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/build
+.PHONY : voice_speaker_parity_test/fast
+
 src/voice_classifier_diagnostics.o: src/voice_classifier_diagnostics.c.o
 .PHONY : src/voice_classifier_diagnostics.o
 
@@ -379,6 +405,33 @@ src/voice_gguf_loader.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.s
 .PHONY : src/voice_gguf_loader.c.s
 
+src/voice_gguf_tensors.o: src/voice_gguf_tensors.c.o
+.PHONY : src/voice_gguf_tensors.o
+
+# target to build an object file
+src/voice_gguf_tensors.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_gguf_tensors.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o
+.PHONY : src/voice_gguf_tensors.c.o
+
+src/voice_gguf_tensors.i: src/voice_gguf_tensors.c.i
+.PHONY : src/voice_gguf_tensors.i
+
+# target to preprocess a source file
+src/voice_gguf_tensors.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_gguf_tensors.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.i
+.PHONY : src/voice_gguf_tensors.c.i
+
+src/voice_gguf_tensors.s: src/voice_gguf_tensors.c.s
+.PHONY : src/voice_gguf_tensors.s
+
+# target to generate assembly for a file
+src/voice_gguf_tensors.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_gguf_tensors.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.s
+.PHONY : src/voice_gguf_tensors.c.s
+
 src/voice_mel_features.o: src/voice_mel_features.c.o
 .PHONY : src/voice_mel_features.o
 
@@ -484,6 +537,30 @@ test/voice_classifier_stub_smoke.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_stub_smoke.dir/build.make CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.s
 .PHONY : test/voice_classifier_stub_smoke.c.s
 
+test/voice_diarizer_parity_test.o: test/voice_diarizer_parity_test.c.o
+.PHONY : test/voice_diarizer_parity_test.o
+
+# target to build an object file
+test/voice_diarizer_parity_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_diarizer_parity_test.dir/build.make CMakeFiles/voice_diarizer_parity_test.dir/test/voice_diarizer_parity_test.c.o
+.PHONY : test/voice_diarizer_parity_test.c.o
+
+test/voice_diarizer_parity_test.i: test/voice_diarizer_parity_test.c.i
+.PHONY : test/voice_diarizer_parity_test.i
+
+# target to preprocess a source file
+test/voice_diarizer_parity_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_diarizer_parity_test.dir/build.make CMakeFiles/voice_diarizer_parity_test.dir/test/voice_diarizer_parity_test.c.i
+.PHONY : test/voice_diarizer_parity_test.c.i
+
+test/voice_diarizer_parity_test.s: test/voice_diarizer_parity_test.c.s
+.PHONY : test/voice_diarizer_parity_test.s
+
+# target to generate assembly for a file
+test/voice_diarizer_parity_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_diarizer_parity_test.dir/build.make CMakeFiles/voice_diarizer_parity_test.dir/test/voice_diarizer_parity_test.c.s
+.PHONY : test/voice_diarizer_parity_test.c.s
+
 test/voice_emotion_classes_test.o: test/voice_emotion_classes_test.c.o
 .PHONY : test/voice_emotion_classes_test.o
 
@@ -580,6 +657,30 @@ test/voice_speaker_distance_test.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_distance_test.dir/build.make CMakeFiles/voice_speaker_distance_test.dir/test/voice_speaker_distance_test.c.s
 .PHONY : test/voice_speaker_distance_test.c.s
 
+test/voice_speaker_parity_test.o: test/voice_speaker_parity_test.c.o
+.PHONY : test/voice_speaker_parity_test.o
+
+# target to build an object file
+test/voice_speaker_parity_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.o
+.PHONY : test/voice_speaker_parity_test.c.o
+
+test/voice_speaker_parity_test.i: test/voice_speaker_parity_test.c.i
+.PHONY : test/voice_speaker_parity_test.i
+
+# target to preprocess a source file
+test/voice_speaker_parity_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.i
+.PHONY : test/voice_speaker_parity_test.c.i
+
+test/voice_speaker_parity_test.s: test/voice_speaker_parity_test.c.s
+.PHONY : test/voice_speaker_parity_test.s
+
+# target to generate assembly for a file
+test/voice_speaker_parity_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.s
+.PHONY : test/voice_speaker_parity_test.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -592,10 +693,12 @@ help:
 	@echo "... voice_classifier"
 	@echo "... voice_classifier_shared"
 	@echo "... voice_classifier_stub_smoke"
+	@echo "... voice_diarizer_parity_test"
 	@echo "... voice_emotion_classes_test"
 	@echo "... voice_gguf_loader_test"
 	@echo "... voice_mel_features_test"
 	@echo "... voice_speaker_distance_test"
+	@echo "... voice_speaker_parity_test"
 	@echo "... src/voice_classifier_diagnostics.o"
 	@echo "... src/voice_classifier_diagnostics.i"
 	@echo "... src/voice_classifier_diagnostics.s"
@@ -614,6 +717,9 @@ help:
 	@echo "... src/voice_gguf_loader.o"
 	@echo "... src/voice_gguf_loader.i"
 	@echo "... src/voice_gguf_loader.s"
+	@echo "... src/voice_gguf_tensors.o"
+	@echo "... src/voice_gguf_tensors.i"
+	@echo "... src/voice_gguf_tensors.s"
 	@echo "... src/voice_mel_features.o"
 	@echo "... src/voice_mel_features.i"
 	@echo "... src/voice_mel_features.s"
@@ -626,6 +732,9 @@ help:
 	@echo "... test/voice_classifier_stub_smoke.o"
 	@echo "... test/voice_classifier_stub_smoke.i"
 	@echo "... test/voice_classifier_stub_smoke.s"
+	@echo "... test/voice_diarizer_parity_test.o"
+	@echo "... test/voice_diarizer_parity_test.i"
+	@echo "... test/voice_diarizer_parity_test.s"
 	@echo "... test/voice_emotion_classes_test.o"
 	@echo "... test/voice_emotion_classes_test.i"
 	@echo "... test/voice_emotion_classes_test.s"
@@ -638,6 +747,9 @@ help:
 	@echo "... test/voice_speaker_distance_test.o"
 	@echo "... test/voice_speaker_distance_test.i"
 	@echo "... test/voice_speaker_distance_test.s"
+	@echo "... test/voice_speaker_parity_test.o"
+	@echo "... test/voice_speaker_parity_test.i"
+	@echo "... test/voice_speaker_parity_test.s"
 .PHONY : help
 
 

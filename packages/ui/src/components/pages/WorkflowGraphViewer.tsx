@@ -676,12 +676,13 @@ export function WorkflowGraphViewer({
   );
 
   const ariaLabel = `Workflow graph with ${nodes.length} nodes and ${edges.length} connections`;
+  const workflowId = workflow?.id;
 
   // Clear selected node when workflow changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset drawer on workflow identity change
   useEffect(() => {
+    void workflowId;
     setSelectedNode(null);
-  }, [workflow?.id]);
+  }, [workflowId]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

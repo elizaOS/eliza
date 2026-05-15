@@ -10,7 +10,7 @@ function isFeatureEnabled(
 	config: PluginAutoEnableContext["config"],
 	key: string,
 ): boolean {
-	const f = (config?.features as Record<string, unknown> | undefined)?.[key];
+	const f = (config.features as Record<string, unknown> | undefined)?.[key];
 	if (f === true) return true;
 	if (f && typeof f === "object" && f !== null) {
 		return (f as Record<string, unknown>).enabled !== false;

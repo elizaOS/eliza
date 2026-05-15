@@ -3,9 +3,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../test/vitest/default.config";
-import { repoRoot } from "../../test/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../test/vitest/workspace-aliases";
+import baseConfig from "../../packages/test/vitest/default.config";
+import { repoRoot } from "../../packages/test/vitest/repo-root";
+import { getElizaWorkspaceRoot } from "../../packages/test/vitest/workspace-aliases";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = getElizaWorkspaceRoot(repoRoot);

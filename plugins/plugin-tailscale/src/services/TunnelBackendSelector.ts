@@ -1,4 +1,4 @@
-import { isCloudConnected } from "@elizaos/cloud-routing";
+import { isCloudConnected } from "@elizaos/cloud-shared/routing";
 import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import {
   readTailscaleAccounts,

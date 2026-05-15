@@ -617,7 +617,7 @@ async function runDiscordCdpSendScript(args: {
         })) as { result?: { result?: { value?: { ok?: boolean } } } };
 
         const focusValue = (
-          focusResult?.result as { value?: { ok?: boolean } } | undefined
+          focusResult.result as { value?: { ok?: boolean } } | undefined
         )?.value;
         if (!focusValue?.ok) {
           throw new Error(

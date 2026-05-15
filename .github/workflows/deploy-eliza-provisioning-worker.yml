@@ -1,7 +1,7 @@
 name: Deploy Eliza Provisioning Worker
 
 # SSHes to the Hetzner provisioning host, fetches the latest develop commit,
-# installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
+# installs the systemd unit shipped at packages/scripts/cloud/admin/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
@@ -12,10 +12,10 @@ on:
     branches: [develop]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
-      - 'cloud/packages/scripts/daemons/provisioning-worker.ts'
-      - 'cloud/packages/scripts/daemons/agent-router.ts'
-      - 'cloud/packages/scripts/eliza-provisioning-worker.service'
-      - 'cloud/packages/scripts/eliza-agent-router.service'
+      - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
+      - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
+      - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
+      - 'packages/scripts/cloud/admin/eliza-agent-router.service'
       - 'cloud/packages/lib/services/provisioning-jobs.ts'
       - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
       - 'cloud/packages/lib/services/eliza-sandbox.ts'
@@ -87,7 +87,10 @@ jobs:
             rm -f .git/index.lock
 
             # Discard local drift, preserve env files.
-            git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
+            git clean -ffdx -e .env -e .env.local -e .env.* -e node_modules || true
+            if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
+              rm -f bun.lock
+            fi
             git checkout -- . 2>/dev/null || true
 
             # Use a refspec so a single-branch / shallow clone still creates
@@ -125,8 +128,16 @@ jobs:
             # The daemons run under Node/tsx rather than Bun. Node resolves
             # linked workspace packages through their built `node` exports, so
             # refresh linked package dist files after installing dependencies.
-            bun run --cwd cloud build:linked-core
-            bun run --cwd cloud build:linked-billing
+            if [ -f cloud/package.json ] && jq -e '.scripts["build:linked-core"]' cloud/package.json >/dev/null; then
+              bun run --cwd cloud build:linked-core
+            else
+              bun run build:core
+            fi
+            if [ -f cloud/package.json ] && jq -e '.scripts["build:linked-billing"]' cloud/package.json >/dev/null; then
+              bun run --cwd cloud build:linked-billing
+            else
+              bun run --cwd packages/cloud-shared typecheck
+            fi
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
@@ -134,10 +145,10 @@ jobs:
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
-              cloud/packages/scripts/eliza-provisioning-worker.service \
+              packages/scripts/cloud/admin/eliza-provisioning-worker.service \
               "/etc/systemd/system/$SYSTEMD_UNIT"
             sudo install -m 0644 \
-              cloud/packages/scripts/eliza-agent-router.service \
+              packages/scripts/cloud/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service

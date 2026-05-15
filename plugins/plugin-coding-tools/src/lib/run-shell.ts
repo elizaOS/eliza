@@ -121,12 +121,12 @@ function runOnHost(opts: {
     let stderr = "";
     let timedOut = false;
 
-    proc.stdout?.on("data", (chunk: Buffer) => {
+    proc.stdout.on("data", (chunk: Buffer) => {
       if (stdout.length < STREAM_CAP_CHARS * 2) {
         stdout += chunk.toString("utf8");
       }
     });
-    proc.stderr?.on("data", (chunk: Buffer) => {
+    proc.stderr.on("data", (chunk: Buffer) => {
       if (stderr.length < STREAM_CAP_CHARS * 2) {
         stderr += chunk.toString("utf8");
       }

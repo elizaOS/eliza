@@ -491,9 +491,9 @@ function isConnectorAccountStorageLike(value: unknown): value is ConnectorAccoun
   return (
     Boolean(candidate) &&
     typeof candidate?.listAccounts === "function" &&
-    typeof candidate?.getAccount === "function" &&
-    typeof candidate?.upsertAccount === "function" &&
-    typeof candidate?.deleteAccount === "function"
+    typeof candidate.getAccount === "function" &&
+    typeof candidate.upsertAccount === "function" &&
+    typeof candidate.deleteAccount === "function"
   );
 }
 

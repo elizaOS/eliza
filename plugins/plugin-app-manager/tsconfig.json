@@ -22,6 +22,11 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager": ["./src/index.ts"],
+      "@elizaos/plugin-app-manager/*": ["./src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/config/*": ["../../packages/agent/src/config/*.ts"],
       "@elizaos/agent/utils/*": ["../../packages/agent/src/utils/*.ts"],

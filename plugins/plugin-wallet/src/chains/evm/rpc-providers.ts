@@ -366,7 +366,7 @@ export function validateRPCProviderConfig(runtime: IAgentRuntime): {
 
   // Check for any per-chain custom RPC URLs
   let hasCustomRpc = false;
-  const settings = runtime.character?.settings;
+  const settings = runtime.character.settings;
   let chainsToCheck: string[] = ["mainnet", "base"];
   if (
     typeof settings === "object" &&
