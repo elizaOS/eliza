@@ -1,0 +1,58 @@
+{
+  "$schema": "https://elizaos.dev/schemas/voice-sub-model/v1.json",
+  "id": "omnivoice",
+  "version": "0.1.1",
+  "hfRepo": "elizaos/eliza-1-voice-omnivoice",
+  "hfRevision": "main",
+  "publishedToHfAt": "2026-05-14T00:00:00Z",
+  "displayName": "Eliza-1 Voice OmniVoice — frozen conditioning + samantha preset",
+  "purpose": "Primary TTS for Eliza-1 — OmniVoice frozen-conditioning with samantha voice preset",
+  "architecture": "OmniVoice (Qwen3-0.6B bidir LM + MaskGIT decoder + DAC vocoder)",
+  "license": "Apache-2.0",
+  "attribution": "OmniVoice architecture; elizaOS/llama.cpp fork integration (W3-3)",
+  "runtime": "llama.cpp (GGUF, elizaOS fork)",
+  "minBundleVersion": "0.0.0",
+  "evalMetrics": {
+    "rtfRealtime": 3.5,
+    "rtfRealtimeMax": 5.0,
+    "samanthaPresetVersion": "ELZ2-v2",
+    "quantVariants": ["q4_k_m", "q5_k_m", "q8_0"]
+  },
+  "files": [
+    {
+      "filename": "omnivoice-base-q4_k_m.gguf",
+      "role": "primary-weights",
+      "quant": "q4_k_m",
+      "format": "gguf",
+      "approxSizeBytes": 388000000,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "omnivoice-tokenizer-q4_k_m.gguf",
+      "role": "tokenizer",
+      "quant": "q4_k_m",
+      "format": "gguf",
+      "approxSizeBytes": 51200000,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "omnivoice-base-q8_0.gguf",
+      "role": "high-quality-weights",
+      "quant": "q8_0",
+      "format": "gguf",
+      "approxSizeBytes": 620000000,
+      "sha256": "TBD-populated-by-publish-pipeline",
+      "notes": "Used on large tiers (9b, 27b, 27b-256k)"
+    },
+    {
+      "filename": "presets/voice-preset-samantha.bin",
+      "role": "samantha-voice-preset",
+      "quant": "fp16",
+      "format": "bin",
+      "approxSizeBytes": 8192,
+      "sha256": "TBD-populated-by-publish-pipeline",
+      "notes": "ELZ2 v2 preset: refAudioTokens + refText + instruct. Pre-encoded [K=8, ref_T] reference tokens for zero-encode-cost runtime."
+    }
+  ],
+  "notes": "v0.1.1 (W3-4 samantha preset + FFI wiring). This is the PRIMARY samantha TTS path — OmniVoice frozen-conditioning with pre-encoded samantha reference tokens. Kokoro fine-tune is blocked on quality gate (W3-11). OmniVoice quantization: PolarQuant/TurboQuant applies to the Qwen3-0.6B LM; V-cache PolarQuant does NOT apply (MaskGIT has no KV cache). ABI v4 FFI bridge: eliza_inference_encode_reference / eliza_inference_free_tokens."
+}
