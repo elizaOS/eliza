@@ -2179,6 +2179,28 @@ async function handleRequest(
         json,
         error,
         runtime: state.runtime ?? null,
+        // === Phase 4D: inject agent-internal helpers into the extracted
+        // route handler so `@elizaos/plugin-wallet` stays free of any
+        // `@elizaos/agent` imports.
+        deps: {
+          getWalletAddresses,
+          fetchEvmBalances,
+          fetchSolanaBalances,
+          fetchSolanaNativeBalanceViaRpc,
+          validatePrivateKey,
+          importWallet,
+          generateWalletForChain,
+          deriveSolanaAddress,
+          setSolanaWalletEnv,
+          resolveWalletRpcReadiness,
+          resolveWalletNetworkMode,
+          getStoredWalletRpcSelections,
+          applyWalletRpcConfigUpdate,
+          resolveWalletCapabilityStatus,
+          isCloudWalletEnabled,
+          persistConfigEnv,
+          createIntegrationTelemetrySpan,
+        },
       })
     ) {
       return;

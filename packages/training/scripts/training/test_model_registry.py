@@ -11,6 +11,7 @@ import pytest
 
 from scripts.training.model_registry import (
     DFLASH_DRAFTER_BASE,
+    ELIZA1_REQUIRED_QUANTIZATION_AFTER,
     REGISTRY,
     Tier,
     by_tier,
@@ -208,9 +209,7 @@ def test_summary_table_includes_every_entry() -> None:
     assert "qwen3.5-27b" not in table
 
 
-def test_quantization_matrix_includes_gguf_q4_q6_q8() -> None:
+def test_quantization_matrix_is_reproducible_full_ladder() -> None:
     for key in VERIFIED_KEYS:
         e = get(key)
-        assert "gguf-q4_k_m" in e.quantization_after
-        assert "gguf-q6_k" in e.quantization_after
-        assert "gguf-q8_0" in e.quantization_after
+        assert e.quantization_after == ELIZA1_REQUIRED_QUANTIZATION_AFTER
