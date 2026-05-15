@@ -399,6 +399,16 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		return this.loadedModel !== null;
 	}
 
+	/**
+	 * Expose the in-process `LlamaModel` for auxiliary scoring paths that
+	 * need a forward pass without going through `LlamaChatSession` — most
+	 * notably the voice EOT scorer (`voice/eliza1-eot-scorer.ts`). Returns
+	 * `null` when no model is loaded or this is not the active backend.
+	 */
+	getLoadedLlamaModel(): LlamaModel | null {
+		return this.loadedModel;
+	}
+
 	async unload(): Promise<void> {
 		if (!this.loadedModel) return;
 		const pool = this.sessionPool;

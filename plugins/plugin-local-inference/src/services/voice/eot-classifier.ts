@@ -47,6 +47,12 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { Eliza1EotScorer } from "./eliza1-eot-scorer";
+import type {
+	Eliza1EotScoreResult,
+	Eliza1EotScorerOptions,
+} from "./eliza1-eot-scorer";
+
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
@@ -1001,12 +1007,6 @@ export const EOT_HANGOVER_EXTENSION_MS = 50;
 // ---------------------------------------------------------------------------
 // Eliza-1 drafter EOT classifier
 // ---------------------------------------------------------------------------
-
-import { Eliza1EotScorer } from "./eliza1-eot-scorer";
-import type {
-	Eliza1EotScoreResult,
-	Eliza1EotScorerOptions,
-} from "./eliza1-eot-scorer";
 
 export type { Eliza1EotScorerOptions, Eliza1EotScoreResult };
 

@@ -65,10 +65,8 @@
   },
   "optionalDependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",
-    "@tensorflow-models/mobilenet": "^2.1.0",
     "@tensorflow-models/pose-detection": "^2.1.0",
-    "@tensorflow/tfjs-node": "^4.22.0",
-    "onnxruntime-node": "^1.21.0"
+    "@tensorflow/tfjs-node": "^4.22.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
