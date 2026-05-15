@@ -1756,13 +1756,7 @@ export async function generateChatResponse(
         () => createChatGenerationTimeoutError(generationTimeoutMs),
         () => {
           generationTimedOut = true;
-<<<<<<< HEAD
-          abortGeneration(
-            createChatGenerationTimeoutError(generationTimeoutMs),
-          );
-=======
           abortGeneration(createChatGenerationTimeoutError(generationTimeoutMs));
->>>>>>> origin/codex/fused-local-inference-latest-20260515
         },
       ),
     );
@@ -2000,13 +1994,7 @@ Title:`;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (isAbortLikeError(err)) {
-<<<<<<< HEAD
-      logger.info(
-        `[eliza] Conversation title generation cancelled: ${message}`,
-      );
-=======
       logger.info(`[eliza] Conversation title generation cancelled: ${message}`);
->>>>>>> origin/codex/fused-local-inference-latest-20260515
     } else {
       logger.warn(`[eliza] Failed to generate conversation title: ${message}`);
     }

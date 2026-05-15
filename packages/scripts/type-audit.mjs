@@ -18,7 +18,7 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
-const ROOT = path.resolve(import.meta.dirname, "..");
+const ROOT = path.resolve(import.meta.dirname, "../..");
 const OUTPUT_MD = path.join(ROOT, "scripts", "type-audit-report.md");
 const OUTPUT_JSON = path.join(ROOT, "scripts", "type-audit-report.json");
 const JSON_FLAG = process.argv.includes("--json");

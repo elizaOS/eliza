@@ -11,9 +11,9 @@
  *   as Mock   as MockedFunction
  *
  * Whitelist (never scanned):
- *   test/mocks/**
- *   **/node_modules/**
- *   **/dist/**
+ *   test/mocks
+ *   node_modules
+ *   dist
  *
  * Exit 1 if any violations found; exit 0 otherwise.
  *
@@ -26,7 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..");
+const repoRoot = path.resolve(here, "../..");
 
 const SCAN_DIRS = ["packages", "plugins", "cloud"];
 

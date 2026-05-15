@@ -3,6 +3,7 @@ import type {
 	Memory,
 	ModelTypeName,
 	Provider,
+	State,
 } from "../../../types/index.ts";
 import { getModelFallbackChain, ModelType } from "../../../types/model.ts";
 
@@ -183,7 +184,7 @@ export const runtimeModelContextProvider: Provider = {
 		"opencode",
 	],
 
-	get: async (runtime: IAgentRuntime, message: Memory) => {
+	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
 		if (!shouldRenderRuntimeModelContext(message)) {
 			return { text: "", values: {}, data: {} };
 		}

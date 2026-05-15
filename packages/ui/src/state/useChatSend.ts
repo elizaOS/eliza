@@ -1072,13 +1072,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
 
         // Eagerly rename "New Chat" using a snippet of the first message
-<<<<<<< HEAD
         const activeConv = conversationsRef.current.find(
           (c) => c.id === convId,
         );
-=======
-        const activeConv = conversationsRef.current.find((c) => c.id === convId);
->>>>>>> origin/codex/fused-local-inference-latest-20260515
         convRoomId = await resolveConversationRoomId(convId, convRoomId);
         if (
           activeConv &&

@@ -670,11 +670,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-<<<<<<< HEAD
 const TRAINING_CONFIG_MODULE = "@elizaos/plugin-training";
-=======
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -1301,12 +1297,7 @@ type TrainingServiceCtor = new (options: {
   setConfig: (nextConfig: ElizaConfig) => void;
 }) => TrainingServiceWithRuntime;
 
-<<<<<<< HEAD
 const TRAINING_SERVICE_REGISTRY_MODULE: string = "@elizaos/plugin-training";
-=======
-const TRAINING_SERVICE_REGISTRY_MODULE: string =
-  "@elizaos/app-training/services/training-service-registry";
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {
@@ -1316,11 +1307,7 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
 
   const candidates = [
     "../services/training-service",
-<<<<<<< HEAD
     "@elizaos/plugin-training",
-=======
-    "@elizaos/app-training/services/training-service",
->>>>>>> origin/codex/fused-local-inference-latest-20260515
     "@elizaos/plugin-training",
   ] as const;
 

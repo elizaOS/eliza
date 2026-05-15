@@ -31,13 +31,9 @@ export function resolveRendererProxyIdleTimeoutSeconds(
 		return clampBunServeIdleTimeout(Math.ceil(httpTimeoutMs / 1000));
 	}
 
-<<<<<<< HEAD
 	const chatTimeoutMs = parsePositiveInteger(
 		env.ELIZA_CHAT_GENERATION_TIMEOUT_MS,
 	);
-=======
-	const chatTimeoutMs = parsePositiveInteger(env.ELIZA_CHAT_GENERATION_TIMEOUT_MS);
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 	if (chatTimeoutMs) {
 		return clampBunServeIdleTimeout(Math.ceil((chatTimeoutMs + 60_000) / 1000));
 	}

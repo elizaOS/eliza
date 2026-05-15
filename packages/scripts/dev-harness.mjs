@@ -13,7 +13,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolve(import.meta.dirname, "../..");
 const INSTALL_STAMP = join(ROOT, ".eliza", "plugin-dev-needs-install");
 
 const PLUGIN_TYPESCRIPT = [

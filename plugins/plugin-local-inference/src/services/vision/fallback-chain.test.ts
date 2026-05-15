@@ -1,12 +1,7 @@
 import type { ImageDescriptionResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-<<<<<<< HEAD
 import type { LocalImageDescriptionHandler } from "./cloud-fallback";
 import { withVisionFallbackChain } from "./index";
-=======
-import { withVisionFallbackChain } from "./index";
-import type { LocalImageDescriptionHandler } from "./cloud-fallback";
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 const localResult: ImageDescriptionResult = {
 	title: "Local",
@@ -84,14 +79,8 @@ describe("vision fallback chain", () => {
 			},
 		);
 
-<<<<<<< HEAD
 		await expect(
 			handler({} as never, "data:image/png;base64,a"),
 		).rejects.toThrow("all IMAGE_DESCRIPTION providers exhausted");
-=======
-		await expect(handler({} as never, "data:image/png;base64,a")).rejects.toThrow(
-			"all IMAGE_DESCRIPTION providers exhausted",
-		);
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 	});
 });

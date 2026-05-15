@@ -415,12 +415,7 @@ interface RuntimeHookModule {
   registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
 }
 
-<<<<<<< HEAD
 const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
-=======
-const TRAINING_RUNTIME_HOOKS_SPECIFIER =
-  "@elizaos/app-training/register-runtime";
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,

@@ -3,21 +3,21 @@
 // in every locale, and every locale key must be used somewhere in source.
 //
 // Dynamic call sites (t(variable), t(`prefix.${x}.suffix`)) are listed in
-// scripts/i18n-dynamic-keys.json — keys/prefixes there are accepted as "used".
+// packages/scripts/i18n-dynamic-keys.json — keys/prefixes there are accepted as "used".
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname, "../..");
 
 const LOCALE_DIR = path.join(repoRoot, "packages/app-core/src/i18n/locales");
 const SCAN_DIRS = [
   path.join(repoRoot, "packages/app-core/src"),
   path.join(repoRoot, "packages/ui/src"),
 ];
-const ALLOWLIST_PATH = path.join(repoRoot, "scripts/i18n-dynamic-keys.json");
+const ALLOWLIST_PATH = path.join(repoRoot, "packages/scripts/i18n-dynamic-keys.json");
 const SOURCE_LOCALE = "en";
 
 const SKIP_DIR_NAMES = new Set([

@@ -89,16 +89,8 @@ async function resolveProxyApiKey(
   const cloudAuth = state.runtime
     ? state.runtime.getService("CLOUD_AUTH")
     : null;
-<<<<<<< HEAD
   const { isCloudAuthApiKeyService, normalizeCloudApiKey, resolveCloudApiKey } =
     await getCloudHelpers();
-=======
-  const {
-    isCloudAuthApiKeyService,
-    normalizeCloudApiKey,
-    resolveCloudApiKey,
-  } = await getCloudHelpers();
->>>>>>> origin/codex/fused-local-inference-latest-20260515
   const runtimeApiKey =
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-const workspaceRoot = path.resolve(import.meta.dirname, "..");
+const workspaceRoot = path.resolve(import.meta.dirname, "../..");
 const repoRoots = discoverTrackedRepos(workspaceRoot);
 const trackedBuffers = [];
 const violations = [];

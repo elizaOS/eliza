@@ -3,11 +3,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { compressPromptDescription } from "../packages/prompts/scripts/prompt-compression.js";
+import { compressPromptDescription } from "../prompts/scripts/prompt-compression.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
 const SPEC_GROUPS = [
   {

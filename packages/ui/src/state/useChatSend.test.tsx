@@ -10,11 +10,7 @@ import type {
   ImageAttachment,
 } from "../api";
 import type { LoadConversationMessagesResult } from "./internal";
-<<<<<<< HEAD
 import { type UseChatSendDeps, useChatSend } from "./useChatSend";
-=======
-import { useChatSend, type UseChatSendDeps } from "./useChatSend";
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -62,19 +58,12 @@ function abortError(): Error {
   return err;
 }
 
-<<<<<<< HEAD
 function makeDeps(
   overrides: {
     activeConversationId?: string | null;
     conversations?: Conversation[];
   } = {},
 ): UseChatSendDeps {
-=======
-function makeDeps(overrides: {
-  activeConversationId?: string | null;
-  conversations?: Conversation[];
-} = {}): UseChatSendDeps {
->>>>>>> origin/codex/fused-local-inference-latest-20260515
   const conversationsRef = {
     current: overrides.conversations ?? [],
   } as MutableRefObject<Conversation[]>;

@@ -482,7 +482,6 @@ function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
     [modelRel, "llm_build_dflash_draft::llm_build_dflash_draft"],
   ];
   const missing = [];
-<<<<<<< HEAD
   const cmakePath = path.join(llamaCppRoot, "src", "CMakeLists.txt");
   const cmakeSource = fs.existsSync(cmakePath)
     ? fs.readFileSync(cmakePath, "utf8")
@@ -490,15 +489,6 @@ function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
   if (
     !cmakeSource.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') &&
     !cmakeSource.includes(modelRel.slice("src/".length))
-=======
-  const cmake = fs.readFileSync(
-    path.join(llamaCppRoot, "src", "CMakeLists.txt"),
-    "utf8",
-  );
-  if (
-    !cmake.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') &&
-    !cmake.includes(modelRel.slice("src/".length))
->>>>>>> origin/codex/fused-local-inference-latest-20260515
   ) {
     missing.push(
       `src/CMakeLists.txt (missing ${modelRel.slice("src/".length)})`,
