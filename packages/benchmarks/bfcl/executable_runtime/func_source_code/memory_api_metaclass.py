@@ -2,7 +2,15 @@ import json
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
-from overrides import final
+try:
+    from overrides import final
+except ImportError:  # pragma: no cover - optional upstream dependency
+    from typing import TypeVar
+
+    _F = TypeVar("_F")
+
+    def final(func: _F) -> _F:
+        return func
 
 # Upstream imports replaced with local shims. Memory categories require
 # additional upstream scaffolding (snapshot dirs, memory_prereq_conversation
@@ -16,10 +24,11 @@ try:
     )
 except ImportError:
     def get_directory_structure_by_id(test_id):  # type: ignore[no-redef]
-        raise NotImplementedError(
-            "Memory categories require upstream bfcl_eval.utils helpers. "
-            "Install `bfcl-eval` to enable."
-        )
+        # Upstream places snapshots under a scenario/test-id-derived folder.
+        # For local smoke tests and vendored lightweight runtime use, a stable
+        # sanitized id is enough to preserve per-test isolation.
+        safe = str(test_id).replace("/", "_").replace("..", "_")
+        return safe or "memory_unit_test"
 
     def is_first_memory_prereq_entry(test_id):  # type: ignore[no-redef]
         return False

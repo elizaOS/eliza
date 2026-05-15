@@ -77,18 +77,25 @@ asyncio.run(main())
 
 ### Integration with the elizaOS TS bridge
 
-All runs are routed through the elizaOS TypeScript benchmark bridge
-(`packages/app-core/src/benchmark/server.ts`). The GAIARunner spawns the
-bridge automatically when `ELIZA_BENCH_URL` is unset; otherwise it
-reuses the URL/token from the environment. The Python `AgentRuntime`
-path has been removed.
+GAIA resolves a canonical benchmark harness (`eliza`, `hermes`, or
+`openclaw`) before creating the adapter agent. `eliza` runs through the
+elizaOS TypeScript benchmark bridge (`packages/app-core/src/benchmark/server.ts`).
+`hermes` and `openclaw` are routed explicitly through the delegate client
+paths exposed by `eliza-adapter`, so result metadata and artifacts use the
+selected harness label instead of reporting every run as `eliza`.
 
 ```python
 from elizaos_gaia import GAIAConfig, GAIARunner
 
-config = GAIAConfig(model_name="claude-sonnet-4-6")
+config = GAIAConfig(model_name="claude-sonnet-4-6", harness="hermes")
 runner = GAIARunner(config)
 results = await runner.run_benchmark()
+```
+
+CLI usage:
+
+```bash
+gaia-benchmark --dataset sample --harness hermes --model gpt-oss-120b
 ```
 
 ## Configuration
@@ -126,6 +133,11 @@ After running the benchmark, you'll get:
 2. **JSON Results**: Detailed results in `gaia-results.json`
 3. **Markdown Report**: `BENCHMARK_RESULTS.md` with full analysis
 4. **Detailed Logs**: `gaia-detailed-results.jsonl` with per-question data
+5. **Trajectories**: canonical `gaia-trajectories*.jsonl` and native
+   `gaia-native-trajectories*.json` artifacts when `save_trajectories=True`
+
+The orchestrated entry point emits the same pair with the `gaia_orchestrated`
+prefix per provider output directory.
 
 ### Sample Report
 

@@ -381,6 +381,11 @@ class REALMConfig:
     # best FEASIBLE schedule, RoutingModel returns the best route found
     # so far.
     solver_timeout_s: float = 30.0
+    auto_install_ortools: bool = False
+
+    # Dataset loader budget. ``None`` means load every vendored instance;
+    # otherwise the loader caps each problem before selection.
+    max_instances_per_problem: Optional[int] = 5
 
     # Back-compat aliases
     @property

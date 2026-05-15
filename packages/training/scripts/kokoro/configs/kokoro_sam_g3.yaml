@@ -7,7 +7,7 @@
 #   - Lower anchor_weight (0.0005) to allow more adaptation on larger corpus.
 #
 # This is the structural fix F2's post-mortem prescribed:
-#   "Use OmniVoice samantha preset to synthesize 60 min → train Kokoro on that"
+#   "Use OmniVoice sam preset to synthesize 60 min → train Kokoro on that"
 #   (F2 §"What would actually work", Option A).
 #
 # Per repo policy: APOLLO optimizer only.

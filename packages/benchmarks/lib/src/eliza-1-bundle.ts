@@ -36,7 +36,6 @@ export const ELIZA_ONE_MODEL_SIZES = [
   "2b",
   "9b",
   "27b",
-  "27b-1m",
 ] as const;
 export type ElizaOneModelSize = (typeof ELIZA_ONE_MODEL_SIZES)[number];
 

@@ -5,12 +5,13 @@ The evaluator uses these to compute a reference (true-optimum where the
 problem is tractable, otherwise a tight provably-near-optimal value)
 against which the agent's solution is graded.
 
-OR-Tools is a **required** dependency of this package — see
-``pyproject.toml``. Without it, JSSP would only score against a loose
-``max(job, machine)`` lower bound and DARP would score against a greedy
-upper bound, both of which make ``optimality_ratio`` essentially
-meaningless. We import OR-Tools eagerly at module load and surface a
-clear error if it's missing.
+OR-Tools is an optional runtime dependency. Importing this module must
+not fail when it is absent; benchmark runs that need CP-SAT or
+RoutingModel call :func:`ensure_ortools` lazily. If auto-install is
+enabled, OR-Tools is installed into an isolated cache venv and added to
+``sys.path`` for this process. If it is disabled or installation fails,
+the public solvers either use bounded fallbacks or raise a clear
+``ORToolsUnavailableError`` at the solver callsite.
 
 Per-problem solver summary:
 
@@ -38,32 +39,171 @@ here independently produce an oracle solution for comparison.
 
 from __future__ import annotations
 
+import importlib
 import itertools
+import json
 import logging
+import os
+import subprocess
+import sys
+import sysconfig
+import venv
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# OR-Tools is required. Surface a clear, actionable ImportError if missing.
-# ---------------------------------------------------------------------------
+ORTOOLS_SPEC = "ortools>=9.5,<10.0"
+ORTOOLS_AUTO_INSTALL_ENV = "REALM_AUTO_INSTALL_ORTOOLS"
+ORTOOLS_CACHE_ENV = "REALM_ORTOOLS_CACHE_DIR"
+ORTOOLS_DISABLE_INSTALL_ENV = "REALM_DISABLE_ORTOOLS_INSTALL"
 
-try:
-    from ortools.constraint_solver import pywrapcp  # type: ignore
-    from ortools.constraint_solver import routing_enums_pb2  # type: ignore
-    from ortools.sat.python import cp_model  # type: ignore
-except ImportError as exc:  # pragma: no cover - environment misconfig
-    raise ImportError(
-        "REALM-Bench requires `ortools`. Install it with "
-        "`pip install ortools>=9.5,<10.0` (or `pip install "
-        "elizaos-benchmarks-realm` which depends on it)."
-    ) from exc
+
+class ORToolsUnavailableError(RuntimeError):
+    """Raised when a solver needs OR-Tools but it is unavailable."""
+
+
+pywrapcp: Any | None = None
+routing_enums_pb2: Any | None = None
+cp_model: Any | None = None
+_ORTOOLS_IMPORT_ERROR: BaseException | None = None
+_ORTOOLS_INSTALL_ATTEMPTED = False
 
 
 def has_ortools() -> bool:
-    """Kept for back-compat with older callers; always True now."""
-    return True
+    """Return whether OR-Tools can be imported without installing it."""
+    return _import_ortools() is True
+
+
+def ensure_ortools(*, auto_install: bool | None = None) -> bool:
+    """Ensure OR-Tools is importable.
+
+    ``auto_install`` defaults to ``REALM_AUTO_INSTALL_ORTOOLS=1``. When
+    enabled, installation happens in an isolated venv under
+    ``REALM_ORTOOLS_CACHE_DIR`` or the user cache directory. The current
+    Python environment is not modified.
+    """
+    if _import_ortools():
+        return True
+
+    should_install = _auto_install_enabled() if auto_install is None else auto_install
+    if should_install and not _install_disabled():
+        _install_ortools_to_cache()
+        if _import_ortools():
+            return True
+
+    raise ORToolsUnavailableError(_missing_ortools_message(auto_install=should_install))
+
+
+def _import_ortools() -> bool:
+    global pywrapcp, routing_enums_pb2, cp_model, _ORTOOLS_IMPORT_ERROR
+    if pywrapcp is not None and routing_enums_pb2 is not None and cp_model is not None:
+        return True
+    try:
+        pywrapcp = importlib.import_module("ortools.constraint_solver.pywrapcp")
+        routing_enums_pb2 = importlib.import_module(
+            "ortools.constraint_solver.routing_enums_pb2"
+        )
+        cp_model = importlib.import_module("ortools.sat.python.cp_model")
+        _ORTOOLS_IMPORT_ERROR = None
+        return True
+    except ImportError as exc:
+        pywrapcp = None
+        routing_enums_pb2 = None
+        cp_model = None
+        _ORTOOLS_IMPORT_ERROR = exc
+        return False
+
+
+def _auto_install_enabled() -> bool:
+    return os.environ.get(ORTOOLS_AUTO_INSTALL_ENV, "").lower() in {"1", "true", "yes"}
+
+
+def _install_disabled() -> bool:
+    return os.environ.get(ORTOOLS_DISABLE_INSTALL_ENV, "").lower() in {"1", "true", "yes"}
+
+
+def _missing_ortools_message(*, auto_install: bool) -> str:
+    install_note = (
+        f"Auto-install was enabled via {ORTOOLS_AUTO_INSTALL_ENV}=1, but installation "
+        "did not make OR-Tools importable."
+        if auto_install
+        else f"Set {ORTOOLS_AUTO_INSTALL_ENV}=1 to let REALM install OR-Tools into "
+        "an isolated cache venv for the current run."
+    )
+    details = f" Last import error: {_ORTOOLS_IMPORT_ERROR}" if _ORTOOLS_IMPORT_ERROR else ""
+    return (
+        "REALM OR-Tools oracle support is unavailable. Install "
+        f"`{ORTOOLS_SPEC}` in your environment, or run with auto-install enabled. "
+        f"{install_note}{details}"
+    )
+
+
+def _ortools_cache_dir() -> Path:
+    override = os.environ.get(ORTOOLS_CACHE_ENV)
+    if override:
+        return Path(override).expanduser()
+    base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    version = f"py{sys.version_info.major}{sys.version_info.minor}"
+    return base / "elizaos" / "realm" / f"ortools-{version}"
+
+
+def _venv_python(venv_dir: Path) -> Path:
+    exe = "python.exe" if os.name == "nt" else "python"
+    return venv_dir / ("Scripts" if os.name == "nt" else "bin") / exe
+
+
+def _install_ortools_to_cache() -> None:
+    global _ORTOOLS_INSTALL_ATTEMPTED
+    if _ORTOOLS_INSTALL_ATTEMPTED:
+        return
+    _ORTOOLS_INSTALL_ATTEMPTED = True
+
+    venv_dir = _ortools_cache_dir()
+    py = _venv_python(venv_dir)
+    if not py.exists():
+        logger.info("[REALM] Creating isolated OR-Tools cache venv at %s", venv_dir)
+        venv.EnvBuilder(with_pip=True, clear=False).create(venv_dir)
+
+    logger.info("[REALM] Installing %s into %s", ORTOOLS_SPEC, venv_dir)
+    subprocess.run(
+        [str(py), "-m", "pip", "install", "--upgrade", ORTOOLS_SPEC],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    for path in _venv_site_paths(py):
+        if path and path not in sys.path:
+            sys.path.insert(0, path)
+
+
+def _venv_site_paths(py: Path) -> list[str]:
+    script = (
+        "import json, sysconfig; "
+        "print(json.dumps([sysconfig.get_path('purelib'), sysconfig.get_path('platlib')]))"
+    )
+    try:
+        proc = subprocess.run(
+            [str(py), "-c", script],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        paths = json.loads(proc.stdout)
+        return [str(Path(p)) for p in paths if p]
+    except Exception:
+        scheme = "nt" if os.name == "nt" else "posix_prefix"
+        base = str(py.parent.parent)
+        purelib = sysconfig.get_path(
+            "purelib",
+            scheme=scheme,
+            vars={"base": base, "platbase": base, "installed_base": base},
+        )
+        return [str(Path(purelib))] if purelib else []
 
 
 # Default per-instance solver wall-clock budget. Overridable via the
@@ -148,6 +288,7 @@ def jssp_oracle_makespan(
     jobs: list[list[tuple[int, int]]],
     *,
     timeout_s: float = DEFAULT_SOLVER_TIMEOUT_S,
+    auto_install_ortools: bool | None = None,
 ) -> int:
     """Compute the optimal (or best-found, on timeout) JSSP makespan.
 
@@ -162,6 +303,7 @@ def jssp_oracle_makespan(
     """
     if not jobs:
         return 0
+    ensure_ortools(auto_install=auto_install_ortools)
     try:
         status, makespan = _jssp_cpsat(jobs, timeout_s=timeout_s)
     except Exception as exc:  # pragma: no cover - extremely defensive
@@ -300,6 +442,7 @@ def tsp_tw_oracle(
     end_location: str,
     max_duration: float,
     timeout_s: float = DEFAULT_SOLVER_TIMEOUT_S,
+    auto_install_ortools: bool | None = None,
 ) -> tuple[Optional[float], list[str]]:
     """Solve TSP-TW with OR-Tools RoutingModel.
 
@@ -314,6 +457,17 @@ def tsp_tw_oracle(
     middle = [loc for loc in locations if loc not in {start_location, end_location}]
     if not middle:
         return 0.0, [start_location, end_location]
+
+    try:
+        ensure_ortools(auto_install=auto_install_ortools)
+    except ORToolsUnavailableError as exc:
+        logger.warning("[tsp_tw] %s Falling back to local heuristic.", exc)
+        return _tsp_tw_fallback(
+            middle, distances, time_windows,
+            start_location=start_location,
+            end_location=end_location,
+            max_duration=max_duration,
+        )
 
     nodes = [start_location] + middle + [end_location]
     n = len(nodes)
@@ -466,6 +620,7 @@ def darp_oracle_distance(
     *,
     timeout_s: float = DEFAULT_SOLVER_TIMEOUT_S,
     use_time_windows: bool = True,
+    auto_install_ortools: bool | None = None,
 ) -> tuple[Optional[float], dict[str, list[str]]]:
     """Solve P3/P4 ride-sharing as a CVRP-TW with pickup-delivery pairs.
 
@@ -497,6 +652,12 @@ def darp_oracle_distance(
     """
     if not vehicles or not passengers:
         return 0.0, {v["id"]: [] for v in vehicles}
+
+    try:
+        ensure_ortools(auto_install=auto_install_ortools)
+    except ORToolsUnavailableError as exc:
+        logger.warning("[darp] %s Falling back to greedy heuristic.", exc)
+        return _darp_greedy_fallback(vehicles, passengers, distances)
 
     n_passengers = len(passengers)
     n_vehicles = len(vehicles)

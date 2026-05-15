@@ -25,8 +25,22 @@ const LlamaLogLevel = Object.freeze({
   debug: "debug",
 });
 
+const capabilities = Object.freeze({
+  provider: "node-llama-cpp",
+  available: false,
+  platform: "mobile-stub",
+  text: false,
+  embeddings: false,
+  vision: false,
+  mmproj: false,
+  imagegen: false,
+  reason: NOT_AVAILABLE_MSG,
+});
+
 module.exports = {
   __mobileStub: true,
+  __mobileCapabilities: capabilities,
+  capabilities,
   getLlama: unavailable,
   Llama: unavailable,
   LlamaModel: unavailable,

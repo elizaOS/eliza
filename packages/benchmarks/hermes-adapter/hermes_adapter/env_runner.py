@@ -262,11 +262,7 @@ def _select_terminal_backend(env_id: str) -> str:
     override = os.environ.get("HERMES_BENCH_TERMINAL_BACKEND", "").strip().lower()
     if override:
         return override
-    if env_id in {"tblite", "terminalbench_2"}:
-        if _docker_daemon_available():
-            return "docker"
-        if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"):
-            return "modal"
+    _ = env_id
     return "local"
 
 

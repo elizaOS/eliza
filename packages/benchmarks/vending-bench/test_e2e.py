@@ -48,6 +48,8 @@ from elizaos_vending_bench import (
 class TestResults:
     """Tracks test results."""
 
+    __test__ = False
+
     def __init__(self):
         self.passed = 0
         self.failed = 0
@@ -72,6 +74,19 @@ class TestResults:
                 print(f"  - {err}")
         print(f"{'=' * 60}")
         return self.failed == 0
+
+
+try:
+    import pytest
+except ImportError:  # pragma: no cover - pytest is only needed for test collection.
+    pytest = None
+
+
+if pytest is not None:
+
+    @pytest.fixture
+    def results() -> TestResults:
+        return TestResults()
 
 
 async def test_environment(results: TestResults):

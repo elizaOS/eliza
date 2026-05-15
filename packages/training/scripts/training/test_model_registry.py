@@ -112,13 +112,9 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("eliza-1-27b").short_name == "qwen3.6-27b"
     assert get("27b").short_name == "qwen3.6-27b"
     assert get("27b-256k").short_name == "qwen3.6-27b"
-    assert get("27b-1m").short_name == "qwen3.6-27b"
     assert get("qwen3.6-27b-256k").short_name == "qwen3.6-27b"
-    assert get("qwen3.6-27b-1m").short_name == "qwen3.6-27b"
     assert get("Qwen/Qwen3.6-27B-256K").short_name == "qwen3.6-27b"
-    assert get("Qwen/Qwen3.6-27B-1M").short_name == "qwen3.6-27b"
     assert get("eliza-1-27b-256k").short_name == "qwen3.6-27b"
-    assert get("eliza-1-27b-1m").short_name == "qwen3.6-27b"
 
 
 def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
@@ -147,7 +143,6 @@ def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
         "eliza-1-9b",
         "eliza-1-27b",
         "eliza-1-27b-256k",
-        "eliza-1-27b-1m",
     ):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
     # Deprecated Qwen3 tiers have no drafter entries.

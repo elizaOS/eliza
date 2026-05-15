@@ -132,6 +132,10 @@ async def run_task(
                             )
                         )
                     dispatches += 1
+                    if assistant.content:
+                        final_text = assistant.content
+                        agent_messages.append(final_text)
+                        break
                     continue
                 final_text = assistant.content or ""
                 agent_messages.append(final_text)

@@ -14,24 +14,22 @@ import json
 import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
+from elizaos_gaia.harness import (
+    harness_env_updates,
+    normalize_harness_label,
+    resolve_harness,
+)
 from elizaos_gaia.runner import run_quick_test
+from elizaos_gaia.trajectory import write_trajectory_artifacts
 from elizaos_gaia.types import GAIAConfig
 
 _RESEARCH_CAPABILITIES = {
     "research.web_search",
     "research.web_browse",
     "research.docs_lookup",
-}
-_HARNESS_ALIASES = {
-    "eliza": "eliza",
-    "elizaos": "eliza",
-    "hermes": "hermes",
-    "hermes-agent": "hermes",
-    "openclaw": "openclaw",
-    "open-claw": "openclaw",
-    "open_claw": "openclaw",
 }
 _LEGACY_PROVIDER_DEFAULTS = ("claude-code", "swe-agent", "codex")
 _OPENAI_COMPATIBLE_API_BASE = "https://api.cerebras.ai/v1"
@@ -87,12 +85,7 @@ def _parse_required_capabilities(values: list[str]) -> list[str]:
 
 
 def _normalize_harness_label(value: str | None) -> str | None:
-    if not value:
-        return None
-    key = value.strip().lower()
-    if not key:
-        return None
-    return _HARNESS_ALIASES.get(key)
+    return normalize_harness_label(value)
 
 
 def _current_harness() -> str | None:
@@ -154,9 +147,6 @@ def _model_env_updates(
     model_api_base: str | None,
 ) -> dict[str, str]:
     updates = {
-        "BENCHMARK_HARNESS": harness,
-        "ELIZA_BENCH_HARNESS": harness,
-        "BENCHMARK_AGENT": harness,
         "BENCHMARK_TELEMETRY_JSONL": str(telemetry_path),
         "BENCHMARK_MODEL_PROVIDER": model_provider,
         "ELIZA_PROVIDER": model_provider,
@@ -173,6 +163,7 @@ def _model_env_updates(
         "CEREBRAS_LARGE_MODEL": model_name,
         "CEREBRAS_SMALL_MODEL": model_name,
     }
+    updates.update(harness_env_updates(resolve_harness(explicit=harness)))
     if model_api_base:
         updates["OPENAI_BASE_URL"] = model_api_base
         updates["OPENAI_API_BASE"] = model_api_base
@@ -334,6 +325,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
         max_questions=args.max_questions,
         model_name=args.model,
         provider=_model_provider_for_config(harness),
+        harness=harness,
         api_base=_model_api_base_for_config(harness),
         temperature=args.temperature,
         compare_leaderboard=False,
@@ -358,6 +350,13 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             hf_token=os.environ.get("HF_TOKEN"),
         )
     telemetry_summary = _read_telemetry_summary(telemetry_path)
+    trajectory_paths = write_trajectory_artifacts(
+        results,
+        provider_output,
+        timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+        run_kind="gaia_orchestrated",
+        latest=True,
+    )
     metrics = results.metrics
     validation_error = _run_validation_error(results, telemetry_summary)
     payload: dict[str, object] = {
@@ -369,6 +368,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             "benchmark_harness": harness,
             "model_provider": model_provider,
             "model_api_base": model_api_base,
+            "harness_backend": resolve_harness(explicit=harness).backend,
         },
         "metrics": {
             "overall_accuracy": metrics.overall_accuracy,
@@ -383,6 +383,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             ),
         },
         "telemetry": telemetry_summary,
+        "trajectory_artifacts": trajectory_paths,
         "validation": {
             "ok": validation_error is None,
             "failure": validation_error,

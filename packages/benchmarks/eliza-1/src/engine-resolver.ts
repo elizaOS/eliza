@@ -30,8 +30,7 @@ export type Eliza1TierId =
   | "eliza-1-4b"
   | "eliza-1-9b"
   | "eliza-1-27b"
-  | "eliza-1-27b-256k"
-  | "eliza-1-27b-1m";
+  | "eliza-1-27b-256k";
 
 /** Subset of the `LocalInferenceEngine.generate` shape the bench needs. */
 export interface EngineLike {

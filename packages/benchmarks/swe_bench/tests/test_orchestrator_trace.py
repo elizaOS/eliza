@@ -47,6 +47,15 @@ class _RuntimeModelFails:
         raise RuntimeError("Model unavailable")
 
 
+def test_orchestrated_config_defaults_to_opencode_provider(tmp_path):
+    config = OrchestratedBenchmarkConfig(
+        workspace_dir=str(tmp_path / "workspace"),
+        output_dir=str(tmp_path / "output"),
+    )
+
+    assert config.providers == [ProviderType.OPENCODE]
+
+
 @pytest.mark.asyncio
 async def test_trace_recorder_persists_full_event_stream(tmp_path):
     recorder = RunTraceRecorder(

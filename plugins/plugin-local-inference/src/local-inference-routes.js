@@ -31,6 +31,7 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+
 let activeModelState = { modelId: null, loadedAt: null, status: "idle" };
 export function getLocalInferenceActiveModelId() {
 	return activeModelState.status === "ready" && activeModelState.modelId?.trim()

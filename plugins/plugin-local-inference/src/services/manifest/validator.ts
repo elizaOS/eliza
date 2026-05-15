@@ -281,6 +281,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 	for (const slot of [
 		"asr",
 		"embedding",
+		"imagegen",
 		"vision",
 		"vad",
 		"wakeword",
@@ -409,6 +410,9 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			];
 			for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
+			}
+			if ((m.files.imagegen ?? []).length > 0) {
+				requiredSlots.push("imagegen");
 			}
 			for (const slot of requiredSlots) {
 				if (!m.provenance.sourceModels[slot]) {

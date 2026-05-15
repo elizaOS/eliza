@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   _internal,
   OV_ABI_VERSION,
@@ -65,5 +65,22 @@ describe("plugin-omnivoice FFI shape", () => {
     expect(_internal.align(1, 8)).toBe(8);
     expect(_internal.align(8, 8)).toBe(8);
     expect(_internal.align(9, 8)).toBe(16);
+  });
+
+  it("OmnivoiceContext.close is idempotent", () => {
+    const ovFree = vi.fn();
+    const ctx = _internal.createForTest({
+      symbols: {
+        ov_free: ovFree,
+      } as never,
+      ffi: {} as never,
+      ctx: 0x1234n,
+    });
+
+    ctx.close();
+    ctx.close();
+
+    expect(ovFree).toHaveBeenCalledTimes(1);
+    expect(ovFree).toHaveBeenCalledWith(0x1234n);
   });
 });

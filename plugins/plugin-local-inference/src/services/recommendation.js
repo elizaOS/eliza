@@ -6,6 +6,7 @@ import {
 } from "./catalog";
 import { canSetAsDefault, SUPPORTED_BACKENDS_BY_TIER } from "./manifest";
 import { assessRamFit, defaultManifestLoader } from "./ram-budget";
+
 const TIER_0_8B = "eliza-1-0_8b";
 const TIER_2B = "eliza-1-2b";
 const TIER_4B = "eliza-1-4b";

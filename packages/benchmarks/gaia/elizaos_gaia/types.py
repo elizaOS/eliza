@@ -181,6 +181,7 @@ class GAIAConfig:
     # Examples: "openai/gpt-oss-120b", "groq/openai/gpt-oss-120b", "openai/gpt-5"
     model_name: str = "openai/gpt-oss-120b"  # Default: Groq gpt-oss-120b
     provider: str | None = None  # Provider override (groq, openai, anthropic, etc.)
+    harness: str | None = None  # Execution harness (eliza, hermes, openclaw)
     temperature: float = 0.0
     max_tokens: int = 4096
     api_key: str | None = None  # Override API key

@@ -5,7 +5,7 @@
  *   - the catalog entry resolves (and is visible/not hidden),
  *   - the bundle's text GGUF path is declared (per-tier `textFile`),
  *   - the bundle's embedding GGUF path is declared on tiers that have a
- *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k/27b-1m),
+ *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k),
  *   - the bundle's drafter GGUF path is declared (DFlash speculative
  *     decoding companion),
  *   - the HuggingFace resolve URL for the text and embedding components

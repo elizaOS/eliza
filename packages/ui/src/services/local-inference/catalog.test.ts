@@ -88,7 +88,6 @@ describe("local inference catalog", () => {
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
-      "eliza-1-27b-1m": 1_048_576,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);

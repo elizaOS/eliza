@@ -7,10 +7,12 @@ Faithful port of the UIUC **MINT** benchmark for evaluating LLMs in
 
 The upstream implementation
 ([xingyaoww/mint-bench](https://github.com/xingyaoww/mint-bench), Apache 2.0)
-is vendored under [`upstream/`](./upstream/) so this package can reuse the
-upstream task loaders, sandboxed code execution, and feedback prompt template
-without re-implementing them. See [`upstream/README.md`](./upstream/README.md)
-for attribution.
+is partially vendored under [`upstream/`](./upstream/) so this package can
+reuse the upstream sandboxed code execution and feedback prompt template
+without re-implementing them. The large upstream data/assets are not vendored;
+compact processed JSONL files are lazy-fetched into a local cache when you run
+the full benchmark. See [`upstream/README.md`](./upstream/README.md) for
+attribution.
 
 ---
 
@@ -32,10 +34,24 @@ The 4-bucket category enum that previously lived in this package
 invented and has been removed. `MINTSubtask` is now the canonical unit and
 `MINTCategory` is kept only as a back-compat alias.
 
-The HumanEval / MBPP / MATH / GSM8K / HotpotQA / MMLU / TheoremQA samples
-ship pre-sampled in [`upstream/data/processed/<subtask>/test_prompts.json`](./upstream/data/processed/),
-mirroring the paper's evaluation set (~452 samples in total). AlfWorld is
-loaded lazily because it depends on `textworld` + downloaded game files.
+The HumanEval / MBPP / MATH / GSM8K / HotpotQA / MMLU / TheoremQA samples are
+the upstream pre-sampled files at
+`data/processed/<subtask>/test_prompts.json`, mirroring the paper's evaluation
+set (~452 samples in total). The first full run fetches only the requested
+compact JSONL files from the Apache-2.0 upstream repo into:
+
+```
+$MINT_DATA_CACHE/processed
+# or, by default:
+~/.cache/elizaos/mint/processed
+```
+
+You can also pass `--data-path /path/to/mint-bench/data/processed` to use an
+existing checkout, `--cache-dir /path/to/cache` to redirect lazy downloads, or
+`--no-auto-fetch` to make missing data a hard error. `--use-sample-tasks`
+uses a tiny official-format smoke fixture and never touches the network.
+AlfWorld remains lazy because it depends on `textworld` + downloaded game
+files; pass a prepared upstream data path when evaluating it.
 
 ---
 
@@ -105,13 +121,23 @@ Key flags:
 --subtasks <subtask> [<subtask>...]   # default: all (except alfworld)
 --max-tasks N                          # limit per subtask
 --use-sample-tasks                     # tiny offline smoke set (3 tasks)
+--data-path PATH                       # existing upstream data/processed tree
+--cache-dir PATH                       # lazy-fetch cache root
+--no-auto-fetch                        # disable upstream data fetch
 --mock                                 # MockExecutor (no real code exec)
 --feedback {templated,llm}             # feedback mode
---provider {mock,eliza,openai,groq,
-            openrouter,cerebras}
+--provider {mock,eliza,hermes,openclaw,
+            openai,groq,openrouter,cerebras}
 --no-docker                            # disable docker sandbox
 --no-tools / --no-feedback / --no-ablation
 ```
+
+`--provider eliza` starts or uses the Eliza benchmark bridge. `--provider
+hermes` and `--provider openclaw` route through the same MINT sidecar and the
+existing `ElizaClient` harness delegation, setting `BENCHMARK_HARNESS` and
+`ELIZA_BENCH_HARNESS` for the selected harness. Those modes require the
+corresponding adapter packages and credentials already configured in the local
+benchmark environment.
 
 ---
 
@@ -133,7 +159,8 @@ pytest packages/benchmarks/mint/
 
 Notable suites:
 
-* `tests/test_dataset.py` — loads from the vendored upstream JSON.
+* `tests/test_dataset.py` — loads a tiny upstream-compatible processed JSONL
+  fixture and covers lazy cache fetch behavior without network.
 * `tests/test_turn_k_metrics.py` — end-to-end smoke that exercises the
   multi-turn protocol with templated feedback and asserts that
   `turn_1_success_rate` etc. are actually populated.

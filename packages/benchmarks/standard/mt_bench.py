@@ -423,19 +423,26 @@ class _MTBenchFactory(RunnerFactory):
         )
 
     def build(self, args: argparse.Namespace) -> tuple[MTBenchRunner, Sequence[str] | None]:
-        candidate_endpoint = resolve_endpoint(
-            model_endpoint=args.model_endpoint,
-            provider=args.provider,
+        candidate_endpoint = (
+            "mock://standard-mt-bench"
+            if args.mock
+            else resolve_endpoint(
+                model_endpoint=args.model_endpoint,
+                provider=args.provider,
+            )
         )
         judge_endpoint_input = args.judge_endpoint or args.model_endpoint
         judge_provider = args.judge_provider or args.provider
-        try:
-            judge_endpoint = resolve_endpoint(
-                model_endpoint=judge_endpoint_input,
-                provider=judge_provider,
-            )
-        except ValueError:
+        if args.mock:
             judge_endpoint = candidate_endpoint
+        else:
+            try:
+                judge_endpoint = resolve_endpoint(
+                    model_endpoint=judge_endpoint_input,
+                    provider=judge_provider,
+                )
+            except ValueError:
+                judge_endpoint = candidate_endpoint
         judge_api_key = resolve_api_key(args.judge_api_key_env)
 
         judge: OpenAICompatibleClient

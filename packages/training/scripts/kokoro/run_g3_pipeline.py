@@ -19,7 +19,7 @@ Usage::
         --sam-voice-bin /tmp/kokoro-f2/melfit-5/af_samantha.bin \\
         --augmented-corpus-dir /tmp/kokoro-f2/augmented \\
         --out-dir /tmp/kokoro-g3 \\
-        --baseline-eval artifacts/voice-fine-tune/kokoro-samantha-f2/20260515T020000Z/eval-baseline-af_bella.json
+        --baseline-eval artifacts/voice-fine-tune/kokoro-sam-f2/20260515T020000Z/eval-baseline-af_bella.json
 
     # Dry run (skip actual training):
     python3 run_g3_pipeline.py --dry-run [...]
@@ -407,7 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--baseline-eval",
         type=Path,
-        default=Path("artifacts/voice-fine-tune/kokoro-samantha-f2/20260515T020000Z/eval-baseline-af_bella.json"),
+        default=Path("artifacts/voice-fine-tune/kokoro-sam-f2/20260515T020000Z/eval-baseline-af_bella.json"),
     )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--force-retrain", action="store_true")

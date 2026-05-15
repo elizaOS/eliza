@@ -30,7 +30,6 @@ const VALID_TIERS: ReadonlySet<Eliza1TierId> = new Set<Eliza1TierId>([
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ]);
 
 interface Args {
@@ -60,7 +59,7 @@ Flags:
   --tier <id>
       Eliza-1 tier to load. Default: eliza-1-0_8b. Valid:
       eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b,
-      eliza-1-27b, eliza-1-27b-256k, eliza-1-27b-1m.
+      eliza-1-27b, eliza-1-27b-256k.
       The GGUF must be on disk (downloaded via the eliza-1 manifest flow).
   --allow-skip-local
       Allow selected local modes (guided/unguided/strict-guided) to skip without a nonzero

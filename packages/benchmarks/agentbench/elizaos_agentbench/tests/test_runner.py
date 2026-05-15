@@ -2,16 +2,19 @@
 Tests for AgentBench runner.
 """
 
-import pytest
 import tempfile
 from pathlib import Path
 
+import pytest
+
+from elizaos_agentbench import upstream_loader
+from elizaos_agentbench.runner import AgentBenchRunner, MemoryTracker, run_agentbench
 from elizaos_agentbench.types import (
     AgentBenchConfig,
+    AgentBenchDataMode,
     AgentBenchEnvironment,
     EnvironmentConfig,
 )
-from elizaos_agentbench.runner import AgentBenchRunner, run_agentbench, MemoryTracker
 
 
 class TestMemoryTracker:
@@ -110,6 +113,7 @@ class TestAgentBenchRunner:
                 output_dir=tmpdir,
                 enable_memory_tracking=False,
                 use_docker=False,
+                data_mode=AgentBenchDataMode.FIXTURE,
             )
             # Only test DB adapter (fastest)
             for env in AgentBenchEnvironment:
@@ -141,6 +145,7 @@ class TestConvenienceFunction:
             config = AgentBenchConfig(
                 output_dir=tmpdir,
                 enable_memory_tracking=False,
+                data_mode=AgentBenchDataMode.FIXTURE,
             )
             # Minimal configuration
             for env in AgentBenchEnvironment:
@@ -153,3 +158,31 @@ class TestConvenienceFunction:
 
             assert report is not None
             assert report.total_tasks > 0
+
+
+class TestTaskLoadFailures:
+    def test_zero_loaded_tasks_fail_fast_unless_allowed(self, monkeypatch) -> None:
+        config = AgentBenchConfig(
+            enable_memory_tracking=False,
+            data_mode=AgentBenchDataMode.FIXTURE,
+        )
+        for env in AgentBenchEnvironment:
+            config.get_env_config(env).enabled = False
+        config.db_config = EnvironmentConfig(enabled=True, max_tasks=1)
+
+        monkeypatch.setattr(upstream_loader, "load_tasks", lambda *args, **kwargs: [])
+        runner = AgentBenchRunner(config=config)
+
+        with pytest.raises(RuntimeError, match="loaded zero AgentBench tasks"):
+            runner._load_tasks(AgentBenchEnvironment.DATABASE)
+
+    def test_zero_loaded_tasks_allowed_for_dry_run(self, monkeypatch) -> None:
+        config = AgentBenchConfig(
+            enable_memory_tracking=False,
+            data_mode=AgentBenchDataMode.FIXTURE,
+            dry_run=True,
+        )
+        monkeypatch.setattr(upstream_loader, "load_tasks", lambda *args, **kwargs: [])
+        runner = AgentBenchRunner(config=config)
+
+        assert runner._load_tasks(AgentBenchEnvironment.DATABASE) == []

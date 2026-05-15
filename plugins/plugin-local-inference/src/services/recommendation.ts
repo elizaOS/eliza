@@ -73,14 +73,7 @@ const SLOT_LADDERS: Record<
 	},
 	"linux-gpu": {
 		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [
-			TIER_27B_256K,
-			TIER_27B,
-			TIER_9B,
-			TIER_4B,
-			TIER_2B,
-			TIER_0_8B,
-		],
+		TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
 	},
 	"linux-cpu": {
 		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],

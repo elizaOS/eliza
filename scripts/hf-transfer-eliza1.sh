@@ -90,9 +90,8 @@ LEGACY_MOVES=(
 )
 
 # --- canonical per-tier bundle repos to create (elizaos/eliza-1-<tier>) --------
-# These match `packages/training/scripts/publish/orchestrator.py` (tier matrix in
-# publish_all_eliza1.sh + the 27b-1m tier in the catalog). `repo create` is a
-# no-op if the repo already exists.
+# These match the active bundle matrix under `elizaos/eliza-1`. `repo create`
+# is a no-op if the repo already exists.
 TIER_REPOS=(
   "eliza-1-0_8b"
   "eliza-1-2b"
@@ -100,7 +99,6 @@ TIER_REPOS=(
   "eliza-1-9b"
   "eliza-1-27b"
   "eliza-1-27b-256k"
-  "eliza-1-27b-1m"
 )
 
 # --- voice sub-model repos to create (elizaos/eliza-1-voice-<component>) --------

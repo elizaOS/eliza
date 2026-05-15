@@ -93,7 +93,6 @@ describe("Eliza-1 manifest schema constants", () => {
 			"9b",
 			"27b",
 			"27b-256k",
-			"27b-1m",
 		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
@@ -122,8 +121,13 @@ describe("validateManifest — valid input", () => {
 	it("accepts optional component lineage, files, evals, and voice capabilities", () => {
 		const m = baseManifest();
 		m.lineage.embedding = { base: "eliza-1-embedding", license: "apache-2.0" };
+		m.lineage.imagegen = {
+			base: "eliza-1-imagegen",
+			license: "pending-license-review",
+		};
 		m.lineage.wakeword = { base: "eliza-1-wakeword", license: "apache-2.0" };
 		m.files.embedding = [{ path: "embedding/eliza-1-embed.gguf", sha256: SHA }];
+		m.files.imagegen = [{ path: "imagegen/sd-1.5-Q5_0.gguf", sha256: SHA }];
 		m.files.wakeword = [{ path: "wakeword/eliza-1.onnx", sha256: SHA }];
 		m.voice = {
 			version: "1",

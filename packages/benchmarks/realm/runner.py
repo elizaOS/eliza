@@ -58,6 +58,7 @@ class REALMRunner:
 
         self.dataset = REALMDataset(
             config.data_path,
+            max_instances_per_problem=config.max_instances_per_problem,
             use_sample_tasks=config.use_sample_tasks,
         )
         if agent is None:
@@ -71,6 +72,7 @@ class REALMRunner:
 
         self.evaluator = REALMEvaluator(
             solver_timeout_s=getattr(config, "solver_timeout_s", 30.0),
+            auto_install_ortools=getattr(config, "auto_install_ortools", False),
         )
         self.metrics_calculator = MetricsCalculator()
 
@@ -180,6 +182,8 @@ class REALMRunner:
                     "enable_multi_agent": self.config.enable_multi_agent,
                     "model": self.config.model_name,
                     "use_sample_tasks": self.config.use_sample_tasks,
+                    "max_instances_per_problem": self.config.max_instances_per_problem,
+                    "auto_install_ortools": self.config.auto_install_ortools,
                 },
                 "leaderboard_note": LEADERBOARD_NOTE,
             },
@@ -343,6 +347,12 @@ class REALMRunner:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(self._report_to_dict(report), f, indent=2, default=str)
         logger.info("[REALMRunner] Saved JSON results to %s", json_path)
+        if self.config.save_trajectories:
+            traj_path = output_dir / f"realm-trajectories-{timestamp}.jsonl"
+            with open(traj_path, "w", encoding="utf-8") as f:
+                for result in report.results:
+                    f.write(json.dumps(self._trajectory_record(result), default=str) + "\n")
+            logger.info("[REALMRunner] Saved trajectories to %s", traj_path)
 
     def _report_to_dict(self, report: REALMReport) -> dict[str, Any]:
         return {
@@ -380,7 +390,7 @@ class REALMRunner:
         }
 
     def _result_to_dict(self, r: REALMResult) -> dict[str, Any]:
-        return {
+        out = {
             "task_id": r.task_id,
             "problem": r.problem.value,
             "success": r.success,
@@ -400,6 +410,48 @@ class REALMRunner:
                 "extras": r.metrics.extras,
             },
             "error": r.error,
+        }
+        if self.config.save_trajectories:
+            out["trajectory"] = self._trajectory_to_dict(r.trajectory)
+        return out
+
+    def _trajectory_record(self, r: REALMResult) -> dict[str, Any]:
+        return {
+            "task_id": r.task_id,
+            "problem": r.problem.value,
+            "success": r.success,
+            "trajectory": self._trajectory_to_dict(r.trajectory),
+        }
+
+    def _trajectory_to_dict(self, trajectory: PlanningTrajectory) -> dict[str, Any]:
+        return {
+            "task_id": trajectory.task_id,
+            "final_outcome": trajectory.final_outcome,
+            "overall_success": trajectory.overall_success,
+            "duration_ms": trajectory.duration_ms,
+            "planning_time_ms": trajectory.planning_time_ms,
+            "execution_time_ms": trajectory.execution_time_ms,
+            "tokens_used": trajectory.tokens_used,
+            "adaptation_count": trajectory.adaptation_count,
+            "start_time_ms": trajectory.start_time_ms,
+            "end_time_ms": trajectory.end_time_ms,
+            "solution": trajectory.solution,
+            "replanning_attempts": trajectory.replanning_attempts,
+            "steps": [
+                {
+                    "step_number": step.step_number,
+                    "action": {
+                        "name": step.action.name,
+                        "parameters": step.action.parameters,
+                        "description": step.action.description,
+                    },
+                    "observation": step.observation,
+                    "success": step.success,
+                    "error": step.error,
+                    "duration_ms": step.duration_ms,
+                }
+                for step in trajectory.steps
+            ],
         }
 
 
@@ -472,6 +524,7 @@ class _MockREALMAgent:
                 end_location=task.instance.get("end_location", "entrance"),
                 max_duration=float(task.instance.get("max_duration", 1e9)),
                 timeout_s=getattr(self.config, "solver_timeout_s", 30.0),
+                auto_install_ortools=getattr(self.config, "auto_install_ortools", False),
             )
             sol = {"route": route, "cost": cost}
         elif task.problem in (RealmProblem.P3, RealmProblem.P4):
@@ -481,6 +534,7 @@ class _MockREALMAgent:
                 task.instance.get("city_map", {}).get("distances")
                 or task.instance.get("distances", {}),
                 timeout_s=getattr(self.config, "solver_timeout_s", 30.0),
+                auto_install_ortools=getattr(self.config, "auto_install_ortools", False),
             )
             sol = {"assignments": assignments, "cost": cost}
         elif task.problem == RealmProblem.P7:

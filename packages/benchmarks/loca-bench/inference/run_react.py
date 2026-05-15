@@ -68,7 +68,7 @@ for logger_name in ["mcp", "fastmcp", "mcp.server", "mcp.client", "httpx", "http
 
 # Import all potential tools and wrappers
 from gem.tools.base_tool import BaseTool
-from gem.tools.mcp_tool import MCPTool
+from gem.tools import MCPTool
 from gem.tools.mcp_server.programmatic_tool_calling.helper import ProgrammaticToolCallingTool
 from gem.tools.tool_env_wrapper import ToolEnvWrapperOpenAI
 from gem.tools.mcp_server.config_loader import build_server_config

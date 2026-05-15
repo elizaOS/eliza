@@ -4,14 +4,15 @@ Tests for AgentBench types.
 
 
 from elizaos_agentbench.types import (
-    AgentBenchEnvironment,
-    AgentBenchTask,
-    AgentBenchResult,
-    AgentBenchConfig,
-    EnvironmentConfig,
-    TaskDifficulty,
     GPT4_BASELINE_SCORES,
     GPT35_BASELINE_SCORES,
+    AgentBenchConfig,
+    AgentBenchDataMode,
+    AgentBenchEnvironment,
+    AgentBenchResult,
+    AgentBenchTask,
+    EnvironmentConfig,
+    TaskDifficulty,
 )
 
 
@@ -109,6 +110,9 @@ class TestAgentBenchConfig:
         assert config.save_detailed_logs
         assert config.enable_metrics
         assert config.use_docker
+        assert config.data_mode == AgentBenchDataMode.AUTO
+        assert config.allow_empty_tasks is False
+        assert config.dry_run is False
 
     def test_get_env_config(self) -> None:
         """Test getting environment-specific config."""

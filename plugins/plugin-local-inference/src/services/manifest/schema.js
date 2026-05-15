@@ -42,8 +42,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 // Eliza-1 bundle uses. Exported so runtime code can assert it.
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35";
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320;
-// Tiers — enum stays size-ordered. The 1M-context tier is server-class and
-// caps native context at 262,144 tokens; no 1M tier is published.
+// Tiers — enum stays size-ordered. The active line is capped at 262,144 tokens.
 export const ELIZA_1_TIERS = ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"];
 // Manifest-level kernel capability names. Per AGENTS.md §3:
 // `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, `dflash` are

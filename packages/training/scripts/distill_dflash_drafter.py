@@ -77,7 +77,7 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
 
 # Recommended student base per active tier. Every active Eliza-1 tier is on the
 # Qwen3.5 tokenizer family; keep this base aligned with model_registry.py.
@@ -88,7 +88,6 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
     "9b": "Qwen/Qwen3.5-0.8B-Base",
     "27b": "Qwen/Qwen3.5-0.8B-Base",
     "27b-256k": "Qwen/Qwen3.5-0.8B-Base",
-    "27b-1m": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 # Canonical Eliza-1 text targets that each drafter is allowed to pair with.
@@ -103,7 +102,6 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
     "9b": "elizaos/eliza-1/bundles/9b",
     "27b": "elizaos/eliza-1/bundles/27b",
     "27b-256k": "elizaos/eliza-1/bundles/27b-256k",
-    "27b-1m": "elizaos/eliza-1/bundles/27b-1m",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -117,7 +115,6 @@ ACCEPTANCE_GATE: dict[str, float] = {
     "9b": 0.52,
     "27b": 0.52,
     "27b-256k": 0.52,
-    "27b-1m": 0.52,
 }
 
 

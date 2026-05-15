@@ -11,6 +11,7 @@
  */
 import fs from "node:fs";
 import os from "node:os";
+
 const BYTES_PER_GB = 1024 ** 3;
 function bytesToGb(bytes) {
 	return Math.round((bytes / BYTES_PER_GB) * 10) / 10;

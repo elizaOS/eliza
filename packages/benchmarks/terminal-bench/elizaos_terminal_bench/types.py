@@ -7,7 +7,7 @@ Defines all data classes and enums used by the Terminal-Bench benchmark implemen
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class TaskCategory(str, Enum):
@@ -106,6 +106,7 @@ class TerminalCommand:
     timestamp: datetime
     working_directory: str = "/workspace"
     status: CommandStatus = CommandStatus.SUCCESS
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -119,6 +120,11 @@ class TerminalSession:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     total_tokens: int = 0
+    prompt: str = ""
+    model_responses: list[str] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    final_test_output: str = ""
+    final_test_exit_code: Optional[int] = None
 
 
 @dataclass
@@ -238,6 +244,7 @@ class TerminalBenchConfig:
     # Model settings
     # Use an accessible, inexpensive default for quick validation.
     model_name: str = "gpt-5-mini"
+    model_provider: Optional[str] = None
     temperature: float = 0.0
     max_tokens: int = 4096
     
@@ -270,6 +277,14 @@ class TerminalBenchConfig:
     # ``openclaw``: route through the OpenClaw CLI
     #   (``openclaw_adapter.terminal_bench.OpenClawTerminalAgent``).
     agent_harness: str = "eliza"
+
+    # Task-agent selection for the elizaOS TS bridge. The Python harness keeps
+    # routing through ``agent_harness``; this value is exported as
+    # ``BENCHMARK_TASK_AGENT`` for bridge-side task-agent selection.
+    task_agent: str = "opencode"
+
+    # Seed used by the local random baseline harness.
+    baseline_random_seed: int = 0
 
 
 # The Terminal-Bench leaderboard moves frequently; rather than ship stale or

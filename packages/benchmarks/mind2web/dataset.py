@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
+from urllib.request import urlretrieve
+from zipfile import ZipFile
 
 from benchmarks.mind2web.types import (
     Mind2WebActionStep,
@@ -20,6 +23,57 @@ from benchmarks.mind2web.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+EXPECTED_TEST_COUNTS: dict[str, int] = {
+    "test_task": 252,
+    "test_website": 177,
+    "test_domain": 912,
+}
+
+_DEFAULT_TEST_ZIP_URL = (
+    "https://github.com/OSU-NLP-Group/Mind2Web/raw/main/data/test.zip"
+)
+
+
+def _default_cache_dir() -> Path:
+    """Return the cache root for optional Mind2Web test-split artifacts."""
+    override = os.environ.get("MIND2WEB_CACHE_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".cache" / "elizaos" / "mind2web"
+
+
+def ensure_test_splits_available() -> Path | None:
+    """Ensure optional upstream test-split artifacts are present locally.
+
+    The default benchmark path uses HuggingFace/sample data. This helper is for
+    explicit test-split validation and remains offline-safe when
+    ``MIND2WEB_NO_AUTOFETCH=1`` is set.
+    """
+    if os.environ.get("MIND2WEB_NO_AUTOFETCH", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return None
+
+    cache_dir = _default_cache_dir()
+    extracted_dir = cache_dir / "extracted"
+    if extracted_dir.exists():
+        return extracted_dir
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = cache_dir / "test.zip"
+    if not zip_path.exists():
+        url = os.environ.get("MIND2WEB_TEST_ZIP_URL", _DEFAULT_TEST_ZIP_URL)
+        logger.info("Downloading Mind2Web test split archive to %s", zip_path)
+        urlretrieve(url, zip_path)
+
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+    with ZipFile(zip_path) as archive:
+        archive.extractall(extracted_dir)
+    return extracted_dir
+
 
 # Sample tasks for testing without HuggingFace
 SAMPLE_TASKS: list[dict[str, object]] = [

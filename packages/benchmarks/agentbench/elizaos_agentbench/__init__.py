@@ -21,27 +21,28 @@ Usage:
     report = await runner.run_benchmarks()
 """
 
-from elizaos_agentbench.types import (
-    AgentBenchEnvironment,
-    AgentBenchTask,
-    AgentBenchResult,
-    AgentBenchReport,
-    AgentBenchConfig,
-    BenchmarkSplit,
-    EnvironmentConfig,
-)
-from elizaos_agentbench.runner import AgentBenchRunner
-from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench import upstream_loader
-from elizaos_agentbench.eliza_harness import (
-    ElizaAgentHarness,
-    create_benchmark_runtime,
-    create_benchmark_character,
-    BenchmarkDatabaseAdapter,
-)
+from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.benchmark_actions import (
     create_benchmark_actions,
     create_benchmark_plugin,
+)
+from elizaos_agentbench.eliza_harness import (
+    BenchmarkDatabaseAdapter,
+    ElizaAgentHarness,
+    create_benchmark_character,
+    create_benchmark_runtime,
+)
+from elizaos_agentbench.runner import AgentBenchRunner, run_agentbench
+from elizaos_agentbench.types import (
+    AgentBenchConfig,
+    AgentBenchDataMode,
+    AgentBenchEnvironment,
+    AgentBenchReport,
+    AgentBenchResult,
+    AgentBenchTask,
+    BenchmarkSplit,
+    EnvironmentConfig,
 )
 
 __all__ = [
@@ -51,10 +52,12 @@ __all__ = [
     "AgentBenchResult",
     "AgentBenchReport",
     "AgentBenchConfig",
+    "AgentBenchDataMode",
     "BenchmarkSplit",
     "EnvironmentConfig",
     # Runner
     "AgentBenchRunner",
+    "run_agentbench",
     "EnvironmentAdapter",
     "upstream_loader",
     # Bridge compatibility helpers

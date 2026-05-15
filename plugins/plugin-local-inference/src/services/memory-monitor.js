@@ -25,6 +25,7 @@
  * not pretend it fixed anything.
  */
 import os from "node:os";
+
 const DEFAULT_CONFIG = {
 	intervalMs: 30_000,
 	lowWaterMb: 768,

@@ -264,9 +264,13 @@ def build_lifeops_bench_agent_fn(
     the same structural context that the eliza-runtime adapter gets via its
     personality prompts (P1-7). Set to ``False`` to disable for ablation runs.
     """
-    from eliza_lifeops_bench.types import (  # noqa: WPS433 — lazy
-        MessageTurn,
-        attach_usage_cache_fields,
+    from eliza_lifeops_bench import types as lifeops_types  # noqa: WPS433 — lazy
+
+    MessageTurn = lifeops_types.MessageTurn
+    attach_usage_cache_fields = getattr(
+        lifeops_types,
+        "attach_usage_cache_fields",
+        lambda _turn, _usage: None,
     )
 
     bridge = client or HermesClient()

@@ -77,6 +77,10 @@ def _selected_delegate_harness() -> str:
     ).strip().lower()
 
 
+def _effective_harness_label() -> str:
+    return _selected_delegate_harness() or "eliza"
+
+
 def _configure_bridge_model_env(model: str) -> None:
     model_name = (model or "").strip()
     if not model_name:
@@ -425,7 +429,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
 
         summary = {
             "model": args.model,
-            "agent": "eliza",
+            "agent": _effective_harness_label(),
             "observation_type": args.observation_type,
             "action_space": args.action_space,
             "total_tasks": total,

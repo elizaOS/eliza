@@ -19,6 +19,8 @@
     "@elizaos/cloud-db": "workspace:*",
     "@elizaos/cloud-types": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@solana/kit": "^6.0.0",
+    "@x402/svm": "2.11.0",
     "hono": "4.12.18"
   },
   "devDependencies": {

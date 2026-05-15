@@ -17,6 +17,7 @@ Reference:
 
 from elizaos_vending_bench.agent import (
     LLMProvider,
+    MockLLMProvider,
     VendingAgent,
 )
 from elizaos_vending_bench.sub_agents import (
@@ -106,6 +107,7 @@ __all__ = [
     "VendingEnvironment",
     # Agent
     "LLMProvider",
+    "MockLLMProvider",
     "VendingAgent",
     # Sub-agents
     "EmailSubAgent",

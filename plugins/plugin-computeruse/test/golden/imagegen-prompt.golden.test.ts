@@ -93,10 +93,6 @@ const PER_TIER_DEFAULT: Record<string, { modelId: string; file: string }> = {
     modelId: "imagegen-z-image-turbo-q4_k_m",
     file: "imagegen/z-image-turbo-Q4_K_M.gguf",
   },
-  "eliza-1-27b-1m": {
-    modelId: "imagegen-z-image-turbo-q4_k_m",
-    file: "imagegen/z-image-turbo-Q4_K_M.gguf",
-  },
 };
 
 function stubArbiter(): ArbiterImageGen {

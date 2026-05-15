@@ -54,6 +54,11 @@ from benchmarks.solana.exploration_strategy import (
     DiscoveryState,
     ExplorationStrategy,
 )
+from benchmarks.solana.trajectory import (
+    append_trajectory_event,
+    make_trajectory_event,
+    read_trajectory_events,
+)
 
 GYM_ENV_DIR = Path(__file__).parent / "solana-gym-env"
 FAKE_PUBKEY = "11111111111111111111111111111111"
@@ -435,6 +440,21 @@ class TestExplorationStrategy:
         assert "Discovered:" in ctx
         assert "Target EASY" in ctx
 
+    def test_llm_context_is_compact_and_prioritized(self):
+        strat = ExplorationStrategy(
+            max_messages=50,
+            max_context_programs=2,
+            max_instructions_per_program=3,
+        )
+        for _ in range(len(DETERMINISTIC_TEMPLATES)):
+            action = strat.get_next_action(FAKE_PUBKEY)
+            strat.record_result(action.get("template_name", ""), 0, True)
+        action = strat.get_next_action(FAKE_PUBKEY)
+        ctx = action["prompt_context"]
+        assert "Goal: produce one unsigned base64 Solana transaction" in ctx
+        assert "omitted" in ctx
+        assert len(ctx) < 2500
+
     def test_summary_format(self):
         strat = ExplorationStrategy(max_messages=5)
         action = strat.get_next_action(FAKE_PUBKEY)
@@ -536,6 +556,20 @@ class TestElizaExplorerConstruction:
         assert explorer.run_id.startswith("eliza_")
         assert len(explorer.metrics["messages"]) == 0
         assert explorer._llm is None
+        assert explorer.harness == "eliza"
+        assert explorer.metrics["harness_path"]["module"] == "eliza_adapter.solana"
+
+    def test_harness_metadata_is_explicit_for_all_agents(self):
+        from benchmarks.solana.eliza_explorer import HARNESS_PATHS
+        assert set(HARNESS_PATHS) == {"eliza", "hermes", "openclaw"}
+        assert "eliza_adapter.solana" == HARNESS_PATHS["eliza"].module
+        assert "hermes_adapter.client.HermesClient" in HARNESS_PATHS["hermes"].transport
+        assert "openclaw_adapter.client.OpenClawClient" in HARNESS_PATHS["openclaw"].transport
+
+    def test_invalid_harness_rejected(self):
+        from benchmarks.solana.eliza_explorer import normalize_harness
+        with pytest.raises(ValueError, match="Unsupported Solana benchmark harness"):
+            normalize_harness("bogus")
 
     def test_construction_with_env_config(self):
         from benchmarks.solana.eliza_explorer import ElizaExplorer
@@ -592,6 +626,9 @@ class TestElizaExplorerConstruction:
         path = asyncio.run(explorer.run())
         assert path.parent == tmp_path
         assert path.exists()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["harness"] == "eliza"
+        assert data["harness_path"]["class_name"] == "ElizaBridgeSolanaExplorer"
 
     def test_metrics_structure(self):
         from benchmarks.solana.eliza_explorer import ElizaExplorer
@@ -665,6 +702,47 @@ class TestRunTypescriptSkill:
 
 
 # =========================================================================
+# Trajectory export
+# =========================================================================
+
+class TestSolanaTrajectory:
+
+    def test_trajectory_event_compacts_prompt_and_keeps_outcome(self):
+        event = make_trajectory_event(
+            run_id="r1",
+            step=2,
+            phase="llm_assisted",
+            template="llm_exploration",
+            reward=3,
+            total_reward=10,
+            success=True,
+            harness="hermes",
+            prompt="x" * 2000,
+            response="```typescript\nexport async function executeSkill() {}\n```",
+            info={"unique_instructions": {"prog": [1, 2, 3]}},
+        )
+        assert event["prompt_chars"] == 2000
+        assert len(event["prompt"]) < 1300
+        assert event["harness"] == "hermes"
+        assert event["unique_instructions"] == {"prog": [1, 2, 3]}
+
+    def test_trajectory_jsonl_round_trip(self, tmp_path):
+        path = tmp_path / "trajectory.jsonl"
+        event = make_trajectory_event(
+            run_id="r1",
+            step=1,
+            phase="deterministic",
+            template="memo",
+            reward=1,
+            total_reward=1,
+            success=True,
+            harness="eliza",
+        )
+        append_trajectory_event(path, event)
+        assert read_trajectory_events(path)[0]["template"] == "memo"
+
+
+# =========================================================================
 # Registry integration
 # =========================================================================
 
@@ -676,6 +754,20 @@ class TestRegistryIntegration:
         registry = get_benchmark_registry(repo_root)
         ids = [b.id for b in registry]
         assert "solana" in ids
+
+    def test_registry_command_passes_harness_and_has_lazy_credentials(self, tmp_path):
+        from benchmarks.bench_cli_types import ModelSpec
+        from benchmarks.registry import get_benchmark_registry
+        repo_root = Path(__file__).parent.parent.parent
+        solana = {b.id: b for b in get_benchmark_registry(repo_root)}["solana"]
+        command = solana.build_command(
+            tmp_path,
+            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+            {"agent": "openclaw"},
+        )
+        assert command[command.index("--harness") + 1] == "openclaw"
+        assert solana.requirements.env_vars == ()
+        assert "selected harness/provider credentials" in solana.requirements.notes
 
     def test_score_extractor_valid_data(self):
         from benchmarks.registry import _score_from_solana_json

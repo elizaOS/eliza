@@ -247,7 +247,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
+        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",

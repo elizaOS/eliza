@@ -83,7 +83,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
         self.temperature = temperature
 
     def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
-        from litellm import completion
+        import elizaos_tau_bench.model_client as model_client
 
         reset = env.reset(task_index=task_index)
         obs = reset.observation
@@ -100,7 +100,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
 
         try:
             for step_i in range(max_num_steps):
-                res = completion(
+                res = model_client.completion(
                     model=self.model,
                     custom_llm_provider=self.provider,
                     messages=messages,

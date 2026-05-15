@@ -155,8 +155,8 @@ Ranked by confidence × impact.
 ### HIGH — ship a memory-aware *context* selector (the real gap)
 
 Today `recommendation.ts` picks a *model* per device, and `pickFittingContextVariant`
-picks among *pre-baked context variants of the same model line* (`27b` / `27b-256k`
-/ `27b-1m`). There is no path that says "the device has 14 GB of unused VRAM
+picks among *pre-baked context variants of the same model line* (`27b` / `27b-256k`).
+There is no path that says "the device has 14 GB of unused VRAM
 after loading the 0.8B at its default 32k — bump `contextSize` toward the
 model's native ceiling". The numbers above show every device has slack:
 
@@ -218,7 +218,7 @@ a YaRN/RoPE-scaled GGUF. The catalog's `32768` is correct. The win is the
 *runtime* selector raising `contextSize` toward 40960 on roomy devices, not the
 catalog default. (If a RoPE-extended small-tier GGUF ever ships — e.g.
 `eliza-1-0_8b-128k.gguf` with YaRN 4× — *that* gets a `128k` catalog variant,
-matching the `27b` / `27b-256k` / `27b-1m` pattern.)
+matching the `27b` / `27b-256k` pattern.)
 
 ---
 
@@ -316,7 +316,7 @@ error) stays — a slow voice session is worse than a clear "this device can't d
 
 - **No catalog edit.** The per-tier `contextLength` values are correct: 0.8B / 2B at `32768` sit just below the base models' `max_position_embeddings`
   (40960); 9B at `65536` and 27B at `131072` match their RoPE-extended GGUFs;
-  the `27b-256k` / `27b-1m` variants and their `minRamGb` gates are right. The
+  the `27b-256k` variant and its `minRamGb` gate are right. The
   compressed-cache default (`kvCacheForContext` → `qjl1_256` + `q4_polar` for
   context > 8k) already applies to every tier. There is no obviously-too-
   conservative number to bump without a RoPE-extended GGUF behind it.

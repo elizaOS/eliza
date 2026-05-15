@@ -89,7 +89,6 @@ VISION_TIERS: Final[set[str]] = {
     "9b",
     "27b",
     "27b-256k",
-    "27b-1m",
 }
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
@@ -99,7 +98,6 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "9b": (10000, 14000),
     "27b": (24000, 32000),
     "27b-256k": (36000, 48000),
-    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "tts",

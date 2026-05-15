@@ -237,10 +237,16 @@ def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="tau_bench:root")
-    overall = expect_float(
-        get_required(root, "overall_success_rate", ctx="tau_bench:root"),
-        ctx="tau_bench:overall_success_rate",
-    )
+    if "overall_success_rate" in root:
+        overall = expect_float(
+            get_required(root, "overall_success_rate", ctx="tau_bench:root"),
+            ctx="tau_bench:overall_success_rate",
+        )
+    else:
+        pass_k = root.get("pass_k")
+        pass_k_dict = expect_dict(pass_k, ctx="tau_bench:pass_k") if isinstance(pass_k, dict) else {}
+        raw = pass_k_dict.get("1", pass_k_dict.get("pass@1", root.get("avg_reward")))
+        overall = expect_float(raw, ctx="tau_bench:pass@1")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
@@ -249,6 +255,7 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
             "overall_success_rate": overall,
             "overall_tool_accuracy": root.get("overall_tool_accuracy") or 0,
             "overall_policy_compliance": root.get("overall_policy_compliance") or 0,
+            "avg_reward": root.get("avg_reward") or 0,
         },
     )
 

@@ -144,13 +144,13 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
-    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
     assert "0_6b" not in DEFAULT_STUDENT_BASE
     assert "1_7b" not in DEFAULT_STUDENT_BASE
     assert "0_6b" not in DEFAULT_TARGET_MODEL
     assert "1_7b" not in DEFAULT_TARGET_MODEL
 
 
-@pytest.mark.parametrize("tier", ["0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"])
+@pytest.mark.parametrize("tier", ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"])
 def test_qwen35_tiers_default_to_qwen35_student_base(tier: str) -> None:
     assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B-Base"

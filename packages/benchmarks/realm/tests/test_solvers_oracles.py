@@ -1,8 +1,8 @@
 """Oracle-solver tests.
 
-Carry-forward issue (1, 2, 4) from the rebuild: OR-Tools is now required
-and the JSSP / DARP / TSP-TW oracles must return true optima (not loose
-bounds) on small, hand-verifiable instances.
+Carry-forward issue (1, 2, 4) from the rebuild: when OR-Tools is
+available, the JSSP / DARP / TSP-TW oracles must return true optima
+(not loose bounds) on small, hand-verifiable instances.
 
 These tests use short solver timeouts so the suite stays fast.
 """
@@ -15,16 +15,26 @@ from benchmarks.realm import solvers
 
 
 # ---------------------------------------------------------------------------
-# OR-Tools should be a hard dependency.
+# OR-Tools is lazy: imports must not require it.
 # ---------------------------------------------------------------------------
 
 
-def test_ortools_is_required() -> None:
-    """The package must fail loudly if OR-Tools is missing."""
-    assert solvers.has_ortools() is True
-    # The CP-SAT / RoutingModel symbols are loaded at module import.
-    assert hasattr(solvers, "cp_model")
-    assert hasattr(solvers, "pywrapcp")
+def test_ortools_is_lazy_optional(monkeypatch) -> None:
+    """Importing solvers must not require OR-Tools."""
+    monkeypatch.setattr(solvers, "pywrapcp", None)
+    monkeypatch.setattr(solvers, "routing_enums_pb2", None)
+    monkeypatch.setattr(solvers, "cp_model", None)
+    monkeypatch.setattr(solvers, "_ORTOOLS_IMPORT_ERROR", ImportError("missing"))
+    monkeypatch.setattr(solvers, "_import_ortools", lambda: False)
+    monkeypatch.setenv("REALM_AUTO_INSTALL_ORTOOLS", "0")
+
+    with pytest.raises(solvers.ORToolsUnavailableError, match="OR-Tools oracle"):
+        solvers.ensure_ortools(auto_install=False)
+
+
+def _require_ortools() -> None:
+    if not solvers.has_ortools():
+        pytest.skip("OR-Tools not installed")
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +50,7 @@ def test_jssp_oracle_returns_true_optimum_2x2() -> None:
     point of this test is that CP-SAT must return 5 (the true optimum),
     not, say, 4 (LB if jobs had been smaller) or 8 (FIFO makespan).
     """
+    _require_ortools()
     jobs = [[(0, 3), (1, 2)], [(1, 2), (0, 1)]]
     opt = solvers.jssp_oracle_makespan(jobs, timeout_s=5.0)
     assert opt == 5
@@ -55,6 +66,7 @@ def test_jssp_oracle_returns_true_optimum_3x3() -> None:
     Machine loads: M0 = 7, M1 = 9, M2 = 9; LB = max(9, 9) = 9.
     True optimum = 13 (LB is loose). CP-SAT must beat the LB.
     """
+    _require_ortools()
     jobs = [
         [(0, 3), (1, 3), (2, 2)],
         [(1, 2), (0, 2), (2, 4)],
@@ -90,6 +102,7 @@ def test_darp_oracle_returns_true_optimum_single_vehicle() -> None:
       Best: pickup p1 at B (5), pickup p2 at C (3), dropoff p1 at C (0),
       dropoff p2 at A (10) -> total 18 (matches greedy in this case).
     """
+    _require_ortools()
     vehicles = [{"id": "v1", "location": "A", "capacity": 4}]
     passengers = [
         {"id": "p1", "pickup": "B", "dropoff": "C"},
@@ -136,6 +149,7 @@ def test_darp_oracle_3_vehicle_5_request_toy_p3() -> None:
     same area). The point of this test is that the solver finds a
     solution at most as large as the obvious 70 split.
     """
+    _require_ortools()
     locs = ["A", "B", "C", "D", "E"]
     coords = {"A": (0, 0), "B": (10, 0), "C": (0, 10), "D": (10, 10), "E": (5, 5)}
     distances: dict[str, float] = {}
@@ -198,6 +212,7 @@ def test_tsp_tw_oracle_returns_optimum_3_node() -> None:
     """3-node tour A -> B -> C -> A. Distances form a triangle with
     cost 5 + 4 + 7 = 16. There's only one cycle to evaluate, so the
     optimum is 16."""
+    _require_ortools()
     distances = {
         "A-B": 5, "B-A": 5,
         "A-C": 7, "C-A": 7,
@@ -276,6 +291,7 @@ def test_jssp_solver_respects_timeout() -> None:
     """A trivial instance must complete well within a 1-second budget."""
     import time
 
+    _require_ortools()
     jobs = [[(0, 3), (1, 2)], [(1, 2), (0, 1)]]
     t0 = time.time()
     opt = solvers.jssp_oracle_makespan(jobs, timeout_s=1.0)

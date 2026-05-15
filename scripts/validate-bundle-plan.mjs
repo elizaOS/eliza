@@ -215,7 +215,7 @@ const catalogFacts = parseCatalogTierFacts();
 /* ------------------------------------------------------------------ */
 
 function tierIdFor(planKey) {
-  // Plan keys are bare ("0_8b", "2b", "27b-256k", "27b-1m"); catalog keys are
+  // Plan keys are bare ("0_8b", "2b", "27b-256k"); catalog keys are
   // prefixed ("eliza-1-0_8b").
   return `eliza-1-${planKey}`;
 }

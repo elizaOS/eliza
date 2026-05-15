@@ -53,10 +53,12 @@ curl -s https://api.github.com/repos/genglongling/REALM-Bench/license
 # -> {"message": "Not Found", "status": "404"}
 ```
 
-In the absence of an explicit license declaration, we use the upstream
-code and datasets under **fair-use research-citation conventions** with
-full attribution preserved here and in the package README. Downstream
-consumers who want a stronger guarantee should:
+In the absence of an explicit license declaration, the upstream code and
+datasets have ambiguous redistribution terms. The attribution above is
+not a license grant and is not a legal conclusion. This package preserves
+the vendored material for benchmark reproducibility with full research
+citation; downstream consumers who need redistribution, commercial use,
+or a stronger guarantee should:
 
 1. Contact the upstream maintainers to clarify the intended license.
 2. Treat this directory as governed by whichever license the upstream

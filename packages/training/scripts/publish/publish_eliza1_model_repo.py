@@ -33,7 +33,7 @@ from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
 DEFAULT_REPO_ID = M.ELIZA_1_HF_REPO
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
-TIERS: tuple[str, ...] = M.ELIZA_1_TIERS
+TIERS: tuple[str, ...] = tuple(tier for tier in M.ELIZA_1_TIERS if tier != "27b-1m")
 PUBLISH_METADATA_DIRS = frozenset(
     {"checksums", "evidence", "evals", "licenses", "quantization"}
 )

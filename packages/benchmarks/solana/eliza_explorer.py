@@ -8,7 +8,9 @@ import re
 import subprocess
 import sys
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,70 @@ from typing import Any
 SOLANA_DIR = Path(__file__).resolve().parent
 GYM_ENV_DIR = SOLANA_DIR / "solana-gym-env"
 SKILL_RUNNER_DIR = GYM_ENV_DIR / "voyager" / "skill_runner"
+
+
+@dataclass(frozen=True)
+class HarnessPath:
+    name: str
+    module: str
+    class_name: str
+    transport: str
+
+
+HARNESS_PATHS: dict[str, HarnessPath] = {
+    "eliza": HarnessPath(
+        name="eliza",
+        module="eliza_adapter.solana",
+        class_name="ElizaBridgeSolanaExplorer",
+        transport="eliza benchmark server",
+    ),
+    "hermes": HarnessPath(
+        name="hermes",
+        module="eliza_adapter.solana",
+        class_name="ElizaBridgeSolanaExplorer",
+        transport="ElizaClient delegate -> hermes_adapter.client.HermesClient",
+    ),
+    "openclaw": HarnessPath(
+        name="openclaw",
+        module="eliza_adapter.solana",
+        class_name="ElizaBridgeSolanaExplorer",
+        transport="ElizaClient delegate -> openclaw_adapter.client.OpenClawClient",
+    ),
+}
+
+
+def normalize_harness(value: str | None = None) -> str:
+    raw = (
+        value
+        or os.getenv("BENCHMARK_HARNESS")
+        or os.getenv("ELIZA_BENCH_HARNESS")
+        or "eliza"
+    )
+    harness = raw.strip().lower()
+    if harness not in HARNESS_PATHS:
+        raise ValueError(
+            f"Unsupported Solana benchmark harness {raw!r}. "
+            f"Expected one of: {', '.join(sorted(HARNESS_PATHS))}"
+        )
+    return harness
+
+
+def load_harness_class(harness: str):
+    spec = HARNESS_PATHS[normalize_harness(harness)]
+    try:
+        module = import_module(spec.module)
+    except ImportError as exc:
+        raise RuntimeError(
+            f"Solana {spec.name} harness requires {spec.module}.{spec.class_name}. "
+            "Ensure benchmark adapter paths are on PYTHONPATH "
+            "(packages/benchmarks/eliza-adapter, hermes-adapter, openclaw-adapter)."
+        ) from exc
+    try:
+        return getattr(module, spec.class_name)
+    except AttributeError as exc:
+        raise RuntimeError(
+            f"Solana {spec.name} harness path is missing {spec.module}.{spec.class_name}"
+        ) from exc
 
 
 def _resolve_gym_path(path: str | os.PathLike[str]) -> Path:
@@ -145,6 +211,7 @@ class ElizaExplorer:
         code_file: str | None = None,
         environment_config: str | None = None,
         output_dir: str | None = None,
+        harness: str | None = None,
     ):
         self.model_name = model_name
         self.run_index = run_index
@@ -154,6 +221,8 @@ class ElizaExplorer:
         self.verbose = verbose
         self.code_file = code_file or "voyager/skill_runner/code_loop_code.ts"
         self.environment_config_path = environment_config
+        self.harness = normalize_harness(harness)
+        self.harness_path = HARNESS_PATHS[self.harness]
         self.output_dir = Path(output_dir or os.getenv("OUTPUT_DIR", "")).expanduser() if (output_dir or os.getenv("OUTPUT_DIR")) else None
         self.env_config = self._load_environment_config(environment_config)
         self._timeout_ms = int((self.env_config or {}).get("timeout", 30000))
@@ -166,6 +235,12 @@ class ElizaExplorer:
             "model": model_name,
             "run_index": run_index,
             "run_id": self.run_id,
+            "harness": self.harness,
+            "harness_path": {
+                "module": self.harness_path.module,
+                "class_name": self.harness_path.class_name,
+                "transport": self.harness_path.transport,
+            },
             "start_time": datetime.now().isoformat(),
             "environment_config": environment_config,
             "messages": [],
@@ -265,17 +340,18 @@ class ElizaExplorer:
         if str(GYM_ENV_DIR) not in sys.path:
             sys.path.insert(0, str(GYM_ENV_DIR))
         from voyager.surfpool_env import SurfpoolEnv, _surfpool_validator
-        from eliza_adapter.solana import ElizaBridgeSolanaExplorer
+        ExplorerClass = load_harness_class(self.harness)
 
         old_cwd = Path.cwd()
         os.chdir(GYM_ENV_DIR)
         try:
-            runner = ElizaBridgeSolanaExplorer(
+            runner = ExplorerClass(
                 model_name=self.model_name,
                 run_index=self.run_index,
                 max_messages=self.max_messages,
                 code_file=self.code_file,
                 environment_config=self.environment_config_path,
+                harness=self.harness,
             )
 
             allowed_programs = []
@@ -310,6 +386,16 @@ class ElizaExplorer:
             data["final_programs"] = len(programs) if isinstance(programs, dict) else 0
             metrics_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             if self.output_dir and metrics_path.parent != self.output_dir:
+                trajectory_path = data.get("trajectory_path")
+                if isinstance(trajectory_path, str) and trajectory_path:
+                    source_trajectory = Path(trajectory_path)
+                    if source_trajectory.exists():
+                        trajectory_target = self.output_dir / source_trajectory.name
+                        trajectory_target.write_text(
+                            source_trajectory.read_text(encoding="utf-8"),
+                            encoding="utf-8",
+                        )
+                        data["trajectory_path"] = str(trajectory_target)
                 target = self.output_dir / metrics_path.name
                 target.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 metrics_path = target
@@ -321,6 +407,12 @@ class ElizaExplorer:
 async def async_main() -> None:
     parser = argparse.ArgumentParser(description="Run the Solana instruction discovery benchmark")
     parser.add_argument("--output-dir", default=os.getenv("OUTPUT_DIR"), help="Directory for metrics JSON")
+    parser.add_argument(
+        "--harness",
+        default=os.getenv("BENCHMARK_HARNESS") or os.getenv("ELIZA_BENCH_HARNESS") or "eliza",
+        choices=sorted(HARNESS_PATHS),
+        help="Agent harness path: eliza, hermes, or openclaw",
+    )
     args = parser.parse_args()
     explorer = ElizaExplorer(
         model_name=os.getenv("MODEL_NAME", os.getenv("BENCHMARK_MODEL_NAME", "openai/gpt-oss-120b")),
@@ -329,6 +421,7 @@ async def async_main() -> None:
         code_file=os.getenv("CODE_FILE"),
         environment_config=os.getenv("ENVIRONMENT_CONFIG"),
         output_dir=args.output_dir,
+        harness=args.harness,
     )
     await explorer.run()
 

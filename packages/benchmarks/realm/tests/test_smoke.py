@@ -89,7 +89,11 @@ def test_jssp_compute_makespan_sample() -> None:
 
 
 def test_jssp_oracle_returns_optimum() -> None:
-    """OR-Tools is now required; oracle returns true optimum (=5)."""
+    """When OR-Tools is available, the oracle returns true optimum (=5)."""
+    from benchmarks.realm import solvers
+
+    if not solvers.has_ortools():
+        pytest.skip("OR-Tools not installed")
     jobs = [[(0, 3), (1, 2)], [(1, 2), (0, 1)]]
     opt = jssp_oracle_makespan(jobs, timeout_s=5.0)
     assert opt == 5

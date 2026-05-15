@@ -14,7 +14,7 @@
  *  - Multi-locale users (mid-conversation language mixing).
  *  - Agent self-discovery (introspection via `inspectRegistries`).
  *  - Negotiation under uncertainty (one clarifying question, capped).
- *  - "Be my Samantha" delegation contracts.
+ *  - "Be my Sam" delegation contracts.
  *  - Composite recovery (pipeline.onFail explanatory followup).
  *  - Privacy / consent revocation.
  *  - Conflict between captures (spine does not adjudicate).
@@ -590,7 +590,7 @@ describe("Extended F8.1 — agent asks one clarifying question, capped by onSkip
 });
 
 // ---------------------------------------------------------------------------
-// Category 9 — "Be my Samantha" delegation
+// Category 9 — "Be my Sam" delegation
 // ---------------------------------------------------------------------------
 
 describe("Extended F9.1 — delegation contract is a metadata-shaped expiring task", () => {
@@ -605,7 +605,7 @@ describe("Extended F9.1 — delegation contract is a metadata-shaped expiring ta
     const delegation = await h.runner.schedule(
       input({
         kind: "custom",
-        promptInstructions: "be-my-Samantha: handle email until 10am",
+        promptInstructions: "be-my-Sam: handle email until 10am",
         trigger: { kind: "once", atIso: delegationExpiresAt },
         ownerVisible: false,
         metadata: {
@@ -638,7 +638,7 @@ describe("Extended F9.2 — mid-window delegation revocation", () => {
     const delegation = await h.runner.schedule(
       input({
         kind: "custom",
-        promptInstructions: "be-my-Samantha — calendar negotiation",
+        promptInstructions: "be-my-Sam — calendar negotiation",
         trigger: { kind: "once", atIso: "2026-05-09T11:00:00.000Z" },
         ownerVisible: false,
         metadata: { delegationScope: "calendar_negotiation" },

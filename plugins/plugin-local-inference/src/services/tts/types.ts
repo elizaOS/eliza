@@ -12,7 +12,7 @@
  *
  *       - `omnivoice` — fused omnivoice.cpp llama-server (desktop + AOSP)
  *         and the FFI streaming path (mobile). Default for tiers 9b / 27b
- *         / 27b-256k / 27b-1m and a co-default for 9b.
+ *         / 27b-256k and a co-default for 9b.
  *       - `kokoro`    — Kokoro-82M ONNX/GGUF. Default for tiers 0_8b / 2b
  *         / 4b (the low-memory mobile floor). Co-default for 9b.
  *       - `edge-tts`  — Microsoft Edge cloud TTS, wired by

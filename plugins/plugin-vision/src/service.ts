@@ -42,17 +42,69 @@ import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
 
 const execAsync = promisify(exec);
-const SCENE_DESCRIPTION_PROMPT = JSON.stringify(
-  {
+
+// Service type registered by plugin-computeruse's VisionContextProvider. We
+// duck-type the consumer interface here rather than taking a hard package
+// dependency on @elizaos/plugin-computeruse — the provider is optional and
+// lives in a peer plugin. The structural contract must stay in sync with the
+// `VisionContext` exported from plugin-computeruse.
+const VISION_CONTEXT_SERVICE_TYPE = "vision-context";
+const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
+const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
+
+interface VisionContextSnapshot {
+  openApps: string[];
+  focusedWindow: {
+    app: string;
+    title: string;
+    bbox: [number, number, number, number] | null;
+  } | null;
+  recentActions: Array<{ action: string; ts: number }>;
+  currentTaskGoal: string | null;
+}
+
+interface VisionContextProviderLike {
+  getContext(): Promise<VisionContextSnapshot>;
+}
+
+const SCENE_DESCRIPTION_INSTRUCTIONS = [
+  "Describe visible people, objects, UI, text, and notable scene changes.",
+  "Keep the answer concise and factual.",
+];
+
+function isVisionContextProvider(
+  candidate: unknown,
+): candidate is VisionContextProviderLike {
+  return (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof (candidate as { getContext?: unknown }).getContext === "function"
+  );
+}
+
+function trimVisionContextForPrompt(
+  context: VisionContextSnapshot,
+): VisionContextSnapshot {
+  return {
+    openApps: context.openApps.slice(0, SCENE_CONTEXT_OPEN_APPS_LIMIT),
+    focusedWindow: context.focusedWindow,
+    recentActions: context.recentActions.slice(
+      -SCENE_CONTEXT_RECENT_ACTIONS_LIMIT,
+    ),
+    currentTaskGoal: context.currentTaskGoal,
+  };
+}
+
+function buildSceneDescriptionPrompt(
+  context: VisionContextSnapshot | null,
+): string {
+  const payload: Record<string, unknown> = {
     task: "describe_visual_scene",
-    instructions: [
-      "Describe visible people, objects, UI, text, and notable scene changes.",
-      "Keep the answer concise and factual.",
-    ],
-  },
-  null,
-  2,
-);
+    instructions: SCENE_DESCRIPTION_INSTRUCTIONS,
+  };
+  if (context) payload.context = trimVisionContextForPrompt(context);
+  return JSON.stringify(payload, null, 2);
+}
 
 interface CameraDevice {
   id: string;

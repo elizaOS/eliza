@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -64,8 +65,11 @@ _DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
     "codex": _CODE_PROVIDER_CAPABILITIES,
     "direct_shell": _CODE_PROVIDER_CAPABILITIES,
     "eliza-code": _CODE_PROVIDER_CAPABILITIES,
+    "opencode": _CODE_PROVIDER_CAPABILITIES,
     "swe-agent": _CODE_PROVIDER_CAPABILITIES,
 }
+_CLAUDE_AGENT_KEY_ENVS = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CLAUDE_CODE_API_KEY")
+_CODEX_AGENT_KEY_ENVS = ("OPENAI_API_KEY", "CODEX_API_KEY")
 
 
 def _parse_required_capabilities(raw: str | None) -> list[str]:
@@ -92,6 +96,19 @@ def _capability_report(provider: str, required: list[str]) -> dict[str, object]:
         "missing": missing,
         "satisfied": not missing,
     }
+
+
+def _env_has_value(*names: str) -> bool:
+    return any(bool(os.environ.get(name, "").strip()) for name in names)
+
+
+def _default_task_agent_provider() -> str:
+    """Infer the task-agent provider without exposing credential values."""
+    if _env_has_value(*_CODEX_AGENT_KEY_ENVS):
+        return "codex"
+    if _env_has_value(*_CLAUDE_AGENT_KEY_ENVS):
+        return "claude-code"
+    return "opencode"
 
 
 def _normalize_patch_text(text: str) -> str:
@@ -239,6 +256,7 @@ async def _run_instance(
     instance: SWEBenchInstance,
     evaluator: SWEBenchEvaluator,
     provider_label: str | None = None,
+    model_name: str | None = None,
 ) -> SWEBenchResult:
     """Run a single SWE-bench instance through the bridge."""
     started = time.time()
@@ -255,6 +273,7 @@ async def _run_instance(
                 "provider": provider_label,
                 "repo": instance.repo,
                 "base_commit": instance.base_commit,
+                "model_name": model_name,
             },
         )
         text = getattr(response, "text", "") or ""
@@ -273,6 +292,7 @@ async def _run_instance(
                     "provider": provider_label,
                     "repo": instance.repo,
                     "base_commit": instance.base_commit,
+                    "model_name": model_name,
                     "phase": "patch_retry",
                     "goal": "return_diff_only",
                 },
@@ -329,7 +349,8 @@ async def _run_instance(
         except (TypeError, ValueError):
             pass
         cost = _harness_turn_cost_usd(
-            os.environ.get("OPENAI_LARGE_MODEL") or "gpt-oss-120b", usage
+            model_name or os.environ.get("OPENAI_LARGE_MODEL") or "gpt-oss-120b",
+            usage,
         )
         if cost is not None:
             # Stash the cost on the error/status field via params not available;
@@ -343,6 +364,7 @@ async def _run_instances(
     instances: list[SWEBenchInstance],
     evaluator: SWEBenchEvaluator,
     provider_label: str | None = None,
+    model_name: str | None = None,
 ) -> list[SWEBenchResult]:
     results: list[SWEBenchResult] = []
     for idx, inst in enumerate(instances):
@@ -354,7 +376,15 @@ async def _run_instances(
             inst.instance_id,
             label,
         )
-        results.append(await _run_instance(client, inst, evaluator, provider_label))
+        results.append(
+            await _run_instance(
+                client,
+                inst,
+                evaluator,
+                provider_label,
+                model_name,
+            )
+        )
     return results
 
 
@@ -403,6 +433,47 @@ class _MockClient:
                 )
             },
         )()
+
+
+class _BaselineClient:
+    """Offline calibration client for SWE-bench harness validation."""
+
+    def __init__(
+        self,
+        instances: list[SWEBenchInstance],
+        *,
+        mode: str,
+        seed: str = "swe-bench-baseline",
+    ) -> None:
+        self._instances = {instance.instance_id: instance for instance in instances}
+        self._mode = mode
+        self._seed = seed
+        self._task_id: str | None = None
+
+    def reset(self, *, task_id: str, benchmark: str) -> None:
+        del benchmark
+        self._task_id = task_id.rsplit(":", 1)[-1]
+
+    def send_message(self, *, text: str, context: dict[str, object]) -> object:
+        del text
+        instance_id = str(context.get("instance_id") or self._task_id or "")
+        instance = self._instances.get(instance_id)
+        patch = self._patch_for(instance_id, instance)
+        return type("BaselineResponse", (), {"text": patch, "params": {}})()
+
+    def _patch_for(
+        self,
+        instance_id: str,
+        instance: SWEBenchInstance | None,
+    ) -> str:
+        if instance is None:
+            return ""
+        if self._mode == "always-right":
+            return instance.patch
+        if self._mode == "always-wrong":
+            return ""
+        digest = hashlib.sha256(f"{self._seed}:{instance_id}".encode()).digest()
+        return instance.patch if digest[0] % 2 == 0 else ""
 
 
 def _build_report(
@@ -518,7 +589,11 @@ async def _load_instances_or_fallback(
     return [_mock_instance()]
 
 
-def _build_client_for_harness(harness: str) -> tuple[object, object | None]:
+def _build_client_for_harness(
+    harness: str,
+    *,
+    model_name: str | None = None,
+) -> tuple[object, object | None]:
     """Lazy-import the requested adapter client.
 
     Returns ``(client, server_handle_or_None)``. The server handle, when
@@ -538,7 +613,11 @@ def _build_client_for_harness(harness: str) -> tuple[object, object | None]:
     if harness == "hermes":
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-        client = HermesClient()
+        client_kwargs: dict[str, object] = {}
+        normalized_model = _openai_compat_model_name(model_name)
+        if normalized_model:
+            client_kwargs["model"] = normalized_model
+        client = HermesClient(**client_kwargs)
         try:
             client.wait_until_ready(timeout=60)
         except Exception as exc:  # noqa: BLE001
@@ -548,7 +627,10 @@ def _build_client_for_harness(harness: str) -> tuple[object, object | None]:
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-        client = OpenClawClient()
+        client_kwargs: dict[str, object] = {}
+        if model_name:
+            client_kwargs["model"] = model_name
+        client = OpenClawClient(**client_kwargs)
         # OpenClawClient.wait_until_ready requires the binary on disk; the
         # direct-OpenAI-compat path doesn't, so we skip the readiness probe
         # whenever direct mode is enabled by env or config.
@@ -568,11 +650,20 @@ _HARNESS_PRICING_CEREBRAS: dict[str, dict[str, float]] = {
 }
 
 
+def _openai_compat_model_name(model_name: str | None) -> str | None:
+    if not model_name:
+        return None
+    normalized = model_name.strip()
+    if normalized.startswith("cerebras/"):
+        return normalized.split("/", 1)[1]
+    return normalized
+
+
 def _harness_turn_cost_usd(model: str | None, usage: object) -> float | None:
     """Compute per-turn USD cost for Cerebras, mirroring the lifeops adapter."""
     if not isinstance(usage, dict) or not model:
         return None
-    pricing = _HARNESS_PRICING_CEREBRAS.get(model)
+    pricing = _HARNESS_PRICING_CEREBRAS.get(_openai_compat_model_name(model))
     if pricing is None:
         return None
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
@@ -593,14 +684,23 @@ async def _run(args: argparse.Namespace) -> int:
         repo_filter=args.repo_filter,
         use_docker_eval=not args.no_docker,
         timeout_seconds=args.timeout,
-        model_name=args.model or f"{args.harness}-swe-bench",
+        model_name=args.model
+        or ("gpt-oss-120b" if args.harness == "hermes" else f"{args.harness}-swe-bench"),
         harness=args.harness,
+        baseline=args.baseline,
     )
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
 
     if args.mock:
         instances = [_mock_instance()]
-        client = _MockClient()
+        if config.baseline is not None:
+            client = _BaselineClient(
+                instances,
+                mode=config.baseline,
+                seed=args.baseline_seed,
+            )
+        else:
+            client = _MockClient()
         eliza_server = None
     else:
         instances = await _load_instances_or_fallback(config)
@@ -608,7 +708,22 @@ async def _run(args: argparse.Namespace) -> int:
             print("No instances matched filters; aborting.", file=sys.stderr)
             return 2
 
-        client, eliza_server = _build_client_for_harness(config.harness)
+        if config.baseline is not None:
+            client = _BaselineClient(
+                instances,
+                mode=config.baseline,
+                seed=args.baseline_seed,
+            )
+            eliza_server = None
+        else:
+            client, eliza_server = _build_client_for_harness(
+                config.harness,
+                model_name=(
+                    config.model_name
+                    if args.model or config.harness == "hermes"
+                    else None
+                ),
+            )
 
     evaluator = SWEBenchEvaluator(
         workspace_dir=config.workspace_dir,
@@ -628,7 +743,9 @@ async def _run(args: argparse.Namespace) -> int:
     try:
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         if args.orchestrated:
-            providers = args.providers or [args.provider or "direct_shell"]
+            providers = args.providers or [
+                args.provider or _default_task_agent_provider()
+            ]
             required_capabilities = _parse_required_capabilities(
                 args.required_capabilities
             )
@@ -685,6 +802,7 @@ async def _run(args: argparse.Namespace) -> int:
                     instances,
                     evaluator,
                     provider_label=provider,
+                    model_name=config.model_name,
                 )
                 all_results.extend(provider_results)
                 provider_report = _build_report(
@@ -719,9 +837,19 @@ async def _run(args: argparse.Namespace) -> int:
             }
             out_path = Path(config.output_dir) / f"orchestrated-{timestamp}.json"
         else:
-            results = await _run_instances(client, instances, evaluator)
+            results = await _run_instances(
+                client,
+                instances,
+                evaluator,
+                model_name=config.model_name,
+            )
             report = _build_report(config, results, instances_by_id)
             payload = _report_to_dict(report)
+            if config.baseline is not None:
+                payload["baseline"] = {
+                    "name": config.baseline,
+                    "seed": args.baseline_seed if config.baseline == "random" else None,
+                }
             out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
     finally:
         if eliza_server is not None:
@@ -776,6 +904,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--model", default=None, help="Model label for the report")
     p.add_argument("--provider", default=None, help="Provider label passed by registry")
     p.add_argument("--mock", action="store_true", help="Run a synthetic smoke instance")
+    p.add_argument(
+        "--baseline",
+        choices=["always-right", "always-wrong", "random"],
+        default=None,
+        help=(
+            "Run an offline calibration baseline instead of an adapter. "
+            "always-right emits gold patches; always-wrong emits no patch; "
+            "random deterministically picks between them per instance."
+        ),
+    )
+    p.add_argument(
+        "--baseline-seed",
+        default="swe-bench-baseline",
+        help="Seed string for the random baseline (default: swe-bench-baseline)",
+    )
     p.add_argument(
         "--orchestrated", action="store_true", help="Emit orchestrated result shape"
     )
