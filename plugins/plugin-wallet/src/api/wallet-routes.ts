@@ -1,16 +1,46 @@
+// === Phase 4D: extracted wallet routes from packages/agent ===
+//
+// This handler is consumed by the agent HTTP server (packages/agent/src/api/server.ts).
+// To keep `@elizaos/plugin-wallet` free of `@elizaos/agent` imports (and thus
+// avoid a static-import cycle), every agent-internal helper this route needs
+// is injected via `WalletRouteContext.deps` / context fields. Agent's
+// `server.ts` is the single wiring site that constructs the context.
 import crypto from "node:crypto";
 import type http from "node:http";
 import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
+  ElizaConfig,
   RouteHelpers,
+  WalletBalancesResponse,
+  WalletChain,
   WalletChainKind,
+  WalletConfigStatus,
   WalletEntry,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
   WalletPrimaryMap,
+  WalletRpcChain,
   WalletSource,
 } from "@elizaos/shared";
+
+// Mirrors `WalletRpcReadiness` from `packages/agent/src/api/wallet-rpc.ts`.
+// Defined structurally here so this plugin module stays free of
+// `@elizaos/agent` imports.
+export interface WalletRpcReadinessSnapshot {
+  walletNetwork: "mainnet" | "testnet";
+  cloudManagedAccess: boolean;
+  managedBscRpcReady: boolean;
+  evmBalanceReady: boolean;
+  solanaBalanceReady: boolean;
+  selectedRpcProviders: WalletRpcSelections;
+  legacyCustomChains: WalletRpcChain[];
+  bscRpcUrls: string[];
+  ethereumRpcUrls: string[];
+  baseRpcUrls: string[];
+  avalancheRpcUrls: string[];
+  solanaRpcUrls: string[];
+}
 import {
   normalizeWalletRpcSelections,
   PostWalletGenerateRequestSchema,
@@ -20,16 +50,6 @@ import {
   type WalletRpcSelections,
 } from "@elizaos/shared";
 import * as ethers from "ethers";
-import type { ElizaConfig } from "../config/config.ts";
-
-const {
-  ElizaCloudClient,
-  getOrCreateClientAddressKey,
-  normalizeCloudSiteUrl,
-  persistCloudWalletCache,
-  provisionCloudWalletsBestEffort,
-  resolveCloudApiKey,
-} = await import("@elizaos/plugin-elizacloud");
 
 type CloudWalletProvider = "privy" | "steward";
 interface CloudWalletDescriptor {
@@ -40,30 +60,37 @@ interface CloudWalletDescriptor {
   balance?: string | number;
 }
 
-import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import { persistConfigEnv } from "./config-env.ts";
-import {
-  deriveSolanaAddress,
-  fetchEvmBalances,
-  fetchSolanaBalances,
-  fetchSolanaNativeBalanceViaRpc,
-  generateWalletForChain,
-  getWalletAddresses,
-  importWallet,
-  setSolanaWalletEnv,
-  validatePrivateKey,
-  type WalletBalancesResponse,
-  type WalletChain,
-  type WalletConfigStatus,
-} from "./wallet.ts";
-import { resolveWalletCapabilityStatus } from "./wallet-capability.ts";
-import {
-  applyWalletRpcConfigUpdate,
-  getStoredWalletRpcSelections,
-  resolveWalletNetworkMode,
-  resolveWalletRpcReadiness,
-} from "./wallet-rpc.ts";
+// Cloud helpers are loaded lazily via `import()` rather than referenced at
+// module top-level so that this file is safe to import in browser builds.
+type CloudHelperBundle = {
+  ElizaCloudClient: new (baseUrl: string, apiKey: string) => unknown;
+  getOrCreateClientAddressKey: () => Promise<{ address: string }>;
+  normalizeCloudSiteUrl: (value: string) => string;
+  persistCloudWalletCache: (
+    config: unknown,
+    descriptors: Partial<Record<WalletChainKind, CloudWalletDescriptor>>,
+  ) => void;
+  provisionCloudWalletsBestEffort: (
+    bridge: unknown,
+    args: {
+      agentId: string;
+      clientAddress: string;
+      chains: readonly WalletChainKind[];
+    },
+  ) => Promise<{
+    descriptors: Partial<Record<WalletChainKind, CloudWalletDescriptor>>;
+    failures: Array<{ chain: WalletChainKind; error: unknown }>;
+    warnings: string[];
+  }>;
+  resolveCloudApiKey: (
+    config: ElizaConfig,
+    runtime: AgentRuntime | null,
+  ) => string | null;
+};
+
+async function loadCloudHelpers(): Promise<CloudHelperBundle> {
+  return (await import("@elizaos/plugin-elizacloud")) as unknown as CloudHelperBundle;
+}
 
 const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "ALCHEMY_API_KEY",
@@ -139,25 +166,104 @@ function resolveWalletConfigUpdateRequest(
   };
 }
 
-export interface WalletRouteDependencies {
-  getWalletAddresses: typeof getWalletAddresses;
-  fetchEvmBalances: typeof fetchEvmBalances;
-  fetchSolanaBalances: typeof fetchSolanaBalances;
-  fetchSolanaNativeBalanceViaRpc: typeof fetchSolanaNativeBalanceViaRpc;
-  validatePrivateKey: typeof validatePrivateKey;
-  importWallet: typeof importWallet;
-  generateWalletForChain: typeof generateWalletForChain;
+// ── Wallet route dependency injection ─────────────────────────────────
+//
+// The route handler is consumed by the agent HTTP server, but the file
+// itself must not import from `@elizaos/agent`. Every helper the handler
+// invokes is therefore supplied by the agent caller as a function on
+// `WalletRouteDependencies` / `WalletRouteContext`. See
+// `packages/agent/src/api/server.ts` for the single wiring site.
+
+export interface WalletAddressesSnapshot {
+  evmAddress: string | null;
+  solanaAddress: string | null;
 }
 
-export const DEFAULT_WALLET_ROUTE_DEPENDENCIES: WalletRouteDependencies = {
-  getWalletAddresses,
-  fetchEvmBalances,
-  fetchSolanaBalances,
-  fetchSolanaNativeBalanceViaRpc,
-  validatePrivateKey,
-  importWallet,
-  generateWalletForChain,
-};
+export interface FetchEvmBalancesOptions {
+  alchemyKey?: string | null;
+  ankrKey?: string | null;
+  cloudManagedAccess?: boolean;
+  bscRpcUrls?: string[];
+  ethereumRpcUrls?: string[];
+  baseRpcUrls?: string[];
+  avaxRpcUrls?: string[];
+  nodeRealBscRpcUrl?: string;
+  quickNodeBscRpcUrl?: string;
+  bscRpcUrl?: string;
+  ethereumRpcUrl?: string;
+  baseRpcUrl?: string;
+  avaxRpcUrl?: string;
+}
+
+export interface IntegrationTelemetrySpan {
+  success: (attributes?: Record<string, unknown>) => void;
+  failure: (attributes: { error: unknown } & Record<string, unknown>) => void;
+}
+
+export interface CreateIntegrationTelemetrySpanArgs {
+  boundary: string;
+  operation: string;
+}
+
+export interface WalletRouteDependencies {
+  getWalletAddresses: () => WalletAddressesSnapshot;
+  fetchEvmBalances: (
+    address: string,
+    options: FetchEvmBalancesOptions,
+  ) => Promise<NonNullable<WalletBalancesResponse["evm"]>["chains"]>;
+  fetchSolanaBalances: (
+    address: string,
+    heliusKey: string,
+  ) => Promise<
+    Omit<NonNullable<WalletBalancesResponse["solana"]>, "address">
+  >;
+  fetchSolanaNativeBalanceViaRpc: (
+    address: string,
+    rpcUrls: string[],
+  ) => Promise<Omit<NonNullable<WalletBalancesResponse["solana"]>, "address">>;
+  validatePrivateKey: (privateKey: string) => { chain: WalletChain };
+  importWallet: (
+    chain: WalletChain,
+    privateKey: string,
+  ) => {
+    success: boolean;
+    chain: WalletChain;
+    address: string | null;
+    error: string | null;
+  };
+  generateWalletForChain: (chain: WalletChain) => {
+    privateKey: string;
+    address: string;
+  };
+  deriveSolanaAddress: (privateKey: string) => string;
+  setSolanaWalletEnv: (privateKey: string) => void;
+  resolveWalletRpcReadiness: (config: ElizaConfig) => WalletRpcReadinessSnapshot;
+  resolveWalletNetworkMode: (config: ElizaConfig) => "mainnet" | "testnet";
+  getStoredWalletRpcSelections: (config: ElizaConfig) => WalletRpcSelections;
+  applyWalletRpcConfigUpdate: (
+    config: ElizaConfig,
+    update: WalletConfigUpdateRequest,
+  ) => void;
+  resolveWalletCapabilityStatus: (args: {
+    config: ElizaConfig;
+    runtime: AgentRuntime | null;
+    getWalletAddresses: () => WalletAddressesSnapshot;
+  }) => {
+    walletSource: WalletConfigStatus["walletSource"];
+    automationMode: WalletConfigStatus["automationMode"];
+    pluginEvmLoaded: WalletConfigStatus["pluginEvmLoaded"];
+    pluginEvmRequired: WalletConfigStatus["pluginEvmRequired"];
+    executionReady: WalletConfigStatus["executionReady"];
+    executionBlockedReason: WalletConfigStatus["executionBlockedReason"];
+    evmSigningCapability: WalletConfigStatus["evmSigningCapability"];
+    evmSigningReason: WalletConfigStatus["evmSigningReason"];
+  };
+  isCloudWalletEnabled: () => boolean;
+  persistConfigEnv: (key: string, value: string) => Promise<void>;
+  createIntegrationTelemetrySpan: (
+    args: CreateIntegrationTelemetrySpanArgs,
+  ) => IntegrationTelemetrySpan;
+}
 
 // ── Dual-wallet response shape ────
 // Types imported from @elizaos/shared: WalletSource, WalletChainKind, WalletProviderKind,
@@ -209,6 +315,7 @@ function coerceCloudProvider(value: unknown): CloudWalletProvider {
 function buildDualWalletShape(
   config: ElizaConfig,
   addresses: { evmAddress: string | null; solanaAddress: string | null },
+  isCloudWalletEnabled: () => boolean,
 ): { wallets: WalletEntry[]; primary: WalletPrimaryMap } | null {
   if (!isCloudWalletEnabled()) return null;
 
@@ -337,7 +444,7 @@ export interface WalletRouteContext
   ) => WalletExportRejectionLike | null;
   restartRuntime?: (reason: string) => Promise<boolean>;
   scheduleRuntimeRestart?: (reason: string) => void;
-  deps?: WalletRouteDependencies;
+  deps: WalletRouteDependencies;
   runtime?: AgentRuntime | null;
 }
 
@@ -483,7 +590,9 @@ function decodeLocalBrowserSolanaPrivateKey(value: string): Buffer {
   return base58DecodeBrowser(trimmed);
 }
 
-function resolveLocalBrowserSolanaSeed(): { address: string; seed: Buffer } {
+function resolveLocalBrowserSolanaSeed(
+  deriveSolanaAddress: WalletRouteDependencies["deriveSolanaAddress"],
+): { address: string; seed: Buffer } {
   const solanaKey = normalizeBrowserString(process.env.SOLANA_PRIVATE_KEY);
   if (!solanaKey) {
     throw new Error("Local Solana signing is unavailable.");
@@ -553,12 +662,13 @@ async function signLocalBrowserWalletMessage(message: string): Promise<{
 
 async function signLocalBrowserSolanaMessage(
   body: Record<string, unknown>,
+  deriveSolanaAddress: WalletRouteDependencies["deriveSolanaAddress"],
 ): Promise<{
   address: string;
   mode: "local-key";
   signatureBase64: string;
 }> {
-  const { address, seed } = resolveLocalBrowserSolanaSeed();
+  const { address, seed } = resolveLocalBrowserSolanaSeed(deriveSolanaAddress);
   const privateKey = crypto.createPrivateKey({
     key: Buffer.concat([SOLANA_PKCS8_DER_PREFIX, seed]),
     format: "der",
@@ -600,6 +710,7 @@ async function loadBrowserSolanaWeb3(): Promise<BrowserSolanaWeb3Module> {
 
 async function signLocalBrowserSolanaTransaction(
   body: Record<string, unknown>,
+  deriveSolanaAddress: WalletRouteDependencies["deriveSolanaAddress"],
 ): Promise<{
   address: string;
   mode: "local-key";
@@ -613,7 +724,7 @@ async function signLocalBrowserSolanaTransaction(
   }
   const broadcast = normalizeBrowserBoolean(body.broadcast, false);
   const cluster = normalizeBrowserSolanaCluster(body.cluster);
-  const { address, seed } = resolveLocalBrowserSolanaSeed();
+  const { address, seed } = resolveLocalBrowserSolanaSeed(deriveSolanaAddress);
 
   const { Keypair, VersionedTransaction, Transaction, Connection } =
     await loadBrowserSolanaWeb3();
@@ -658,6 +769,7 @@ async function signLocalBrowserSolanaTransaction(
 function resolvePreferredBrowserRpcUrl(
   config: ElizaConfig,
   chainId: number,
+  resolveWalletRpcReadiness: WalletRouteDependencies["resolveWalletRpcReadiness"],
 ): string | null {
   const readiness = resolveWalletRpcReadiness(config);
   switch (chainId) {
@@ -678,6 +790,7 @@ function resolvePreferredBrowserRpcUrl(
 async function sendLocalBrowserWalletTransaction(
   config: ElizaConfig,
   request: BrowserEvmTransactionRequest,
+  resolveWalletRpcReadiness: WalletRouteDependencies["resolveWalletRpcReadiness"],
 ): Promise<{
   approved: true;
   mode: "local-key";
@@ -689,7 +802,11 @@ async function sendLocalBrowserWalletTransaction(
       "Local browser wallet signing currently requires broadcast=true.",
     );
   }
-  const rpcUrl = resolvePreferredBrowserRpcUrl(config, request.chainId);
+  const rpcUrl = resolvePreferredBrowserRpcUrl(
+    config,
+    request.chainId,
+    resolveWalletRpcReadiness,
+  );
   if (!rpcUrl) {
     throw new Error(`No RPC URL configured for chain ${request.chainId}.`);
   }
@@ -726,8 +843,20 @@ export async function handleWalletRoutes(
     readJsonBody,
     json,
     error,
+    deps,
   } = ctx;
-  const deps = ctx.deps ?? DEFAULT_WALLET_ROUTE_DEPENDENCIES;
+  const {
+    isCloudWalletEnabled,
+    persistConfigEnv,
+    createIntegrationTelemetrySpan,
+    resolveWalletRpcReadiness,
+    resolveWalletNetworkMode,
+    resolveWalletCapabilityStatus,
+    getStoredWalletRpcSelections,
+    applyWalletRpcConfigUpdate,
+    deriveSolanaAddress,
+    setSolanaWalletEnv,
+  } = deps;
 
   // GET /api/wallet/addresses
   if (method === "GET" && pathname === "/api/wallet/addresses") {
@@ -1153,7 +1282,7 @@ export async function handleWalletRoutes(
         ? localSolanaSignerAvailable || primary.solana === "cloud"
         : false,
     };
-    const dual = buildDualWalletShape(config, addresses);
+    const dual = buildDualWalletShape(config, addresses, isCloudWalletEnabled);
     if (dual) {
       json(res, {
         ...configStatus,
@@ -1207,7 +1336,7 @@ export async function handleWalletRoutes(
         return true;
       }
       try {
-        json(res, await signLocalBrowserSolanaMessage(body));
+        json(res, await signLocalBrowserSolanaMessage(body, deriveSolanaAddress));
       } catch (err) {
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
@@ -1220,7 +1349,10 @@ export async function handleWalletRoutes(
         return true;
       }
       try {
-        json(res, await signLocalBrowserSolanaTransaction(body));
+        json(
+          res,
+          await signLocalBrowserSolanaTransaction(body, deriveSolanaAddress),
+        );
       } catch (err) {
         error(res, err instanceof Error ? err.message : String(err), 503);
       }
@@ -1249,7 +1381,14 @@ export async function handleWalletRoutes(
     }
 
     try {
-      json(res, await sendLocalBrowserWalletTransaction(config, request));
+      json(
+        res,
+        await sendLocalBrowserWalletTransaction(
+          config,
+          request,
+          resolveWalletRpcReadiness,
+        ),
+      );
     } catch (err) {
       error(res, err instanceof Error ? err.message : String(err), 503);
     }
@@ -1325,7 +1464,16 @@ export async function handleWalletRoutes(
     }
 
     const cloud = config.cloud;
-    const apiKey = resolveCloudApiKey(config, ctx.runtime) ?? "";
+    const cloudHelpers = await loadCloudHelpers();
+    const {
+      ElizaCloudClient,
+      getOrCreateClientAddressKey,
+      normalizeCloudSiteUrl,
+      persistCloudWalletCache,
+      provisionCloudWalletsBestEffort,
+      resolveCloudApiKey,
+    } = cloudHelpers;
+    const apiKey = resolveCloudApiKey(config, ctx.runtime ?? null) ?? "";
     const baseUrl = cloud?.baseUrl
       ? normalizeCloudSiteUrl(cloud.baseUrl)
       : "https://www.elizacloud.ai";
