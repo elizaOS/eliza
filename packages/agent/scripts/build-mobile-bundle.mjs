@@ -254,10 +254,6 @@ const nativeStubs = {
   // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
-  "@huggingface/transformers": path.join(
-    stubsDir,
-    "huggingface-transformers.cjs",
-  ),
   mammoth: path.join(stubsDir, "mammoth.cjs"),
   "source-map": path.join(stubsDir, "source-map.cjs"),
   // PDF extraction pulls in pdfjs (~2 MB of parser/runtime code) through
