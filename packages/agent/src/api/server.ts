@@ -4014,6 +4014,19 @@ export async function startApiServer(opts?: {
               );
             }
           }
+        } else if (
+          msg.type === "view:interact:result" &&
+          typeof msg.requestId === "string"
+        ) {
+          const { resolveViewInteractResult } = await import(
+            "./views-routes.ts"
+          );
+          resolveViewInteractResult({
+            requestId: msg.requestId,
+            success: msg.success === true,
+            result: msg.result,
+            error: typeof msg.error === "string" ? msg.error : undefined,
+          });
         }
       } catch (err) {
         logger.error(

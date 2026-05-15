@@ -23,7 +23,13 @@ import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
 
-export type ViewsMode = "list" | "show" | "open" | "search" | "manager";
+export type ViewsMode =
+	| "list"
+	| "show"
+	| "open"
+	| "search"
+	| "manager"
+	| "broadcast";
 
 const MODES: readonly ViewsMode[] = [
 	"list",
@@ -31,6 +37,7 @@ const MODES: readonly ViewsMode[] = [
 	"open",
 	"search",
 	"manager",
+	"broadcast",
 ] as const;
 
 // Intent regexes — order matters: more specific first.
@@ -49,6 +56,8 @@ const CLOSE_VERBS =
 const SHOW_VERBS =
 	/\b(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i;
 const VIEW_NOUN = /\bview[s]?\b/i;
+const BROADCAST_VERBS =
+	/\b(tell|notify|signal|broadcast|send.*event|emit|trigger|ping)\b.{0,60}\bview\b/i;
 
 interface ViewsActionDeps {
 	client?: ViewsClient;
@@ -67,6 +76,7 @@ function inferMode(
 	const trimmed = text.trim();
 	if (!trimmed) return null;
 
+	if (BROADCAST_VERBS.test(trimmed)) return "broadcast";
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
 	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
 	if (SHOW_APPS_VERBS.test(trimmed)) return "manager";
@@ -116,17 +126,21 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"GO_TO_VIEW",
 			"NAVIGATE_TO_VIEW",
 			"WHAT_VIEWS",
+			"BROADCAST_VIEW_EVENT",
+			"NOTIFY_VIEW",
+			"SIGNAL_VIEW",
 		],
 		description:
-			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, or show the view manager.",
+			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, or broadcast an event to all mounted views.",
 		descriptionCompressed:
-			"views list|show|open|search|manager; navigate UI views by name, id, or keyword",
+			"views list|show|open|search|manager|broadcast; navigate UI views by name, id, or keyword; push events to views",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "action",
-				description: "Operation: list | show | open | search | manager.",
+				description:
+					"Operation: list | show | open | search | manager | broadcast.",
 				required: true,
 				schema: {
 					type: "string",
@@ -171,6 +185,19 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				description: "Alias for `query`.",
 				required: false,
 				schema: { type: "string" },
+			},
+			{
+				name: "eventType",
+				description:
+					"Event type to broadcast to all mounted views (broadcast mode), e.g. 'wallet:refresh'.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "payload",
+				description: "JSON payload to include with the broadcast event.",
+				required: false,
+				schema: { type: "object" },
 			},
 		],
 
@@ -238,6 +265,33 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						data: { view: managerView },
 					};
 				}
+
+				case "broadcast": {
+					const eventType =
+						readStringOption(options, "eventType") ??
+						readStringOption(options, "event") ??
+						readStringOption(options, "type");
+					if (!eventType) {
+						const reply =
+							'Specify an event type to broadcast, e.g. action=broadcast eventType=wallet:refresh.';
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const payload =
+						options?.payload !== null &&
+						typeof options?.payload === "object" &&
+						!Array.isArray(options?.payload)
+							? (options.payload as Record<string, unknown>)
+							: {};
+					const resultText = await broadcastViewEvent(eventType, payload);
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: { mode: "broadcast", eventType },
+						data: { eventType, payload },
+					};
+				}
 			}
 		},
 
@@ -297,51 +351,25 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
+					content: { text: "tell the wallet view to refresh" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Broadcast view event "wallet:refresh" to all connected views.',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
 					content: { text: "what views are available?" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
 						text: "available_views:\n  count: 2\nviews[2]{id,label,path,available}:\n  wallet.inventory,Wallet,/wallet,yes\n  settings,Settings,/settings,yes",
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
-					content: { text: "show apps" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: "Navigated to View Manager.",
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
-					content: { text: "switch to wallet view" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: "Navigated to Wallet.",
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
-					content: { text: "close the settings panel" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: "Navigated to View Manager.",
 						action: "VIEWS",
 					},
 				},
@@ -391,6 +419,38 @@ async function navigateToPath(path: string, label: string): Promise<string> {
 	}
 
 	return `Opened ${label} at ${path}.`;
+}
+
+/**
+ * POST /api/views/events/broadcast — push a view event to all connected
+ * frontend tabs via the server's WebSocket broadcast.
+ */
+async function broadcastViewEvent(
+	eventType: string,
+	payload: Record<string, unknown>,
+): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(`${base}/api/views/events/broadcast`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: eventType, payload }),
+			signal: AbortSignal.timeout(5_000),
+		});
+		if (resp.ok) {
+			return `Broadcast view event "${eventType}" to all connected views.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/broadcast returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Attempted to broadcast view event "${eventType}".`;
 }
 
 export const viewsAction: Action = createViewsAction();

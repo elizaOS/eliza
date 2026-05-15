@@ -784,6 +784,7 @@ export function App() {
     null,
   );
   const { views: availableViewsForDesktopTabs } = useAvailableViews();
+
   const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -1029,6 +1030,43 @@ export function App() {
     });
   }, []);
 
+  // Handle desktop tab navigation: clicking a tab navigates to its path.
+  // Closing the active tab falls back to the chat view.
+  const handleDesktopTabClick = useCallback(
+    (viewId: string) => {
+      const dtab = desktopTabs.find((t) => t.viewId === viewId);
+      if (!dtab) return;
+      setActiveDesktopTabId(viewId);
+      try {
+        if (typeof window === "undefined") return;
+        if (window.location.protocol === "file:") {
+          window.location.hash = dtab.path;
+        } else {
+          window.history.pushState(null, "", dtab.path);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      } catch {
+        // sandboxed — ignore
+      }
+    },
+    [desktopTabs],
+  );
+
+  const handleDesktopTabClose = useCallback(
+    (viewId: string) => {
+      closeDesktopTab(viewId);
+      if (activeDesktopTabId === viewId) {
+        setActiveDesktopTabId(null);
+        setTab("chat");
+      }
+    },
+    [closeDesktopTab, activeDesktopTabId, setTab],
+  );
+
+  const handleOpenViewManagerFromTabBar = useCallback(() => {
+    setTab("views");
+  }, [setTab]);
+
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupShell — no separate loader needed.
 
@@ -1223,6 +1261,7 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header pageRightExtras={characterHeaderActions} />
+          {desktopTabBar}
           <div
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
           >
@@ -1237,6 +1276,7 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
+          {desktopTabBar}
           <div
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
           >
@@ -1249,6 +1289,7 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
+          {desktopTabBar}
           <div
             className={`flex flex-1 min-h-0 min-w-0 ${MOBILE_NAV_PADDING_CLASS}`}
           >
@@ -1265,6 +1306,7 @@ export function App() {
           <Header
             pageRightExtras={isCharacterPage ? characterHeaderActions : null}
           />
+          {desktopTabBar}
           <main
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${
               tab === "browser" || tab === "apps" || tab === "views"
@@ -1303,6 +1345,7 @@ export function App() {
       handleToggleWidgetsCollapsed,
       settingsInitialSection,
       widgetsPanelCollapsed,
+      desktopTabBar,
     ],
   );
 
@@ -1373,6 +1416,13 @@ export function App() {
       <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
         <ConnectionFailedBanner />
         <SystemWarningBanner />
+        <DesktopTabBar
+          tabs={desktopTabs}
+          activeViewId={activeDesktopTabId}
+          onTabClick={handleDesktopTabClick}
+          onTabClose={handleDesktopTabClose}
+          onOpenViewManager={handleOpenViewManagerFromTabBar}
+        />
         {shellContent}
       </div>
       {/* Full-screen overlay app — renders whichever overlay app is active */}

@@ -11,8 +11,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import type { AgentPlatform } from "./platform-detect.ts";
+import { viewSearchIndex } from "./views-search-index.ts";
 
 /** Hero image extensions checked in order when `heroImagePath` is not set. */
 const HERO_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg", ".svg"] as const;
@@ -193,13 +195,16 @@ export function generateViewHeroSvg(label: string, icon?: string): string {
  * Register all views declared by `plugin`. Safe to call multiple times for the
  * same plugin — subsequent calls update existing entries.
  *
- * @param plugin - The Plugin object whose `views` array to register.
+ * @param plugin    - The Plugin object whose `views` array to register.
  * @param pluginDir - Absolute path to the plugin's package root. When omitted,
  *   the registry attempts to resolve it via `require.resolve`.
+ * @param runtime   - Optional agent runtime. When provided, embeddings for the
+ *   newly registered views are queued in the background search index.
  */
 export async function registerPluginViews(
   plugin: Plugin,
   pluginDir?: string,
+  runtime?: IAgentRuntime,
 ): Promise<void> {
   const views = plugin.views;
   if (!views || views.length === 0) return;
@@ -211,6 +216,7 @@ export async function registerPluginViews(
   // Resolve plugin directory once for all views in this plugin.
   const resolvedDir = pluginDir ?? (await resolvePluginPackageDir(plugin.name));
 
+  const registered: ViewRegistryEntry[] = [];
   for (const view of views) {
     const entry = await buildEntry(view, plugin.name, resolvedDir);
     const existing = registry.get(entry.id);
@@ -227,6 +233,7 @@ export async function registerPluginViews(
       continue;
     }
     registry.set(entry.id, entry);
+    registered.push(entry);
     logger.debug(
       {
         src: "ViewRegistry",
@@ -236,6 +243,15 @@ export async function registerPluginViews(
       },
       `[ViewRegistry] Registered view "${entry.id}" from plugin "${plugin.name}"`,
     );
+  }
+
+  // Queue embedding computation in the background — non-blocking.
+  if (runtime && registered.length > 0) {
+    setImmediate(() => {
+      for (const entry of registered) {
+        void viewSearchIndex.indexView(entry, runtime).catch(() => {});
+      }
+    });
   }
 }
 
@@ -247,6 +263,7 @@ export function unregisterPluginViews(pluginName: string): void {
   for (const [id, entry] of registry) {
     if (entry.pluginName === pluginName) {
       registry.delete(id);
+      viewSearchIndex.removeView(id);
       logger.debug(
         { src: "ViewRegistry", viewId: id, pluginName },
         `[ViewRegistry] Unregistered view "${id}" from plugin "${pluginName}"`,
@@ -266,10 +283,14 @@ export function unregisterPluginViews(pluginName: string): void {
  *
  * Safe to call multiple times — subsequent calls are no-ops because the
  * conflict guard in `registerPluginViews` keeps the first registration.
+ *
+ * @param runtime - Optional agent runtime. When provided, embeddings for the
+ *   built-in views are queued in the background search index.
  */
-export function registerBuiltinViews(): void {
+export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   const loadedAt = Date.now();
   const pluginName = "@elizaos/builtin";
+  const registered: ViewRegistryEntry[] = [];
   for (const view of BUILTIN_VIEWS) {
     if (registry.has(view.id)) {
       // Already registered (e.g. called twice at startup). Skip silently.
@@ -290,11 +311,21 @@ export function registerBuiltinViews(): void {
       builtin: true,
     };
     registry.set(view.id, entry);
+    registered.push(entry);
   }
   logger.info(
     { src: "ViewRegistry", count: BUILTIN_VIEWS.length },
     `[ViewRegistry] Registered ${BUILTIN_VIEWS.length} built-in views`,
   );
+
+  // Queue embedding computation in the background — non-blocking.
+  if (runtime && registered.length > 0) {
+    setImmediate(() => {
+      for (const entry of registered) {
+        void viewSearchIndex.indexView(entry, runtime).catch(() => {});
+      }
+    });
+  }
 }
 
 /**

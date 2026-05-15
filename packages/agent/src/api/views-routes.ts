@@ -19,8 +19,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 
-import { logger, type RouteRequestMeta } from "@elizaos/core";
+import { logger, type IAgentRuntime, type RouteRequestMeta } from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
+import { viewSearchIndex } from "./views-search-index.ts";
 import {
   PendingRequestMap,
   type ViewInteractResult,
@@ -48,6 +49,14 @@ const STANDARD_CAPABILITY_IDS = new Set([
 /** Module-level map of pending interact requests awaiting a frontend result. */
 const pendingInteractRequests = new PendingRequestMap();
 
+/**
+ * Resolve a pending interact request from a WS `view:interact:result` message.
+ * Called by the WebSocket message handler in server.ts.
+ */
+export function resolveViewInteractResult(result: ViewInteractResult): void {
+  pendingInteractRequests.resolve(result.requestId, result);
+}
+
 export interface ViewsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "error"> {
@@ -55,6 +64,8 @@ export interface ViewsRouteContext
   developerMode?: boolean;
   /** Broadcast an arbitrary payload to all connected WebSocket clients. */
   broadcastWs?: (payload: object) => void;
+  /** Agent runtime — used by the semantic search endpoint. */
+  runtime?: IAgentRuntime | null;
 }
 
 const PREFIX = "/api/views";
@@ -102,6 +113,11 @@ export async function handleViewsRoutes(
   // ── POST /api/views/events/broadcast ─────────────────────────────────────
   // Pushes a view event to all connected frontend tabs via WebSocket.
   if (method === "POST" && pathname === `${PREFIX}/events/broadcast`) {
+    if (typeof (req as { on?: unknown }).on !== "function") {
+      error(res, "Missing JSON body for view event broadcast", 400);
+      return true;
+    }
+
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     const type = typeof body?.type === "string" ? body.type : null;
     if (!type) {
@@ -361,6 +377,11 @@ export async function handleViewsRoutes(
     const entry = getView(id);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+
+    if (typeof (req as { on?: unknown }).on !== "function") {
+      error(res, "Missing JSON body for view interaction", 400);
       return true;
     }
 

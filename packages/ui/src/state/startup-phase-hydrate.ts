@@ -417,6 +417,37 @@ export function bindReadyPhase(
     },
   );
 
+  const unbindViewInteract = client.onWsEvent(
+    "view:interact",
+    (data: Record<string, unknown>) => {
+      const viewId = typeof data.viewId === "string" ? data.viewId : null;
+      const capability =
+        typeof data.capability === "string" ? data.capability : null;
+      const requestId =
+        typeof data.requestId === "string" ? data.requestId : null;
+      if (!viewId || !capability || !requestId) return;
+      const params =
+        data.params !== null &&
+        typeof data.params === "object" &&
+        !Array.isArray(data.params)
+          ? (data.params as Record<string, unknown>)
+          : undefined;
+      // Lazy-import to avoid pulling the registry into the startup bundle.
+      import("../components/views/view-interact-registry")
+        .then(({ dispatchViewInteract }) =>
+          dispatchViewInteract(viewId, capability, params, requestId),
+        )
+        .catch(() => {
+          client.sendWsMessage({
+            type: "view:interact:result",
+            requestId,
+            success: false,
+            error: "view-interact-registry not available",
+          });
+        });
+    },
+  );
+
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
