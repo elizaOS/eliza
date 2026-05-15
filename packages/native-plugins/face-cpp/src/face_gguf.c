@@ -283,9 +283,17 @@ face_gguf *face_gguf_open(const char *path, int *err) {
         uint32_t nd = cur_u32(&c);
         if (c.err || nd > MAX_TENSOR_DIMS) { if (err) *err = -EINVAL; goto fail; }
         g->tensors[i].ndim = (int)nd;
+        /* GGUF stores dimensions fastest-varying first; reverse on read
+         * so callers see the natural PyTorch / numpy order
+         * (e.g. Conv2D weights are (cout, cin, kh, kw), not
+         * (kw, kh, cin, cout)). */
+        int64_t raw_dims[MAX_TENSOR_DIMS];
         for (uint32_t d = 0; d < nd; ++d) {
-            g->tensors[i].dims[d] = (int64_t)cur_u64(&c);
-            if (g->tensors[i].dims[d] <= 0) { if (err) *err = -EINVAL; goto fail; }
+            raw_dims[d] = (int64_t)cur_u64(&c);
+            if (raw_dims[d] <= 0) { if (err) *err = -EINVAL; goto fail; }
+        }
+        for (uint32_t d = 0; d < nd; ++d) {
+            g->tensors[i].dims[d] = raw_dims[nd - 1 - d];
         }
         g->tensors[i].dtype    = cur_u32(&c);
         uint64_t off            = cur_u64(&c);

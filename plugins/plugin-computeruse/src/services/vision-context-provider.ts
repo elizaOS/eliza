@@ -71,6 +71,10 @@ function focusedWindowFromScene(
   };
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class VisionContextProvider extends Service {
   static override serviceType = VISION_CONTEXT_SERVICE_TYPE;
 
@@ -108,7 +112,7 @@ export class VisionContextProvider extends Service {
     try {
       return await source.refreshScene("agent-turn");
     } catch (error) {
-      logger.warn("[vision-context] refreshScene failed:", error);
+      logger.warn("[vision-context] refreshScene failed:", errorMessage(error));
       return null;
     }
   }
@@ -131,7 +135,10 @@ export class VisionContextProvider extends Service {
       );
       if (typeof cached === "string" && cached.trim()) return cached.trim();
     } catch (error) {
-      logger.debug("[vision-context] task goal cache read failed:", error);
+      logger.debug(
+        "[vision-context] task goal cache read failed:",
+        errorMessage(error),
+      );
     }
     try {
       const setting = this.runtime.getSetting("VISION_CONTEXT_TASK_GOAL");
