@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { RobloxConfig } from "../types";
 
-export const ROBLOX_DEFAULTS = {
+const ROBLOX_DEFAULTS = {
   MESSAGING_TOPIC: "eliza-agent",
   DRY_RUN: false,
 } as const;
@@ -10,14 +10,6 @@ export function hasRobloxEnabled(runtime: IAgentRuntime): boolean {
   const apiKey = runtime.getSetting("ROBLOX_API_KEY");
   const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID");
   return Boolean(apiKey && universeId);
-}
-
-export function getRobloxApiKey(runtime: IAgentRuntime): string | undefined {
-  return runtime.getSetting("ROBLOX_API_KEY") as string | undefined;
-}
-
-export function getRobloxUniverseId(runtime: IAgentRuntime): string | undefined {
-  return runtime.getSetting("ROBLOX_UNIVERSE_ID") as string | undefined;
 }
 
 export function validateRobloxConfig(runtime: IAgentRuntime): RobloxConfig {

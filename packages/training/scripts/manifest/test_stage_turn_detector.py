@@ -8,7 +8,6 @@ network calls. The actual ONNX byte transfer is mocked by patching
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 from typing import Any

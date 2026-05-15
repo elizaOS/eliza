@@ -22,7 +22,7 @@ import type {
 // DM Configuration
 // ============================================================
 
-export type SlackDmConfig = {
+type SlackDmConfig = {
   /** If false, ignore all incoming Slack DMs. Default: true. */
   enabled?: boolean;
   /** Direct message access policy (default: pairing). */
@@ -39,7 +39,7 @@ export type SlackDmConfig = {
 // Channel Configuration
 // ============================================================
 
-export type SlackChannelConfig = {
+type SlackChannelConfig = {
   /** If false, disable the bot in this channel. (Alias for allow: false.) */
   enabled?: boolean;
   /** Legacy channel allow toggle; prefer enabled. */
@@ -63,13 +63,13 @@ export type SlackChannelConfig = {
 // Reaction Configuration
 // ============================================================
 
-export type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
 
 // ============================================================
 // Action Configuration
 // ============================================================
 
-export type SlackActionConfig = {
+type SlackActionConfig = {
   reactions?: boolean;
   messages?: boolean;
   pins?: boolean;
@@ -84,7 +84,7 @@ export type SlackActionConfig = {
 // Slash Command Configuration
 // ============================================================
 
-export type SlackSlashCommandConfig = {
+type SlackSlashCommandConfig = {
   /** Enable handling for the configured slash command (default: false). */
   enabled?: boolean;
   /** Slash command name (default: "otto"). */
@@ -110,7 +110,7 @@ export type SlackThreadConfig = {
 // Account Configuration
 // ============================================================
 
-export type SlackAccountConfig = {
+type SlackAccountConfig = {
   /** Optional display name for this account (used in CLI/UI lists). */
   name?: string;
   /** Slack connection mode (socket|http). Default: socket. */

@@ -1090,6 +1090,49 @@ export class LocalInferenceEngine {
 	}
 
 	/**
+	 * Vision describe via the running llama-server's mtmd path. Requires
+	 * the llama-server backend (the in-process node-llama-cpp adapter
+	 * does not expose mmproj yet — see `services/vision/node-llama-cpp.ts`
+	 * for the planned mtmd binding). The mmproj GGUF must have been
+	 * declared by the active catalog tier and present on disk under the
+	 * bundle root; if not, the dflash-server load did not pass `--mmproj`
+	 * and `dflashLlamaServer.describeImage` throws.
+	 *
+	 * No fallback: Florence-2 / Transformers.js was the previous fallback
+	 * and has been removed (see VISION_MIGRATION.md).
+	 */
+	async describeImage(args: {
+		bytes: Uint8Array;
+		mimeType?: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{
+		text: string;
+		projectorMs?: number;
+		decodeMs?: number;
+	}> {
+		this.markActivity();
+		if (this.activeBackendId() !== "llama-server") {
+			throw new Error(
+				"[local-inference] vision describe requires the llama-server backend; " +
+					"the in-process node-llama-cpp adapter does not yet expose mmproj. " +
+					"Load an Eliza-1 bundle (which routes through llama-server with --mmproj) " +
+					"or wait for the unified FFI to land.",
+			);
+		}
+		return dflashLlamaServer.describeImage(args);
+	}
+
+	/** True when the active server can serve vision describe (mmproj loaded). */
+	canDescribeImages(): boolean {
+		if (this.activeBackendId() !== "llama-server") return false;
+		if (!dflashLlamaServer.hasLoadedModel()) return false;
+		return dflashLlamaServer.currentMmprojPath() !== null;
+	}
+
+	/**
 	 * Diagnostic snapshot of in-process node-llama-cpp session-pool state.
 	 * Returns null when no node-backend pool is active (model not loaded,
 	 * or running on the llama-server backend).

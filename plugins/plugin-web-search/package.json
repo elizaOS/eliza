@@ -25,11 +25,12 @@
     ],
     "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@tavily/core": "^0.7.0",
-        "tsup": "^8.5.1"
+        "@tavily/core": "^0.7.0"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.4.15"
+        "@biomejs/biome": "2.4.15",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3"
     },
     "scripts": {
         "build": "tsup --format esm --dts",
