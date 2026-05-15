@@ -25,6 +25,42 @@ Stable model ids:
 
 ---
 
+## K7 — 2026-05-15 — ONNX dep runway audit + tracker correction
+
+K7 verified and corrected the ONNX migration state for all voice sub-models.
+Key findings:
+
+- **Silero VAD** (`vad`): confirmed ZERO `onnxruntime-node` imports in `vad.ts`.
+  Runtime path is `SileroVadGgml → eliza_inference_vad_* FFI` only.
+  ONNX file (`voice/vad/silero-vad-int8.onnx`) stays on HF per runway policy.
+  `voice-models.ts` updated: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+
+- **hey-eliza wakeword** (`wakeword`): confirmed ZERO `onnxruntime-node` imports in
+  `wake-word.ts`. Runtime path is `GgmlWakeWordModel → eliza_inference_wakeword_* FFI` only.
+  ONNX files stay on HF per runway policy.
+  `voice-models.ts` updated: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+
+- **LiveKit turn-detector** (`turn-detector`, `turn-detector-intl`): J1.d (LiveKitGgmlTurnDetector)
+  confirmed as preferred path in engine.ts chain. ONNX is last-resort fallback only.
+  `voice-models.ts` updated: `preferredBackend: "ggml"`, `deprecatedBackends: ["onnx"]`.
+
+- **Kokoro TTS** (`kokoro`): `pick-runtime.ts` defaults to `KOKORO_BACKEND=fork` (llama-server).
+  `KokoroOnnxRuntime` only reachable via explicit env override.
+  `voice-models.ts` updated: `preferredBackend: "llama-server"`, `deprecatedBackends: ["onnx"]`.
+
+- **OmniVoice** (`omnivoice`): fully on fork FFI since W3-3. No ONNX ever used.
+  `voice-models.ts` updated: `preferredBackend: "llama-server"`.
+
+Still ONNX-active (K1/K2/K3 compute gates):
+- `voice-emotion` (Wav2Small) — ONNX active, blocked on K1 native port.
+- `speaker-encoder` (WeSpeaker) — ONNX active, blocked on K2 native port.
+- `diarizer` (pyannote-3) — ONNX active, blocked on K3 native port.
+
+Tracker: `packages/training/reports/onnx-to-ggml-tracker.json` updated to doc_version 3.
+Full matrix: `.swarm/impl/K7-no-onnx.md`.
+
+---
+
 ## I1 — 2026-05-15 — single-runtime policy audit (no ONNX, no upstream node-llama-cpp)
 
 User directive 2026-05-15: every local-inference path must run through

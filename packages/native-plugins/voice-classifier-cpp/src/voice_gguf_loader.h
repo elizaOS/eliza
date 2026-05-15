@@ -11,6 +11,8 @@
  * `frames_per_window`) live as additional fields with their own
  * default-zero semantics — a head that doesn't set a key sees zero
  * and uses its own constant.
+ *
+ * For weight-tensor enumeration + load, see `voice_gguf_tensors.{c,h}`.
  */
 
 #ifndef VOICE_CLASSIFIER_VOICE_GGUF_LOADER_H

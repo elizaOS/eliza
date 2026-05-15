@@ -17,6 +17,7 @@ from benchmarks.swe_bench.cli import (
     _opencode_config_content,
     _parse_required_capabilities,
     _report_to_dict,
+    _run_opencode_patchfile_instance,
     _run_subtask_provider_instance,
     _subtask_provider_command,
 )
@@ -68,6 +69,27 @@ def test_parse_required_capabilities_accepts_comma_joined_string() -> None:
     )
 
     assert required == ["code.read", "code.write", "code.shell"]
+
+
+def test_build_report_counts_no_docker_pass_as_applied() -> None:
+    report = _build_report(
+        SWEBenchConfig(),
+        [
+            SWEBenchResult(
+                instance_id="repo__project-1",
+                generated_patch="diff --git a/file.py b/file.py",
+                patch_status=PatchStatus.PASS,
+                tests_passed=[],
+                tests_failed=[],
+                success=True,
+                duration_seconds=1.0,
+                tokens_used=None,
+                status="smoke_validated",
+            )
+        ],
+    )
+
+    assert report.apply_rate == 1.0
 
 
 def test_capability_report_flags_unknown_provider_missing_caps() -> None:
@@ -274,4 +296,84 @@ async def test_subtask_provider_uses_worktree_diff(
 
     assert result.success is True
     assert "subtask_provider=opencode" in result.status
+    assert "+print('fixed')" in result.generated_patch
+
+
+@pytest.mark.asyncio
+async def test_opencode_patchfile_flow_does_not_score_patchfile_itself(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+
+    fake = tmp_path / "opencode"
+    fake.write_text("#!/usr/bin/env bash\ncat >/dev/null\nexit 1\n", encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("OPENCODE_BIN", str(fake))
+
+    async def fake_setup(self, instance):
+        self.current_repo = repo
+        self._current_repo_resolved = repo.resolve()
+        self.current_instance = instance
+        return repo
+
+    monkeypatch.setattr(swe_cli.RepositoryManager, "setup_repo", fake_setup)
+
+    class FakeClient:
+        def reset(self, *, task_id, benchmark):
+            pass
+
+        def send_message(self, *, text, context):
+            patch = (
+                "diff --git a/sample.py b/sample.py\n"
+                "--- a/sample.py\n"
+                "+++ b/sample.py\n"
+                "@@ -1 +1 @@\n"
+                "-print('bug')\n"
+                "+print('fixed')\n"
+            )
+            return type("Response", (), {"text": patch, "params": {}})()
+
+    class FakeEvaluator:
+        async def evaluate_patch(self, instance, patch):
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch=patch,
+                patch_status=PatchStatus.TESTS_PASSED,
+                tests_passed=["test_sample"],
+                tests_failed=[],
+                success=True,
+                duration_seconds=0.0,
+                tokens_used=None,
+            )
+
+    instance = SWEBenchInstance(
+        instance_id="mock__repo-1",
+        repo="mock/repo",
+        base_commit="abc123",
+        problem_statement="Fix sample.py",
+        hints_text="",
+        created_at="",
+        patch="",
+        test_patch="",
+        fail_to_pass=[],
+        pass_to_pass=[],
+    )
+
+    result = await _run_opencode_patchfile_instance(
+        FakeClient(),
+        instance,
+        FakeEvaluator(),
+        SWEBenchConfig(workspace_dir=str(tmp_path / "workspace"), timeout_seconds=30),
+        "gpt-oss-120b",
+    )
+
+    assert ".swe-bench-opencode.patch" not in result.generated_patch
     assert "+print('fixed')" in result.generated_patch

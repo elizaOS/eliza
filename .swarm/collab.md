@@ -954,3 +954,57 @@ Never commit.
 - **K8** — Persistent verify watcher.
 - **C0-K** — coordinator; writes `VOICE_WAVE_3_K_SUMMARY.md`.
 
+## K7 phase=impl-done
+
+2026-05-15 K7 phase=impl-done (partial — K1/K2/K3 compute-gated; K4 GGUF pending).
+
+**Wait-loop outcome:** K1/K2/K3/K4 did not post phase=impl-done within the 4-hour
+grace period. K7 proceeded and documented all ONNX-dependent items.
+
+**What landed (already committed in V-verify-final a9125b1e41 + K3 04a301d3fc):**
+
+1. **ONNX tracker corrected** (`packages/training/reports/onnx-to-ggml-tracker.json`,
+   doc_version 2→3 — file is gitignored/local but updated):
+   - `vad-silero` status → `migrated-source` (vad.ts imports zero onnxruntime-node).
+   - `wake-word` status → `migrated-source` (wake-word.ts imports zero onnxruntime-node).
+   - `eot-classifier` updated: ONNX is last-resort fallback only (J1.d).
+   - `kokoro-tts` updated: default=fork; ONNX is env-override deprecation runway only.
+   - Added `speaker-diarizer` as separate entry (was missing from tracker).
+   - `package_summary` corrected: removed vad/wake-word from onnxruntime-node `needed_by`.
+
+2. **`voice-models.ts` updated** (`packages/shared/src/local-inference/voice-models.ts`):
+   - Added `VoiceModelBackend` type + `preferredBackend` / `deprecatedBackends` fields.
+   - `turn-detector` 0.2.0: `preferredBackend: "ggml"`, `deprecatedBackends: ["onnx"]`.
+   - `turn-detector-intl` 0.1.0: same.
+   - `kokoro` 0.3.0: `preferredBackend: "llama-server"`, `deprecatedBackends: ["onnx"]`.
+   - `omnivoice` 0.2.0: `preferredBackend: "llama-server"`.
+   - `vad` 0.1.0: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+   - `wakeword` 0.1.0: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+
+3. **AGENTS.md updated:**
+   - `plugins/plugin-local-inference/native/AGENTS.md` §11: updated ONNX status table.
+   - `packages/native-plugins/voice-classifier-cpp/AGENTS.md`: corrected header with K7 audit.
+
+4. **models/voice/CHANGELOG.md**: K7 section added (ONNX runway audit + tracker corrections).
+
+5. **docs/eliza-1-install.md**: corrected VAD install check (ggml.bin, not .onnx).
+
+**Typecheck:** `@elizaos/shared` + `@elizaos/plugin-local-inference` both green.
+
+**What remains (compute-gated, NOT done):**
+
+- `onnxruntime-node` dep in `plugin-local-inference/package.json`: CANNOT remove yet.
+  Still needed by: voice-emotion (K1), speaker-encoder (K2), diarizer (K3), eot ONNX fallback.
+- `@huggingface/transformers` dep: CANNOT remove yet.
+  Still needed by: eot-classifier ONNX path, NLC adapter.
+- `lsof` zero-ONNX proof: NOT available (K1/K2/K3 still ONNX-active in resolved runtime).
+- Full bench/verify gates: not run (require native builds + running llama-server).
+
+**What K3 also accomplished (posted after K7 started, concurrent):**
+K3 committed `feat(K3): pyannote-3 forward graph in voice-classifier-cpp; 100% ONNX parity`
+which means `speaker/diarizer.ts` can now switch to `diarizer-ggml.ts` — the C side
+is no longer -ENOSYS for pyannote. The switch itself (rename files, update manifest) is
+the K7 follow-up once K3 is confirmed stable. See `.swarm/impl/K7-no-onnx.md §D`.
+
+**Full matrix:** `.swarm/impl/K7-no-onnx.md`.
+

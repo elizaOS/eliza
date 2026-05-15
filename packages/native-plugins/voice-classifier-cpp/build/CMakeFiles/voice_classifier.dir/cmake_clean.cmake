@@ -11,6 +11,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/voice_classifier.dir/src/voice_eot.c.o.d"
   "CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o"
   "CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o.d"
+  "CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o"
+  "CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o.d"
   "CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o"
   "CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o.d"
   "CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o"

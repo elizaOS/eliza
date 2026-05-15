@@ -42,6 +42,7 @@ import type {
   AppManagerLike,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
+import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
   isMobilePlatform,
@@ -2260,29 +2261,19 @@ async function handleRequest(
           deriveSolanaAddress,
           setSolanaWalletEnv,
           resolveWalletRpcReadiness: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["resolveWalletRpcReadiness"]
+            WalletRouteDependencies["resolveWalletRpcReadiness"]
           >(resolveWalletRpcReadiness),
           resolveWalletNetworkMode: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["resolveWalletNetworkMode"]
+            WalletRouteDependencies["resolveWalletNetworkMode"]
           >(resolveWalletNetworkMode),
           getStoredWalletRpcSelections: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["getStoredWalletRpcSelections"]
+            WalletRouteDependencies["getStoredWalletRpcSelections"]
           >(getStoredWalletRpcSelections),
           applyWalletRpcConfigUpdate: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["applyWalletRpcConfigUpdate"]
+            WalletRouteDependencies["applyWalletRpcConfigUpdate"]
           >(applyWalletRpcConfigUpdate),
           resolveWalletCapabilityStatus: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["resolveWalletCapabilityStatus"]
+            WalletRouteDependencies["resolveWalletCapabilityStatus"]
           >((args: { config: ElizaConfig; runtime: AgentRuntime | null }) =>
             resolveWalletCapabilityStatus({
               config: args.config,
@@ -2292,9 +2283,7 @@ async function handleRequest(
           isCloudWalletEnabled,
           persistConfigEnv,
           createIntegrationTelemetrySpan: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["createIntegrationTelemetrySpan"]
+            WalletRouteDependencies["createIntegrationTelemetrySpan"]
           >(createIntegrationTelemetrySpan),
         },
         runtime: state.runtime ?? null,

@@ -110,4 +110,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/voice_speaker_distance_test.dir/DependInfo.cmake"
   "CMakeFiles/voice_mel_features_test.dir/DependInfo.cmake"
   "CMakeFiles/voice_gguf_loader_test.dir/DependInfo.cmake"
+  "CMakeFiles/voice_diarizer_parity_test.dir/DependInfo.cmake"
   )
