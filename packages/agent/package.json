@@ -81,26 +81,6 @@
       "import": "./dist/services/*.js",
       "default": "./dist/services/*.js"
     },
-    "./utils/*": {
-      "types": "./src/utils/*.d.ts",
-      "bun": {
-        "types": "./src/utils/*.ts",
-        "import": "./src/utils/*.ts",
-        "default": "./src/utils/*.ts"
-      },
-      "import": "./dist/utils/*.js",
-      "default": "./dist/utils/*.js"
-    },
-    "./config/*": {
-      "types": "./src/config/*.d.ts",
-      "bun": {
-        "types": "./src/config/*.ts",
-        "import": "./src/config/*.ts",
-        "default": "./src/config/*.ts"
-      },
-      "import": "./dist/config/*.js",
-      "default": "./dist/config/*.js"
-    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
@@ -121,8 +101,8 @@
     "@elizaos/app-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-app-manager": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
