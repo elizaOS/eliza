@@ -106,6 +106,8 @@ interface BoundLibrary {
 	bindings: WakeWordBindings;
 	close(): void;
 	libraryPath: string;
+	/** `bun:ffi` helper: encode an ArrayBufferView as a native pointer. */
+	ptr(value: ArrayBufferView): unknown;
 }
 
 /** Minimal shape of the bun:ffi module we use here. */
@@ -117,6 +119,7 @@ interface BunFfiModule {
 		symbols: Record<string, (...args: unknown[]) => unknown>;
 		close(): void;
 	};
+	ptr(value: ArrayBufferView): unknown;
 	FFIType: {
 		cstring: number;
 		ptr: number;
@@ -192,6 +195,7 @@ function loadLibrary(libraryPath: string): BoundLibrary {
 		bindings: lib.symbols as unknown as WakeWordBindings,
 		close: () => lib.close(),
 		libraryPath,
+		ptr: (v: ArrayBufferView) => bunFfi.ptr(v),
 	};
 }
 

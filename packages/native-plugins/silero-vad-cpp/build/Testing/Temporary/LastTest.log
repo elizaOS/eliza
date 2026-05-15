@@ -1,10 +1,10 @@
-Start testing: May 15 05:06 PDT
+Start testing: May 15 05:09 PDT
 ----------------------------------------------------------
 1/4 Testing: silero_vad_stub_smoke
 1/4 Test: silero_vad_stub_smoke
 Command: "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/silero_vad_stub_smoke"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build
-"silero_vad_stub_smoke" start time: May 15 05:06 PDT
+"silero_vad_stub_smoke" start time: May 15 05:09 PDT
 Output:
 ----------------------------------------------------------
 [silero-vad-stub-smoke] failures=0
@@ -12,7 +12,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"silero_vad_stub_smoke" end time: May 15 05:06 PDT
+"silero_vad_stub_smoke" end time: May 15 05:09 PDT
 "silero_vad_stub_smoke" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -20,7 +20,7 @@ Test Passed.
 2/4 Test: silero_vad_state_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/silero_vad_state_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build
-"silero_vad_state_test" start time: May 15 05:06 PDT
+"silero_vad_state_test" start time: May 15 05:09 PDT
 Output:
 ----------------------------------------------------------
 [silero-vad-state-test] failures=0
@@ -28,7 +28,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"silero_vad_state_test" end time: May 15 05:06 PDT
+"silero_vad_state_test" end time: May 15 05:09 PDT
 "silero_vad_state_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -36,7 +36,7 @@ Test Passed.
 3/4 Test: silero_vad_resample_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/silero_vad_resample_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build
-"silero_vad_resample_test" start time: May 15 05:06 PDT
+"silero_vad_resample_test" start time: May 15 05:09 PDT
 Output:
 ----------------------------------------------------------
 [silero-vad-resample-test] failures=0
@@ -44,7 +44,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"silero_vad_resample_test" end time: May 15 05:06 PDT
+"silero_vad_resample_test" end time: May 15 05:09 PDT
 "silero_vad_resample_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -52,16 +52,16 @@ Test Passed.
 4/4 Test: silero_vad_runtime_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/silero_vad_runtime_test" "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/silero-vad-v5.gguf"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build
-"silero_vad_runtime_test" start time: May 15 05:06 PDT
+"silero_vad_runtime_test" start time: May 15 05:09 PDT
 Output:
 ----------------------------------------------------------
 [runtime-test] silence_prob=0.001782 speech_like_prob=0.040939 failures=0
 <end of output>
-Test time =   0.01 sec
+Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"silero_vad_runtime_test" end time: May 15 05:06 PDT
+"silero_vad_runtime_test" end time: May 15 05:09 PDT
 "silero_vad_runtime_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: May 15 05:06 PDT
+End testing: May 15 05:09 PDT
