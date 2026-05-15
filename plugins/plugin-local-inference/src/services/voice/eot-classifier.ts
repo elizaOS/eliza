@@ -482,42 +482,13 @@ export class LiveKitTurnDetector implements EotClassifier {
 		tokenizer: CallableTokenizer;
 		imEndTokenId: number;
 	}> {
-		await Promise.all([
-			access(this.onnxPath),
-			access(path.join(this.modelDir, "tokenizer.json")),
-		]);
-		const [{ AutoTokenizer }, ort] = await Promise.all([
-			import("@huggingface/transformers"),
-			import("onnxruntime-node"),
-		]);
-		const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
-			local_files_only: true,
-		})) as unknown as CallableTokenizer;
-		(
-			tokenizer as CallableTokenizer & { truncation_side?: "left" }
-		).truncation_side = "left";
-		const imEnd = await tokenizer(LIVEKIT_IM_END_TOKEN, {
-			add_special_tokens: false,
-		});
-		const imEndIds = tokenIdsToBigInt64(imEnd).data;
-		const imEndTokenId = Number(imEndIds[0]);
-		if (!Number.isInteger(imEndTokenId)) {
-			throw new Error(
-				"[voice] LiveKit turn detector tokenizer did not expose <|im_end|>.",
-			);
-		}
-		const session = await ort.InferenceSession.create(this.onnxPath, {
-			executionProviders: ["cpu"],
-			graphOptimizationLevel: "all",
-			interOpNumThreads: 1,
-			intraOpNumThreads: this.intraOpNumThreads,
-		});
-		if (!session.inputNames.includes("input_ids")) {
-			throw new Error(
-				`[voice] LiveKit turn detector graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`,
-			);
-		}
-		return { ort, session, tokenizer, imEndTokenId };
+		// TODO: Replace HuggingFace `tokenizer.json` loading with a tokenizer
+		// implementation backed by llama.cpp / ggml. Until that lands, this
+		// detector is non-functional and `createBundledLiveKitTurnDetector`
+		// returns null to force the heuristic fallback.
+		throw new Error(
+			"[voice] LiveKit turn detector requires a HuggingFace tokenizer; the @huggingface/transformers runtime dependency has been removed. Use HeuristicEotClassifier as the fallback.",
+		);
 	}
 }
 
@@ -561,11 +532,12 @@ export async function createBundledLiveKitTurnDetector(
 	} catch {
 		return null;
 	}
-	return new LiveKitTurnDetector({
-		...opts,
-		modelDir,
-		onnxFilename: resolvedFilename,
-	});
+	// TODO: The bundle contains a usable LiveKit turn detector, but the
+	// runtime can no longer load its HuggingFace tokenizer (the
+	// @huggingface/transformers runtime dependency has been removed). Return
+	// null so the engine falls back to HeuristicEotClassifier. Restore this
+	// detector once a ggml/llama.cpp-backed tokenizer is wired up.
+	return null;
 }
 
 function normalizeTurnDetectorText(text: string): string {
@@ -801,32 +773,13 @@ export class TurnsenseEotClassifier implements EotClassifier {
 		session: OrtSession;
 		tokenizer: CallableTokenizer;
 	}> {
-		await Promise.all([
-			access(this.onnxPath),
-			access(path.join(this.modelDir, "tokenizer.json")),
-		]);
-		const [{ AutoTokenizer }, ort] = await Promise.all([
-			import("@huggingface/transformers"),
-			import("onnxruntime-node"),
-		]);
-		const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
-			local_files_only: true,
-		})) as unknown as CallableTokenizer;
-		(
-			tokenizer as CallableTokenizer & { truncation_side?: "left" }
-		).truncation_side = "left";
-		const session = await ort.InferenceSession.create(this.onnxPath, {
-			executionProviders: ["cpu"],
-			graphOptimizationLevel: "all",
-			interOpNumThreads: 1,
-			intraOpNumThreads: this.intraOpNumThreads,
-		});
-		if (!session.inputNames.includes("input_ids")) {
-			throw new Error(
-				`[voice] Turnsense graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`,
-			);
-		}
-		return { ort, session, tokenizer };
+		// TODO: Replace HuggingFace `tokenizer.json` loading with a tokenizer
+		// implementation backed by llama.cpp / ggml. Until that lands, this
+		// detector is non-functional and `createBundledTurnsenseEotClassifier`
+		// returns null to force the heuristic fallback.
+		throw new Error(
+			"[voice] Turnsense EOT classifier requires a HuggingFace tokenizer; the @huggingface/transformers runtime dependency has been removed. Use HeuristicEotClassifier as the fallback.",
+		);
 	}
 }
 
@@ -853,11 +806,13 @@ export async function createBundledTurnsenseEotClassifier(
 	} catch {
 		return null;
 	}
-	return new TurnsenseEotClassifier({
-		...opts,
-		modelDir,
-		onnxFilename,
-	});
+	// TODO: The bundle contains a usable Turnsense classifier, but the
+	// runtime can no longer load its HuggingFace tokenizer (the
+	// @huggingface/transformers runtime dependency has been removed). Return
+	// null so the engine falls back to HeuristicEotClassifier. Restore this
+	// detector once a ggml/llama.cpp-backed tokenizer is wired up.
+	void opts;
+	return null;
 }
 
 function probabilityFromTurnsenseOutput(
