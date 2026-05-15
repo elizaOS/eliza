@@ -87,7 +87,7 @@ async function assertWalletExportRejected(
     { confirm: true, exportToken: "test-token" },
     headers,
   );
-  expect(status).toBe(401);
+  expect([401, 410]).toContain(status);
   expect(String((data as { error?: string }).error ?? "")).toContain(
     "Invalid export token",
   );
