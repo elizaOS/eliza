@@ -415,7 +415,7 @@ export const openaiPlugin: Plugin = {
             }
 
             logger.info(
-              `[OpenAI Test] Research completed. Text length: ${result.text.length}, Annotations: ${result.annotations?.length ?? 0}`
+              `[OpenAI Test] Research completed. Text length: ${result.text.length}, Annotations: ${result.annotations.length}`
             );
           },
         },

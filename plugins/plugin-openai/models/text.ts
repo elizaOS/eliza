@@ -1017,7 +1017,7 @@ async function generateTextByModelType(
   const result = await recordLlmCall(runtime, details, async () => {
     const result = await generateText(generateParams);
     details.response = result.text;
-    details.toolCalls = result.toolCalls ?? [];
+    details.toolCalls = result.toolCalls;
     details.finishReason = result.finishReason as string | undefined;
     details.providerMetadata = result.providerMetadata;
     applyUsageToDetails(details, result.usage);

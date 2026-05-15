@@ -32,7 +32,7 @@ export class PostgresConnectionManager {
 
     this.pool.on("error", (err) => {
       logger.warn(
-        { src: "plugin:sql", error: err?.message || String(err) },
+        { src: "plugin:sql", error: err.message || String(err) },
         "Pool client error (connection will be replaced)"
       );
     });

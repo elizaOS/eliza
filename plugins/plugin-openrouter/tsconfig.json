@@ -27,7 +27,7 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@elizaos/core": [
-        "../../../node_modules/@elizaos/core/dist/index.d.ts"
+        "../../node_modules/@elizaos/core/dist/index.d.ts"
       ]
     },
     "types": [

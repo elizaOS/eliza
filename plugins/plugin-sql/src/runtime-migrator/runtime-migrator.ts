@@ -138,7 +138,7 @@ export class RuntimeMigrator {
    * (not PGLite, in-memory, or other non-PostgreSQL databases)
    */
   private isRealPostgresDatabase(connectionUrl: string): boolean {
-    if (!connectionUrl?.trim()) return false;
+    if (!connectionUrl.trim()) return false;
 
     const url = connectionUrl.trim().toLowerCase();
 

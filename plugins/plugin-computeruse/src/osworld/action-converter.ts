@@ -222,12 +222,11 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
   // pyautogui.click(x, y)
   const clickMatch = trimmed.match(/pyautogui\.click\((\d+),\s*(\d+)\)/);
   if (clickMatch) {
+    const [, x, y] = clickMatch;
+    if (x === undefined || y === undefined) return null;
     return {
       action: "click",
-      coordinate: [
-        Number.parseInt(clickMatch[1]!, 10),
-        Number.parseInt(clickMatch[2]!, 10),
-      ],
+      coordinate: [Number.parseInt(x, 10), Number.parseInt(y, 10)],
     };
   }
 
@@ -236,12 +235,11 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
     /pyautogui\.doubleClick\((\d+),\s*(\d+)\)/,
   );
   if (dblClickMatch) {
+    const [, x, y] = dblClickMatch;
+    if (x === undefined || y === undefined) return null;
     return {
       action: "double_click",
-      coordinate: [
-        Number.parseInt(dblClickMatch[1]!, 10),
-        Number.parseInt(dblClickMatch[2]!, 10),
-      ],
+      coordinate: [Number.parseInt(x, 10), Number.parseInt(y, 10)],
     };
   }
 
@@ -250,24 +248,22 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
     /pyautogui\.rightClick\((\d+),\s*(\d+)\)/,
   );
   if (rightClickMatch) {
+    const [, x, y] = rightClickMatch;
+    if (x === undefined || y === undefined) return null;
     return {
       action: "right_click",
-      coordinate: [
-        Number.parseInt(rightClickMatch[1]!, 10),
-        Number.parseInt(rightClickMatch[2]!, 10),
-      ],
+      coordinate: [Number.parseInt(x, 10), Number.parseInt(y, 10)],
     };
   }
 
   // pyautogui.moveTo(x, y)
   const moveMatch = trimmed.match(/pyautogui\.moveTo\((\d+),\s*(\d+)\)/);
   if (moveMatch) {
+    const [, x, y] = moveMatch;
+    if (x === undefined || y === undefined) return null;
     return {
       action: "mouse_move",
-      coordinate: [
-        Number.parseInt(moveMatch[1]!, 10),
-        Number.parseInt(moveMatch[2]!, 10),
-      ],
+      coordinate: [Number.parseInt(x, 10), Number.parseInt(y, 10)],
     };
   }
 
@@ -299,7 +295,9 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
     /pyautogui\.scroll\((-?\d+)(?:,\s*x=(\d+),\s*y=(\d+))?\)/,
   );
   if (scrollMatch) {
-    const amount = Number.parseInt(scrollMatch[1]!, 10);
+    const amountText = scrollMatch[1];
+    if (amountText === undefined) return null;
+    const amount = Number.parseInt(amountText, 10);
     const x = scrollMatch[2] ? Number.parseInt(scrollMatch[2], 10) : 0;
     const y = scrollMatch[3] ? Number.parseInt(scrollMatch[3], 10) : 0;
     return {
@@ -313,13 +311,12 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
   // pyautogui.drag(dx, dy)
   const dragMatch = trimmed.match(/pyautogui\.drag\((-?\d+),\s*(-?\d+)\)/);
   if (dragMatch) {
+    const [, x, y] = dragMatch;
+    if (x === undefined || y === undefined) return null;
     return {
       action: "drag",
       startCoordinate: [0, 0], // relative drag from current position
-      coordinate: [
-        Number.parseInt(dragMatch[1]!, 10),
-        Number.parseInt(dragMatch[2]!, 10),
-      ],
+      coordinate: [Number.parseInt(x, 10), Number.parseInt(y, 10)],
     };
   }
 

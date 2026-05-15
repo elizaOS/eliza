@@ -50,20 +50,24 @@ export async function dispatch(
     action.kind === "double_click" ||
     action.kind === "right_click"
   ) {
-    if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) {
+    if (!target) {
+      return unknownDisplay(action, displays);
+    }
+    const point = resolvePoint(action);
+    if (!point) {
       return invalidArgs(action, "click action requires finite (x, y) coords");
     }
-    const oob = checkBounds(target!, action.x!, action.y!);
+    const oob = checkBounds(target, point.x, point.y);
     if (oob) return oob;
-    const point: DisplayPoint = {
+    const displayPoint: DisplayPoint = {
       displayId: action.displayId,
-      x: action.x!,
-      y: action.y!,
+      x: point.x,
+      y: point.y,
     };
     try {
-      if (action.kind === "click") await deps.interface.leftClick(point);
-      else if (action.kind === "double_click") await deps.interface.doubleClick(point);
-      else await deps.interface.rightClick(point);
+      if (action.kind === "click") await deps.interface.leftClick(displayPoint);
+      else if (action.kind === "double_click") await deps.interface.doubleClick(displayPoint);
+      else await deps.interface.rightClick(displayPoint);
     } catch (err) {
       return driverError(err);
     }
@@ -107,24 +111,23 @@ export async function dispatch(
   }
 
   if (action.kind === "scroll") {
-    if (
-      !Number.isFinite(action.x) ||
-      !Number.isFinite(action.y) ||
-      typeof action.dx !== "number" ||
-      typeof action.dy !== "number"
-    ) {
+    if (!target) {
+      return unknownDisplay(action, displays);
+    }
+    const point = resolvePoint(action);
+    if (!point || typeof action.dx !== "number" || typeof action.dy !== "number") {
       return invalidArgs(
         action,
         "scroll action requires (x, y) anchor and (dx, dy)",
       );
     }
-    const oob = checkBounds(target!, action.x!, action.y!);
+    const oob = checkBounds(target, point.x, point.y);
     if (oob) return oob;
     try {
       await deps.interface.scroll({
         displayId: action.displayId,
-        x: action.x!,
-        y: action.y!,
+        x: point.x,
+        y: point.y,
         dx: action.dx,
         dy: action.dy,
       });
@@ -135,24 +138,24 @@ export async function dispatch(
   }
 
   if (action.kind === "drag") {
-    if (
-      !Number.isFinite(action.startX) ||
-      !Number.isFinite(action.startY) ||
-      !Number.isFinite(action.x) ||
-      !Number.isFinite(action.y)
-    ) {
+    if (!target) {
+      return unknownDisplay(action, displays);
+    }
+    const start = resolveStartPoint(action);
+    const end = resolvePoint(action);
+    if (!start || !end) {
       return invalidArgs(action, "drag requires startX/startY and x/y");
     }
-    const oobStart = checkBounds(target!, action.startX!, action.startY!);
+    const oobStart = checkBounds(target, start.x, start.y);
     if (oobStart) return oobStart;
-    const oobEnd = checkBounds(target!, action.x!, action.y!);
+    const oobEnd = checkBounds(target, end.x, end.y);
     if (oobEnd) return oobEnd;
     try {
       await deps.interface.drag({
         displayId: action.displayId,
         path: [
-          { x: action.startX!, y: action.startY! },
-          { x: action.x!, y: action.y! },
+          { x: start.x, y: start.y },
+          { x: end.x, y: end.y },
         ],
       });
     } catch (err) {
@@ -162,6 +165,26 @@ export async function dispatch(
   }
 
   return invalidArgs(action, `unknown action kind "${(action as ProposedAction).kind}"`);
+}
+
+function resolvePoint(action: ProposedAction): { x: number; y: number } | null {
+  const { x, y } = action;
+  return typeof x === "number" &&
+    Number.isFinite(x) &&
+    typeof y === "number" &&
+    Number.isFinite(y)
+    ? { x, y }
+    : null;
+}
+
+function resolveStartPoint(action: ProposedAction): { x: number; y: number } | null {
+  const { startX, startY } = action;
+  return typeof startX === "number" &&
+    Number.isFinite(startX) &&
+    typeof startY === "number" &&
+    Number.isFinite(startY)
+    ? { x: startX, y: startY }
+    : null;
 }
 
 function checkBounds(
@@ -188,6 +211,19 @@ function invalidArgs(action: ProposedAction, message: string): ActionResult {
     error: {
       code: "invalid_args",
       message: `${message} (action.kind=${action.kind})`,
+    },
+  };
+}
+
+function unknownDisplay(
+  action: ProposedAction,
+  displays: DisplayDescriptor[],
+): ActionResult {
+  return {
+    success: false,
+    error: {
+      code: "unknown_display",
+      message: `Unknown displayId ${action.displayId}. Known: ${displays.map((d) => d.id).join(", ")}`,
     },
   };
 }

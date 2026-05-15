@@ -118,7 +118,7 @@ export function normalizeAccountId(accountId?: string | null): string {
  * Gets the multi-account configuration from runtime settings
  */
 export function getMultiAccountConfig(runtime: IAgentRuntime): LineMultiAccountConfig {
-  const characterLine = runtime.character?.settings?.line as LineMultiAccountConfig | undefined;
+  const characterLine = runtime.character.settings?.line as LineMultiAccountConfig | undefined;
 
   return {
     enabled: characterLine?.enabled,

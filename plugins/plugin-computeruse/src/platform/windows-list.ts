@@ -606,8 +606,10 @@ export function getScreenSize(): ScreenSize {
         .trim()
         .split(",")
         .map((p) => Number.parseInt(p.trim(), 10));
-      if (parts.length >= 4) {
-        return { width: parts[2]!, height: parts[3]! };
+      const width = parts[2];
+      const height = parts[3];
+      if (Number.isFinite(width) && Number.isFinite(height)) {
+        return { width, height };
       }
     } catch {
       /* fallback */
@@ -620,9 +622,13 @@ export function getScreenSize(): ScreenSize {
       );
       const match = output.match(/(\d+)\s*x\s*(\d+)/);
       if (match) {
+        const [, width, height] = match;
+        if (width === undefined || height === undefined) {
+          return { width: 1920, height: 1080 };
+        }
         return {
-          width: Number.parseInt(match[1]!, 10),
-          height: Number.parseInt(match[2]!, 10),
+          width: Number.parseInt(width, 10),
+          height: Number.parseInt(height, 10),
         };
       }
     } catch {
@@ -636,10 +642,11 @@ export function getScreenSize(): ScreenSize {
       try {
         const output = runCommand("xdotool", ["getdisplaygeometry"], 3000);
         const parts = output.trim().split(" ");
-        if (parts.length >= 2) {
+        const [width, height] = parts;
+        if (width !== undefined && height !== undefined) {
           return {
-            width: Number.parseInt(parts[0]!, 10),
-            height: Number.parseInt(parts[1]!, 10),
+            width: Number.parseInt(width, 10),
+            height: Number.parseInt(height, 10),
           };
         }
       } catch {
@@ -654,9 +661,13 @@ export function getScreenSize(): ScreenSize {
         });
         const match = output.match(/(\d+)x(\d+)/);
         if (match) {
+          const [, width, height] = match;
+          if (width === undefined || height === undefined) {
+            return { width: 1920, height: 1080 };
+          }
           return {
-            width: Number.parseInt(match[1]!, 10),
-            height: Number.parseInt(match[2]!, 10),
+            width: Number.parseInt(width, 10),
+            height: Number.parseInt(height, 10),
           };
         }
       } catch {

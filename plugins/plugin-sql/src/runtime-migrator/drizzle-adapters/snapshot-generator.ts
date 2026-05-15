@@ -229,7 +229,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
     }
 
     // Process unique constraints
-    uniqueConstraints?.forEach((unq: DrizzleUniqueConstraint) => {
+    uniqueConstraints.forEach((unq: DrizzleUniqueConstraint) => {
       const columnNames = unq.columns.map((c) => c.name);
       const name = unq.name || `${tableName}_${columnNames.join("_")}_unique`;
 

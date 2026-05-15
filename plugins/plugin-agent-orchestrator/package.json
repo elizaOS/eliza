@@ -92,7 +92,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
-    "test:integration": "bunx vitest run --config vitest.config.ts --dir tests/e2e --passWithNoTests",
+    "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

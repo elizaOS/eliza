@@ -158,8 +158,13 @@ export class MobileComputerInterface implements ComputerInterface {
         "[computeruse/mobile] drag path requires at least two points",
       );
     }
-    const start = path.path[0]!;
-    const end = path.path[path.path.length - 1]!;
+    const start = path.path[0];
+    const end = path.path[path.path.length - 1];
+    if (!start || !end) {
+      throw new Error(
+        "[computeruse/mobile] drag path requires concrete start and end points",
+      );
+    }
     await this.dispatchSwipe(
       { displayId: path.displayId, x: start.x, y: start.y },
       { displayId: path.displayId, x: end.x, y: end.y },

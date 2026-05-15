@@ -117,7 +117,7 @@ export class AgentStore implements Store {
         }
 
         await this.db.transaction(async (tx) => {
-          if (agent?.settings) {
+          if (agent.settings) {
             agent.settings = await this.mergeSettings(tx, agentId, agent.settings);
           }
 
