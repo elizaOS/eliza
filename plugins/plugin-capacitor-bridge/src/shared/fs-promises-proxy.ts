@@ -1,10 +1,10 @@
 import * as realPromises from "node:fs/promises";
-import type { AnyFn, FsAccessMode } from "./mobile-fs-sandbox.ts";
+import type { AnyFn, FsAccessMode } from "./fs-sandbox.ts";
 import {
   wrapMobileFsOpen,
   wrapMobileFsPath,
   wrapMobileFsTwoPaths,
-} from "./mobile-fs-sandbox.ts";
+} from "./fs-sandbox.ts";
 
 const MODULE_NAME = "mobile-fs-promises-proxy";
 

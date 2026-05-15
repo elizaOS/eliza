@@ -14,35 +14,32 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import {
-  getPluginWidgets,
-  type PluginWidgetDeclarationServer,
-} from "../config/plugin-widgets.ts";
+// Phase 4F: all agent-internal symbols are now imported through the agent
+// barrel. The barrel was extended in the same commit to expose plugin-widgets,
+// plugin-validation, and plugin-manager-types so this plugin doesn't need
+// subpath imports.
 import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
-  isAdvancedCapabilityPluginId,
-  resolveAdvancedCapabilitiesEnabled,
-} from "../runtime/advanced-capabilities-config.ts";
-import {
+  applyPluginRuntimeMutation,
   CORE_PLUGINS,
+  type CoreManagerLike,
+  type ElizaConfig,
+  getPluginWidgets,
+  type InstallProgressLike,
+  isAdvancedCapabilityPluginId,
+  loadElizaConfig,
   OPTIONAL_CORE_PLUGINS,
-} from "../runtime/core-plugins.ts";
-import type { ResolvedPlugin } from "../runtime/plugin-types.ts";
-import type {
-  CoreManagerLike,
-  InstallProgressLike,
-  PluginManagerLike,
-  RegistryPluginInfo,
-} from "../services/plugin-manager-types.ts";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
-import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.ts";
-import {
+  type PluginManagerLike,
   type PluginParamInfo,
+  type PluginWidgetDeclarationServer,
+  type RegistryPluginInfo,
+  resolveAdvancedCapabilitiesEnabled,
+  resolveDefaultAgentWorkspaceDir,
+  type ResolvedPlugin,
+  saveElizaConfig,
   validatePluginConfig,
-} from "./plugin-validation.ts";
+} from "@elizaos/agent";
 
 /** Workspace packages use `@elizaos/plugin-*` or `@elizaos/app-*` — normalize list/toggle ids. */
 function optionalPluginListId(npmName: string): string {
