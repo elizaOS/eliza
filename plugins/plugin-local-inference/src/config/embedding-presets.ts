@@ -1,3 +1,7 @@
+// Phase 4A: canonical home for embedding preset detection. Hardware-aware
+// tier selection lives with the local inference plugin so the runtime
+// bootstrap (in @elizaos/agent) can ask the plugin for its own defaults
+// instead of duplicating model metadata.
 import os from "node:os";
 
 export type EmbeddingTier = "fallback" | "standard" | "performance";
