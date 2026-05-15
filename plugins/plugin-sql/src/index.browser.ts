@@ -63,7 +63,9 @@ export const plugin: Plugin = {
     logger.info({ src: "plugin:sql" }, "Browser database adapter (PGlite) created and registered");
   },
   async dispose(runtime) {
-    await runtime.getService<AdvancedMemoryStorageService>(AdvancedMemoryStorageService.serviceType)?.stop();
+    await runtime
+      .getService<AdvancedMemoryStorageService>(AdvancedMemoryStorageService.serviceType)
+      ?.stop();
   },
 };
 

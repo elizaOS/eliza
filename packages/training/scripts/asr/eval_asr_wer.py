@@ -78,7 +78,8 @@ def _wer(ref: str, hyp: str) -> float:
     )
 
 
-_STRIP_PROMPT_RE = re.compile(r"^.*?>", re.DOTALL)
+_LANG_TAG_RE = re.compile(r"^language\s+\S+\s*<asr_text>", re.IGNORECASE)
+_CLOSE_TAG_RE = re.compile(r"</asr_text>.*$", re.DOTALL)
 
 
 def _transcribe(
@@ -125,10 +126,11 @@ def _transcribe(
         )
         return ""
     out = proc.stdout.strip()
-    # Strip everything before the last ">" prompt marker if present.
-    if ">" in out:
-        out = _STRIP_PROMPT_RE.sub("", out, count=1).strip()
-    # Drop common decoration artifacts.
+    # Qwen3-ASR wraps its transcript with `language English<asr_text>...`
+    # plus an optional `</asr_text>` close tag.
+    out = _LANG_TAG_RE.sub("", out).strip()
+    out = _CLOSE_TAG_RE.sub("", out).strip()
+    # Drop common chat-template artifacts.
     out = re.sub(r"<\|im_(start|end)\|>.*?$", "", out, flags=re.DOTALL).strip()
     return out
 

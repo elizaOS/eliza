@@ -18,13 +18,7 @@
  * handled by the loader itself even when the module has no interact export.
  */
 
-import {
-  type ComponentType,
-  memo,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ComponentType, memo, useEffect, useRef, useState } from "react";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { registerViewInteractHandler } from "./view-interact-registry";
@@ -209,6 +203,10 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // can query the DOM.
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // reloadKey is intentionally a dependency: bumping it via the
+  // standard `refresh` capability or the dev-mode ETag poller must
+  // re-run this effect to invalidate the module cache.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a manual cache-bust trigger
   useEffect(() => {
     if (!dynamicLoadingAllowed) return;
 

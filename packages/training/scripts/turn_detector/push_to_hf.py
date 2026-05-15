@@ -447,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
         base_revision=args.base_revision,
         eval_en=eval_en,
         eval_intl=eval_intl,
+        locale=args.locale,
     )
     (stage_root / "README.md").write_text(card, encoding="utf-8")
 

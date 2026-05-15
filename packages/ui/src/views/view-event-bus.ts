@@ -58,7 +58,12 @@ export function emitViewEvent(
   payload: ViewEventPayload = {},
   sourceViewId?: string,
 ): void {
-  const event: ViewEvent = { type, payload, sourceViewId, timestamp: Date.now() };
+  const event: ViewEvent = {
+    type,
+    payload,
+    sourceViewId,
+    timestamp: Date.now(),
+  };
 
   // 1. BroadcastChannel — cross-tab delivery.
   getChannel()?.postMessage(event);

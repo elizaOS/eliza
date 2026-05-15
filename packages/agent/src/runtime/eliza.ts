@@ -170,9 +170,31 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
   )) as StewardEvmBridgeModule;
 }
 
-const { detectEmbeddingPreset } = await import(
-  "@elizaos/plugin-local-inference"
-);
+function detectEmbeddingPreset() {
+  const model = "bundles/0_8b/text/eliza-1-0_8b-32k.gguf";
+  const modelRepo = "elizaos/eliza-1";
+  const dimensions = 1024;
+  const contextSize = 32768;
+  const downloadSizeMB = 512;
+  const totalRamGB = Math.round(os.totalmem() / 1024 ** 3);
+  const isAppleSilicon =
+    process.platform === "darwin" && process.arch === "arm64";
+  const tier =
+    !isAppleSilicon || totalRamGB <= 8
+      ? "fallback"
+      : totalRamGB >= 128
+        ? "performance"
+        : "standard";
+  return {
+    tier,
+    model,
+    modelRepo,
+    dimensions,
+    gpuLayers: tier === "fallback" ? 0 : "auto",
+    contextSize,
+    downloadSizeMB,
+  };
+}
 
 import {
   debugLogResolvedContext,
