@@ -190,15 +190,18 @@ export async function handleViewsRoutes(
     }
 
     const body = await readJsonBody<Record<string, unknown>>(req, res);
-    const type = typeof body?.type === "string" ? body.type : null;
+    if (!body) {
+      return true;
+    }
+    const type = typeof body.type === "string" ? body.type : null;
     if (!type) {
       error(res, 'Missing required field "type"', 400);
       return true;
     }
     const payload =
-      body?.payload !== null &&
-      typeof body?.payload === "object" &&
-      !Array.isArray(body?.payload)
+      body.payload !== null &&
+      typeof body.payload === "object" &&
+      !Array.isArray(body.payload)
         ? (body.payload as Record<string, unknown>)
         : {};
 

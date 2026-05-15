@@ -230,6 +230,19 @@ voice_diarizer_parity_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_diarizer_parity_test.dir/build.make CMakeFiles/voice_diarizer_parity_test.dir/build
 .PHONY : voice_diarizer_parity_test/fast
 
+#=============================================================================
+# Target rules for targets named voice_speaker_parity_test
+
+# Build rule for target.
+voice_speaker_parity_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 voice_speaker_parity_test
+.PHONY : voice_speaker_parity_test
+
+# fast build rule for target.
+voice_speaker_parity_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/build
+.PHONY : voice_speaker_parity_test/fast
+
 src/voice_classifier_diagnostics.o: src/voice_classifier_diagnostics.c.o
 .PHONY : src/voice_classifier_diagnostics.o
 
@@ -644,6 +657,30 @@ test/voice_speaker_distance_test.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_distance_test.dir/build.make CMakeFiles/voice_speaker_distance_test.dir/test/voice_speaker_distance_test.c.s
 .PHONY : test/voice_speaker_distance_test.c.s
 
+test/voice_speaker_parity_test.o: test/voice_speaker_parity_test.c.o
+.PHONY : test/voice_speaker_parity_test.o
+
+# target to build an object file
+test/voice_speaker_parity_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.o
+.PHONY : test/voice_speaker_parity_test.c.o
+
+test/voice_speaker_parity_test.i: test/voice_speaker_parity_test.c.i
+.PHONY : test/voice_speaker_parity_test.i
+
+# target to preprocess a source file
+test/voice_speaker_parity_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.i
+.PHONY : test/voice_speaker_parity_test.c.i
+
+test/voice_speaker_parity_test.s: test/voice_speaker_parity_test.c.s
+.PHONY : test/voice_speaker_parity_test.s
+
+# target to generate assembly for a file
+test/voice_speaker_parity_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.s
+.PHONY : test/voice_speaker_parity_test.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -661,6 +698,7 @@ help:
 	@echo "... voice_gguf_loader_test"
 	@echo "... voice_mel_features_test"
 	@echo "... voice_speaker_distance_test"
+	@echo "... voice_speaker_parity_test"
 	@echo "... src/voice_classifier_diagnostics.o"
 	@echo "... src/voice_classifier_diagnostics.i"
 	@echo "... src/voice_classifier_diagnostics.s"
@@ -709,6 +747,9 @@ help:
 	@echo "... test/voice_speaker_distance_test.o"
 	@echo "... test/voice_speaker_distance_test.i"
 	@echo "... test/voice_speaker_distance_test.s"
+	@echo "... test/voice_speaker_parity_test.o"
+	@echo "... test/voice_speaker_parity_test.i"
+	@echo "... test/voice_speaker_parity_test.s"
 .PHONY : help
 
 

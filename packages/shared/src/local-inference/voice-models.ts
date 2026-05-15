@@ -366,7 +366,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "voice/voice-emotion/wav2small-cls7-int8.onnx",
+        filename: "voice/emotion/wav2small-cls7-int8.onnx",
         sha256:
           "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
         sizeBytes: 524_750,
@@ -412,15 +412,15 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     // a follow-up per-tensor weight-mapping pass). Documented in
     // .swarm/impl/J2-kokoro-port-notes.md; ship continues per brief override.
     //
-    // missingAssets carries the planned ladder; the GGUF push to
-    // elizaos/eliza-1-voice-kokoro lands once the full PyTorch checkpoint
-    // walks through convert_kokoro_pth_to_gguf.py with the full _PTH_KEY_RULES
-    // map (Q3..Q8 ladder via gguf_kokoro_apply.py from W3-1).
+    // missingAssets carries the planned ladder; the GGUF push to the
+    // consolidated elizaos/eliza-1 repo lands once the full PyTorch
+    // checkpoint walks through convert_kokoro_pth_to_gguf.py with the full
+    // _PTH_KEY_RULES map (Q3..Q8 ladder via gguf_kokoro_apply.py from W3-1).
     id: "kokoro",
     version: "0.3.0",
     parentVersion: "0.2.0",
     publishedToHfAt: "2026-05-15T05:00:00Z",
-    hfRepo: "elizaos/eliza-1-voice-kokoro",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
     // K7: runtime defaults to KOKORO_BACKEND=fork (pick-runtime.ts). ONNX
     // path is one-release deprecation runway (KOKORO_BACKEND=onnx env only).

@@ -43,6 +43,12 @@
       ],
       "@elizaos/plugin-wallet/*": [
         "../plugin-wallet/src/*"
+      ],
+      "@elizaos/plugin-registry": [
+        "./src/index.ts"
+      ],
+      "@elizaos/plugin-registry/*": [
+        "./src/*"
       ]
     }
   },

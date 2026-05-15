@@ -309,6 +309,214 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     ],
     tags: ["navigation", "desktop"],
   },
+
+  // ── Voice command scenarios ───────────────────────────────────────────────
+
+  {
+    id: "voice-open-wallet",
+    description: "User speaks a short voice command to open the wallet",
+    userMessage: "open wallet",
+    expectedBehavior:
+      "Agent recognizes the short voice transcription as a navigation intent and opens the wallet view",
+    verificationCriteria: [
+      "response confirms the wallet view is being opened",
+      "response does not ask the user to rephrase or type a longer command",
+      "response handles the terse phrasing gracefully without treating it as ambiguous",
+      "response does not open an unrelated view",
+    ],
+    tags: ["voice", "navigation"],
+  },
+
+  {
+    id: "voice-show-settings",
+    description: "User speaks a single-word voice command to navigate to settings",
+    userMessage: "settings",
+    expectedBehavior:
+      "Agent interprets the single-word utterance as a navigation request and opens the settings view",
+    verificationCriteria: [
+      "response confirms navigation to settings",
+      "response does not request more context before acting",
+      "response does not treat the single word as an error or unknown command",
+      "response does not open a different view",
+    ],
+    tags: ["voice", "navigation"],
+  },
+
+  {
+    id: "voice-search-views",
+    description: "User speaks a natural-language voice query to find a trading view",
+    userMessage: "find me something for trading",
+    expectedBehavior:
+      "Agent surfaces the trading dashboard or a relevant finance view matching the spoken intent",
+    verificationCriteria: [
+      "response mentions a trading or finance-related view",
+      "response does not return completely unrelated views",
+      "response is actionable: it either opens the view or presents a navigable option",
+      "response acknowledges the search intent rather than asking for exact view names",
+    ],
+    tags: ["voice", "search", "discovery"],
+  },
+
+  {
+    id: "voice-ambiguous-navigation",
+    description: "User says 'go home', which could map to chat or the main view",
+    userMessage: "go home",
+    expectedBehavior:
+      "Agent navigates to the primary home or chat view, or disambiguates between home and chat with a brief clarification",
+    verificationCriteria: [
+      "response navigates to a plausible home-equivalent view (chat, main, or similar)",
+      "if ambiguous, response asks a single focused clarifying question rather than listing all views",
+      "response does not open an unrelated view such as settings or wallet",
+      "response does not return an error or claim no view matches",
+    ],
+    tags: ["voice", "navigation", "error-handling"],
+  },
+
+  {
+    id: "voice-view-manager",
+    description: "User says 'show apps', a legacy voice phrase that should open the view manager",
+    userMessage: "show apps",
+    expectedBehavior:
+      "Agent maps the legacy 'show apps' phrasing to the view manager and opens it",
+    verificationCriteria: [
+      "response opens or confirms opening the view manager",
+      "response does not reject the phrasing as unrecognized",
+      "response does not open a single specific app view instead of the manager",
+      "response handles the legacy phrasing transparently without requiring rephrasing",
+    ],
+    tags: ["voice", "navigation", "view-manager"],
+  },
+
+  // ── View interaction scenarios ────────────────────────────────────────────
+
+  {
+    id: "agent-clicks-in-view",
+    description: "User asks the agent to click a button inside the wallet view",
+    userMessage: "click the send button in the wallet view",
+    expectedBehavior:
+      "Agent uses the wallet view's declared capability to trigger the send action, or navigates to the send flow and confirms",
+    verificationCriteria: [
+      "response confirms the send button was activated or the send flow was initiated",
+      "response references the wallet view context",
+      "response does not claim inability to interact with views",
+      "response does not simply describe the button without acting",
+    ],
+    tags: ["interaction", "capabilities"],
+  },
+
+  {
+    id: "agent-reads-view-state",
+    description: "User asks the agent to read live state from the open wallet view",
+    userMessage: "what's my balance in the wallet view?",
+    expectedBehavior:
+      "Agent reads the current balance from the wallet view's state and reports it to the user",
+    verificationCriteria: [
+      "response includes a balance value or confirms it is fetching the balance",
+      "response does not return a static or hardcoded placeholder value",
+      "response references the wallet view as the source of the information",
+      "response does not ask the user to open the wallet first if it is already open",
+    ],
+    tags: ["interaction", "capabilities"],
+  },
+
+  {
+    id: "agent-refreshes-view",
+    description: "User asks the agent to refresh the wallet view",
+    userMessage: "refresh the wallet",
+    expectedBehavior:
+      "Agent triggers a refresh of the wallet view and confirms the action",
+    verificationCriteria: [
+      "response confirms the wallet view has been refreshed or is refreshing",
+      "response does not close and reopen the view as a substitute for refresh",
+      "response does not navigate away from the wallet",
+      "response is concise and does not require follow-up from the user",
+    ],
+    tags: ["interaction", "navigation"],
+  },
+
+  {
+    id: "agent-fills-form-in-view",
+    description: "User asks the agent to fill in a recipient address in the wallet send form",
+    userMessage: "fill in the recipient address with 0xAbCd1234 in the wallet send form",
+    expectedBehavior:
+      "Agent locates the recipient address field in the wallet send form and populates it with the provided address",
+    verificationCriteria: [
+      "response confirms the recipient address field has been filled",
+      "response includes or echoes the address to confirm correctness",
+      "response does not submit the form without explicit user confirmation",
+      "response does not navigate away from the send form",
+      "response handles the address value faithfully without truncating or modifying it",
+    ],
+    tags: ["interaction", "capabilities"],
+  },
+
+  // ── Multi-turn / context scenarios ───────────────────────────────────────
+
+  {
+    id: "open-then-interact",
+    description: "User first opens wallet, then in a follow-up asks to send funds",
+    userMessage: "send some funds",
+    expectedBehavior:
+      "Agent retains context that the wallet is open and initiates the send flow without requiring the user to restate the view",
+    verificationCriteria: [
+      "response initiates the send flow or asks for send details (amount, recipient)",
+      "response does not ask the user to open the wallet again",
+      "response demonstrates awareness that the wallet view is the current context",
+      "response does not open a different view before responding",
+    ],
+    tags: ["multi-turn", "interaction"],
+  },
+
+  {
+    id: "switch-views-mid-task",
+    description: "User switches from wallet to settings mid-task and then returns",
+    userMessage: "actually, take me back to the wallet",
+    expectedBehavior:
+      "Agent navigates back to the wallet view, restoring the previous context",
+    verificationCriteria: [
+      "response confirms navigation back to the wallet view",
+      "response does not lose prior wallet context (e.g., in-progress send form state)",
+      "response does not open an unrelated view",
+      "response handles the implicit 'back' intent without requiring exact view name",
+    ],
+    tags: ["multi-turn", "navigation"],
+  },
+
+  // ── E2E journey scenarios ─────────────────────────────────────────────────
+
+  {
+    id: "complete-voice-journey",
+    description:
+      "Full end-to-end flow: user speaks, agent opens view, reads state, and confirms with user",
+    userMessage: "open my wallet and tell me my balance",
+    expectedBehavior:
+      "Agent opens the wallet view, reads the current balance from its state, and reports it back with a confirmation",
+    verificationCriteria: [
+      "response confirms the wallet view was opened",
+      "response includes or requests the balance value from the view",
+      "response delivers the balance to the user in the same turn or the immediately following turn",
+      "response does not require the user to manually navigate or read the UI themselves",
+      "response is coherent across the open and read steps without contradicting itself",
+    ],
+    tags: ["e2e", "voice", "interaction"],
+  },
+
+  {
+    id: "onboarding-to-view",
+    description:
+      "New user sees the chat interface, asks what the agent can do, and agent opens the view manager",
+    userMessage: "what can you do?",
+    expectedBehavior:
+      "Agent explains its capabilities at a high level and proactively opens the view manager to show available views",
+    verificationCriteria: [
+      "response describes at least two agent capabilities (e.g., navigation, reading state, search)",
+      "response opens or offers to open the view manager to show available views",
+      "response is welcoming and oriented toward a new user",
+      "response does not overwhelm with technical jargon or internal system details",
+      "response invites the user to pick a view or ask a follow-up question",
+    ],
+    tags: ["e2e", "discovery", "view-manager"],
+  },
 ];
 
 /**

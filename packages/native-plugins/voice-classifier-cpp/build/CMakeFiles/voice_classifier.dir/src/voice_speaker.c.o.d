@@ -20,6 +20,7 @@ CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o: \
  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
  /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_loader.h \
+ /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_tensors.h \
  /usr/include/errno.h /usr/include/x86_64-linux-gnu/bits/errno.h \
  /usr/include/linux/errno.h /usr/include/x86_64-linux-gnu/asm/errno.h \
  /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \

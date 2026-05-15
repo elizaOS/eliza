@@ -69,9 +69,60 @@ def _hf_download(filename: str) -> Path:
     return Path(local)
 
 
+def _resolve_voice_classifier_library() -> Path | None:
+    """Find libvoice_classifier.{so,dylib,dll} either via env override
+    or under the repo-local CMake build dir. Returns None if missing."""
+    explicit = os.environ.get("VOICE_CLASSIFIER_LIB")
+    if explicit:
+        p = Path(explicit)
+        return p if p.exists() else None
+    # Walk up from this file to find the eliza repo root.
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        candidate = (
+            parent
+            / "packages"
+            / "native-plugins"
+            / "voice-classifier-cpp"
+            / "build"
+        )
+        if candidate.is_dir():
+            for name in ("libvoice_classifier.so", "libvoice_classifier.dylib", "voice_classifier.dll"):
+                p = candidate / name
+                if p.exists():
+                    return p
+            break
+    return None
+
+
+def _resolve_diarizer_gguf() -> Path | None:
+    """Look up the diarizer GGUF in $VOICE_DIARIZER_GGUF or the repo-local
+    models/ tree. Returns None if missing."""
+    explicit = os.environ.get("VOICE_DIARIZER_GGUF")
+    if explicit:
+        p = Path(explicit)
+        return p if p.exists() else None
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        candidate = parent / "models" / "voice" / "diarizer" / "pyannote-segmentation-3.0.gguf"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 @dataclass
 class PyannoteDiarizer:
-    """Pyannote-segmentation-3.0 ONNX wrapper.
+    """Pyannote-segmentation-3.0 wrapper.
+
+    Backends:
+      - ``backend="ggml"`` (default): bun:ffi-equivalent path — loads the
+        pure-C `libvoice_classifier` (K3) and the matching GGUF at
+        `models/voice/diarizer/pyannote-segmentation-3.0.gguf`. Numerical
+        parity vs ONNX is 100 % per-frame on the W3-6 fixtures.
+      - ``backend="onnx"``: legacy onnxruntime path against the same
+        pyannote-segmentation-3.0 ONNX file on HF. Retained for parity
+        verification during the J1/K3 transition; will be removed once
+        the ggml path passes all CI gates on every platform.
 
     `segment(pcm)` returns `[(start_sample, end_sample, speaker_idx), ...]`,
     where `speaker_idx` is the column of the activity head that fired (one
@@ -79,21 +130,108 @@ class PyannoteDiarizer:
     identity that the downstream clustering step refines.
     """
 
-    onnx_path: Path
+    onnx_path: Path | None = None
+    gguf_path: Path | None = None
+    library_path: Path | None = None
+    backend: str = "ggml"
     _session: Any = field(default=None, init=False, repr=False)
+    _ggml: Any = field(default=None, init=False, repr=False)
 
     @classmethod
-    def load(cls) -> "PyannoteDiarizer":
-        return cls(onnx_path=_hf_download(
-            "voice/diarizer/pyannote-segmentation-3.0-int8.onnx",
-        ))
+    def load(cls, backend: str | None = None) -> "PyannoteDiarizer":
+        """Load the diarizer. `backend` defaults to the K3 ggml path; set
+        to "onnx" to use the legacy onnxruntime backend for parity tests."""
+        if backend is None:
+            backend = os.environ.get("PYANNOTE_BACKEND", "ggml")
+        if backend == "ggml":
+            gguf_path = _resolve_diarizer_gguf()
+            library_path = _resolve_voice_classifier_library()
+            if gguf_path is None or library_path is None:
+                # Fall back to ONNX if the K3 artefacts aren't staged so
+                # the test suite stays runnable on machines without the
+                # repo-local build.
+                return cls(
+                    onnx_path=_hf_download("voice/diarizer/pyannote-segmentation-3.0-int8.onnx"),
+                    backend="onnx",
+                )
+            return cls(gguf_path=gguf_path, library_path=library_path, backend="ggml")
+        return cls(
+            onnx_path=_hf_download("voice/diarizer/pyannote-segmentation-3.0-int8.onnx"),
+            backend="onnx",
+        )
 
     def __post_init__(self) -> None:
-        import onnxruntime as ort  # type: ignore[import-untyped]
+        if self.backend == "onnx":
+            import onnxruntime as ort  # type: ignore[import-untyped]
 
-        so = ort.SessionOptions()
-        so.intra_op_num_threads = 2
-        self._session = ort.InferenceSession(str(self.onnx_path), sess_options=so)
+            assert self.onnx_path is not None
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = 2
+            self._session = ort.InferenceSession(str(self.onnx_path), sess_options=so)
+        elif self.backend == "ggml":
+            assert self.library_path is not None and self.gguf_path is not None
+            import ctypes
+            lib = ctypes.CDLL(str(self.library_path))
+            # int voice_diarizer_open(const char *gguf, void **out);
+            lib.voice_diarizer_open.argtypes = [ctypes.c_char_p, ctypes.POINTER(ctypes.c_void_p)]
+            lib.voice_diarizer_open.restype = ctypes.c_int
+            # int voice_diarizer_segment(void *h, const float *pcm, size_t n,
+            #                            int8_t *labels_out, size_t *frames_cap);
+            lib.voice_diarizer_segment.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.c_size_t,
+                ctypes.POINTER(ctypes.c_int8),
+                ctypes.POINTER(ctypes.c_size_t),
+            ]
+            lib.voice_diarizer_segment.restype = ctypes.c_int
+            lib.voice_diarizer_close.argtypes = [ctypes.c_void_p]
+            lib.voice_diarizer_close.restype = ctypes.c_int
+            handle = ctypes.c_void_p()
+            rc = lib.voice_diarizer_open(str(self.gguf_path).encode("utf-8"), ctypes.byref(handle))
+            if rc != 0 or not handle.value:
+                raise RuntimeError(
+                    f"voice_diarizer_open({self.gguf_path}) failed with rc={rc}"
+                )
+            self._ggml = (lib, handle)
+        else:
+            raise ValueError(f"unknown backend: {self.backend!r}")
+
+    def __del__(self) -> None:
+        if self._ggml is not None:
+            lib, handle = self._ggml
+            try:
+                lib.voice_diarizer_close(handle)
+            except Exception:  # noqa: BLE001
+                pass
+            self._ggml = None
+
+    def _run_window(self, chunk: np.ndarray) -> np.ndarray:
+        """Run one 5-s window through the active backend; return the
+        per-frame argmax over the 7 powerset classes ([293] int)."""
+        if self.backend == "onnx":
+            inp = chunk.reshape(1, 1, -1).astype(np.float32)
+            logits = self._session.run(None, {"input_values": inp})[0][0]
+            shifted = logits - logits.max(axis=-1, keepdims=True)
+            exps = np.exp(shifted)
+            probs = exps / exps.sum(axis=-1, keepdims=True)
+            return probs.argmax(axis=-1).astype(np.int32)
+        # ggml path
+        import ctypes
+        lib, handle = self._ggml
+        pcm = np.ascontiguousarray(chunk, dtype=np.float32)
+        labels = np.zeros(293, dtype=np.int8)
+        cap = ctypes.c_size_t(293)
+        rc = lib.voice_diarizer_segment(
+            handle,
+            pcm.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            ctypes.c_size_t(pcm.size),
+            labels.ctypes.data_as(ctypes.POINTER(ctypes.c_int8)),
+            ctypes.byref(cap),
+        )
+        if rc != 0:
+            raise RuntimeError(f"voice_diarizer_segment returned {rc}")
+        return labels.astype(np.int32)[: cap.value]
 
     def segment(self, pcm: np.ndarray) -> list[tuple[int, int, int]]:
         """Run the segmentation model with 5-second sliding windows.
@@ -144,13 +282,7 @@ class PyannoteDiarizer:
             range(0, pcm.size - window + 1, step),
         ):
             chunk = pcm[start : start + window]
-            inp = chunk.reshape(1, 1, -1).astype(np.float32)
-            logits = self._session.run(None, {"input_values": inp})[0][0]
-            # Softmax across the 7 powerset classes.
-            shifted = logits - logits.max(axis=-1, keepdims=True)
-            exps = np.exp(shifted)
-            probs = exps / exps.sum(axis=-1, keepdims=True)
-            argmax_per_frame = probs.argmax(axis=-1)
+            argmax_per_frame = self._run_window(chunk)
             num_frames = argmax_per_frame.shape[0]
             samples_per_frame = window // num_frames
 

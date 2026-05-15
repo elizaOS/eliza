@@ -50,11 +50,11 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...getUiSourceAliases(uiSourceRoot),
   ...getWorkspaceAppAliases(repoRoot, [
     "app-companion",
-    "app-lifeops",
+    "plugin-lifeops",
     "app-task-coordinator",
     "app-vincent",
-    "app-shopify",
-    "app-steward",
+    "plugin-shopify",
+    "plugin-steward-app",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot),
   ...getOptionalInstalledPackageAliases(repoRoot, [

@@ -19,8 +19,8 @@
  * Re-runs are idempotent: upload overwrites files with the same path.
  *
  * Coordination:
- *   - Split repos (`elizaos/eliza-1-voice-*`) are legacy mirrors only.
- *     Do not delete them until the unified repo has been verified.
+ *   - The split `elizaos/eliza-1-voice-*` repos have been deleted as of
+ *     2026-05-15; the unified `elizaos/eliza-1` repo is the only target.
  */
 
 import { execSync, spawnSync } from "node:child_process";

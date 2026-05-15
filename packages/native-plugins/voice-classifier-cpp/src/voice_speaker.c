@@ -25,13 +25,12 @@
  *
  *   4. Linear head (Gemm 5120→256) → subtract mean_vec → L2-normalize.
  *
- * Numerical parity vs ONNX target: cosine ≥ 0.99 on real speech windows
- * (the dominant residual comes from the fbank float-vs-double error
- * floor; the conv + Gemm layers are bit-identical given fp32 weights).
+ * Numerical parity vs ONNX: cosine ≥ 0.99 on real speech windows.
  */
 
 #include "voice_classifier/voice_classifier.h"
 #include "voice_gguf_loader.h"
+#include "voice_gguf_tensors.h"
 
 #include <errno.h>
 #include <math.h>
@@ -57,107 +56,82 @@
 #define SPK_PREEMPH         0.97f
 #define SPK_LOG_EPS         1.1920928955078125e-7f /* matches kaldi default */
 
-/* ---------- ResNet34 plan (channels + spatial dims at each stage) ----------
- *
- * Input mel: [80, T]. Spatial dimensions through the network:
- *   stem  : 80 x T          (32 channels)
- *   L1    : 80 x T          (32 channels) — no downsample
- *   L2.B0 : 40 x T/2        (64 channels, stride 2)
- *   L3.B0 : 20 x T/4        (128 channels, stride 2)
- *   L4.B0 : 10 x T/8        (256 channels, stride 2)
- *   pool  : reduce over time → 256 * 10 mean + 256 * 10 std
- *   gemm  : (5120 → 256)
- */
+/* ---------- ResNet34 plan ---------- */
 
-/* Per-block layout, used to drive the topological forward pass. Each
- * BasicBlock has 2 convs (a, b); downsample blocks add a 1x1 shortcut
- * (ds). */
 typedef struct {
-    int blocks;          /* number of BasicBlocks at this stage */
-    int in_channels;     /* channels coming in (output of prev stage) */
-    int out_channels;    /* channels emitted */
-    int stride;          /* stride applied at the first block */
+    int blocks;
+    int in_channels;
+    int out_channels;
+    int stride;
 } spk_stage_plan_t;
 
 static const spk_stage_plan_t SPK_PLAN[4] = {
-    { 3,  32,  32, 1 }, /* L1: no spatial downsample */
-    { 4,  32,  64, 2 }, /* L2: downsample */
-    { 6,  64, 128, 2 }, /* L3: downsample */
-    { 3, 128, 256, 2 }, /* L4: downsample */
+    { 3,  32,  32, 1 },
+    { 4,  32,  64, 2 },
+    { 6,  64, 128, 2 },
+    { 3, 128, 256, 2 },
 };
 
 /* ---------- weight container ---------- */
 
 struct voice_speaker_session {
     voice_gguf_metadata_t meta;
+    voice_gguf_tensors_t weights; /* mmapped fp32 weights */
     char gguf_path[1024];
 
-    /* Stem. */
-    float *stem_w; /* [32, 1, 3, 3] flat */
-    float *stem_b; /* [32] */
+    /* Pointers into the mmapped weights region. */
+    const float *stem_w; /* [32, 1, 3, 3] */
+    const float *stem_b; /* [32] */
 
-    /* ResNet34 stages. For each block: a_w, a_b, b_w, b_b, optional ds_w, ds_b. */
     struct {
-        float *a_w; float *a_b;
-        float *b_w; float *b_b;
-        float *ds_w; float *ds_b; /* NULL when not a downsample block */
+        const float *a_w; const float *a_b;
+        const float *b_w; const float *b_b;
+        const float *ds_w; const float *ds_b; /* NULL when not a ds block */
         int in_ch; int out_ch; int stride;
     } stages[4][6];
 
-    /* Linear head. */
-    float *seg_w; /* [256, 5120] flat row-major */
-    float *seg_b; /* [256] */
-    float *mean_vec; /* [256] */
+    const float *seg_w; /* [256, 5120] */
+    const float *seg_b; /* [256] */
+    const float *mean_vec; /* [256] */
 
     /* Precomputed front-end tables. */
     float hamming[SPK_WINDOW_LEN];
-    float mel_filters[SPK_N_MELS * SPK_FFT_BINS]; /* row-major */
+    float mel_filters[SPK_N_MELS * SPK_FFT_BINS];
     int tables_ready;
 };
 
 /* ---------- weight load ---------- */
 
-static int spk_load_tensor(voice_gguf_bundle_t *b,
+static int spk_bind_tensor(const voice_gguf_tensors_t *w,
                            const char *name,
-                           int64_t expected_n,
-                           float **dst) {
-    const voice_gguf_tensor_desc_t *t = voice_gguf_tensor_find(b, name);
+                           uint64_t expected_n,
+                           const float **dst) {
+    const voice_gguf_tensor_t *t = voice_gguf_tensors_find(w, name);
     if (!t) {
         fprintf(stderr, "[voice_speaker] missing tensor: %s\n", name);
         return -EINVAL;
     }
     if (t->n_elements != expected_n) {
         fprintf(stderr,
-                "[voice_speaker] tensor %s: expected %lld elements, got %lld\n",
-                name, (long long)expected_n, (long long)t->n_elements);
+                "[voice_speaker] tensor %s: expected %llu elements, got %llu\n",
+                name, (unsigned long long)expected_n,
+                (unsigned long long)t->n_elements);
         return -EINVAL;
     }
-    float *buf = (float *)malloc(sizeof(float) * (size_t)t->n_elements);
-    if (!buf) return -ENOMEM;
-    const int rc = voice_gguf_read_tensor_f32(b, name, buf,
-                                              (size_t)t->n_elements);
-    if (rc != 0) {
-        free(buf);
-        return rc;
-    }
-    *dst = buf;
+    *dst = t->data;
     return 0;
 }
 
-/* Convenience macro to load tensors into a session's stage block. */
-#define SPK_LOAD(name, n, dst) \
+#define SPK_BIND(name, n, dst) \
     do { \
-        const int rc = spk_load_tensor(bundle, (name), (int64_t)(n), (dst)); \
-        if (rc != 0) goto fail; \
+        const int rc = spk_bind_tensor(&s->weights, (name), (uint64_t)(n), (dst)); \
+        if (rc != 0) return rc; \
     } while (0)
 
-static int spk_load_weights(struct voice_speaker_session *s,
-                            voice_gguf_bundle_t *bundle) {
-    /* Stem. */
-    SPK_LOAD("stem.weight", 32 * 1 * 3 * 3, &s->stem_w);
-    SPK_LOAD("stem.bias",   32,             &s->stem_b);
+static int spk_bind_weights(struct voice_speaker_session *s) {
+    SPK_BIND("stem.weight", 32 * 1 * 3 * 3, &s->stem_w);
+    SPK_BIND("stem.bias",   32,             &s->stem_b);
 
-    /* Stages. */
     for (int li = 0; li < 4; ++li) {
         const spk_stage_plan_t *plan = &SPK_PLAN[li];
         for (int bi = 0; bi < plan->blocks; ++bi) {
@@ -166,25 +140,21 @@ static int spk_load_weights(struct voice_speaker_session *s,
             const int stride = (bi == 0) ? plan->stride : 1;
             char name[64];
 
-            /* a: in_ch -> out_ch, kernel 3x3, stride=block-stride */
             snprintf(name, sizeof name, "L%d.B%d.a.weight", li+1, bi);
-            SPK_LOAD(name, out_ch * in_ch * 3 * 3, &s->stages[li][bi].a_w);
+            SPK_BIND(name, out_ch * in_ch * 3 * 3, &s->stages[li][bi].a_w);
             snprintf(name, sizeof name, "L%d.B%d.a.bias", li+1, bi);
-            SPK_LOAD(name, out_ch, &s->stages[li][bi].a_b);
+            SPK_BIND(name, out_ch, &s->stages[li][bi].a_b);
 
-            /* b: out_ch -> out_ch, kernel 3x3, stride=1 */
             snprintf(name, sizeof name, "L%d.B%d.b.weight", li+1, bi);
-            SPK_LOAD(name, out_ch * out_ch * 3 * 3, &s->stages[li][bi].b_w);
+            SPK_BIND(name, out_ch * out_ch * 3 * 3, &s->stages[li][bi].b_w);
             snprintf(name, sizeof name, "L%d.B%d.b.bias", li+1, bi);
-            SPK_LOAD(name, out_ch, &s->stages[li][bi].b_b);
+            SPK_BIND(name, out_ch, &s->stages[li][bi].b_b);
 
-            /* ds: only when block has stride!=1 OR in_ch!=out_ch (i.e.
-             * the first block of stage 2, 3, 4). */
             if (bi == 0 && (stride != 1 || in_ch != out_ch)) {
                 snprintf(name, sizeof name, "L%d.B%d.ds.weight", li+1, bi);
-                SPK_LOAD(name, out_ch * in_ch * 1 * 1, &s->stages[li][bi].ds_w);
+                SPK_BIND(name, out_ch * in_ch * 1 * 1, &s->stages[li][bi].ds_w);
                 snprintf(name, sizeof name, "L%d.B%d.ds.bias", li+1, bi);
-                SPK_LOAD(name, out_ch, &s->stages[li][bi].ds_b);
+                SPK_BIND(name, out_ch, &s->stages[li][bi].ds_b);
             }
             s->stages[li][bi].in_ch = in_ch;
             s->stages[li][bi].out_ch = out_ch;
@@ -192,22 +162,17 @@ static int spk_load_weights(struct voice_speaker_session *s,
         }
     }
 
-    /* Linear head + mean vector. */
-    SPK_LOAD("seg_1.weight", 256 * 5120, &s->seg_w);
-    SPK_LOAD("seg_1.bias",   256,        &s->seg_b);
-    SPK_LOAD("mean_vec",     256,        &s->mean_vec);
+    SPK_BIND("seg_1.weight", 256 * 5120, &s->seg_w);
+    SPK_BIND("seg_1.bias",   256,        &s->seg_b);
+    SPK_BIND("mean_vec",     256,        &s->mean_vec);
 
     return 0;
-
-fail:
-    return -EINVAL;
 }
-#undef SPK_LOAD
+#undef SPK_BIND
 
 /* ---------- precomputed front-end tables ---------- */
 
 static double spk_mel_hz(double f) {
-    /* HTK mel scale (kaldi default for `compute-fbank-feats`). */
     return 1127.0 * log(1.0 + f / 700.0);
 }
 
@@ -219,14 +184,15 @@ static void spk_build_tables(struct voice_speaker_session *s) {
     if (s->tables_ready) return;
 
     /* Hamming window for the 25-ms frame. The 400-sample window is
-     * zero-padded into a 512-bin FFT (see SPK_FFT). */
+     * zero-padded into a 512-bin FFT. Kaldi uses (1-cos)/2 endpoints
+     * indexed by (N-1), matching the "symmetric" Hamming window. */
     for (int i = 0; i < SPK_WINDOW_LEN; ++i) {
         s->hamming[i] = (float)(
             0.54 - 0.46 * cos(2.0 * M_PI * (double)i / (double)(SPK_WINDOW_LEN - 1))
         );
     }
 
-    /* Triangular HTK mel filterbank. Kaldi default: low_freq=20, high_freq=sample_rate/2. */
+    /* Triangular HTK mel filterbank. Kaldi default: low=20 Hz, high=sr/2. */
     const double f_low_hz  = 20.0;
     const double f_high_hz = (double)SPK_SR / 2.0;
     const double mel_low  = spk_mel_hz(f_low_hz);
@@ -242,7 +208,6 @@ static void spk_build_tables(struct voice_speaker_session *s) {
         hz_centers[i] = spk_inv_mel(mel_centers[i]);
     }
 
-    /* fft bin frequencies (in Hz). */
     double bin_hz[SPK_FFT_BINS];
     for (int k = 0; k < SPK_FFT_BINS; ++k) {
         bin_hz[k] = (double)k * (double)SPK_SR / (double)SPK_FFT;
@@ -261,8 +226,8 @@ static void spk_build_tables(struct voice_speaker_session *s) {
             } else if (f >= centre && f <= right) {
                 w = (right - f) / (right - centre);
             }
-            /* Kaldi does NOT use area-normalization on the filterbank
-             * (unlike librosa Slaney); triangular weights peak at 1.0. */
+            /* Kaldi does NOT area-normalize the filterbank; triangular
+             * weights peak at 1.0. */
             s->mel_filters[m * SPK_FFT_BINS + k] = (float)w;
         }
     }
@@ -277,48 +242,33 @@ int voice_speaker_open(const char *gguf, voice_speaker_handle *out) {
     if (!gguf || !out) return -EINVAL;
 
     voice_gguf_metadata_t meta;
-    voice_gguf_bundle_t *bundle = NULL;
-    int rc = voice_gguf_open_tensors(gguf, "voice_speaker", &meta, &bundle);
+    int rc = voice_gguf_load_metadata(gguf, "voice_speaker", &meta);
     if (rc != 0) return rc;
 
-    /* Validate the locked ABI contract. */
     if (meta.sample_rate != 0 &&
-        meta.sample_rate != VOICE_CLASSIFIER_SAMPLE_RATE_HZ) {
-        voice_gguf_close_tensors(bundle);
-        return -EINVAL;
-    }
-    if (meta.n_mels != 0 && meta.n_mels != VOICE_CLASSIFIER_N_MELS) {
-        voice_gguf_close_tensors(bundle);
-        return -EINVAL;
-    }
-    if (meta.n_fft != 0 && meta.n_fft != VOICE_CLASSIFIER_N_FFT) {
-        voice_gguf_close_tensors(bundle);
-        return -EINVAL;
-    }
-    if (meta.hop != 0 && meta.hop != VOICE_CLASSIFIER_HOP) {
-        voice_gguf_close_tensors(bundle);
-        return -EINVAL;
-    }
-    /* WeSpeaker is 256-dim; reject mismatched dims loudly. */
+        meta.sample_rate != VOICE_CLASSIFIER_SAMPLE_RATE_HZ) return -EINVAL;
+    if (meta.n_mels != 0 && meta.n_mels != VOICE_CLASSIFIER_N_MELS) return -EINVAL;
+    if (meta.n_fft != 0 && meta.n_fft != VOICE_CLASSIFIER_N_FFT) return -EINVAL;
+    if (meta.hop != 0 && meta.hop != VOICE_CLASSIFIER_HOP) return -EINVAL;
     if (meta.embedding_dim != 0 &&
-        meta.embedding_dim != VOICE_SPEAKER_EMBEDDING_DIM) {
-        voice_gguf_close_tensors(bundle);
-        return -EINVAL;
-    }
+        meta.embedding_dim != VOICE_SPEAKER_EMBEDDING_DIM) return -EINVAL;
 
     struct voice_speaker_session *s =
         (struct voice_speaker_session *)calloc(1, sizeof(*s));
-    if (!s) {
-        voice_gguf_close_tensors(bundle);
-        return -ENOMEM;
-    }
+    if (!s) return -ENOMEM;
     s->meta = meta;
     strncpy(s->gguf_path, gguf, sizeof(s->gguf_path) - 1);
 
-    rc = spk_load_weights(s, bundle);
-    voice_gguf_close_tensors(bundle);
+    rc = voice_gguf_tensors_open(gguf, &s->weights);
     if (rc != 0) {
-        voice_speaker_close((voice_speaker_handle)s);
+        free(s);
+        return rc;
+    }
+
+    rc = spk_bind_weights(s);
+    if (rc != 0) {
+        voice_gguf_tensors_close(&s->weights);
+        free(s);
         return rc;
     }
 
@@ -330,24 +280,13 @@ int voice_speaker_open(const char *gguf, voice_speaker_handle *out) {
 int voice_speaker_close(voice_speaker_handle h) {
     if (h == NULL) return 0;
     struct voice_speaker_session *s = (struct voice_speaker_session *)h;
-    free(s->stem_w); free(s->stem_b);
-    for (int li = 0; li < 4; ++li) {
-        for (int bi = 0; bi < SPK_PLAN[li].blocks; ++bi) {
-            free(s->stages[li][bi].a_w); free(s->stages[li][bi].a_b);
-            free(s->stages[li][bi].b_w); free(s->stages[li][bi].b_b);
-            free(s->stages[li][bi].ds_w); free(s->stages[li][bi].ds_b);
-        }
-    }
-    free(s->seg_w); free(s->seg_b); free(s->mean_vec);
+    voice_gguf_tensors_close(&s->weights);
     free(s);
     return 0;
 }
 
-/* ---------- forward pass ---------- */
+/* ---------- forward pass primitives ---------- */
 
-/* Naive O(N²) real DFT into power spectrum. Same approach as the
- * shared mel front-end; can swap in kissfft / pocketfft later without
- * changing the caller. */
 static void spk_dft_power(const float *frame, float *power_out) {
     for (int k = 0; k < SPK_FFT_BINS; ++k) {
         double re = 0.0, im = 0.0;
@@ -361,39 +300,34 @@ static void spk_dft_power(const float *frame, float *power_out) {
     }
 }
 
-/* Build mel features for the input window. Returns the number of frames
- * written to `feats_out` (row-major [frames, SPK_N_MELS]). CMN is
- * applied per-dim across the whole utterance. */
 static int spk_compute_fbank(const struct voice_speaker_session *s,
                              const float *pcm,
                              size_t n_samples,
                              float *feats_out,
                              int max_frames) {
     if (n_samples < (size_t)SPK_WINDOW_LEN) return -EINVAL;
-    /* Kaldi snip_edges=false: frame count is round(n_samples/hop). */
     const int frames = (int)((n_samples + SPK_HOP / 2) / SPK_HOP);
     if (frames > max_frames) return -ENOSPC;
 
     float frame[SPK_FFT];
     float power[SPK_FFT_BINS];
 
-    /* int16 scaling: WeSpeaker training uses raw 16-bit integer audio
-     * (scaled by 32768). The runtime supplies float PCM in [-1, 1];
-     * multiply once per frame to match. */
+    /* The runtime supplies float PCM in [-1, 1]; kaldi training assumed
+     * int16 (-32768..32767). Multiply once per frame to match. */
     const float pcm_scale = 32768.0f;
 
     for (int t = 0; t < frames; ++t) {
-        /* Frame start position. kaldi snip_edges=false uses
-         *   start = round(t * hop - (frame_length - hop) / 2)
-         * which centres the t-th frame. */
+        /* Kaldi snip_edges=false centres each frame. */
         const int win_offset = (SPK_WINDOW_LEN - SPK_HOP) / 2;
         const long start = (long)t * SPK_HOP - win_offset;
 
-        /* Copy + scale + reflect-pad to handle edge frames. */
+        /* Copy + scale + reflect-pad. */
         for (int i = 0; i < SPK_WINDOW_LEN; ++i) {
             long idx = start + i;
-            if (idx < 0) idx = -idx; /* reflect at 0 */
-            if ((size_t)idx >= n_samples) idx = (long)(2 * n_samples - 2 - (size_t)idx);
+            if (idx < 0) idx = -idx;
+            if ((size_t)idx >= n_samples) {
+                idx = (long)(2 * (long)n_samples - 2 - idx);
+            }
             if (idx < 0) idx = 0;
             if ((size_t)idx >= n_samples) idx = (long)(n_samples - 1);
             frame[i] = pcm[idx] * pcm_scale;
@@ -405,25 +339,21 @@ static int spk_compute_fbank(const struct voice_speaker_session *s,
         dc /= (double)SPK_WINDOW_LEN;
         for (int i = 0; i < SPK_WINDOW_LEN; ++i) frame[i] -= (float)dc;
 
-        /* Preemphasis: x[i] = x[i] - 0.97 * x[i-1], applied in reverse
-         * to use the previous (un-preemphasized) value at i=0 = frame[0]. */
+        /* Preemphasis (kaldi: x[i] -= preemph * x[i-1], with x[0]
+         * special-cased to x[0] -= preemph * x[0]). Apply in reverse. */
         for (int i = SPK_WINDOW_LEN - 1; i > 0; --i) {
             frame[i] = frame[i] - SPK_PREEMPH * frame[i - 1];
         }
-        frame[0] = frame[0] - SPK_PREEMPH * frame[0]; /* kaldi: x[0] *= (1 - preemph) */
+        frame[0] = frame[0] - SPK_PREEMPH * frame[0];
 
-        /* Hamming window + zero-pad to SPK_FFT. */
+        /* Hamming window + zero-pad to FFT length. */
         for (int i = 0; i < SPK_WINDOW_LEN; ++i) {
             frame[i] *= s->hamming[i];
         }
-        for (int i = SPK_WINDOW_LEN; i < SPK_FFT; ++i) {
-            frame[i] = 0.0f;
-        }
+        for (int i = SPK_WINDOW_LEN; i < SPK_FFT; ++i) frame[i] = 0.0f;
 
-        /* DFT → power spectrum. */
         spk_dft_power(frame, power);
 
-        /* Mel projection + log. */
         float *row = feats_out + (size_t)t * SPK_N_MELS;
         for (int m = 0; m < SPK_N_MELS; ++m) {
             double e = 0.0;
@@ -437,7 +367,7 @@ static int spk_compute_fbank(const struct voice_speaker_session *s,
         }
     }
 
-    /* Per-utterance CMN (cepstral mean normalization). */
+    /* Per-utterance CMN. */
     for (int m = 0; m < SPK_N_MELS; ++m) {
         double mean = 0.0;
         for (int t = 0; t < frames; ++t) mean += feats_out[t * SPK_N_MELS + m];
@@ -448,21 +378,15 @@ static int spk_compute_fbank(const struct voice_speaker_session *s,
     return frames;
 }
 
-/* Conv2D forward pass:
- *   input  layout: [C_in, H_in, W_in]  (row-major)
- *   output layout: [C_out, H_out, W_out]
- *   weight layout: [C_out, C_in, 3, 3] (from ONNX/GGUF, stored as
- *                  [3, 3, C_in, C_out] in GGUF — see remap below)
+/* Conv2D forward pass.
  *
- * Padding is `same` for 3x3 (pad=1) and `valid` for 1x1.
+ * Tensor layouts in GGUF (numpy row-major; data bytes are in pytorch
+ * order, dims un-reversed by voice_gguf_tensors_open):
+ *   3x3 weight: [Cout, Cin, 3, 3]  → stride (Cin*9, 9, 3, 1)
+ *   1x1 weight: [Cout, Cin, 1, 1]  → stride (Cin, 1, 1, 1)
  *
- * NOTE: GGUF stores tensor dims fastest-first. When we exported
- *       [256, 128, 3, 3] in numpy/PyTorch order, GGUF wrote dims
- *       [3, 3, 128, 256], but the raw bytes are in numpy row-major
- *       order, which means in memory the fastest-varying axis is the
- *       LAST one (3 → 3 → C_in → C_out). So the in-memory layout is
- *       w[c_out, c_in, kh, kw] with stride (C_in*9, 9, 3, 1). That is
- *       the convention we use below.
+ * Tensor layouts in memory (intermediate activations):
+ *   [C, H, W] row-major.
  */
 static void spk_conv2d_3x3(const float *in,    int Cin, int Hin, int Win,
                            const float *w,
@@ -530,8 +454,6 @@ static void spk_add_inplace(float *dst, const float *src, size_t n) {
     for (size_t i = 0; i < n; ++i) dst[i] += src[i];
 }
 
-/* Forward through one ResNet34 BasicBlock. `tmp_a/tmp_b/tmp_ds` are
- * scratch buffers sized for the largest block at this stage. */
 static int spk_basic_block(const struct voice_speaker_session *s,
                            int li, int bi,
                            const float *in, int Cin, int Hin, int Win,
@@ -541,26 +463,22 @@ static int spk_basic_block(const struct voice_speaker_session *s,
     const int Hmid = (Hin + 2 - 3) / stride + 1;
     const int Wmid = (Win + 2 - 3) / stride + 1;
 
-    /* Allocate scratch. */
     float *a_out = (float *)malloc((size_t)Cout * Hmid * Wmid * sizeof(float));
     float *b_out = (float *)malloc((size_t)Cout * Hmid * Wmid * sizeof(float));
     if (!a_out || !b_out) { free(a_out); free(b_out); return -ENOMEM; }
 
-    /* a: 3x3 conv, stride */
     spk_conv2d_3x3(in, Cin, Hin, Win,
                    s->stages[li][bi].a_w,
                    s->stages[li][bi].a_b,
                    Cout, stride, a_out);
     spk_relu_inplace(a_out, (size_t)Cout * Hmid * Wmid);
 
-    /* b: 3x3 conv, stride 1 */
     spk_conv2d_3x3(a_out, Cout, Hmid, Wmid,
                    s->stages[li][bi].b_w,
                    s->stages[li][bi].b_b,
                    Cout, 1, b_out);
     free(a_out);
 
-    /* shortcut: if downsample, 1x1 conv with same stride; else identity */
     if (s->stages[li][bi].ds_w) {
         float *ds_out = (float *)malloc((size_t)Cout * Hmid * Wmid * sizeof(float));
         if (!ds_out) { free(b_out); return -ENOMEM; }
@@ -571,7 +489,6 @@ static int spk_basic_block(const struct voice_speaker_session *s,
         spk_add_inplace(b_out, ds_out, (size_t)Cout * Hmid * Wmid);
         free(ds_out);
     } else {
-        /* identity shortcut; channels and spatial must match */
         spk_add_inplace(b_out, in, (size_t)Cout * Hmid * Wmid);
     }
 
@@ -595,7 +512,6 @@ int voice_speaker_embed(voice_speaker_handle h,
     struct voice_speaker_session *s = (struct voice_speaker_session *)h;
     if (n < (size_t)SPK_WINDOW_LEN) return -EINVAL;
 
-    /* Frame count estimate. We size a generous mel buffer. */
     const int max_frames = (int)(n / SPK_HOP + 4);
     float *feats = (float *)calloc((size_t)max_frames * SPK_N_MELS,
                                     sizeof(float));
@@ -607,8 +523,7 @@ int voice_speaker_embed(voice_speaker_handle h,
         return n_frames < 0 ? n_frames : -EINVAL;
     }
 
-    /* Layout swap: feats is [T, 80] (time-major); ResNet wants
-     * [Cin=1, H=80, W=T] (channels-major, H=mels, W=time). */
+    /* Transpose feats [T, 80] → x [1, 80, T] (channels-major). */
     const int T = n_frames;
     const int H = SPK_N_MELS;
     float *x = (float *)malloc((size_t)1 * H * T * sizeof(float));
@@ -620,7 +535,7 @@ int voice_speaker_embed(voice_speaker_handle h,
     }
     free(feats);
 
-    /* Stem: Conv 1→32 (3x3, stride 1, pad 1) + ReLU. */
+    /* Stem. */
     float *stem_out = (float *)malloc((size_t)32 * H * T * sizeof(float));
     if (!stem_out) { free(x); return -ENOMEM; }
     spk_conv2d_3x3(x, 1, H, T, s->stem_w, s->stem_b, 32, 1, stem_out);
@@ -650,27 +565,29 @@ int voice_speaker_embed(voice_speaker_handle h,
     }
     const int T_pool = Win;
 
-    /* Statistics pooling over time axis. Layout: cur[oc, oh, ow] →
-     * mean[oc, oh] and std[oc, oh] reduced over ow. */
+    /* Statistics pooling over time axis. */
     float pool_mean[256 * 10];
     float pool_std[256 * 10];
     for (int oc = 0; oc < 256; ++oc) {
         for (int oh = 0; oh < 10; ++oh) {
             const float *slot = cur + ((size_t)oc * 10 + oh) * T_pool;
-            double mean = 0.0, var = 0.0;
+            double mean = 0.0;
             for (int t = 0; t < T_pool; ++t) mean += slot[t];
             mean /= (double)T_pool;
+            double var = 0.0;
             for (int t = 0; t < T_pool; ++t) {
                 const double d = (double)slot[t] - mean;
                 var += d * d;
             }
-            /* ONNX uses (ReduceMean(x^2) * N) / (N - 1) → sample-variance
-             * Bessel-corrected, then sqrt. Matches the ReduceProd / Sub /
-             * Div pattern in the ONNX graph (see voice_speaker.c notes).
+            /* ONNX pattern: ReduceMean(x²) — N/N — (ReduceProd(shape[-1]) - 1)
+             * Equivalent to sample variance with Bessel correction:
+             *   var_sample = var_total * N / (N - 1)
+             * The ONNX graph: var_pop * N / (N - 1) then sqrt.
              */
-            const double n_pool = (double)T_pool;
-            const double sample_var = var / (n_pool - 1.0);
-            const double std_dev = sqrt(sample_var + 1e-10);
+            const double N = (double)T_pool;
+            const double var_pop = var / N;
+            const double var_sample = var_pop * N / (N - 1.0);
+            const double std_dev = sqrt(var_sample + 1e-10);
             pool_mean[oc * 10 + oh] = (float)mean;
             pool_std[oc * 10 + oh]  = (float)std_dev;
         }
@@ -684,10 +601,7 @@ int voice_speaker_embed(voice_speaker_handle h,
         stats[2560 + i] = pool_std[i];
     }
 
-    /* Linear head: emb = seg_w @ stats + seg_b - mean_vec.
-     * seg_w layout (GGUF): [5120, 256] in memory (last dim fastest), but
-     * the numpy export is [256, 5120] row-major, so in memory the stride
-     * is (5120, 1) — i.e. seg_w[oc * 5120 + ic]. */
+    /* Linear head: emb = seg_w @ stats + seg_b - mean_vec. */
     for (int oc = 0; oc < 256; ++oc) {
         double acc = (double)s->seg_b[oc] - (double)s->mean_vec[oc];
         const float *row = s->seg_w + (size_t)oc * 5120;

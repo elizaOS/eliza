@@ -96,6 +96,7 @@ export const __resetCloudBaseUrlCache = noop;
 export const resolveAdvancedCapabilitiesEnabled = noop;
 export const resolveAppHeroImage = noop;
 export const resolveChannel = noop;
+export const resolveCloudApiBaseUrl = noop;
 export const resolveCloudTtsBaseUrl = noop;
 export const resolveConfigPath = noop;
 export const resolveCorsOrigin = noop;

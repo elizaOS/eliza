@@ -559,7 +559,7 @@ export function analyzePluginStateDrift(
   allowList: Set<string> | null,
 ): PluginDriftDiagnosticsReport {
   const diagnostics = pluginList.map((plugin): PluginDriftDiagnostic => {
-    const pluginId = String(plugin.id ?? "");
+    const pluginId = String(plugin.id);
     const category = normalizePluginCategory(plugin.category);
     const npmName =
       typeof plugin.npmName === "string" && plugin.npmName.length > 0
@@ -1090,7 +1090,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const installEntries = config.plugins?.installs ?? {};
   const plugins = new Map<string, CompatPluginRecord>();
 
-  for (const entry of manifest?.plugins ?? []) {
+  for (const entry of manifest.plugins ?? []) {
     const pluginId = normalizePluginId(entry.id);
     const category = normalizePluginCategory(entry.category);
     const bundledMeta =
@@ -1190,7 +1190,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       id: pluginId,
       name: entry.name,
       description: entry.description,
-      tags: entry.tags ?? [],
+      tags: entry.tags,
       enabled: resolveCompatPluginEnabledForList(active, persistedEnabled),
       configured: entry.configured,
       envKey: entry.envKey,
@@ -1291,7 +1291,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       validationWarnings: [],
       npmName: pluginName,
       version:
-        typeof installRecord?.version === "string"
+        typeof installRecord.version === "string"
           ? installRecord.version
           : (resolveInstalledPackageVersion(pluginName) ?? undefined),
       isActive: isPluginLoaded(pluginId, pluginName, loadedNames),

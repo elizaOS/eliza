@@ -9,14 +9,14 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_CLOUD_PROVISIONED",
-	"ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-	"ELIZA_BUILD_VARIANT",
-	"ELIZA_AGENT_ORCHESTRATOR",
-	"ELIZA_DEFAULT_AGENT_TYPE",
-	"ELIZA_ACP_DEFAULT_AGENT",
-	"ELIZA_AGENT_SELECTION_STRATEGY",
-	"OPENAI_API_KEY",
-	"OLLAMA_BASE_URL",
+  "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
+  "ELIZA_BUILD_VARIANT",
+  "ELIZA_AGENT_ORCHESTRATOR",
+  "ELIZA_DEFAULT_AGENT_TYPE",
+  "ELIZA_ACP_DEFAULT_AGENT",
+  "ELIZA_AGENT_SELECTION_STRATEGY",
+  "OPENAI_API_KEY",
+  "OLLAMA_BASE_URL",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -105,9 +105,9 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
-	it("local-only mode keeps local providers and hides cloud providers", () => {
-		process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
-		process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+  it("local-only mode keeps local providers and hides cloud providers", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 
     const config: ElizaConfig = {
       deploymentTarget: { runtime: "local" },
@@ -117,24 +117,24 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
-		expect(names.has("@elizaos/plugin-ollama")).toBe(true);
-		expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
-	});
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+  });
 
-	it("loads the agent orchestrator when a coding-agent default is configured", () => {
-		process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+  it("loads the agent orchestrator when a coding-agent default is configured", () => {
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
 
-		const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({} as ElizaConfig);
 
-		expect(names.has("agent-orchestrator")).toBe(true);
-	});
+    expect(names.has("agent-orchestrator")).toBe(true);
+  });
 
-	it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
-		process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
-		process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+  it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
+    process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
 
-		const names = collectPluginNames({} as ElizaConfig);
+    const names = collectPluginNames({} as ElizaConfig);
 
-		expect(names.has("agent-orchestrator")).toBe(false);
-	});
+    expect(names.has("agent-orchestrator")).toBe(false);
+  });
 });
