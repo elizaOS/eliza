@@ -209,7 +209,7 @@ import {
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 import { seedBundledDocuments } from "./default-documents.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
-import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference";
+import { detectEmbeddingPreset } from "./embedding-presets.ts";
 import {
   runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,

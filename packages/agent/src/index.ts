@@ -82,42 +82,6 @@ export {
   readBundledPluginPackageMetadata,
 } from "./api/plugin-discovery-helpers.ts";
 export * from "./api/plugin-runtime-apply.ts";
-// Phase 4F: surface plugin-widgets / plugin-validation / plugin-manager
-// types through the barrel so `@elizaos/plugin-registry` consumes them
-// without reaching into subpaths. The implementations remain agent-private.
-export {
-  getPluginWidgets,
-  type PluginWidgetDeclarationServer,
-} from "./config/plugin-widgets.ts";
-export {
-  type PluginParamInfo,
-  validatePluginConfig,
-} from "./api/plugin-validation.ts";
-export type {
-  CoreManagerLike,
-  CoreStatusLike,
-  EjectResult,
-  InstallProgressLike,
-  PluginInstallOptionsLike,
-  PluginInstallResult,
-  PluginManagerLike,
-  PluginUninstallResult,
-  RegistryPluginAppMeta,
-  RegistryPluginAppSessionFeature,
-  RegistryPluginAppSessionInfo,
-  RegistryPluginAppSessionMode,
-  RegistryPluginInfo,
-  RegistryPluginNpmInfo,
-  RegistryPluginViewerInfo,
-  RegistrySearchResult,
-  RegistryVersionSupport,
-  ReinjectResult,
-  SyncResult,
-} from "./services/plugin-manager-types.ts";
-export {
-  isCoreManagerLike,
-  isPluginManagerLike,
-} from "./services/plugin-manager-types.ts";
 export {
   applyCanonicalOnboardingConfig,
   clearPersistedOnboardingConfig,
@@ -222,6 +186,7 @@ export * from "./runtime/agent-event-service.ts";
 export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
+export * from "./runtime/embedding-presets.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,

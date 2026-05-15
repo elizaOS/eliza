@@ -13,15 +13,15 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { dispatchRoute } from "@elizaos/agent";
+import { dispatchRoute } from "../api/dispatch-route.ts";
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
-} from "../shared/fs-proxy.ts";
-import { installMobileFsShim } from "../shared/fs-shim.ts";
+} from "./mobile-fs-proxy.ts";
+import { installMobileFsShim } from "./mobile-fs-shim.ts";
 
 interface BridgeRequest {
   id?: unknown;

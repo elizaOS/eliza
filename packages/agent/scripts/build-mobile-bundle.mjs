@@ -472,22 +472,17 @@ const iosFsSandboxPlugin = {
   name: "eliza-ios-fs-sandbox-proxy",
   setup(build) {
     if (TARGET !== "ios") return;
-    // The fs sandbox + shim moved to @elizaos/plugin-capacitor-bridge in
-    // Phase 4C. They still ship as repo-local TypeScript sources so the
-    // mobile bundle can stub `node:fs` / `node:fs/promises` against them.
-    const pluginShared = path.resolve(
-      repoRoot,
-      "plugins",
-      "plugin-capacitor-bridge",
+    const fsProxy = path.join(agentRoot, "src", "cli", "mobile-fs-proxy.ts");
+    const fsPromisesProxy = path.join(
+      agentRoot,
       "src",
-      "shared",
+      "cli",
+      "mobile-fs-promises-proxy.ts",
     );
-    const fsProxy = path.join(pluginShared, "fs-proxy.ts");
-    const fsPromisesProxy = path.join(pluginShared, "fs-promises-proxy.ts");
     const proxyFiles = new Set([
       fsProxy,
       fsPromisesProxy,
-      path.join(pluginShared, "fs-shim.ts"),
+      path.join(agentRoot, "src", "cli", "mobile-fs-shim.ts"),
     ]);
     build.onResolve(
       { filter: /^(node:fs|fs|node:fs\/promises|fs\/promises)$/ },
