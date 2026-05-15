@@ -9,9 +9,6 @@ export enum SignalEventTypes {
   REACTION_RECEIVED = "SIGNAL_REACTION_RECEIVED",
   GROUP_JOINED = "SIGNAL_GROUP_JOINED",
   GROUP_LEFT = "SIGNAL_GROUP_LEFT",
-  TYPING_STARTED = "SIGNAL_TYPING_STARTED",
-  TYPING_STOPPED = "SIGNAL_TYPING_STOPPED",
-  READ_RECEIPT = "SIGNAL_READ_RECEIPT",
 }
 
 export interface SignalMessageReceivedPayload extends MessagePayload {
@@ -36,7 +33,7 @@ export interface SignalReactionPayload extends EventPayload {
   isRemove: boolean;
 }
 
-export interface SignalGroupPayload extends WorldPayload {
+interface SignalGroupPayload extends WorldPayload {
   groupId: string;
   groupName: string;
   members: string[];
@@ -136,10 +133,6 @@ export interface ISignalService {
 }
 
 export const SIGNAL_SERVICE_NAME = "signal";
-
-export const ServiceType = {
-  SIGNAL: "signal",
-} as const;
 
 export interface SignalSettings {
   shouldIgnoreGroupMessages: boolean;

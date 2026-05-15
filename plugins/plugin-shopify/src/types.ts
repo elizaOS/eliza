@@ -40,7 +40,7 @@ export interface ShopInfoResponse {
 // Money
 // ---------------------------------------------------------------------------
 
-export interface MoneyV2 {
+interface MoneyV2 {
   amount: string;
   currencyCode: string;
 }
@@ -49,7 +49,7 @@ export interface MoneyV2 {
 // Images
 // ---------------------------------------------------------------------------
 
-export interface ShopifyImage {
+interface ShopifyImage {
   url: string;
   altText: string | null;
 }
@@ -58,7 +58,7 @@ export interface ShopifyImage {
 // Products
 // ---------------------------------------------------------------------------
 
-export interface ProductVariant {
+interface ProductVariant {
   id: string;
   title: string;
   price: string;
@@ -66,7 +66,7 @@ export interface ProductVariant {
   inventoryQuantity: number | null;
 }
 
-export interface ProductVariantEdge {
+interface ProductVariantEdge {
   node: ProductVariant;
 }
 
@@ -112,13 +112,13 @@ export interface ProductUpdateResponse {
 // Orders
 // ---------------------------------------------------------------------------
 
-export interface OrderLineItem {
+interface OrderLineItem {
   title: string;
   quantity: number;
   originalUnitPriceSet: { shopMoney: MoneyV2 };
 }
 
-export interface OrderLineItemEdge {
+interface OrderLineItemEdge {
   node: OrderLineItem;
 }
 
@@ -211,7 +211,7 @@ export interface InventoryLevel {
   location: { id: string; name: string };
 }
 
-export interface InventoryLevelEdge {
+interface InventoryLevelEdge {
   node: InventoryLevel;
 }
 
@@ -250,7 +250,7 @@ export interface LocationsResponse {
 // Pagination
 // ---------------------------------------------------------------------------
 
-export interface PageInfo {
+interface PageInfo {
   hasNextPage: boolean;
   endCursor: string | null;
 }

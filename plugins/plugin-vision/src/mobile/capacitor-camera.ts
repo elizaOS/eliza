@@ -15,7 +15,7 @@
 import { logger } from "@elizaos/core";
 import type { CameraInfo, VisionFrame } from "../types";
 
-export interface MobileCameraOpenOptions {
+interface MobileCameraOpenOptions {
   /** Stable camera id (typically `back` / `front` / a per-device id). */
   cameraId?: string;
   /** Desired frame width in pixels — the native side may snap to nearest. */

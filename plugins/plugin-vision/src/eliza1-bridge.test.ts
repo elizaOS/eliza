@@ -2,7 +2,10 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { VisionService } from "./service";
 
-function createRuntime(opts: { imageDescriptionResult?: unknown; throwError?: Error }) {
+function createRuntime(opts: {
+  imageDescriptionResult?: unknown;
+  throwError?: Error;
+}) {
   const trajectoryLogger = {
     isEnabled: () => true,
     startTrajectory: vi.fn(() => "traj"),

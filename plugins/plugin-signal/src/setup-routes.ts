@@ -64,7 +64,7 @@ interface SignalPairingSessionLike {
 const signalPairingSessions = new Map<string, SignalPairingSessionLike>();
 const signalPairingSnapshots = new Map<string, SignalPairingSnapshot>();
 
-export const MAX_PAIRING_SESSIONS = 10;
+const MAX_PAIRING_SESSIONS = 10;
 const TERMINAL_SIGNAL_PAIRING_STATUSES = new Set<SignalPairingStatus>([
   "connected",
   "disconnected",

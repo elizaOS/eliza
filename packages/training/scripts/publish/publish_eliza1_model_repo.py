@@ -1,6 +1,6 @@
 """Publish staged Eliza-1 runtime bundles into one Hugging Face model repo.
 
-The app catalog points every Eliza-1 tier at ``elizalabs/eliza-1`` and resolves
+The app catalog points every Eliza-1 tier at ``elizaos/eliza-1`` and resolves
 files under ``bundles/<tier>/``. This publisher is the operator-side mirror of
 that contract: it validates local ``eliza-1-<tier>.bundle`` directories, writes
 the repo README, and uploads each bundle into the single model repo.
@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -99,6 +100,29 @@ def _iter_manifest_file_entries(manifest: dict[str, Any]) -> Iterable[dict[str, 
                 yield entry
 
 
+def _manifest_sha_errors(manifest: dict[str, Any]) -> list[str]:
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        return []
+    text_shas = {
+        entry.get("sha256")
+        for entry in files.get("text", [])
+        if isinstance(entry, dict) and isinstance(entry.get("sha256"), str)
+    }
+    errors: list[str] = []
+    for entry in files.get("dflash", []):
+        if not isinstance(entry, dict):
+            continue
+        sha = entry.get("sha256")
+        if isinstance(sha, str) and sha in text_shas:
+            path = entry.get("path", "<unknown>")
+            errors.append(
+                f"{path}: DFlash drafter sha256 matches a text artifact; "
+                "release drafter must be a distinct distilled model"
+            )
+    return errors
+
+
 def _publishable_bundle_relpaths(bundle_dir: Path, manifest: dict[str, Any]) -> list[str]:
     """Return the runtime bundle files that should be published to the Hub.
 
@@ -169,6 +193,8 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
     errors: list[str] = []
     if evidence.get("tier") != tier:
         errors.append(f"release evidence tier {evidence.get('tier')!r} does not match {tier}")
+    if evidence.get("repoId") != DEFAULT_REPO_ID:
+        errors.append(f"evidence/release.json repoId is unexpected: {evidence.get('repoId')!r}")
     release_state = evidence.get("releaseState")
     if release_state not in PUBLISHABLE_RELEASE_STATES:
         errors.append(
@@ -311,6 +337,7 @@ def plan_bundle(
                     errors.append(
                         f"sha256 mismatch for {rel}: manifest={expected_sha} actual={got_sha}"
                     )
+        errors.extend(_manifest_sha_errors(manifest))
         voice_warnings = _voice_policy_warnings(tier, manifest)
         if strict_voice_policy:
             errors.extend(voice_warnings)
@@ -341,19 +368,137 @@ def plan_bundle(
     )
 
 
+def _shell_join(args: Sequence[str | Path]) -> str:
+    return " ".join(shlex.quote(str(arg)) for arg in args)
+
+
+def _hf_cli_download_command(repo_id: str, plan: BundlePlan) -> str:
+    return _shell_join(
+        [
+            "hf",
+            "download",
+            repo_id,
+            "--include",
+            f"{plan.path_in_repo}/**",
+            "--local-dir",
+            f"eliza-1-{plan.tier}.bundle",
+        ]
+    )
+
+
+def _hf_cli_upload_command(repo_id: str, plan: BundlePlan) -> str:
+    staged_bundle = f"<stage-dir>/eliza-1-{plan.tier}.upload"
+    return _shell_join(
+        [
+            "hf",
+            "upload",
+            repo_id,
+            staged_bundle,
+            plan.path_in_repo,
+            "--repo-type",
+            "model",
+            "--exclude",
+            ".DS_Store",
+            "--exclude",
+            "__MACOSX/*",
+            "--commit-message",
+            f"Publish Eliza-1 {plan.tier} base GGUF bundle",
+        ]
+    )
+
+
+def _hf_cli_upload_large_folder_command(
+    repo_id: str,
+    *,
+    workers: int | None = None,
+) -> str:
+    args: list[str | Path] = [
+        "hf",
+        "upload-large-folder",
+        repo_id,
+        "<stage-dir>/repo",
+        "--repo-type",
+        "model",
+    ]
+    if workers is not None:
+        args.extend(["--num-workers", str(workers)])
+    return _shell_join(args)
+
+
+def _hf_cli_plan(
+    repo_id: str,
+    plan: BundlePlan,
+    *,
+    large_folder_workers: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "download": _hf_cli_download_command(repo_id, plan),
+        "upload_after_gates_clear": _hf_cli_upload_command(repo_id, plan),
+        "upload_large_folder_after_gates_clear": _hf_cli_upload_large_folder_command(
+            repo_id,
+            workers=large_folder_workers,
+        ),
+        "note": (
+            "HF CLI upload has no dry-run flag in hf 1.7.2. Treat dry-run output "
+            "as the offline plan; do not run upload commands until uploadable=true."
+        ),
+    }
+
+
+def _report_dict(
+    repo_id: str,
+    plans: Sequence[BundlePlan],
+    *,
+    large_folder_workers: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "repo_id": repo_id,
+        "dry_run_note": "This report is local validation only. No HF upload was attempted.",
+        "hf_cli": {
+            "upload_large_folder_after_gates_clear": _hf_cli_upload_large_folder_command(
+                repo_id,
+                workers=large_folder_workers,
+            ),
+            "dry_run_limit": "hf upload and hf upload-large-folder do not expose a dry-run flag.",
+        },
+        "plans": [
+            {
+                **asdict(plan),
+                "hf_cli": _hf_cli_plan(
+                    repo_id,
+                    plan,
+                    large_folder_workers=large_folder_workers,
+                ),
+            }
+            for plan in plans
+        ],
+    }
+
+
 def build_model_card(repo_id: str, plans: Sequence[BundlePlan]) -> str:
     rows = [
-        "| Tier | Remote path | Status | Files | Size | Voice note |",
-        "| --- | --- | --- | ---: | ---: | --- |",
+        "| Tier | Remote path | Status | Files | Size | Manifest | Checksums | Evidence | Licenses | Evals | Blockers |",
+        "| --- | --- | --- | ---: | ---: | --- | --- | --- | --- | --- | --- |",
     ]
     for plan in plans:
         status = "ready" if plan.uploadable else "pending"
         size_gb = plan.total_bytes / (1024**3)
-        voice_note = "; ".join(plan.warnings) if plan.warnings else "policy satisfied or not declared"
+        blockers = "; ".join(plan.errors[:3]) if plan.errors else "none"
+        if len(plan.errors) > 3:
+            blockers += f"; +{len(plan.errors) - 3} more"
         rows.append(
             f"| {plan.tier} | `{plan.path_in_repo}/` | {status} | "
-            f"{plan.file_count} | {size_gb:.2f} GiB | {voice_note} |"
+            f"{plan.file_count} | {size_gb:.2f} GiB | "
+            f"`{plan.path_in_repo}/eliza-1.manifest.json` | "
+            f"`{plan.path_in_repo}/checksums/SHA256SUMS` | "
+            f"`{plan.path_in_repo}/evidence/release.json` | "
+            f"`{plan.path_in_repo}/licenses/` | "
+            f"`{plan.path_in_repo}/evals/` | {blockers} |"
         )
+    download_lines = [
+        f"- `{plan.tier}`: `{_hf_cli_download_command(repo_id, plan)}`"
+        for plan in plans
+    ]
     return "\n".join(
         [
             "---",
@@ -374,6 +519,14 @@ def build_model_card(repo_id: str, plans: Sequence[BundlePlan]) -> str:
             "",
             "Runtime bundles live under `bundles/<tier>/` so the app can resolve "
             "the catalog manifest and all component files from one repo.",
+            "",
+            "Phone and desktop installers should download the manifest first, "
+            "then fetch only manifest-declared files and validate each sha256 "
+            "against `checksums/SHA256SUMS` before activation.",
+            "",
+            "## Direct Downloads",
+            "",
+            *download_lines,
             "",
             "APOLLO is the required optimizer for later fine-tuned releases. It "
             "keeps optimizer state small enough for full-parameter training on "
@@ -501,12 +654,16 @@ def publish_plans(
 def _print_summary(plans: Sequence[BundlePlan], *, repo_id: str, dry_run: bool) -> None:
     print(f"Eliza-1 model repo publish plan: {repo_id}")
     print(f"mode: {'dry-run' if dry_run else 'upload'}")
+    if dry_run:
+        print("hf-cli dry-run: no upload command was run; hf upload has no dry-run flag")
     for plan in plans:
         status = "ready" if plan.uploadable else "blocked"
         print(
             f"- {plan.tier}: {status}; files={plan.file_count}; "
             f"bytes={plan.total_bytes}; remote={plan.path_in_repo}/"
         )
+        print(f"  hf download: {_hf_cli_download_command(repo_id, plan)}")
+        print(f"  hf upload after gates clear: {_hf_cli_upload_command(repo_id, plan)}")
         for warning in plan.warnings:
             print(f"  warning: {warning}")
         for error in plan.errors:
@@ -547,7 +704,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(
-            json.dumps({"repo_id": args.repo_id, "plans": [asdict(p) for p in plans]}, indent=2),
+            json.dumps(
+                _report_dict(
+                    args.repo_id,
+                    plans,
+                    large_folder_workers=args.large_folder_workers,
+                ),
+                indent=2,
+            ),
             encoding="utf-8",
         )
 

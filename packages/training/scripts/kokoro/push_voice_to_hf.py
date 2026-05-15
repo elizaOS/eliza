@@ -151,7 +151,7 @@ def _model_card(
 
     lines = [
         "---",
-        f"language: en",
+        "language: en",
         "library_name: kokoro",
         f"base_model: {base}",
         "license: apache-2.0",
