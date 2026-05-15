@@ -71,9 +71,14 @@ export async function handleViewsRoutes(
     const allViews = listViews({ developerMode });
     // On restricted platforms (iOS/Android store builds), only surface views
     // without a dynamic bundle URL (already in-process).
-    const views = dynamicAllowed
+    const filtered = dynamicAllowed
       ? allViews
       : allViews.filter((v) => !v.bundleUrl);
+    // Annotate each entry with `builtin: true` when it comes from the shell.
+    const views = filtered.map((v) => ({
+      ...v,
+      builtin: v.pluginName === "@elizaos/builtin",
+    }));
     json(res, { views });
     return true;
   }

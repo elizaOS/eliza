@@ -47,6 +47,11 @@ export interface ViewRegistryEntry {
   visibleInManager?: boolean;
   /** Named capabilities the view exposes (informational). */
   capabilities?: Array<{ id: string; description: string }>;
+  /**
+   * True when this view is a first-party shell view (chat, settings, etc.)
+   * rather than a dynamically loaded plugin view.
+   */
+  builtin?: boolean;
 }
 
 interface UseAvailableViewsResult {

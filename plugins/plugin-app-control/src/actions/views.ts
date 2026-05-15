@@ -70,7 +70,7 @@ function inferMode(
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
 	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
 	if (SHOW_APPS_VERBS.test(trimmed)) return "manager";
-	if (CLOSE_VERBS.test(trimmed)) return "show";
+	if (CLOSE_VERBS.test(trimmed)) return "manager";
 	if (SEARCH_VERBS.test(trimmed)) return "search";
 	if (WHAT_VIEWS_VERB.test(trimmed)) return "list";
 	if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "list";
