@@ -228,9 +228,7 @@ export class VoiceCancellationCoordinator {
 	bindBargeInController(
 		roomId: string,
 		controller: {
-			onSignal(
-				listener: (signal: { type: string }) => void,
-			): () => void;
+			onSignal(listener: (signal: { type: string }) => void): () => void;
 		},
 	): () => void {
 		return controller.onSignal((signal) => {

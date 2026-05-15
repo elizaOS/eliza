@@ -9,7 +9,7 @@
         "end_ms": 10000
       }
     ],
-    "description": "Single-speaker control: Samantha corpus only"
+    "description": "Single-speaker control: Samantha TTS corpus (10s)"
   },
   "f2_two_speaker": {
     "path": "f2_two_speaker.wav",
@@ -22,26 +22,26 @@
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 3091,
-        "end_ms": 5591
+        "start_ms": 3141,
+        "end_ms": 6141
       },
       {
         "speaker": "speaker_a",
-        "start_ms": 5891,
-        "end_ms": 7266
+        "start_ms": 6491,
+        "end_ms": 9866
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 7566,
-        "end_ms": 10066
+        "start_ms": 10216,
+        "end_ms": 13716
       },
       {
         "speaker": "speaker_a",
-        "start_ms": 10366,
-        "end_ms": 15575
+        "start_ms": 14066,
+        "end_ms": 19275
       }
     ],
-    "description": "Two-speaker alternating: Speaker A (samantha) vs Speaker B (pitch-down)"
+    "description": "Two-speaker: Speaker A (samantha) vs Speaker B (pitch-6 + dark-EQ)"
   },
   "f3_three_speaker": {
     "path": "f3_three_speaker.wav",
@@ -54,31 +54,31 @@
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 3091,
-        "end_ms": 6091
+        "start_ms": 3141,
+        "end_ms": 6641
       },
       {
         "speaker": "speaker_c",
-        "start_ms": 6391,
-        "end_ms": 8391
+        "start_ms": 6991,
+        "end_ms": 9491
       },
       {
         "speaker": "speaker_a",
-        "start_ms": 8691,
-        "end_ms": 12691
+        "start_ms": 9841,
+        "end_ms": 13841
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 12991,
-        "end_ms": 15491
+        "start_ms": 14191,
+        "end_ms": 18191
       },
       {
         "speaker": "speaker_c",
-        "start_ms": 15791,
-        "end_ms": 18291
+        "start_ms": 18541,
+        "end_ms": 21541
       }
     ],
-    "description": "Three-speaker conversation: Speaker A, B (pitch-down), C (bright)"
+    "description": "Three-speaker: A (samantha), B (pitch-6+dark), C (pitch+5+bright)"
   },
   "f4_long_dialogue": {
     "path": "f4_long_dialogue.wav",
@@ -91,36 +91,36 @@
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 3091,
-        "end_ms": 5591
+        "start_ms": 3141,
+        "end_ms": 6641
       },
       {
         "speaker": "speaker_a",
-        "start_ms": 5891,
-        "end_ms": 7266
+        "start_ms": 6991,
+        "end_ms": 10366
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 7566,
-        "end_ms": 10066
+        "start_ms": 10716,
+        "end_ms": 14716
       },
       {
         "speaker": "speaker_a",
-        "start_ms": 10366,
-        "end_ms": 16366
+        "start_ms": 15066,
+        "end_ms": 19066
       },
       {
         "speaker": "speaker_b",
-        "start_ms": 16666,
-        "end_ms": 19666
+        "start_ms": 19416,
+        "end_ms": 20874
       },
       {
         "speaker": "speaker_a",
-        "start_ms": 19966,
-        "end_ms": 25175
+        "start_ms": 21224,
+        "end_ms": 26432
       }
     ],
-    "description": "Long two-speaker dialogue with repeat appearances \u2014 tests stable re-identification"
+    "description": "Long two-speaker dialogue for stable re-identification testing"
   },
   "f5_jill_scenario": {
     "path": "f5_jill_scenario.wav",
@@ -129,12 +129,12 @@
       {
         "speaker": "owner",
         "start_ms": 0,
-        "end_ms": 2791
+        "end_ms": 4166
       },
       {
         "speaker": "jill",
-        "start_ms": 3091,
-        "end_ms": 5891
+        "start_ms": 4516,
+        "end_ms": 8516
       }
     ],
     "scenario": "jill",
@@ -145,6 +145,6 @@
       "type": "partner_of",
       "label": "wife"
     },
-    "description": "Jill scenario: owner introduces Jill, then Jill self-identifies \u2014 asserts 2 distinct entities + relationship edge"
+    "description": "Jill scenario: owner introduces Jill, Jill self-identifies"
   }
 }

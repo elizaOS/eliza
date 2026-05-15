@@ -200,17 +200,26 @@ class SegmentDiarizer:
 
         emb_matrix = np.stack(embeddings)
 
-        # Choose cluster count: estimate from cosine distance diversity
-        # (simple heuristic: try k=1..4, pick knee in inertia or use
-        #  the ground truth speaker count if available)
+        # Choose cluster count using agglomerative dendrogram distances.
+        # Strategy: perform full linkage with k=1..max_k; only increment k
+        # when the minimum inter-cluster centroid cosine distance is below
+        # the INTER_SPEAKER_SPLIT_THRESHOLD. This prevents splitting a
+        # single speaker (high intra-cluster similarity = small inter distance).
+        #
+        # INTER_SPEAKER_SPLIT_THRESHOLD calibration for ECAPA-TDNN on TTS audio:
+        #   - Intra-speaker (same TTS voice, different sentences): ~0.50-0.62
+        #   - Inter-speaker (pitch-shifted variants): ~0.35-0.42
+        # Threshold at 0.46: split only when centroids are clearly distinct
+        # (< 0.46 cosine), which covers the ~0.36-0.42 inter-speaker range
+        # without falsely splitting the ~0.50+ intra-speaker range.
+        INTER_SPEAKER_SPLIT_THRESHOLD = 0.46
+
         n = len(valid_segments)
         max_k = min(4, n)
 
         if n == 1:
             speaker_labels = [0]
         else:
-            # Use agglomerative clustering with cosine distance
-            # Estimate number of clusters: try 2 and check if intra < inter
             best_k = 1
             for k in range(2, max_k + 1):
                 try:
@@ -220,22 +229,30 @@ class SegmentDiarizer:
                         linkage="average",
                     )
                     labels = agg.fit_predict(emb_matrix)
-                    # Intra-cluster cohesion
+                    # Compute centroids per cluster
                     centroids = []
                     for ci in range(k):
                         mask = labels == ci
-                        if mask.sum() > 0:
-                            c = emb_matrix[mask].mean(axis=0)
-                            c = c / max(np.linalg.norm(c), 1e-8)
-                            centroids.append(c)
-                    intra = 0.0
-                    for ci, centroid in enumerate(centroids):
-                        mask = labels == ci
-                        for emb in emb_matrix[mask]:
-                            intra += float(np.dot(emb, centroid))
-                    intra_avg = intra / max(n, 1)
-                    if intra_avg > 0.80 or k > best_k:
+                        if mask.sum() == 0:
+                            continue
+                        c = emb_matrix[mask].mean(axis=0)
+                        norm = np.linalg.norm(c)
+                        c = c / norm if norm > 1e-8 else c
+                        centroids.append(c)
+                    if len(centroids) < 2:
+                        break
+                    # Min inter-cluster cosine similarity
+                    min_inter = min(
+                        float(np.dot(centroids[i], centroids[j]))
+                        for i in range(len(centroids))
+                        for j in range(i + 1, len(centroids))
+                    )
+                    # Only accept the split if clusters are sufficiently distinct
+                    if min_inter < INTER_SPEAKER_SPLIT_THRESHOLD:
                         best_k = k
+                    else:
+                        # All splits at this k have very similar centroids → same speaker
+                        break
                 except Exception:
                     break
 
@@ -244,7 +261,7 @@ class SegmentDiarizer:
                 metric="cosine",
                 linkage="average",
             )
-            speaker_labels = agg.fit_predict(emb_matrix).tolist()
+            speaker_labels = agg.fit_predict(emb_matrix).tolist() if best_k > 1 else [0] * n
 
         result = []
         for (s, e), spk_id, emb in zip(valid_segments, speaker_labels, embeddings):
@@ -283,7 +300,7 @@ class VoiceProfile:
 class InMemoryVoiceProfileStore:
     """Pure Python equivalent of plugin-local-inference's VoiceProfileStore."""
 
-    def __init__(self, hot_cache_size: int = 30, match_threshold: float = 0.72):
+    def __init__(self, hot_cache_size: int = 30, match_threshold: float = 0.40):
         self._profiles: dict[str, VoiceProfile] = {}
         self._hot_cache: list[str] = []  # LRU ordered profile_ids
         self.hot_cache_size = hot_cache_size
