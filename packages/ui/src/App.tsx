@@ -1067,6 +1067,19 @@ export function App() {
     setTab("views");
   }, [setTab]);
 
+  // desktopTabBar is computed here (after handlers) so the memo below can
+  // reference a stable value. Rendered inside each shell variant, not at the
+  // outer level, so Header + TabBar + content stack correctly per shell.
+  const desktopTabBar = (
+    <DesktopTabBar
+      tabs={desktopTabs}
+      activeViewId={activeDesktopTabId}
+      onTabClick={handleDesktopTabClick}
+      onTabClose={handleDesktopTabClose}
+      onOpenViewManager={handleOpenViewManagerFromTabBar}
+    />
+  );
+
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupShell — no separate loader needed.
 
@@ -1416,13 +1429,6 @@ export function App() {
       <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden">
         <ConnectionFailedBanner />
         <SystemWarningBanner />
-        <DesktopTabBar
-          tabs={desktopTabs}
-          activeViewId={activeDesktopTabId}
-          onTabClick={handleDesktopTabClick}
-          onTabClose={handleDesktopTabClose}
-          onOpenViewManager={handleOpenViewManagerFromTabBar}
-        />
         {shellContent}
       </div>
       {/* Full-screen overlay app — renders whichever overlay app is active */}

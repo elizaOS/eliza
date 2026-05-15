@@ -308,11 +308,11 @@ describe("GET /api/views/:id/bundle.js", () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/views/:id/interact — reserved / 501
+// POST /api/views/:id/interact
 // ---------------------------------------------------------------------------
 
 describe("POST /api/views/:id/interact", () => {
-  it("returns 501 Not Implemented for a known view", async () => {
+  it("returns 400 for a known view when the JSON body is missing", async () => {
     await registerPluginViews(
       { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
@@ -324,7 +324,7 @@ describe("POST /api/views/:id/interact", () => {
     expect(handled).toBe(true);
     expect(error).toHaveBeenCalledOnce();
     const [, , status] = error.mock.calls[0] as [unknown, string, number];
-    expect(status).toBe(501);
+    expect(status).toBe(400);
   });
 
   it("returns 404 for interact on an unknown view", async () => {

@@ -29,7 +29,8 @@ export type ViewsMode =
 	| "open"
 	| "search"
 	| "manager"
-	| "broadcast";
+	| "broadcast"
+	| "interact";
 
 const MODES: readonly ViewsMode[] = [
 	"list",
@@ -38,6 +39,7 @@ const MODES: readonly ViewsMode[] = [
 	"search",
 	"manager",
 	"broadcast",
+	"interact",
 ] as const;
 
 // Intent regexes — order matters: more specific first.
@@ -58,6 +60,8 @@ const SHOW_VERBS =
 const VIEW_NOUN = /\bview[s]?\b/i;
 const BROADCAST_VERBS =
 	/\b(tell|notify|signal|broadcast|send.*event|emit|trigger|ping)\b.{0,60}\bview\b/i;
+const INTERACT_VERBS =
+	/\b(click|tap|press|focus|fill|interact|invoke|call|use capability)\b.{0,60}\b(view|button|input|field)\b/i;
 
 interface ViewsActionDeps {
 	client?: ViewsClient;

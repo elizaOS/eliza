@@ -704,6 +704,7 @@ export function bindReadyPhase(
     unbindRestart();
     unbindShellNavigateView();
     unbindViewEvent();
+    unbindViewInteract();
     unbindConvUp();
     unbindPty();
     if (ptyPollInterval) clearInterval(ptyPollInterval);
