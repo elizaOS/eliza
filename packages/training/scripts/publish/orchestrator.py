@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+``elizaos/eliza-1`` under ``bundles/<tier>/``. This is the single entry
 point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
+   to ``elizaos/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -72,6 +72,7 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_HF_REPO,
     ELIZA_1_PROVENANCE_SLOTS,
     ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
@@ -107,8 +108,6 @@ EXIT_EVAL_GATE_FAIL = 13
 EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
-
-ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -701,7 +700,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
 
 
 def validate_destination_repo(ctx: PublishContext) -> None:
-    expected = f"{ELIZA_1_HF_ORG}/eliza-1"
+    expected = ELIZA_1_HF_REPO
     if ctx.repo_id != expected:
         raise OrchestratorError(
             f"Eliza-1 bundle publishes must target {expected}; got {ctx.repo_id!r}. "
@@ -2478,7 +2477,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         "--repo-id",
         default=None,
         help=(
-            "HF repo id. Must equal elizalabs/eliza-1; accepted only "
+            f"HF repo id. Must equal {ELIZA_1_HF_REPO}; accepted only "
             "so wrappers can pass the resolved destination explicitly."
         ),
     )
@@ -2531,7 +2530,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1"
+    repo_id = args.repo_id or ELIZA_1_HF_REPO
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )
