@@ -258,13 +258,13 @@ def test_real_stage_writes_evidence_report_without_downloading(
     assert (tmp_path / "0_8b" / "wake" / "hey-eliza.onnx").is_file()
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     voice_paths = {entry["path"] for entry in manifest["files"]["voice"]}
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in voice_paths
-    assert "tts/omnivoice-tokenizer-Q4_K_M.gguf" in voice_paths
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in voice_paths
+    assert "tts/omnivoice-tokenizer-Q4_K_M.gguf" not in voice_paths
     assert manifest["files"]["cache"][0]["path"] == "cache/voice-preset-default.bin"
     release = json.loads((bundle / "evidence" / "release.json").read_text())
     assert release["repoId"] == "elizaos/eliza-1"
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in release["weights"]
-    assert stage.VOICE_REPO in report["sources"]
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in release["weights"]
+    assert stage.VOICE_REPO not in report["sources"]
     assert (bundle / "checksums" / "SHA256SUMS").is_file()
     assert report["manifestUpdate"]["updatedPaths"]
     assert report["releaseEvidenceUpdate"]["weights"]

@@ -9,7 +9,7 @@ import {
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
-const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
+const OMNIVOICE_TIERS = LARGE_TIERS;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -21,7 +21,7 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns a narrow OmniVoice ladder for small tiers", () => {
+  it("returns the mobile OmniVoice ladder for small tiers", () => {
     for (const id of SMALL_TIERS) {
       expect(voiceQuantLadderForTier(id)).toEqual([
         "Q3_K_M",

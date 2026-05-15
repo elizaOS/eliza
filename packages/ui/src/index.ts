@@ -34,6 +34,8 @@ export type {
   TradePermissionMode,
 } from "./api";
 export * from "./api";
+// === Phase 3A: barrel-promoted from api/ios-local-agent-transport ===
+export * from "./api/ios-local-agent-transport";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export * from "./bridge";
