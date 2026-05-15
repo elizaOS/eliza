@@ -156,19 +156,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "intl/model_q8.onnx",
-        sha256: "af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66",
+        sha256:
+          "af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66",
         sizeBytes: 262031196,
         quant: "onnx-int8",
       },
       {
         filename: "intl/turn-detector-intl-q8.gguf",
-        sha256: "5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79",
+        sha256:
+          "5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79",
         sizeBytes: 281016768,
         quant: "q8_0",
       },
     ],
     evalDeltas: { f1Delta: 0.09, netImprovement: true },
-    changelogEntry: "LiveKit v0.4.1-intl fine-tuned on multilingual EOU (OASST1 12-lang prompter, prefix-augmented), APOLLO-Mini, F1=0.9308",
+    changelogEntry:
+      "LiveKit v0.4.1-intl fine-tuned on multilingual EOU (OASST1 12-lang prompter, prefix-augmented), APOLLO-Mini, F1=0.9308",
     minBundleVersion: "0.0.0",
   },
   {
