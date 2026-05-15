@@ -129,13 +129,17 @@ type AppCoreRuntimeModule = {
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // Use a string-literal dynamic import (no indirection through a `const`)
-  // so Bun.build can statically follow it and inline `@elizaos/app-core`
-  // into the mobile bundle. The previous indirect form
-  // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
-  // Bun's resolver and produced a runtime `Cannot find module` on AOSP
-  // where there is no node_modules tree.
+  // so Bun.build can statically follow it and inline
+  // `@elizaos/app-core/agent-bridge` into the mobile bundle. The previous
+  // indirect form (`const moduleId = "@elizaos/app-core"; import(moduleId)`)
+  // defeated Bun's resolver and produced a runtime `Cannot find module` on
+  // AOSP where there is no node_modules tree.
+  //
+  // Imports the narrow `/agent-bridge` subpath (not the full barrel) so the
+  // static `.d.ts` graph stays acyclic — see
+  // `packages/app-core/src/agent-bridge.ts`.
   return import(
-    /* webpackIgnore: true */ "@elizaos/app-core"
+    /* webpackIgnore: true */ "@elizaos/app-core/agent-bridge"
   ) as Promise<AppCoreRuntimeModule>;
 }
 
@@ -340,12 +344,13 @@ async function getPluginLocalEmbedding(): Promise<
   return _pluginLocalEmbeddingPromise;
 }
 
-const _optionalPluginCache = new Map<string, Promise<unknown>>();
+let _optionalPluginCache: Map<string, Promise<unknown>> | undefined = new Map();
 function getOptionalPlugin(packageName: string): Promise<unknown> {
-  const cached = _optionalPluginCache.get(packageName);
+  const cache = _optionalPluginCache ?? (_optionalPluginCache = new Map());
+  const cached = cache.get(packageName);
   if (cached) return cached;
   const promise = loadOptionalPlugin(packageName);
-  _optionalPluginCache.set(packageName, promise);
+  cache.set(packageName, promise);
   return promise;
 }
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
