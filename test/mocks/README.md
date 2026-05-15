@@ -33,7 +33,7 @@ Each LifeOps client reads its env var on import and falls back to the real URL
 when unset. These env vars are test-only: the normal `bun run dev` launcher now
 strips inherited `ELIZA_MOCK_*` values so local development keeps using real
 Google/Twilio/etc. unless you opt back in explicitly. See the patched files in
-`eliza/plugins/app-lifeops/src/lifeops/`:
+`eliza/plugins/plugin-lifeops/src/lifeops/`:
 
 - `twilio.ts`, `whatsapp-client.ts`, `calendly-client.ts`
 - `x-poster.ts`, `x-reader.ts`

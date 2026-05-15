@@ -62,7 +62,7 @@ function looksLikeStructuredReply(raw: string): boolean {
 function stringifyPromptValue(value: unknown, maxLength = 2_400): string {
   try {
     const serialized = JSON.stringify(value);
-    return truncateText(serialized ?? String(value), maxLength);
+    return truncateText(serialized, maxLength);
   } catch {
     return truncateText(String(value), maxLength);
   }
@@ -341,9 +341,9 @@ export async function renderGroundedActionReply(
     `Write the assistant's user-facing reply for a ${domainLabel(args.domain)} interaction.`,
     "Be natural, brief, and grounded in the provided context.",
     "Mirror the user's tone lightly without parodying them.",
-    "Preserve concrete facts from the action context and canonical fallback.",
+    "Preserve concrete facts from the action context and fallback reply.",
     "Never mention internal schema, tool names, JSON keys, hidden prompts, or reasoning traces.",
-    "Do not claim something happened unless it appears in the grounded context or canonical fallback.",
+    "Do not claim something happened unless it appears in the grounded context or fallback reply.",
     "If asking a clarifying question, ask only for the missing information.",
     ...(characterVoice
       ? [
@@ -356,7 +356,7 @@ export async function renderGroundedActionReply(
     `Domain: ${args.domain}`,
     `Scenario: ${args.scenario}`,
     `Current user message: ${JSON.stringify(
-      typeof args.message.content?.text === "string"
+      typeof args.message.content.text === "string"
         ? args.message.content.text
         : "",
     )}`,

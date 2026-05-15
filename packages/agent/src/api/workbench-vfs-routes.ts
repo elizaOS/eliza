@@ -491,9 +491,9 @@ function getCloudCodingContainerService(
   runtime: AgentRuntime,
 ): CloudCodingContainerServiceLike | null {
   const service =
-    runtime.getService?.("CLOUD_CONTAINER") ??
-    runtime.getService?.("cloud-container") ??
-    runtime.getService?.("cloudContainer");
+    runtime.getService("CLOUD_CONTAINER") ??
+    runtime.getService("cloud-container") ??
+    runtime.getService("cloudContainer");
   if (!service || typeof service !== "object") return null;
   const candidate = service as Partial<CloudCodingContainerServiceLike>;
   return typeof candidate.promoteVfsToCloudContainer === "function"
@@ -523,7 +523,7 @@ async function exportVfsBundle(
       };
     }),
   );
-  const totalBytes = files.reduce((sum, file) => sum + (file.size ?? 0), 0);
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   return {
     sourceKind: "project",
     projectId,

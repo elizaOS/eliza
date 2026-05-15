@@ -1715,10 +1715,8 @@ export class RelationshipsService extends Service {
 		const skipped: Array<{ seed: PlatformContactSeed; reason: string }> = [];
 
 		for (const seed of contacts) {
-			const seedPlatform = (seed.platform ?? normalizedPlatform)
-				.trim()
-				.toLowerCase();
-			const identifier = seed.identifier?.trim();
+			const seedPlatform = seed.platform.trim().toLowerCase();
+			const identifier = seed.identifier.trim();
 			if (!identifier) {
 				skipped.push({ seed, reason: "missing identifier" });
 				continue;
@@ -1787,7 +1785,7 @@ export class RelationshipsService extends Service {
 		const adapter = (
 			this.runtime as IAgentRuntime & { adapter?: { db?: unknown } }
 		).adapter;
-		const db = adapter?.db as RuntimeDbExecutor | undefined;
+		const db = adapter.db as RuntimeDbExecutor | undefined;
 		if (!db || typeof db.execute !== "function") {
 			return null;
 		}

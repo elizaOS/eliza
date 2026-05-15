@@ -86,7 +86,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		}
 
 		// Check expiration
-		if (data.config?.expiresAt && data.config.expiresAt < Date.now()) {
+		if (data.config.expiresAt && data.config.expiresAt < Date.now()) {
 			await this.delete(key, context);
 			return null;
 		}
@@ -219,7 +219,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			}
 
 			const data = component.data as SecretComponentData;
-			if (!data?.key || !data?.config) {
+			if (!data.key || !data.config) {
 				continue;
 			}
 
@@ -248,7 +248,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 		}
 
 		const data = component.data as SecretComponentData;
-		return data?.config ? { ...data.config } : null;
+		return data.config ? { ...data.config } : null;
 	}
 
 	async updateConfig(
@@ -325,7 +325,7 @@ export class ComponentSecretStorage extends BaseSecretStorage {
 			}
 
 			const data = component.data as SecretComponentData;
-			if (data?.key) {
+			if (data.key) {
 				keys.push(data.key);
 			}
 		}

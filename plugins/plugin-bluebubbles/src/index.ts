@@ -123,6 +123,9 @@ const blueBubblesPlugin: Plugin = {
 
 		logger.info("BlueBubbles plugin initialized");
 	},
+	async dispose(runtime: IAgentRuntime) {
+		await BlueBubblesService.stopRuntime(runtime);
+	},
 };
 
 export default blueBubblesPlugin;

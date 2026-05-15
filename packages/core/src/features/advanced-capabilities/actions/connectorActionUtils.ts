@@ -86,7 +86,7 @@ export function buildMessageQueryContext(
 		target,
 		contexts: getActiveRoutingContextsForTurn(state, message),
 		metadata: {
-			messageText: message.content?.text,
+			messageText: message.content.text,
 		},
 	};
 }
@@ -104,7 +104,7 @@ export function buildPostQueryContext(
 		source,
 		contexts: getActiveRoutingContextsForTurn(state, message),
 		metadata: {
-			messageText: message.content?.text,
+			messageText: message.content.text,
 		},
 	};
 }

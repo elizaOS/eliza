@@ -6,7 +6,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 
 export default scenario({
   id: "health.multiple-sources-no-conflict-merge",

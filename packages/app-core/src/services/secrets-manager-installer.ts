@@ -515,7 +515,7 @@ function spawnCapture(
       child.kill("SIGKILL");
       reject(new Error(`${command} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
-    timer.unref?.();
+    timer.unref();
     child.once("error", (err) => {
       clearTimeout(timer);
       reject(err);

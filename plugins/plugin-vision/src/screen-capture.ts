@@ -163,7 +163,10 @@ export class ScreenCaptureService {
       // Hand layout to the overlap-aware tiler. It sizes tiles to the model
       // sweet spot (Qwen3.5-VL) and seams them with overlap so glyphs that
       // straddle a boundary still appear intact in at least one tile.
-      const maxEdge = Math.max(MIN_TILER_EDGE, this.config.tileSize ?? DEFAULT_MAX_EDGE);
+      const maxEdge = Math.max(
+        MIN_TILER_EDGE,
+        this.config.tileSize ?? DEFAULT_MAX_EDGE,
+      );
       const tilerTiles = await tileScreenshot(
         {
           displayId: SINGLE_DISPLAY_ID,

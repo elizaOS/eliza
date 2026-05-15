@@ -655,7 +655,7 @@ export function maybeAugmentChatMessageWithWalletContext(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): ReturnType<typeof createMessageMemory> {
-  const userPrompt = extractCompatTextContent(message.content)?.trim();
+  const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt) return message;
   if (!WALLET_CONTEXT_INTENT_RE.test(userPrompt)) return message;
   return {

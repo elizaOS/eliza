@@ -69,6 +69,10 @@ export const teePlugin: Plugin = {
   actions: defaultVendor.getActions(),
   providers: defaultVendor.getProviders(),
   services: [TEEService],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<TEEService>(TEEService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default teePlugin;

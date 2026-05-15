@@ -223,7 +223,7 @@ const mobileLookup: http.RequestOptions["lookup"] = (
 			callback(error, undefined as never, undefined as never);
 			return;
 		}
-		if (options?.all) {
+		if (options.all) {
 			callback(
 				null,
 				addresses.map((address) => ({ address, family: 4 })),
@@ -345,7 +345,7 @@ async function readRegistry(): Promise<InstalledModel[]> {
 	const models = Array.isArray(registry.models) ? registry.models : [];
 	const installed: InstalledModel[] = [];
 	for (const model of models) {
-		if (!model?.id || !model.path) continue;
+		if (!model.id || !model.path) continue;
 		try {
 			const stat = await fsp.stat(model.path);
 			if (stat.isFile()) installed.push({ ...model, sizeBytes: stat.size });
@@ -821,8 +821,7 @@ async function setRoutingForChat(provider: string): Promise<void> {
 		routingPath(),
 		defaultRoutingPreferences(),
 	);
-	const preferences =
-		current.preferences ?? defaultRoutingPreferences().preferences;
+	const preferences = current.preferences;
 	for (const slot of LOCAL_INFERENCE_TEXT_MODEL_TYPES) {
 		preferences.preferredProvider[slot] = provider;
 		preferences.policy[slot] = "manual";
@@ -1120,7 +1119,7 @@ export async function handleLocalInferenceRoutes(
 				downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
 			});
 		}, 1000);
-		interval.unref?.();
+		interval.unref();
 		writeSse(res, {
 			type: "snapshot",
 			downloads: [...activeDownloads.values()].map(({ job }) => ({ ...job })),
@@ -1226,8 +1225,7 @@ export async function handleLocalInferenceRoutes(
 				priority: 0,
 				registeredAt: new Date().toISOString(),
 			})),
-			preferences:
-				preferences.preferences ?? defaultRoutingPreferences().preferences,
+			preferences: preferences.preferences,
 		});
 		return true;
 	}
@@ -1245,8 +1243,7 @@ export async function handleLocalInferenceRoutes(
 			routingPath(),
 			defaultRoutingPreferences(),
 		);
-		const preferences =
-			current.preferences ?? defaultRoutingPreferences().preferences;
+		const preferences = current.preferences;
 		const slot = body.slot;
 		if (pathname.endsWith("/preferred")) {
 			if (typeof body.provider === "string" && body.provider.trim()) {

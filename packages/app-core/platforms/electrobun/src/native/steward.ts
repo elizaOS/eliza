@@ -145,14 +145,14 @@ async function configureStewardEnvFromCredentials(): Promise<void> {
 			const { saveStewardCredentials } = await loadStewardCredentialsModule();
 			saveStewardCredentials({
 				apiUrl: apiBase,
-				tenantId: credentials.tenantId ?? "",
-				agentId: credentials.agentId ?? "",
-				apiKey: credentials.tenantApiKey ?? "",
-				agentToken: credentials.agentToken ?? "",
+				tenantId: credentials.tenantId,
+				agentId: credentials.agentId,
+				apiKey: credentials.tenantApiKey,
+				agentToken: credentials.agentToken,
 				walletAddresses: {
-					evm: credentials.walletAddress ?? undefined,
+					evm: credentials.walletAddress,
 				},
-				agentName: credentials.agentId ?? undefined,
+				agentName: credentials.agentId,
 			});
 		} catch (err) {
 			logger.warn(

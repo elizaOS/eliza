@@ -163,9 +163,7 @@ function handleMockChatCompletion(
 		messages: Array<{ content: string }>;
 	};
 	const slotId = typeof payload.slot_id === "number" ? payload.slot_id : -1;
-	const promptText = payload.messages
-		.map((m) => String(m.content ?? ""))
-		.join("\n");
+	const promptText = payload.messages.map((m) => String(m.content)).join("\n");
 	const promptTokenList = promptText.split(/\s+/).filter(Boolean);
 	const promptTokens = promptTokenList.length;
 	const cachedTokens = state.cachedTokensBySlot.get(slotId) ?? [];

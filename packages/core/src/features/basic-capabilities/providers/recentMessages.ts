@@ -26,7 +26,7 @@ const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
 
 function isInternalBridgeMessage(memory: Memory): boolean {
 	const source =
-		typeof memory.content?.source === "string"
+		typeof memory.content.source === "string"
 			? memory.content.source.trim()
 			: "";
 	const metadata =
@@ -39,7 +39,7 @@ function isInternalBridgeMessage(memory: Memory): boolean {
 }
 
 function normalizeDialogueText(memory: Memory): string {
-	return typeof memory.content?.text === "string"
+	return typeof memory.content.text === "string"
 		? memory.content.text.replace(/\s+/g, " ").trim()
 		: "";
 }
@@ -386,7 +386,7 @@ export const recentMessagesProvider: Provider = {
 				(entity: Entity) => entity.id === message.entityId,
 			);
 			const senderName =
-				foundEntity?.names?.[0] || metaData?.entityName || "Unknown User";
+				foundEntity?.names?.[0] || metaData.entityName || "Unknown User";
 			const receivedMessageContent = message.content.text;
 
 			const hasReceivedMessage = !!receivedMessageContent?.trim();

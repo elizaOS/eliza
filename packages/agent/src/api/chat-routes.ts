@@ -276,7 +276,7 @@ async function resolveExactDocumentValueForChat(
     return null;
   }
 
-  const documentsService = runtime.getService?.("documents") as
+  const documentsService = runtime.getService("documents") as
     | {
         searchDocuments?: (
           message: ReturnType<typeof createMessageMemory>,
@@ -304,7 +304,7 @@ async function resolveExactDocumentValueForChat(
 
     const uploadedMatches = matches.filter((match) => {
       const metadata =
-        match?.metadata && typeof match.metadata === "object"
+        match.metadata && typeof match.metadata === "object"
           ? match.metadata
           : null;
       return metadata?.source === "upload";
@@ -314,7 +314,7 @@ async function resolveExactDocumentValueForChat(
     const exactMatchCandidates = uniqueMatches(
       preferredMatches
         .map((match) =>
-          typeof match?.content?.text === "string"
+          typeof match.content?.text === "string"
             ? extractExactGroundedValueFromText(
                 messageText,
                 match.content.text.trim(),
@@ -329,7 +329,7 @@ async function resolveExactDocumentValueForChat(
 
     const documentsText = preferredMatches
       .map((match) =>
-        typeof match?.content?.text === "string"
+        typeof match.content?.text === "string"
           ? match.content.text.trim()
           : "",
       )
@@ -406,12 +406,12 @@ function buildRuntimeActionNameLookup(
     : [];
 
   for (const action of runtimeActions) {
-    const canonicalName = normalizeActionName(action?.name);
+    const canonicalName = normalizeActionName(action.name);
     if (!canonicalName) {
       continue;
     }
     lookup.set(canonicalName, canonicalName);
-    if (!Array.isArray(action?.similes)) {
+    if (!Array.isArray(action.similes)) {
       continue;
     }
     for (const alias of action.similes) {
@@ -961,7 +961,7 @@ export async function persistAssistantConversationMemory(
         } satisfies Content)
       : ({
           ...content,
-          text: extractCompatTextContent(content) ?? "",
+          text: extractCompatTextContent(content),
           source:
             typeof content.source === "string" ? content.source : "client_chat",
           channelType:
@@ -1183,7 +1183,7 @@ function buildChatUsage(
     };
   }
 
-  const promptText = extractCompatTextContent(message.content) ?? "";
+  const promptText = extractCompatTextContent(message.content);
   const promptTokens = estimateTokenCount(promptText);
   const completionTokens = estimateTokenCount(finalText);
   return {
@@ -1215,9 +1215,7 @@ export async function generateChatResponse(
     throw createChatGenerationTimeoutError(generationTimeoutMs);
   }
   try {
-    const originalUserText = String(
-      extractCompatTextContent(message.content) ?? "",
-    );
+    const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
     let forcedWalletExecutionText = false;
@@ -1325,7 +1323,7 @@ export async function generateChatResponse(
         });
       }
     } catch (err) {
-      runtime.logger?.warn(
+      runtime.logger.warn(
         {
           err,
           src: "eliza-api",
@@ -1360,7 +1358,7 @@ export async function generateChatResponse(
       if (normalizedActionTag) {
         seenActionTags.add(normalizedActionTag);
       }
-      runtime.logger?.info(
+      runtime.logger.info(
         {
           src: "eliza-api",
           action: normalizedActionTag || actionTag,
@@ -1419,13 +1417,13 @@ export async function generateChatResponse(
               if (coordinator) {
                 const createTaskAction =
                   runtime.actions.find(
-                    (a) => a?.name?.toUpperCase() === "START_CODING_TASK",
+                    (a) => a.name.toUpperCase() === "START_CODING_TASK",
                   ) ??
                   runtime.actions.find(
-                    (a) => a?.name?.toUpperCase() === "CREATE_TASK",
+                    (a) => a.name.toUpperCase() === "CREATE_TASK",
                   );
                 if (createTaskAction) {
-                  runtime.logger?.info(
+                  runtime.logger.info(
                     {
                       src: "eliza-api",
                       agentType: contentMetadata.agentType,
@@ -1603,7 +1601,7 @@ export async function generateChatResponse(
                 }
               }
             } catch (err) {
-              runtime.logger?.warn(
+              runtime.logger.warn(
                 {
                   err,
                   src: "eliza-api",
@@ -1620,7 +1618,7 @@ export async function generateChatResponse(
                 unknown
               > | null;
               const resultRecord = asRecord(result);
-              runtime.logger?.info(
+              runtime.logger.info(
                 {
                   src: "eliza-api",
                   mode: resultRecord?.mode,
@@ -1632,7 +1630,7 @@ export async function generateChatResponse(
 
               const rawActionsPayload = rc?.actions ?? resultRecord?.actions;
               const modelText = String(
-                extractCompatTextContent(result.responseContent) ?? "",
+                extractCompatTextContent(result.responseContent),
               );
               const parsedFallbackActions = parseFallbackActionBlocks(
                 rawActionsPayload,
@@ -1698,7 +1696,7 @@ export async function generateChatResponse(
                   });
 
                 if (remainingExecutableFallbackActions.length > 0) {
-                  runtime.logger?.error(
+                  runtime.logger.error(
                     {
                       src: "eliza-api",
                       parsedActions: remainingExecutableFallbackActions.map(
@@ -1810,8 +1808,8 @@ export async function generateChatResponse(
 
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages.map((entry) => ({
-          ...(entry?.id ? { id: entry.id } : {}),
-          ...(entry?.content ? { content: entry.content } : {}),
+          ...(entry.id ? { id: entry.id } : {}),
+          ...(entry.content ? { content: entry.content } : {}),
         }))
       : [];
     const responseContent =
@@ -1859,7 +1857,7 @@ export async function generateChatResponse(
     try {
       await persistMessageTrajectoryGrouping(runtime, message);
     } catch (err) {
-      runtime.logger?.warn(
+      runtime.logger.warn(
         {
           err,
           src: "eliza-api",
@@ -2034,7 +2032,7 @@ export async function handleChatRoutes(
     const created = Math.floor(Date.now() / 1000);
     const ids = new Set<string>();
     ids.add("eliza");
-    if (state.agentName?.trim()) ids.add(state.agentName.trim());
+    if (state.agentName.trim()) ids.add(state.agentName.trim());
     if (state.runtime?.character.name?.trim())
       ids.add(state.runtime.character.name.trim());
 
@@ -2124,7 +2122,7 @@ export async function handleChatRoutes(
 
     const created = Math.floor(Date.now() / 1000);
     const id = `chatcmpl-${crypto.randomUUID()}`;
-    const model = requestedModel ?? state.agentName ?? "eliza";
+    const model = requestedModel ?? state.agentName;
 
     if (wantsStream) {
       initSse(res);
@@ -2358,7 +2356,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,
@@ -2446,7 +2445,7 @@ export async function handleChatRoutes(
       : extracted.user;
 
     const id = `msg_${crypto.randomUUID().replace(/-/g, "")}`;
-    const model = requestedModel ?? state.agentName ?? "eliza";
+    const model = requestedModel ?? state.agentName;
 
     if (wantsStream) {
       initSse(res);
@@ -2804,7 +2803,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,

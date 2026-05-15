@@ -232,7 +232,7 @@ export function startTriggerEventBridge(
         const last = lastDispatchMs.get(triggerId);
         const current = now();
         if (last !== undefined && current - last < minIntervalMs) {
-          runtime.logger.debug?.(
+          runtime.logger.debug(
             {
               src: "trigger-event-bridge",
               triggerId,

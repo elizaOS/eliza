@@ -113,7 +113,7 @@ function getMemorySource(
 	room: RoomLike | null,
 ): string | undefined {
 	const contentSource =
-		typeof message.content?.source === "string"
+		typeof message.content.source === "string"
 			? message.content.source.trim()
 			: "";
 	if (contentSource) {
@@ -155,7 +155,7 @@ function buildQueryContext(
 		entityId: message.entityId,
 		source,
 		contexts: activeContexts,
-		metadata: message.content?.metadata as Metadata | undefined,
+		metadata: message.content.metadata as Metadata | undefined,
 	});
 }
 
@@ -206,7 +206,7 @@ async function getCurrentRoom(
 	message: Memory,
 	state: State,
 ): Promise<RoomLike | null> {
-	const stateRoom = state.data?.room as RoomLike | undefined;
+	const stateRoom = state.data.room as RoomLike | undefined;
 	if (stateRoom?.id || stateRoom?.channelId || stateRoom?.source) {
 		return stateRoom;
 	}

@@ -1,7 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-schema";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
-import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
+import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
+import { LifeOpsService } from "../../../plugins/plugin-lifeops/src/lifeops/service.ts";
 
 function scenarioNow(ctx: { now?: string | Date }): Date {
   return typeof ctx.now === "string" && Number.isFinite(Date.parse(ctx.now))

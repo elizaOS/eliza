@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": false,
   "type": "module",
-  "description": "TODO: replace with a one-line description of __PLUGIN_DISPLAY_NAME__",
+  "description": "__PLUGIN_DISPLAY_NAME__ plugin scaffolded with elizaOS",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {

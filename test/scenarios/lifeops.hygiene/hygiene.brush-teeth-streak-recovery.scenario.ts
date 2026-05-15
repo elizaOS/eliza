@@ -12,7 +12,7 @@ import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
+} from "../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 

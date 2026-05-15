@@ -25,7 +25,7 @@ import {
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
 import VideoCall from "@/components/VideoCall";
-import { ELIZA_PHONE_NUMBER } from "@/lib/contact";
+import { buildElizaSmsHref } from "@/lib/contact";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
@@ -57,55 +57,17 @@ const AnimatedSvg = animated.svg as ComponentType<
 const AnimatedG = animated.g as ComponentType<AnimatedSvgProps<SVGGElement>>;
 
 const COUNTRY_CODES = getCountries();
-
-const COUNTRY_NAMES: Record<string, string> = {
-  US: "United States",
-  GB: "United Kingdom",
-  CA: "Canada",
-  AU: "Australia",
-  DE: "Germany",
-  FR: "France",
-  ES: "Spain",
-  IT: "Italy",
-  NL: "Netherlands",
-  BE: "Belgium",
-  AT: "Austria",
-  CH: "Switzerland",
-  SE: "Sweden",
-  NO: "Norway",
-  DK: "Denmark",
-  FI: "Finland",
-  IE: "Ireland",
-  PT: "Portugal",
-  PL: "Poland",
-  CZ: "Czech Republic",
-  GR: "Greece",
-  RU: "Russia",
-  CN: "China",
-  JP: "Japan",
-  KR: "South Korea",
-  IN: "India",
-  BR: "Brazil",
-  MX: "Mexico",
-  AR: "Argentina",
-  ZA: "South Africa",
-  EG: "Egypt",
-  NG: "Nigeria",
-  AE: "United Arab Emirates",
-  SA: "Saudi Arabia",
-  IL: "Israel",
-  TR: "Turkey",
-  TH: "Thailand",
-  SG: "Singapore",
-  MY: "Malaysia",
-  ID: "Indonesia",
-  PH: "Philippines",
-  VN: "Vietnam",
-  NZ: "New Zealand",
-};
+const COUNTRY_DISPLAY_NAMES =
+  typeof Intl !== "undefined"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
 
 function getCountryName(code: string): string {
-  return COUNTRY_NAMES[code] || code;
+  try {
+    return COUNTRY_DISPLAY_NAMES?.of(code) ?? code;
+  } catch {
+    return code;
+  }
 }
 
 function getCountryFlag(countryCode: string): string {
@@ -799,44 +761,11 @@ export default function Leaderboard() {
             <ElizaLogo className="h-8 md:h-10 lg:h-12 w-auto" />
           </button>
           <nav className="flex items-center gap-4">
-            <BlobButton
-              href={`sms:${ELIZA_PHONE_NUMBER}?body=Hi%20Eliza`}
-              onClick={() => {
-                // Try to open native Messages, fallback to /get-started if it doesn't work
-                const fallbackTimeout = setTimeout(() => {
-                  navigate("/get-started");
-                }, 1500);
-
-                // If page becomes hidden (native app opened), cancel fallback
-                const handleVisibilityChange = () => {
-                  if (document.hidden) {
-                    clearTimeout(fallbackTimeout);
-                    document.removeEventListener(
-                      "visibilitychange",
-                      handleVisibilityChange,
-                    );
-                  }
-                };
-                document.addEventListener(
-                  "visibilitychange",
-                  handleVisibilityChange,
-                );
-
-                // Cleanup after 2 seconds regardless
-                setTimeout(() => {
-                  document.removeEventListener(
-                    "visibilitychange",
-                    handleVisibilityChange,
-                  );
-                }, 2000);
-              }}
-              show={showUI}
-            >
+            <BlobButton href={buildElizaSmsHref("Hi Eliza")} show={showUI}>
               <AnimatedLetters text="Get Started" show={showUI} delay={80} />
             </BlobButton>
           </nav>
         </header>
-        <main className="flex w-full max-w-3xl mx-auto flex-col items-center justify-center px-16"></main>
         <div className="fixed top-[14%] left-1/2 -translate-x-1/2 pointer-events-auto">
           <AnimatedDiv
             style={{
@@ -852,7 +781,6 @@ export default function Leaderboard() {
               className="relative isolate flex items-center"
               style={{ gap: tryAppearSpring.tryGap }}
             >
-              {/* Sliding indicator -- in wrapper so it can travel between bar and Try */}
               <AnimatedDiv
                 className="absolute z-1 h-12 bg-white/30 backdrop-blur-sm border border-white/60 rounded-full"
                 style={{
@@ -872,7 +800,6 @@ export default function Leaderboard() {
                 className="relative flex items-center gap-1 rounded-full py-1.5 border border-transparent"
                 style={barSpring}
               >
-                {/* Glass bg -- separated so bar doesn't create a stacking context */}
                 <AnimatedDiv
                   className="absolute inset-0 rounded-full bg-white/30 backdrop-blur border border-white/60"
                   style={{
@@ -920,7 +847,6 @@ export default function Leaderboard() {
                   height: trySpring.height,
                 }}
               >
-                {/* Try bg -- z-0, below the indicator */}
                 <AnimatedDiv
                   className="absolute right-0 top-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
                   style={{
@@ -936,7 +862,6 @@ export default function Leaderboard() {
                     ),
                   }}
                 />
-                {/* Try text -- z-[2], above the indicator (z-[1]) */}
                 <AnimatedButton
                   onClick={() => navigate("/get-started")}
                   className="relative z-2 flex items-center justify-center h-full w-full rounded-full text-neutral-900 font-semibold text-base whitespace-nowrap cursor-pointer"
@@ -949,7 +874,6 @@ export default function Leaderboard() {
           </AnimatedDiv>
         </div>
       </div>
-      {/* Try Now input bar */}
       <AnimatedDiv
         className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6  bg-linear-to-b from-neutral-200/0 to-neutral-200/80"}`}
         style={{
@@ -1154,7 +1078,6 @@ export default function Leaderboard() {
           </AnimatedDiv>
         )}
       </AnimatedDiv>
-      {/* Login mode phone input + continue button */}
       <AnimatedDiv
         className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col "
         style={{
@@ -1242,7 +1165,6 @@ export default function Leaderboard() {
           Continue with phone
         </button>
       </AnimatedDiv>
-      {/* Verification code input bar */}
       <AnimatedDiv
         className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col"
         style={{

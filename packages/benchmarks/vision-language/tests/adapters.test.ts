@@ -6,8 +6,8 @@ import {
   parseActionList,
 } from "../src/adapters/osworld_adapter.ts";
 import {
-  ScreenSpotAdapter,
   parseClickFromText,
+  ScreenSpotAdapter,
 } from "../src/adapters/screenspot_adapter.ts";
 import { TextVqaAdapter } from "../src/adapters/textvqa_adapter.ts";
 
@@ -37,7 +37,10 @@ describe("DocVqaAdapter", () => {
   it("scores ANLS over the smoke fixture", async () => {
     const adapter = new DocVqaAdapter();
     const [first] = await adapter.loadSamples(1, { smoke: true });
-    const correct = adapter.scoreOne(first, { text: first.payload.answers[0], latencyMs: 1 });
+    const correct = adapter.scoreOne(first, {
+      text: first.payload.answers[0],
+      latencyMs: 1,
+    });
     expect(correct.score).toBeGreaterThan(0.9);
     const wrong = adapter.scoreOne(first, { text: "xxxxxxxxxx", latencyMs: 1 });
     expect(wrong.score).toBe(0);
@@ -48,11 +51,15 @@ describe("ChartQaAdapter", () => {
   it("uses relaxed numeric scoring for numeric answers", async () => {
     const adapter = new ChartQaAdapter();
     const samples = await adapter.loadSamples(5, { smoke: true });
-    const numericSample = samples.find((s) => s.payload.answerType === "numeric");
+    const numericSample = samples.find(
+      (s) => s.payload.answerType === "numeric",
+    );
     expect(numericSample).toBeDefined();
     if (!numericSample) return;
     const closeEnough = adapter.scoreOne(numericSample, {
-      text: String(Number(numericSample.payload.answers[0].replace(/[^\d.-]/g, "")) + 0.5),
+      text: String(
+        Number(numericSample.payload.answers[0].replace(/[^\d.-]/g, "")) + 0.5,
+      ),
       latencyMs: 1,
     });
     expect(closeEnough.score).toBe(1);
@@ -102,10 +109,7 @@ describe("OSWorldAdapter", () => {
     const parsed = parseActionList(
       'sure, here you go: [{"type":"CLICK","x":1,"y":2},{"type":"DONE"}]',
     );
-    expect(parsed).toEqual([
-      { type: "CLICK", x: 1, y: 2 },
-      { type: "DONE" },
-    ]);
+    expect(parsed).toEqual([{ type: "CLICK", x: 1, y: 2 }, { type: "DONE" }]);
   });
   it("parseActionList drops entries with unknown action types", () => {
     const parsed = parseActionList('[{"type":"FLY"},{"type":"DONE"}]');

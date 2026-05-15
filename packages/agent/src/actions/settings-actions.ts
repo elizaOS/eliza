@@ -460,7 +460,7 @@ async function handleSet(
       continue;
     }
 
-    if (setting.dependsOn?.length) {
+    if (setting.dependsOn.length) {
       const depsMet = setting.dependsOn.every(
         (dep) => next[dep] && next[dep].value !== null,
       );
@@ -636,7 +636,7 @@ export const settingsAction: Action = {
       case "set_owner_name":
         return handleSetOwnerName(params);
       case "set":
-        return handleSet(runtime, message?.entityId, params);
+        return handleSet(runtime, message.entityId, params);
       default:
         return fail(
           "SETTINGS_INVALID",

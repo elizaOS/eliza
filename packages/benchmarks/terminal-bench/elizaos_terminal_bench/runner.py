@@ -367,10 +367,12 @@ class TerminalBenchRunner:
         else:
             # tmux is the default and faithful upstream path.
             environment_cls = TmuxDockerEnvironment
+        default_network_mode = (self.config.network_mode or "none").strip() or "none"
         return environment_cls(
             image=task.docker_image,
             timeout_seconds=task.timeout_seconds,
-            network_mode="bridge" if task.network_enabled else "none",
+            network_mode="bridge" if task.network_enabled else default_network_mode,
+            working_dir="/app",
         )
 
     def _build_agent_for_harness(self, env):
@@ -392,7 +394,11 @@ class TerminalBenchRunner:
             from hermes_adapter.terminal_bench import build_terminal_bench_agent_fn
 
             provider, client_model = self._provider_model(default_provider="cerebras")
-            client = HermesClient(provider=provider, model=client_model)
+            client = HermesClient(
+                provider=provider,
+                model=client_model,
+                mode="in_process",
+            )
             return build_terminal_bench_agent_fn(
                 environment=env,
                 client=client,
@@ -405,7 +411,11 @@ class TerminalBenchRunner:
             from openclaw_adapter.terminal_bench import build_terminal_bench_agent_fn
 
             provider, client_model = self._openclaw_provider_model()
-            client = OpenClawClient(provider=provider, model=client_model)
+            client = OpenClawClient(
+                provider=provider,
+                model=client_model,
+                direct_openai_compatible=True,
+            )
             return build_terminal_bench_agent_fn(
                 environment=env,
                 client=client,

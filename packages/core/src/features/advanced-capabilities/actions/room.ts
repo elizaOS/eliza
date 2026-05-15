@@ -182,8 +182,8 @@ function normalizeDurationMinutes(value: unknown): number | undefined {
 }
 
 function getMessageText(message: Memory): string {
-	if (typeof message?.content === "string") return message.content;
-	return message?.content?.text ?? "";
+	if (typeof message.content === "string") return message.content;
+	return message.content.text ?? "";
 }
 
 function inferOpFromText(text: string): RoomOp | null {
@@ -383,8 +383,9 @@ async function resolveTargetRoom(args: {
 	if (args.roomId) {
 		return args.runtime.getRoom(args.roomId as UUID);
 	}
-	const roomIds =
-		(await args.runtime.getRoomsForParticipant?.(args.runtime.agentId)) ?? [];
+	const roomIds = await args.runtime.getRoomsForParticipant(
+		args.runtime.agentId,
+	);
 	for (const roomId of roomIds) {
 		const room = await args.runtime.getRoom(roomId);
 		if (

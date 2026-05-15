@@ -91,7 +91,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
-  "@elizaos/plugin-browser", // Browser plugin: unified BROWSER + MANAGE_BROWSER_BRIDGE actions; workspace browser + Chrome/Safari companion bridge
+  "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, todos, personality: advanced capabilities (advancedCapabilities: true)
@@ -125,7 +125,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-twitch", // Twitch integration
   "@elizaos/plugin-edge-tts", // text-to-speech (Microsoft Edge TTS)
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech
-  "@elizaos/plugin-music", // library + playback + streaming routes (unified MUSIC action)
+  "@elizaos/plugin-music", // Library, playback, and streaming routes.
   // "@elizaos/plugin-directives", // directive processing - not yet ready
   // "@elizaos/plugin-mcp", // MCP protocol support - not yet ready
   // "@elizaos/plugin-scheduling", // scheduling - not yet ready

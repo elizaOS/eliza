@@ -182,7 +182,7 @@ async function dispatchWorkflow(
     "WORKFLOW_DISPATCH",
   ) as (Service & WorkflowDispatchServiceLike) | null;
   if (!svc) {
-    runtime.logger.warn?.(
+    runtime.logger.warn(
       {
         src: "trigger-runtime",
         triggerId: trigger.triggerId,
@@ -265,7 +265,7 @@ export async function executeTriggerTask(
   // encounter one before that runs, log a warning and skip — re-dispatch
   // will pick it up after migration without crashing the loop.
   if (trigger.kind !== "workflow") {
-    runtime.logger.warn?.(
+    runtime.logger.warn(
       {
         src: "trigger-runtime",
         taskId: task.id,
@@ -465,7 +465,7 @@ export async function listTriggerTasks(
   for (const task of [...triggerTasks, ...heartbeatTasks]) {
     const key =
       task.id ??
-      `${task.name ?? ""}:${task.description ?? ""}:${(task.tags ?? []).join(",")}`;
+      `${task.name}:${task.description ?? ""}:${(task.tags ?? []).join(",")}`;
     if (!merged.has(key)) {
       merged.set(key, task);
     }

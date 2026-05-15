@@ -78,8 +78,8 @@ function loadFileConfig(): Partial<DesktopBrandConfig> {
 	const candidatePaths = [
 		envPath,
 		path.resolve(process.cwd(), "brand-config.json"),
-		path.resolve(import.meta.dir ?? process.cwd(), "..", "brand-config.json"),
-		path.resolve(import.meta.dir ?? process.cwd(), "brand-config.json"),
+		path.resolve(import.meta.dir, "..", "brand-config.json"),
+		path.resolve(import.meta.dir, "brand-config.json"),
 	].filter(Boolean);
 
 	for (const candidate of candidatePaths) {

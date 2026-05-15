@@ -111,6 +111,12 @@ type DirectCloudJob = {
   created_at?: string;
 };
 
+type DirectCloudAgentCreateData = {
+  id: string;
+  agentName: string;
+  status: string;
+};
+
 type ProvisioningAgentStatusData = {
   status?: string;
   bridgeUrl?: string | null;
@@ -567,8 +573,27 @@ function directTopUpUrl(): string {
   return `${DEFAULT_DIRECT_CLOUD_BASE_URL}/dashboard/settings?tab=billing`;
 }
 
+function requireString(value: unknown, fieldName: string): string {
+  const parsed = stringOrNull(value);
+  if (!parsed) throw new Error(`Eliza Cloud response missing ${fieldName}`);
+  return parsed;
+}
+
+function parseDirectCloudAgentCreateData(
+  value: unknown,
+  fallbackAgentName: string,
+): DirectCloudAgentCreateData {
+  const data = recordOrNull(value);
+  if (!data) throw new Error("Eliza Cloud response missing data");
+  return {
+    id: requireString(data.id, "data.id"),
+    agentName: stringOrNull(data.agentName) ?? fallbackAgentName,
+    status: stringOrNull(data.status) ?? "pending",
+  };
+}
+
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
-  const id = stringOrNull(input.agentId) ?? stringOrNull(input.id) ?? "";
+  const id = stringOrNull(input.agentId) ?? requireString(input.id, "agent id");
   const agentName =
     stringOrNull(input.agentName) ?? stringOrNull(input.name) ?? id;
   const bridgeUrl = input.bridgeUrl ?? input.bridge_url ?? null;
@@ -776,7 +801,10 @@ function toCloudCompatJob(input: DirectCloudJob): CloudCompatJob {
     data.phase,
   );
   const status = normalizeCloudJobStatus(originalStatus);
-  const id = firstString(input.id, input.jobId, input.job_id, data.id) ?? "";
+  const id = requireString(
+    firstString(input.id, input.jobId, input.job_id, data.id),
+    "job id",
+  );
   const type = firstString(input.type, data.type) ?? "agent_provision";
   const createdAt =
     firstString(
@@ -1439,11 +1467,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
 ) {
   const direct = await directCloudRequest<{
     success: boolean;
-    data?: {
-      id?: string;
-      agentName?: string;
-      status?: string;
-    };
+    data: unknown;
     error?: string;
   }>(this, "/api/v1/eliza/agents", {
     method: "POST",
@@ -1456,14 +1480,14 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     }),
   });
   if (direct) {
-    const agentId = direct.data?.id ?? "";
+    const data = parseDirectCloudAgentCreateData(direct.data, opts.agentName);
     return {
       success: direct.success,
       data: {
-        agentId,
-        agentName: direct.data?.agentName ?? opts.agentName,
+        agentId: data.id,
+        agentName: data.agentName,
         jobId: "",
-        status: direct.data?.status ?? "pending",
+        status: data.status,
         nodeId: null,
         message: direct.success ? "Agent created" : (direct.error ?? ""),
       },
@@ -1487,11 +1511,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
-      data?: {
-        id?: string;
-        agentName?: string;
-        status?: string;
-      };
+      data: unknown;
       error?: string;
     }>("/api/v1/eliza/agents", {
       method: "POST",
@@ -1503,14 +1523,14 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
           : {}),
       }),
     });
-    const agentId = response.data?.id ?? "";
+    const data = parseDirectCloudAgentCreateData(response.data, opts.agentName);
     return {
       success: response.success,
       data: {
-        agentId,
-        agentName: response.data?.agentName ?? opts.agentName,
+        agentId: data.id,
+        agentName: data.agentName,
         jobId: "",
-        status: response.data?.status ?? "pending",
+        status: data.status,
         nodeId: null,
         message: response.success ? "Agent created" : (response.error ?? ""),
       },

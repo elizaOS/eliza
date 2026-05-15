@@ -68,7 +68,7 @@ export const FINAL_CHECK_KEYS = new Map(
 
 function validateStrictFinalCheck(check, index) {
   if (!check || typeof check !== "object" || Array.isArray(check)) {
-    return;
+    throw new Error(`finalChecks[${index}] must be an object`);
   }
   const type = check.type;
   if (typeof type !== "string") {

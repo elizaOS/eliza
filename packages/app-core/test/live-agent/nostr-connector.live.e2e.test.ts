@@ -1,44 +1,15 @@
-/**
- * Nostr Connector Validation Tests
- *
- * Comprehensive E2E tests for validating the Nostr connector (@elizaos/plugin-nostr).
- *
- * Test Categories:
- *   1. Setup & Authentication
- *   2. Note Handling
- *   3. Nostr-Specific Features (NIP validation)
- *   4. Relay Management
- *   5. Error Handling
- *   6. Integration
- *   7. Configuration
- *
- * Requirements for live tests:
- *   NOSTR_PRIVATE_KEY     — Nostr private key (nsec bech32 or 64-char hex)
- *   NOSTR_RELAYS          — Comma-separated relay URLs (default: wss://relay.damus.io)
- *   ELIZA_LIVE_TEST=1    — Enable live tests
- *
- * Or configure in ~/.eliza/eliza.json:
- *   { "connectors": { "nostr": { "privateKey": "nsec1...", "relays": "wss://..." } } }
- *
- * NO MOCKS for live tests — all tests use real Nostr relays.
- */
-
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractPlugin,
-  resolveNostrPluginImportSpecifier,
-} from "@elizaos/app-core";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { sleep } from "../helpers/test-utils";
 
-// ---------------------------------------------------------------------------
-// Environment Setup
-// ---------------------------------------------------------------------------
+const { extractPlugin, resolveNostrPluginImportSpecifier } = await import(
+  "../../src/test-support/test-helpers.ts"
+);
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

@@ -260,7 +260,7 @@ export function openInEditor(
 	});
 
 	// We do not await; the editor runs independently.
-	child.unref?.();
+	child.unref();
 
 	const session: EditorSession = {
 		editorId,

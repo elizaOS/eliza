@@ -53,6 +53,7 @@ export type BuiltinTab =
   | "companion"
   | "stream"
   | "apps"
+  | "views"
   | "character"
   | "character-select"
   | "inventory"
@@ -197,10 +198,11 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "ElizaOS dialer, SMS, and contact book",
   },
   {
-    label: "Apps",
-    tabs: ["apps", ...APPS_TOOL_TABS],
+    label: "Views",
+    tabs: ["views", "apps", ...APPS_TOOL_TABS],
     icon: Gamepad2,
-    description: "Games, LifeOps, integrations, and app tools",
+    description:
+      "Agent-provided views, games, LifeOps, integrations, and app tools",
   },
   {
     label: "Character",
@@ -265,7 +267,7 @@ export function getTabGroups(
 ): TabGroup[] {
   const groups = ALL_TAB_GROUPS.filter(
     (g) =>
-      (APPS_ENABLED || g.label !== "Apps") &&
+      (APPS_ENABLED || g.label !== "Views") &&
       (phoneSurfaceEnabled || g.label !== "Phone") &&
       (streamEnabled || g.label !== "Stream") &&
       (walletEnabled || g.label !== "Wallet") &&
@@ -309,6 +311,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   companion: "/companion",
   stream: "/stream",
   apps: "/apps",
+  views: "/views",
   character: "/character",
   "character-select": "/character/select",
   automations: "/automations",
@@ -431,10 +434,17 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (
     !APPS_ENABLED &&
     (normalized === "/apps" ||
+      normalized === "/views" ||
       normalized.startsWith("/apps/") ||
+      normalized.startsWith("/views/") ||
       normalized === "/game")
   ) {
     return "chat";
+  }
+
+  // /views — the views tab (ViewManagerPage)
+  if (normalized === "/views" || normalized.startsWith("/views/")) {
+    return "views";
   }
 
   // /apps/<sub> — known tool tabs resolve to their tab; everything else is an app slug
@@ -514,7 +524,9 @@ export function titleForTab(tab: Tab): string {
     case "companion":
       return "Companion";
     case "apps":
-      return "Apps";
+      return "Views";
+    case "views":
+      return "Views";
     case "character":
       return "Character";
     case "character-select":

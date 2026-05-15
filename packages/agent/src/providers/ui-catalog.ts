@@ -41,7 +41,7 @@ export const uiCatalogProvider: Provider = {
   roleGate: { minRole: "USER" },
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const channelType = message.content?.channelType;
+    const channelType = message.content.channelType;
     const isAllowedChannel =
       channelType === ChannelType.DM ||
       channelType === ChannelType.API ||

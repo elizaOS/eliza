@@ -5,11 +5,14 @@ Manages Docker-based sandboxed terminal environments for task execution.
 """
 
 import asyncio
+import io
 import logging
 import os
 import platform
+import shlex
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 from datetime import datetime
@@ -167,6 +170,7 @@ class TerminalEnvironment:
         self._client: Optional["docker.DockerClient"] = None
         self._container: Optional[Container] = None
         self._started = False
+        self._current_task: Optional[TerminalTask] = None
 
     @property
     def is_started(self) -> bool:
@@ -183,6 +187,7 @@ class TerminalEnvironment:
         if self._started:
             await self.stop()
 
+        self._current_task = task
         self._client = check_docker()
 
         # Determine configuration
@@ -206,6 +211,7 @@ class TerminalEnvironment:
             "working_dir": self.working_dir,
             "environment": {
                 "TERM": "xterm-256color",
+                "TEST_DIR": "/tests",
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             },
             "command": "/bin/bash",
@@ -349,6 +355,8 @@ class TerminalEnvironment:
         Returns:
             Tuple of (success, output, exit_code)
         """
+        await self._stage_test_files()
+
         # Write test script to container
         write_result = await self.execute(
             f"cat << 'ELIZAEOF' > /tmp/test.sh\n{test_script}\nELIZAEOF"
@@ -360,12 +368,54 @@ class TerminalEnvironment:
         await self.execute("chmod +x /tmp/test.sh")
 
         # Run test with timeout (use environment timeout by default)
-        result = await self.execute("/tmp/test.sh", timeout=self.timeout_seconds)
+        result = await self.execute("TEST_DIR=/tests /tmp/test.sh", timeout=self.timeout_seconds)
 
         output = result.stdout + result.stderr
         success = result.exit_code == 0
 
         return success, output, result.exit_code
+
+    async def _stage_test_files(self) -> None:
+        """Copy task pytest files into /tests for upstream run-tests.sh."""
+        if not self._container or not self._current_task:
+            return
+        meta = self._current_task.metadata or {}
+        task_dir_raw = meta.get("task_dir") if isinstance(meta, dict) else None
+        if not task_dir_raw:
+            return
+        task_dir = Path(str(task_dir_raw))
+        tests_dir_raw = meta.get("tests_dir") if isinstance(meta, dict) else None
+        tests_dir = Path(str(tests_dir_raw)) if tests_dir_raw else task_dir / "tests"
+
+        sources: list[Path] = []
+        if tests_dir.exists() and tests_dir.is_dir():
+            sources.extend(path for path in tests_dir.rglob("*") if path.is_file())
+        sources.extend(path for path in task_dir.glob("test*.py") if path.is_file())
+        if not sources:
+            return
+
+        mkdir = await asyncio.to_thread(
+            self._container.exec_run, ["bash", "-lc", "mkdir -p /tests"]
+        )
+        if mkdir.exit_code != 0:
+            raise TerminalEnvironmentError("Failed to create /tests in container")
+
+        tar_bytes = io.BytesIO()
+        with tarfile.open(fileobj=tar_bytes, mode="w") as archive:
+            for source in sources:
+                try:
+                    arcname = (
+                        source.relative_to(tests_dir)
+                        if tests_dir.exists() and source.is_relative_to(tests_dir)
+                        else Path(source.name)
+                    )
+                except ValueError:
+                    arcname = Path(source.name)
+                archive.add(source, arcname=str(arcname))
+        tar_bytes.seek(0)
+        await asyncio.to_thread(
+            self._container.put_archive, "/tests", tar_bytes.getvalue()
+        )
 
     async def get_file_content(self, path: str) -> str:
         """Get content of a file in the container."""
@@ -881,6 +931,7 @@ class TmuxDockerEnvironment(TerminalEnvironment):
         if self._started:
             await self.stop()
 
+        self._current_task = task
         self._client = check_docker()
 
         compose_path = self._task_compose_file(task)
@@ -915,6 +966,7 @@ class TmuxDockerEnvironment(TerminalEnvironment):
             "working_dir": self.working_dir,
             "environment": {
                 "TERM": "xterm-256color",
+                "TEST_DIR": "/tests",
                 "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             },
             # sleep infinity matches upstream docker-compose.yaml.
@@ -1043,8 +1095,26 @@ class TmuxDockerEnvironment(TerminalEnvironment):
             ["tmux", "send-keys", "-t", self.SESSION_NAME, "clear", "Enter"]
         )
 
+        import base64 as _b64
+
+        script_path = f"/tmp/tbench-command-{uuid4().hex}.sh"
+        encoded = _b64.b64encode(
+            ("#!/usr/bin/env bash\n" + command + "\n").encode("utf-8")
+        ).decode("ascii")
+        staged = container.exec_run(
+            [
+                "bash",
+                "-lc",
+                f"printf %s {shlex.quote(encoded)} | base64 -d > {shlex.quote(script_path)} && chmod +x {shlex.quote(script_path)}",
+            ]
+        )
+        if staged.exit_code != 0:
+            err = staged.output.decode(errors="replace") if staged.output else ""
+            raise TerminalEnvironmentError(f"Failed to stage tmux command: {err}")
+
         wrapped = (
-            f"({command}); __rc=$?; "
+            f"bash {shlex.quote(script_path)}; __rc=$?; "
+            f"rm -f {shlex.quote(script_path)}; "
             f"echo {_TBENCH_SENTINEL}=$__rc; "
             f"tmux wait -S {_TMUX_DONE_TOKEN}"
         )
@@ -1091,7 +1161,7 @@ class TmuxDockerEnvironment(TerminalEnvironment):
 
         full_cmd = command
         if working_dir and working_dir != self.working_dir:
-            full_cmd = f"cd {working_dir} && {command}"
+            full_cmd = f"cd {shlex.quote(working_dir)}\n{command}"
 
         try:
             rc, pane = await asyncio.to_thread(
@@ -1144,6 +1214,8 @@ class TmuxDockerEnvironment(TerminalEnvironment):
         if not self._container:
             raise TerminalEnvironmentError("Container not running")
 
+        await self._stage_test_files()
+
         import base64 as _b64
         encoded = _b64.b64encode(test_script.encode("utf-8")).decode("ascii")
         prep_cmd = (
@@ -1158,7 +1230,7 @@ class TmuxDockerEnvironment(TerminalEnvironment):
             return False, f"Failed to stage test script: {err}", -1
 
         result = await self.execute(
-            "bash /tmp/run-tests.sh", timeout=self.timeout_seconds
+            "TEST_DIR=/tests bash /tmp/run-tests.sh", timeout=self.timeout_seconds
         )
         success = result.exit_code == 0
         return success, result.stdout + result.stderr, result.exit_code

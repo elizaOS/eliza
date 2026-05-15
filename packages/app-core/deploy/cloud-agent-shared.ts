@@ -220,17 +220,17 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       const plugins = [];
 
       const cloudPlugin = await import("@elizaos/plugin-elizacloud")
-        .then((m) => m.default ?? m.elizaOSCloudPlugin)
+        .then((m) => m.default)
         .catch(() => null);
       if (cloudPlugin) plugins.push(cloudPlugin);
 
       const sqlPlugin = await import("@elizaos/plugin-sql")
-        .then((m) => m.default ?? m.sqlPlugin)
+        .then((m) => m.default)
         .catch(() => null);
       if (sqlPlugin) plugins.push(sqlPlugin);
 
       const workflowPlugin = await import("@elizaos/plugin-workflow")
-        .then((m) => m.default ?? m.workflowPlugin)
+        .then((m) => m.default)
         .catch(() => null);
       if (workflowPlugin) plugins.push(workflowPlugin);
 
@@ -379,7 +379,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             runtime,
             message,
             async (content) => {
-              if (content?.text) responseText += content.text;
+              if (content.text) responseText += content.text;
               return [];
             },
           );
@@ -430,7 +430,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             runtime,
             message,
             async (content) => {
-              if (content?.text) {
+              if (content.text) {
                 responseText += content.text;
                 onChunk(content.text);
               }

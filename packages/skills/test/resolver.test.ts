@@ -5,6 +5,16 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { clearSkillsDirCache, getSkillsDir } from "../src/resolver.js";
 
+function makeSkillDir(prefix: string): string {
+  const dir = join(tmpdir(), `${prefix}-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "test.md"),
+    "---\nname: test\ndescription: test\n---\n# Test skill",
+  );
+  return dir;
+}
+
 describe("getSkillsDir", () => {
   afterEach(() => {
     clearSkillsDirCache();
@@ -29,12 +39,7 @@ describe("getSkillsDir", () => {
   });
 
   it("respects ELIZAOS_BUNDLED_SKILLS_DIR environment variable", () => {
-    const tempDir = join(tmpdir(), `test-skills-resolver-${Date.now()}`);
-    mkdirSync(tempDir, { recursive: true });
-    writeFileSync(
-      join(tempDir, "test.md"),
-      "---\nname: test\ndescription: test\n---\n# Test skill",
-    );
+    const tempDir = makeSkillDir("test-skills-resolver");
 
     clearSkillsDirCache();
     process.env.ELIZAOS_BUNDLED_SKILLS_DIR = tempDir;
@@ -49,7 +54,6 @@ describe("getSkillsDir", () => {
     clearSkillsDirCache();
     process.env.ELIZAOS_BUNDLED_SKILLS_DIR = "";
 
-    // Should fall through to default resolution
     const dir = getSkillsDir();
     assert.ok(typeof dir === "string");
     assert.ok(dir.length > 0);
@@ -66,23 +70,13 @@ describe("clearSkillsDirCache", () => {
     const first = getSkillsDir();
     clearSkillsDirCache();
     const second = getSkillsDir();
-    // Should still resolve to the same path
     assert.strictEqual(first, second);
   });
 
   it("picks up environment variable changes after clearing cache", () => {
-    // First call without env var
     const defaultDir = getSkillsDir();
+    const tempDir = makeSkillDir("test-skills-cache");
 
-    // Set up temp directory
-    const tempDir = join(tmpdir(), `test-skills-cache-${Date.now()}`);
-    mkdirSync(tempDir, { recursive: true });
-    writeFileSync(
-      join(tempDir, "test.md"),
-      "---\nname: test\ndescription: test\n---\n# Test",
-    );
-
-    // Clear cache and set env var
     clearSkillsDirCache();
     process.env.ELIZAOS_BUNDLED_SKILLS_DIR = tempDir;
 

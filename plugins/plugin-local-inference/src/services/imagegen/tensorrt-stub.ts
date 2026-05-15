@@ -147,7 +147,7 @@ export async function loadTensorRtImageGenBackend(
 					"[imagegen/tensorrt] generate called after dispose()",
 				);
 			}
-			if (!req.prompt?.trim()) {
+			if (!req.prompt.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"tensorrt",
 					"unsupported_request",

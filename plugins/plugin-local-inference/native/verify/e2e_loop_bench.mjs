@@ -711,7 +711,12 @@ async function synthPhrasePcm(port, text, turnTimeoutS, ttsSteps = 32, durationS
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), turnTimeoutS * 1000);
   try {
-    const body = { input: text, response_format: "pcm", num_step: ttsSteps };
+    const body = {
+      input: text,
+      response_format: "pcm",
+      num_step: ttsSteps,
+      interactive: false,
+    };
     if (Number.isFinite(durationSec) && durationSec > 0) body.duration = durationSec;
     const res = await fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
       method: "POST",
@@ -900,7 +905,7 @@ async function measureBargeIn(port, ffiCtx, ffi, s) {
   const reqP = fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ input: longText, response_format: "pcm" }),
+    body: JSON.stringify({ input: longText, response_format: "pcm", interactive: false }),
     signal: ctrl.signal,
   }).catch((e) => ({ aborted: true, err: String(e) }));
   // Let it get going, then "barge in".
@@ -1079,9 +1084,10 @@ async function main() {
       "-m", files.text,
       "-md", files.drafter,
       "--spec-type", "dflash",
-      "--draft-min", "2", "--draft-max", "6",
+      "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
+      "--reasoning", "off",
       "--port", String(port),
-      "-c", String(args.ctx), "-cd", String(args.ctx),
+      "-c", String(args.ctx),
       "-ngl", String(args.ngl),
       "-t", String(args.threads),
       "--no-warmup",

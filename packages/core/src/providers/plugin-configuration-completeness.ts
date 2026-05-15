@@ -56,7 +56,7 @@ export const pluginConfigurationCompletenessProvider: Provider = {
 		}
 
 		const plugins: PluginCompletenessEntry[] = [];
-		for (const plugin of runtime.plugins ?? []) {
+		for (const plugin of runtime.plugins) {
 			const status = await client.getStatus(plugin.name);
 			if (!status) continue;
 			plugins.push({

@@ -320,6 +320,21 @@ def _install_optional_dependency_stubs() -> None:
         pkg.fuzz = fuzz_mod  # type: ignore[attr-defined]
         sys.modules["thefuzz"] = pkg
         sys.modules["thefuzz.fuzz"] = fuzz_mod
+    else:
+        from thefuzz import fuzz as fuzz_mod  # type: ignore[import-not-found]
+
+        if not hasattr(fuzz_mod, "token_set_ratio"):
+            def _token_set_ratio(a: object, b: object) -> int:
+                left = set(str(a).strip().lower().split())
+                right = set(str(b).strip().lower().split())
+                if not left and not right:
+                    return 100
+                if not left or not right:
+                    return 0
+                intersection = left & right
+                return int((2 * len(intersection) / (len(left) + len(right))) * 100)
+
+            fuzz_mod.token_set_ratio = _token_set_ratio  # type: ignore[attr-defined]
 
     if "spacy" not in sys.modules and importlib.util.find_spec("spacy") is None:
         spacy_stub = _types.ModuleType("spacy")

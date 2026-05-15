@@ -145,7 +145,7 @@ export class GpuWindowManager {
 		if (!win) return;
 		win.setFrame(options.x, options.y, options.width, options.height);
 		// Keep the embedded WGPUView in sync with the window size
-		win.wgpuView?.setFrame(0, 0, options.width, options.height);
+		win.wgpuView.setFrame(0, 0, options.width, options.height);
 	}
 
 	async getInfo(options: { id: string }): Promise<GpuWindowInfo | null> {

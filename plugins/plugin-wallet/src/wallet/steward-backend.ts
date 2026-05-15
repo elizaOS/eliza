@@ -19,7 +19,7 @@ interface StewardEvmAccountBinding {
 }
 
 /**
- * Shape of the dynamically imported @elizaos/app-steward module. Defined
+ * Shape of the dynamically imported @elizaos/plugin-steward-app module. Defined
  * locally to avoid a devDependency cycle with app-steward.
  */
 interface StewardEvmAccountModule {
@@ -66,7 +66,7 @@ export class StewardBackend implements WalletBackend {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       throw new StewardUnavailableError(
-        `Cannot load Steward wallet module (@elizaos/app-steward): ${detail}`,
+        `Cannot load Steward wallet module (@elizaos/plugin-steward-app): ${detail}`,
       );
     }
 

@@ -89,6 +89,12 @@ interface HeaderProps {
   hideCloudCredits?: boolean;
   tasksEventsPanelOpen?: boolean;
   onToggleTasksPanel?: () => void;
+  /**
+   * When true, the mobile bottom nav bar is hidden. Used on the chat tab to
+   * create a chat-first experience with no nav visible by default — the nav
+   * reappears when the user navigates to any other tab.
+   */
+  hideNav?: boolean;
 }
 
 function shouldShowMacDesktopTitleBar(): boolean {
@@ -108,6 +114,7 @@ export function Header({
   hideCloudCredits = false,
   tasksEventsPanelOpen = false,
   onToggleTasksPanel,
+  hideNav = false,
 }: HeaderProps) {
   const {
     activeGameRunId,
@@ -185,7 +192,10 @@ export function Header({
       return;
     }
 
-    if (isMobileViewport) {
+    // The eliza-mobile-bottom-nav class drives CSS padding offsets for the
+    // bottom nav bar. Hide it on chat (hideNav=true) so the chat view fills
+    // the full viewport with no bottom nav padding.
+    if (isMobileViewport && !hideNav) {
       document.documentElement.classList.add("eliza-mobile-bottom-nav");
     } else {
       document.documentElement.classList.remove("eliza-mobile-bottom-nav");
@@ -194,7 +204,7 @@ export function Header({
     return () => {
       document.documentElement.classList.remove("eliza-mobile-bottom-nav");
     };
-  }, [isMobileViewport]);
+  }, [isMobileViewport, hideNav]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -476,58 +486,59 @@ export function Header({
     </Button>
   );
 
-  const mobileBottomNav = isMobileViewport ? (
-    <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
-      style={{
-        paddingBottom: "max(0.375rem, env(safe-area-inset-bottom, 0px))",
-        paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
-        paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
-      }}
-      aria-label={t("aria.navMenu")}
-      data-testid="header-mobile-bottom-nav"
-      data-no-camera-drag="true"
-    >
-      <div
-        className="grid min-w-0 items-center gap-1 overflow-hidden"
+  const mobileBottomNav =
+    isMobileViewport && !hideNav ? (
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
         style={{
-          gridTemplateColumns: `repeat(${tabGroups.length}, minmax(0, 1fr))`,
+          paddingBottom: "max(0.375rem, env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
+          paddingRight: "max(0.5rem, var(--safe-area-right, 0px))",
         }}
+        aria-label={t("aria.navMenu")}
+        data-testid="header-mobile-bottom-nav"
+        data-no-camera-drag="true"
       >
-        {tabGroups.map((group) => {
-          const primaryTab = group.tabs[0];
-          const isActive = group.tabs.includes(tab);
-          const localizedGroup = localizeTabGroup(group);
+        <div
+          className="grid min-w-0 items-center gap-1 overflow-hidden"
+          style={{
+            gridTemplateColumns: `repeat(${tabGroups.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {tabGroups.map((group) => {
+            const primaryTab = group.tabs[0];
+            const isActive = group.tabs.includes(tab);
+            const localizedGroup = localizeTabGroup(group);
 
-          return (
-            <Button
-              variant="ghost"
-              key={group.label}
-              data-testid={`header-mobile-bottom-nav-button-${primaryTab}`}
-              className={`${MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME} ${
-                isActive ? MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME : ""
-              }`}
-              onClick={() => setTab(primaryTab)}
-              onPointerDown={stopHeaderPointerPropagation}
-              aria-label={localizedGroup.label}
-              aria-current={isActive ? "page" : undefined}
-              title={localizedGroup.label}
-              style={HEADER_BUTTON_STYLE}
-              data-no-camera-drag="true"
-            >
-              <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
-              <span
-                data-testid={`header-mobile-bottom-nav-label-${primaryTab}`}
-                className="pointer-events-none truncate text-[10px] leading-none font-medium"
+            return (
+              <Button
+                variant="ghost"
+                key={group.label}
+                data-testid={`header-mobile-bottom-nav-button-${primaryTab}`}
+                className={`${MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME} ${
+                  isActive ? MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME : ""
+                }`}
+                onClick={() => setTab(primaryTab)}
+                onPointerDown={stopHeaderPointerPropagation}
+                aria-label={localizedGroup.label}
+                aria-current={isActive ? "page" : undefined}
+                title={localizedGroup.label}
+                style={HEADER_BUTTON_STYLE}
+                data-no-camera-drag="true"
               >
-                {localizedGroup.label}
-              </span>
-            </Button>
-          );
-        })}
-      </div>
-    </nav>
-  ) : null;
+                <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
+                <span
+                  data-testid={`header-mobile-bottom-nav-label-${primaryTab}`}
+                  className="pointer-events-none truncate text-[10px] leading-none font-medium"
+                >
+                  {localizedGroup.label}
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+      </nav>
+    ) : null;
 
   const rightDesktopControls = (
     <div

@@ -533,7 +533,7 @@ export class VadDetector {
 
 	constructor(silero: VadLike, config: VadDetectorConfig = {}) {
 		this.silero = silero;
-		this.sampleRate = config.sampleRate ?? silero.sampleRate ?? 16_000;
+		this.sampleRate = config.sampleRate ?? silero.sampleRate;
 		if (this.sampleRate !== silero.sampleRate) {
 			throw new Error(
 				`[voice] VadDetector sample rate ${this.sampleRate} != Silero model rate ${silero.sampleRate}`,

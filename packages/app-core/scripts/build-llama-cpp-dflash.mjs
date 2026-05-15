@@ -1022,6 +1022,116 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   );
 }
 
+function patchSpeculativeIncompatibleDraftFallback(
+  cacheDir,
+  { dryRun = false } = {},
+) {
+  const specPath = path.join(cacheDir, "common", "speculative.cpp");
+  if (!fs.existsSync(specPath)) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeIncompatibleDraftFallback: ${specPath} missing — fork layout broken`,
+    );
+  }
+  let content = fs.readFileSync(specPath, "utf8");
+  if (content.includes("disabling speculative implementation")) {
+    return;
+  }
+  const original = content;
+  content = content.replace(
+    `        LOG_INF("%s: adding speculative implementation '%s'\\n", __func__, common_speculative_type_to_str(config.type).c_str());
+        switch (config.type) {
+`,
+    `        LOG_INF("%s: adding speculative implementation '%s'\\n", __func__, common_speculative_type_to_str(config.type).c_str());
+        try {
+            switch (config.type) {
+`,
+  );
+  content = content.replace(
+    `            default:
+                break;
+        }
+    }
+
+    if (impls.empty()) {
+`,
+    `                default:
+                    break;
+            }
+        } catch (const std::exception & e) {
+            LOG_ERR("%s: disabling speculative implementation '%s': %s\\n",
+                    __func__, common_speculative_type_to_str(config.type).c_str(), e.what());
+        }
+    }
+
+    if (impls.empty()) {
+`,
+  );
+  content = content.replace(
+    `common_speculative_draft_params & common_speculative_get_draft_params(
+        common_speculative * spec,
+        llama_seq_id seq_id) {
+    GGML_ASSERT(spec);
+    GGML_ASSERT(seq_id < (llama_seq_id) spec->dparams.size());
+
+    return spec->dparams[seq_id];
+}
+`,
+    `common_speculative_draft_params & common_speculative_get_draft_params(
+        common_speculative * spec,
+        llama_seq_id seq_id) {
+    static common_speculative_draft_params disabled_dparams;
+    if (spec == nullptr) {
+        return disabled_dparams;
+    }
+    GGML_ASSERT(seq_id < (llama_seq_id) spec->dparams.size());
+
+    return spec->dparams[seq_id];
+}
+`,
+  );
+  content = content.replace(
+    `void common_speculative_accept(common_speculative * spec, llama_seq_id seq_id, uint16_t n_accepted) {
+    if (n_accepted == 0) {
+        return;
+    }
+
+    common_speculative_impl * impl = spec->impl_last[seq_id];
+
+    GGML_ASSERT(impl);
+`,
+    `void common_speculative_accept(common_speculative * spec, llama_seq_id seq_id, uint16_t n_accepted) {
+    if (spec == nullptr || n_accepted == 0) {
+        return;
+    }
+
+    common_speculative_impl * impl = spec->impl_last[seq_id];
+    if (impl == nullptr) {
+        return;
+    }
+`,
+  );
+  if (content === original) {
+    return;
+  }
+  if (
+    !content.includes("disabling speculative implementation") ||
+    !content.includes(
+      "static common_speculative_draft_params disabled_dparams",
+    ) ||
+    !content.includes("if (spec == nullptr || n_accepted == 0)")
+  ) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeIncompatibleDraftFallback: patch verification failed for ${specPath}`,
+    );
+  }
+  if (!dryRun) {
+    fs.writeFileSync(specPath, content, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched speculative.cpp to disable incompatible draft implementations without terminating",
+  );
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -1959,6 +2069,7 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchOmnivoiceCmakeConflictArtifact(cacheDir, { dryRun });
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
   patchSpeculativeReplacementsField(cacheDir, { dryRun });
@@ -1972,6 +2083,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   } else {
     patchDflashSpeculativeDispatch(cacheDir, { dryRun });
   }
+  patchSpeculativeIncompatibleDraftFallback(cacheDir, { dryRun });
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +
@@ -2080,6 +2192,39 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   ) {
     patchGgmlBaseForWindowsQjl(cacheDir);
   }
+}
+
+function patchOmnivoiceCmakeConflictArtifact(root, { dryRun = false } = {}) {
+  const cmakePath = path.join(root, "CMakeLists.txt");
+  if (!fs.existsSync(cmakePath)) return;
+  const source = fs.readFileSync(cmakePath, "utf8");
+  const begin = source.indexOf(
+    "<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1",
+  );
+  const divider = source.indexOf(
+    "=======\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED",
+    begin,
+  );
+  const end = source.indexOf(">>>>>>>", divider);
+  if (begin === -1 || divider === -1 || end === -1) return;
+  const endLine = source.indexOf("\n", end);
+  const replacement =
+    "# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED — W3-3 merged path is canonical)\n" +
+    "# The pre-W3-3 legacy graft block lived here. The merged build is now\n" +
+    "# self-contained inside `tools/omnivoice/CMakeLists.txt`. The\n" +
+    "# `ELIZA_FUSE_OMNIVOICE` deprecation redirect lives near the top of\n" +
+    "# this file (next to the LLAMA_BUILD_OMNIVOICE option declaration) so\n" +
+    "# the option ON state is visible when add_subdirectory(tools) runs.\n";
+  const after =
+    source.slice(0, begin) +
+    replacement +
+    source.slice(endLine === -1 ? source.length : endLine + 1);
+  if (!dryRun) {
+    fs.writeFileSync(cmakePath, after, "utf8");
+  }
+  console.log(
+    "[dflash-build] repaired stale OmniVoice CMake conflict artifact",
+  );
 }
 
 function isRuntimeLibrary(name) {
@@ -2196,9 +2341,12 @@ function sourceContainsDflashDraft(root) {
   const archPath = path.join(root, "src", "llama-arch.cpp");
   const specPath = path.join(root, "common", "speculative.cpp");
   const argPath = path.join(root, "common", "arg.cpp");
-  const dflashModelPath = path.join(root, "src", "models", "dflash_draft.cpp");
+  const dflashModelPaths = [
+    path.join(root, "src", "models", "dflash_draft.cpp"),
+    path.join(root, "src", "models", "dflash-draft.cpp"),
+  ];
   if (
-    !fs.existsSync(dflashModelPath) ||
+    !dflashModelPaths.some((candidate) => fs.existsSync(candidate)) ||
     !fs.existsSync(archPath) ||
     !fs.existsSync(specPath) ||
     !fs.existsSync(argPath)

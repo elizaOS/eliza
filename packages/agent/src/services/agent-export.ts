@@ -658,7 +658,7 @@ async function restoreAgentData(
   for (const world of payload.worlds) {
     const newWorld: World = {
       ...world,
-      id: remap(world.id ?? "") as UUID,
+      id: remap(world.id) as UUID,
       agentId: newAgentId as UUID,
     };
     await db.createWorlds([newWorld]);
@@ -672,7 +672,7 @@ async function restoreAgentData(
   for (const room of payload.rooms) {
     const newRoom: Room = {
       ...room,
-      id: remap(room.id ?? "") as UUID,
+      id: remap(room.id) as UUID,
       agentId: newAgentId as UUID,
       worldId: room.worldId ? (remap(room.worldId) as UUID) : undefined,
     };
@@ -723,7 +723,7 @@ async function restoreAgentData(
   for (const comp of payload.components) {
     const newComp: Component = {
       ...comp,
-      id: remap(comp.id ?? "") as UUID,
+      id: remap(comp.id) as UUID,
       ...(comp.entityId ? { entityId: remap(comp.entityId) as UUID } : {}),
       ...(comp.agentId ? { agentId: newAgentId as UUID } : {}),
       ...(comp.roomId ? { roomId: remap(comp.roomId) as UUID } : {}),
@@ -761,8 +761,8 @@ async function restoreAgentData(
   for (const rel of payload.relationships) {
     await db.createRelationships([
       {
-        sourceEntityId: remap(rel.sourceEntityId ?? "") as UUID,
-        targetEntityId: remap(rel.targetEntityId ?? "") as UUID,
+        sourceEntityId: remap(rel.sourceEntityId) as UUID,
+        targetEntityId: remap(rel.targetEntityId) as UUID,
         tags: rel.tags,
         metadata: rel.metadata,
       },
@@ -802,7 +802,7 @@ async function restoreAgentData(
         roomId: logEntry.roomId
           ? (remap(logEntry.roomId) as UUID)
           : (newAgentId as UUID),
-        type: logEntry.type ?? "action",
+        type: logEntry.type,
       },
     ]);
     logsImported++;

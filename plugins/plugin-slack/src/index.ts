@@ -125,6 +125,9 @@ const slackPlugin: Plugin = {
       "Slack plugin configuration validated successfully",
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    await SlackService.stop(runtime);
+  },
 };
 
 export default slackPlugin;

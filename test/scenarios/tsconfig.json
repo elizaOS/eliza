@@ -13,8 +13,8 @@
     "../../packages/ui/src/**/*.tsx",
     "../../packages/scenario-runner/src/**/*.ts",
     "../../packages/app-core/src/**/*.ts",
-    "../../plugins/app-lifeops/src/**/*.ts",
-    "../../plugins/app-lifeops/test/helpers/**/*.ts",
+    "../../plugins/plugin-lifeops/src/**/*.ts",
+    "../../plugins/plugin-lifeops/test/helpers/**/*.ts",
     "../mocks/**/*.ts",
     "../helpers/**/*.ts"
   ],

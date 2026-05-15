@@ -169,6 +169,8 @@ export const cliPlugin: Plugin = {
 			throw error;
 		}
 	},
+	// No services or persistent resources — nothing to dispose.
+	dispose: async (_runtime) => {},
 };
 
 export default cliPlugin;

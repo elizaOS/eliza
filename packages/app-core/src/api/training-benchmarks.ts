@@ -69,7 +69,7 @@ function loadDatabaseSync(): DatabaseSyncCtor | null {
     const mod = requireFromHere("node:sqlite") as {
       DatabaseSync?: DatabaseSyncCtor;
     };
-    DatabaseSyncCached = mod?.DatabaseSync ?? null;
+    DatabaseSyncCached = mod.DatabaseSync ?? null;
   } catch {
     DatabaseSyncCached = null;
   }

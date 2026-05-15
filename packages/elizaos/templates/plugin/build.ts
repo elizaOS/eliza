@@ -17,9 +17,7 @@ async function build() {
 	try {
 		await cleanBuild("dist");
 
-		console.log("Starting build tasks...");
-
-		const [buildResult, _tscResult] = await Promise.all([
+		const [buildResult] = await Promise.all([
 			(async () => {
 				console.log("📦 Bundling with Bun...");
 				const result = await Bun.build({

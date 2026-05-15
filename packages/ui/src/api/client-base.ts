@@ -206,7 +206,7 @@ export class ElizaClient {
    * on every call ensures we pick up the injected value even if it wasn't
    * set at construction, or if the port changed dynamically (e.g. 2138→2139).
    */
-  protected get baseUrl(): string {
+  get baseUrl(): string {
     // Always re-read boot config — the main process may push a port update
     // via apiBaseUpdate RPC at any time (e.g. when the child runtime binds
     // to a different port than initially injected in the HTML).
@@ -222,7 +222,7 @@ export class ElizaClient {
     return this._baseUrl;
   }
 
-  protected get apiToken(): string | null {
+  get apiToken(): string | null {
     if (this._token) return this._token;
     const bootToken = getBootConfig().apiToken;
     if (typeof bootToken === "string" && bootToken.trim())
@@ -315,7 +315,7 @@ export class ElizaClient {
 
   // --- REST API ---
 
-  protected async rawRequest(
+  async rawRequest(
     path: string,
     init?: RequestInit,
     options?: { allowNonOk?: boolean; timeoutMs?: number },
@@ -822,7 +822,7 @@ export class ElizaClient {
 
   // --- Text normalization helpers (used by chat domain methods) ---
 
-  protected normalizeAssistantText(text: string): string {
+  normalizeAssistantText(text: string): string {
     const stripped = stripAssistantStageDirections(text);
     const trimmed = stripped.trim();
     if (trimmed.length === 0) {
@@ -840,7 +840,7 @@ export class ElizaClient {
     return trimmed;
   }
 
-  protected normalizeGreetingText(text: string): string {
+  normalizeGreetingText(text: string): string {
     const stripped = stripAssistantStageDirections(text);
     const trimmed = stripped.trim();
     if (trimmed.length === 0 || /^\(?no response\)?$/i.test(trimmed)) {
@@ -851,7 +851,7 @@ export class ElizaClient {
 
   // --- Streaming chat endpoint (used by chat domain methods) ---
 
-  protected async streamChatEndpoint(
+  async streamChatEndpoint(
     path: string,
     text: string,
     onToken: (token: string, accumulatedText?: string) => void,

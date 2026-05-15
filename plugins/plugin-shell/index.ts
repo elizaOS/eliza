@@ -22,6 +22,10 @@ export const shellPlugin: Plugin = {
   services: [ShellService, ExecApprovalService],
   actions: [],
   providers: [shellHistoryProvider],
+  async dispose(runtime) {
+    await runtime.getService<ShellService>(ShellService.serviceType)?.stop();
+    await runtime.getService<ExecApprovalService>(ExecApprovalService.serviceType)?.stop();
+  },
   // Self-declared auto-enable: activate when features.shell is enabled.
   autoEnable: {
     shouldEnable: (env, config) => {

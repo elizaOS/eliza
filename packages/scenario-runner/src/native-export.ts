@@ -25,6 +25,7 @@ import type {
   RecordedTrajectory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { toRecord } from "./utils.js";
 
 const NATIVE_FORMAT = "eliza_native_v1" as const;
 const NATIVE_SCHEMA_VERSION = 1 as const;
@@ -81,16 +82,13 @@ export interface NativeBoundaryRow {
   metadata: Record<string, unknown>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function isRecordedTrajectory(value: unknown): value is RecordedTrajectory {
+  const record = toRecord(value);
   return (
-    isRecord(value) &&
-    typeof value.trajectoryId === "string" &&
-    typeof value.agentId === "string" &&
-    Array.isArray(value.stages)
+    record !== null &&
+    typeof record.trajectoryId === "string" &&
+    typeof record.agentId === "string" &&
+    Array.isArray(record.stages)
   );
 }
 
@@ -121,15 +119,16 @@ function normalizeToolCalls(
   const out: Array<{ toolCallId?: string; toolName: string; input: unknown }> =
     [];
   for (const call of toolCalls) {
-    if (!isRecord(call)) continue;
-    const name = typeof call.name === "string" ? call.name.trim() : "";
+    const record = toRecord(call);
+    if (!record) continue;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
     if (!name) continue;
     const entry: { toolCallId?: string; toolName: string; input: unknown } = {
       toolName: name,
-      input: isRecord(call.args) ? call.args : {},
+      input: toRecord(record.args) ?? {},
     };
-    if (typeof call.id === "string" && call.id.length > 0)
-      entry.toolCallId = call.id;
+    if (typeof record.id === "string" && record.id.length > 0)
+      entry.toolCallId = record.id;
     out.push(entry);
   }
   return out.length > 0 ? out : undefined;

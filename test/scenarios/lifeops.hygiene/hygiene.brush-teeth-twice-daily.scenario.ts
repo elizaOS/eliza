@@ -1,7 +1,7 @@
 /**
  * Hygiene: brush teeth twice daily — canonical happy path.
  *
- * Adapted from the runtime fixture `plugins/app-lifeops/scenarios/brush-teeth-basic.json`
+ * Adapted from the runtime fixture `plugins/plugin-lifeops/scenarios/brush-teeth-basic.json`
  * into the executable `.scenario.ts` form used by the workspace runner. The
  * existing runtime fixture stays in place to drive bench dispatch; this file
  * is the executable test-time form that lives under the workspace scenario

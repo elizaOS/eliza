@@ -167,7 +167,7 @@ function getRuntimeMode(runtime: IAgentRuntime): string {
 		"ELIZA_RUNTIME_MODE",
 		"RUNTIME_MODE",
 	] as const) {
-		const fromSetting = normalizeRuntimeMode(runtime.getSetting?.(key));
+		const fromSetting = normalizeRuntimeMode(runtime.getSetting(key));
 		if (fromSetting) return fromSetting;
 		const fromEnv = normalizeRuntimeMode(process.env[key]);
 		if (fromEnv) return fromEnv;
@@ -357,7 +357,7 @@ function engineGenerateArgsFromParams(
 	};
 	const promptFromSegments =
 		params.promptSegments && params.promptSegments.length > 0
-			? params.promptSegments.map((segment) => segment.content ?? "").join("")
+			? params.promptSegments.map((segment) => segment.content).join("")
 			: "";
 	const promptFromMessages =
 		!promptFromSegments && params.messages && params.messages.length > 0
@@ -925,8 +925,7 @@ export async function prewarmSystemPrefix(
 	if (!localInferenceEngine.hasLoadedModel()) return false;
 	if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
 	try {
-		const fixedRoomId = (runtime.agentId ??
-			SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
+		const fixedRoomId = runtime.agentId as UUID;
 		const prefix = await renderMessageHandlerStablePrefix(runtime, fixedRoomId);
 		if (!prefix) return false;
 		return await localInferenceEngine.prewarmConversation(

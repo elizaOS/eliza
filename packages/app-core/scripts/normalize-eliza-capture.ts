@@ -33,7 +33,7 @@ function matchesSimpleGlob(filename: string, glob: string): boolean {
   // Minimal glob support for common patterns like *.json and *.capture.json.
   if (!glob.includes("*")) return filename === glob;
   const [prefix, suffix] = glob.split("*");
-  return filename.startsWith(prefix) && filename.endsWith(suffix ?? "");
+  return filename.startsWith(prefix) && filename.endsWith(suffix);
 }
 
 async function normalizeFile(

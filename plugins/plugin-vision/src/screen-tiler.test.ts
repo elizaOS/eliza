@@ -117,9 +117,7 @@ describe("tileScreenshot — ultra-wide 5K case", () => {
     }
     // Coverage: union of every tile's cropped rect must hit (0,0) and the
     // bottom-right corner of the source image.
-    const coversTopLeft = tiles.some(
-      (t) => t.sourceX === 0 && t.sourceY === 0,
-    );
+    const coversTopLeft = tiles.some((t) => t.sourceX === 0 && t.sourceY === 0);
     const coversBottomRight = tiles.some(
       (t) => t.sourceX + t.sourceW === 5120 && t.sourceY + t.sourceH === 2160,
     );
@@ -221,9 +219,7 @@ describe("reconstructAbsoluteCoords", () => {
 
   it("rejects non-finite local coords", () => {
     const t = tile();
-    expect(() =>
-      reconstructAbsoluteCoords(t, Number.NaN, 0),
-    ).toThrow(/finite/);
+    expect(() => reconstructAbsoluteCoords(t, Number.NaN, 0)).toThrow(/finite/);
     expect(() =>
       reconstructAbsoluteCoords(t, 0, Number.POSITIVE_INFINITY),
     ).toThrow(/finite/);

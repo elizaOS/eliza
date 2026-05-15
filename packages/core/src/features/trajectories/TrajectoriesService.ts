@@ -912,7 +912,7 @@ export class TrajectoriesService extends Service {
 		const runtime = this.runtime as IAgentRuntime & {
 			adapter?: { db?: unknown };
 		};
-		if (!runtime?.adapter) {
+		if (!runtime.adapter) {
 			throw new Error("Database adapter not available");
 		}
 
@@ -947,7 +947,7 @@ export class TrajectoriesService extends Service {
 		const runtime = this.runtime as IAgentRuntime & {
 			adapter?: { db?: unknown };
 		};
-		if (!runtime?.adapter) {
+		if (!runtime.adapter) {
 			logger.warn(
 				"[trajectory-logger] No runtime adapter available, skipping initialization",
 			);
@@ -1825,9 +1825,9 @@ export class TrajectoriesService extends Service {
 				? stepIdOrAgentId
 				: null;
 		const agentId =
-			(typeof options.agentId === "string" && options.agentId.length > 0
+			typeof options.agentId === "string" && options.agentId.length > 0
 				? options.agentId
-				: stepIdOrAgentId) ?? stepIdOrAgentId;
+				: stepIdOrAgentId;
 
 		const trajectoryId = uuidv4();
 		const now = Date.now();
@@ -2114,7 +2114,7 @@ export class TrajectoriesService extends Service {
 		const runtime = this.runtime as IAgentRuntime & {
 			adapter?: { db?: unknown };
 		};
-		if (!runtime?.adapter) {
+		if (!runtime.adapter) {
 			return { trajectories: [], total: 0, offset: 0, limit: 50 };
 		}
 		const db = runtime.adapter.db as { execute?: unknown } | undefined;
@@ -2227,7 +2227,7 @@ export class TrajectoriesService extends Service {
 
 	async getTrajectoryDetail(trajectoryId: string): Promise<Trajectory | null> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime?.adapter) return null;
+		if (!runtime.adapter) return null;
 		await this.ensureStorageReady();
 
 		const safeId = trajectoryId.replace(/'/g, "''");
@@ -2244,7 +2244,7 @@ export class TrajectoriesService extends Service {
 
 	async getStats(): Promise<TrajectoryStats> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime?.adapter) {
+		if (!runtime.adapter) {
 			return {
 				totalTrajectories: 0,
 				totalSteps: 0,
@@ -2339,7 +2339,7 @@ export class TrajectoriesService extends Service {
 
 	async deleteTrajectories(trajectoryIds: string[]): Promise<number> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime?.adapter) return 0;
+		if (!runtime.adapter) return 0;
 		if (trajectoryIds.length === 0) return 0;
 		await this.ensureStorageReady();
 
@@ -2352,7 +2352,7 @@ export class TrajectoriesService extends Service {
 
 	async clearAllTrajectories(): Promise<number> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime?.adapter) return 0;
+		if (!runtime.adapter) return 0;
 		await this.ensureStorageReady();
 
 		const countResult = await this.executeRawSql(
@@ -2409,7 +2409,7 @@ export class TrajectoriesService extends Service {
 		createdAt: string;
 		updatedAt: string;
 	} {
-		const finalStatus = trajectory.metrics?.finalStatus ?? "completed";
+		const finalStatus = trajectory.metrics.finalStatus;
 		const normalizedEndTime =
 			typeof trajectory.endTime === "number" && trajectory.endTime > 0
 				? trajectory.endTime
@@ -2443,7 +2443,7 @@ export class TrajectoriesService extends Service {
 			}
 		}
 
-		const metadata = trajectory.metadata ?? {};
+		const metadata = trajectory.metadata;
 		const asNullableString = (value: JsonValue | undefined): string | null =>
 			typeof value === "string" ? value : null;
 		const source =
@@ -2565,7 +2565,7 @@ export class TrajectoriesService extends Service {
 		options: CanonicalTrajectoryExportOptions,
 	): Promise<TrajectoryExportResult> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
-		if (!runtime?.adapter) {
+		if (!runtime.adapter) {
 			throw new Error("Database not available");
 		}
 		await this.ensureStorageReady();
@@ -2626,7 +2626,7 @@ export class TrajectoriesService extends Service {
 			return {
 				...trajectory,
 				source:
-					typeof trajectory.metadata?.source === "string"
+					typeof trajectory.metadata.source === "string"
 						? trajectory.metadata.source
 						: undefined,
 			};

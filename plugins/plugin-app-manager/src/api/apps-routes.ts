@@ -611,7 +611,7 @@ function buildSteeringDisposition(
     return upstreamStatus >= 500 ? "unsupported" : "rejected";
   }
 
-  if (run.appName === "@elizaos/app-2004scape" && subroute === "message") {
+  if (run.appName === "@elizaos/plugin-2004scape" && subroute === "message") {
     return "queued";
   }
 
@@ -860,10 +860,10 @@ export async function handleAppsRoutes(
       const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".") ?? "<root>";
+        const issuePath = issue?.path?.join(".");
         error(
           res,
-          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          `Invalid request body at ${issuePath}: ${issue?.message}`,
           400,
         );
         return true;
@@ -890,10 +890,10 @@ export async function handleAppsRoutes(
     const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;
@@ -918,10 +918,10 @@ export async function handleAppsRoutes(
     const parsed = PostOverlayPresenceRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;
@@ -1006,10 +1006,10 @@ export async function handleAppsRoutes(
           : PostRunControlRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".") ?? "<root>";
+        const issuePath = issue?.path?.join(".");
         error(
           res,
-          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          `Invalid request body at ${issuePath}: ${issue?.message}`,
           400,
         );
         return true;
@@ -1069,10 +1069,10 @@ export async function handleAppsRoutes(
       const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".") ?? "<root>";
+        const issuePath = issue?.path?.join(".");
         error(
           res,
-          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          `Invalid request body at ${issuePath}: ${issue?.message}`,
           400,
         );
         return true;
@@ -1098,10 +1098,10 @@ export async function handleAppsRoutes(
       const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".") ?? "<root>";
+        const issuePath = issue?.path?.join(".");
         error(
           res,
-          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          `Invalid request body at ${issuePath}: ${issue?.message}`,
           400,
         );
         return true;
@@ -1145,7 +1145,7 @@ export async function handleAppsRoutes(
       }
       const success: PostInstallAppResponse = {
         success: true,
-        pluginName: result.pluginName ?? name,
+        pluginName: result.pluginName,
         version: result.version,
         installPath: result.installPath,
         requiresRestart: result.requiresRestart,
@@ -1164,10 +1164,10 @@ export async function handleAppsRoutes(
     const parsed = PostStopAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;
@@ -1279,10 +1279,10 @@ export async function handleAppsRoutes(
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;
@@ -1415,10 +1415,10 @@ export async function handleAppsRoutes(
     const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const path = issue?.path?.join(".") ?? "<root>";
+      const path = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${path}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${path}: ${issue?.message}`,
         400,
       );
       return true;
@@ -1447,10 +1447,10 @@ export async function handleAppsRoutes(
     const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const path = issue?.path?.join(".") ?? "<root>";
+      const path = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${path}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${path}: ${issue?.message}`,
         400,
       );
       return true;
@@ -1583,10 +1583,10 @@ export async function handleAppsRoutes(
     const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path?.join(".");
       error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;
@@ -1616,7 +1616,7 @@ export async function handleAppsRoutes(
     try {
       const lines: string[] = [];
       const callback = async (content: { text?: string }) => {
-        if (typeof content?.text === "string" && content.text.length > 0) {
+        if (typeof content.text === "string" && content.text.length > 0) {
           lines.push(content.text);
         }
         return [];

@@ -208,7 +208,7 @@ function readAttachmentActionKind(
 		}
 	}
 	const text =
-		typeof message.content?.text === "string" ? message.content.text : "";
+		typeof message.content.text === "string" ? message.content.text : "";
 	return /\bsave\b[\s\S]{0,60}\b(?:document|doc|note|knowledge)\b/i.test(text)
 		? "save_as_document"
 		: "read";
@@ -274,11 +274,9 @@ async function saveAttachmentAsDocument(params: {
 	const filename = createDocumentNoteFilename(title);
 	const stored = await service.addDocument({
 		agentId: params.runtime.agentId as UUID,
-		worldId: (params.message.worldId ??
-			params.message.roomId ??
-			params.runtime.agentId) as UUID,
-		roomId: (params.message.roomId ?? params.runtime.agentId) as UUID,
-		entityId: (params.message.entityId ?? params.runtime.agentId) as UUID,
+		worldId: (params.message.worldId ?? params.message.roomId) as UUID,
+		roomId: params.message.roomId as UUID,
+		entityId: params.message.entityId as UUID,
 		clientDocumentId: "" as UUID,
 		contentType: "text/plain",
 		originalFilename: filename,

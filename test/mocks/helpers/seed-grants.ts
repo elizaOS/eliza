@@ -12,11 +12,11 @@ import {
 import {
   googleCapabilitiesToScopes,
   normalizeGoogleCapabilities,
-} from "../../../plugins/app-lifeops/src/lifeops/google-scopes.ts";
+} from "../../../plugins/plugin-lifeops/src/lifeops/google-scopes.ts";
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,
-} from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+} from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 
 interface MockConnectorCredentialStore {
   __mockGoogleCredentialStore: true;

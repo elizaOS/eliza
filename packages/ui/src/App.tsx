@@ -69,8 +69,11 @@ import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
   APPS_ENABLED,
+  getAppSlugFromPath,
+  getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
+  shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { useApp } from "./state";
@@ -116,6 +119,7 @@ import {
 // load. Going all-static makes the load path honest. If you want true
 // route-level splitting back, lift `lazy()` to a single owning call site.
 import { CharacterEditor } from "./components/character/CharacterEditor";
+import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { LogsView } from "./components/pages/LogsView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
@@ -126,13 +130,14 @@ import { SkillsView } from "./components/pages/SkillsView";
 import { TasksPageView } from "./components/pages/TasksPageView";
 import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { FineTuningView } from "./components/training/injected";
+import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
+import { useAvailableViews } from "./hooks/useAvailableViews";
+import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useIsDeveloperMode } from "./state/useDeveloperMode";
 
-// True lazy boundaries: these views are only imported here, so Rollup can
-// honour the split into separate chunks.
-const AppsPageView = lazyNamedView(
-  () => import("./components/pages/AppsPageView"),
-  "AppsPageView",
+const ViewManagerPage = lazyNamedView(
+  () => import("./components/pages/ViewManagerPage"),
+  "ViewManagerPage",
 );
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
@@ -473,11 +478,58 @@ function ViewRouter({
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const developerModeEnabled = useIsDeveloperMode();
+  const [navigationPath, setNavigationPath] = useState(() =>
+    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
+    const handleNavigationChange = () => {
+      setNavigationPath(getWindowNavigationPath());
+    };
+    window.addEventListener(navEvt, handleNavigationChange);
+    return () => window.removeEventListener(navEvt, handleNavigationChange);
+  }, []);
+
+  // Available views from /api/views — used to route to DynamicViewLoader
+  // when a tab ID matches a view entry that ships a remote bundle URL.
+  const { views: availableViews } = useAvailableViews();
   const view = (() => {
     if (dynamicPage && (developerModeEnabled || !dynamicPage.developerOnly)) {
       return (
         <TabContentView>
           <DynamicPluginPage resolved={dynamicPage} />
+        </TabContentView>
+      );
+    }
+    // Check if the current tab matches a dynamically-registered view with a
+    // remote bundle URL. These are plugin-contributed views loaded at runtime
+    // from /api/views — they live outside the main bundle.
+    const appSlug =
+      tab === "apps" || tab === "views"
+        ? getAppSlugFromPath(navigationPath)
+        : null;
+    const remoteView = availableViews.find(
+      (v) =>
+        v.bundleUrl &&
+        (v.id === tab ||
+          v.path === navigationPath ||
+          v.path === `/${tab}` ||
+          v.path === `/apps/${tab}` ||
+          (appSlug !== null &&
+            (v.id === appSlug ||
+              v.path === `/apps/${appSlug}` ||
+              v.path === `/${appSlug}`))),
+    );
+    if (remoteView?.bundleUrl) {
+      return (
+        <TabContentView>
+          <DynamicViewLoader
+            bundleUrl={remoteView.bundleUrl}
+            componentExport={remoteView.componentExport}
+            viewId={remoteView.id}
+          />
         </TabContentView>
       );
     }
@@ -521,11 +573,14 @@ function ViewRouter({
         return <ChatView />;
       case "stream":
         return <StreamView />;
+      case "views":
       case "apps":
-        // Apps disabled in production builds; fall through to chat
+        // The "views" and "apps" tabs both surface the ViewManagerPage — a
+        // searchable grid of all plugin-contributed views fetched from /api/views.
+        // AppsPageView (game launcher) is accessible via app slug navigation.
         return APPS_ENABLED ? (
           <TabContentView chatScope="page-apps">
-            <AppsPageView />
+            <ViewManagerPage />
           </TabContentView>
         ) : (
           <ChatView />
@@ -718,6 +773,18 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<
     string | null
   >(null);
+
+  // Desktop tab bar — persisted pinned tabs for the Electrobun shell.
+  const {
+    tabs: desktopTabs,
+    openTab: openDesktopTab,
+    closeTab: closeDesktopTab,
+  } = useDesktopTabs();
+  const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
+    null,
+  );
+  const { views: availableViewsForDesktopTabs } = useAvailableViews();
+
   const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -845,6 +912,64 @@ export function App() {
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
   }, [setTab]);
 
+  // Handle agent-dispatched view navigation events.
+  // The VIEWS action (and future agent commands) dispatch this event to navigate
+  // the user to a specific view by path or view ID.
+  // When the target is "/views" or "/apps" (the ViewManagerPage), we also
+  // directly set the tab so the nav bar becomes visible.
+  // On desktop, also open the view as a desktop tab if desktopTabEnabled.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigateView = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          viewId?: string;
+          viewPath?: string;
+          viewLabel?: string;
+          action?: string;
+        }>
+      ).detail;
+      if (!detail) return;
+      const path =
+        detail.viewPath ?? (detail.viewId ? `/apps/${detail.viewId}` : null);
+      if (!path) return;
+      // For the Views manager specifically, navigate the tab directly so the
+      // nav bar becomes visible without relying solely on URL routing.
+      if (path === "/views" || detail.viewId === "views-manager") {
+        setTab("views");
+        return;
+      }
+      if (path === "/apps") {
+        setTab("apps");
+        return;
+      }
+      // Auto-open as a desktop tab when the action is "pin-tab" or when the
+      // view declares desktopTabEnabled: true.
+      if (detail.viewId) {
+        const entry = availableViewsForDesktopTabs.find(
+          (v) => v.id === detail.viewId,
+        );
+        if (entry && (detail.action === "pin-tab" || entry.desktopTabEnabled)) {
+          openDesktopTab(entry);
+          setActiveDesktopTabId(entry.id);
+        }
+      }
+      try {
+        if (window.location.protocol === "file:") {
+          window.location.hash = path;
+        } else {
+          window.history.pushState(null, "", path);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      } catch {
+        // sandboxed — ignore
+      }
+    };
+    window.addEventListener("eliza:navigate:view", handleNavigateView);
+    return () =>
+      window.removeEventListener("eliza:navigate:view", handleNavigateView);
+  }, [setTab, availableViewsForDesktopTabs, openDesktopTab]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleResize = () => {
@@ -896,6 +1021,56 @@ export function App() {
       },
     });
   }, []);
+
+  // Handle desktop tab navigation: clicking a tab navigates to its path.
+  // Closing the active tab falls back to the chat view.
+  const handleDesktopTabClick = useCallback(
+    (viewId: string) => {
+      const dtab = desktopTabs.find((t) => t.viewId === viewId);
+      if (!dtab) return;
+      setActiveDesktopTabId(viewId);
+      try {
+        if (typeof window === "undefined") return;
+        if (window.location.protocol === "file:") {
+          window.location.hash = dtab.path;
+        } else {
+          window.history.pushState(null, "", dtab.path);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      } catch {
+        // sandboxed — ignore
+      }
+    },
+    [desktopTabs],
+  );
+
+  const handleDesktopTabClose = useCallback(
+    (viewId: string) => {
+      closeDesktopTab(viewId);
+      if (activeDesktopTabId === viewId) {
+        setActiveDesktopTabId(null);
+        setTab("chat");
+      }
+    },
+    [closeDesktopTab, activeDesktopTabId, setTab],
+  );
+
+  const handleOpenViewManagerFromTabBar = useCallback(() => {
+    setTab("views");
+  }, [setTab]);
+
+  // desktopTabBar is computed here (after handlers) so the memo below can
+  // reference a stable value. Rendered inside each shell variant, not at the
+  // outer level, so Header + TabBar + content stack correctly per shell.
+  const desktopTabBar = (
+    <DesktopTabBar
+      tabs={desktopTabs}
+      activeViewId={activeDesktopTabId}
+      onTabClick={handleDesktopTabClick}
+      onTabClose={handleDesktopTabClose}
+      onOpenViewManager={handleOpenViewManagerFromTabBar}
+    />
+  );
 
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupShell — no separate loader needed.
@@ -955,6 +1130,7 @@ export function App() {
             mobileLeft={mobileChatControls?.left}
             pageRightExtras={mobileChatControls?.right}
             tasksEventsPanelOpen={isChat && !isChatMobileLayout}
+            hideNav={isChat}
           />
           <div className="flex flex-1 min-h-0 relative">
             {!isChatMobileLayout && isChat ? (
@@ -1090,6 +1266,7 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header pageRightExtras={characterHeaderActions} />
+          {desktopTabBar}
           <div
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
           >
@@ -1104,6 +1281,7 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
+          {desktopTabBar}
           <div
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
           >
@@ -1116,6 +1294,7 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
+          {desktopTabBar}
           <div
             className={`flex flex-1 min-h-0 min-w-0 ${MOBILE_NAV_PADDING_CLASS}`}
           >
@@ -1132,9 +1311,10 @@ export function App() {
           <Header
             pageRightExtras={isCharacterPage ? characterHeaderActions : null}
           />
+          {desktopTabBar}
           <main
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${
-              tab === "browser" || tab === "apps"
+              tab === "browser" || tab === "apps" || tab === "views"
                 ? ""
                 : "px-3 xl:px-5 py-4 xl:py-6"
             } ${tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS}`}
@@ -1170,6 +1350,7 @@ export function App() {
       handleToggleWidgetsCollapsed,
       settingsInitialSection,
       widgetsPanelCollapsed,
+      desktopTabBar,
     ],
   );
 
@@ -1255,9 +1436,10 @@ export function App() {
       )}
 
       {/* Persistent game overlay — stays visible across all tabs */}
-      {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && (
-        <GameViewOverlay />
-      )}
+      {activeGameViewerUrl &&
+        gameOverlayEnabled &&
+        tab !== "apps" &&
+        tab !== "views" && <GameViewOverlay />}
       <ShellOverlays actionNotice={actionNotice} />
       <SaveCommandModal
         open={contextMenu.saveCommandModalOpen}

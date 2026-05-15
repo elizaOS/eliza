@@ -74,7 +74,7 @@ function createFailureId(): string {
 async function __hono_POST(
   request: Request,
   { params }: { params: Promise<{ agentId: string }> },
-  ctx?: AppContext,
+  ctx: AppContext,
 ) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);

@@ -327,7 +327,8 @@ export async function discoverSkills(
 
   // Bundled skills from the @elizaos/skills package
   try {
-    const skillsPkg = (await import(/* @vite-ignore */ "@elizaos/skills")) as {
+    const skillsPackage = "@elizaos/skills";
+    const skillsPkg = (await import(/* @vite-ignore */ skillsPackage)) as {
       getSkillsDir: () => string;
     };
     const bundledDir = skillsPkg.getSkillsDir();

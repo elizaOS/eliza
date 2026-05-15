@@ -233,4 +233,4 @@ If you encounter issues:
 1. Check the troubleshooting section above
 2. Review Eliza's console output for error messages
 3. Visit the [Eliza Community Discord](https://discord.gg/eliza)
-4. Open an issue on the [Eliza GitHub repository](https://github.com/eliza-ai/eliza)
+4. Open an issue on the [Eliza GitHub repository](https://github.com/elizaOS/eliza)

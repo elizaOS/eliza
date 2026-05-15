@@ -748,7 +748,7 @@ function normalizeContextIds(contexts: ReadonlyArray<string>): string[] {
 	const seen = new Set<string>();
 	const out: string[] = [];
 	for (const id of contexts) {
-		const trimmed = String(id ?? "").trim();
+		const trimmed = String(id).trim();
 		if (!trimmed || seen.has(trimmed)) continue;
 		seen.add(trimmed);
 		out.push(trimmed);
@@ -864,9 +864,7 @@ export function buildResponseGrammar(
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
-			(options.actions ?? runtime.actions ?? [])
-				.map((a) => a.name)
-				.filter(Boolean),
+			(options.actions ?? runtime.actions).map((a) => a.name).filter(Boolean),
 		),
 	).sort();
 	const fieldSignature =

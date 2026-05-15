@@ -194,7 +194,7 @@ async function runCodeHandler(
   code: string,
   params: Record<string, string>,
 ): Promise<unknown> {
-  if (typeof process === "undefined" || !process.versions?.node) {
+  if (typeof process === "undefined" || !process.versions.node) {
     throw new Error("Code actions are only supported in Node runtimes.");
   }
 
@@ -628,7 +628,7 @@ function defToAction(def: CustomActionDef): Action {
     def.name,
     ...(def.similes ?? []),
     ...def.name.split(/[_\s-]+/),
-    ...(def.description ?? "").split(/[\s,.;:()[\]{}'"`/\\-]+/),
+    ...def.description.split(/[\s,.;:()[\]{}'"`/\\-]+/),
   ].filter((term) => term.trim().length > 2);
 
   return {

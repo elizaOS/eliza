@@ -118,20 +118,20 @@ function getCharacterDocumentSources(runtime: IAgentRuntime): string[] {
 				directory?: string;
 			};
 			if (
-				itemAny?.item?.case === "path" &&
+				itemAny.item?.case === "path" &&
 				typeof itemAny.item.value === "string"
 			) {
 				return itemAny.item.value;
 			}
 			if (
-				itemAny?.item?.case === "directory" &&
+				itemAny.item?.case === "directory" &&
 				typeof itemAny.item.value === "object" &&
 				itemAny.item.value !== null
 			) {
 				return itemAny.item.value.path || itemAny.item.value.directory || null;
 			}
-			if (typeof itemAny?.path === "string") return itemAny.path;
-			if (typeof itemAny?.directory === "string") return itemAny.directory;
+			if (typeof itemAny.path === "string") return itemAny.path;
+			if (typeof itemAny.directory === "string") return itemAny.directory;
 			if (typeof item === "string") return item;
 			return null;
 		})
@@ -261,7 +261,7 @@ export class DocumentService extends Service {
 
 	async stop(): Promise<void> {
 		logger.info(
-			`Documents service stopping for agent: ${this.runtime.character?.name}`,
+			`Documents service stopping for agent: ${this.runtime.character.name}`,
 		);
 	}
 
@@ -414,7 +414,7 @@ export class DocumentService extends Service {
 
 			if (query) {
 				const haystack = [
-					memory.content?.text,
+					memory.content.text,
 					metadata.title,
 					metadata.filename,
 					metadata.originalFilename,
@@ -480,7 +480,7 @@ export class DocumentService extends Service {
 							...metadata,
 							scope: "global",
 							scopedToEntityId: undefined,
-							addedBy: memory.entityId ?? this.runtime.agentId,
+							addedBy: memory.entityId,
 							addedByRole: "RUNTIME",
 							addedFrom:
 								metadata.source === "eliza-default-documents"
@@ -516,7 +516,7 @@ export class DocumentService extends Service {
 			type,
 			scope: "global",
 			scopedToEntityId: undefined,
-			addedBy: memory.entityId ?? this.runtime.agentId,
+			addedBy: memory.entityId,
 			addedByRole: "RUNTIME",
 			addedFrom:
 				metadata.source === "eliza-default-documents" ||
@@ -785,7 +785,7 @@ export class DocumentService extends Service {
 			});
 			const targetEntityId =
 				documentScope === "user-private"
-					? (scopedToEntityId ?? entityId ?? agentId)
+					? (scopedToEntityId ?? entityId)
 					: documentScope === "owner-private"
 						? ((this.runtime.getSetting("ELIZA_ADMIN_ENTITY_ID") as
 								| UUID
@@ -799,7 +799,7 @@ export class DocumentService extends Service {
 				...metadata,
 				scope: documentScope,
 				scopedToEntityId: scopedEntityId,
-				addedBy: addedBy ?? entityId ?? agentId,
+				addedBy: addedBy ?? entityId,
 				addedByRole: addedByRole ?? "RUNTIME",
 				addedFrom: addedFrom ?? "runtime-internal",
 				addedAt: Date.now(),
@@ -868,7 +868,7 @@ export class DocumentService extends Service {
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
 	): Promise<StoredDocument[]> {
-		if (!message?.content?.text || message?.content?.text.trim().length === 0) {
+		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
 			return [];
 		}
@@ -961,7 +961,7 @@ export class DocumentService extends Service {
 			message,
 		);
 		const valid = visibleFragments.filter(
-			(f) => f.id !== undefined && f.content?.text,
+			(f) => f.id !== undefined && f.content.text,
 		);
 		if (valid.length === 0) return [];
 
@@ -983,7 +983,7 @@ export class DocumentService extends Service {
 				worldId: fragment.worldId,
 			}))
 			.filter((item) => item.similarity > 0)
-			.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+			.sort((a, b) => b.similarity - a.similarity)
 			.slice(0, 20) as StoredDocument[];
 	}
 
@@ -1015,7 +1015,7 @@ export class DocumentService extends Service {
 			message,
 		);
 		const valid = visibleCandidates.filter(
-			(f) => f.id !== undefined && f.content?.text,
+			(f) => f.id !== undefined && f.content.text,
 		);
 		if (valid.length === 0) return [];
 
@@ -1055,7 +1055,7 @@ export class DocumentService extends Service {
 					worldId: fragment.worldId,
 				};
 			})
-			.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+			.sort((a, b) => b.similarity - a.similarity)
 			.slice(0, 20) as StoredDocument[];
 	}
 
@@ -1427,9 +1427,9 @@ export class DocumentService extends Service {
 			1500,
 			200,
 			{
-				roomId: existingDocument.roomId ?? this.runtime.agentId,
+				roomId: existingDocument.roomId,
 				worldId: existingDocument.worldId ?? this.runtime.agentId,
-				entityId: existingDocument.entityId ?? this.runtime.agentId,
+				entityId: existingDocument.entityId,
 			},
 		);
 
@@ -1457,9 +1457,9 @@ export class DocumentService extends Service {
 		},
 	): Promise<void> {
 		const finalScope = {
-			roomId: scope?.roomId ?? this.runtime.agentId,
-			worldId: scope?.worldId ?? this.runtime.agentId,
-			entityId: scope?.entityId ?? this.runtime.agentId,
+			roomId: scope?.roomId,
+			worldId: scope?.worldId,
+			entityId: scope?.entityId,
 		};
 
 		const documentMetadata = {

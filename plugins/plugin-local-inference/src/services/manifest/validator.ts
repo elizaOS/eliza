@@ -318,7 +318,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 	// component absent from the bundle. Components that affect runtime quality
 	// also require their own publish gate to pass.
 	if (m.defaultEligible) {
-		if ((m.files.asr ?? []).length === 0) {
+		if (m.files.asr.length === 0) {
 			errors.push(
 				"files.asr: required for defaultEligible local voice bundles",
 			);
@@ -350,7 +350,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	}
 
-	if ((m.files.asr ?? []).length > 0) {
+	if (m.files.asr.length > 0) {
 		if (!m.evals.asrWer) {
 			errors.push("evals.asrWer: required when files.asr is non-empty");
 		} else if (strictRelease && !m.evals.asrWer.passed) {

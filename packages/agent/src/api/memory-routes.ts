@@ -195,7 +195,7 @@ async function searchDocuments(
       const metadata = match.metadata as Record<string, unknown> | undefined;
       return {
         id: match.id,
-        text: match.content?.text ?? "",
+        text: match.content.text ?? "",
         similarity: match.similarity ?? 0,
         documentId:
           typeof metadata?.documentId === "string"
@@ -260,8 +260,8 @@ function memoryToBrowseItem(memory: TaggedMemory): MemoryBrowseItem {
     id: memory.id ?? "",
     type: memory._table,
     text: (content?.text as string) ?? "",
-    entityId: memory.entityId ?? null,
-    roomId: memory.roomId ?? null,
+    entityId: memory.entityId,
+    roomId: memory.roomId,
     agentId: memory.agentId ?? null,
     createdAt: memory.createdAt ?? 0,
     metadata: (memory.metadata as Record<string, unknown>) ?? null,

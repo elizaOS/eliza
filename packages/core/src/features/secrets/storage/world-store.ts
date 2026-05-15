@@ -84,7 +84,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 
 			// Check expiration
 			if (
-				storedSecret.config?.expiresAt &&
+				storedSecret.config.expiresAt &&
 				storedSecret.config.expiresAt < Date.now()
 			) {
 				await this.delete(key, context);
@@ -230,7 +230,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 
 				// Check expiration
 				if (
-					storedSecret.config?.expiresAt &&
+					storedSecret.config.expiresAt &&
 					storedSecret.config.expiresAt < Date.now()
 				) {
 					continue;

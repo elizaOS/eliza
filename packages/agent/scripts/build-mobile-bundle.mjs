@@ -15,8 +15,8 @@
 //
 // What this build does NOT do:
 //   - Stage `node_modules`. All `MOBILE_CORE_PLUGINS` resolve through
-//     `STATIC_ELIZA_PLUGINS` in the agent runtime (via static `import * as
-//     pluginX from "@elizaos/plugin-X"`), so they are inlined by `Bun.build`.
+//     `STATIC_ELIZA_PLUGINS` in the agent runtime, so they are inlined by
+//     `Bun.build`.
 //   - Bundle a model. Inference goes through `ANTHROPIC_API_KEY` /
 //     `ELIZAOS_CLOUD_API_KEY` from the user's onboarding for first-light.
 //
@@ -324,7 +324,7 @@ if (TARGET === "ios" || TARGET === "ios-jsc") {
     stubsDir,
     "ios-child-process.cjs",
   );
-  nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs.child_process = path.join(stubsDir, "ios-child-process.cjs");
   nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
   // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
   // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
@@ -341,17 +341,17 @@ if (TARGET === "ios-jsc") {
   const throwStub = path.join(stubsDir, "ios-jsc-throw.cjs");
   const dnsStub = path.join(stubsDir, "ios-jsc-dns.cjs");
   nativeStubs["node:net"] = throwStub;
-  nativeStubs["net"] = throwStub;
+  nativeStubs.net = throwStub;
   nativeStubs["node:tls"] = throwStub;
-  nativeStubs["tls"] = throwStub;
+  nativeStubs.tls = throwStub;
   nativeStubs["node:dgram"] = throwStub;
-  nativeStubs["dgram"] = throwStub;
+  nativeStubs.dgram = throwStub;
   nativeStubs["node:cluster"] = throwStub;
-  nativeStubs["cluster"] = throwStub;
+  nativeStubs.cluster = throwStub;
   nativeStubs["node:worker_threads"] = throwStub;
-  nativeStubs["worker_threads"] = throwStub;
+  nativeStubs.worker_threads = throwStub;
   nativeStubs["node:dns"] = dnsStub;
-  nativeStubs["dns"] = dnsStub;
+  nativeStubs.dns = dnsStub;
   nativeStubs["node:dns/promises"] = dnsStub;
   nativeStubs["dns/promises"] = dnsStub;
   nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");

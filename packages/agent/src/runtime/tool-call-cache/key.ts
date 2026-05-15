@@ -12,7 +12,7 @@ import type { ToolArgs } from "./types.ts";
 
 export function canonicalizeJson(value: unknown): string {
   if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
+    return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map((v) => canonicalizeJson(v)).join(",")}]`;

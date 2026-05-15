@@ -49,7 +49,8 @@ logger = logging.getLogger(__name__)
 
 
 _PATCH_FENCE_RE = re.compile(
-    r"```(?:diff|patch)?\s*\n(?P<body>.*?)```", re.DOTALL | re.IGNORECASE
+    r"```(?:diff|patch)?(?:[^\S\r\n]*\n|[^\S\r\n]+)(?P<body>.*?)```",
+    re.DOTALL | re.IGNORECASE,
 )
 _DIFF_HEADER_RE = re.compile(r"^\s*diff --git ", re.MULTILINE)
 _SOURCE_CONTEXT_CACHE: dict[tuple[str, str, str], str | None] = {}
@@ -135,8 +136,12 @@ def _extract_patch(text: str) -> str:
 
     for match in _PATCH_FENCE_RE.finditer(text):
         body = match.group("body")
-        if body and "diff --git" in body:
+        if not body:
+            continue
+        if "diff --git" in body:
             return _normalize_patch_text(body)
+        if body.lstrip().startswith("--git "):
+            return _normalize_patch_text(f"diff {body.lstrip()}")
 
     diff_match = _DIFF_HEADER_RE.search(text)
     if diff_match:
@@ -487,7 +492,12 @@ def _build_report(
         1
         for r in results
         if r.patch_status
-        in (PatchStatus.APPLIED, PatchStatus.TESTS_PASSED, PatchStatus.TESTS_FAILED)
+        in (
+            PatchStatus.APPLIED,
+            PatchStatus.TESTS_PASSED,
+            PatchStatus.TESTS_FAILED,
+            PatchStatus.PASS,
+        )
     )
     avg_duration = sum(r.duration_seconds for r in results) / total if total else 0.0
     observed_tokens = [r.tokens_used for r in results if r.tokens_used is not None]
@@ -617,6 +627,7 @@ def _build_client_for_harness(
         normalized_model = _openai_compat_model_name(model_name)
         if normalized_model:
             client_kwargs["model"] = normalized_model
+        client_kwargs["mode"] = "in_process"
         client = HermesClient(**client_kwargs)
         try:
             client.wait_until_ready(timeout=60)
@@ -630,6 +641,7 @@ def _build_client_for_harness(
         client_kwargs: dict[str, object] = {}
         if model_name:
             client_kwargs["model"] = model_name
+        client_kwargs["direct_openai_compatible"] = True
         client = OpenClawClient(**client_kwargs)
         # OpenClawClient.wait_until_ready requires the binary on disk; the
         # direct-OpenAI-compat path doesn't, so we skip the readiness probe

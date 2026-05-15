@@ -1,36 +1,43 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-14T23:43:33.136Z
+Generated: 2026-05-15T10:53:40.460Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 8037 |
-| Operators found | 153675 |
-| Type-obvious removable | 0 |
+| TypeScript files scanned | 348 |
+| Operators found | 10453 |
+| Type-obvious removable | 4 |
 | Applied edits | 0 |
 
 ## By Kind
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 26154 |
-| `binary-&&` | 24230 |
-| `binary-\|\|` | 25989 |
-| `definite-assignment-assertion` | 55 |
-| `non-null-assertion` | 551 |
-| `optional-chain` | 24795 |
-| `optional-declaration` | 51901 |
+| `binary-??` | 1959 |
+| `binary-&&` | 1922 |
+| `binary-\|\|` | 1707 |
+| `optional-chain` | 1974 |
+| `optional-declaration` | 2891 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 50274 |
-| `syntax-inventory` | 51500 |
-| `upstream-type-review` | 51901 |
+| `review-required` | 3602 |
+| `truthy-left-review` | 27 |
+| `type-obvious-removable` | 4 |
+| `type-required-or-unknown` | 3929 |
+| `upstream-type-review` | 2891 |
 
 ## Type-Obvious Removable Examples
 
-No type-obvious removable operators found.
+- `packages/agent/src/api/connector-account-routes.ts:863:38` binary-??: query.outcome ?? ""
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/agent/src/api/connector-account-routes.ts:871:37` binary-??: query.accountId ?? ""
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/agent/src/api/connector-account-routes.ts:872:31` binary-??: query.action ?? ""
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/agent/src/api/views-routes.ts:122:26` optional-chain: body?.payload
+  - receiver type excludes null and undefined; type: `Record<string, unknown>`

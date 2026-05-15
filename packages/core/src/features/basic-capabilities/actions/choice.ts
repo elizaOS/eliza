@@ -80,7 +80,7 @@ export const choiceAction: Action = {
 			agentIds: [runtime.agentId],
 		});
 
-		return pendingTasks?.some((task) => task.metadata?.options) === true;
+		return pendingTasks.some((task) => task.metadata?.options) === true;
 	},
 
 	handler: async (

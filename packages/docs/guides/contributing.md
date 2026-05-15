@@ -31,7 +31,7 @@ Welcome to Eliza! This guide covers development environment setup and contributi
 
 ```bash
 # Clone the repository
-git clone https://github.com/eliza-ai/eliza.git
+git clone https://github.com/elizaOS/eliza.git
 cd eliza
 
 # Match repository Node version

@@ -1,4 +1,4 @@
-Static React + Vite SPA for the Eliza homepage. Calls the Eliza Cloud API directly — no Next.js, no proxy.
+Static React + Vite SPA for the Eliza homepage. Calls the Eliza Cloud API directly. No Next.js, no proxy.
 
 ## Getting Started
 
@@ -48,37 +48,12 @@ bun run build      # outputs static assets to ./dist
 bun run preview    # serves ./dist locally on :4444
 ```
 
-## Deploy to Cloudflare Pages
+## Deploy
 
-Cloudflare Pages serves the static `dist/` output. SPA fallback is configured via `public/_redirects` (`/* /index.html 200`); long-cache headers are configured via `public/_headers`.
-
-### Option A — Connect the GitHub repo to Cloudflare Pages
-
-1. In the Cloudflare dashboard go to **Workers & Pages → Create → Pages → Connect to Git**.
-2. Select this repository.
-3. Set build settings:
-   - **Build command:** `bun run --filter eliza-app build` (or run `bun run build` from `eliza/packages/homepage`)
-   - **Build output directory:** `eliza/packages/homepage/dist`
-   - **Root directory:** `eliza/packages/homepage`
-4. Set the `VITE_*` environment variables under **Settings → Environment Variables** (separately for Production and Preview).
-5. Save and deploy.
-
-### Option B — Wrangler CLI (local)
-
-`wrangler` is included as a dev dependency. Authenticate once, then deploy:
+Build the package and publish `packages/homepage/dist` to any static host:
 
 ```bash
-bunx wrangler login
-
-# production deploy (pushes dist/ to the eliza-homepage Pages project)
-bun run deploy
-
-# preview deploy (uses --branch=preview)
-bun run deploy:preview
+bun run --filter eliza-app build
 ```
 
-The Pages project name (`eliza-homepage`) is configured in `wrangler.toml` and in the npm scripts. Change it there if your Cloudflare project is named differently.
-
-### Custom domain
-
-After the first deploy, attach a custom domain in the Pages project's **Custom domains** tab. Cloudflare provisions the certificate automatically.
+The build copies `index.html` to `404.html` for GitHub Pages deep-link fallback. Hosts that understand `_redirects` and `_headers` can use the files in `public/` for SPA fallback and long-cache asset headers.

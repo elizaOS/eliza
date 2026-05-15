@@ -33,6 +33,10 @@ const whatsappPlugin: Plugin = {
       );
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<WhatsAppConnectorService>(WhatsAppConnectorService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default whatsappPlugin;

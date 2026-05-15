@@ -4,9 +4,9 @@ export default defineConfig({
   entry: ["src/index.ts"],
   outDir: "dist",
   sourcemap: true,
-  dts: true,
   clean: true,
   format: ["esm"],
+  dts: true,
   external: [
     "dotenv",
     "fs",

@@ -1,23 +1,4 @@
 #!/usr/bin/env node
-/**
- * Secret/credential scanner for prompt templates.
- *
- * This is intentionally conservative: it only fails on patterns that strongly
- * resemble real credentials (or private key material) to avoid false positives.
- *
- * Wave 1 of the prompt migration moved every prompt body from a sibling
- * `.txt` file to a TypeScript template-literal export. The scanner now walks
- * those TS prompt-source locations directly.
- *
- * Scans:
- * - packages/prompts/src/**\/*.ts
- * - packages/core/src/prompts.ts and packages/core/src/services/message.ts
- * - plugins/* TS modules whose path matches `prompts.ts`,
- *   `prompts/<name>.ts`, `workflow-prompts/<name>.ts`, or `templates.ts`
- *
- * Generated mirrors and test files are skipped.
- */
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,15 +9,12 @@ const __dirname = path.dirname(__filename);
 const PROMPTS_PKG_DIR = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(PROMPTS_PKG_DIR, "..", "..");
 
-// Roots under which to look for prompt-bearing TS files.
 const PROMPT_SCAN_TS_ROOTS = [
   "packages/prompts/src",
   "packages/core/src",
   "plugins",
 ];
 
-// Always include these high-traffic prompt modules even if they don't match
-// the heuristic file-name patterns above.
 const PROMPT_SCAN_FILES = [
   "packages/core/src/prompts.ts",
   "packages/core/src/services/message.ts",

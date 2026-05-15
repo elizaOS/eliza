@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
+import { gunzipSync } from "node:zlib";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
@@ -14,12 +15,28 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
 );
-const SMOKE_VRM = readFileSync(
-  new URL(
-    "../../../plugins/app-companion/public_src/vrms/eliza-1.vrm",
-    import.meta.url,
-  ),
-);
+function readSmokeVrm() {
+  const candidates = [
+    new URL(
+      "../../../plugins/app-companion/public/vrms/eliza-1.vrm.gz",
+      import.meta.url,
+    ),
+    new URL(
+      "../../../plugins/app-companion/public_src/vrms/eliza-1.vrm",
+      import.meta.url,
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    const body = readFileSync(candidate);
+    return candidate.pathname.endsWith(".gz") ? gunzipSync(body) : body;
+  }
+
+  return Buffer.alloc(4);
+}
+
+const SMOKE_VRM = readSmokeVrm();
 
 const stubPlugins = [
   {

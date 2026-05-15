@@ -196,7 +196,7 @@ export function resolveSlackUserToken(raw?: string | null): string | undefined {
 function getMultiAccountConfig(
   runtime: IAgentRuntime,
 ): SlackMultiAccountConfig {
-  const characterSlack = runtime.character?.settings?.slack as
+  const characterSlack = runtime.character.settings?.slack as
     | SlackMultiAccountConfig
     | undefined;
 

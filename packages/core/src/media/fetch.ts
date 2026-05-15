@@ -281,7 +281,7 @@ async function readResponseWithLimit(
 			if (done) {
 				break;
 			}
-			if (value?.length) {
+			if (value.length) {
 				total += value.length;
 				if (total > maxBytes) {
 					try {

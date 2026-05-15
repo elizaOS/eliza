@@ -299,4 +299,7 @@ export const starterPlugin: Plugin = {
   services: [StarterService],
   tests: [StarterPluginTestSuite],
   // dependencies: [], <--- plugin dependencies go here (if requires another plugin)
+  async dispose(runtime) {
+    await runtime.getService<StarterService>(StarterService.serviceType)?.stop();
+  },
 };

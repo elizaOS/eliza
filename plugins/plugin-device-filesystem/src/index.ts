@@ -8,6 +8,12 @@ export const deviceFilesystemPlugin: Plugin = {
 		"Mobile-safe filesystem bridge for canonical FILE target=device operations, routing through @capacitor/filesystem on iOS/Android and a Node fs/promises workspace under resolveStateDir() on desktop/AOSP.",
 	services: [DeviceFilesystemBridge],
 	actions: [],
+	async dispose(runtime) {
+		const svc = runtime.getService<DeviceFilesystemBridge>(
+			DeviceFilesystemBridge.serviceType,
+		);
+		await svc?.stop();
+	},
 };
 
 export default deviceFilesystemPlugin;

@@ -16,6 +16,7 @@
       "dependsOn": [
         "@elizaos/core#build",
         "@elizaos/shared#build",
+        "@elizaos/skills#build",
         "@elizaos/plugin-agent-skills#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
@@ -201,7 +202,12 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/plugin-agent-skills#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/skills#build",
+        "^build"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/plugin-app-control#build": {
@@ -290,11 +296,11 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": ["@elizaos/app-lifeops#build", "@elizaos/ui#build"],
+      "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
       "outputs": []
     },
     "@elizaos/example-telegram#typecheck": {

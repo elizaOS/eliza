@@ -24,11 +24,20 @@ describe("normaliseAnswer", () => {
 describe("vqaSoftScore", () => {
   it("returns 1 when ≥3 references match", () => {
     expect(
-      vqaSoftScore("stop", ["stop", "stop", "stop", "yield", "stop", "no parking"]),
+      vqaSoftScore("stop", [
+        "stop",
+        "stop",
+        "stop",
+        "yield",
+        "stop",
+        "no parking",
+      ]),
     ).toBe(1);
   });
   it("scales to 1/3 with one match", () => {
-    expect(vqaSoftScore("stop", ["stop", "yield", "go", "wait"])).toBeCloseTo(1 / 3);
+    expect(vqaSoftScore("stop", ["stop", "yield", "go", "wait"])).toBeCloseTo(
+      1 / 3,
+    );
   });
   it("returns 0 with no match", () => {
     expect(vqaSoftScore("stop", ["yield", "go"])).toBe(0);

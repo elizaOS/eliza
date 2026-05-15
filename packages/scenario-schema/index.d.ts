@@ -134,6 +134,13 @@ export type ScenarioJudgeRubric = {
   label?: string;
 };
 
+type CheckBase<Type extends string> = {
+  type: Type;
+  name?: string;
+};
+
+type StringMatcher = string | string[];
+
 export type ScenarioTurn = {
   kind?: string;
   name: string;
@@ -153,181 +160,118 @@ export type ScenarioTurn = {
 };
 
 export type ScenarioFinalCheck =
-  | {
-      type: "custom";
+  | (CheckBase<"custom"> & {
       name: string;
       predicate: (ctx: ScenarioContext) => ScenarioCheckResult;
-      [key: string]: unknown;
-    }
-  | {
-      type: "actionCalled";
+    })
+  | (CheckBase<"actionCalled"> & {
       actionName: string;
       status?: string;
       minCount?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: "selectedAction";
-      actionName: string | string[];
-      [key: string]: unknown;
-    }
-  | {
-      type: "selectedActionArguments";
-      actionName: string | string[];
+    })
+  | (CheckBase<"selectedAction"> & {
+      actionName: StringMatcher;
+    })
+  | (CheckBase<"selectedActionArguments"> & {
+      actionName: StringMatcher;
       includesAny?: Array<string | RegExp>;
       includesAll?: Array<string | RegExp>;
-      [key: string]: unknown;
-    }
-  | {
-      type: "clarificationRequested";
+    })
+  | (CheckBase<"clarificationRequested"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "interventionRequestExists";
+    })
+  | (CheckBase<"interventionRequestExists"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "pushSent";
-      channel: string | string[];
-      [key: string]: unknown;
-    }
-  | {
-      type: "pushEscalationOrder";
+    })
+  | (CheckBase<"pushSent"> & {
+      channel: StringMatcher;
+    })
+  | (CheckBase<"pushEscalationOrder"> & {
       channelOrder: string[];
-      [key: string]: unknown;
-    }
-  | {
-      type: "pushAcknowledgedSync";
+    })
+  | (CheckBase<"pushAcknowledgedSync"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "approvalRequestExists";
+    })
+  | (CheckBase<"approvalRequestExists"> & {
       expected?: boolean;
-      actionName?: string | string[];
+      actionName?: StringMatcher;
       state?: ApprovalRequestState | ApprovalRequestState[];
-      [key: string]: unknown;
-    }
-  | {
-      type: "approvalStateTransition";
+    })
+  | (CheckBase<"approvalStateTransition"> & {
       from: ApprovalRequestState;
       to: ApprovalRequestState;
-      actionName?: string | string[];
-      [key: string]: unknown;
-    }
-  | {
-      type: "noSideEffectOnReject";
-      actionName: string | string[];
-      [key: string]: unknown;
-    }
-  | {
-      type: "draftExists";
-      channel?: string | string[];
+      actionName?: StringMatcher;
+    })
+  | (CheckBase<"noSideEffectOnReject"> & {
+      actionName: StringMatcher;
+    })
+  | (CheckBase<"draftExists"> & {
+      channel?: StringMatcher;
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "messageDelivered";
-      channel?: string | string[];
+    })
+  | (CheckBase<"messageDelivered"> & {
+      channel?: StringMatcher;
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "browserTaskCompleted";
+    })
+  | (CheckBase<"browserTaskCompleted"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "browserTaskNeedsHuman";
+    })
+  | (CheckBase<"browserTaskNeedsHuman"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "uploadedAssetExists";
+    })
+  | (CheckBase<"uploadedAssetExists"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "connectorDispatchOccurred";
-      channel: string | string[];
-      actionName?: string | string[];
+    })
+  | (CheckBase<"connectorDispatchOccurred"> & {
+      channel: StringMatcher;
+      actionName?: StringMatcher;
       minCount?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: "memoryWriteOccurred";
-      table: string | string[];
+    })
+  | (CheckBase<"memoryWriteOccurred"> & {
+      table: StringMatcher;
       minCount?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailActionArguments";
-      actionName?: string | string[];
-      subaction?: string | string[];
-      operation?: string | string[];
+    })
+  | (CheckBase<"gmailActionArguments"> & {
+      actionName?: StringMatcher;
+      subaction?: StringMatcher;
+      operation?: StringMatcher;
       fields?: Record<string, unknown>;
       minCount?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailMockRequest";
-      method?: string | string[];
-      path?: string | string[];
+    })
+  | (CheckBase<"gmailMockRequest"> & {
+      method?: StringMatcher;
+      path?: StringMatcher;
       body?: Record<string, unknown>;
       expected?: boolean;
       minCount?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailDraftCreated";
+    })
+  | (CheckBase<"gmailDraftCreated"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailDraftDeleted";
+    })
+  | (CheckBase<"gmailDraftDeleted"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailMessageSent";
+    })
+  | (CheckBase<"gmailMessageSent"> & {
       expected?: boolean;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailBatchModify";
+    })
+  | (CheckBase<"gmailBatchModify"> & {
       expected?: boolean;
       body?: Record<string, unknown>;
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailApproval";
+    })
+  | (CheckBase<"gmailApproval"> & {
       state: "pending" | "confirmed" | "canceled" | "cancelled";
-      [key: string]: unknown;
-    }
-  | {
-      type: "gmailNoRealWrite";
-      [key: string]: unknown;
-    }
-  | {
-      type: "workflowDispatchOccurred";
+    })
+  | CheckBase<"gmailNoRealWrite">
+  | (CheckBase<"workflowDispatchOccurred"> & {
       workflowId?: string;
       expected?: boolean;
       minCount?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: "judgeRubric";
+    })
+  | (CheckBase<"judgeRubric"> & {
       name: string;
       rubric: string;
       minimumScore?: number;
-      [key: string]: unknown;
-    }
-  | {
-      type: string;
-      [key: string]: unknown;
-    };
+    });
 
 export type ScenarioDefinition = {
   id: string;

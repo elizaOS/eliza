@@ -288,8 +288,14 @@ export async function listLocalWorkspacePlugins(): Promise<
       });
     }
 
-    const pluginsDir = path.join(REPO_ROOT, "eliza", "plugins");
-    if (fs.existsSync(pluginsDir)) {
+    const pluginsDirs = [
+      path.join(REPO_ROOT, "plugins"),
+      path.join(REPO_ROOT, "eliza", "plugins"),
+    ];
+    for (const pluginsDir of pluginsDirs) {
+      if (!fs.existsSync(pluginsDir)) {
+        continue;
+      }
       for (const dirName of fs.readdirSync(pluginsDir).sort()) {
         const rootDir = path.join(pluginsDir, dirName);
         if (!fs.statSync(rootDir).isDirectory()) {

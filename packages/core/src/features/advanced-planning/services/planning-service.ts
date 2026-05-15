@@ -586,17 +586,17 @@ Focus on:
 			const steps: ActionStep[] = [];
 
 			const goal =
-				(typeof parsedResponse?.goal === "string"
+				(typeof parsedResponse.goal === "string"
 					? parsedResponse.goal
 					: null) || context.goal;
 			const executionModel =
-				(typeof parsedResponse?.execution_model === "string"
+				(typeof parsedResponse.execution_model === "string"
 					? parsedResponse.execution_model
 					: null) ||
 				context.preferences?.executionModel ||
 				"sequential";
 
-			const estimatedDurationRaw = parsedResponse?.estimated_duration;
+			const estimatedDurationRaw = parsedResponse.estimated_duration;
 			const estimatedDuration =
 				typeof estimatedDurationRaw === "number"
 					? estimatedDurationRaw
@@ -604,7 +604,7 @@ Focus on:
 						30000;
 
 			const stepIdMap = new Map<string, UUID>();
-			const parsedSteps = Array.isArray(parsedResponse?.steps)
+			const parsedSteps = Array.isArray(parsedResponse.steps)
 				? parsedResponse.steps.filter(isRecord)
 				: [];
 
@@ -1109,7 +1109,7 @@ Return the adapted plan as JSON only, with the same shape as the original planni
 		try {
 			const adaptedSteps: ActionStep[] = [];
 			const parsedResponse = parseJsonRecord(response);
-			const parsedSteps = Array.isArray(parsedResponse?.steps)
+			const parsedSteps = Array.isArray(parsedResponse.steps)
 				? parsedResponse.steps.filter(isRecord)
 				: [];
 

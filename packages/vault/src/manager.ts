@@ -38,8 +38,8 @@ const exec = promisify(execFile);
  *   - **All enabled**  → user can pick per-key in Settings; unsupported
  *     direct external writes fail loudly instead of hiding the problem.
  *
- * The Vault stays the canonical store for non-sensitive config and
- * for the references that point at external password managers.
+ * The Vault remains the store for non-sensitive config and for the
+ * references that point at external password managers.
  */
 
 export type BackendId = "in-house" | "1password" | "protonpass" | "bitwarden";
@@ -319,14 +319,14 @@ class ManagerImpl implements SecretsManager {
       backends.find((b) => b.id === "bitwarden")?.signedIn === true;
 
     if (onePasswordReady) {
-      const result = await safeListExternal("1password", () =>
+      const result = await safeListExternal(() =>
         listOnePasswordLogins(this.vault, this.execFn),
       );
       if (result.ok === true) externalEntries.push(...result.entries);
       else failures.push({ source: "1password", message: result.message });
     }
     if (bitwardenReady) {
-      const result = await safeListExternal("bitwarden", () =>
+      const result = await safeListExternal(() =>
         listBitwardenLogins(this.vault, this.execFn),
       );
       if (result.ok === true) externalEntries.push(...result.entries);
@@ -710,7 +710,6 @@ interface ListExternalErr {
 }
 
 async function safeListExternal(
-  _source: "1password" | "bitwarden",
   fn: () => Promise<readonly ExternalLoginListEntry[]>,
 ): Promise<ListExternalOk | ListExternalErr> {
   try {

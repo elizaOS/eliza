@@ -27,10 +27,10 @@ export default new Proxy(noop, {
 // elizaOS server-only stubs (browser bundle reach-through)
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [];
 export const AGENT_EVENT_ALLOWED_STREAMS = [];
-export const applyAdvancedCapabilitiesConfig = noop;
 export const applyCanonicalOnboardingConfig = noop;
 export const applyCloudConfigToEnv = noop;
 export const applyOnboardingCredentialPersistence = noop;
+export const applyAdvancedCapabilitiesConfig = noop;
 export const applyPluginRuntimeMutation = noop;
 export const bootElizaRuntime = noop;
 export const buildCharacterFromConfig = noop;
@@ -43,7 +43,6 @@ export const configureLocalEmbeddingPlugin = noop;
 export const CONFIG_WRITE_ALLOWED_TOP_KEYS = [];
 export const CONNECTOR_ENV_MAP = [];
 export const CORE_PLUGINS = [];
-export const OPTIONAL_CORE_PLUGINS = [];
 export const createElizaPlugin = noop;
 export const CUSTOM_PLUGINS_DIRNAME = [];
 export const detectEmbeddingTier = noop;
@@ -62,7 +61,7 @@ export const formatVaultRef = noop;
 export const getAccessToken = noop;
 export const getCloudSecret = noop;
 export const getLastFailedPluginNames = noop;
-export const getPluginWidgets = noop;
+export const getPluginWidgets = (): [] => [];
 export const handleCloudBillingRoute = noop;
 export const handleCloudCompatRoute = noop;
 export const handleCloudTtsPreviewRoute = noop;
@@ -84,6 +83,7 @@ export const loadElizaConfig = noop;
 export const mirrorCompatHeaders = noop;
 export const normalizeCloudSiteUrl = noop;
 export const normalizeWsClientId = noop;
+export const OPTIONAL_CORE_PLUGINS = [];
 export const parseVaultRef = noop;
 export const persistConfigEnv = noop;
 export const persistConversationRoomTitle = noop;
@@ -125,7 +125,13 @@ export const typeConversationMeta = noop;
 export const typeElizaConfig = noop;
 export const typeStartElizaOptions = noop;
 export const UninstallResult = noop;
-export const validatePluginConfig = noop;
+export const validatePluginConfig = () =>
+  Object.freeze({
+    configured: false,
+    errors: [],
+    warnings: [],
+    maskedValue: null,
+  });
 export const validateMcpServerConfig = noop;
 
 // ── Extra @elizaos/agent stubs surfaced by plugin dist files ────────

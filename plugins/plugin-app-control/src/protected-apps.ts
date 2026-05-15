@@ -12,7 +12,7 @@
  *   2. First-party apps shipped in this repo under `eliza/apps/` — every
  *      subdirectory there is implicitly protected so a malicious or careless
  *      `load_from_directory` cannot register a foreign package under a
- *      first-party slug (e.g., `@elizaos/app-companion`).
+ *      first-party slug (e.g., `@elizaos/plugin-companion`).
  *
  * Lookups are case-insensitive and accept the full package name
  * (`@scope/app-foo`), the package basename (`app-foo`), or the suffix

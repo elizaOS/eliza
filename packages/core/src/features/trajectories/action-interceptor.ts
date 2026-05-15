@@ -261,7 +261,7 @@ export function wrapProviderWithLogging(
 		): Promise<ProviderResult> => {
 			const context = getTrajectoryContext(runtime);
 			if (!context) {
-				return originalGet?.(runtime, message, state) || { text: "" };
+				return originalGet(runtime, message, state) || { text: "" };
 			}
 
 			const { trajectoryId, logger: loggerService } = context;
@@ -272,10 +272,10 @@ export function wrapProviderWithLogging(
 					{ provider: provider.name, trajectoryId },
 					"No active step for provider access",
 				);
-				return originalGet?.(runtime, message, state) || { text: "" };
+				return originalGet(runtime, message, state) || { text: "" };
 			}
 
-			const result = (await originalGet?.(runtime, message, state)) || {
+			const result = (await originalGet(runtime, message, state)) || {
 				text: "",
 			};
 

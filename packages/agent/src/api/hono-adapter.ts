@@ -104,7 +104,7 @@ export function mountRoutesOnHono(
   runtime: IAgentRuntime,
   options: HonoAdapterOptions,
 ): void {
-  const routes = runtime.routes ?? [];
+  const routes = runtime.routes;
   for (const route of routes as Route[]) {
     const method = honoMethod(route.type);
     if (!method) continue;

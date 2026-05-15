@@ -218,7 +218,7 @@ No secrets configured. User can set secrets by saying things like "Set my OPENAI
 			// Group by type
 			const byType: Record<string, string[]> = {};
 			for (const [key, config] of Object.entries(globalSecrets)) {
-				const type = config.type ?? "secret";
+				const type = config.type;
 				if (!byType[type]) {
 					byType[type] = [];
 				}

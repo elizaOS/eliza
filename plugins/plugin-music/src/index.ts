@@ -197,6 +197,14 @@ const musicPlugin: Plugin = {
         logger.warn(`Discord unavailable — music playback web-only: ${error}`);
       });
   },
+  async dispose(runtime: IAgentRuntime) {
+    const musicSvc = runtime.getService<MusicService>(MusicService.serviceType);
+    await musicSvc?.stop();
+    const libSvc = runtime.getService<MusicLibraryService>(
+      MusicLibraryService.serviceType,
+    );
+    await libSvc?.stop();
+  },
 };
 
 export default musicPlugin;

@@ -595,10 +595,8 @@ export async function initStewardWalletCache(): Promise<void> {
 
     const agent = body.data ?? body;
     const stewardEvm =
-      agent?.walletAddresses?.evm?.trim() ||
-      agent?.walletAddress?.trim() ||
-      null;
-    const stewardSolana = agent?.walletAddresses?.solana?.trim() || null;
+      agent.walletAddresses?.evm?.trim() || agent.walletAddress?.trim() || null;
+    const stewardSolana = agent.walletAddresses?.solana?.trim() || null;
 
     stewardAddressCache = { evm: stewardEvm, solana: stewardSolana };
     if (stewardEvm) {
@@ -731,10 +729,8 @@ export async function getWalletAddressesWithSteward(): Promise<
 
     const agent = body.data ?? body;
     const stewardEvm =
-      agent?.walletAddresses?.evm?.trim() ||
-      agent?.walletAddress?.trim() ||
-      null;
-    const stewardSolana = agent?.walletAddresses?.solana?.trim() || null;
+      agent.walletAddresses?.evm?.trim() || agent.walletAddress?.trim() || null;
+    const stewardSolana = agent.walletAddresses?.solana?.trim() || null;
 
     return {
       evmAddress: base.evmAddress ?? stewardEvm,
@@ -1038,7 +1034,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
   solValueUsd: string;
   tokens: SolanaTokenBalance[];
 }> {
-  const urls = [...new Set(rpcUrls)].filter((u) => Boolean(u?.trim()));
+  const urls = [...new Set(rpcUrls)].filter((u) => Boolean(u.trim()));
   const errors: string[] = [];
 
   for (const rpcUrl of urls) {

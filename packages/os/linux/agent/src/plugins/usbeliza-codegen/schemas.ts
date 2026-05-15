@@ -46,7 +46,6 @@ export const CODEGEN_OUTPUT_SCHEMA = {
             "webview",
             "gtk4",
             "terminal",
-            "wallpaper",
             "panel-top",
             "panel-bottom",
             "panel-left",
@@ -107,7 +106,6 @@ export interface CodegenOutput {
       | "webview"
       | "gtk4"
       | "terminal"
-      | "wallpaper"
       | "panel-top"
       | "panel-bottom"
       | "panel-left"

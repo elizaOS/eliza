@@ -465,7 +465,7 @@ function relationshipTypes(relationship: Relationship): string[] {
 	if (primaryType) {
 		types.add(primaryType);
 	}
-	for (const tag of relationship.tags ?? []) {
+	for (const tag of relationship.tags) {
 		if (!GENERIC_RELATIONSHIP_TAGS.has(tag)) {
 			types.add(tag);
 		}
@@ -572,10 +572,10 @@ function collectIdentityHandles(
 	const handles = new Map<string, RelationshipsIdentityHandle>();
 	const metadata = asRecord(entity?.metadata);
 	const rawPlatformIdentities = Array.isArray(metadata?.platformIdentities)
-		? metadata?.platformIdentities
+		? metadata.platformIdentities
 		: [];
 	const rawClaims = Array.isArray(metadata?.identityClaims)
-		? metadata?.identityClaims
+		? metadata.identityClaims
 		: [];
 
 	const addHandle = (
@@ -663,7 +663,7 @@ function preferredContactLabel(
 	contact: RelationshipsContactLike | null,
 ): string | null {
 	return (
-		extractContactAliases(contact?.customFields)?.find(
+		extractContactAliases(contact?.customFields).find(
 			(value) => value.trim().length > 0,
 		) ?? null
 	);
@@ -954,7 +954,7 @@ async function collectWorkspaceEntityIds(
 	if (typeof relationshipsService.searchContacts === "function") {
 		const contacts = await relationshipsService.searchContacts({});
 		for (const contact of contacts) {
-			if (contact?.entityId && contact.entityId !== runtime.agentId) {
+			if (contact.entityId && contact.entityId !== runtime.agentId) {
 				entityIds.add(contact.entityId);
 			}
 		}
@@ -1885,7 +1885,7 @@ async function buildFacts(
 					sourceType: "memory",
 					text: memoryText(memory) ?? "",
 					scope: extractedInformation?.scope,
-					confidence: asNumber(metadata?.confidence) ?? undefined,
+					confidence: asNumber(metadata.confidence) ?? undefined,
 					updatedAt: isoFromTimestamp(memory.createdAt),
 					lastReinforced: provenance?.lastReinforced,
 					evidenceMessageIds,
@@ -2043,7 +2043,7 @@ async function buildRelevantMemories(
 			return {
 				id:
 					memory.id ??
-					`${entityId ?? "unknown"}:${memory.roomId ?? "room"}:${memory.createdAt ?? 0}`,
+					`${entityId ?? "unknown"}:${memory.roomId}:${memory.createdAt ?? 0}`,
 				sourceType: "message",
 				entityId,
 				roomId: typeof memory.roomId === "string" ? memory.roomId : undefined,
@@ -2402,9 +2402,7 @@ export function createNativeRelationshipsGraphService(
 						memberSet.has(relationship.targetEntityId),
 				)
 				.map((relationship) => ({
-					id:
-						relationship.id ??
-						`${relationship.sourceEntityId}:${relationship.targetEntityId}`,
+					id: relationship.id,
 					sourceEntityId: relationship.sourceEntityId,
 					targetEntityId: relationship.targetEntityId,
 					confidence: relationshipConfidence(relationship),

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OCRService } from "./ocr-service";
-import {
-  DoctrOCRService,
-  shouldPreferAppleVision,
-} from "./ocr-service-doctr";
+import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";
 
 describe("DoctrOCRService availability", () => {
   it("reports availability via a typed boolean", async () => {

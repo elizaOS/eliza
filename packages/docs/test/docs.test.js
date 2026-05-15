@@ -6,6 +6,44 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = join(__dirname, "..");
+const DOCS_JSON_PATH = join(DOCS_DIR, "docs.json");
+
+function readDocsConfig() {
+  return JSON.parse(readFileSync(DOCS_JSON_PATH, "utf-8"));
+}
+
+function collectPages(obj) {
+  if (Array.isArray(obj)) {
+    return obj.flatMap((item) =>
+      typeof item === "string" ? [item] : collectPages(item),
+    );
+  }
+
+  if (!obj || typeof obj !== "object") {
+    return [];
+  }
+
+  return [
+    ...collectPages(obj.pages),
+    ...collectPages(obj.groups),
+    ...collectPages(obj.tabs),
+  ];
+}
+
+function findDuplicates(values) {
+  const seen = new Set();
+  const duplicates = new Set();
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      duplicates.add(value);
+    } else {
+      seen.add(value);
+    }
+  }
+
+  return [...duplicates];
+}
 
 function collectMarkdownFiles(dir = DOCS_DIR) {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -67,10 +105,8 @@ function resolveInternalTarget(sourceFile, href) {
 
 describe("docs.json configuration", () => {
   it("docs.json exists and is valid JSON", () => {
-    const docsJsonPath = join(DOCS_DIR, "docs.json");
-    assert.ok(existsSync(docsJsonPath), "docs.json should exist");
-    const content = readFileSync(docsJsonPath, "utf-8");
-    const config = JSON.parse(content);
+    assert.ok(existsSync(DOCS_JSON_PATH), "docs.json should exist");
+    const config = readDocsConfig();
     assert.ok(
       typeof config === "object" && config !== null,
       "should be a valid object",
@@ -78,18 +114,14 @@ describe("docs.json configuration", () => {
   });
 
   it("has required Mintlify configuration fields", () => {
-    const config = JSON.parse(
-      readFileSync(join(DOCS_DIR, "docs.json"), "utf-8"),
-    );
+    const config = readDocsConfig();
     assert.ok(config.name, "should have name");
     assert.ok(config.colors, "should have colors");
     assert.ok(config.navigation, "should have navigation");
   });
 
   it("has valid theme", () => {
-    const config = JSON.parse(
-      readFileSync(join(DOCS_DIR, "docs.json"), "utf-8"),
-    );
+    const config = readDocsConfig();
     assert.ok(config.theme, "should have theme");
     const validThemes = ["mint", "quill", "venus", "prism"];
     assert.ok(
@@ -99,9 +131,7 @@ describe("docs.json configuration", () => {
   });
 
   it("has valid color configuration", () => {
-    const config = JSON.parse(
-      readFileSync(join(DOCS_DIR, "docs.json"), "utf-8"),
-    );
+    const config = readDocsConfig();
     assert.ok(config.colors.primary, "should have primary color");
     assert.match(
       config.colors.primary,
@@ -111,14 +141,48 @@ describe("docs.json configuration", () => {
   });
 
   it("navigation tabs are defined", () => {
-    const config = JSON.parse(
-      readFileSync(join(DOCS_DIR, "docs.json"), "utf-8"),
-    );
+    const config = readDocsConfig();
     assert.ok(config.navigation, "should have navigation");
     assert.ok(
       config.navigation.tabs || config.navigation.global,
       "should have tabs or global navigation",
     );
+  });
+
+  it("navigation tabs and groups do not duplicate labels", () => {
+    const config = readDocsConfig();
+    const tabs = config.navigation.tabs ?? [];
+    const duplicateTabs = findDuplicates(tabs.map((tab) => tab.tab));
+
+    assert.deepStrictEqual(duplicateTabs, []);
+
+    for (const tab of tabs) {
+      const groups = tab.groups ?? [];
+      const duplicateGroups = findDuplicates(groups.map((group) => group.group));
+
+      assert.deepStrictEqual(
+        duplicateGroups,
+        [],
+        `Duplicate group labels in tab "${tab.tab}"`,
+      );
+    }
+  });
+
+  it("navigation groups do not list the same page twice", () => {
+    const config = readDocsConfig();
+
+    for (const tab of config.navigation.tabs ?? []) {
+      for (const group of tab.groups ?? []) {
+        const pages = collectPages(group.pages ?? []);
+        const duplicatePages = findDuplicates(pages);
+
+        assert.deepStrictEqual(
+          duplicatePages,
+          [],
+          `Duplicate pages in ${tab.tab} / ${group.group}`,
+        );
+      }
+    }
   });
 });
 
@@ -138,32 +202,11 @@ describe("documentation files", () => {
   });
 
   it("core documentation pages referenced in navigation exist", () => {
-    const config = JSON.parse(
-      readFileSync(join(DOCS_DIR, "docs.json"), "utf-8"),
-    );
-
-    function extractPages(obj) {
-      const pages = [];
-      if (Array.isArray(obj)) {
-        for (const item of obj) {
-          if (typeof item === "string") {
-            pages.push(item);
-          } else {
-            pages.push(...extractPages(item));
-          }
-        }
-      } else if (obj && typeof obj === "object") {
-        if (obj.pages) pages.push(...extractPages(obj.pages));
-        if (obj.groups) pages.push(...extractPages(obj.groups));
-        if (obj.tabs) pages.push(...extractPages(obj.tabs));
-      }
-      return pages;
-    }
-
-    const pages = extractPages(config.navigation);
+    const config = readDocsConfig();
+    const pages = collectPages(config.navigation);
     const missingPages = [];
+
     for (const page of pages) {
-      if (typeof page !== "string") continue;
       if (page.startsWith("http")) continue;
       const mdxPath = join(DOCS_DIR, `${page}.mdx`);
       const mdPath = join(DOCS_DIR, `${page}.md`);
@@ -188,11 +231,13 @@ describe("documentation files", () => {
     }
   });
 
-  it(".mdx files have content", () => {
-    const mdxFiles = readdirSync(DOCS_DIR).filter((f) => f.endsWith(".mdx"));
-    for (const file of mdxFiles) {
-      const content = readFileSync(join(DOCS_DIR, file), "utf-8");
-      assert.ok(content.trim().length > 0, `${file} should not be empty`);
+  it("markdown files have content", () => {
+    const markdownFiles = collectMarkdownFiles();
+    for (const file of markdownFiles) {
+      const content = readFileSync(file, "utf-8");
+      const label = relative(DOCS_DIR, file);
+
+      assert.ok(content.trim().length > 0, `${label} should not be empty`);
     }
   });
 

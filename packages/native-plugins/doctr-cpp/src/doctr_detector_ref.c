@@ -78,7 +78,7 @@ static int conv_bn_relu_fresh(
     int cout_expected, int kh, int kw,
     float **out, int *hout, int *wout)
 {
-    char buf[160];
+    char buf[256];
     int64_t dims[4]; int nd;
 
     snprintf(buf, sizeof buf, "%s.weight", conv_name);
@@ -137,7 +137,7 @@ static int bottleneck(
     const float *x, int hin, int win,
     float **out, int *hout, int *wout)
 {
-    char nm_conv[160], nm_bn[160];
+    char nm_conv[200], nm_bn[200];
     float *t1 = NULL, *t2 = NULL, *t3 = NULL, *ds = NULL;
     int h1, w1, h2, w2, h3, w3;
     int rc;
@@ -169,7 +169,7 @@ static int bottleneck(
     if (rc != 0) return rc;
 
     if (has_downsample) {
-        char dsc[160], dsb[160];
+        char dsc[200], dsb[200];
         snprintf(dsc, sizeof dsc, "%s.downsample.0", block_prefix);
         snprintf(dsb, sizeof dsb, "%s.downsample.1", block_prefix);
         int dh, dw;
@@ -205,7 +205,7 @@ static int run_layer(
     const float *x, int hin, int win,
     float **out, int *hout, int *wout)
 {
-    char buf[160];
+    char buf[200];
     float *cur = NULL;
     int   ch = hin, cw_ = win;
     int   in_c = ch_in;
@@ -282,9 +282,9 @@ int doctr_detector_forward(
     float *layer_outs[4] = {l1, l2, l3, l4};
     int   layer_hs[4]    = {h1, h2, h3, h4};
     int   layer_ws[4]    = {w1, w2, w3, w4};
-    char  buf[160];
+    char  buf[200];
     for (int i = 0; i < 4; ++i) {
-        char conv_n[160], bn_n[160];
+        char conv_n[200], bn_n[200];
         snprintf(conv_n, sizeof conv_n, "det.fpn.in_branches.%d.0", i);
         snprintf(bn_n,   sizeof bn_n,   "det.fpn.in_branches.%d.1", i);
         rc = conv_bn_relu_fresh(s->gguf, conv_n, bn_n, false,
@@ -326,7 +326,7 @@ int doctr_detector_forward(
     float *out_b[4] = {0};
     int   out_h[4], out_w[4];
     for (int i = 0; i < 4; ++i) {
-        char conv_n[160], bn_n[160];
+        char conv_n[200], bn_n[200];
         snprintf(conv_n, sizeof conv_n, "det.fpn.out_branches.%d.0", i);
         snprintf(bn_n,   sizeof bn_n,   "det.fpn.out_branches.%d.1", i);
         rc = conv_bn_relu_fresh(s->gguf, conv_n, bn_n, false,

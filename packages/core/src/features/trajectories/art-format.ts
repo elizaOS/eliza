@@ -48,7 +48,7 @@ export function toARTMessages(trajectory: Trajectory): ChatMessage[] {
 
 function buildSystemMessage(trajectory: Trajectory): ChatMessage | null {
 	const firstStep = trajectory.steps[0];
-	const firstLLMCall = firstStep?.llmCalls?.[0];
+	const firstLLMCall = firstStep?.llmCalls[0];
 
 	const firstMessage = firstLLMCall?.messages?.[0] as
 		| { role?: unknown; content?: unknown }

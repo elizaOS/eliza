@@ -93,7 +93,7 @@ function resolveBuildBundlePath(env: NodeJS.ProcessEnv): string | null {
 
 	if (bundleCandidates.length === 1) {
 		const [bundleCandidate] = bundleCandidates;
-		return bundleCandidate ?? null;
+		return bundleCandidate;
 	}
 
 	const appName = env.ELECTROBUN_APP_NAME?.trim();

@@ -366,12 +366,12 @@ export class DeviceBridge {
 		return {
 			connected: summaries.length > 0,
 			devices: summaries,
-			primaryDeviceId: primary?.deviceId ?? null,
+			primaryDeviceId: primary?.deviceId,
 			pendingRequests,
-			deviceId: primary?.deviceId ?? null,
-			capabilities: primary?.capabilities ?? null,
+			deviceId: primary?.deviceId,
+			capabilities: primary?.capabilities,
 			loadedPath: primary?.loadedPath ?? null,
-			connectedSince: primary?.connectedSince ?? null,
+			connectedSince: primary?.connectedSince,
 		};
 	}
 

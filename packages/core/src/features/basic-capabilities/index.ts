@@ -343,7 +343,7 @@ export async function processAttachments(
 							src: "basic-capabilities",
 							agentId: runtime.agentId,
 							descriptionPreview:
-								processedAttachment.description?.substring(0, 100) || undefined,
+								processedAttachment.description.substring(0, 100) || undefined,
 						},
 						"Generated description",
 					);
@@ -413,7 +413,7 @@ export async function processAttachments(
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						textPreview:
-							processedAttachment.text?.substring(0, 100) || undefined,
+							processedAttachment.text.substring(0, 100) || undefined,
 					},
 					"Extracted text content",
 				);
@@ -484,7 +484,7 @@ export function shouldRespond(
 		(s: string) => s.trim().toLowerCase(),
 	);
 
-	const roomType = room.type?.toString().toLowerCase() || undefined;
+	const roomType = room.type.toString().toLowerCase() || undefined;
 	const messageContentSource = message.content.source;
 	const sourceStr = messageContentSource?.toLowerCase() || "";
 	const textMentionsAgentByName =
@@ -675,7 +675,7 @@ const postGeneratedHandler = async ({
 
 	const cleanedText = cleanupPostText(parsedJsonResponse.post ?? "");
 	const stateData = state.data;
-	const stateDataProviders = stateData?.providers;
+	const stateDataProviders = stateData.providers;
 	const RM =
 		stateDataProviders &&
 		(stateDataProviders.RECENT_MESSAGES as
@@ -1029,7 +1029,7 @@ const events: PluginEvents = {
 				return;
 			}
 
-			const channelType = payloadMetadata?.type;
+			const channelType = payloadMetadata.type;
 			if (typeof channelType !== "string") {
 				payload.runtime.logger.warn("Missing channel type in entity payload");
 				return;
@@ -1094,7 +1094,7 @@ const events: PluginEvents = {
 		},
 		async (payload: ActionEventPayload) => {
 			const content = payload.content;
-			const contentActions = content?.actions;
+			const contentActions = content.actions;
 			const actionName = contentActions?.[0] ?? "unknown";
 
 			await payload.runtime.createLogs([
@@ -1103,13 +1103,13 @@ const events: PluginEvents = {
 					roomId: payload.roomId,
 					type: "action_event",
 					body: {
-						runId: (content?.runId as string | undefined) ?? "",
-						actionId: (content?.actionId as string | undefined) ?? "",
+						runId: (content.runId as string | undefined) ?? "",
+						actionId: (content.actionId as string | undefined) ?? "",
 						actionName: actionName,
 						roomId: payload.roomId,
 						messageId: payload.messageId,
 						timestamp: Date.now(),
-						planStep: (content?.planStep as string | undefined) ?? "",
+						planStep: (content.planStep as string | undefined) ?? "",
 						source: "actionHandler",
 					} as ActionLogBody,
 				},
@@ -1445,6 +1445,17 @@ export function createBasicCapabilitiesPlugin(
 					},
 				}
 			: {}),
+		async dispose(runtime) {
+			// Stop all services that may have been registered based on config.
+			// Each call is a no-op when the service was not started.
+			await runtime.getService(TaskService.serviceType)?.stop();
+			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
+			await runtime.getService(EvaluatorService.serviceType)?.stop();
+			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
+			if (config.enableAutonomy) {
+				await runtime.getService(AutonomyService.serviceType)?.stop();
+			}
+		},
 	};
 }
 

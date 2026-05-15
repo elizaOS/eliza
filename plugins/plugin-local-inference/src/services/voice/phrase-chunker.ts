@@ -49,8 +49,7 @@ const DEFAULT_MAX_ACCUMULATION_MS = resolveDefaultMaxAccumulationMs();
 /** Wall-clock source the chunker uses. Tests inject a deterministic clock. */
 export type ClockMs = () => number;
 
-const DEFAULT_CLOCK: ClockMs = () =>
-	globalThis.performance?.now?.() ?? Date.now();
+const DEFAULT_CLOCK: ClockMs = () => globalThis.performance.now();
 
 export class PhraseChunker {
 	private buffer: AcceptedToken[] = [];

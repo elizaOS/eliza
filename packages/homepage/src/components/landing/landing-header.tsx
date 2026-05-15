@@ -1,9 +1,3 @@
-/**
- * Landing header: logo and "Get started" CTA.
- * Users click Get started to choose their preferred messaging method.
- * Desktop hover shows QR code to continue on phone.
- */
-
 import { AnimatePresence, motion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
@@ -17,7 +11,6 @@ const SMS_PREWRITTEN_MESSAGE = "Hello Eliza!";
 export function LandingHeader() {
   const [showQR, setShowQR] = useState(false);
 
-  // SMS URI that opens native messaging app with pre-written text
   const smsUri = buildElizaSmsHref(SMS_PREWRITTEN_MESSAGE);
 
   return (
@@ -32,7 +25,6 @@ export function LandingHeader() {
           <ElizaLogo className="h-5 sm:h-6 invert shrink-0" />
         </Link>
 
-        {/* Get Started button with QR code hover */}
         <fieldset
           className="relative m-0 min-w-0 border-0 p-0"
           onMouseEnter={() => setShowQR(true)}
@@ -48,7 +40,6 @@ export function LandingHeader() {
             <Link to="/get-started">Get started</Link>
           </Button>
 
-          {/* QR Code popup on hover (desktop only) */}
           <AnimatePresence>
             {showQR && (
               <motion.div
@@ -75,7 +66,6 @@ export function LandingHeader() {
                     fgColor="#ffffff"
                   />
                 </div>
-                {/* Arrow pointing up to button */}
                 <div className="absolute -top-1 right-5 w-2 h-2 bg-white/10 backdrop-blur-2xl rotate-45 border-l border-t border-white/20" />
               </motion.div>
             )}

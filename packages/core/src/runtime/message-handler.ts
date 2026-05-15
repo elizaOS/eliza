@@ -191,8 +191,8 @@ export function routeMessageHandlerOutput(
 		return { type: "stopped", output };
 	}
 
-	const allContexts = [...(output.plan?.contexts ?? [])];
-	const requiresTool = output.plan?.requiresTool === true;
+	const allContexts = [...output.plan.contexts];
+	const requiresTool = output.plan.requiresTool === true;
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts
 	// is empty), Stage 1 owns the reply and we never enter the planner — unless
@@ -227,7 +227,7 @@ export function routeMessageHandlerOutput(
 }
 
 export function getMessageHandlerReply(output: V5MessageHandlerOutput): string {
-	return String(output.plan?.reply ?? "").trim();
+	return String(output.plan.reply ?? "").trim();
 }
 
 function normalizeMessageHandlerAction(value: unknown): MessageHandlerAction {

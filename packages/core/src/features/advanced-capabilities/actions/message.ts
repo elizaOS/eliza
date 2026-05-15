@@ -245,7 +245,7 @@ function inferOp(message: Memory, params: ParamRecord): MessageOperation {
 	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
 
-	const text = `${message.content?.text ?? ""}`.toLowerCase();
+	const text = `${message.content.text ?? ""}`.toLowerCase();
 
 	if (params.draftId && params.sendAt) return "schedule_draft_send";
 	if (params.draftId) return "send_draft";
@@ -488,7 +488,7 @@ function buildQueryContext(
 		account: connector?.account,
 		target,
 		contexts: getActiveRoutingContextsForTurn(state, message),
-		metadata: { messageText: message.content?.text },
+		metadata: { messageText: message.content.text },
 	};
 }
 
@@ -968,7 +968,7 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 function connectorSendAsMetadata(
 	message: Memory,
 ): Record<string, unknown> | undefined {
-	const metadata = recordValue(message.content?.metadata);
+	const metadata = recordValue(message.content.metadata);
 	return (
 		recordValue(metadata?.connectorSendAs) ??
 		recordValue(metadata?.connectorAccount)
@@ -979,7 +979,7 @@ function accountIdFromParams(
 	raw: ParamRecord,
 	message: Memory,
 ): string | undefined {
-	const metadata = recordValue(message.content?.metadata);
+	const metadata = recordValue(message.content.metadata);
 	const sendAs = connectorSendAsMetadata(message);
 	return (
 		textParam(raw.accountId) ??
@@ -1318,7 +1318,7 @@ async function collectEntityCandidates(
 		);
 		if (!entity?.id) return [];
 
-		const label = entity.names?.[0] ?? query;
+		const label = entity.names[0] ?? query;
 		const candidates: SendCandidate[] = [];
 		for (const connector of connectors) {
 			if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
@@ -1437,7 +1437,7 @@ async function resolveAdminTarget(
 	if (!connector) return null;
 	const ownerId =
 		(await resolveCanonicalOwnerIdForMessage(runtime, message)) ??
-		stringToUuid(`${runtime.character?.name ?? runtime.agentId}-admin-entity`);
+		stringToUuid(`${runtime.character.name ?? runtime.agentId}-admin-entity`);
 	return {
 		connector,
 		target: {
@@ -1733,8 +1733,7 @@ async function ensureOutboundRoom(
 		target.channelId ??
 		target.entityId ??
 		target.threadId ??
-		label ??
-		"default";
+		label;
 	const worldId = stringToUuid(
 		`${runtime.agentId}:${source}:message-world:${serverPart}`,
 	) as UUID;
@@ -2128,7 +2127,7 @@ async function resolveLocalChannelRoom(
 			if (!room) continue;
 			const roomRecord = room as Room & { name?: string; source?: string };
 			const name = (roomRecord.name ?? "").toLowerCase();
-			const roomSource = (roomRecord.source ?? room.type ?? "").toLowerCase();
+			const roomSource = roomRecord.source.toLowerCase();
 			if (name === channelLower || name.includes(channelLower)) {
 				if (source && roomSource !== source.toLowerCase()) continue;
 				return room;
@@ -2166,7 +2165,7 @@ async function handleReadChannel(
 			? selectConnectorForOp(
 					hookConnectors,
 					source,
-					message.content?.source,
+					message.content.source,
 					"read_channel",
 					accountId,
 				)
@@ -2329,7 +2328,7 @@ async function handleReadChannel(
 					line: i + 1,
 					id: m.id,
 					entityId: m.entityId,
-					text: m.content?.text,
+					text: m.content.text,
 					createdAt: m.createdAt,
 				})),
 			},
@@ -2373,12 +2372,11 @@ function getRelationshipsServiceLike(
 	runtime: IAgentRuntime,
 ): RelationshipsServiceLike | null {
 	const candidates: Array<RelationshipsServiceLike | null> = [
-		(runtime.getService?.(
+		(runtime.getService(
 			"relationships_graph",
 		) as RelationshipsServiceLike | null) ?? null,
-		(runtime.getService?.(
-			"relationships",
-		) as RelationshipsServiceLike | null) ?? null,
+		(runtime.getService("relationships") as RelationshipsServiceLike | null) ??
+			null,
 	];
 	for (const candidate of candidates) {
 		if (candidate && typeof candidate.getGraphSnapshot === "function")
@@ -2425,7 +2423,7 @@ async function handleReadWithContact(
 			search: (entityId ?? contact ?? "").trim(),
 			limit: 5,
 		});
-		const candidates = snapshot?.people ?? [];
+		const candidates = snapshot.people;
 		if (entityId) {
 			person =
 				candidates.find(
@@ -2473,7 +2471,7 @@ async function handleReadWithContact(
 				const room = await runtime.getRoom(roomId);
 				if (!room) continue;
 				const roomRecord = room as Room & { name?: string; source?: string };
-				const roomPlatform = roomRecord.source ?? room.type ?? "unknown";
+				const roomPlatform = roomRecord.source;
 				if (platform && roomPlatform.toLowerCase() !== platform.toLowerCase())
 					continue;
 				const memories = (await runtime.getMemories({
@@ -2596,7 +2594,7 @@ async function handleSearch(
 		const selection = selectConnectorForOp(
 			connectors,
 			source,
-			message.content?.source,
+			message.content.source,
 			"search",
 			accountIdFromParams(params, message),
 		);
@@ -2697,7 +2695,7 @@ async function handleSearch(
 			results = filtered;
 		}
 
-		results = results.filter((m) => m.content?.text).slice(0, limit);
+		results = results.filter((m) => m.content.text).slice(0, limit);
 		return opSuccess(
 			"search",
 			results.length === 0
@@ -2712,7 +2710,7 @@ async function handleSearch(
 					id: m.id,
 					roomId: m.roomId,
 					entityId: m.entityId,
-					text: m.content?.text,
+					text: m.content.text,
 					createdAt: m.createdAt,
 				})),
 			},
@@ -2736,7 +2734,7 @@ async function handleListChannels(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content?.source,
+		message.content.source,
 		"list_channels",
 		accountIdFromParams(params, message),
 	);
@@ -2787,7 +2785,7 @@ async function handleListServers(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content?.source,
+		message.content.source,
 		"list_servers",
 		accountIdFromParams(params, message),
 	);
@@ -2840,7 +2838,7 @@ async function handleJoinLeave(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content?.source,
+		message.content.source,
 		op,
 		accountIdFromParams(params, message),
 	);
@@ -2927,7 +2925,7 @@ async function handleMessageMutation(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content?.source,
+		message.content.source,
 		op,
 		accountIdFromParams(params, message),
 	);
@@ -3056,7 +3054,7 @@ async function handleGetUser(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content?.source,
+		message.content.source,
 		"get_user",
 		accountIdFromParams(params, message),
 	);

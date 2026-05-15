@@ -1,11 +1,5 @@
 import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
-/**
- * Compact a skill field for prompt-friendly structured text.
- *
- * @param str - String to compact
- * @returns Single-line prompt field
- */
 function compactPromptField(str: string): string {
   return str.replace(/\s+/g, " ").trim();
 }
@@ -46,12 +40,6 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
   return lines.join("\n");
 }
 
-/**
- * Format skill entries for prompt (filters by invocation policy)
- *
- * @param entries - Skill entries to format
- * @returns Formatted skills prompt section
- */
 export function formatSkillEntriesForPrompt(entries: SkillEntry[]): string {
   const visibleSkills = entries
     .filter((entry) => entry.invocation?.disableModelInvocation !== true)
@@ -66,13 +54,6 @@ const SKILL_COMMAND_FALLBACK = "skill";
 
 const SKILL_COMMAND_DESCRIPTION_MAX_LENGTH = 100;
 
-/**
- * Sanitize a skill name for use as a command name.
- * Converts to lowercase, replaces invalid characters with underscores.
- *
- * @param raw - Raw skill name
- * @returns Sanitized command name
- */
 function sanitizeSkillCommandName(raw: string): string {
   const clamped = raw.length > 1024 ? raw.slice(0, 1024) : raw;
   const normalized = clamped
@@ -84,13 +65,6 @@ function sanitizeSkillCommandName(raw: string): string {
   return trimmed || SKILL_COMMAND_FALLBACK;
 }
 
-/**
- * Resolve a unique command name by appending a numeric suffix if needed.
- *
- * @param base - Base command name
- * @param used - Set of already-used command names (lowercase)
- * @returns Unique command name
- */
 function resolveUniqueSkillCommandName(
   base: string,
   used: Set<string>,
@@ -185,22 +159,10 @@ export function buildSkillCommandSpecs(
   return specs;
 }
 
-/**
- * Format a single skill for display (minimal format)
- *
- * @param skill - Skill to format
- * @returns Formatted skill string
- */
 export function formatSkillSummary(skill: Skill): string {
   return `${skill.name}: ${skill.description}`;
 }
 
-/**
- * Format skills as a simple list
- *
- * @param skills - Skills to format
- * @returns Newline-separated list of skills
- */
 export function formatSkillsList(skills: Skill[]): string {
   return skills.map(formatSkillSummary).join("\n");
 }

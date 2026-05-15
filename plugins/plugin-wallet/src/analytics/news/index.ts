@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 // Providers
 import { defiNewsProvider } from "./providers/defiNewsProvider";
 // Services
@@ -36,6 +36,12 @@ export const defiNewsPlugin: Plugin = {
   providers: [defiNewsProvider],
   actions: [],
   services: [NewsDataService],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<NewsDataService>(
+      NewsDataService.serviceType,
+    );
+    await svc?.stop();
+  },
 };
 
 export default defiNewsPlugin;

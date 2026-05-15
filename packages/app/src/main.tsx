@@ -13,7 +13,7 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
-import { ELIZA_DEFAULT_THEME } from "@elizaos/shared";
+import { ELIZA_DEFAULT_THEME, getStylePresets } from "@elizaos/shared";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -102,6 +102,8 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+import { SIDE_EFFECT_APP_MODULE_LOADERS } from "./plugin-registrations";
+import { registerViewServiceWorker } from "./sw-registration";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 
@@ -310,9 +312,6 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   }),
 };
 
-/**
- * Platform detection utilities
- */
 const platform = Capacitor.getPlatform();
 const isNative = Capacitor.isNativePlatform();
 const isIOS = platform === "ios";
@@ -395,19 +394,13 @@ if (isElizaOS() && !hasRuntimePickerOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
-// Register custom character editor for app-core's ViewRouter to pick up
 window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;
 Reflect.set(window, BRANDED_WINDOW_KEYS.characterEditor, CharacterEditor);
 
-import { getStylePresets } from "@elizaos/shared";
-
-// Derive VRM roster from STYLE_PRESETS so character names stay in one place.
 const APP_STYLE_PRESETS = getStylePresets();
 
 const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
   .sort((a, b) => a.avatarIndex - b.avatarIndex)
-  // Companion public assets are shipped as eliza-*.vrm.gz even in the Eliza
-  // branded shell; keep the boot roster aligned with files in dist/vrms.
   .map((p) => ({ title: p.name, slug: `eliza-${p.avatarIndex}` }));
 
 let appModulesInitialized: Promise<void> | null = null;
@@ -479,71 +472,12 @@ function initializeAppModules(): Promise<void> {
       importAppPhone(),
       importAppSteward(),
       importAppTraining(),
-      importSideEffectAppModule(
-        "@elizaos/app-babylon",
-        () => import("@elizaos/app-babylon"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-scape",
-        () => import("@elizaos/app-scape"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-hyperscape",
-        () => import("@elizaos/app-hyperscape"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-2004scape",
-        () => import("@elizaos/app-2004scape"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-defense-of-the-agents",
-        () => import("@elizaos/app-defense-of-the-agents"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-clawville",
-        () => import("@elizaos/app-clawville"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-trajectory-logger",
-        () => import("@elizaos/app-trajectory-logger"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-shopify",
-        () => import("@elizaos/app-shopify"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-hyperliquid",
-        () => import("@elizaos/app-hyperliquid"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-polymarket",
-        () => import("@elizaos/app-polymarket"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-wallet",
-        () => import("@elizaos/app-wallet"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-contacts/register",
-        () => import("@elizaos/app-contacts/register"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-device-settings/register",
-        () => import("@elizaos/app-device-settings/register"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-messages/register",
-        () => import("@elizaos/app-messages/register"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-phone/register",
-        () => import("@elizaos/app-phone/register"),
-      ),
-      importSideEffectAppModule(
-        "@elizaos/app-wifi/register",
-        () => import("@elizaos/app-wifi/register"),
-      ),
     ]);
+    await Promise.all(
+      SIDE_EFFECT_APP_MODULE_LOADERS.map(({ key, load }) =>
+        importSideEffectAppModule(key, load),
+      ),
+    );
 
     companionModule.registerCompanionApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
@@ -1562,11 +1496,6 @@ async function initializeDesktopShell(): Promise<void> {
     accelerator: "CommandOrControl+K",
   });
 
-  // Global shortcuts are pushed from the Electrobun host as
-  // `desktopShortcutPressed` over the RPC bridge. The Capacitor `Desktop`
-  // plugin's `addListener` web impl never fires those events, so we subscribe
-  // through the bridge directly. The canonical Cmd+K fallback for the focused
-  // renderer lives in CommandPalette.tsx (window keydown listener).
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
@@ -2165,6 +2094,7 @@ function applyStoredDetachedShellTheme(): void {
 }
 
 async function main(): Promise<void> {
+  registerViewServiceWorker();
   await initializeAppModules();
   setupPlatformStyles();
   applyBuildTimeIosConnection();

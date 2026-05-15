@@ -89,21 +89,20 @@ function toPublicTrajectoryStep(
     ...step,
     stepId: toText(step.stepId, trajectoryId),
     timestamp: toNumber(step.timestamp, Date.now()),
-    llmCalls: ((step.llmCalls ?? []) as PersistedLlmCall[]).map((call) =>
+    llmCalls: (step.llmCalls as PersistedLlmCall[]).map((call) =>
       toPublicTrajectoryLlmCall(
         call,
         trajectoryId,
         toText(step.stepId, trajectoryId),
       ),
     ),
-    providerAccesses: (
-      (step.providerAccesses ?? []) as PersistedProviderAccess[]
-    ).map((access) =>
-      toPublicTrajectoryProviderAccess(
-        access,
-        trajectoryId,
-        toText(step.stepId, trajectoryId),
-      ),
+    providerAccesses: (step.providerAccesses as PersistedProviderAccess[]).map(
+      (access) =>
+        toPublicTrajectoryProviderAccess(
+          access,
+          trajectoryId,
+          toText(step.stepId, trajectoryId),
+        ),
     ),
   };
 }
@@ -174,12 +173,12 @@ export function persistedTrajectoryToDetailRecord(
       : {}),
     ...(persisted.scenarioId ? { scenarioId: persisted.scenarioId } : {}),
     ...(persisted.batchId ? { batchId: persisted.batchId } : {}),
-    steps: (persisted.steps ?? []).map((step) =>
+    steps: persisted.steps.map((step) =>
       toPublicTrajectoryStep(step, persisted.id),
     ),
     metrics: { finalStatus: persisted.status },
     metadata: persisted.metadata as Record<string, JsonValue | undefined>,
-    stepsJson: JSON.stringify(persisted.steps ?? []),
+    stepsJson: JSON.stringify(persisted.steps),
   };
 }
 

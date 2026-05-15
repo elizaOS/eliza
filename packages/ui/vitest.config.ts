@@ -98,6 +98,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/capacitor-agent$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-capacitor-agent.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/app-wallet$/,
         replacement: resolve(packageRoot, "test/stubs/elizaos-app-wallet.ts"),
       },

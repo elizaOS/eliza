@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 
 // Providers
 import { steerLiquidityProvider } from "./providers/steerLiquidityProvider";
@@ -17,6 +17,12 @@ export const steerPlugin: Plugin = {
   providers: [steerLiquidityProvider],
   actions: [],
   services: [SteerLiquidityService],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<SteerLiquidityService>(
+      SteerLiquidityService.serviceType,
+    );
+    await svc?.stop();
+  },
 };
 
 export default steerPlugin;

@@ -130,7 +130,7 @@ const WEB_CRYPTO_ALGO_MAP: Record<string, string> = {
  */
 function getWebCryptoSubtle(): SubtleCrypto {
 	const globalThisCrypto = globalThis.crypto;
-	const subtle = globalThisCrypto?.subtle;
+	const subtle = globalThisCrypto.subtle;
 	if (!subtle) {
 		throw new Error(
 			"Web Crypto API not available. This browser may not support cryptographic operations.",

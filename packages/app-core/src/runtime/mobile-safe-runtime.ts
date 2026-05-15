@@ -1051,8 +1051,8 @@ export function createMobileSafeVirtualFileSystemAdapter(
         return vfs.quota();
       }
       if (vfs.list) {
-        const entries = await vfs.list?.(".", { recursive: true });
-        const files = (entries ?? []).filter(
+        const entries = await vfs.list(".", { recursive: true });
+        const files = entries.filter(
           (entry) => (entry.kind ?? entry.type) === "file",
         );
         return {

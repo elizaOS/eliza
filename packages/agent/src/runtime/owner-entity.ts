@@ -11,7 +11,7 @@ type WorldMetadataShape = {
 export function resolveFallbackOwnerEntityId(
   runtime: Pick<IAgentRuntime, "agentId" | "character">,
 ): string {
-  const agentName = runtime.character?.name?.trim() || runtime.agentId;
+  const agentName = runtime.character.name?.trim() || runtime.agentId;
   return stringToUuid(`${agentName}-admin-entity`);
 }
 

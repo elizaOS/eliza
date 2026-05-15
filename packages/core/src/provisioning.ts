@@ -87,10 +87,10 @@ export async function runPluginMigrations(
 	}
 
 	const isProduction =
-		typeof process !== "undefined" && process.env?.NODE_ENV === "production";
+		typeof process !== "undefined" && process.env.NODE_ENV === "production";
 	const forceDestructive =
 		typeof process !== "undefined" &&
-		process.env?.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
+		process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
 
 	await adapter.runPluginMigrations(pluginsWithSchemas, {
 		verbose: !isProduction,

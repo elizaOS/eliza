@@ -1,41 +1,13 @@
-/**
- * Farcaster Connector Validation Tests
- *
- * Comprehensive E2E tests for validating the Farcaster connector (@elizaos/plugin-farcaster).
- *
- * Test Categories:
- *   1. Setup & Authentication
- *   2. Cast Handling
- *   3. Farcaster-Specific Features
- *   4. Media & Attachments
- *   5. Error Handling
- *
- * Requirements for live tests:
- *   FARCASTER_NEYNAR_API_KEY  — Neynar API key
- *   FARCASTER_SIGNER_UUID     — Neynar managed signer UUID
- *   FARCASTER_FID             — Agent's Farcaster ID (numeric)
- *   ELIZA_LIVE_TEST=1        — Enable live tests
- *
- * Or configure in ~/.eliza/eliza.json:
- *   { "connectors": { "farcaster": { "apiKey": "...", "signerUuid": "...", "fid": 12345 } } }
- *
- * NO MOCKS for live tests — all tests use real Neynar API.
- */
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractPlugin,
-  resolveFarcasterPluginImportSpecifier,
-} from "@elizaos/app-core";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
-// ---------------------------------------------------------------------------
-// Environment Setup
-// ---------------------------------------------------------------------------
+const { extractPlugin, resolveFarcasterPluginImportSpecifier } = await import(
+  "../../src/test-support/test-helpers.ts"
+);
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

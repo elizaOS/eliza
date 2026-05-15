@@ -300,7 +300,7 @@ export class MlxLocalServer {
 				);
 				if (res.ok) {
 					const json = (await res.json()) as { data?: Array<{ id?: string }> };
-					this.servedModelName = json?.data?.[0]?.id ?? null;
+					this.servedModelName = json.data?.[0]?.id ?? null;
 					return;
 				}
 				lastErr = new Error(`/v1/models -> HTTP ${res.status}`);
@@ -379,7 +379,7 @@ export class MlxLocalServer {
 			const json = (await res.json()) as {
 				choices?: Array<{ message?: { content?: string } }>;
 			};
-			return json?.choices?.[0]?.message?.content ?? "";
+			return json.choices?.[0]?.message?.content ?? "";
 		}
 		// Stream SSE: lines `data: {...}`, terminated by `data: [DONE]`.
 		let full = "";
@@ -388,7 +388,7 @@ export class MlxLocalServer {
 			const json = (await res.json()) as {
 				choices?: Array<{ message?: { content?: string } }>;
 			};
-			return json?.choices?.[0]?.message?.content ?? "";
+			return json.choices?.[0]?.message?.content ?? "";
 		}
 		const decoder = new TextDecoder();
 		let buf = "";
@@ -407,7 +407,7 @@ export class MlxLocalServer {
 					const json = JSON.parse(payload) as {
 						choices?: Array<{ delta?: { content?: string } }>;
 					};
-					const delta = json?.choices?.[0]?.delta?.content;
+					const delta = json.choices?.[0]?.delta?.content;
 					if (delta) {
 						full += delta;
 						await args.onTextChunk?.(delta);

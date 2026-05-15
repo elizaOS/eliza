@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
 import re
 import time
 import uuid
@@ -137,7 +138,7 @@ class ElizaBridgeOSWorldAgent:
         action_space: str = "pyautogui",
         observation_type: str = "screenshot_a11y_tree",
         max_trajectory_length: int = 5,
-        a11y_tree_max_tokens: int = 10000,
+        a11y_tree_max_tokens: int = 500,
         max_steps: int = 15,
         client_password: str = "password",
         screen_width: int = 1920,
@@ -206,7 +207,15 @@ class ElizaBridgeOSWorldAgent:
         screenshot_b64: str | None = None
         a11y_tree: str | None = None
 
-        if self.observation_type in ("screenshot", "screenshot_a11y_tree", "som"):
+        inline_screenshot = (
+            os.environ.get("OSWORLD_INLINE_SCREENSHOT", "").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        if inline_screenshot and self.observation_type in (
+            "screenshot",
+            "screenshot_a11y_tree",
+            "som",
+        ):
             raw = obs.get("screenshot")
             if isinstance(raw, bytes):
                 screenshot_b64 = _resize_screenshot_b64(raw, max_dimension=1280)
@@ -233,11 +242,23 @@ class ElizaBridgeOSWorldAgent:
         prompt = (
             "You are an OSWorld agent controlling a desktop VM via "
             f"{self.action_space}.\n\n"
+            "The VM is Ubuntu Linux. Use Chrome/GNOME/Linux UI conventions, "
+            "not Windows, Edge, Start menu, Win+R, or PowerShell commands.\n\n"
+            "For file, shell, and OS configuration tasks, prefer direct Python "
+            "standard-library calls such as os, pathlib, shutil, or subprocess "
+            "inside the code block. Use pyautogui for GUI interaction only. "
+            "When a task mentions a user-visible file or folder without an "
+            "absolute path, default to ~/Desktop first, then check the current "
+            "working directory and the user's home directory; use "
+            "os.path.expanduser for home paths.\n\n"
             f"Task: {instruction}\n\n"
             f"Step {self.step_idx + 1}/{self.max_steps}\n\n"
-            "Decide on the next action. Respond with a Python pyautogui "
-            "code block:\n```python\n# your pyautogui code here\n```\n"
-            "Or respond with WAIT, DONE, or FAIL."
+            "Decide on exactly one short next action. Respond only with a "
+            "Python pyautogui code block containing executable code, for "
+            "example:\n```python\nimport pyautogui, time\npyautogui.hotkey('ctrl', 'l')\n```\n"
+            "Do not include explanation or comments. If the task is already "
+            "complete, respond DONE. If the UI needs more time, respond WAIT. "
+            "If impossible, respond FAIL."
         )
 
         start_time = time.time()
@@ -259,6 +280,8 @@ class ElizaBridgeOSWorldAgent:
                     "client_password": self.client_password,
                     "action_space": self.action_space,
                     "observation_type": self.observation_type,
+                    "screenshot_present": bool(obs.get("screenshot")),
+                    "screenshot_inline": bool(screenshot_b64),
                     "screenshot_base64": screenshot_b64,
                     "accessibility_tree": a11y_tree,
                     "previous_actions": history_actions,
