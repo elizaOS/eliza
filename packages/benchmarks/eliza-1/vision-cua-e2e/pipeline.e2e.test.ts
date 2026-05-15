@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type FixtureId, listFixtures } from "./src/fixtures.ts";
-import { runStubPipeline } from "./src/pipeline.ts";
+import { runRealPipeline, runStubPipeline } from "./src/pipeline.ts";
 import type { PipelineStage } from "./src/types.ts";
 
 let tempReportDir: string;
@@ -116,4 +116,62 @@ describe("vision-CUA E2E pipeline (stub mode)", () => {
     expect(d1?.clickTarget?.displayId).toBe(d1?.displayId);
     expect(d2?.clickTarget?.displayId).toBe(d2?.displayId);
   });
+});
+
+// ── Real-mode block ─────────────────────────────────────────────────────────
+//
+// Opt-in only: gate on `ELIZA_VISION_CUA_E2E_REAL=1`. This block is responsible
+// for the parity assertion — capture / tile / describe / OCR / ground / click
+// flow against the live runtime stack — and for writing a trace JSON to a
+// caller-supplied path (`ELIZA_VISION_CUA_E2E_REPORT_PATH`) so `scripts/run-real.sh`
+// can pick it up.
+const REAL_ENABLED = process.env.ELIZA_VISION_CUA_E2E_REAL === "1";
+const realDescribe = REAL_ENABLED ? describe : describe.skip;
+
+realDescribe("vision-CUA E2E pipeline (real mode)", () => {
+  it("drives capture → tile → describe → OCR → ground → click against the live stack", async () => {
+    const reportPath = process.env.ELIZA_VISION_CUA_E2E_REPORT_PATH;
+    const reportDir = reportPath ? join(reportPath, "..") : tempReportDir;
+    const runId = reportPath
+      ? reportPath.replace(/^.*\//, "").replace(/\.json$/, "")
+      : `vision-cua-e2e-real-${Date.now()}`;
+
+    const {
+      trace,
+      reportPath: writtenPath,
+      recordedClicks,
+    } = await runRealPipeline({
+      reportDir,
+      runId,
+      noopClick: process.env.ELIZA_VISION_CUA_E2E_NOOP_CLICK === "1",
+      skipControlledWindow:
+        process.env.ELIZA_VISION_CUA_E2E_NO_CONTROLLED_WINDOW === "1",
+      controlledWindowBinary:
+        process.env.ELIZA_VISION_CUA_E2E_CONTROLLED_WINDOW_BINARY,
+    });
+
+    // Provider-shaped invariants. These hold regardless of whether the
+    // stack succeeded end-to-end, so the trace remains useful for triage.
+    expect(trace.mode).toBe("real");
+    expect(trace.fixture_id).toMatch(/^live:/);
+    expect(writtenPath).not.toBeNull();
+    expect(existsSync(writtenPath as string)).toBe(true);
+
+    // Enumerate must succeed — without displays we have nothing to assert.
+    const enumerate = trace.stages.find(
+      (s) => s.stage === "enumerate_displays",
+    );
+    expect(enumerate?.ok).toBe(true);
+    expect(trace.displays.length).toBeGreaterThan(0);
+
+    // Capture must produce non-empty bytes for every display.
+    for (const display of trace.displays) {
+      const captureStage = display.stages.find((s) => s.stage === "capture");
+      expect(captureStage?.ok).toBe(true);
+    }
+
+    // Click must have been recorded for every display the pipeline reached
+    // — even in noop mode the recorder logs the intent.
+    expect(recordedClicks.length).toBe(trace.displays.length);
+  }, 180_000);
 });
