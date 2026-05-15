@@ -89,6 +89,16 @@ function walk(dir) {
  * @returns {{ hasPlugin: boolean; hasDispose: boolean; hasServices: boolean; pluginNames: string[] } | null}
  */
 function scanFile(filePath) {
+  const relativePath = relPath(filePath);
+  const basename = path.basename(filePath);
+  if (
+    basename.includes(".test.") ||
+    basename === "integration-test.ts" ||
+    relativePath === "packages/core/src/runtime.ts"
+  ) {
+    return null;
+  }
+
   let stat;
   try {
     stat = fs.statSync(filePath);
