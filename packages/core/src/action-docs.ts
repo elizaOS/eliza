@@ -110,8 +110,9 @@ function ensureParameterCompressed(
 export function withCanonicalActionDocs(action: Action): Action {
 	const doc = coreActionDocByName[action.name];
 
-	const mergedDescription =
-		(doc ? action.description || doc.description : action.description);
+	const mergedDescription = doc
+		? action.description || doc.description
+		: action.description;
 
 	const descriptionCompressed = resolveCompressedDescription(
 		action,

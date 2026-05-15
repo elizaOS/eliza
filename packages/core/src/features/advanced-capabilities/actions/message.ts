@@ -2127,7 +2127,7 @@ async function resolveLocalChannelRoom(
 			if (!room) continue;
 			const roomRecord = room as Room & { name?: string; source?: string };
 			const name = (roomRecord.name ?? "").toLowerCase();
-			const roomSource = (roomRecord.source).toLowerCase();
+			const roomSource = roomRecord.source.toLowerCase();
 			if (name === channelLower || name.includes(channelLower)) {
 				if (source && roomSource !== source.toLowerCase()) continue;
 				return room;
@@ -2375,9 +2375,8 @@ function getRelationshipsServiceLike(
 		(runtime.getService(
 			"relationships_graph",
 		) as RelationshipsServiceLike | null) ?? null,
-		(runtime.getService(
-			"relationships",
-		) as RelationshipsServiceLike | null) ?? null,
+		(runtime.getService("relationships") as RelationshipsServiceLike | null) ??
+			null,
 	];
 	for (const candidate of candidates) {
 		if (candidate && typeof candidate.getGraphSnapshot === "function")

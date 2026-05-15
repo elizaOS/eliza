@@ -171,13 +171,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
-  appendCmakeGraft,
-  appendKokoroCmakeGraft,
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
-} from "../omnivoice-fuse/cmake-graft.mjs";
-import { prepareOmnivoiceFusion } from "../omnivoice-fuse/prepare.mjs";
-import { verifyFusedSymbols } from "../omnivoice-fuse/verify-symbols.mjs";
+} from "../build-helpers/omnivoice-merged.mjs";
+import { verifyFusedSymbols } from "../build-helpers/verify-fused-symbols.mjs";
 import { main as compileShimMain } from "./compile-shim.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -1451,43 +1448,20 @@ function stripBinary({ filePath, zigBin, log }) {
 }
 
 /**
- * Run the omnivoice-fuse graft against the resolved llama.cpp source tree.
- * Pre-cmake step for `*-fused` targets — mirrors what the dflash build path
- * does in `buildTarget()` for the same `*-fused` targets (linux-x64-cpu-fused
- * et al.). Returns the prepare metadata so the caller can record it.
+ * No-op shim retained for backward compatibility with callers that still
+ * import `applyOmnivoiceGraft`. H2.c collapsed the W3-3 deprecation runway:
+ * the legacy clone-and-graft path is gone; OmniVoice is built exclusively
+ * from the merged in-fork tree at `tools/omnivoice/`.
  *
- * Idempotent: `appendCmakeGraft` checks the sentinel and skips on re-runs;
- * `prepareOmnivoiceFusion` blows the graft subdir away and re-stages from the
- * omnivoice.cpp clone.
+ * Returns a minimal info object so log lines that surface fields like
+ * `commit` or `sourceCount` keep their shape; the merged tree's source
+ * count is fixed at build time and recorded by `verifyFusedSymbols`.
  */
-export function applyOmnivoiceGraft({
-  srcDir,
-  omnivoiceCacheRoot,
-  log = console.log,
-}) {
-  const omnivoiceInfo = prepareOmnivoiceFusion({
-    cacheRoot: omnivoiceCacheRoot,
-    llamaCppRoot: srcDir,
-  });
-  const grafted = appendCmakeGraft({ llamaCppRoot: srcDir });
-  // Append the Kokoro graft block when Kokoro sources have been staged
-  // (kokoro-graft sources are copied by prepare.mjs alongside the
-  // OmniVoice sources; absent if the operator deleted them). The block
-  // hard-fails the CMake configure unless ELIZA_FUSE_OMNIVOICE=ON, so
-  // we only emit the flag when sources exist.
-  let kokoroGrafted = false;
-  if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
-    kokoroGrafted = appendKokoroCmakeGraft({ llamaCppRoot: srcDir });
-  }
+export function applyOmnivoiceGraft({ srcDir: _srcDir, log = console.log }) {
   log(
-    `[compile-libllama] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
-      `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
-      `sources=${omnivoiceInfo.sourceCount} ` +
-      `cmakeGraftAppended=${grafted} ` +
-      `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
-      `kokoroGraftAppended=${kokoroGrafted}`,
+    "[compile-libllama] omnivoice: merged in-fork path (legacy graft removed)",
   );
-  return omnivoiceInfo;
+  return { mode: "merged", source: "tools/omnivoice" };
 }
 
 /**

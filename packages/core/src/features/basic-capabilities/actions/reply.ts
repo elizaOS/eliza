@@ -333,7 +333,7 @@ export const replyAction = {
 		}
 
 		state = await runtime.composeState(message, [
-			...(allProviders),
+			...allProviders,
 			"RECENT_MESSAGES",
 			"ACTION_STATE",
 		]);
