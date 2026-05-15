@@ -29,7 +29,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   FIRST_SENTENCE_SNIP_VERSION,
   firstSentenceSnip,
-} from "@elizaos/shared/voice/first-sentence-snip";
+} from "@elizaos/shared";
 import { z } from "zod";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
