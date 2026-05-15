@@ -6,7 +6,7 @@ const KAMINO_API_BASE_URL = "https://api.kamino.finance";
 const KAMINO_LIQUIDITY_PROGRAM_ID = "kamino-rest-api";
 
 // Known token addresses for reference
-const KNOWN_TOKENS = {
+const KNOWN_TOKENS: Record<string, string> = {
   HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC: "AI16Z Token",
   ai16z: "AI16Z Token (Symbol)",
   "4WfUvajjYTrq7KRdToJBkoHQ6bSt7NyBeLhP9LKwtFKh": "Kamino Strategy",

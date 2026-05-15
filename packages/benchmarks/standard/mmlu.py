@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -101,6 +102,12 @@ def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
     The fallback is deliberate — the smoke test must run with no
     internet and no datasets install.
     """
+    if (
+        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
+        and limit is not None
+        and limit <= len(SMOKE_FIXTURES)
+    ):
+        return list(SMOKE_FIXTURES)[:limit]
 
     try:
         from datasets import load_dataset

@@ -124,3 +124,6 @@ export function findKokoroVoice(id: string): KokoroVoicePack | undefined {
 
 /** The voice the runtime selects when nothing is configured. */
 export const KOKORO_DEFAULT_VOICE_ID = "af_bella";
+
+/** Conservative fallback voice when a configured/default preset is not staged. */
+export const KOKORO_FALLBACK_VOICE_ID = "af_bella";

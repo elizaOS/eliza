@@ -1340,7 +1340,7 @@ export async function handleConversationRoutes(
               if (aborted) break;
               streamedText += chunk;
               writeChatTokenSse(res, chunk, streamedText);
-              await new Promise((resolve) => setTimeout(resolve, 15));
+              await new Promise((resolve) => setTimeout(resolve, 60));
             }
           }
           // Emit `done` BEFORE persistence so user-perceived end-of-turn

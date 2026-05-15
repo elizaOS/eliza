@@ -32,6 +32,7 @@ import contextlib
 import io
 import logging
 import multiprocessing as mp
+import os
 import re
 import signal
 import textwrap
@@ -254,6 +255,12 @@ def _execute_program(program: str, timeout_s: float) -> tuple[bool, str]:
 
 
 def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
+    if (
+        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
+        and limit is not None
+        and limit <= len(SMOKE_FIXTURES)
+    ):
+        return list(SMOKE_FIXTURES)[:limit]
     try:
         from datasets import load_dataset
     except ImportError:

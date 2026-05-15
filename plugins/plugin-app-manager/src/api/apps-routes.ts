@@ -42,7 +42,6 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "@elizaos/agent/config/feature-flags";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
@@ -68,6 +67,33 @@ const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
 };
+
+function readBoolFlag(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  const trimmed = String(raw).trim().toLowerCase();
+  if (
+    trimmed === "1" ||
+    trimmed === "true" ||
+    trimmed === "yes" ||
+    trimmed === "on"
+  ) {
+    return true;
+  }
+  if (
+    trimmed === "0" ||
+    trimmed === "false" ||
+    trimmed === "no" ||
+    trimmed === "off"
+  ) {
+    return false;
+  }
+  return fallback;
+}
+
+function isLegacyAppsWorkspaceDiscoveryEnabled(): boolean {
+  return readBoolFlag("ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY");
+}
 
 const DEFAULT_HERO_IMAGE_CANDIDATES = [
   "assets/hero.png",
@@ -1104,7 +1130,7 @@ export async function handleAppsRoutes(
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = await import(
-          /* webpackIgnore: true */ "@elizaos/agent/services/plugin-installer"
+          "@elizaos/plugin-registry"
         );
         result = await installPluginDirect(name, recordProgress, version);
       }
