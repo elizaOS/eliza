@@ -1,0 +1,34 @@
+# Turn detector fine-tune config — English tier (0_8b / 2b).
+#
+# Targets the LiveKit `v1.2.2-en` revision (SmolLM2-135M-distilled, 4-layer
+# Llama, EN only). Bundle target is ~66 MB Q8 ONNX, fits the mobile /
+# 0.6B / 1.7B tier memory budgets per .swarm/research/R1-turn.md §3.
+#
+# Per repo policy (packages/training/AGENTS.md §1): APOLLO optimizer only.
+# AdamW / Muon are not accepted.
+
+tier: 2b
+teacher_repo: livekit/turn-detector
+teacher_revision: v1.2.2-en
+
+# LoRA rank — small head, low rank is enough. APOLLO will project rank-1
+# tensor-wise inside `build_apollo_mini_optimizer` regardless of this.
+lora_rank: 8
+optimizer: apollo
+
+# 3 epochs over the staged DailyDialog + SFT augmentation is enough for
+# the demo. Operators training on TURNS-2K + Easy Turn should bump this.
+epochs: 3
+learning_rate: 5.0e-5
+
+# Operator stages these via `build_pretrain_corpus` + `build_sft_corpus`.
+# Paths are relative to the training root.
+train_data:
+  - packages/training/data/turn/dailydialog.jsonl
+eval_data:
+  - packages/training/data/turn/dailydialog.eval.jsonl
+
+# Eval gates — mirror the runtime manifest schema
+# (`plugins/plugin-local-inference/src/services/manifest/schema.ts`).
+f1_gate: 0.85
+mean_latency_ms_gate: 30.0
