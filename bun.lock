@@ -2170,6 +2170,20 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-anthropic-proxy": {
+      "name": "@elizaos/plugin-anthropic-proxy",
+      "version": "0.2.0",
+      "devDependencies": {
+        "@elizaos/core": "workspace:*",
+        "@types/bun": "^1.3.9",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-aosp-local-inference": {
       "name": "@elizaos/plugin-aosp-local-inference",
       "version": "2.0.0-beta.2",
@@ -4745,6 +4759,8 @@
     "@elizaos/plugin-agent-skills": ["@elizaos/plugin-agent-skills@workspace:plugins/plugin-agent-skills"],
 
     "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@workspace:plugins/plugin-anthropic"],
+
+    "@elizaos/plugin-anthropic-proxy": ["@elizaos/plugin-anthropic-proxy@workspace:plugins/plugin-anthropic-proxy"],
 
     "@elizaos/plugin-aosp-local-inference": ["@elizaos/plugin-aosp-local-inference@workspace:plugins/plugin-aosp-local-inference"],
 
