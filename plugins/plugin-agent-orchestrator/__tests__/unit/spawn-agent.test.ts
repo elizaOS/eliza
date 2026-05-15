@@ -12,6 +12,12 @@ import {
 const spawnOptions = { parameters: { action: "spawn_agent" } };
 
 describe("TASKS:spawn_agent", () => {
+  it("does not expose lockWorkdir to planner-generated tool calls", () => {
+    expect(
+      spawnAgentAction.parameters?.map((param) => param.name),
+    ).not.toContain("lockWorkdir");
+  });
+
   it("validates with explicit payload and a service available", async () => {
     expect(
       await spawnAgentAction.validate(
