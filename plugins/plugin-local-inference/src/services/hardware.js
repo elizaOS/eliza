@@ -58,7 +58,7 @@ const OPENVINO_LINUX_GPU_PACKAGES = [
 	"libigdfcl2",
 ];
 function readableEntries(dir, host, prefix) {
-	if (!host.existsSync(dir)) return [];
+	if (!pathExists(dir, host.existsSync)) return [];
 	try {
 		return host
 			.readdirSync(dir)
@@ -68,8 +68,15 @@ function readableEntries(dir, host, prefix) {
 		return [];
 	}
 }
+function pathExists(path, existsSync) {
+	try {
+		return existsSync(path);
+	} catch {
+		return false;
+	}
+}
 function hasAny(paths, existsSync) {
-	return paths.some((candidate) => existsSync(candidate));
+	return paths.some((candidate) => pathExists(candidate, existsSync));
 }
 export function detectOpenVinoDevices(host = {}) {
 	const platform = host.platform ?? process.platform;
