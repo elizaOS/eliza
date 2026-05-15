@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	interpretCls7Output,
 	projectVadToExpressiveEmotion,
 	VoiceEmotionClassifier,
 	VoiceEmotionClassifierError,
@@ -120,6 +121,91 @@ describe("projectVadToExpressiveEmotion", () => {
 		// All three clamped → no axis pushes any class above 0.35.
 		expect(out.emotion).toBeNull();
 		expect(Number.isFinite(out.confidence)).toBe(true);
+	});
+});
+
+describe("interpretCls7Output (cls7 head)", () => {
+	it("picks the argmax class with calibrated softmax confidence", () => {
+		// Logits aligned with EXPRESSIVE_EMOTION_TAGS:
+		//   ["happy","sad","angry","nervous","calm","excited","whisper"]
+		const logits = new Float32Array([0, 0, 5, 0, 0, 0, 0]); // strong angry
+		const out = interpretCls7Output(logits, WAV2SMALL_INT8_MODEL_ID, 7);
+		expect(out.emotion).toBe("angry");
+		expect(out.confidence).toBeGreaterThan(0.9);
+		// All 7 score keys present, all probabilities in [0, 1], sum ≈ 1.
+		const tags = [
+			"happy",
+			"sad",
+			"angry",
+			"nervous",
+			"calm",
+			"excited",
+			"whisper",
+		] as const;
+		let total = 0;
+		for (const tag of tags) {
+			expect(out.scores[tag]).toBeGreaterThanOrEqual(0);
+			expect(out.scores[tag]).toBeLessThanOrEqual(1);
+			total += out.scores[tag];
+		}
+		expect(total).toBeGreaterThan(0.999);
+		expect(total).toBeLessThan(1.001);
+		// V-A-D is the neutral midpoint for cls7 (no V-A-D head).
+		expect(out.vad.valence).toBeCloseTo(0.5, 5);
+		expect(out.vad.arousal).toBeCloseTo(0.5, 5);
+		expect(out.vad.dominance).toBeCloseTo(0.5, 5);
+		expect(out.modelId).toBe(WAV2SMALL_INT8_MODEL_ID);
+		expect(out.latencyMs).toBe(7);
+	});
+
+	it("equal logits return a near-uniform distribution", () => {
+		const logits = new Float32Array([1, 1, 1, 1, 1, 1, 1]);
+		const out = interpretCls7Output(logits, WAV2SMALL_INT8_MODEL_ID, 0);
+		// First-index wins on ties (happy at index 0).
+		expect(out.emotion).toBe("happy");
+		// Uniform distribution gives every class probability ≈ 1/7.
+		expect(out.confidence).toBeCloseTo(1 / 7, 5);
+	});
+
+	it("falls back to abstain when all logits are non-finite", () => {
+		const logits = new Float32Array([
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+		]);
+		const out = interpretCls7Output(logits, WAV2SMALL_INT8_MODEL_ID, 0);
+		expect(out.emotion).toBeNull();
+		expect(out.confidence).toBe(0);
+	});
+
+	it("rejects logit arrays of the wrong length", () => {
+		const wrong = new Float32Array([0, 0, 0]); // V-A-D-sized
+		expect(() =>
+			interpretCls7Output(wrong, WAV2SMALL_INT8_MODEL_ID, 0),
+		).toThrow(VoiceEmotionClassifierError);
+	});
+
+	it("respects the EXPRESSIVE_EMOTION_TAGS class order", () => {
+		// Pick the highest logit at each index and confirm we get that tag back.
+		const order = [
+			"happy",
+			"sad",
+			"angry",
+			"nervous",
+			"calm",
+			"excited",
+			"whisper",
+		] as const;
+		for (let i = 0; i < order.length; i++) {
+			const logits = new Float32Array([0, 0, 0, 0, 0, 0, 0]);
+			logits[i] = 5;
+			const out = interpretCls7Output(logits, WAV2SMALL_INT8_MODEL_ID, 0);
+			expect(out.emotion).toBe(order[i]);
+		}
 	});
 });
 

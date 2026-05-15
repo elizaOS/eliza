@@ -191,8 +191,7 @@ def _is_harness_compatible(adapter: BenchmarkAdapter, harness_label: str) -> boo
     if harness_label == "compare":
         # Model/provider compare is valid for normal multi-harness adapters,
         # but not for adapters that run a single concrete implementation under
-        # the hood. CompactBench is currently Eliza-only; compare-mode rows
-        # would still exercise Eliza's TypeScript compactor.
+        # the hood.
         return len(adapter.agent_compatibility) > 1
     return harness_label in adapter.agent_compatibility
 
@@ -276,6 +275,13 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["CEREBRAS_MODEL"] = model_name
     env["CEREBRAS_LARGE_MODEL"] = model_name
     env["CEREBRAS_SMALL_MODEL"] = model_name
+    reasoning_effort = request.extra_config.get("reasoning_effort")
+    if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+        # Model profiles carry provider-neutral extra config. Mirror the
+        # reasoning knob into the env names consumed by the TS OpenAI-compatible
+        # provider and Cerebras-specific benchmark clients.
+        env["OPENAI_REASONING_EFFORT"] = reasoning_effort.strip()
+        env["CEREBRAS_REASONING_EFFORT"] = reasoning_effort.strip()
     env.setdefault("ELIZA_CONVERSATION_COMPACTOR", "structured-state")
     env.setdefault("MAX_CONVERSATION_TOKENS", "120000")
     env.setdefault("BENCHMARK_CAPTURE_TRAJECTORIES", "1")
@@ -1719,7 +1725,7 @@ def run_benchmarks(
         if required_missing:
             attempt = next_attempt_for_signature(conn, signature)
             run_id = (
-                f"incompat_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+                f"missing_env_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
                 f"_{attempt}_{uuid4().hex[:8]}"
             )
             started_at = _utc_now()
@@ -1748,7 +1754,7 @@ def run_benchmarks(
             update_run_result(
                 conn,
                 run_id=run_id,
-                status="incompatible",
+                status="failed",
                 ended_at=_utc_now(),
                 duration_seconds=0.0,
                 score=None,
@@ -1765,7 +1771,7 @@ def run_benchmarks(
             outcome = BenchmarkRunOutcome(
                 benchmark_id=adapter.id,
                 run_id=run_id,
-                status="incompatible",
+                status="failed",
                 attempt=attempt,
                 score=None,
                 unit=None,
@@ -1793,7 +1799,7 @@ def run_benchmarks(
                 request=effective_request,
                 run_group_id=run_group_id,
                 run_id=run_id,
-                status="incompatible",
+                status="failed",
                 score=None,
                 unit=None,
                 higher_is_better=None,

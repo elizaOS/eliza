@@ -582,8 +582,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	private pendingEscape = "";
 	private fieldContents: Map<string, string> = new Map();
 	private emittedContent: Map<string, string> = new Map();
+	private reasoningFilters: Map<
+		string,
+		{ mode: "outside" | "inside"; pending: string }
+	> = new Map();
 	private state: ExtractorState = "streaming";
 	private readonly streamFieldSet: Set<string>;
+	private readonly maxKeyPatternLength: number;
 
 	constructor(
 		private readonly config: {
@@ -592,9 +597,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			onChunk: (chunk: string, field?: string, accumulated?: string) => void;
 			onEvent?: (event: StreamEvent) => void;
 			abortSignal?: AbortSignal;
+			unordered?: boolean;
 		},
 	) {
 		this.streamFieldSet = new Set(config.streamFields);
+		this.maxKeyPatternLength = Math.max(
+			0,
+			...config.streamFields.map((field) => JSON.stringify(field).length),
+		);
 	}
 
 	get done(): boolean {
@@ -611,7 +621,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		}
 		validateChunkSize(chunk);
 		this.buffer += chunk;
-		this.drain(false);
+		this.config.unordered ? this.drainUnordered(false) : this.drain(false);
 		return "";
 	}
 
@@ -619,7 +629,13 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		if (this.state === "failed") {
 			return "";
 		}
-		this.drain(true);
+		this.config.unordered ? this.drainUnordered(true) : this.drain(true);
+		for (const field of this.streamFieldSet) {
+			const flushed = this.flushReasoningFilter(field);
+			if (flushed) {
+				this.appendVisibleAndEmit(field, flushed);
+			}
+		}
 		this.activeStringField = null;
 		this.pendingEscape = "";
 		this.buffer = "";
@@ -635,6 +651,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		this.pendingEscape = "";
 		this.fieldContents.clear();
 		this.emittedContent.clear();
+		this.reasoningFilters.clear();
 		this.state = "streaming";
 	}
 
@@ -731,6 +748,105 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		}
 	}
 
+	private drainUnordered(final: boolean): void {
+		while (this.state === "streaming") {
+			if (this.activeStringField) {
+				if (!this.processActiveString(final, false)) {
+					return;
+				}
+				continue;
+			}
+
+			const match = this.findNextStreamFieldStart(final);
+			if (!match) {
+				return;
+			}
+
+			this.buffer = this.buffer.slice(match.valueStart);
+			this.activeStringField = match.field;
+		}
+	}
+
+	private findNextStreamFieldStart(
+		final: boolean,
+	): { field: string; valueStart: number } | null {
+		while (this.buffer.length > 0) {
+			let earliest:
+				| { field: string; keyStart: number; keyEnd: number }
+				| undefined;
+
+			for (const field of this.streamFieldSet) {
+				const key = JSON.stringify(field);
+				const keyStart = this.buffer.indexOf(key);
+				if (keyStart >= 0 && (!earliest || keyStart < earliest.keyStart)) {
+					earliest = { field, keyStart, keyEnd: keyStart + key.length };
+				}
+			}
+
+			if (!earliest) {
+				if (final) {
+					this.buffer = "";
+					this.state = "complete";
+					this.emitEvent({ eventType: "complete", timestamp: Date.now() });
+					return null;
+				}
+				const keep = Math.min(
+					this.buffer.length,
+					Math.max(this.maxKeyPatternLength - 1, 0),
+				);
+				this.buffer = this.buffer.slice(this.buffer.length - keep);
+				return null;
+			}
+
+			let cursor = earliest.keyEnd;
+			while (
+				cursor < this.buffer.length &&
+				/\s/.test(this.buffer[cursor] ?? "")
+			) {
+				cursor++;
+			}
+			if (cursor >= this.buffer.length) {
+				if (final) {
+					this.buffer = "";
+				} else {
+					this.buffer = this.buffer.slice(earliest.keyStart);
+				}
+				return null;
+			}
+			if (this.buffer[cursor] !== ":") {
+				this.buffer = this.buffer.slice(earliest.keyEnd);
+				continue;
+			}
+			cursor++;
+			while (
+				cursor < this.buffer.length &&
+				/\s/.test(this.buffer[cursor] ?? "")
+			) {
+				cursor++;
+			}
+			if (cursor >= this.buffer.length) {
+				if (final) {
+					this.buffer = "";
+				} else {
+					this.buffer = this.buffer.slice(earliest.keyStart);
+				}
+				return null;
+			}
+			if (this.buffer[cursor] !== '"') {
+				this.buffer = this.buffer.slice(cursor);
+				continue;
+			}
+
+			return { field: earliest.field, valueStart: cursor + 1 };
+		}
+
+		if (final) {
+			this.state = "complete";
+			this.emitEvent({ eventType: "complete", timestamp: Date.now() });
+		}
+		return null;
+	}
+
 	private consumeLiteral(literal: string, final: boolean): boolean {
 		if (literal.length === 0) {
 			return true;
@@ -776,7 +892,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		return false;
 	}
 
-	private processActiveString(final: boolean): boolean {
+	private processActiveString(final: boolean, advanceSpan = true): boolean {
 		const field = this.activeStringField;
 		if (!field) {
 			return true;
@@ -809,8 +925,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			this.buffer = this.buffer.slice(1);
 			if (char === '"') {
 				flushPlain();
+				const flushed = this.flushReasoningFilter(field);
+				if (flushed) {
+					this.appendVisibleAndEmit(field, flushed);
+				}
 				this.activeStringField = null;
-				this.spanIndex++;
+				if (advanceSpan) {
+					this.spanIndex++;
+				}
 				return true;
 			}
 			if (char === "\\") {
@@ -841,6 +963,14 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		if (!value) {
 			return;
 		}
+		const visible = this.filterReasoningTags(field, value, false);
+		if (!visible) {
+			return;
+		}
+		this.appendVisibleAndEmit(field, visible);
+	}
+
+	private appendVisibleAndEmit(field: string, value: string): void {
 		const next = `${this.fieldContents.get(field) ?? ""}${value}`;
 		this.fieldContents.set(field, next);
 		const previous = this.emittedContent.get(field) ?? "";
@@ -858,6 +988,64 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		});
 	}
 
+	private filterReasoningTags(
+		field: string,
+		value: string,
+		final: boolean,
+	): string {
+		const filter =
+			this.reasoningFilters.get(field) ??
+			({ mode: "outside", pending: "" } as {
+				mode: "outside" | "inside";
+				pending: string;
+			});
+		const source = `${filter.pending}${value}`;
+		filter.pending = "";
+		let output = "";
+		let index = 0;
+
+		while (index < source.length) {
+			if (filter.mode === "outside") {
+				const open = matchTagAt(source, index, "<think>");
+				if (open === "full") {
+					filter.mode = "inside";
+					index += "<think>".length;
+					continue;
+				}
+				if (open === "partial") {
+					filter.pending = source.slice(index);
+					break;
+				}
+				output += source[index] ?? "";
+				index++;
+				continue;
+			}
+
+			const close = matchTagAt(source, index, "</think>");
+			if (close === "full") {
+				filter.mode = "outside";
+				index += "</think>".length;
+				continue;
+			}
+			if (close === "partial") {
+				filter.pending = source.slice(index);
+				break;
+			}
+			index++;
+		}
+
+		if (final && filter.mode === "outside" && filter.pending) {
+			output += filter.pending;
+			filter.pending = "";
+		}
+		this.reasoningFilters.set(field, filter);
+		return output;
+	}
+
+	private flushReasoningFilter(field: string): string {
+		return this.filterReasoningTags(field, "", true);
+	}
+
 	private emitEvent(event: StreamEvent): void {
 		this.config.onEvent?.(event);
 	}
@@ -869,6 +1057,26 @@ function decodeJsonEscape(raw: string): string {
 	} catch {
 		return raw;
 	}
+}
+
+function matchTagAt(
+	source: string,
+	index: number,
+	tag: "<think>" | "</think>",
+): "full" | "partial" | "none" {
+	const remaining = source.slice(index);
+	const lowerRemaining = remaining.toLowerCase();
+	const lowerTag = tag.toLowerCase();
+	if (lowerRemaining.startsWith(lowerTag)) {
+		return "full";
+	}
+	if (
+		index + remaining.length === source.length &&
+		lowerTag.startsWith(lowerRemaining)
+	) {
+		return "partial";
+	}
+	return "none";
 }
 
 function findJsonStringEnd(value: string): number | null {

@@ -4,7 +4,7 @@
 Sibling to `publish_custom_kokoro_voice.sh` (which stages a release-dir into
 a per-tier Eliza-1 bundle on local disk). This script handles the OTHER half
 of the publish path: uploading the same release-dir to a HuggingFace repo
-under the `elizalabs/eliza-1-voice-kokoro-<voice>-vNN` naming convention.
+under the `elizaos/eliza-1-voice-kokoro-<voice>-vNN` naming convention.
 
 The release-dir is the output of `package_voice_for_release.py`:
 
@@ -28,22 +28,22 @@ AGENTS.md §6 — but the script logs the override loudly and records it in
 the model-card preamble.
 
 The HF push is `private=True` by default. Per the R12 license inventory
-the samantha source corpus has no upstream LICENSE and is a derivative of
-*Her* (2013); the first push of any samantha-derived voice MUST stay
+the same source corpus has no upstream LICENSE and is a derivative of
+*Her* (2013); the first push of any same-derived voice MUST stay
 private until the user explicitly OKs a public release. Pass
 `--public` to override (this script does not infer from voice name).
 
 Usage:
 
     python3 push_voice_to_hf.py \\
-        --release-dir /tmp/kokoro-runs/samantha/release/af_samantha \\
-        --hf-repo elizalabs/eliza-1-voice-kokoro-samantha-v01
+        --release-dir /tmp/kokoro-runs/same/release/af_same \\
+        --hf-repo elizaos/eliza-1-voice-kokoro-same-v01
 
     # Dry run — exercises every gate + assembles the upload plan but does
     # not call the HF API.
     python3 push_voice_to_hf.py \\
-        --release-dir /tmp/kokoro-runs/samantha/release/af_samantha \\
-        --hf-repo elizalabs/eliza-1-voice-kokoro-samantha-v01 \\
+        --release-dir /tmp/kokoro-runs/same/release/af_same \\
+        --hf-repo elizaos/eliza-1-voice-kokoro-same-v01 \\
         --dry-run
 """
 
@@ -161,7 +161,7 @@ def _model_card(
         "- eliza-1",
         "- voice-clone",
     ]
-    if "samantha" in voice_name.lower() or "samantha" in [t.lower() for t in tags]:
+    if "same" in voice_name.lower() or "same" in [t.lower() for t in tags]:
         lines.append("- research-only")
     lines.extend(
         [
@@ -179,15 +179,15 @@ def _model_card(
             "",
         ]
     )
-    if "samantha" in voice_name.lower():
+    if "same" in voice_name.lower():
         lines.extend(
             [
                 "## License & data provenance",
                 "",
-                "This voice pack derives from the `samantha` clips in",
+                "This voice pack derives from the `same` clips in",
                 "[`lalalune/ai_voices`](https://github.com/lalalune/ai_voices). The upstream",
                 "README states the corpus is *for fun and research only* — there is no",
-                "LICENSE file. The samantha voice itself is a derivative of the 2013 film",
+                "LICENSE file. The same voice itself is a derivative of the 2013 film",
                 "*Her* (Warner Bros). This artifact is therefore distributed for",
                 "**non-commercial research and personal use only**. Do not redistribute the",
                 "raw audio. The fine-tuned voice embedding + ONNX delta are published here",

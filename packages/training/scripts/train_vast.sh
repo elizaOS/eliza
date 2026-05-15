@@ -637,6 +637,17 @@ run_remote() {
     extra_train_flags="--max-samples $n --max-seq-len $seq"
     echo "[train_vast] [run] SMOKE_MODE=1 — capping at $n samples, seq=$seq"
   fi
+  # Resume support: if RESUME_FROM_CHECKPOINT is set in the operator env, append
+  # --resume-from-checkpoint to the train_local.py invocation. The trainer's
+  # --resume-from-checkpoint reads checkpoint dirs produced by the HF Trainer
+  # (e.g. checkpoints/<run>/checkpoint-1000). The path is interpreted RELATIVE
+  # to the remote $REMOTE_TRAIN_DIR (the rsync'd training package on the box),
+  # so the operator passes the same relative path that lives under
+  # packages/training/checkpoints/ in the local checkout.
+  if [ -n "${RESUME_FROM_CHECKPOINT:-}" ]; then
+    extra_train_flags="$extra_train_flags --resume-from-checkpoint $RESUME_FROM_CHECKPOINT"
+    echo "[train_vast] [run] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT — resuming SFT"
+  fi
 
   # Hardware floor for 27B. The smoke runs (2026-05-04) confirmed that
   # 2x RTX PRO 6000 Blackwell (96 GB/GPU, 192 GB total) OOMs even at seq=2048

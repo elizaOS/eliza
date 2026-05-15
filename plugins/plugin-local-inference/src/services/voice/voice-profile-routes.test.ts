@@ -113,9 +113,7 @@ describe("GET /v1/voice/profiles", () => {
 
 	it("lists bundle-scanned profiles", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(
-			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
-		);
+		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-same.bin"));
 		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-alloy.bin"));
 
 		const opts: VoiceProfileRouteOptions = {
@@ -129,21 +127,19 @@ describe("GET /v1/voice/profiles", () => {
 		expect(status()).toBe(200);
 		const json = JSON.parse(body());
 		const ids = json.profiles.map((p: { id: string }) => p.id).sort();
-		expect(ids).toContain("samantha");
+		expect(ids).toContain("same");
 		expect(ids).toContain("alloy");
 	});
 
 	it("marks catalog default correctly", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(
-			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
-		);
+		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-same.bin"));
 
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
 		const catalog: VoiceProfileCatalog = {
 			version: 1,
-			defaultProfileId: "samantha",
+			defaultProfileId: "same",
 			profiles: [],
 		};
 		fs.writeFileSync(
@@ -157,11 +153,9 @@ describe("GET /v1/voice/profiles", () => {
 		await handleVoiceProfileRoutes(req, res, opts);
 
 		const json = JSON.parse(body());
-		const samantha = json.profiles.find(
-			(p: { id: string }) => p.id === "samantha",
-		);
-		expect(samantha?.isDefault).toBe(true);
-		expect(json.defaultProfileId).toBe("samantha");
+		const same = json.profiles.find((p: { id: string }) => p.id === "same");
+		expect(same?.isDefault).toBe(true);
+		expect(json.defaultProfileId).toBe("same");
 	});
 
 	it("returns false for unrelated routes", async () => {
@@ -179,16 +173,14 @@ describe("GET /v1/voice/profiles", () => {
 describe("POST /v1/voice/profiles/:id/activate", () => {
 	it("sets the default profile in catalog", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(
-			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
-		);
+		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-same.bin"));
 		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-alloy.bin"));
 
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
 		const catalog: VoiceProfileCatalog = {
 			version: 1,
-			defaultProfileId: "samantha",
+			defaultProfileId: "same",
 			profiles: [],
 		};
 		fs.writeFileSync(
@@ -204,7 +196,7 @@ describe("POST /v1/voice/profiles/:id/activate", () => {
 		expect(status()).toBe(200);
 		const json = JSON.parse(body());
 		expect(json.defaultProfileId).toBe("alloy");
-		expect(json.previousDefaultProfileId).toBe("samantha");
+		expect(json.previousDefaultProfileId).toBe("same");
 
 		// Verify catalog was written.
 		const written = JSON.parse(
@@ -234,7 +226,7 @@ describe("POST /v1/voice/profiles/:id/activate", () => {
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
 		const catalog: VoiceProfileCatalog = {
 			version: 1,
-			defaultProfileId: "samantha",
+			defaultProfileId: "same",
 			profiles: [
 				{
 					id: "nova",
@@ -283,7 +275,7 @@ describe("DELETE /v1/voice/profiles/:id", () => {
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
 		const catalog: VoiceProfileCatalog = {
 			version: 1,
-			defaultProfileId: "samantha",
+			defaultProfileId: "same",
 			profiles: [
 				{
 					id: "alloy",
@@ -325,15 +317,13 @@ describe("DELETE /v1/voice/profiles/:id", () => {
 
 	it("refuses to delete the active default profile", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(
-			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
-		);
+		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-same.bin"));
 
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
 		const catalog: VoiceProfileCatalog = {
 			version: 1,
-			defaultProfileId: "samantha",
+			defaultProfileId: "same",
 			profiles: [],
 		};
 		fs.writeFileSync(
@@ -342,7 +332,7 @@ describe("DELETE /v1/voice/profiles/:id", () => {
 		);
 
 		const opts: VoiceProfileRouteOptions = { voiceModelsDir, bundleRoot };
-		const req = makeReq("DELETE", "/v1/voice/profiles/samantha");
+		const req = makeReq("DELETE", "/v1/voice/profiles/same");
 		const { res, status } = makeRes();
 		await handleVoiceProfileRoutes(req, res, opts);
 		expect(status()).toBe(409);
@@ -364,10 +354,10 @@ describe("DELETE /v1/voice/profiles/:id", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveDefaultProfileId", () => {
-	it("returns 'samantha' when no catalog exists", async () => {
+	it("returns 'same' when no catalog exists", async () => {
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
 		const id = await resolveDefaultProfileId(voiceModelsDir);
-		expect(id).toBe("samantha");
+		expect(id).toBe("same");
 	});
 
 	it("returns the catalog's defaultProfileId", async () => {

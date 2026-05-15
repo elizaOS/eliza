@@ -42,17 +42,69 @@ import { VisionModels } from "./vision-models";
 import { VisionWorkerManager } from "./vision-worker-manager";
 
 const execAsync = promisify(exec);
-const SCENE_DESCRIPTION_PROMPT = JSON.stringify(
-  {
+
+// Service type registered by plugin-computeruse's VisionContextProvider. We
+// duck-type the consumer interface here rather than taking a hard package
+// dependency on @elizaos/plugin-computeruse — the provider is optional and
+// lives in a peer plugin. The structural contract must stay in sync with the
+// `VisionContext` exported from plugin-computeruse.
+const VISION_CONTEXT_SERVICE_TYPE = "vision-context";
+const SCENE_CONTEXT_OPEN_APPS_LIMIT = 20;
+const SCENE_CONTEXT_RECENT_ACTIONS_LIMIT = 10;
+
+interface VisionContextSnapshot {
+  openApps: string[];
+  focusedWindow: {
+    app: string;
+    title: string;
+    bbox: [number, number, number, number] | null;
+  } | null;
+  recentActions: Array<{ action: string; ts: number }>;
+  currentTaskGoal: string | null;
+}
+
+interface VisionContextProviderLike {
+  getContext(): Promise<VisionContextSnapshot>;
+}
+
+const SCENE_DESCRIPTION_INSTRUCTIONS = [
+  "Describe visible people, objects, UI, text, and notable scene changes.",
+  "Keep the answer concise and factual.",
+];
+
+function isVisionContextProvider(
+  candidate: unknown,
+): candidate is VisionContextProviderLike {
+  return (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof (candidate as { getContext?: unknown }).getContext === "function"
+  );
+}
+
+function trimVisionContextForPrompt(
+  context: VisionContextSnapshot,
+): VisionContextSnapshot {
+  return {
+    openApps: context.openApps.slice(0, SCENE_CONTEXT_OPEN_APPS_LIMIT),
+    focusedWindow: context.focusedWindow,
+    recentActions: context.recentActions.slice(
+      -SCENE_CONTEXT_RECENT_ACTIONS_LIMIT,
+    ),
+    currentTaskGoal: context.currentTaskGoal,
+  };
+}
+
+function buildSceneDescriptionPrompt(
+  context: VisionContextSnapshot | null,
+): string {
+  const payload: Record<string, unknown> = {
     task: "describe_visual_scene",
-    instructions: [
-      "Describe visible people, objects, UI, text, and notable scene changes.",
-      "Keep the answer concise and factual.",
-    ],
-  },
-  null,
-  2,
-);
+    instructions: SCENE_DESCRIPTION_INSTRUCTIONS,
+  };
+  if (context) payload.context = trimVisionContextForPrompt(context);
+  return JSON.stringify(payload, null, 2);
+}
 
 interface CameraDevice {
   id: string;
@@ -209,7 +261,7 @@ export class VisionService extends Service {
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",
-        this.DEFAULT_CONFIG.ocrEnabled,
+        this.DEFAULT_CONFIG.ocrEnabled ?? true,
       ),
     };
   }
@@ -959,6 +1011,26 @@ export class VisionService extends Service {
     return description;
   }
 
+  /**
+   * Pull the latest desktop scene context from plugin-computeruse's
+   * VisionContextProvider when registered. Returns `null` when no provider is
+   * available (or when the lookup fails) so the VLM still receives a valid
+   * prompt — the context block is purely additive.
+   */
+  private async collectVisionContext(): Promise<VisionContextSnapshot | null> {
+    const candidate = this.runtime.getService(VISION_CONTEXT_SERVICE_TYPE);
+    if (!isVisionContextProvider(candidate)) return null;
+    try {
+      return await candidate.getContext();
+    } catch (error) {
+      logger.warn(
+        "[VisionService] vision-context provider getContext() failed:",
+        error,
+      );
+      return null;
+    }
+  }
+
   private async describeSceneWithVLM(imageUrl: string): Promise<string> {
     return withStandaloneTrajectory(
       this.runtime,
@@ -979,10 +1051,12 @@ export class VisionService extends Service {
       // otherwise the runtime rotates to whichever cloud/remote provider
       // has registered IMAGE_DESCRIPTION. plugin-vision no longer ships its
       // own VLM.
+      const sceneContext = await this.collectVisionContext();
+      const prompt = buildSceneDescriptionPrompt(sceneContext);
       try {
         const result = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
-          { imageUrl, prompt: SCENE_DESCRIPTION_PROMPT },
+          { imageUrl, prompt },
         );
         const description = this.extractDescriptionFromUseModel(result);
         if (description) {

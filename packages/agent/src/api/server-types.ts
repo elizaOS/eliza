@@ -10,11 +10,11 @@ import type {
   StreamEventEnvelope,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
-import type { AppManager } from "../services/app-manager.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 export type CloudManagerLike = unknown;
+export type AppManagerLike = unknown;
 
 export interface StoppablePairingSession {
   stop: () => void | Promise<void>;
@@ -171,7 +171,7 @@ export interface ServerState {
   cloudManager: CloudManagerLike;
   sandboxManager: SandboxManager | null;
   /** App manager for launching and managing elizaOS apps. */
-  appManager: AppManager;
+  appManager: AppManagerLike;
   /** Fine-tuning/training orchestration service. */
   trainingService: TrainingServiceWithRuntime | null;
   /** In-memory queue for share ingest items. */

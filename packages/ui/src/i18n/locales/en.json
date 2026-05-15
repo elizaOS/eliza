@@ -2519,7 +2519,7 @@
   "runtimegate.unknownError": "Unknown error",
   "runtimegate.waitingForAuth": "Waiting for auth...",
   "runtimegate.waitingForProvisioningJob": "Waiting for Cloud to accept provisioning...",
-  "runtimegate.welcomeAdvancedToggle": "Run it myself",
+  "runtimegate.welcomeAdvancedToggle": "I want to run it myself",
   "runtimegate.welcomeConnectRemote": "Connect to your agent",
   "runtimegate.welcomeEyebrow": "elizaOS — immersion agent runtime",
   "runtimegate.welcomeGetStarted": "Get started",

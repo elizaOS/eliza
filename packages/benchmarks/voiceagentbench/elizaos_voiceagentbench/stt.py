@@ -73,6 +73,15 @@ class GroqWhisperSTT:
         return text
 
 
-def build_stt() -> STTBackend:
+class FixtureTranscriptSTT:
+    """No-cost STT backend for annotated fixture records."""
+
+    def transcribe(self, query: AudioQuery) -> str:
+        return query.transcript
+
+
+def build_stt(*, mock: bool = False) -> STTBackend:
     """Build the real STT backend."""
+    if mock:
+        return FixtureTranscriptSTT()
     return GroqWhisperSTT()

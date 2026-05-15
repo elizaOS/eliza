@@ -325,7 +325,7 @@ export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
   if (!Array.isArray(actions)) return false;
   const target = name.trim().toUpperCase();
   return actions.some((action) => {
-    const actionName = action?.name?.trim().toUpperCase();
+    const actionName = action.name.trim().toUpperCase();
     return actionName === target;
   });
 }

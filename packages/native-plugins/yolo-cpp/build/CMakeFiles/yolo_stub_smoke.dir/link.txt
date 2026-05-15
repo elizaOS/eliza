@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/yolo_stub_smoke.dir/test/yolo_stub_smoke.c.o -o yolo_stub_smoke  libyolo.a 

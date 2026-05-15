@@ -14,9 +14,7 @@ import {
 } from "../gpu-autotune";
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
-// __tests__/ -> local-inference/ -> services/ -> src/ -> app-core/ -> packages/
-const monorepoRoot = path.resolve(fileDir, "../../../../../..");
-const configsDir = path.join(monorepoRoot, "packages/inference/configs/gpu");
+const configsDir = path.resolve(fileDir, "../../../native/configs/gpu");
 
 const ALL_IDS = ["rtx-3090", "rtx-4090", "rtx-5090", "h200"] as const;
 
@@ -190,12 +188,12 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
 		expect(res?.flags.ctx_size).toBe(32768);
 	});
 
-	it("H200 + eliza-1-27b-1m -> 2 parallel @ 1M", () => {
+	it("H200 + eliza-1-27b-256k -> 6 parallel @ 256k", () => {
 		const res = selectGpuConfig(info("NVIDIA H200", 141248), {
-			bundleId: "eliza-1-27b-1m",
+			bundleId: "eliza-1-27b-256k",
 		});
-		expect(res?.flags.n_parallel).toBe(2);
-		expect(res?.flags.ctx_size).toBe(1_048_576);
+		expect(res?.flags.n_parallel).toBe(6);
+		expect(res?.flags.ctx_size).toBe(262_144);
 	});
 
 	it("voice bundle narrows batch / ubatch on every card", () => {

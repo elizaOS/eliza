@@ -473,7 +473,7 @@ export const musicAction: Action = {
     "generation (generate, extend, custom_generate — Suno-backed, requires SUNO_API_KEY). " +
     "skip, stop, queue_add, queue_clear, playlist_save, and download require confirmed:true.",
   descriptionCompressed:
-    "Music play|pause|resume|skip|stop; queue|playlist|search|download|audio|routing|generate",
+    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
   parameters: [
     {
       name: "action",

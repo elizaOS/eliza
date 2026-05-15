@@ -40,6 +40,15 @@ export {
 } from "./aosp-stub";
 
 export {
+	classifyLocalVisionError,
+	type LocalImageDescriptionHandler,
+	type LocalVisionOutcome,
+	type VisionCloudFallbackOptions,
+	type VisionFallbackReason,
+	type WrappedImageDescriptionHandler,
+	wrapImageDescriptionHandlerWithCloudFallback,
+} from "./cloud-fallback";
+export {
 	hashImageBytes,
 	hashRawPixels,
 	hashVisionInput,
@@ -67,6 +76,10 @@ export type {
 	VisionImageChannelOrder,
 	VisionImageInput,
 } from "./types";
+export {
+	type VisionVastFallbackOptions,
+	wrapImageDescriptionHandlerWithVastFallback,
+} from "./vast-fallback";
 
 import type {
 	ArbiterCapability,
@@ -176,5 +189,67 @@ export function createVisionCapabilityRegistration(
 				cacheHit: Boolean(projected),
 			};
 		},
+	};
+}
+
+import type {
+	IAgentRuntime,
+	ImageDescriptionParams,
+	ImageDescriptionResult,
+} from "@elizaos/core";
+import {
+	type LocalImageDescriptionHandler,
+	type VisionCloudFallbackOptions,
+	wrapImageDescriptionHandlerWithCloudFallback,
+} from "./cloud-fallback";
+import {
+	type VisionVastFallbackOptions,
+	wrapImageDescriptionHandlerWithVastFallback,
+} from "./vast-fallback";
+
+/**
+ * Compose the full local → cloud → vast IMAGE_DESCRIPTION chain and
+ * terminate it as a runtime-shaped `ImageDescriptionHandler`. When all
+ * three paths return `{ kind: "fallback" }`, the terminator throws the
+ * underlying cause (or a structured upstream-fail message) so the runtime
+ * surfaces the failure cleanly rather than serving a sentinel result.
+ *
+ * This is the single entry point `ensure-local-inference-handler.ts`
+ * uses at the IMAGE_DESCRIPTION model registration site. Tests
+ * exercise the composition via the individual `wrap*` helpers; this
+ * function is the production wiring.
+ */
+export function withVisionFallbackChain(
+	local: LocalImageDescriptionHandler,
+	options: {
+		cloud?: VisionCloudFallbackOptions;
+		vast?: VisionVastFallbackOptions;
+	} = {},
+): (
+	runtime: IAgentRuntime,
+	params: ImageDescriptionParams | string,
+) => Promise<ImageDescriptionResult> {
+	const wrapped = wrapImageDescriptionHandlerWithVastFallback(
+		wrapImageDescriptionHandlerWithCloudFallback(local, options.cloud),
+		options.vast,
+	);
+	return async (_runtime, params) => {
+		const outcome = await wrapped(params);
+		if (
+			outcome &&
+			typeof outcome === "object" &&
+			"kind" in outcome &&
+			outcome.kind === "fallback"
+		) {
+			const causeMsg = outcome.cause?.message ?? outcome.reason;
+			const err = new Error(
+				`[VisionFallback] all IMAGE_DESCRIPTION providers exhausted (reason=${outcome.reason}): ${causeMsg}`,
+			);
+			if (outcome.cause) {
+				(err as Error & { cause?: unknown }).cause = outcome.cause;
+			}
+			throw err;
+		}
+		return outcome as ImageDescriptionResult;
 	};
 }

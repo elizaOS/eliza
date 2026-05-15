@@ -272,6 +272,11 @@ BENCHMARK_STRATEGIES: dict[str, BaselineStrategy] = {
         "Random shell commands up to max_steps",
         True,
     ),
+    "terminal_bench": BaselineStrategy(
+        "trajectory",
+        "Random shell commands up to max_steps",
+        True,
+    ),
     "osworld": BaselineStrategy(
         "trajectory",
         "Random GUI actions up to max_steps",
@@ -286,6 +291,26 @@ BENCHMARK_STRATEGIES: dict[str, BaselineStrategy] = {
     "swe-bench": BaselineStrategy(
         "empty_patch",
         "Empty unified diff -- random patches are nonsensical",
+        True,
+    ),
+    "swe_bench": BaselineStrategy(
+        "empty_patch",
+        "Empty unified diff -- random patches are nonsensical",
+        True,
+    ),
+    "swe_bench_orchestrated": BaselineStrategy(
+        "empty_patch",
+        "Empty unified diff -- random patches are nonsensical",
+        True,
+    ),
+    "visualwebbench": BaselineStrategy(
+        "multiple_choice",
+        "Uniform over visual question choices",
+        True,
+    ),
+    "vision_language": BaselineStrategy(
+        "multiple_choice",
+        "Uniform over vision-language smoke fixtures",
         True,
     ),
     "mint": BaselineStrategy(

@@ -261,6 +261,16 @@ class HarnessClient:
             self._client = HermesClient(
                 provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
                 model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                base_url=os.environ.get("BENCHMARK_BASE_URL")
+                or os.environ.get("OPENAI_BASE_URL")
+                or os.environ.get("CEREBRAS_BASE_URL")
+                or None,
+                mode=(os.environ.get("HERMES_MODE") or "in_process").strip()
+                or "in_process",
+                timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
+                reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+                or os.environ.get("CEREBRAS_REASONING_EFFORT")
+                or None,
             )
         elif harness == "openclaw":
             from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
@@ -268,6 +278,15 @@ class HarnessClient:
             self._client = OpenClawClient(
                 provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
                 model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                base_url=os.environ.get("BENCHMARK_BASE_URL")
+                or os.environ.get("OPENAI_BASE_URL")
+                or os.environ.get("CEREBRAS_BASE_URL")
+                or None,
+                timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "120")),
+                reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+                or os.environ.get("CEREBRAS_REASONING_EFFORT")
+                or None,
+                direct_openai_compatible=True,
             )
         else:
             from eliza_adapter.client import ElizaClient  # noqa: WPS433

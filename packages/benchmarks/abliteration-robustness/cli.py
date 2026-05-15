@@ -192,14 +192,41 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
         _ensure_adapter_path("hermes-adapter")
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-        client = HermesClient(provider=provider, model=model, base_url=args.base_url)
+        client = HermesClient(
+            provider=provider,
+            model=model,
+            base_url=args.base_url
+            or os.environ.get("BENCHMARK_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or os.environ.get("CEREBRAS_BASE_URL")
+            or None,
+            mode=(os.environ.get("HERMES_MODE") or "in_process").strip()
+            or "in_process",
+            timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
+            reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+            or os.environ.get("CEREBRAS_REASONING_EFFORT")
+            or None,
+        )
         client.wait_until_ready(timeout=120)
         return client
     if harness == "openclaw":
         _ensure_adapter_path("openclaw-adapter")
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-        client = OpenClawClient(provider=provider, model=model, base_url=args.base_url)
+        client = OpenClawClient(
+            provider=provider,
+            model=model,
+            base_url=args.base_url
+            or os.environ.get("BENCHMARK_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or os.environ.get("CEREBRAS_BASE_URL")
+            or None,
+            timeout_s=float(os.environ.get("OPENCLAW_TIMEOUT_S", "120")),
+            reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+            or os.environ.get("CEREBRAS_REASONING_EFFORT")
+            or None,
+            direct_openai_compatible=True,
+        )
         client.wait_until_ready(timeout=120)
         return client
     raise SystemExit(f"unknown harness {harness!r}")
@@ -244,11 +271,25 @@ def _generate(client, model: str, prompt: str, max_tokens: int, temperature: flo
             },
         )
         return str(getattr(response, "text", "") or "")
+    kwargs: dict[str, object] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    reasoning_effort = (
+        os.environ.get("BENCHMARK_REASONING_EFFORT")
+        or os.environ.get("CEREBRAS_REASONING_EFFORT")
+        or os.environ.get("OPENAI_REASONING_EFFORT")
+    )
+    if (
+        isinstance(reasoning_effort, str)
+        and reasoning_effort.strip()
+        and model.rsplit("/", 1)[-1].startswith("gpt-oss")
+    ):
+        kwargs["extra_body"] = {"reasoning_effort": reasoning_effort.strip()}
     resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-        temperature=temperature,
+        **kwargs,
     )
     return resp.choices[0].message.content or ""
 

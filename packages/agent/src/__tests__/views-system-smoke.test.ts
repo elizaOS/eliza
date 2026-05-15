@@ -52,7 +52,11 @@ function makeCtx(
     broadcastWs?: (payload: object) => void;
     developerMode?: boolean;
   } = {},
-): { ctx: ViewsRouteContext; json: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> } {
+): {
+  ctx: ViewsRouteContext;
+  json: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+} {
   const json = vi.fn();
   const error = vi.fn();
   const url = new URL(`http://localhost${pathname}`);
@@ -86,7 +90,12 @@ afterEach(() => {
 describe("stage 1: plugin declares views → registry populated", () => {
   it("registerPluginViews stores the view entry keyed by id", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -102,18 +111,30 @@ describe("stage 1: plugin declares views → registry populated", () => {
 
   it("entry includes derived fields: bundleUrl and heroImageUrl", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
     const entry = getView("smoke.main");
-    expect(entry?.bundleUrl).toBe("/api/views/smoke.main/bundle.js");
+    expect(entry?.bundleUrl).toMatch(
+      /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
+    );
     expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
 
   it("entry marks available=false when pluginDir is not resolvable", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -124,7 +145,12 @@ describe("stage 1: plugin declares views → registry populated", () => {
 
   it("unregisterPluginViews removes all views owned by that plugin", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
     expect(getView("smoke.main")).toBeDefined();
@@ -141,7 +167,12 @@ describe("stage 1: plugin declares views → registry populated", () => {
 describe("stage 2: HTTP GET /api/views returns views list", () => {
   it("GET /api/views returns a views array containing registered views", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -149,22 +180,35 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
-    const [, body] = json.mock.calls[0] as [unknown, { views: { id: string }[] }];
+    const [, body] = json.mock.calls[0] as [
+      unknown,
+      { views: { id: string }[] },
+    ];
     expect(body.views.some((v) => v.id === "smoke.main")).toBe(true);
   });
 
   it("GET /api/views response includes bundleUrl and heroImageUrl for views with bundlePath", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
     await handleViewsRoutes(ctx);
 
-    const [, body] = json.mock.calls[0] as [unknown, { views: { id: string; bundleUrl?: string; heroImageUrl?: string }[] }];
+    const [, body] = json.mock.calls[0] as [
+      unknown,
+      { views: { id: string; bundleUrl?: string; heroImageUrl?: string }[] },
+    ];
     const view = body.views.find((v) => v.id === "smoke.main");
-    expect(view?.bundleUrl).toBe("/api/views/smoke.main/bundle.js");
+    expect(view?.bundleUrl).toMatch(
+      /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
+    );
     expect(view?.heroImageUrl).toBe("/api/views/smoke.main/hero");
   });
 });
@@ -176,7 +220,12 @@ describe("stage 2: HTTP GET /api/views returns views list", () => {
 describe("stage 3: GET /api/views/:id returns single view metadata", () => {
   it("returns the full view entry as JSON", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -184,7 +233,10 @@ describe("stage 3: GET /api/views/:id returns single view metadata", () => {
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
-    const [, body] = json.mock.calls[0] as [unknown, { id: string; label: string; pluginName: string }];
+    const [, body] = json.mock.calls[0] as [
+      unknown,
+      { id: string; label: string; pluginName: string },
+    ];
     expect(body.id).toBe("smoke.main");
     expect(body.label).toBe("Smoke View");
     expect(body.pluginName).toBe(SMOKE_PLUGIN);
@@ -207,7 +259,12 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
   it("returns 404 when no bundlePath is configured", async () => {
     const viewNoBundlePath = { ...SMOKE_VIEW, bundlePath: undefined };
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [viewNoBundlePath] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [viewNoBundlePath],
+      },
       undefined,
     );
 
@@ -220,7 +277,12 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
 
   it("getBundleDiskPath returns null when pluginDir is undefined", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -232,7 +294,12 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
 
   it("getBundleDiskPath resolves correctly given a pluginDir", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       "/some/plugin/dir",
     );
 
@@ -250,7 +317,12 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
 describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder", () => {
   it("returns an SVG placeholder when no hero image exists on disk", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -270,7 +342,12 @@ describe("stage 5: GET /api/views/:id/hero serves hero image or SVG placeholder"
 describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
   it("calls broadcastWs with shell:navigate:view type and viewId", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -282,31 +359,46 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
 
     expect(handled).toBe(true);
     expect(broadcasts).toHaveLength(1);
-    const event = broadcasts[0] as { type: string; viewId: string; viewPath: string | null };
+    const event = broadcasts[0] as {
+      type: string;
+      viewId: string;
+      viewPath: string | null;
+    };
     expect(event.type).toBe("shell:navigate:view");
     expect(event.viewId).toBe("smoke.main");
     expect(event.viewPath).toBe("/smoke");
 
     // Also returns JSON with ok: true
-    const [, body] = json.mock.calls[0] as [unknown, { ok: boolean; viewId: string }];
+    const [, body] = json.mock.calls[0] as [
+      unknown,
+      { ok: boolean; viewId: string },
+    ];
     expect(body.ok).toBe(true);
     expect(body.viewId).toBe("smoke.main");
   });
 
   it("navigate works for synthetic IDs not in registry (like view manager)", async () => {
     const broadcasts: object[] = [];
-    const { ctx, json } = makeCtx("POST", "/api/views/__view-manager__/navigate", {
-      broadcastWs: (payload) => broadcasts.push(payload),
-    });
+    const { ctx, json } = makeCtx(
+      "POST",
+      "/api/views/__view-manager__/navigate",
+      {
+        broadcastWs: (payload) => broadcasts.push(payload),
+      },
+    );
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
     expect(broadcasts).toHaveLength(1);
-    const event = broadcasts[0] as { type: string; viewId: string; viewPath: string | null };
+    const event = broadcasts[0] as {
+      type: string;
+      viewId: string;
+      viewPath: string | null;
+    };
     expect(event.type).toBe("shell:navigate:view");
     expect(event.viewId).toBe("__view-manager__");
-    // viewPath is null for unknown views — the frontend handles /apps fallback.
-    expect(event.viewPath).toBeNull();
+    // The synthetic manager id resolves to the built-in Views route.
+    expect(event.viewPath).toBe("/apps");
 
     const [, body] = json.mock.calls[0] as [unknown, { ok: boolean }];
     expect(body.ok).toBe(true);
@@ -314,7 +406,12 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
 
   it("navigate without broadcastWs still returns 200 (broadcastWs is optional)", async () => {
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [SMOKE_VIEW] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
       undefined,
     );
 
@@ -354,9 +451,18 @@ describe("stage 7: registry ordering and developer mode filtering", () => {
   });
 
   it("developerOnly views are excluded from listViews by default", async () => {
-    const devOnlyView = { id: "smoke.devonly", label: "Dev Only", developerOnly: true };
+    const devOnlyView = {
+      id: "smoke.devonly",
+      label: "Dev Only",
+      developerOnly: true,
+    };
     await registerPluginViews(
-      { name: SMOKE_PLUGIN, description: "smoke plugin", actions: [], views: [devOnlyView] },
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [devOnlyView],
+      },
       undefined,
     );
 

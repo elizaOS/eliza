@@ -31,9 +31,9 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
+TIERS: tuple[str, ...] = M.ELIZA_1_TIERS
 DEFAULT_REPO_ID = M.ELIZA_1_HF_REPO
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
-TIERS: tuple[str, ...] = M.ELIZA_1_TIERS
 PUBLISH_METADATA_DIRS = frozenset(
     {"checksums", "evidence", "evals", "licenses", "quantization"}
 )

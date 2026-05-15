@@ -394,3 +394,72 @@ export const REPLAYKIT_FOREGROUND_MAX_BUFFER = 30 as const;
 
 /** Hard cap on session duration; anything beyond requires BGProcessingTask. */
 export const REPLAYKIT_FOREGROUND_MAX_SESSION_SEC = 30 as const;
+
+// ── Runtime feature-detect ───────────────────────────────────────────────────
+
+/**
+ * Result of `featureCheck()`. Callers use this to decide whether to invoke
+ * any other method on the bridge — when `supported` is false they should fall
+ * back to OCR / external orchestration instead of letting the call throw.
+ */
+export interface IosFeatureCheckResult {
+  readonly supported: boolean;
+  readonly reason?: string;
+}
+
+interface CapacitorRuntime {
+  Plugins?: Record<string, unknown>;
+}
+
+function readCapacitorRuntime(): CapacitorRuntime | null {
+  const cap = (globalThis as { Capacitor?: unknown }).Capacitor;
+  if (!cap || typeof cap !== "object") return null;
+  return cap as CapacitorRuntime;
+}
+
+/**
+ * Runtime feature-detect for the iOS bridge. Synchronous and side-effect-free
+ * so it can run during planner setup. Returns `{supported:false}` whenever
+ * the JS↔Swift bridge cannot be reached:
+ *
+ *   - Running on a non-iOS host (desktop, Android, browser).
+ *   - Capacitor is not initialized (no `globalThis.Capacitor`).
+ *   - The Swift `ComputerUseBridge` plugin is not registered.
+ *
+ * This does NOT call `bridge.probe()` — that is async and may prompt the user
+ * for permissions. Callers that need the per-capability matrix should `await
+ * bridge.probe()` after `featureCheck().supported === true`.
+ *
+ * PARITY: untested on hardware — the lookup path mirrors what the Capacitor
+ * runtime does, but has not been validated against a real iOS build.
+ */
+export function featureCheck(): IosFeatureCheckResult {
+  const cap = readCapacitorRuntime();
+  if (!cap) {
+    return { supported: false, reason: "Capacitor runtime not present" };
+  }
+  const plugins = cap.Plugins;
+  if (!plugins || typeof plugins !== "object") {
+    return { supported: false, reason: "Capacitor.Plugins not available" };
+  }
+  if (!plugins[IOS_BRIDGE_JS_NAME]) {
+    return {
+      supported: false,
+      reason: `Capacitor.Plugins.${IOS_BRIDGE_JS_NAME} is not registered`,
+    };
+  }
+  return { supported: true };
+}
+
+/**
+ * Resolve the live bridge handle, or `null` when unavailable. Pairs with
+ * `featureCheck()` for callers that want a typed handle in one step.
+ *
+ * PARITY: untested on hardware — feature-detect at runtime.
+ */
+export function getIosBridge(): IosComputerUseBridge | null {
+  const cap = readCapacitorRuntime();
+  const handle = cap?.Plugins?.[IOS_BRIDGE_JS_NAME];
+  if (!handle) return null;
+  return handle as IosComputerUseBridge;
+}

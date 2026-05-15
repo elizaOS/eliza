@@ -126,8 +126,8 @@ class TestDiarization:
     """
 
     def test_single_speaker_control(self, diarizer: SegmentDiarizer, manifest: dict):
-        """F1: Samantha solo → diarizer must produce exactly 1 unique speaker cluster."""
-        info = manifest["f1_samantha_solo"]
+        """F1: Sam solo → diarizer must produce exactly 1 unique speaker cluster."""
+        info = manifest["f1_sam_solo"]
         pcm = load_fixture_audio(info["path"])
         results = diarizer.diarize(pcm)
 

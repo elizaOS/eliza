@@ -133,7 +133,7 @@ export class CanvasManager {
 		const canvas = this.windows.get(options.id);
 		if (!canvas) return { available: false, reason: "window_not_found" };
 
-		const url = options.url ?? "";
+		const url = options.url;
 		// Validate URL scheme and host before loading to prevent open redirect
 		// to arbitrary external origins.
 		let allowed = false;
@@ -172,7 +172,7 @@ export class CanvasManager {
 		// Security: only allow eval on local/internal canvas URLs.
 		// Uses URL parsing (not startsWith) to prevent bypasses like
 		// http://localhost.evil.com or http://localhost@external.com.
-		const currentUrl = canvas.window.webview?.url ?? "";
+		const currentUrl = canvas.window.webview.url ?? "";
 		if (!isInternalCanvasEvalUrl(currentUrl)) {
 			throw new Error(
 				`canvas:eval blocked — canvas ${options.id} has external URL: ${currentUrl}`,
@@ -181,7 +181,7 @@ export class CanvasManager {
 
 		try {
 			const evalRpc = canvas.window.webview.rpc as WebviewEvalRpc;
-			return await evalRpc?.requestProxy?.evaluateJavascriptWithResponse?.({
+			return await evalRpc.requestProxy?.evaluateJavascriptWithResponse?.({
 				script: options.script,
 			});
 		} catch (err) {
@@ -201,8 +201,8 @@ export class CanvasManager {
 		try {
 			const pos = canvas.window.getPosition();
 			const size = canvas.window.getSize();
-			const x = pos.x ?? 0;
-			const y = pos.y ?? 0;
+			const x = pos.x;
+			const y = pos.y;
 			const w = size.width;
 			const h = size.height;
 
@@ -282,7 +282,7 @@ $bmp.Dispose()`;
     `;
 		try {
 			const pushRpc = canvas.window.webview.rpc as WebviewEvalRpc;
-			await pushRpc?.requestProxy?.evaluateJavascriptWithResponse?.({ script });
+			await pushRpc.requestProxy?.evaluateJavascriptWithResponse?.({ script });
 		} catch {
 			// Window may have been destroyed
 		}
@@ -299,7 +299,7 @@ $bmp.Dispose()`;
     `;
 		try {
 			const resetRpc = canvas.window.webview.rpc as WebviewEvalRpc;
-			await resetRpc?.requestProxy?.evaluateJavascriptWithResponse?.({
+			await resetRpc.requestProxy?.evaluateJavascriptWithResponse?.({
 				script,
 			});
 		} catch {

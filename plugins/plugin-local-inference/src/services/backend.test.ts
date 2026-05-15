@@ -186,6 +186,7 @@ class FakeBackend implements LocalInferenceBackend {
 	loaded = false;
 	unloads = 0;
 	loadCalls: string[] = [];
+	plans: Array<{ modelPath: string; overrides?: unknown }> = [];
 
 	constructor(public readonly id: "node-llama-cpp" | "llama-server") {}
 
@@ -193,8 +194,9 @@ class FakeBackend implements LocalInferenceBackend {
 		return true;
 	}
 
-	async load(plan: { modelPath: string }): Promise<void> {
+	async load(plan: { modelPath: string; overrides?: unknown }): Promise<void> {
 		this.loaded = true;
+		this.plans.push(plan);
 		this.loadCalls.push(plan.modelPath);
 	}
 
@@ -252,6 +254,30 @@ describe("BackendDispatcher", () => {
 		expect(d.activeBackendId()).toBe("llama-server");
 		expect(node.unloads).toBe(1);
 		expect(server.loaded).toBe(true);
+	});
+
+	it("passes multimodal projector overrides through to the selected backend", async () => {
+		const node = new FakeBackend("node-llama-cpp");
+		const server = new FakeBackend("llama-server");
+		const d = new BackendDispatcher(
+			node,
+			server,
+			() => true,
+			() => false,
+		);
+		const catalog = withRuntime(BASE_CATALOG, {
+			optimizations: { requiresKernel: ["dflash"] },
+		});
+
+		await d.load({
+			modelPath: "/m.gguf",
+			catalog,
+			overrides: { mmprojPath: "/bundle/vision/mmproj.gguf" },
+		});
+
+		expect(server.plans[0]?.overrides).toMatchObject({
+			mmprojPath: "/bundle/vision/mmproj.gguf",
+		});
 	});
 
 	it("throws on generate before load", async () => {

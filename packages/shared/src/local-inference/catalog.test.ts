@@ -8,13 +8,8 @@ import {
 } from "./catalog.js";
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
-const LARGE_TIERS = [
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
-] as const;
-const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
+const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
+const OMNIVOICE_TIERS = LARGE_TIERS;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -26,13 +21,9 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns a narrow OmniVoice ladder for small tiers", () => {
+  it("does not publish OmniVoice ladders for Kokoro-only small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([
-        "Q3_K_M",
-        "Q4_K_M",
-        "Q5_K_M",
-      ]);
+      expect(voiceQuantLadderForTier(id)).toEqual([]);
     }
   });
 
@@ -62,7 +53,7 @@ describe("voiceQuantLadderForTier", () => {
 });
 
 describe("defaultVoiceQuantForTier", () => {
-  it("returns Q4_K_M for mobile tiers (matches publish path mobile sweet spot)", () => {
+  it("keeps a Q4_K_M OmniVoice default if a small tier enables OmniVoice later", () => {
     for (const id of SMALL_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q4_K_M");
     }

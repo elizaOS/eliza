@@ -17,10 +17,11 @@
  */
 
 import {
+	logger,
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
-import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
+import { resolveKokoroEngineConfig } from "@elizaos/shared";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,
@@ -56,10 +57,7 @@ import {
 } from "./session-pool";
 import { resolveGuidedDecodeForParams } from "./structured-output";
 import type { InstalledModel } from "./types";
-import {
-	type CoordinatorRuntime,
-	VoiceCancellationCoordinator,
-} from "./voice/cancellation-coordinator";
+import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
 	buildLocalEmbeddingRoute,
 	EMBEDDING_FULL_DIM,
@@ -234,10 +232,34 @@ function toBackendLoadOverrides(
 
 interface LlamaContextSequence {
 	dispose(): Promise<void>;
+	clearHistory(): Promise<void>;
+	controlledEvaluate(
+		input: Array<
+			| number
+			| [
+					token: number,
+					options: {
+						generateNext?: { probabilities?: boolean; confidence?: boolean };
+					},
+			  ]
+		>,
+		options?: { evaluationPriority?: number },
+	): Promise<
+		Array<
+			| {
+					next: {
+						token?: number | null;
+						confidence?: number;
+						probabilities?: Map<number, number>;
+					};
+			  }
+			| undefined
+		>
+	>;
 }
 
 interface LlamaContext {
-	getSequence(): LlamaContextSequence;
+	getSequence(options?: object): LlamaContextSequence;
 	dispose(): Promise<void>;
 }
 
@@ -335,7 +357,21 @@ interface LlamaModel {
 		 */
 		experimentalKvCacheKeyType?: StockKvCacheTypeName;
 		experimentalKvCacheValueType?: StockKvCacheTypeName;
+		/**
+		 * Optional LoRA adapter(s) attached to this context only. The voice
+		 * EOT scorer uses this to layer a fine-tuned EOT head onto the base
+		 * weights without shipping a separate model.
+		 */
+		lora?:
+			| string
+			| { adapters: Array<{ filePath: string; scale?: number }> };
 	}): Promise<LlamaContext>;
+	/**
+	 * Tokenize text using the model's vocab. `specialTokens=true` resolves
+	 * tokens like `<|im_end|>` to their dedicated IDs. Used by the EOT
+	 * scorer to find the `<|im_end|>` token id once at startup.
+	 */
+	tokenize(text: string, specialTokens?: boolean): readonly number[];
 	dispose(): Promise<void>;
 }
 
@@ -400,6 +436,16 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 
 	hasLoadedModel(): boolean {
 		return this.loadedModel !== null;
+	}
+
+	/**
+	 * Expose the in-process `LlamaModel` for auxiliary scoring paths that
+	 * need a forward pass without going through `LlamaChatSession` — most
+	 * notably the voice EOT scorer (`voice/eliza1-eot-scorer.ts`). Returns
+	 * `null` when no model is loaded or this is not the active backend.
+	 */
+	getLoadedLlamaModel(): LlamaModel | null {
+		return this.loadedModel;
 	}
 
 	async unload(): Promise<void> {
@@ -1440,6 +1486,25 @@ export class LocalInferenceEngine {
 		if (!bridge) {
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
+				// Detect + auto-regenerate the Samantha placeholder preset
+				// before the bridge's synchronous load hits it. The
+				// regenerator is a no-op when a real preset is already in
+				// place (kind="real-preset"); when regen cannot run it logs
+				// loudly and the bridge falls through to af_bella via the
+				// kokoro discovery layer.
+				const { ensureSamanthaPresetReady } = await import(
+					"./voice/samantha-preset-regenerator"
+				);
+				const outcome = await ensureSamanthaPresetReady(bundle.root);
+				if (outcome.kind === "regenerated") {
+					logger.info(
+						`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
+					);
+				} else if (outcome.kind === "placeholder-no-regen") {
+					logger.warn(
+						`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). The runtime will fall back to af_bella; run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
+					);
+				}
 				bridge = this.startVoice({
 					bundleRoot: bundle.root,
 					useFfiBackend: true,
@@ -1476,7 +1541,7 @@ export class LocalInferenceEngine {
 	 * Gated behind a complete real backend chain (AGENTS.md §3 — no silent
 	 * stub-mode "voice"):
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
-	 *   - a Silero ONNX VAD (caller-supplied detector, or `createSileroVadDetector()`),
+	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
 	 *     `AsrUnavailableError` when neither the fused decoder nor whisper.cpp
 	 *     is available),
@@ -1508,6 +1573,26 @@ export class LocalInferenceEngine {
 		turnDetector?: import("./voice/eot-classifier").EotClassifier | false;
 		/** Optional local LiveKit turn-detector directory override. */
 		turnDetectorModelDir?: string;
+		/**
+		 * Use the already-loaded eliza-1 text model (typically the drafter
+		 * the same DFlash keeps warm) as the EOT classifier — see
+		 * `voice/eliza1-eot-scorer.ts`. When set, the runtime skips the
+		 * separate LiveKit/Turnsense ONNX and reads P(`<|im_end|>`) directly
+		 * off the live model.
+		 *
+		 * `"auto"` (default): use eliza-1 EOT when `ELIZA_VOICE_EOT_BACKEND=eliza-1`
+		 * or when no bundled LiveKit ONNX is resolvable; otherwise fall
+		 * through to the existing LiveKit path. `true` forces eliza-1 EOT
+		 * (throws if the active backend is not in-process). `false` forces
+		 * the historical LiveKit path.
+		 */
+		useEliza1Eot?: boolean | "auto";
+		/**
+		 * Optional path to a fine-tuned EOT LoRA adapter to layer on top of
+		 * the drafter at scoring time. The training recipe lives in
+		 * `packages/training/scripts/turn_detector/`.
+		 */
+		eliza1EotLoraPath?: string;
 		/** KV-prefill / response-handler-prefix prewarm. Defaults to `prewarmConversation`. */
 		prewarm?: (roomId: string) => void | Promise<void>;
 		speculatePauseMs?: number;
@@ -1534,12 +1619,14 @@ export class LocalInferenceEngine {
 		};
 		/**
 		 * Runtime reference for cancellation coordination (W3-9 F1).
-		 * When provided, a `VoiceCancellationCoordinator` is constructed and
-		 * wired into:
-		 *   - `BargeInController` → coordinator.bargeIn (hard-stop ASR words)
-		 *   - `EngineVoiceBridge.triggerBargeIn` → coordinator ttsStop
-		 *   - `runtime.turnControllers.abortTurn` (planner-loop / action abort)
-		 * When absent the session runs with the pre-W3-9 VAD-only barge-in path.
+		 *
+		 * @deprecated G5.d: pass `runtime` to `startVoice()` (the
+		 * `EngineVoiceBridgeOptions`) instead. The bridge is the canonical
+		 * owner of `VoiceCancellationCoordinator` + `OptimisticGenerationPolicy`,
+		 * and `startVoiceSession()` now delegates to the bridge's coordinator.
+		 * When this field is supplied here without a matching bridge-level
+		 * runtime, `startVoiceSession()` logs once and ignores it — the
+		 * canonical wiring lives on the bridge.
 		 */
 		runtime?: CoordinatorRuntime;
 	}): Promise<import("./voice/turn-controller").VoiceTurnController> {
@@ -1608,10 +1695,28 @@ export class LocalInferenceEngine {
 		const tierRevision = activeTier
 			? eotMod.turnDetectorRevisionForTier(activeTier)
 			: undefined;
+		const eliza1EotSelected = resolveEliza1EotSelection(
+			opts.useEliza1Eot,
+			opts.eliza1EotLoraPath,
+		);
+		const eliza1EotClassifier =
+			eliza1EotSelected !== "off" && opts.turnDetector !== false
+				? this.tryBuildEliza1EotClassifier(
+						eliza1EotSelected,
+						opts.eliza1EotLoraPath,
+					)
+				: null;
+		if (eliza1EotSelected === "force" && !eliza1EotClassifier) {
+			throw new VoiceStartupError(
+				"missing-turn-detector",
+				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
+			);
+		}
 		const turnDetector =
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
+					eliza1EotClassifier ??
 					(await eotMod.createBundledLiveKitTurnDetector({
 						...(opts.turnDetectorModelDir
 							? { modelDir: opts.turnDetectorModelDir }
@@ -1632,20 +1737,22 @@ export class LocalInferenceEngine {
 			}
 		}
 
-		// F1 (Wave 3 follow-up): construct VoiceCancellationCoordinator when a
-		// runtime reference is provided. This wires the three abort paths (voice
-		// barge-in → runtime turn abort, runtime abort → voice token, slot cancel)
-		// into one canonical VoiceCancellationToken per turn.
-		// OptimisticGenerationPolicy is available (imported) for callers that
-		// integrate VoiceTurnController speculate-on-EOT with power-source gating;
-		// it is not wired here because VoiceTurnController.speculatePauseMs is the
-		// current gate — a future change can pass the policy through VoiceTurnControllerConfig.
-		let cancellationCoordinator: VoiceCancellationCoordinator | null = null;
-		if (opts.runtime) {
-			cancellationCoordinator = new VoiceCancellationCoordinator({
-				runtime: opts.runtime,
-				ttsStop: () => bridge.triggerBargeIn(),
-			});
+		// G5.d (Gauntlet cleanup): delegate to the bridge's canonical
+		// VoiceCancellationCoordinator. The bridge is the single owner — it
+		// constructs the coordinator + policy at `EngineVoiceBridge.start()`
+		// when `runtime` is passed in `EngineVoiceBridgeOptions` (see
+		// `engine-bridge.ts buildCancellationWiring`). Earlier C0-F wiring
+		// built a separate coordinator here; that path is removed.
+		//
+		// Back-compat: when callers still pass `opts.runtime` to
+		// `startVoiceSession()` but did not pass `runtime` to `startVoice()`,
+		// the bridge has no coordinator. We log once and proceed — the
+		// caller-supplied runtime is ignored because the bridge owns the
+		// FFI context that the coordinator targets.
+		if (opts.runtime && !bridge.cancellationCoordinatorOrNull()) {
+			console.warn(
+				"[voice] startVoiceSession({ runtime }) supplied but the bridge has no canonical cancellation coordinator — pass `runtime` to startVoice() instead. Ignoring the session-level runtime.",
+			);
 		}
 
 		const controller = new VoiceTurnController(
@@ -1671,15 +1778,11 @@ export class LocalInferenceEngine {
 			opts.events ?? {},
 		);
 
-		// Bind the BargeInController into the cancellation coordinator so
-		// ASR-confirmed hard-stop words trip the canonical voice token.
-		let unsubCoordinator: (() => void) | null = null;
-		if (cancellationCoordinator) {
-			unsubCoordinator = cancellationCoordinator.bindBargeInController(
-				opts.roomId,
-				bridge.scheduler.bargeIn,
-			);
-		}
+		// Bind the bridge's BargeInController into the bridge's canonical
+		// coordinator (G5.d). No-op when the bridge was constructed without a
+		// runtime — returns a no-op unsubscribe so the teardown path stays
+		// branchless.
+		const unsubCoordinator = bridge.bindBargeInControllerForRoom(opts.roomId);
 
 		// Mic → ring buffer (the buffer the ASR / instrumentation can read from)
 		// + per-frame fan-out to the VAD and the streaming transcriber.
@@ -1705,7 +1808,25 @@ export class LocalInferenceEngine {
 					`[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
 				);
 			}
+			if (!bridge.ffi) {
+				throw new VoiceStartupError(
+					"missing-ffi",
+					"[voice] Cannot initialize wake-word detector: fused libelizainference FFI is not loaded. Wake-word detection requires the native GGUF runtime (eliza_inference_wakeword_* symbols).",
+				);
+			}
+			const ffiCtxResolver = () => {
+				const ctx = bridge.ffiCtx;
+				if (ctx === null) {
+					throw new VoiceStartupError(
+						"missing-ffi",
+						"[voice] Cannot initialize wake-word detector: fused FFI context is not loaded.",
+					);
+				}
+				return ctx;
+			};
 			const model = await loadBundledWakeWordModel({
+				ffi: bridge.ffi,
+				ctx: ffiCtxResolver,
 				bundleRoot: bridge.bundlePath(),
 				...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
 			});
@@ -1764,9 +1885,11 @@ export class LocalInferenceEngine {
 			void micSource.stop();
 			transcriber.dispose();
 			wakeWord?.reset();
-			// F1: dispose the cancellation coordinator (cancels all armed tokens).
-			unsubCoordinator?.();
-			cancellationCoordinator?.dispose();
+			// G5.d: tear down only the per-room barge-in binding. The bridge
+			// owns the coordinator lifecycle and disposes it in
+			// `EngineVoiceBridge.dispose()` — we must not dispose it here or
+			// we would cancel armed tokens for other concurrent rooms.
+			unsubCoordinator();
 		};
 		return controller;
 	}
@@ -1924,8 +2047,8 @@ export class LocalInferenceEngine {
 	/**
 	 * Build the local-embedding route for an activated Eliza-1 bundle.
 	 * On `0_8b` / `2b` the embedding model is the text backbone with
-	 * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`/
-	 * `27b-1m` a dedicated 1024-dim Matryoshka `embedding/` region is used.
+	 * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`
+	 * a dedicated 1024-dim Matryoshka `embedding/` region is used.
 	 * See AGENTS.md §1. Throws `VoiceStartupError` when a larger tier is
 	 * missing its dedicated region — no fallback to pooled text (which would
 	 * regress the dimension contract).
@@ -2313,7 +2436,7 @@ export class LocalInferenceEngine {
 			return null;
 		}
 
-		const kvCache = catalog?.runtime?.kvCache;
+		const kvCache = catalog.runtime?.kvCache;
 		return {
 			targetModelPath: target.path,
 			drafterModelPath: drafter.path,
@@ -2328,6 +2451,57 @@ export class LocalInferenceEngine {
 			disableThinking: dflash.disableThinking,
 		};
 	}
+
+	/**
+	 * Build the eliza-1 EOT classifier when the in-process backend is
+	 * active and a text model is loaded. Returns `null` when the
+	 * preconditions aren't met (e.g. the active backend is llama-server,
+	 * or no model is loaded yet). Callers fall back to the LiveKit /
+	 * heuristic chain when null.
+	 */
+	private tryBuildEliza1EotClassifier(
+		_mode: "prefer" | "force",
+		loraPath: string | undefined,
+	): import("./voice/eot-classifier").Eliza1EotClassifier | null {
+		if (this.dispatcher.activeBackendId() !== "node-llama-cpp") return null;
+		const model = this.nodeBackend.getLoadedLlamaModel();
+		if (!model) return null;
+		const eotMod =
+			require("./voice/eot-classifier") as typeof import("./voice/eot-classifier");
+		return new eotMod.Eliza1EotClassifier({
+			model,
+			...(loraPath ? { loraPath } : {}),
+			modelLabel: `eliza-1${loraPath ? "+eot-lora" : ""}:${this.nodeBackend.currentModelPath() ?? "loaded"}`,
+		});
+	}
+}
+
+/**
+ * Resolve which EOT classifier to build for a voice session. Precedence:
+ *   1. Explicit `opts.useEliza1Eot` (`true` → `"force"`; `false` → `"off"`;
+ *      `"auto"` or unset → step 2).
+ *   2. `ELIZA_VOICE_EOT_BACKEND` env var (`eliza-1` → `"force"`, anything
+ *      else like `livekit`/`turnsense`/`heuristic` → `"off"`; unset →
+ *      step 3).
+ *   3. Default `"prefer"` — we try eliza-1 first when available and fall
+ *      back to LiveKit/Heuristic when the in-process backend is unavailable.
+ *
+ * Returns:
+ *   - `"force"`  — must build; throw if preconditions fail.
+ *   - `"prefer"` — try; on null, fall through to the LiveKit chain.
+ *   - `"off"`    — skip eliza-1 entirely.
+ */
+function resolveEliza1EotSelection(
+	optsValue: boolean | "auto" | undefined,
+	_loraPath: string | undefined,
+): "force" | "prefer" | "off" {
+	if (optsValue === true) return "force";
+	if (optsValue === false) return "off";
+	const envValue = process.env.ELIZA_VOICE_EOT_BACKEND?.trim().toLowerCase();
+	if (envValue === "eliza-1" || envValue === "eliza1") return "force";
+	if (envValue === "livekit" || envValue === "turnsense" || envValue === "heuristic")
+		return "off";
+	return "prefer";
 }
 
 export const localInferenceEngine = new LocalInferenceEngine();

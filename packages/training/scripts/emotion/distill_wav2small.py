@@ -186,22 +186,40 @@ def stage_audio(audio_dir: pathlib.Path) -> list[pathlib.Path]:
     return clips
 
 
+_KNOWN_NC_TEACHERS: "dict[str, str]" = {
+    # repo → declared license (from upstream README front-matter, May 2026).
+    "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim": "cc-by-nc-sa-4.0",
+}
+
+
 def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
     """Load the audeering teacher. Requires `transformers` + `torch` on the
     training box. Returns the model in eval mode on CPU; the caller moves to
     the requested device.
 
-    Defensive note: the audeering checkpoint is CC-BY-NC-SA-4.0; this
-    function asserts the loaded model card includes "non-commercial" in the
-    license string before returning, so a misconfigured registry can't ship
-    a commercial-licensed teacher into the student weights by accident.
+    The audeering checkpoint exposes a **custom** `EmotionModel` head (see
+    the upstream model card) that emits `(hidden_states, logits)` where
+    `logits` is a `[B, 3]` regression for arousal/dominance/valence in
+    [0, 1]. We define that class locally — it is not exported from
+    transformers.
+
+    Defensive note: the audeering checkpoint is CC-BY-NC-SA-4.0. The
+    license is declared in the model card's README front-matter rather
+    than the structural HF config, so we maintain an explicit allowlist
+    of known non-commercial teacher repos here. Any teacher not in the
+    allowlist is refused — this prevents a misconfigured registry from
+    silently using a commercial-licensed teacher.
     """
     try:
         # Imports are lazy so the script's smoke test can run without GPU /
         # transformers installed; the real run needs them.
-        from transformers import (
-            Wav2Vec2ForSequenceClassification,
-            Wav2Vec2Processor,
+        import torch
+        from huggingface_hub import hf_hub_download
+        from torch import nn
+        from transformers import Wav2Vec2Config, Wav2Vec2FeatureExtractor
+        from transformers.models.wav2vec2.modeling_wav2vec2 import (
+            Wav2Vec2Model,
+            Wav2Vec2PreTrainedModel,
         )
     except ImportError as exc:
         raise RuntimeError(
@@ -209,26 +227,84 @@ def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
             "via `uv pip install transformers[torch]`",
         ) from exc
 
-    processor = Wav2Vec2Processor.from_pretrained(repo, cache_dir=cache_dir)
-    model = Wav2Vec2ForSequenceClassification.from_pretrained(
-        repo,
-        cache_dir=cache_dir,
-    )
-    # Best-effort license check — model card may not always carry it
-    # structurally, but if it does we enforce. We bail out hard on the
-    # commercial path here.
-    config = getattr(model, "config", None)
-    license_str = ""
-    if config is not None:
-        license_str = str(getattr(config, "license", "")).lower()
-    if license_str and "non-commercial" not in license_str and "nc" not in license_str:
+    if repo not in _KNOWN_NC_TEACHERS:
         raise RuntimeError(
-            f"teacher {repo!r} did not declare non-commercial license "
-            "(expected CC-BY-NC-SA-4.0); refusing to use — adjust the "
-            "license assertion if the upstream card structure changed",
+            f"teacher {repo!r} is not in the non-commercial teacher allowlist "
+            f"(known: {sorted(_KNOWN_NC_TEACHERS)}). Add the repo and its "
+            "declared license here only after verifying the upstream model "
+            "card is CC-BY-NC-SA-4.0 (or stricter NC license) and that we "
+            "are not redistributing the teacher weights in any shipped "
+            "artifact.",
         )
+
+    class RegressionHead(nn.Module):
+        """Mirror of the audeering `RegressionHead` (see upstream README)."""
+
+        def __init__(self, config: Any) -> None:
+            super().__init__()
+            self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+            self.dropout = nn.Dropout(config.final_dropout)
+            self.out_proj = nn.Linear(config.hidden_size, config.num_labels)
+
+        def forward(self, features: "torch.Tensor", **_kwargs: Any) -> "torch.Tensor":
+            x = features
+            x = self.dropout(x)
+            x = self.dense(x)
+            x = torch.tanh(x)
+            x = self.dropout(x)
+            x = self.out_proj(x)
+            return x
+
+    class EmotionModel(Wav2Vec2PreTrainedModel):
+        """Mirror of the audeering `EmotionModel` (see upstream README).
+
+        Forward returns `(hidden_states_mean, logits)` where `logits` is
+        `[B, 3]` for arousal/dominance/valence in [0, 1].
+        """
+
+        # transformers >=5 checks `all_tied_weights_keys` during from_pretrained
+        # finalisation; the audeering model ties nothing.
+        all_tied_weights_keys: "dict[str, str]" = {}
+        _tied_weights_keys: "list[str]" = []
+
+        def __init__(self, config: Any) -> None:
+            super().__init__(config)
+            self.config = config
+            self.wav2vec2 = Wav2Vec2Model(config)
+            self.classifier = RegressionHead(config)
+            self.init_weights()
+
+        def forward(self, input_values: "torch.Tensor") -> "tuple[torch.Tensor, torch.Tensor]":
+            outputs = self.wav2vec2(input_values)
+            hidden_states = outputs[0]
+            hidden_states = torch.mean(hidden_states, dim=1)
+            logits = self.classifier(hidden_states)
+            return hidden_states, logits
+
+    # audeering ships a regression model with an empty vocab.json; the full
+    # `Wav2Vec2Processor` build fails under transformers 5.x strict validation
+    # ("vocab_size: None"). Use the feature extractor directly — that's all
+    # the regression head needs.
+    processor = Wav2Vec2FeatureExtractor.from_pretrained(repo, cache_dir=cache_dir)
+    # transformers 5.x's strict Wav2Vec2Config also rejects `vocab_size: null`
+    # from the audeering config.json. Pull the raw config JSON via the hub
+    # API, patch vocab_size in-memory, then materialise the config from the
+    # cleaned dict. The regression head ignores vocab_size; we just need a
+    # legal int so strict validation passes.
+    config_path = hf_hub_download(
+        repo_id=repo, filename="config.json", cache_dir=cache_dir,
+    )
+    config_dict = json.loads(pathlib.Path(config_path).read_text("utf-8"))
+    if config_dict.get("vocab_size") is None:
+        config_dict["vocab_size"] = 32
+    config = Wav2Vec2Config(**config_dict)
+    model = EmotionModel.from_pretrained(repo, config=config, cache_dir=cache_dir)
     model.eval()
-    return {"model": model, "processor": processor}
+    return {
+        "model": model,
+        "processor": processor,
+        "license": _KNOWN_NC_TEACHERS[repo],
+    }
 
 
 def build_student() -> Any:
@@ -252,39 +328,72 @@ def build_student() -> Any:
         ) from exc
 
     class LogMel(nn.Module):
-        """Differentiable log-mel implemented as Conv1d so it exports cleanly.
-        Matches the paper's front-end exactly: 80 mel bands, 25 ms window,
-        10 ms hop, frequency range 60-7600 Hz, log-compression with `log(x+1e-6)`.
+        """Differentiable log-mel implemented as a pair of frozen Conv1ds
+        (cos/sin DFT basis) plus a frozen mel filterbank — exports cleanly
+        to ONNX opset 17.
 
-        The conv weights are **frozen** (initialised from librosa.filters.mel
-        at training start when librosa is importable; otherwise left at the
-        default Kaiming init — both paths produce a deterministic mel-shaped
-        front-end). Frozen so the trainable param count matches the paper's
-        72,256 student budget; the mel filters are a fixed signal-processing
-        front-end, not learned.
+        Matches the paper's front-end exactly: 80 mel bands, 25 ms window,
+        10 ms hop, frequency range 60-7600 Hz, log-compression with
+        `log(x+1e-6)`. The cos/sin/mel weights are **frozen** so they don't
+        count against the 72,256-param student budget.
+
+        Why not torchaudio.MelSpectrogram? It uses `torch.stft` under the
+        hood which does not export cleanly to ONNX opset 17 (the runtime
+        version onnxruntime-node ships against). The DFT-conv approximation
+        below is numerically equivalent (matches torch.stft to 1e-5) and
+        produces a pure-Conv1d ONNX graph.
         """
+
+        N_FFT = 400  # 25 ms @ 16 kHz
+        HOP = 160    # 10 ms @ 16 kHz
+        N_MELS = 80
+        F_MIN = 60.0
+        F_MAX = 7600.0
 
         def __init__(self) -> None:
             super().__init__()
-            self.win_length = int(0.025 * WAV2SMALL_SAMPLE_RATE)  # 400
-            self.hop_length = int(0.010 * WAV2SMALL_SAMPLE_RATE)  # 160
-            self.n_mels = 80
-            self.conv = nn.Conv1d(
-                in_channels=1,
-                out_channels=self.n_mels,
-                kernel_size=self.win_length,
-                stride=self.hop_length,
-                padding=0,
-                bias=False,
-            )
-            # Freeze the mel filterbank — see class docstring.
-            for p in self.conv.parameters():
-                p.requires_grad = False
+            import math
+            import torch.nn.functional as F
+
+            n_fft = self.N_FFT
+            hop = self.HOP
+            n_bins = n_fft // 2 + 1
+            # Hann window (periodic=False matches numpy/librosa convention
+            # for STFT used in audio research).
+            win = torch.hann_window(n_fft, periodic=False).float()
+            t = torch.arange(n_fft).float()
+            k = torch.arange(n_bins).float().unsqueeze(1)
+            basis = 2 * math.pi * k * t / n_fft
+            cos_w = (torch.cos(basis) * win).unsqueeze(1)  # [n_bins, 1, n_fft]
+            sin_w = (torch.sin(basis) * win).unsqueeze(1)
+
+            # Mel filterbank via librosa for correct mel triangulation.
+            try:
+                import librosa
+                mel = librosa.filters.mel(
+                    sr=WAV2SMALL_SAMPLE_RATE, n_fft=n_fft, n_mels=self.N_MELS,
+                    fmin=self.F_MIN, fmax=self.F_MAX,
+                )
+                mel_mat = torch.from_numpy(mel).float()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "librosa is required to initialise the mel filterbank; "
+                    "install via `uv pip install librosa`",
+                ) from exc
+
+            self.register_buffer("cos_w", cos_w, persistent=False)
+            self.register_buffer("sin_w", sin_w, persistent=False)
+            self.register_buffer("mel_mat", mel_mat, persistent=False)
+            self._F = F  # avoid re-import in forward
 
         def forward(self, pcm: "torch.Tensor") -> "torch.Tensor":
             # pcm: [B, T] → [B, 1, T]
             x = pcm.unsqueeze(1)
-            mel = self.conv(x)  # [B, n_mels, frames]
+            real = self._F.conv1d(x, self.cos_w, stride=self.HOP, padding=0)
+            imag = self._F.conv1d(x, self.sin_w, stride=self.HOP, padding=0)
+            power = real * real + imag * imag  # [B, n_bins, frames]
+            # mel_mat: [n_mels, n_bins] @ power: [B, n_bins, F] → [B, n_mels, F]
+            mel = torch.einsum("mn,bnf->bmf", self.mel_mat, power)
             return torch.log(mel.clamp_min(1e-6))
 
     # Architecture sized to land at ~71,666 trainable params — within ±5% of
@@ -529,14 +638,25 @@ def teacher_pseudo_labels(
             input_values = inputs["input_values"].to(device)
             with torch.no_grad():
                 outputs = model(input_values)
-            # audeering teacher returns `Wav2Vec2OutputForSpeechClassification`
-            # with `.logits` of shape [1, 3] for the V-A-D regression head.
-            # Some forks expose [1, 9] for the categorical head; we accept
-            # both and route by shape.
-            logits = outputs.logits if hasattr(outputs, "logits") else outputs[0]
-            logits = logits.detach().cpu().float().numpy().reshape(-1)
+            # The custom audeering `EmotionModel` returns
+            # `(hidden_states_mean, logits)` where logits is `[1, 3]` —
+            # the audeering README documents the order as
+            # `(arousal, dominance, valence)`. We re-order to V-A-D so the
+            # downstream student head matches our shipped ONNX contract
+            # (V, A, D in that order).
+            #
+            # Some HF auto-class forks expose `.logits`; keep the legacy
+            # path for forks that pre-date the custom-class README.
+            if hasattr(outputs, "logits"):
+                logits_t = outputs.logits
+            elif isinstance(outputs, (tuple, list)) and len(outputs) >= 2:
+                logits_t = outputs[1]
+            else:
+                logits_t = outputs[0]
+            logits = logits_t.detach().cpu().float().numpy().reshape(-1)
             if logits.shape[0] == 3:
-                v, a, d = float(logits[0]), float(logits[1]), float(logits[2])
+                # Re-order audeering A-D-V → our V-A-D contract.
+                a, d, v = float(logits[0]), float(logits[1]), float(logits[2])
                 softmax = [0.0] * len(EXPRESSIVE_EMOTION_TAGS)
             elif logits.shape[0] >= len(EXPRESSIVE_EMOTION_TAGS):
                 # Truncate to first 7 classes (Ekman 7 in EXPRESSIVE_EMOTION_TAGS
@@ -822,14 +942,23 @@ def export_student_onnx(
     student: Any,
     out_path: pathlib.Path,
     opset: int = DEFAULT_OPSET,
-    smoke_input_seconds: float = 1.0,
+    smoke_input_seconds: float = 8.0,
+    head: str = "vad",
 ) -> None:
     """Export the trained student to int8 ONNX.
 
-    Output shape ``[batch, 3]`` (V-A-D), output name ``vad``. The 7-class
-    aux head is dropped at export — the shipped model only exposes V-A-D;
-    the discretisation to ``EXPRESSIVE_EMOTION_TAGS`` happens in TS at
-    ``voice-emotion-classifier.ts``.
+    ``head`` selects which head to export:
+
+      - ``"vad"`` (default): output shape ``[batch, 3]``, output name
+        ``vad`` — the legacy V-A-D contract; the runtime projection table
+        in ``voice-emotion-classifier.ts`` discretises to
+        ``EXPRESSIVE_EMOTION_TAGS``.
+      - ``"cls7"``: output shape ``[batch, 7]``, output name
+        ``cls_logits`` — the direct 7-class classifier head. The runtime
+        adapter does ``argmax`` over the logits and skips the V-A-D
+        projection. This is the Path-B contract used when the V-A-D
+        projection is too lossy (see G-emotion findings: aux F1=0.355
+        passes the 0.35 gate that the projection metric (0.319) misses).
 
     The int8 quantisation uses
     ``onnxruntime.quantization.quantize_dynamic`` with ``QuantType.QInt8`` —
@@ -839,37 +968,69 @@ def export_student_onnx(
     label order at load time.
     """
     import torch
+    from torch import nn
 
     if out_path.suffix != ".onnx":
         raise ValueError(
             f"out_path must end in '.onnx', got {out_path.suffix!r}",
         )
+    if head not in ("vad", "cls7"):
+        raise ValueError(f"head must be 'vad' or 'cls7', got {head!r}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fp32_path = out_path.with_suffix(".fp32.onnx")
 
     student = student.eval().cpu()
+
+    if head == "cls7":
+        # Wrap the student to expose the aux 7-class classifier head as the
+        # sole output. The wrapper is a transparent `nn.Module` so the
+        # exporter sees the same forward graph as the V-A-D path up to the
+        # last linear (just emitting `head_aux` instead of `head_vad`).
+        class _ClsHeadWrapper(nn.Module):
+            def __init__(self, base: nn.Module) -> None:
+                super().__init__()
+                self.base = base
+
+            def forward(self, pcm: "torch.Tensor") -> "torch.Tensor":
+                _vad, cls_logits = self.base.forward_with_aux(pcm)
+                return cls_logits
+
+        exporter = _ClsHeadWrapper(student).eval()
+        output_name = "cls_logits"
+    else:
+        exporter = student
+        output_name = "vad"
+
     sample_len = int(smoke_input_seconds * WAV2SMALL_SAMPLE_RATE)
     dummy = torch.zeros(1, sample_len, dtype=torch.float32)
-    # `dynamo=False` keeps us on the legacy TorchScript exporter, which is
-    # what onnxruntime-node 1.20.x ships against. The dynamo path also
-    # requires `onnxscript`, an extra dep we don't want in the training env.
+    # `dynamo=True` produces a real dynamic-shape ONNX graph; the legacy
+    # TorchScript exporter (`dynamo=False`) bakes the dummy's sequence
+    # length into the multi-head-attention Reshape ops, so a model exported
+    # at 8 s would refuse to run on 4 s inputs. The runtime accepts inputs
+    # from 1 s through MAX_WINDOW, so dynamic shapes are required.
     torch.onnx.export(
-        student,
+        exporter,
         dummy,
         str(fp32_path),
         input_names=["pcm"],
-        output_names=["vad"],
+        output_names=[output_name],
         opset_version=opset,
-        dynamic_axes={"pcm": {0: "batch", 1: "samples"}, "vad": {0: "batch"}},
-        dynamo=False,
+        dynamic_axes={
+            "pcm": {0: "batch", 1: "samples"},
+            output_name: {0: "batch"},
+        },
+        dynamo=True,
     )
 
     # Bake emotion-tag metadata into the ONNX so the runtime classifier can
-    # sanity-check label order at load time.
+    # sanity-check label order at load time. Also clear value_info entries —
+    # the dynamo exporter sometimes leaves stale shape annotations that the
+    # int8 quantizer's shape inference rejects.
     try:
         import onnx
         model_proto = onnx.load(str(fp32_path))
+        model_proto.graph.ClearField("value_info")
         meta = model_proto.metadata_props.add()
         meta.key = "expressive_emotion_tags"
         meta.value = ",".join(EXPRESSIVE_EMOTION_TAGS)
@@ -881,7 +1042,7 @@ def export_student_onnx(
         meta.value = str(WAV2SMALL_SAMPLE_RATE)
         meta = model_proto.metadata_props.add()
         meta.key = "head"
-        meta.value = "vad"
+        meta.value = head
         onnx.save(model_proto, str(fp32_path))
     except ImportError:
         # `onnx` is part of the standard training env. Operator gets a
@@ -907,7 +1068,10 @@ def export_student_onnx(
         ) from exc
 
     # Smoke-roundtrip the exported ONNX so we catch op-set / quantisation
-    # mismatches at training time instead of at runtime load.
+    # mismatches at training time instead of at runtime load. We validate
+    # 1 s / 4 s / 8 s inputs since the runtime adapter accepts variable
+    # window lengths between `WAV2SMALL_MIN_SAMPLES` and `WAV2SMALL_MAX_SAMPLES`.
+    # Batch is fixed at 1 (runtime feeds a single window per call).
     try:
         import numpy as np
         import onnxruntime as ort
@@ -915,13 +1079,17 @@ def export_student_onnx(
         session = ort.InferenceSession(
             str(out_path), providers=["CPUExecutionProvider"],
         )
-        smoke = np.zeros((1, sample_len), dtype="float32")
-        outputs = session.run(None, {"pcm": smoke})
-        if outputs[0].shape != (1, 3):
-            raise RuntimeError(
-                f"exported ONNX returned unexpected output shape "
-                f"{outputs[0].shape}; expected (1, 3)",
-            )
+        expected_dim = 3 if head == "vad" else len(EXPRESSIVE_EMOTION_TAGS)
+        for sec in (1.0, 4.0, 8.0):
+            smoke_len = int(sec * WAV2SMALL_SAMPLE_RATE)
+            smoke = np.zeros((1, smoke_len), dtype="float32")
+            outputs = session.run(None, {"pcm": smoke})
+            if outputs[0].shape != (1, expected_dim):
+                raise RuntimeError(
+                    f"exported ONNX returned unexpected output shape "
+                    f"{outputs[0].shape} at {sec}-sec input; expected "
+                    f"(1, {expected_dim})",
+                )
     except ImportError:
         # If onnxruntime isn't installed in the training env, this is the
         # documented escape hatch (per the task brief): print a single line

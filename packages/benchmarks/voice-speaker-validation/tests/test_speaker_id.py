@@ -28,10 +28,10 @@ from conftest import (
     load_fixture_audio,
 )
 
-# Calibrated thresholds for ECAPA-TDNN on TTS (samantha corpus) audio.
+# Calibrated thresholds for ECAPA-TDNN on TTS (sam corpus) audio.
 # TTS voices have lower within-speaker cosine similarity than real speech
 # because each synthesized sentence has a distinct spectrogram pattern.
-# Measured on samantha corpus: intra-speaker ~0.50-0.62, inter-speaker ~0.35-0.42.
+# Measured on sam corpus: intra-speaker ~0.50-0.62, inter-speaker ~0.35-0.42.
 #
 # For production (real voices via WeSpeaker ResNet34-LM ONNX):
 #   INTRA_COSINE_THRESHOLD = 0.70
@@ -53,14 +53,14 @@ def centroid(embeddings: list[np.ndarray]) -> np.ndarray:
 
 class TestSpeakerID:
 
-    def test_samantha_solo_intra_cluster_similarity(
+    def test_sam_solo_intra_cluster_similarity(
         self, encoder: SpeakerEncoder, manifest: dict
     ):
         """
         Single-speaker control: split audio into 3 non-overlapping windows,
         encode each, assert pairwise cosine ≥ INTRA_COSINE_THRESHOLD.
         """
-        info = manifest["f1_samantha_solo"]
+        info = manifest["f1_sam_solo"]
         pcm = load_fixture_audio(info["path"])
 
         # Split into 3 windows of equal length
@@ -72,7 +72,7 @@ class TestSpeakerID:
         for i, j in pairs:
             sim = cosine(embeddings[i], embeddings[j])
             assert sim >= INTRA_COSINE_THRESHOLD, (
-                f"Samantha intra-cluster cosine {sim:.4f} < {INTRA_COSINE_THRESHOLD} "
+                f"Sam intra-cluster cosine {sim:.4f} < {INTRA_COSINE_THRESHOLD} "
                 f"(window pair {i},{j})"
             )
 
@@ -167,7 +167,7 @@ class TestSpeakerID:
         self, encoder: SpeakerEncoder, manifest: dict
     ):
         """
-        Encode samantha from F1, add to a VoiceProfileStore.
+        Encode sam from F1, add to a VoiceProfileStore.
         Then encode a fresh window from F4 (same speaker appears again).
         Assert that the fresh embedding matches the stored profile
         (cosine ≥ INTRA_COSINE_THRESHOLD) — stable re-identification.
@@ -175,25 +175,25 @@ class TestSpeakerID:
         store = InMemoryVoiceProfileStore(match_threshold=INTRA_COSINE_THRESHOLD - 0.10)
 
         # Enroll from F1
-        pcm_f1 = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm_f1 = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = len(pcm_f1) // 3
         emb_enroll = encoder.encode(pcm_f1[:n])
-        prof = store.add_or_refine(emb_enroll, entity_id="entity-samantha")
+        prof = store.add_or_refine(emb_enroll, entity_id="entity-sam")
 
-        assert prof.entity_id == "entity-samantha"
+        assert prof.entity_id == "entity-sam"
         assert store.profile_count == 1
 
         # Try to match from a fresh window
         emb_fresh = encoder.encode(pcm_f1[n:2*n])
         best_match, best_sim = store.find_best_match(emb_fresh)
 
-        assert best_match is not None, "No profile matched fresh samantha window"
+        assert best_match is not None, "No profile matched fresh sam window"
         assert best_sim >= INTRA_COSINE_THRESHOLD, (
-            f"Fresh samantha window matched with cosine {best_sim:.4f} < "
+            f"Fresh sam window matched with cosine {best_sim:.4f} < "
             f"{INTRA_COSINE_THRESHOLD}"
         )
-        assert best_match.entity_id == "entity-samantha", (
-            f"Expected entity-samantha; got {best_match.entity_id}"
+        assert best_match.entity_id == "entity-sam", (
+            f"Expected entity-sam; got {best_match.entity_id}"
         )
 
     def test_inter_cluster_separation_three_speakers(

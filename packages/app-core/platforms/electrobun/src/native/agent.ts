@@ -150,7 +150,7 @@ function resolveRelativePortable(base: string, relativePath: string): string {
 }
 
 function getDefaultModuleDir(): string {
-	return import.meta.dir ?? path.join(process.cwd(), "src");
+	return import.meta.dir;
 }
 
 function normalizeEnvPath(value: string | undefined): string | null {
@@ -1362,9 +1362,9 @@ export class AgentManager {
 				ELIZA_PORT: String(apiPort),
 			};
 			childEnv.ELIZA_NAMESPACE =
-				childEnv.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace;
+				childEnv.ELIZA_NAMESPACE.trim() || getBrandConfig().namespace;
 			childEnv.ELIZA_NAMESPACE =
-				childEnv.ELIZA_NAMESPACE?.trim() || childEnv.ELIZA_NAMESPACE;
+				childEnv.ELIZA_NAMESPACE.trim() || childEnv.ELIZA_NAMESPACE;
 			applyDesktopChildStateEnv(childEnv);
 			delete childEnv.ELIZA_PORT;
 			delete childEnv.NODE_PATH;
@@ -1395,7 +1395,7 @@ export class AgentManager {
 			// Ensure bun's directory is on PATH so child_process.exec calls
 			// (e.g. plugin-manager running `bun add ...`) can find it.
 			const bunDir = path.dirname(bunExecutable);
-			const existingPath = childEnv.PATH ?? "";
+			const existingPath = childEnv.PATH;
 			if (!existingPath.split(path.delimiter).includes(bunDir)) {
 				childEnv.PATH = bunDir + path.delimiter + existingPath;
 				diagnosticLog(`[Agent] Prepended bun dir to child PATH: ${bunDir}`);

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 from collections.abc import Iterable, Sequence
 from decimal import Decimal, InvalidOperation
@@ -103,6 +104,12 @@ def _gold_from_answer(answer: str) -> int | None:
 
 
 def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
+    if (
+        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
+        and limit is not None
+        and limit <= len(SMOKE_FIXTURES)
+    ):
+        return list(SMOKE_FIXTURES)[:limit]
     try:
         from datasets import load_dataset
     except ImportError:

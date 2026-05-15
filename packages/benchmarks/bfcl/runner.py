@@ -87,7 +87,8 @@ class BFCLRunner:
         ).strip().lower()
         effective_provider = (
             harness
-            if harness in {"hermes", "openclaw"} and provider == "eliza"
+            if harness in {"eliza", "hermes", "openclaw"}
+            and provider in {None, "eliza"}
             else provider
         )
 
@@ -128,13 +129,17 @@ class BFCLRunner:
                 sys.path.insert(0, str(adapter_path))
             from eliza_adapter.bfcl import ElizaBFCLAgent
             from eliza_adapter.client import ElizaClient
-            self.agent = ElizaBFCLAgent(client=ElizaClient(), model_name=model or "eliza-ts-bridge")
+            self.agent = ElizaBFCLAgent(
+                client=ElizaClient(),
+                model_name=model or "eliza-ts-bridge",
+            )
             self._model_name = model or "eliza-ts-bridge"
         else:
             self.agent = BFCLAgent(config, provider=provider, model=model)
             self._model_name = None
 
         self._results: list[BFCLResult] = []
+        self._trajectory_records: list[dict[str, object]] = []
         self._provider = effective_provider
         self._model = model
 
@@ -208,6 +213,8 @@ class BFCLRunner:
 
     async def _cleanup(self) -> None:
         """Clean up resources and export trajectories."""
+        self._export_compact_trajectories()
+
         if hasattr(self.agent, "export_trajectories") and hasattr(self.agent, "get_trajectories"):
             trajectories = self.agent.get_trajectories()
             logger.debug(f"Trajectories available for export: {len(trajectories) if trajectories else 0}")
@@ -253,6 +260,34 @@ class BFCLRunner:
 
         await self.agent.close()
 
+    def _export_compact_trajectories(self) -> None:
+        """Write runner-native compact trajectories for every harness."""
+        if not self._trajectory_records or not self.config.save_detailed_logs:
+            return
+
+        output_dir = self.config.output_dir or "benchmark_results/bfcl"
+        traj_dir = os.path.join(output_dir, "trajectories")
+        os.makedirs(traj_dir, exist_ok=True)
+
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        model_suffix = (self._model_name or self._model or "unknown").replace(
+            "/",
+            "_",
+        ).replace(".", "-")
+        path = os.path.join(
+            traj_dir,
+            f"bfcl_compact_{self._provider or 'python'}_{model_suffix}_{timestamp}.jsonl",
+        )
+
+        with open(path, "w", encoding="utf-8") as fh:
+            for record in self._trajectory_records:
+                fh.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+        logger.info(
+            "Exported %s compact BFCL trajectories to %s",
+            len(self._trajectory_records),
+            path,
+        )
+
     async def _run_all_tests(self) -> list[BFCLResult]:
         """Run all test cases."""
         results: list[BFCLResult] = []
@@ -263,6 +298,7 @@ class BFCLRunner:
 
             try:
                 result = await self._run_single_test(test_case)
+                self._record_trajectory(test_case, result)
                 results.append(result)
 
                 if (i + 1) % 10 == 0:
@@ -270,7 +306,7 @@ class BFCLRunner:
 
             except Exception as e:
                 logger.error(f"Test {test_case.id} failed with error: {e}")
-                results.append(BFCLResult(
+                result = BFCLResult(
                     test_case_id=test_case.id,
                     category=test_case.category,
                     predicted_calls=[],
@@ -281,9 +317,65 @@ class BFCLRunner:
                     latency_ms=0,
                     error=str(e),
                     status=TestStatus.ERROR,
-                ))
+                )
+                self._record_trajectory(test_case, result)
+                results.append(result)
 
         return results
+
+    def _record_trajectory(
+        self,
+        test_case: BFCLTestCase,
+        result: BFCLResult,
+    ) -> None:
+        """Store a compact, harness-neutral BFCL trajectory fixture."""
+        def _call(call: object) -> dict[str, object]:
+            return {
+                "name": getattr(call, "name", ""),
+                "arguments": getattr(call, "arguments", {}),
+            }
+
+        raw_preview = result.raw_response or ""
+        if len(raw_preview) > 4000:
+            raw_preview = f"{raw_preview[:4000]}...[truncated]"
+
+        record: dict[str, object] = {
+            "schema": "eliza_bfcl_trajectory_v1",
+            "benchmark": "bfcl",
+            "harness": self._provider or "python",
+            "model": self._model_name or self._model or "unknown",
+            "test_case_id": test_case.id,
+            "category": test_case.category.value,
+            "status": result.status.value,
+            "latency_ms": result.latency_ms,
+            "question": test_case.question,
+            "function_names": [fn.name for fn in test_case.functions],
+            "predicted_calls": [_call(c) for c in result.predicted_calls],
+            "expected_calls": [_call(c) for c in result.expected_calls],
+            "scores": {
+                "ast_match": result.ast_match,
+                "exec_success": result.exec_success,
+                "relevance_correct": result.relevance_correct,
+            },
+        }
+        if result.error:
+            record["error"] = result.error
+        if raw_preview:
+            record["raw_response_preview"] = raw_preview
+        if result.details:
+            compact_keys = {
+                "predicted_turns",
+                "ground_truth_turns",
+                "state_match",
+                "skip_reason",
+                "agent_tool_calls",
+            }
+            record["details"] = {
+                key: value
+                for key, value in result.details.items()
+                if key in compact_keys
+            }
+        self._trajectory_records.append(record)
 
     # ------------------------------------------------------------------
     # Per-test dispatch
@@ -795,6 +887,7 @@ class BFCLRunner:
             results: list[BFCLResult] = []
             for test_case in self.dataset.get_by_category(category):
                 result = await self._run_single_test(test_case)
+                self._record_trajectory(test_case, result)
                 results.append(result)
             self._results = results
             return results
@@ -829,6 +922,7 @@ class BFCLRunner:
             results: list[BFCLResult] = []
             for test_case in sample:
                 result = await self._run_single_test(test_case)
+                self._record_trajectory(test_case, result)
                 results.append(result)
             self._results = results
 

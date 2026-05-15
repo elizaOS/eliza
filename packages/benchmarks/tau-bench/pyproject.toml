@@ -31,6 +31,9 @@ dependencies = [
 eliza-adapter = { path = "../eliza-adapter", editable = true }
 
 [project.optional-dependencies]
+litellm = [
+    "litellm>=1.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",
@@ -43,6 +46,9 @@ tau-bench = "elizaos_tau_bench.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["elizaos_tau_bench*"]
+
+[tool.setuptools.package-data]
+elizaos_tau_bench = ["compact_fixtures/**/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

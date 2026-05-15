@@ -113,6 +113,9 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: ONNX dep audit (gates packages/training/reports/onnx-to-ggml-tracker.json)
+        run: node scripts/onnx-dep-audit.mjs
+
   # Build job
   build:
     # Skip duplicate runs: run on push to main, or on pull_request events only

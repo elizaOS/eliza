@@ -222,7 +222,7 @@ async function main(): Promise<void> {
     );
     env.MODEL_FILE = readEnv(
       "MODEL_FILE",
-      manifest?.manifest.model_file ?? "bundles/27b/text/eliza-1-pro-27b-128k.gguf",
+      manifest?.manifest.model_file ?? "bundles/27b/text/eliza-1-27b-128k.gguf",
     );
     env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-27b");
     env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", String(manifest?.manifest.max_model_len ?? 32768));
@@ -255,8 +255,9 @@ async function main(): Promise<void> {
   // Canonical caller env: HF_TOKEN. HF_TOKEN_SECRET is the Vast-side
   // secret slot, HUGGINGFACE_HUB_TOKEN matches the Python convention,
   // HUGGING_FACE_HUB_TOKEN is the legacy TS variant. Whichever the
-  // operator sets, we forward as HUGGINGFACE_HUB_TOKEN inside the worker
-  // (the name huggingface_hub recognizes natively).
+  // operator sets, forward both common names. The Python hub library reads
+  // HUGGINGFACE_HUB_TOKEN natively; the worker scripts login from the older
+  // HUGGING_FACE_HUB_TOKEN name.
   const hfToken =
     process.env.HF_TOKEN ??
     process.env.HF_TOKEN_SECRET ??
@@ -264,6 +265,7 @@ async function main(): Promise<void> {
     process.env.HUGGING_FACE_HUB_TOKEN;
   if (hfToken && hfToken.trim().length > 0) {
     env.HUGGINGFACE_HUB_TOKEN = hfToken.trim();
+    env.HUGGING_FACE_HUB_TOKEN = hfToken.trim();
   }
 
   const config: TemplateConfig = {

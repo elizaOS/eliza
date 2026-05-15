@@ -2213,7 +2213,7 @@ export class ElizaSandboxService {
         body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
         signal: AbortSignal.timeout(120_000),
       });
-      if (res.ok) return res;
+      if (res.ok) return this.normalizeBridgeSseResponse(res);
       if (res.status !== 404) {
         logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
           agentId,
@@ -2286,8 +2286,15 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseTextResponse(text: string): Response {
+    const messageId = crypto.randomUUID();
+    const chunk = {
+      messageId,
+      chunk: text,
+      text,
+      timestamp: Date.now(),
+    };
     return new Response(
-      `data: ${JSON.stringify({ text })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
+      `event: chunk\ndata: ${JSON.stringify(chunk)}\n\nevent: done\ndata: ${JSON.stringify({ messageId, text })}\n\n`,
       {
         status: 200,
         headers: {
@@ -2296,6 +2303,64 @@ export class ElizaSandboxService {
         },
       },
     );
+  }
+
+  normalizeBridgeSseResponse(response: Response): Response {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("text/event-stream") || !response.body) {
+      return response;
+    }
+
+    const messageId = crypto.randomUUID();
+    const stream = response.body
+      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(
+        new TransformStream<string, string>({
+          transform: (chunk, controller) => {
+            for (const frame of chunk.split("\n\n")) {
+              if (!frame.trim()) continue;
+              const dataLine = frame.split("\n").find((line) => line.startsWith("data: "));
+              if (!dataLine) {
+                controller.enqueue(`${frame}\n\n`);
+                continue;
+              }
+              try {
+                const data = JSON.parse(dataLine.slice(6));
+                if (data?.type === "token" && typeof data.text === "string") {
+                  controller.enqueue(
+                    `event: chunk\ndata: ${JSON.stringify({
+                      messageId,
+                      chunk: data.text,
+                      text: data.text,
+                      fullText: typeof data.fullText === "string" ? data.fullText : data.text,
+                      timestamp: Date.now(),
+                    })}\n\n`,
+                  );
+                  continue;
+                }
+                if (data?.type === "done") {
+                  controller.enqueue(
+                    `event: done\ndata: ${JSON.stringify({
+                      messageId,
+                      text: typeof data.fullText === "string" ? data.fullText : "",
+                    })}\n\n`,
+                  );
+                  continue;
+                }
+              } catch {
+                // Pass unknown frames through unchanged.
+              }
+              controller.enqueue(`${frame}\n\n`);
+            }
+          },
+        }),
+      )
+      .pipeThrough(new TextEncoderStream());
+
+    return new Response(stream, {
+      status: response.status,
+      headers: response.headers,
+    });
   }
 
   private createBridgeSseErrorResponse(message: string): Response {

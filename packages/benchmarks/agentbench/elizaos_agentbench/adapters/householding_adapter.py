@@ -26,6 +26,9 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
+from pathlib import Path
 
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.types import (
@@ -39,6 +42,73 @@ from elizaos_agentbench.types import (
 logger = logging.getLogger(__name__)
 
 StepInfoType = dict[str, str | int | float | bool | None]
+
+_ALFWORLD_SETUP_CACHE: tuple[bool, str | None] | None = None
+
+
+def _default_alfworld_data_dir() -> Path:
+    return Path.home() / ".cache" / "elizaos" / "alfworld"
+
+
+def _alfworld_data_is_populated(data_dir: str | Path) -> bool:
+    path = Path(data_dir)
+    return (path / "json_2.1.1").exists() or any(path.glob("**/*.tw-pddl"))
+
+
+def _reset_alfworld_setup_for_tests() -> None:
+    global _ALFWORLD_SETUP_CACHE
+    _ALFWORLD_SETUP_CACHE = None
+
+
+def ensure_alfworld_data() -> tuple[bool, str | None]:
+    """Best-effort explicit setup check for ALFWorld data."""
+    global _ALFWORLD_SETUP_CACHE
+    if _ALFWORLD_SETUP_CACHE is not None:
+        return _ALFWORLD_SETUP_CACHE
+
+    if "ALFWORLD_DATA" not in os.environ:
+        os.environ["ALFWORLD_DATA"] = str(_default_alfworld_data_dir())
+    data_dir = Path(os.environ["ALFWORLD_DATA"])
+
+    try:
+        import alfworld  # noqa: F401  # type: ignore
+    except Exception:
+        _ALFWORLD_SETUP_CACHE = (False, "alfworld package not installed")
+        return _ALFWORLD_SETUP_CACHE
+
+    if _alfworld_data_is_populated(data_dir):
+        _ALFWORLD_SETUP_CACHE = (True, None)
+        return _ALFWORLD_SETUP_CACHE
+
+    if os.environ.get("AGENTBENCH_NO_AUTOFETCH") == "1":
+        _ALFWORLD_SETUP_CACHE = (
+            False,
+            "AGENTBENCH_NO_AUTOFETCH is set and ALFWorld data is missing",
+        )
+        return _ALFWORLD_SETUP_CACHE
+
+    cli = shutil.which("alfworld-download")
+    cmd = [cli] if cli else ["python", "-m", "alfworld.download"]
+    result = subprocess.run(
+        cmd,
+        env=os.environ.copy(),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
+    if result.returncode != 0:
+        _ALFWORLD_SETUP_CACHE = (
+            False,
+            f"alfworld-download failed: {result.stderr or result.stdout}",
+        )
+        return _ALFWORLD_SETUP_CACHE
+
+    _ALFWORLD_SETUP_CACHE = (
+        _alfworld_data_is_populated(data_dir),
+        None if _alfworld_data_is_populated(data_dir) else "ALFWorld data still missing after download",
+    )
+    return _ALFWORLD_SETUP_CACHE
 
 
 class HouseholdingEnvironmentAdapter(EnvironmentAdapter):

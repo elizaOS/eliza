@@ -21,7 +21,9 @@ from pathlib import Path
 
 from elizaos_gaia.dataset import DatasetAccessError, GAIADataset
 from elizaos_gaia.evaluator import GAIAEvaluator
+from elizaos_gaia.harness import create_gaia_agent, resolve_harness
 from elizaos_gaia.metrics import MetricsCalculator
+from elizaos_gaia.trajectory import write_trajectory_artifacts
 from elizaos_gaia.types import (
     GAIABenchmarkResults,
     GAIAConfig,
@@ -105,11 +107,9 @@ class GAIARunner:
 
         self.config = config
 
-        from eliza_adapter.client import ElizaClient
-        from eliza_adapter.gaia import ElizaGAIAAgent
-
         self.dataset = GAIADataset(cache_dir=config.cache_dir)
-        self.agent = ElizaGAIAAgent(config, client=ElizaClient())
+        self.harness_route = resolve_harness(config)
+        self.agent = create_gaia_agent(config, route=self.harness_route)
         self.evaluator = GAIAEvaluator()
         self.metrics_calculator = MetricsCalculator()
         self.memory_tracker = MemoryTracker(enabled=True)
@@ -132,7 +132,11 @@ class GAIARunner:
         await self.memory_tracker.start()
 
         logger.info("=" * 60)
-        logger.info("GAIA Benchmark - elizaOS TS bridge")
+        logger.info(
+            "GAIA Benchmark - harness=%s backend=%s",
+            self.harness_route.harness,
+            self.harness_route.backend,
+        )
         logger.info("=" * 60)
 
         try:
@@ -174,9 +178,10 @@ class GAIARunner:
             memory_stats = self.memory_tracker.get_stats()
             total_duration = time.time() - self._start_time
 
-            model_id = self.agent.model_identifier
-            provider = self.agent.model_config.provider.value
+            provider = self.harness_route.harness
             model_name = self.agent.model_config.model_name
+            model_id = f"{provider}_{model_name}".replace("/", "_").replace(":", "_")
+            model_provider = self.config.provider or self.agent.model_config.provider.value
 
             benchmark_results = GAIABenchmarkResults(
                 metadata={
@@ -186,8 +191,11 @@ class GAIARunner:
                     "dataset_source": self.config.dataset_source,
                     "total_questions": len(questions),
                     "provider": provider,
+                    "model_provider": model_provider,
                     "model": model_name,
                     "model_identifier": model_id,
+                    "benchmark_harness": self.harness_route.harness,
+                    "harness_backend": self.harness_route.backend,
                     "temperature": self.config.temperature,
                     "max_tokens": self.config.max_tokens,
                     "memory_peak_mb": memory_stats["peak_bytes"] / (1024 * 1024),
@@ -325,6 +333,20 @@ class GAIARunner:
                 for result in results.results:
                     f.write(json.dumps(self._to_serializable(result), default=str) + "\n")
             logger.info(f"Saved detailed results to {details_path}")
+
+        if self.config.save_trajectories:
+            trajectory_paths = write_trajectory_artifacts(
+                results,
+                model_dir if self.config.include_model_in_output else output_dir,
+                timestamp=timestamp,
+                run_kind="gaia",
+                latest=self.config.include_model_in_output,
+            )
+            logger.info(
+                "Saved trajectory artifacts: canonical=%s native=%s",
+                trajectory_paths["canonical"],
+                trajectory_paths["native"],
+            )
 
         markdown = self._generate_markdown_report(results)
         with open(report_path, "w") as f:

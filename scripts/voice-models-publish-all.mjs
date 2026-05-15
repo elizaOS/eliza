@@ -10,8 +10,8 @@
  *   bun run voice-models:publish-all -- --model asr  # publish one model
  *
  * Prerequisites:
- *   - HF_TOKEN env var must be set (huggingface-cli login or env)
- *   - huggingface-cli must be installed: pip install huggingface_hub[cli]
+ *   - HF auth must be configured (`hf auth login`) or HF_TOKEN must be set.
+ *   - hf CLI must be installed: pip install huggingface_hub[cli]
  *   - staging dirs must exist under artifacts/voice-sub-model-staging/<id>/
  *
  * Each repo is created if absent, then the staging dir is uploaded.
@@ -76,12 +76,12 @@ const VOICE_MODELS = [
   {
     id: "kokoro",
     repo: "elizaos/eliza-1-voice-kokoro",
-    description: "Kokoro-82M base + samantha preset (F2 coordination)",
+    description: "Kokoro-82M base + same-voice preset (F2 coordination)",
   },
   {
     id: "omnivoice",
     repo: "elizaos/eliza-1-voice-omnivoice",
-    description: "OmniVoice frozen conditioning + samantha ELZ2 v2 preset",
+    description: "OmniVoice frozen conditioning + same-voice ELZ2 v2 preset",
   },
   {
     id: "embedding",
@@ -93,6 +93,7 @@ const VOICE_MODELS = [
 // Parse CLI args
 const args = process.argv.slice(2);
 const isDryRun = args.includes("--dry-run");
+const onlyWithBinaries = args.includes("--only-with-binaries");
 const modelFilter = (() => {
   const idx = args.indexOf("--model");
   return idx !== -1 ? args[idx + 1] : null;
@@ -110,24 +111,28 @@ function run(cmd, opts = {}) {
 }
 
 /**
- * Check that huggingface-cli is installed and HF_TOKEN is set.
+ * Check that hf CLI is installed and auth is configured.
  */
 function checkPrerequisites() {
   const errors = [];
 
-  if (!process.env.HF_TOKEN) {
+  const hfWhoami = spawnSync("hf", ["auth", "whoami"], {
+    shell: true,
+    encoding: "utf-8",
+  });
+  if (!process.env.HF_TOKEN && hfWhoami.status !== 0) {
     errors.push(
-      "HF_TOKEN env var is not set. Set it with: export HF_TOKEN=hf_...",
+      "HF auth is not configured. Run `hf auth login` or set HF_TOKEN.",
     );
   }
 
-  const hfCli = spawnSync("huggingface-cli", ["--version"], {
+  const hfCli = spawnSync("hf", ["version"], {
     shell: true,
     encoding: "utf-8",
   });
   if (hfCli.status !== 0) {
     errors.push(
-      "huggingface-cli not found. Install with: pip install huggingface_hub[cli]",
+      "hf CLI not found. Install with: pip install huggingface_hub[cli]",
     );
   }
 
@@ -153,10 +158,18 @@ function publishModel(model) {
   console.log(`    ${model.description}`);
   console.log(`    Staging: ${stagingDir}`);
 
+  if (onlyWithBinaries && !stagingDirHasBinary(stagingDir)) {
+    return {
+      success: true,
+      skipped: true,
+      reason: `no binary payloads found in ${stagingDir}`,
+    };
+  }
+
   // Step 1: Create the repo (idempotent — fails silently if exists)
   console.log("\n  [1/2] Create HF repo (idempotent)");
   const createResult = run(
-    `huggingface-cli repo create ${model.repo} --type model --yes`,
+    `hf repos create ${model.repo} --type model --exist-ok`,
   );
   if (!isDryRun && createResult.status !== 0) {
     // Repo may already exist — not fatal. Log and continue.
@@ -168,18 +181,30 @@ function publishModel(model) {
   // Step 2: Upload staging dir contents
   console.log("\n  [2/2] Upload staging dir");
   const uploadResult = run(
-    `huggingface-cli upload ${model.repo} ${stagingDir} .`,
+    `hf upload ${model.repo} ${stagingDir} . --type model --commit-message "Hydrate Eliza-1 voice binary payloads"`,
   );
 
   if (!isDryRun && uploadResult.status !== 0) {
     return {
       success: false,
       skipped: false,
-      reason: `huggingface-cli upload exited with status ${uploadResult.status}`,
+      reason: `hf upload exited with status ${uploadResult.status}`,
     };
   }
 
   return { success: true, skipped: false };
+}
+
+function stagingDirHasBinary(stagingDir) {
+  try {
+    const out = execSync(
+      `find ${JSON.stringify(stagingDir)} -type f \\( -name '*.gguf' -o -name '*.onnx' -o -name '*.bin' \\) -print -quit`,
+      { encoding: "utf-8" },
+    );
+    return out.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 // Main

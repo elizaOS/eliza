@@ -888,6 +888,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       // Register any views declared by this plugin into the view registry.
       await registerPluginViews(plugin);
     } catch (error) {
+      unregisterPluginViews(plugin.name);
       trackRoutesAndPluginRef(
         runtimeWithLifecycle,
         capture.ownership,
@@ -921,6 +922,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       plugin.name,
     );
     if (existingOwnership) {
+      unregisterPluginViews(plugin.name);
       await teardownPluginOwnership(runtimeWithLifecycle, existingOwnership, {
         removeOwnership: true,
       });

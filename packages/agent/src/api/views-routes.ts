@@ -86,7 +86,13 @@ export async function handleViewsRoutes(
   const subResource =
     slashIndex === -1 ? "" : afterPrefix.slice(slashIndex + 1);
 
-  const id = decodeURIComponent(rawId);
+  let id: string;
+  try {
+    id = decodeURIComponent(rawId);
+  } catch {
+    error(res, "Malformed view id", 400);
+    return true;
+  }
   if (!id) return false;
 
   if (method === "GET" && subResource === "") {
@@ -204,7 +210,8 @@ export async function handleViewsRoutes(
     const entry = getView(id);
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
-    const viewPath = entry?.path ?? null;
+    const viewPath =
+      entry?.path ?? (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
 
     logger.info(

@@ -31,6 +31,8 @@ export interface ViewRegistryEntry {
    * Absent for views that are already registered in-process.
    */
   bundleUrl?: string;
+  /** Named export inside the bundle to mount. Defaults to "default". */
+  componentExport?: string;
   /** Public URL of a preview image to show in the view card. */
   heroImageUrl?: string;
   /** Whether the view is currently loadable. */

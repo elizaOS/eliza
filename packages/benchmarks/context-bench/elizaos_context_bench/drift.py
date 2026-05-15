@@ -399,6 +399,33 @@ class DriftBenchmarkSuite:
         _, compacts, probes, summary = parse_jsonl(jsonl_path)
         return aggregate_run(probes, compacts, summary)
 
+    @staticmethod
+    def _jsonl_from_stdout(stdout: str) -> str:
+        """Extract JSONL event lines from dry-run harness stdout.
+
+        The TS harness's direct dry-run mode writes JSONL to stdout and may also
+        append human-readable status lines. The Python suite needs a file to
+        aggregate, so keep only object-shaped JSONL lines.
+        """
+        lines: list[str] = []
+        for raw in stdout.splitlines():
+            line = raw.strip()
+            if not line or not line.startswith("{"):
+                continue
+            obj = json.loads(line)
+            if not isinstance(obj, dict):
+                raise ValueError(f"unexpected non-object JSONL stdout line: {line[:80]}")
+            if "event" in obj:
+                lines.append(json.dumps(obj, separators=(",", ":")))
+        if not lines:
+            raise ValueError("drift dry-run stdout did not contain JSONL events")
+        return "\n".join(lines) + "\n"
+
+    @classmethod
+    def _materialize_dry_run_output(cls, stdout: str, jsonl_path: Path) -> None:
+        """Write dry-run stdout JSONL to the path the aggregator expects."""
+        jsonl_path.write_text(cls._jsonl_from_stdout(stdout), encoding="utf-8")
+
     def run_drift_eval(
         self,
         strategies: Iterable[str],
@@ -462,6 +489,8 @@ class DriftBenchmarkSuite:
                     f"drift-harness failed for strategy={strategy} "
                     f"(exit {proc.returncode}): {proc.stderr.strip()[:400]}"
                 )
+            if dry_run and not jsonl_path.exists():
+                self._materialize_dry_run_output(proc.stdout, jsonl_path)
             turn_evs, compacts, probes, summary = parse_jsonl(jsonl_path)
             run = aggregate_run(probes, compacts, summary)
             runs.append(run)

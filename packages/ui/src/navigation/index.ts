@@ -200,7 +200,8 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     label: "Views",
     tabs: ["apps", ...APPS_TOOL_TABS],
     icon: Gamepad2,
-    description: "Agent-provided views, games, LifeOps, integrations, and app tools",
+    description:
+      "Agent-provided views, games, LifeOps, integrations, and app tools",
   },
   {
     label: "Character",

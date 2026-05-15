@@ -410,6 +410,17 @@ class OpenClawClient:
         old conditional that returned ``ready`` based purely on file existence
         masked install corruption until the first benchmark turn.
         """
+        direct_requested = (
+            self.direct_openai_compatible
+            or os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+        )
+        if direct_requested and os.environ.get("OPENCLAW_USE_CLI") != "1":
+            return {
+                "status": "ready",
+                "transport": "direct_openai_compatible",
+                "model": self.model,
+                "provider": self.provider,
+            }
         if not self.binary_path.exists():
             return {
                 "status": "error",

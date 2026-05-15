@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
-ElizaOneModelSize = Literal["0.8b", "2b", "9b", "27b", "27b-1m"]
+ElizaOneModelSize = Literal["0.8b", "2b", "9b", "27b"]
 ElizaOneReleaseState = Literal["local-standin", "candidate", "final"]
 
 ELIZA_ONE_MODEL_SIZES: tuple[ElizaOneModelSize, ...] = (
@@ -31,7 +31,6 @@ ELIZA_ONE_MODEL_SIZES: tuple[ElizaOneModelSize, ...] = (
     "2b",
     "9b",
     "27b",
-    "27b-1m",
 )
 
 ELIZA_ONE_RELEASE_STATES: tuple[ElizaOneReleaseState, ...] = (

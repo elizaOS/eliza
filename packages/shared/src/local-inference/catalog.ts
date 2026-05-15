@@ -3,7 +3,7 @@
  *
  * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
  * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the active 27B family
- * (including long-context variants at 256k and 1M). The 2026-05-12 mandate
+ * (including the 256k long-context variant). The 2026-05-12 mandate
  * retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
@@ -26,13 +26,36 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
+
+export const ELIZA_1_VISION_TIER_IDS = [
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_VISION_TIER_IDS,
+);
+
+export const ELIZA_1_DFLASH_TIER_IDS = [
+  "eliza-1-0_8b",
+  "eliza-1-2b",
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_DFLASH_TIER_IDS,
+);
 
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
@@ -58,11 +81,6 @@ export function isDefaultEligibleId(id: string): boolean {
  * and for installs that depend on a private HF mirror).
  *
  * W3-12 audit (2026-05-14): the following tiers require publish attention:
- *   - `eliza-1-27b-1m`: bundle staged 2026-05-15 (F4). Q4_K_M primary GGUF
- *     (16.5 GB) converted from Qwen/Qwen3.6-27B on Nebius H200 with
- *     `--override-kv llama.context_length=int:1048576` (YaRN 1M context).
- *     Full quant ladder (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0) uploaded to
- *     elizaos/eliza-1/bundles/27b-1m/. Eval gates pending (weights-staged).
  *   - `eliza-1-0_8b`: published but vision mmproj missing from bundle.
  *     `hasVision: true` in catalog but `vision/mmproj-0_8b.gguf` absent.
  *     Next step: quantize mmproj from Qwen3.5-0.8B VL variant, push to
@@ -74,16 +92,13 @@ export function isDefaultEligibleId(id: string): boolean {
  *     separate repos (elizaos/eliza-1-voice-*) per voice-models.ts; those
  *     repos are not yet created. Next step: run publish pipeline per
  *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
- *   - Kokoro samantha voice preset: `af_samantha.bin` absent from all
+ *   - Kokoro same voice preset: `af_same.bin` absent from all
  *     bundles; I7 eval showed regression. Current bundles ship af_bella
  *     and standard voices only.
  */
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
-> = {
-  // 27b-1m bundle staged 2026-05-15 (F4): weights-staged, eval gates pending.
-  // Remove entry once eval gates pass and bundle is promoted to published.
-};
+> = {};
 
 export function eliza1TierPublishStatus(
   id: Eliza1TierId | string,
@@ -132,10 +147,10 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
- *     fallback. The fused expressive TTS path stays default, while Kokoro
- *     remains available for low-latency/thermal fallback on constrained hosts.
- *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
+ *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
+ *     the low-latency fallback.
+ *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
+ *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
  */
@@ -149,7 +164,6 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
-  "eliza-1-27b-1m": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
@@ -180,7 +194,7 @@ interface TierSpec {
    * WS3: whether this tier ships a default image-gen model in the bundle
    * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
    * tiers (0_8b/2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b/27b-256k/27b-1m) default to Z-Image-Turbo Q4_K_M
+   * tiers (9b/27b/27b-256k) default to Z-Image-Turbo Q4_K_M
    * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
    * NOT part of the base-v1 bundle.
    */
@@ -306,28 +320,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     hasImageGen: true,
   },
-  "eliza-1-27b-1m": {
-    id: "eliza-1-27b-1m",
-    params: "27B",
-    parameterLabel: "27B 1M",
-    sizeGb: 16.8,
-    minRamGb: 160,
-    q4MinRamGb: 160,
-    bucket: "large",
-    contextLength: 1_048_576,
-    textFile: "text/eliza-1-27b-1m.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 160,
-    gpuProfile: "h200",
-    hasEmbedding: true,
-    // WS2: vision on the 1M-context tier is for server / workstation use
-    // (multi-GPU, document-pipeline scenarios where a screenshot of a
-    // 100-page PDF page is sandwiched into a million-token context). The
-    // mmproj is the same ~720 MB Q8_0 used by the 27b and 27b-256k tiers.
-    hasVision: true,
-    hasImageGen: true,
-  },
 };
 
 function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
@@ -420,7 +412,6 @@ const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-  "eliza-1-27b-1m": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
 };
 
 export function voiceQuantLadderForTier(
@@ -483,6 +474,14 @@ function runtimeForTier(
       parallel: 4,
       flashAttention: true,
       requiresKernel,
+      // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
+      // never for autoregressive text — DFlash/W4-B above is. A binary that
+      // advertises OpenVINO alongside the full DFlash kernel set stays
+      // eligible because `requiresKernel` is the primary anchor; OpenVINO-
+      // only Intel builds drop out via the same anchor. The dispatcher
+      // sets `GGML_OPENVINO_DISABLE=1` on the spawn env so the GGML
+      // OpenVINO backend stays out of layer placement at runtime.
+      unsupportedKernels: ["openvino"],
       ctxCheckpoints: 4,
       ctxCheckpointInterval: 4096,
     },
@@ -506,8 +505,10 @@ function runtimeForTier(
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
+  q3_k_m: "q3_k_m",
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
+  q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
 };
@@ -560,9 +561,9 @@ function blurbForTier(id: Eliza1TierId): string {
       return "eliza-1-27b - high-quality local tier for GPU workstations.";
     case "eliza-1-27b-256k":
       return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
-    case "eliza-1-27b-1m":
-      return "eliza-1-27b-1m - high-quality local tier with a 1M context window.";
   }
+  const exhaustive: never = id;
+  return exhaustive;
 }
 
 function chatTier(id: Eliza1TierId): CatalogModel {

@@ -12,41 +12,45 @@
  * static fallback instead of attempting to import the bundle.
  */
 
-import {
-  type ComponentType,
-  lazy,
-  type LazyExoticComponent,
-  memo,
-  Suspense,
-  useRef,
-} from "react";
+import { type ComponentType, memo, useEffect, useState } from "react";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { ErrorBoundary } from "../ui/error-boundary";
 
+interface ViewBundleModule {
+  component: ComponentType;
+  cleanup?: () => void | Promise<void>;
+}
+
 // Module cache lives outside React so it persists across re-renders and
 // component unmounts.
-const bundleModuleCache = new Map<string, Promise<{ default: ComponentType }>>();
+const bundleModuleCache = new Map<string, Promise<ViewBundleModule>>();
 
 function loadBundleModule(
   bundleUrl: string,
   componentExport: string,
-): Promise<{ default: ComponentType }> {
-  const cached = bundleModuleCache.get(bundleUrl);
+): Promise<ViewBundleModule> {
+  const cacheKey = `${bundleUrl}::${componentExport}`;
+  const cached = bundleModuleCache.get(cacheKey);
   if (cached) return cached;
 
   const promise = import(/* @vite-ignore */ bundleUrl).then(
     (mod: Record<string, unknown>) => {
-      const exported = mod[componentExport] ?? mod["default"];
+      const exported = mod[componentExport] ?? mod.default;
       if (typeof exported !== "function") {
         throw new Error(
           `DynamicViewLoader: bundle at ${bundleUrl} did not export a React component as "${componentExport}"`,
         );
       }
-      return { default: exported as ComponentType };
+      const cleanup =
+        typeof mod.cleanup === "function" ? mod.cleanup : undefined;
+      return {
+        component: exported as ComponentType,
+        cleanup: cleanup as ViewBundleModule["cleanup"],
+      };
     },
   );
 
-  bundleModuleCache.set(bundleUrl, promise);
+  bundleModuleCache.set(cacheKey, promise);
   return promise;
 }
 
@@ -108,29 +112,67 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   componentExport = "default",
   viewId,
 }: DynamicViewLoaderProps) {
+  const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
+  const [loadError, setLoadError] = useState<Error | null>(null);
+  const dynamicLoadingAllowed = isDynamicViewLoadingAllowed();
+
+  useEffect(() => {
+    if (!dynamicLoadingAllowed) return;
+
+    let cancelled = false;
+    let loadedBundle: ViewBundleModule | null = null;
+
+    setBundle(null);
+    setLoadError(null);
+    void loadBundleModule(bundleUrl, componentExport)
+      .then((nextBundle) => {
+        loadedBundle = nextBundle;
+        if (!cancelled) {
+          setBundle(nextBundle);
+          return;
+        }
+        if (nextBundle.cleanup) {
+          void Promise.resolve()
+            .then(() => nextBundle.cleanup?.())
+            .catch(() => {});
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err : new Error(String(err)));
+      });
+
+    return () => {
+      cancelled = true;
+      const cleanup = loadedBundle?.cleanup;
+      if (cleanup) {
+        void Promise.resolve()
+          .then(() => cleanup())
+          .catch(() => {
+            // View cleanup must never crash the shell.
+          });
+      }
+    };
+  }, [bundleUrl, componentExport, dynamicLoadingAllowed]);
+
   // iOS App Store and Google Play builds cannot load remote JS at runtime.
-  if (!isDynamicViewLoadingAllowed()) {
+  if (!dynamicLoadingAllowed) {
     return <ViewRestrictedState viewId={viewId} />;
   }
 
-  // Keep a stable lazy component reference per (bundleUrl, componentExport)
-  // pair so React does not remount on every render.
-  const lazyRef = useRef<LazyExoticComponent<ComponentType> | null>(null);
-  const cacheKeyRef = useRef<string>("");
-
-  const cacheKey = `${bundleUrl}::${componentExport}`;
-  if (lazyRef.current === null || cacheKeyRef.current !== cacheKey) {
-    cacheKeyRef.current = cacheKey;
-    lazyRef.current = lazy(() => loadBundleModule(bundleUrl, componentExport));
+  if (loadError) {
+    return <ViewErrorState viewId={viewId} />;
   }
 
-  const LazyView = lazyRef.current;
+  if (!bundle) {
+    return <ViewLoadingSkeleton />;
+  }
+
+  const View = bundle.component;
 
   return (
     <ErrorBoundary fallback={() => <ViewErrorState viewId={viewId} />}>
-      <Suspense fallback={<ViewLoadingSkeleton />}>
-        <LazyView />
-      </Suspense>
+      <View />
     </ErrorBoundary>
   );
 });

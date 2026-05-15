@@ -12,14 +12,19 @@
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-  type ViewRegistryEntry,
   useAvailableViews,
+  type ViewRegistryEntry,
 } from "../../hooks/useAvailableViews";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 
-// ---------------------------------------------------------------------------
-// Internal sub-components
-// ---------------------------------------------------------------------------
+const VIEW_LOADING_SKELETON_KEYS = [
+  "view-skeleton-1",
+  "view-skeleton-2",
+  "view-skeleton-3",
+  "view-skeleton-4",
+  "view-skeleton-5",
+  "view-skeleton-6",
+];
 
 function ViewCard({
   view,
@@ -104,9 +109,9 @@ function ViewsEmptyState({ hasQuery }: { hasQuery: boolean }) {
 function ViewsLoadingSkeleton() {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      {Array.from({ length: 6 }, (_, i) => (
+      {VIEW_LOADING_SKELETON_KEYS.map((key) => (
         <div
-          key={i}
+          key={key}
           className="h-24 animate-pulse rounded-xl bg-muted/30"
           aria-hidden
         />
@@ -114,10 +119,6 @@ function ViewsLoadingSkeleton() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function ViewManagerPage() {
   const { views, loading, error } = useAvailableViews();

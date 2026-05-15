@@ -18,7 +18,7 @@ export function isEdgeTtsDisabled(config: EdgeTtsConfig): boolean {
     return true;
   }
 
-  const raw = process?.env ? process.env.ELIZA_DISABLE_EDGE_TTS : undefined;
+  const raw = process.env ? process.env.ELIZA_DISABLE_EDGE_TTS : undefined;
   if (!raw || typeof raw !== "string") {
     return false;
   }

@@ -376,7 +376,9 @@ async function readRichLinkedAccountsFromPool(): Promise<
   try {
     // String-literal dynamic import — see comment in
     // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
-    const mod = (await import(/* @vite-ignore */ "@elizaos/app-core")) as {
+    const mod = (await import(
+      /* @vite-ignore */ "@elizaos/app-core"
+    )) as unknown as {
       getDefaultAccountPool: () => {
         list(): LinkedAccountConfig[];
       };

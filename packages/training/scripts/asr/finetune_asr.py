@@ -42,26 +42,26 @@ Usage
 
     # Smoke (CI):
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
+        --run-dir /tmp/asr-runs/same \\
+        --config asr_same.yaml \\
         --synthetic-smoke
 
     # Real training (requires GPU + transformers + datasets):
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
-        --data-dir packages/training/data/voice/samantha \\
+        --run-dir /tmp/asr-runs/same \\
+        --config asr_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train
 
     # With eval + HF push:
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
-        --data-dir packages/training/data/voice/samantha \\
+        --run-dir /tmp/asr-runs/same \\
+        --config asr_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \\
         --hf-push-if beats-baseline \\
-        --hf-repo elizaos/eliza-1-asr-samantha-v01 \\
+        --hf-repo elizaos/eliza-1-asr-same-v01 \\
         --operator-sign-off
 
 Outputs
@@ -81,10 +81,8 @@ Outputs
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
-import os
 import random
 import subprocess
 import sys
@@ -101,7 +99,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("asr.finetune")
 
 # ---------------------------------------------------------------------------
-# Default config — matches what asr_samantha.yaml extends.
+# Default config — matches what asr_same.yaml extends.
 # ---------------------------------------------------------------------------
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -412,9 +410,9 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
 
 def _load_corpus(data_dir: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Load WAV+transcript pairs from the samantha corpus format.
+    """Load WAV+transcript pairs from the same corpus format.
 
-    Corpus layout expected (matches packages/training/data/voice/samantha/):
+    Corpus layout expected (matches packages/training/data/voice/same/):
 
         <data_dir>/
             manifest.jsonl    # one JSON record per line: {id, wav, transcript}
@@ -592,7 +590,6 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         )
 
     stats = TrainStats()
-    top_k: list[dict[str, Any]] = []
     step = 0
     accum_loss = 0.0
     accum_steps = 0
@@ -619,7 +616,6 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
                 continue
 
             # Encode input features.
-            import numpy as np  # noqa: PLC0415
 
             input_features = torch.from_numpy(log_mel).unsqueeze(0).to(device)
             if cfg["bf16"] and device == "cuda":
@@ -797,7 +793,6 @@ def _evaluate_wer(
             log_mel = _extract_features(
                 rec["wav"], target_sr=cfg["sample_rate"], mel_bins=cfg["mel_bins"]
             )
-            import numpy as np  # noqa: PLC0415
 
             input_features = torch.from_numpy(log_mel).unsqueeze(0).to(device)
             if cfg.get("bf16") and device == "cuda":
@@ -826,7 +821,6 @@ def _estimate_rtf(model: Any, processor: Any, records: list[dict[str, Any]], cfg
     """Estimate RTF on up to 5 val clips."""
     import time
     import torch  # noqa: PLC0415
-    import numpy as np  # noqa: PLC0415
 
     total_audio_s = 0.0
     total_wall_s = 0.0
@@ -926,7 +920,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-samantha-v01).",
+        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-same-v01).",
     )
     parser.add_argument(
         "--hf-push-if",

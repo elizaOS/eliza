@@ -148,8 +148,8 @@ function fail(op: RuntimeOp | "unknown", text: string): ActionResult {
 
 function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
   const view = params.view === "counts" ? "counts" : "summary";
-  const actionCount = runtime.actions?.length;
-  const providerCount = runtime.providers?.length;
+  const actionCount = runtime.actions.length;
+  const providerCount = runtime.providers.length;
   const services = runtime.services as Map<string, unknown[]> | undefined;
   let serviceCount = 0;
   if (services) {
@@ -250,7 +250,7 @@ function describeActionsOp(
     : [...all];
   matched.sort((a, b) => a.name.localeCompare(b.name));
   const lines = matched.map((action) => {
-    const description = action.description?.trim();
+    const description = action.description.trim();
     return `${action.name}${description ? ` — ${description}` : ""}`;
   });
   const header = filter

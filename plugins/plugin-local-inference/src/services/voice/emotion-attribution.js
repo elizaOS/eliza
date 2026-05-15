@@ -4,6 +4,7 @@ import {
 	enumToEmotion,
 	parseExpressiveTags,
 } from "./expressive-tags";
+
 const TEXT_WEIGHTS = [
 	{
 		emotion: "happy",

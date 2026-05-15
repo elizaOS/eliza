@@ -111,15 +111,15 @@ export async function handleTelegramStandaloneMessage(
     const message = ctx.message;
     const text = message?.text;
     if (!text) return;
-    const chat = ctx.chat ?? message?.chat;
+    const chat = ctx.chat ?? message.chat;
     if (!chat) return;
     const chatId = String(chat.id);
-    const from = ctx.from ?? message?.from;
+    const from = ctx.from ?? message.from;
     const telegramUserId = String(from?.id ?? `chat-${chatId}`);
     const username =
       from?.username ?? from?.first_name ?? `telegram-${telegramUserId}`;
     const threadId =
-      message?.message_thread_id !== undefined
+      message.message_thread_id !== undefined
         ? String(message.message_thread_id)
         : undefined;
     const telegramRoomId = threadId ? `${chatId}-${threadId}` : chatId;
@@ -138,7 +138,7 @@ export async function handleTelegramStandaloneMessage(
     );
 
     const runtimeWithMessages = runtime as RuntimeMessageServiceCompat;
-    if (!runtimeWithMessages.messageService?.handleMessage) {
+    if (!runtimeWithMessages.messageService.handleMessage) {
       logger.warn("[eliza] Telegram runtime missing messageService");
       return;
     }
@@ -157,11 +157,11 @@ export async function handleTelegramStandaloneMessage(
     ) as UUID;
     const messageId = createUniqueUuid(
       runtime,
-      `telegram-message:${message?.message_id ?? `${chatId}:${Date.now()}`}`,
+      `telegram-message:${message.message_id ?? `${chatId}:${Date.now()}`}`,
     ) as UUID;
     const channelType = getTelegramChannelType(chat.type);
     const createdAt =
-      typeof message?.date === "number" ? message.date * 1000 : Date.now();
+      typeof message.date === "number" ? message.date * 1000 : Date.now();
 
     await runtime.ensureConnection({
       entityId,
@@ -188,7 +188,7 @@ export async function handleTelegramStandaloneMessage(
         source: "telegram",
         channelType,
         inReplyTo:
-          message?.reply_to_message?.message_id !== undefined
+          message.reply_to_message?.message_id !== undefined
             ? (createUniqueUuid(
                 runtime,
                 `telegram-message:${message.reply_to_message.message_id}`,
@@ -206,7 +206,7 @@ export async function handleTelegramStandaloneMessage(
         fromId: telegramUserId,
         sourceId: entityId,
         chatType: chat.type,
-        messageIdFull: String(message?.message_id ?? ""),
+        messageIdFull: String(message.message_id ?? ""),
         sender: {
           id: telegramUserId,
           name: from?.first_name,
@@ -214,7 +214,7 @@ export async function handleTelegramStandaloneMessage(
         },
         telegram: {
           chatId,
-          messageId: String(message?.message_id ?? ""),
+          messageId: String(message.message_id ?? ""),
           threadId,
         },
         telegramUserId,

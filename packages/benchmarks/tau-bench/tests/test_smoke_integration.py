@@ -5,7 +5,7 @@ These exercise the full Env + agent + judge + pass^k loop. We have two flavours:
 1. Mock-agent path (``--mock``) — drives ground-truth actions through the real
    upstream env and the noop user; verifies reward = 1 on sample tasks.
 
-2. Real-LLM path with a stubbed litellm — patches ``litellm.completion`` to
+2. Real-LLM path with a stubbed completion adapter to
    simulate an agent + LLM user simulator, then verifies that:
      * the user simulator produces multiple turns (multi-turn loop),
      * at least one tool call is actually executed against the env, and
@@ -127,18 +127,18 @@ class _LLMScript:
 
 
 def test_real_llm_shaped_smoke_runs_multi_turn_with_tool_call(tmp_path, monkeypatch):
-    """Verify the multi-turn loop with patched litellm.
+    """Verify the multi-turn loop with a patched completion adapter.
 
-    Smoke-checks the wiring: the same patched ``completion`` serves both the
+    Smoke-checks the wiring: the same patched completion function serves both the
     agent (tool-calling) and the user simulator (plain chat). The user simulator
     must emit ``###STOP###`` to end the rollout, proving multiple turns happen.
     """
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("TAU_BENCH_DATA_MODE", "smoke")
 
     script = _LLMScript()
-    # Both litellm.completion imports (agent + user) refer to the same module attribute.
-    with patch("litellm.completion", side_effect=script), \
-         patch("elizaos_tau_bench.upstream.envs.user.completion", side_effect=script):
+    # Agent + user simulator both route through the same completion adapter.
+    with patch("elizaos_tau_bench.model_client.completion", side_effect=script):
         cfg = TauBenchConfig(
             domains=["retail"],
             task_ids=[0],  # First retail task

@@ -13,10 +13,13 @@
  *
  * Idempotent: a sentinel marker in CMakeLists.txt prevents double-append.
  *
- * The product HTTP route fusion lives in
- * `kernel-patches/server-omnivoice-route.mjs`: it mounts
- * `POST /v1/audio/speech` onto the fused `llama-server` and this graft links
- * that server target against `omnivoice-core`. The legacy
+ * The product HTTP route fusion lives in committed fork source
+ * (`tools/server/server.cpp` namespace `eliza_omnivoice`, guarded by
+ * `#ifdef ELIZA_FUSE_OMNIVOICE`): it mounts `POST /v1/audio/speech` onto
+ * the fused `llama-server` and this graft links that server target
+ * against `omnivoice-core`. (Before W3-3 H2.c, the route was injected via
+ * `kernel-patches/server-omnivoice-route.mjs`; that patcher has been
+ * deleted now that the source lives in the fork.) The legacy
  * `llama-omnivoice-server` remains only as a small co-residency smoke target.
  */
 
@@ -129,10 +132,10 @@ if(ELIZA_FUSE_OMNIVOICE)
         OUTPUT_NAME elizainference
         POSITION_INDEPENDENT_CODE ON)
 
-    # The fused HTTP server IS \`llama-server\`. The kernel-patch
-    # \`server-omnivoice-route.mjs\` adds a \`POST /v1/audio/speech\` route to
-    # tools/server/server.cpp, guarded by \`#ifdef ELIZA_FUSE_OMNIVOICE\`,
-    # backed by omnivoice-core's \`ov_synthesize\`. So the same process that
+    # The fused HTTP server IS \`llama-server\`. The committed fork source
+    # at tools/server/server.cpp carries the \`POST /v1/audio/speech\` route,
+    # guarded by \`#ifdef ELIZA_FUSE_OMNIVOICE\`, backed by omnivoice-core's
+    # \`ov_synthesize\`. So the same process that
     # serves \`/completion\` + \`/v1/chat/completions\` + the DFlash spec loop
     # also serves TTS — one process, one llama.cpp build, one GGML pin
     # (packages/inference/AGENTS.md §4). We link omnivoice-core into the

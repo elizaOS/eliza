@@ -1,10 +1,3 @@
-// Smoke test: verifies the public type surface of @elizaos/workflows.
-//
-// This package is intentionally types-only. The plugin-workflow consumer
-// imports exactly five types: INode, INodeCredentialsDetails, INodeProperties,
-// INodeTypeDescription, IWorkflowSettings. This test asserts each can be
-// constructed with a minimal value at compile time.
-
 import { describe, expect, it } from 'bun:test';
 import type {
 	INode,
@@ -66,8 +59,6 @@ describe('@elizaos/workflows public type surface', () => {
 	});
 
 	it('exports exactly the documented top-level types', async () => {
-		// Index re-exports types only; runtime exports should be just the
-		// `NodeConnectionTypes` const object (used as a value by some consumers).
 		const mod = await import('../src/index.ts');
 		const runtimeExports = Object.keys(mod).sort();
 		expect(runtimeExports).toEqual(['NodeConnectionTypes']);

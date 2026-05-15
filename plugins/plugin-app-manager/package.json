@@ -1,0 +1,55 @@
+{
+  "name": "@elizaos/plugin-app-manager",
+  "version": "2.0.0-beta.2",
+  "description": "App lifecycle plugin for elizaOS: hosted-app launch / list / close, run-state store, and the /api/apps/* route surface. Extracted from @elizaos/agent (Phase 4G).",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "app-manager",
+    "app-lifecycle",
+    "hosted-apps"
+  ],
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-registry": "workspace:*",
+    "@elizaos/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config ./vitest.config.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0"
+  }
+}

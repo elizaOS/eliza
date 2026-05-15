@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/silero_vad_stub_smoke.dir/test/silero_vad_stub_smoke.c.o -o silero_vad_stub_smoke  libsilero_vad.a 

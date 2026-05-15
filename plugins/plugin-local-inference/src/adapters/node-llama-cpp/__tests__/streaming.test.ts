@@ -5,8 +5,8 @@
  * callback onto the elizaOS `TextStreamResult` shape that the runtime
  * drains. The fake session simulates three deltas ("Hel", "lo ", "world")
  * and asserts:
- *   - the optional `onChunk` hook fires once per delta in order,
- *   - `textStream` yields the same three deltas via the async iterator,
+ *   - the optional `onChunk` hook fires visible text in order,
+ *   - `textStream` yields visible text via the async iterator,
  *   - the resolved `text` promise is the full accumulation,
  *   - `usage` resolves to a `TokenUsage` from the estimator,
  *   - `finishReason` resolves to "stop" on success.
@@ -73,19 +73,14 @@ describe("streamLlamaPrompt", () => {
 			collected.push(delta);
 		}
 
-		expect(collected).toEqual(["Hel", "lo ", "world"]);
-		expect(onChunk).toHaveBeenCalledTimes(3);
-		expect(onChunk.mock.calls.map((c) => c[0])).toEqual([
-			"Hel",
-			"lo ",
-			"world",
-		]);
+		expect(collected.join("")).toBe("Hello world");
+		expect(onChunk.mock.calls.map((c) => c[0]).join("")).toBe("Hello world");
 		await expect(result.text).resolves.toBe("Hello world");
 		await expect(result.usage).resolves.toEqual(usage);
 		await expect(result.finishReason).resolves.toBe("stop");
 	});
 
-	it("applies postProcess to the resolved text without affecting deltas", async () => {
+	it("hides think-tag spans from streamed deltas and applies postProcess to resolved text", async () => {
 		const onChunk = vi.fn<(delta: string) => void>();
 		const session = makeFakeSession(["<think>scratch</think>", "real "]);
 
@@ -103,10 +98,29 @@ describe("streamLlamaPrompt", () => {
 			collected.push(delta);
 		}
 
-		// Stream still emits raw deltas (the runtime decides what to do with
-		// think tags at the SSE layer); only the resolved `text` is cleaned.
-		expect(collected).toEqual(["<think>scratch</think>", "real "]);
+		expect(collected).toEqual(["real "]);
+		expect(onChunk.mock.calls.map((c) => c[0])).toEqual(["real "]);
 		await expect(result.text).resolves.toBe("real");
+	});
+
+	it("hides think tags split across chunk boundaries", async () => {
+		const session = makeFakeSession(["<thi", "nk>scratch</think>", "visible"]);
+
+		const result = streamLlamaPrompt({
+			session,
+			prompt: "p",
+			options: {},
+			estimateUsage,
+			postProcess: (raw) => raw.replace(/<think>[\s\S]*?<\/think>/g, "").trim(),
+		});
+
+		const collected: string[] = [];
+		for await (const delta of result.textStream) {
+			collected.push(delta);
+		}
+
+		expect(collected.join("")).toBe("visible");
+		await expect(result.text).resolves.toBe("visible");
 	});
 
 	it("invokes onComplete exactly once with the final usage", async () => {

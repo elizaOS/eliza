@@ -238,9 +238,13 @@ ABI v3 adds the `vad` mmap region and the native VAD entry points above.
 
 §4 of `packages/inference/AGENTS.md` calls for ONE process serving
 `/v1/chat/completions` (+ DFlash), `/v1/audio/speech`, and an ASR route.
-The fused `llama-server` now mounts `/v1/audio/speech` directly through
-`kernel-patches/server-omnivoice-route.mjs`, using the same in-process
+The fused `llama-server` mounts `/v1/audio/speech` directly through
+committed fork source (`tools/server/server.cpp` namespace `eliza_omnivoice`,
+guarded by `#ifdef ELIZA_FUSE_OMNIVOICE`), using the same in-process
 OmniVoice runtime (`ov_init` / `ov_synthesize`) as `libelizainference`.
+(Before W3-3 H2.c, the route was injected via
+`kernel-patches/server-omnivoice-route.mjs`; that patcher was deleted
+once the source landed in the fork.)
 It returns PCM or WAV from the same process that hosts
 `/v1/chat/completions`, so text and speech share the llama.cpp build,
 GGML pin, Metal/Vulkan/CPU backend selection, and memory lifetime.

@@ -3,34 +3,41 @@ import {
   createSolanaLpProtocolProvider,
   registerLpProtocolProvider,
 } from "../../../../lp/services/LpManagementService.ts";
-import { meteoraScenarios } from "./e2e/scenarios.ts";
-import { meteoraPositionProvider } from "./providers/positionProvider.ts";
-import { MeteoraLpService } from "./services/MeteoraLpService.ts";
+import type { MeteoraLpService } from "./services/MeteoraLpService.ts";
 
 export const meteoraPlugin: Plugin = {
   name: "@elizaos/plugin-meteora",
   description: "A plugin for interacting with the Meteora DEX.",
-  services: [MeteoraLpService],
-  providers: [meteoraPositionProvider],
-  tests: [meteoraScenarios],
+  services: [],
+  providers: [],
+  tests: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    console.info("Meteora Plugin Initialized");
-    const service =
-      runtime.getService<MeteoraLpService>(MeteoraLpService.serviceType) ??
-      (await MeteoraLpService.start(runtime));
-    await registerLpProtocolProvider(
-      runtime,
-      createSolanaLpProtocolProvider({
-        dex: "meteora",
-        label: "Meteora",
-        service,
-      })
-    );
+    try {
+      const serviceModulePath = "./services/MeteoraLpService.ts";
+      const { MeteoraLpService } = await import(serviceModulePath);
+      console.info("Meteora Plugin Initialized");
+      const service =
+        runtime.getService(MeteoraLpService.serviceType) ??
+        (await MeteoraLpService.start(runtime));
+      await registerLpProtocolProvider(
+        runtime,
+        createSolanaLpProtocolProvider({
+          dex: "meteora",
+          label: "Meteora",
+          service: service as Parameters<
+            typeof createSolanaLpProtocolProvider
+          >[0]["service"],
+        }),
+      );
+    } catch (error) {
+      console.warn(
+        "[Meteora] Optional DLMM dependency failed to load; Meteora LP support is disabled.",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   },
   async dispose(runtime: IAgentRuntime) {
-    const svc = runtime.getService<MeteoraLpService>(
-      MeteoraLpService.serviceType,
-    );
+    const svc = runtime.getService<MeteoraLpService>("meteora-lp");
     await svc?.stop();
   },
 };

@@ -136,7 +136,7 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // where there is no node_modules tree.
   return import(
     /* webpackIgnore: true */ "@elizaos/app-core"
-  ) as Promise<AppCoreRuntimeModule>;
+  ) as unknown as Promise<AppCoreRuntimeModule>;
 }
 
 import { buildCharacterFromConfig } from "./build-character-config.ts";
@@ -169,6 +169,10 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
     /* @vite-ignore */ STEWARD_EVM_BRIDGE_MODULE
   )) as StewardEvmBridgeModule;
 }
+
+const { detectEmbeddingPreset } = await import(
+  "@elizaos/plugin-local-inference"
+);
 
 import {
   debugLogResolvedContext,
@@ -209,7 +213,6 @@ import {
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 import { seedBundledDocuments } from "./default-documents.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
-import { detectEmbeddingPreset } from "./embedding-presets.ts";
 import {
   runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
@@ -2489,8 +2492,7 @@ function installActionAliases(runtime: AgentRuntime): void {
   const codingTaskAction =
     actions.find(
       (action) => action.name?.toUpperCase() === "START_CODING_TASK",
-    ) ??
-    actions.find((action) => action.name?.toUpperCase() === "CREATE_TASK");
+    ) ?? actions.find((action) => action.name?.toUpperCase() === "CREATE_TASK");
   if (codingTaskAction) {
     const similes = Array.isArray(codingTaskAction.similes)
       ? codingTaskAction.similes
@@ -3260,7 +3262,7 @@ export async function startEliza(
     // process.env.LOG_LEVEL is already resolved (set explicitly or from
     // config.logging.level above), so prefer it to honour the dev-mode
     // LOG_LEVEL=error override set by eliza/packages/app-core/scripts/dev-ui.mjs.
-    const lvl = process.env.LOG_LEVEL ?? config.logging?.level;
+    const lvl = process.env.LOG_LEVEL;
     if (lvl === "silent") return "fatal" as const;
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();

@@ -5,45 +5,45 @@ OmniVoice (Qwen3-0.6B backbone + K=8 MaskGIT audio decoder) supports two
 fine-tune paths:
 
 Path A — Preset-based freeze (shipped in I6/Wave 2):
-  Encode samantha reference audio once → persist as ELZ2 v2 preset.
+  Encode same reference audio once → persist as ELZ2 v2 preset.
   No weight training. Pure inference-time conditioning.
   CLI: ``packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs``.
 
 Path B — LM weight fine-tune (this script; W3-11):
   Train the Qwen3-0.6B backbone on (text prompt → audio token) pairs from
-  the samantha corpus. The audio tokens come from the bundled HuBERT+RVQ
-  tokenizer applied to the samantha WAVs. Loss: cross-entropy over the K=8
+  the same corpus. The audio tokens come from the bundled HuBERT+RVQ
+  tokenizer applied to the same WAVs. Loss: cross-entropy over the K=8
   codebook logits (MaskGIT training objective: jointly predict all
   masked positions in one forward).
 
-This script handles Path B: LM weight fine-tune on the samantha corpus.
+This script handles Path B: LM weight fine-tune on the same corpus.
 
 Why Path B is worth running
 ---------------------------
 
-Path A (preset) gives samantha-like timbre at runtime by prepending ~1500
+Path A (preset) gives same-like timbre at runtime by prepending ~1500
 reference audio tokens. This works but:
 - Adds ~1500 tokens to every forward → ~30–50% RTF slowdown.
 - Quality is bounded by the base model's ability to match the reference.
 
-Path B fine-tunes the LM to generate samantha-like audio tokens WITHOUT a
-reference prefix. After fine-tuning, samantha voice can be activated via an
+Path B fine-tunes the LM to generate same-like audio tokens WITHOUT a
+reference prefix. After fine-tuning, same voice can be activated via an
 ``instruct`` string only, with no reference token overhead. RTF is restored
 to baseline.
 
 Practical constraints
 ---------------------
 
-The samantha corpus is 58 clips / ~3.5 minutes at 24 kHz:
+The same corpus is 58 clips / ~3.5 minutes at 24 kHz:
 - Codec frame rate: 50 Hz (hop=480 at 24 kHz). 3.5 min → ~10,500 audio frames.
 - Each training example: T_text tokens (≤30) + T_audio tokens (= 50 * dur_s).
 - Batch of 1: a single (text, audio) pair.
 
 This is a tiny corpus for training a 0.6B LM. Expectations:
-- The LM can learn the prosody patterns of samantha's voice (steady pace,
+- The LM can learn the prosody patterns of same's voice (steady pace,
   clear articulation, warm timbre).
-- WER on samantha sentences should not degrade.
-- Speaker similarity (ECAPA cosine vs samantha reference) should improve vs.
+- WER on same sentences should not degrade.
+- Speaker similarity (ECAPA cosine vs same reference) should improve vs.
   the base model in auto-voice mode.
 
 Optimizer: APOLLO-Mini (repo policy).
@@ -74,25 +74,25 @@ Usage
 
     # CI smoke:
     python3 finetune_omnivoice.py \\
-        --run-dir /tmp/omnivoice-runs/samantha \\
-        --config omnivoice_samantha.yaml \\
+        --run-dir /tmp/omnivoice-runs/same \\
+        --config omnivoice_same.yaml \\
         --synthetic-smoke
 
     # Real training (RTX 5080 / H200):
     python3 finetune_omnivoice.py \\
-        --run-dir /tmp/omnivoice-runs/samantha \\
-        --config omnivoice_samantha.yaml \\
-        --data-dir packages/training/data/voice/samantha \\
+        --run-dir /tmp/omnivoice-runs/same \\
+        --config omnivoice_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train
 
     # Eval + conditional push:
     python3 finetune_omnivoice.py \\
-        --run-dir /tmp/omnivoice-runs/samantha \\
-        --config omnivoice_samantha.yaml \\
-        --data-dir packages/training/data/voice/samantha \\
+        --run-dir /tmp/omnivoice-runs/same \\
+        --config omnivoice_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/omnivoice-baseline/eval.json \\
-        --hf-repo elizaos/eliza-1-voice-omnivoice-samantha-v01 \\
+        --hf-repo elizaos/eliza-1-voice-omnivoice-same-v01 \\
         --operator-sign-off
 """
 
@@ -101,7 +101,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import random
 import subprocess
 import sys
@@ -397,7 +396,7 @@ def _load_corpus(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Load WAV+transcript pairs.
 
-    Expected layout (matches packages/training/data/voice/samantha/):
+    Expected layout (matches packages/training/data/voice/same/):
 
         <data_dir>/
             manifest.jsonl   # {id, wav, transcript}
@@ -588,20 +587,20 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     #   2. A custom modeling_omnivoice.py (Qwen3 + audio embedding + MaskGIT
     #      training loop in torch).
     # These are post-Wave-3 deliverables. For Wave 3, the Path A preset-based
-    # freeze (I6/freeze-voice.mjs) IS the shipped OmniVoice samantha path.
+    # freeze (I6/freeze-voice.mjs) IS the shipped OmniVoice same path.
     #
     # We document this gap explicitly so the user knows the decision.
     log.warning(
         "OmniVoice LM weight fine-tune (Path B) requires gguf2hf conversion "
         "tooling + custom modeling_omnivoice.py. These are post-Wave-3. "
-        "For Wave 3, the shipped OmniVoice samantha path is the Path A preset "
+        "For Wave 3, the shipped OmniVoice same path is the Path A preset "
         "(packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs)."
     )
     log.info(
         "Running codec-tokenize + RTF eval only (no weight training this wave)."
     )
 
-    # Run WER eval on val clips using the base OmniVoice model + samantha preset.
+    # Run WER eval on val clips using the base OmniVoice model + same preset.
     # This gives us real Path A quality numbers to compare against.
     from eval_omnivoice import _eval_with_preset  # type: ignore  # noqa: PLC0415
 
@@ -667,7 +666,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", default="")
     parser.add_argument("--data-dir", default=None)
     parser.add_argument("--preset-path", default=None,
-                        help="Path to ELZ2 v2 samantha preset for eval.")
+                        help="Path to ELZ2 v2 same preset for eval.")
     parser.add_argument("--baseline-eval", default=None)
     parser.add_argument("--hf-repo", default=None)
     parser.add_argument("--operator-sign-off", action="store_true", default=False)

@@ -211,13 +211,23 @@ class BFCLDataset:
         synthesized_no_snippet: list[BFCLTestCase] = []
         if want_no_snippet:
             from dataclasses import replace as _replace
+            used_no_snippet_ids = {tc.id for tc in explicit_no_snippet}
             for tc in kept_base:
+                base_id = (
+                    tc.id.replace("web_search", "web_search_no_snippet", 1)
+                    if "web_search" in tc.id
+                    else f"{tc.id}_no_snippet"
+                )
+                candidate_id = base_id
+                suffix = 1
+                while candidate_id in used_no_snippet_ids:
+                    candidate_id = f"{base_id}_{suffix}"
+                    suffix += 1
+                used_no_snippet_ids.add(candidate_id)
                 synthesized_no_snippet.append(
                     _replace(
                         tc,
-                        id=tc.id.replace(
-                            "web_search", "web_search_no_snippet", 1
-                        ) if "web_search" in tc.id else f"{tc.id}_no_snippet",
+                        id=candidate_id,
                         category=BFCLCategory.WEB_SEARCH_NO_SNIPPET,
                     )
                 )
@@ -243,9 +253,6 @@ class BFCLDataset:
 
         # First, ensure data is downloaded to cache
         await self._ensure_dataset_cached()
-
-        # Load all ground truth from possible_answer directory
-        await self._load_ground_truth_from_cache()
 
         # Load data files directly from cache (NDJSON format).
         # This bypasses HuggingFace's schema inconsistency issues.
@@ -279,9 +286,17 @@ class BFCLDataset:
 
         for file_key, file_name, category in data_files_to_load:
             # Skip if category not in configured categories
-            if self.config.categories and category not in self.config.categories:
+            if (
+                self.config.categories
+                and category not in self.config.categories
+                and not (
+                    file_key == "web_search"
+                    and BFCLCategory.WEB_SEARCH_NO_SNIPPET in self.config.categories
+                )
+            ):
                 continue
 
+            await self._load_ground_truth_from_cache(file_name)
             count = await self._load_from_cache_file(file_key, file_name, category)
             if count > 0:
                 logger.info(f"Loaded {count} test cases from {file_name}")
@@ -380,8 +395,12 @@ class BFCLDataset:
 
         return count
 
-    async def _load_ground_truth_from_cache(self) -> None:
-        """Load ground truth from HuggingFace cache's possible_answer directory."""
+    async def _load_ground_truth_from_cache(self, file_name: str | None = None) -> None:
+        """Load ground truth from HuggingFace cache's possible_answer directory.
+
+        When ``file_name`` is provided, load only the matching answer file. This
+        keeps small category runs from parsing the full BFCL answer corpus.
+        """
         from pathlib import Path
 
         # Find the HuggingFace cache directory
@@ -410,8 +429,14 @@ class BFCLDataset:
             logger.debug("possible_answer directory not found in BFCL cache")
             return
 
-        # Load all ground truth files
-        for gt_file in possible_answer_dir.glob("*.json"):
+        if file_name is not None:
+            gt_files = [possible_answer_dir / file_name]
+        else:
+            gt_files = list(possible_answer_dir.glob("*.json"))
+
+        for gt_file in gt_files:
+            if not gt_file.exists():
+                continue
             try:
                 with open(gt_file) as f:
                     for line in f:
@@ -436,9 +461,6 @@ class BFCLDataset:
         if not data_path.exists():
             raise FileNotFoundError(f"BFCL data path not found: {data_path}")
 
-        # Optionally pull ground truth from local possible_answer/ dir.
-        await self._load_ground_truth_from_local(data_path)
-
         file_map = {
             **self.CATEGORY_FILES,
             **self.V3_CATEGORY_FILES,
@@ -449,6 +471,10 @@ class BFCLDataset:
             if (
                 self.config.categories
                 and category not in self.config.categories
+                and not (
+                    file_name == "BFCL_v4_web_search"
+                    and BFCLCategory.WEB_SEARCH_NO_SNIPPET in self.config.categories
+                )
             ):
                 continue
 
@@ -456,6 +482,7 @@ class BFCLDataset:
             if not file_path.exists():
                 continue
 
+            await self._load_ground_truth_from_local(data_path, f"{file_name}.json")
             count = 0
             max_tests = self.config.max_tests_per_category
 
@@ -471,8 +498,16 @@ class BFCLDataset:
             if count:
                 logger.info(f"Loaded {count} test cases for category {category.value}")
 
-    async def _load_ground_truth_from_local(self, data_path: Path) -> None:
-        """Pick up local possible_answer/*.json files if present."""
+    async def _load_ground_truth_from_local(
+        self,
+        data_path: Path,
+        file_name: str | None = None,
+    ) -> None:
+        """Pick up local possible_answer files if present.
+
+        Category runs pass ``file_name`` so unrelated answer files remain
+        untouched, which matters for compact fixtures and partial local packs.
+        """
         candidates = [
             data_path / "possible_answer",
             data_path.parent / "possible_answer",
@@ -480,7 +515,14 @@ class BFCLDataset:
         for gt_dir in candidates:
             if not gt_dir.exists():
                 continue
-            for gt_file in gt_dir.glob("*.json"):
+            gt_files = (
+                [gt_dir / file_name]
+                if file_name is not None
+                else list(gt_dir.glob("*.json"))
+            )
+            for gt_file in gt_files:
+                if not gt_file.exists():
+                    continue
                 try:
                     with open(gt_file) as f:
                         for line in f:
@@ -500,23 +542,33 @@ class BFCLDataset:
     def _iter_local_records(file_path: Path) -> Iterator[dict[str, object]]:
         """Yield records from either JSON arrays or BFCL NDJSON files."""
         with open(file_path) as f:
-            content = f.read().strip()
-        if not content:
+            first = f.read(1)
+            while first and first.isspace():
+                first = f.read(1)
+            if not first:
+                return
+            if first == "[":
+                content = first + f.read()
+                data = json.loads(content)
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict):
+                            yield item
+                return
+            first_line = first + f.readline()
+            line = first_line.strip()
+            if line:
+                item = json.loads(line)
+                if isinstance(item, dict):
+                    yield item
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                item = json.loads(line)
+                if isinstance(item, dict):
+                    yield item
             return
-        if content.startswith("["):
-            data = json.loads(content)
-            if isinstance(data, list):
-                for item in data:
-                    if isinstance(item, dict):
-                        yield item
-            return
-        for line in content.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            item = json.loads(line)
-            if isinstance(item, dict):
-                yield item
 
     def _parse_test_case(
         self,

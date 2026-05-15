@@ -150,7 +150,7 @@ function parseArgs(argv: string[]): Options {
     if (!arg.startsWith("--")) continue;
     const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
     const key = rawKey.trim();
-    const value = inlineValue ?? argv[i + 1];
+    const value = inlineValue;
     if (!inlineValue) i += 1;
     opts[key] = value;
   }
@@ -1298,8 +1298,8 @@ function detectCurrentLibc(): string | null {
   }
 
   try {
-    const report = process.report?.getReport();
-    return report?.header?.glibcVersionRuntime ? "glibc" : "musl";
+    const report = process.report.getReport();
+    return report.header?.glibcVersionRuntime ? "glibc" : "musl";
   } catch {
     return null;
   }

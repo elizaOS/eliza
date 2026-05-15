@@ -10,7 +10,7 @@
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -18,7 +18,6 @@ import {
   type ServerResponse,
 } from "node:http";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
@@ -27,7 +26,7 @@ import {
   chromium,
   type Page,
 } from "playwright-core";
-import { afterAll, beforeAll, expect } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 
@@ -53,14 +52,7 @@ if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
   );
 }
 
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const READY_TIMEOUT_MS = 120_000;
 const STREAM_DEADLINE_MS = 90_000;
 
@@ -128,6 +120,7 @@ function makeHarnessHtml(apiBase: string): string {
 
     window.__samples = [];
     window.__startStream = async function(prompt) {
+      try {
       status.textContent = 'creating-conversation';
       const created = await fetch(apiBase + '/api/conversations', {
         method: 'POST',
@@ -149,7 +142,7 @@ function makeHarnessHtml(apiBase: string): string {
       const resp = await fetch(apiBase + '/api/conversations/' + convId + '/messages/stream', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ content: { text: prompt } })
+        body: JSON.stringify({ text: prompt })
       });
       if (!resp.ok || !resp.body) {
         status.textContent = 'stream-failed:' + resp.status;
@@ -181,6 +174,9 @@ function makeHarnessHtml(apiBase: string): string {
         }
       }
       status.textContent = 'done';
+      } catch (error) {
+        status.textContent = 'exception:' + (error && error.message ? error.message : String(error));
+      }
     };
   </script>
 </body>
@@ -204,9 +200,9 @@ async function startHarnessServer(args: {
 }
 
 async function startStack(): Promise<Stack> {
-  const stateDir = await mkdtemp(
-    path.join(os.tmpdir(), "eliza-streaming-live-"),
-  );
+  const stateRoot = path.join(REPO_ROOT, ".tmp");
+  await mkdir(stateRoot, { recursive: true });
+  const stateDir = await mkdtemp(path.join(stateRoot, "eliza-streaming-live-"));
   const apiPort = await getFreePort();
   const harnessPort = await getFreePort();
   const apiBase = `http://127.0.0.1:${apiPort}`;
@@ -215,7 +211,7 @@ async function startStack(): Promise<Stack> {
     "node",
     [
       path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "packages/app-core/src/runtime/eliza.ts"),
+      path.join(REPO_ROOT, "packages/app-core/test/scripts/start-eliza-live.ts"),
     ],
     {
       cwd: REPO_ROOT,
@@ -225,6 +221,7 @@ async function startStack(): Promise<Stack> {
         ALLOW_NO_DATABASE: "",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
+        ELIZA_ALLOWED_ORIGINS: `http://127.0.0.1:${harnessPort}`,
         ELIZA_STATE_DIR: stateDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -235,6 +232,11 @@ async function startStack(): Promise<Stack> {
   });
   apiChild.stderr.on("data", (chunk) => {
     process.stdout.write(`[streaming-live][api-err] ${chunk}`);
+  });
+  apiChild.on("exit", (code, signal) => {
+    process.stdout.write(
+      `[streaming-live][api-exit] code=${code ?? "null"} signal=${signal ?? "null"}\n`,
+    );
   });
 
   await waitForUrl(`${apiBase}/api/health`, READY_TIMEOUT_MS);
@@ -319,14 +321,18 @@ describeLive("streaming-visible-text live e2e", () => {
       if (!stack || !page) throw new Error("stack/page not initialized");
 
       await page.goto(stack.harnessUrl);
-      await page.waitForSelector('[data-testid="assistant-message"]');
+      await page.waitForSelector('[data-testid="assistant-message"]', {
+        state: "attached",
+      });
 
       // Kick off the streamed completion.
       await page.evaluate(() => {
         const w = window as unknown as {
           __startStream: (prompt: string) => Promise<void>;
         };
-        void w.__startStream("Tell me a paragraph about cats.");
+        void w.__startStream(
+          "Write twelve short numbered sentences about cats. Keep each sentence distinct.",
+        );
       });
 
       const samples: { t: number; len: number; text: string }[] = [];
@@ -356,7 +362,8 @@ describeLive("streaming-visible-text live e2e", () => {
         if (status === "done" && len > 0) break;
         if (
           status.startsWith("create-failed") ||
-          status.startsWith("stream-failed")
+          status.startsWith("stream-failed") ||
+          status.startsWith("exception:")
         ) {
           throw new Error(`Harness reported error: ${status}`);
         }
@@ -371,7 +378,7 @@ describeLive("streaming-visible-text live e2e", () => {
       const distinct = Array.from(new Set(distinctNonEmpty));
       expect(
         distinct.length,
-        `Expected ≥5 distinct visible-text lengths to indicate streaming, got: ${JSON.stringify(distinct)}`,
+        `Expected ≥5 distinct visible-text lengths to indicate streaming, got: ${JSON.stringify(distinct)} final=${JSON.stringify(samples.findLast((sample) => sample.len > 0)?.text ?? "")}`,
       ).toBeGreaterThanOrEqual(5);
 
       // Monotonic-non-decreasing across the stream of samples.

@@ -14,13 +14,20 @@
  *     token, no slot persistence on Android's APK private dir). When
  *     the FFI symbols are absent on a mobile build we throw — there is
  *     no second backend to fall back to.
- *   - Desktop defaults to `http-server` (the historical, well-tested
- *     path) unless `preferFfi === true` AND the FFI symbols are
- *     supported. Operators can flip the default with
- *     `ELIZA_INFERENCE_BACKEND=ffi` to force the streaming runner, or
- *     `=http` to force the legacy server even on a build that supports
- *     FFI streaming. The `=auto` value (default) follows the rules
- *     above.
+ *   - Desktop defaults to `ffi-streaming` whenever the loaded
+ *     `libelizainference` exports the streaming-LLM symbols. This keeps
+ *     generation in-process, eliminates the per-token HTTP round-trip,
+ *     and shares one codepath with mobile. The out-of-process
+ *     `llama-server` path is only used as the automatic fallback when
+ *     the streaming-LLM symbols are absent, or when the operator opts
+ *     in explicitly with `ELIZA_INFERENCE_BACKEND=http`. The legacy
+ *     opt-in path is kept (rather than deleted) so an operator hitting
+ *     an FFI regression can flip back without a rebuild; a separate
+ *     follow-up will retire `dflash-server.ts` once the FFI default has
+ *     soaked.
+ *   - `ELIZA_INFERENCE_BACKEND=ffi` forces the streaming runner and
+ *     throws if the symbols are absent. `=auto` (or unset) follows the
+ *     rules above.
  *
  * The selector intentionally does NOT inspect the live process to detect
  * mobile — callers pass that information in. The mobile bootstrap
@@ -38,16 +45,11 @@ export interface BackendSelectInput {
 	/** Where the host is running. */
 	platform: LocalInferencePlatform;
 	/**
-	 * Operator preference for the FFI path. Picked up from runtime config
-	 * / the catalog entry; orthogonal to whether the build actually
-	 * exports the streaming-LLM symbols.
-	 */
-	preferFfi: boolean;
-	/**
 	 * `llmStreamSupported()` from the loaded FFI binding. Mobile builds
 	 * MUST have this true — when it's false on mobile, `selectBackend`
 	 * throws to surface the bad build (rather than silently falling
-	 * through to a path that doesn't exist).
+	 * through to a path that doesn't exist). On desktop a false here
+	 * forces the legacy `http-server` fallback.
 	 */
 	ffiSupported: boolean;
 	/**
@@ -80,7 +82,7 @@ export function readBackendEnvOverride(
 export function selectBackend(
 	input: BackendSelectInput,
 ): LocalInferenceBackend {
-	const { platform, preferFfi, ffiSupported, envOverride } = input;
+	const { platform, ffiSupported, envOverride } = input;
 	const override = (envOverride ?? "").toLowerCase();
 
 	if (override === "http") {
@@ -115,9 +117,10 @@ export function selectBackend(
 		return "ffi-streaming";
 	}
 
-	// Desktop: opt-in to FFI streaming, otherwise stay on the historical
-	// HTTP server path. This default flips after the FFI runner stabilizes
-	// (tracked in docs/eliza-1-ffi-streaming-llm.md).
-	if (preferFfi && ffiSupported) return "ffi-streaming";
+	// Desktop: in-process FFI streaming is the default. The out-of-process
+	// llama-server path is reserved for builds whose libelizainference does
+	// not export the streaming-LLM symbols (covered above by the `ffi`
+	// override throw, and here as the automatic fallback).
+	if (ffiSupported) return "ffi-streaming";
 	return "http-server";
 }

@@ -15,6 +15,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { scanExternalModels } from "./external-scanner";
 import { isWithinElizaRoot, localInferenceRoot, registryPath } from "./paths";
+
 async function ensureRootDir() {
 	await fs.mkdir(localInferenceRoot(), { recursive: true });
 }

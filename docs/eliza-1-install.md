@@ -29,11 +29,34 @@ No `HF_TOKEN` required for the public `elizaos/eliza-1` repo.
 | `eliza-1-4b` | 10 GB+ | Any | Modern laptops/desktops |
 | `eliza-1-9b` | 12 GB+ | RTX 3090+ recommended | Workstations |
 | `eliza-1-27b` | 32 GB+ | RTX 4090+ recommended | High-end workstations |
-| `eliza-1-27b-256k` | 96 GB+ | Multi-GPU | Server / professional |
-| `eliza-1-27b-1m` | 160 GB+ | H200 cluster | Not yet published (pending) |
+| `eliza-1-27b-256k` | 96 GB+ | Multi-GPU | Server / professional (262k natural context) |
 
 The runtime auto-selects a tier based on your hardware if you skip the picker.
 You can always change tiers in **Settings → Local Model**.
+
+**Note:** The `eliza-1-27b-1m` tier was retired in the Gauntlet sub-wave (2026-05-15).
+The maximum supported context is `27b-256k` (262k tokens natural context). No 1M tier is
+available or planned.
+
+### Voice sub-model repos (advanced / separate download)
+
+Each voice component is also published as a standalone HuggingFace repo:
+
+| Component | Repo | Notes |
+|-----------|------|-------|
+| ASR | `elizaos/eliza-1-voice-asr` | Qwen3-ASR GGUF streaming |
+| Turn detector | `elizaos/eliza-1-voice-turn` | LiveKit EN + INTL |
+| Emotion | `elizaos/eliza-1-voice-emotion` | Wav2Small V-A-D |
+| Speaker encoder | `elizaos/eliza-1-voice-speaker` | WeSpeaker ResNet34-LM |
+| Diarizer | `elizaos/eliza-1-voice-diarizer` | Pyannote-segmentation-3.0 |
+| VAD | `elizaos/eliza-1-voice-vad` | Silero VAD v5.1.2 |
+| Wakeword | `elizaos/eliza-1-voice-wakeword` | hey-eliza head |
+| Kokoro TTS | `elizaos/eliza-1-voice-kokoro` | Kokoro-82M base |
+| OmniVoice TTS | `elizaos/eliza-1-voice-omnivoice` | OmniVoice presets |
+| Embedding | `elizaos/eliza-1-voice-embedding` | Qwen3-Embedding GGUF |
+
+These are bundled into the main tier download automatically — the separate repos exist
+for advanced use cases (custom pipelines, model comparison, research).
 
 ---
 

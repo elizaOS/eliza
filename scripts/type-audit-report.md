@@ -1,25 +1,25 @@
 # Type Audit Report
 
-Generated: 2026-05-15T05:03:55.684Z
+Generated: 2026-05-15T10:15:38.496Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 2996 |
-| Type/interface/enum declarations | 8670 |
-| Interfaces | 5250 |
-| Type aliases | 3353 |
+| TypeScript files scanned | 2995 |
+| Type/interface/enum declarations | 8672 |
+| Interfaces | 5260 |
+| Type aliases | 3345 |
 | Enums | 67 |
-| Exported declarations | 6352 |
-| Unique names | 7546 |
-| Duplicate name groups | 875 |
-| Same name and same structure groups | 496 |
-| Different name but same structure groups | 222 |
-| Different name but same member-signature groups | 162 |
-| Different name but same member-name groups | 314 |
+| Exported declarations | 6399 |
+| Unique names | 7553 |
+| Duplicate name groups | 866 |
+| Same name and same structure groups | 489 |
+| Different name but same structure groups | 223 |
+| Different name but same member-signature groups | 161 |
+| Different name but same member-name groups | 310 |
 | Near overlap pairs retained | 500 |
-| High-confidence shared-type candidates | 751 |
+| High-confidence shared-type candidates | 744 |
 
 Roots: `packages`
 Tests included: no
@@ -33,10 +33,10 @@ Vendor files included: no
 | Package | Total | Interfaces | Types | Enums | Local duplicate names |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `@elizaos/core` | 2232 | 1389 | 832 | 11 | 52 |
-| `@elizaos/ui` | 1761 | 1204 | 557 | 0 | 39 |
-| `@elizaos/shared` | 1285 | 610 | 675 | 0 | 6 |
-| `@elizaos/agent` | 1026 | 557 | 469 | 0 | 29 |
-| `@elizaos/app-core` | 463 | 298 | 165 | 0 | 9 |
+| `@elizaos/ui` | 1762 | 1205 | 557 | 0 | 39 |
+| `@elizaos/shared` | 1287 | 611 | 676 | 0 | 6 |
+| `@elizaos/agent` | 962 | 505 | 457 | 0 | 23 |
+| `@elizaos/app-core` | 452 | 289 | 163 | 0 | 9 |
 | `@elizaos/electrobun` | 311 | 168 | 143 | 0 | 21 |
 | `llama-server-webui` | 103 | 39 | 10 | 54 | 0 |
 | `metrics-dashboard` | 91 | 79 | 12 | 0 | 14 |
@@ -46,6 +46,7 @@ Vendor files included: no
 | `@elizaos/scenario-runner` | 57 | 20 | 37 | 0 | 0 |
 | `@elizaos/browser-bridge-extension` | 54 | 13 | 41 | 0 | 0 |
 | `@elizaos/vault` | 54 | 45 | 9 | 0 | 0 |
+| `@elizaos/bench-eliza-1-vision-cua-e2e` | 48 | 45 | 3 | 0 | 1 |
 | `@elizaos/bench-eliza-1` | 45 | 38 | 7 | 0 | 2 |
 | `@elizaos/electrobun-carrots` | 45 | 27 | 18 | 0 | 0 |
 | `eliza-app` | 44 | 24 | 20 | 0 | 1 |
@@ -53,6 +54,7 @@ Vendor files included: no
 | `@elizaos/capacitor-canvas` | 42 | 36 | 6 | 0 | 0 |
 | `@elizaos/example-code` | 42 | 28 | 14 | 0 | 0 |
 | `@elizaos/capacitor-llama` | 31 | 21 | 10 | 0 | 0 |
+| `@elizaos/bench-vision-language` | 30 | 27 | 3 | 0 | 2 |
 | `eliza-vrm-demo` | 30 | 0 | 30 | 0 | 0 |
 | `@elizaos/capacitor-mobile-signals` | 29 | 19 | 10 | 0 | 0 |
 | `@elizaos/personality-bench` | 29 | 21 | 8 | 0 | 0 |
@@ -92,6 +94,7 @@ Vendor files included: no
 | `@elizaos/capacitor-eliza-tasks` | 7 | 5 | 2 | 0 | 0 |
 | `@elizaos/capacitor-phone` | 7 | 6 | 1 | 0 | 0 |
 | `@elizaos/example-bluesky` | 7 | 7 | 0 | 0 | 0 |
+| `@elizaos/example-game-of-life` | 7 | 5 | 2 | 0 | 0 |
 | `@elizaos/example-tic-tac-toe` | 7 | 3 | 4 | 0 | 0 |
 | `@elizaos/gcp-examples` | 7 | 7 | 0 | 0 | 3 |
 | `@elizaos/native-activity-tracker` | 7 | 5 | 2 | 0 | 0 |
@@ -101,7 +104,6 @@ Vendor files included: no
 | `@elizaos/example-app-capacitor-backend` | 6 | 0 | 6 | 0 | 0 |
 | `@elizaos/example-app-electron` | 6 | 0 | 6 | 0 | 0 |
 | `@elizaos/example-browser-extension-chrome` | 6 | 2 | 4 | 0 | 1 |
-| `@elizaos/example-game-of-life` | 6 | 5 | 1 | 0 | 0 |
 | `@elizaos/example-roblox-agent` | 6 | 0 | 6 | 0 | 0 |
 | `@elizaos/example-text-adventure` | 6 | 6 | 0 | 0 | 0 |
 | `@elizaos/vercel-edge-examples` | 6 | 6 | 0 | 0 | 2 |
@@ -110,8 +112,6 @@ Vendor files included: no
 | `@elizaos/capacitor-mobile-agent-bridge` | 5 | 4 | 1 | 0 | 0 |
 | `@elizaos/example-a2a-server` | 5 | 1 | 4 | 0 | 1 |
 | `@elizaos/example-app-capacitor-frontend` | 5 | 0 | 5 | 0 | 0 |
-| `@moltbook/eliza-agent` | 5 | 5 | 0 | 0 | 0 |
-| `elizaos-plugin-registry-site` | 5 | 3 | 2 | 0 | 0 |
 
 ## Consolidation Candidates
 
@@ -123,11 +123,11 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/core`, `@elizaos/shared`
   - rationale: same symbol name; exact canonical structure
   - shared members: `alchemyKeySet, ankrKeySet, automationMode, avalancheBalanceReady, baseBalanceReady, birdeyeKeySet, bscBalanceReady, cloudManagedAccess, ethereumBalanceReady, evmBalanceReady, evmChains, evmSigningCapability`
-- 100%: `INodeTypeDescription` (`packages/core/src/workflow-types.ts:618`) vs `INodeTypeDescription` (`packages/workflows/src/index.ts:581`)
+- 100%: `INodeTypeDescription` (`packages/core/src/workflow-types.ts:618`) vs `INodeTypeDescription` (`packages/workflows/src/index.ts:576`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; 31 shared member names (100% of smaller shape); 29 identical member signatures; 94% matching shared member types
   - shared members: `__loadOptionsMethods, activationMessage, builderHint, capabilities, communityNodePackageVersion, credentials, defaults, eventTriggerDescription, extendsCredential, features, hints, hooks`
-- 100%: `INodeProperties` (`packages/core/src/workflow-types.ts:262`) vs `INodeProperties` (`packages/workflows/src/index.ts:253`)
+- 100%: `INodeProperties` (`packages/core/src/workflow-types.ts:262`) vs `INodeProperties` (`packages/workflows/src/index.ts:248`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; 26 shared member names (100% of smaller shape); 24 identical member signatures; 92% matching shared member types
   - shared members: `allowArbitraryValues, builderHint, credentialTypes, default, description, disabledOptions, displayName, displayOptions, doNotInherit, envFeatureFlag, extractValue, hint`
@@ -139,7 +139,7 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/agent`, `@elizaos/shared`
   - rationale: same symbol name; 24 shared member names (96% of smaller shape); 23 identical member signatures; 96% matching shared member types
   - shared members: `advanced, component, group, help, hidden, icon, itemSchema, itemTemplate, label, max, maxItems, min`
-- 100%: `INodePropertyTypeOptions` (`packages/core/src/workflow-types.ts:231`) vs `INodePropertyTypeOptions` (`packages/workflows/src/index.ts:222`)
+- 100%: `INodePropertyTypeOptions` (`packages/core/src/workflow-types.ts:231`) vs `INodePropertyTypeOptions` (`packages/workflows/src/index.ts:217`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; exact canonical structure
   - shared members: `[key:string], action, alwaysOpenEditWindow, assignment, codeAutocomplete, containerClass, editor, editorIsReadOnly, editorLanguage, expirable, filter, loadOptions`
@@ -147,11 +147,11 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/core`, `@elizaos/shared`
   - rationale: same symbol name; exact canonical structure
   - shared members: `allowanceTarget, minReceive, ok, preflight, price, quotedAt, quoteIn, quoteOut, route, routeProvider, routeProviderFallbackUsed, routeProviderNotes`
-- 100%: `INode` (`packages/core/src/workflow-types.ts:383`) vs `INode` (`packages/workflows/src/index.ts:366`)
+- 100%: `INode` (`packages/core/src/workflow-types.ts:383`) vs `INode` (`packages/workflows/src/index.ts:361`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; exact canonical structure
   - shared members: `alwaysOutputData, continueOnFail, credentials, disabled, executeOnce, extendsCredential, forceCustomOperation, id, maxTries, name, notes, notesInFlow`
-- 100%: `INodeTypeBaseDescription` (`packages/core/src/workflow-types.ts:483`) vs `INodeTypeBaseDescription` (`packages/workflows/src/index.ts:462`)
+- 100%: `INodeTypeBaseDescription` (`packages/core/src/workflow-types.ts:483`) vs `INodeTypeBaseDescription` (`packages/workflows/src/index.ts:457`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; 18 shared member names (100% of smaller shape); 17 identical member signatures; 94% matching shared member types
   - shared members: `badgeIconUrl, builderHint, codex, defaultVersion, description, displayName, documentationUrl, group, hidden, icon, iconBasePath, iconColor`
@@ -243,7 +243,7 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/shared`, `@elizaos/ui`
   - rationale: same symbol name; exact canonical structure
   - shared members: `errors, fieldType, hint, isSet, key, onAction, onChange, onReveal, readonly, required, schema, value`
-- 100%: `INodePropertyMode` (`packages/core/src/workflow-types.ts:323`) vs `INodePropertyMode` (`packages/workflows/src/index.ts:309`)
+- 100%: `INodePropertyMode` (`packages/core/src/workflow-types.ts:323`) vs `INodePropertyMode` (`packages/workflows/src/index.ts:304`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; 12 shared member names (100% of smaller shape); 11 identical member signatures; 92% matching shared member types
   - shared members: `displayName, entryTypes, extractValue, hint, initType, name, placeholder, search, type, typeOptions, url, validation`
@@ -279,11 +279,11 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/shared`, `@elizaos/ui`
   - rationale: same symbol name; exact canonical structure
   - shared members: `actionNames, actions, fieldNames, fields, functions, hasAction, hasField, prompt, resolveType, validate`
-- 100%: `INodePropertyOptions` (`packages/core/src/workflow-types.ts:303`) vs `INodePropertyOptions` (`packages/workflows/src/index.ts:289`)
+- 100%: `INodePropertyOptions` (`packages/core/src/workflow-types.ts:303`) vs `INodePropertyOptions` (`packages/workflows/src/index.ts:284`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; exact canonical structure
   - shared members: `action, builderHint, description, disabledOptions, displayOptions, inputSchema, name, outputConnectionType, routing, value`
-- 100%: `ResourceMapperField` (`packages/core/src/workflow-types.ts:66`) vs `ResourceMapperField` (`packages/workflows/src/index.ts:61`)
+- 100%: `ResourceMapperField` (`packages/core/src/workflow-types.ts:66`) vs `ResourceMapperField` (`packages/workflows/src/index.ts:56`)
   - packages: `@elizaos/core`, `@elizaos/workflows`
   - rationale: same symbol name; exact canonical structure
   - shared members: `canBeUsedToMatch, defaultMatch, display, displayName, id, options, readOnly, removed, required, type`
@@ -339,14 +339,6 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/core`, `@elizaos/shared`
   - rationale: same symbol name; exact canonical structure
   - shared members: `amountWei, chainId, data, explorerUrl, from, spender, to, valueWei`
-- 100%: `CatalogSearchResult` (`packages/agent/src/services/skill-catalog-client.ts:41`) vs `CatalogSearchResult` (`packages/ui/src/api/client-types-config.ts:833`)
-  - packages: `@elizaos/agent`, `@elizaos/ui`
-  - rationale: same symbol name; exact canonical structure
-  - shared members: `displayName, downloads, installs, latestVersion, score, slug, stars, summary`
-- 100%: `CatalogSkill` (`packages/agent/src/services/skill-catalog-client.ts:30`) vs `CatalogSkill` (`packages/ui/src/api/client-types-config.ts:821`)
-  - packages: `@elizaos/agent`, `@elizaos/ui`
-  - rationale: same symbol name; 8 shared member names (100% of smaller shape); 8 identical member signatures; 100% matching shared member types
-  - shared members: `createdAt, displayName, latestVersion, slug, stats, summary, tags, updatedAt`
 - 100%: `IntegrationObservabilityEvent` (`packages/agent/src/diagnostics/integration-observability.ts:12`) vs `IntegrationObservabilityEvent` (`packages/app-core/src/diagnostics/integration-observability.ts:6`)
   - packages: `@elizaos/agent`, `@elizaos/app-core`
   - rationale: same symbol name; exact canonical structure
@@ -399,11 +391,11 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/agent`, `@elizaos/app-core`
   - rationale: same symbol name; exact canonical structure
   - shared members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`
-- 100%: `MockUpdateCheckResult` (`packages/agent/src/test-support/test-helpers.ts:27`) vs `MockUpdateCheckResult` (`packages/shared/src/test-support/test-helpers.ts:27`)
+- 100%: `MockUpdateCheckResult` (`packages/agent/src/test-support/test-helpers.ts:27`) vs `MockUpdateCheckResult` (`packages/shared/src/test-support/test-helpers.ts:23`)
   - packages: `@elizaos/agent`, `@elizaos/shared`
   - rationale: same symbol name; exact canonical structure
   - shared members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`
-- 100%: `MockUpdateCheckResult` (`packages/app-core/src/test-support/test-helpers.ts:26`) vs `MockUpdateCheckResult` (`packages/shared/src/test-support/test-helpers.ts:27`)
+- 100%: `MockUpdateCheckResult` (`packages/app-core/src/test-support/test-helpers.ts:26`) vs `MockUpdateCheckResult` (`packages/shared/src/test-support/test-helpers.ts:23`)
   - packages: `@elizaos/app-core`, `@elizaos/shared`
   - rationale: same symbol name; exact canonical structure
   - shared members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`
@@ -435,12 +427,20 @@ These pairs are cross-package source declarations with the same symbol name or e
   - packages: `@elizaos/browser-bridge-extension`, `@elizaos/ui`
   - rationale: same symbol name; exact canonical structure
   - shared members: `activeTab, allOrigins, grantedOrigins, incognitoEnabled, scripting, tabs`
-- 100%: `CatalogSkillStats` (`packages/agent/src/services/skill-catalog-client.ts:15`) vs `CatalogSkillStats` (`packages/ui/src/api/client-types-config.ts:806`)
-  - packages: `@elizaos/agent`, `@elizaos/ui`
+- 100%: `CorePluginEntry` (`packages/app-core/platforms/electrobun/src/rpc-schema.ts:737`) vs `CorePluginEntry` (`packages/ui/src/api/client-types-config.ts:197`)
+  - packages: `@elizaos/electrobun`, `@elizaos/ui`
   - rationale: same symbol name; exact canonical structure
-  - shared members: `comments, downloads, installsAllTime, installsCurrent, stars, versions`
+  - shared members: `enabled, id, isCore, loaded, name, npmName`
+- 100%: `FieldRegistry` (`packages/shared/src/config/config-catalog.ts:737`) vs `FieldRegistry` (`packages/ui/src/config/config-catalog.ts:737`)
+  - packages: `@elizaos/shared`, `@elizaos/ui`
+  - rationale: same symbol name; exact canonical structure
+  - shared members: `actionHandlers, catalog, renderers, resolve, resolveAction, resolveOrFallback`
+- 100%: `INodeInputConfiguration` (`packages/core/src/workflow-types.ts:509`) vs `INodeInputConfiguration` (`packages/workflows/src/index.ts:483`)
+  - packages: `@elizaos/core`, `@elizaos/workflows`
+  - rationale: same symbol name; exact canonical structure
+  - shared members: `category, displayName, filter, maxConnections, required, type`
 
-Showing 80 of 751; see JSON for the full set.
+Showing 80 of 744; see JSON for the full set.
 
 ### Same Name and Same Canonical Structure
 
@@ -546,9 +546,9 @@ Showing 80 of 751; see JSON for the full set.
   - `packages/core/src/app-registry.ts:7` (interface; members: `entries`)
   - `packages/shared/src/contracts/apps.ts:19` (interface; members: `entries`)
 - 3 declarations; names: `DeletedConversationsStateFile`; packages: `@elizaos/agent`
-  - `packages/agent/src/api/conversation-routes.ts:111` (interface; members: `ids, updatedAt, version`)
+  - `packages/agent/src/api/conversation-routes.ts:130` (interface; members: `ids, updatedAt, version`)
   - `packages/agent/src/api/server-helpers.ts:106` (interface, exported; members: `ids, updatedAt, version`)
-  - `packages/agent/src/api/server.ts:400` (interface; members: `ids, updatedAt, version`)
+  - `packages/agent/src/api/server.ts:448` (interface; members: `ids, updatedAt, version`)
 - 3 declarations; names: `ElectrobunRequestHandler`; packages: `@elizaos/capacitor-desktop`, `@elizaos/capacitor-swabble`, `@elizaos/ui`
   - `packages/native-plugins/desktop/src/web.ts:27` (type)
   - `packages/native-plugins/swabble/src/web.ts:17` (type)
@@ -588,25 +588,25 @@ Showing 80 of 751; see JSON for the full set.
 - 3 declarations; names: `MockBodyChunk`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:165` (type)
   - `packages/app-core/src/test-support/test-helpers.ts:435` (type)
-  - `packages/shared/src/test-support/test-helpers.ts:438` (type)
+  - `packages/shared/src/test-support/test-helpers.ts:332` (type)
 - 3 declarations; names: `MockRequestOptions`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:167` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
   - `packages/app-core/src/test-support/test-helpers.ts:437` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
-  - `packages/shared/src/test-support/test-helpers.ts:440` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
+  - `packages/shared/src/test-support/test-helpers.ts:334` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
 - 3 declarations; names: `MockUpdateCheckResult`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:27` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
   - `packages/app-core/src/test-support/test-helpers.ts:26` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
-  - `packages/shared/src/test-support/test-helpers.ts:27` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
+  - `packages/shared/src/test-support/test-helpers.ts:23` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
 - 3 declarations; names: `PatchableClient`; packages: `@elizaos/ui`
   - `packages/ui/src/platform/cloud-preference-patch.ts:15` (type; members: `[[PATCH_STATE]]`)
   - `packages/ui/src/platform/desktop-permissions-client.ts:9` (type; members: `[[PATCH_STATE]]`)
   - `packages/ui/src/platform/onboarding-reset.ts:15` (type; members: `[[PATCH_STATE]]`)
 - 3 declarations; names: `RuntimeOrderItem`; packages: `@elizaos/agent`, `@elizaos/electrobun`, `@elizaos/shared`
-  - `packages/agent/src/api/health-routes.ts:73` (interface; members: `className, id, index, name`)
+  - `packages/agent/src/api/health-routes.ts:99` (interface; members: `className, id, index, name`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:688` (interface, exported; members: `className, id, index, name`)
   - `packages/shared/src/api/agent-api-types.ts:197` (interface, exported; members: `className, id, index, name`)
 - 3 declarations; names: `RuntimeServiceOrderItem`; packages: `@elizaos/agent`, `@elizaos/electrobun`, `@elizaos/shared`
-  - `packages/agent/src/api/health-routes.ts:80` (interface; members: `count, index, instances, serviceType`)
+  - `packages/agent/src/api/health-routes.ts:106` (interface; members: `count, index, instances, serviceType`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:695` (interface, exported; members: `count, index, instances, serviceType`)
   - `packages/shared/src/api/agent-api-types.ts:204` (interface, exported; members: `count, index, instances, serviceType`)
 - 3 declarations; names: `StuckContainer`; packages: `metrics-dashboard`
@@ -640,11 +640,8 @@ Showing 80 of 751; see JSON for the full set.
 - 2 declarations; names: `AgentPanel`; packages: `@elizaos/plugin-starter`
   - `packages/elizaos/templates/plugin/src/frontend/index.tsx:116` (interface, exported; members: `component, icon, name, path, public, shortLabel`)
   - `packages/examples/_plugin/src/frontend/index.tsx:130` (interface, exported; members: `component, icon, name, path, public, shortLabel`)
-- 2 declarations; names: `AgentsListSnapshot`; packages: `@elizaos/agent`
-  - `packages/agent/src/services/app-manager-agents-list-guard.ts:1` (type)
-  - `packages/agent/src/services/app-manager.ts:100` (type)
 - 2 declarations; names: `AgentStartupDiagnostics`; packages: `@elizaos/agent`, `@elizaos/shared`
-  - `packages/agent/src/api/health-routes.ts:24` (interface; members: `attempt, lastError, lastErrorAt, nextRetryAt, phase`)
+  - `packages/agent/src/api/health-routes.ts:50` (interface; members: `attempt, lastError, lastErrorAt, nextRetryAt, phase`)
   - `packages/shared/src/api/agent-api-types.ts:237` (interface, exported; members: `attempt, lastError, lastErrorAt, nextRetryAt, phase`)
 - 2 declarations; names: `AgentStateStatus`; packages: `@elizaos/agent`
   - `packages/agent/src/api/agent-admin-routes.ts:14` (type)
@@ -654,7 +651,7 @@ Showing 80 of 751; see JSON for the full set.
   - `packages/native-plugins/agent/src/definitions.ts:14` (interface, exported; members: `agentName, error, port, startedAt, state`)
 - 2 declarations; names: `AINodeConnectionType`; packages: `@elizaos/core`, `@elizaos/workflows`
   - `packages/core/src/workflow-types.ts:165` (type, exported)
-  - `packages/workflows/src/index.ts:159` (type, exported)
+  - `packages/workflows/src/index.ts:154` (type, exported)
 - 2 declarations; names: `AllPermissionsState`; packages: `@elizaos/electrobun`
   - `packages/app-core/platforms/electrobun/src/native/permissions-shared.ts:20` (interface, exported; members: `[key:string]`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:313` (interface, exported; members: `[key:string]`)
@@ -712,9 +709,6 @@ Showing 80 of 751; see JSON for the full set.
 - 2 declarations; names: `AppRunHealthState`; packages: `@elizaos/shared`, `@elizaos/ui`
   - `packages/shared/src/contracts/apps.ts:61` (type, exported)
   - `packages/ui/src/api/client-types-cloud.ts:412` (type, exported)
-- 2 declarations; names: `AppRunSteeringDisposition`; packages: `@elizaos/agent`, `@elizaos/ui`
-  - `packages/agent/src/api/apps-routes.ts:364` (type)
-  - `packages/ui/src/api/client-skills.ts:61` (type, exported)
 - 2 declarations; names: `AppRunViewerAttachment`; packages: `@elizaos/shared`, `@elizaos/ui`
   - `packages/shared/src/contracts/apps.ts:60` (type, exported)
   - `packages/ui/src/api/client-types-cloud.ts:411` (type, exported)
@@ -745,24 +739,31 @@ Showing 80 of 751; see JSON for the full set.
 - 2 declarations; names: `AppStopResult`; packages: `@elizaos/shared`, `@elizaos/ui`
   - `packages/shared/src/contracts/apps.ts:349` (interface, exported; members: `appName, message, needsRestart, pluginUninstalled, runId, stoppedAt, stopScope, success`)
   - `packages/ui/src/api/client-types-cloud.ts:593` (interface, exported; members: `appName, message, needsRestart, pluginUninstalled, runId, stoppedAt, stopScope, success`)
+- 2 declarations; names: `AppViewerAuthMessage`; packages: `@elizaos/shared`, `@elizaos/ui`
+  - `packages/shared/src/contracts/apps.ts:85` (interface, exported; members: `agentId, authToken, characterId, followEntity, sessionToken, type`)
+  - `packages/ui/src/api/client-types-cloud.ts:436` (interface, exported; members: `agentId, authToken, characterId, followEntity, sessionToken, type`)
+- 2 declarations; names: `AppWebConfig`; packages: `__APP_PACKAGE_NAME__`, `@elizaos/app`
+  - `packages/app/app.config.ts:14` (interface; members: `backgroundColor, shareImagePath, shortName, themeColor`)
+  - `packages/elizaos/templates/project/apps/app/app.config.ts:16` (interface; members: `backgroundColor, shareImagePath, shortName, themeColor`)
 
-Showing 80 of 496; see JSON for the full set.
+Showing 80 of 489; see JSON for the full set.
 
 ### Different Name but Same Canonical Structure
 
-- 41 declarations; names: `ActionOptions`, `AppRoutePluginModule`, `AuthSqlRow`, `BenchThreadOp`, `CharacterSnapshot`, `ConfigSnapshot`, `HealthSnapshot`, `JsonSchemaNode`, `LifeOpsTaskDefinitionInput`, `LocalInferenceChatMetadata`, `MutableModule`, `NativePlugin`, `OverrideTree`, `PairingSnapshotLike`, `ParamRecord`, `PathNode`, `PluginInstance`, `RouteBody`, `SettingsConfigSnapshot`, `SignalPairingEvent`, `SignalPairingOptions`, `SignalPairingSnapshot`, `StatusSummary`, `StorageConfig`, `StoredDocumentMetadata`, `ToolArgs`, `TranslateOptions`, `TranslationVars`, `TriggerRouteHelpers`, `UnknownRecord`, `WhatsAppPairingEvent`, `WhatsAppPairingEventLike`, `WhatsAppPairingOptions`, `WhatsAppRouteDeps`, `WhatsAppRouteState`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/core`, `@elizaos/electrobun`, `@elizaos/interrupt-bench`, `@elizaos/scenario-runner`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/agent/src/api/chat-routes.ts:88` (type)
-  - `packages/agent/src/api/index.ts:14` (type, exported)
-  - `packages/agent/src/api/index.ts:18` (type, exported)
-  - `packages/agent/src/api/index.ts:19` (type, exported)
-  - `packages/agent/src/api/index.ts:21` (type, exported)
-  - `packages/agent/src/api/server-types.ts:23` (type, exported)
-  - `packages/agent/src/cli/mobile-fs-shim.ts:393` (type)
-  - `packages/agent/src/config/schema.ts:90` (type)
-  - `packages/agent/src/runtime/tool-call-cache/types.ts:11` (type, exported)
-  - `packages/agent/src/services/index.ts:26` (type, exported)
-  - ... 31 more
-- 21 declarations; names: `AccountCredentialRecord`, `BootElizaRuntimeOptions`, `CloudManagerLike`, `CloudProxyConfigLike`, `ConversationMeta`, `DatabaseSync`, `DocumentAddedByRole`, `DocumentAddedFrom`, `DocumentSearchMode`, `DocumentsLoadFailReason`, `DocumentsServiceLike`, `DocumentsServiceResult`, `DocumentVisibilityScope`, `DropService`, `ElizaConfig`, `PluginModuleShape`, `RegistryService`, `ReleaseChannel`, `StartElizaOptions`, `Trajectory`, `TxService`; packages: `@elizaos/agent`, `@elizaos/app-core`
+- 45 declarations; names: `ActionOptions`, `AppManagerLike`, `AppRoutePluginModule`, `AuthSqlRow`, `BenchThreadOp`, `CharacterSnapshot`, `ConfigSnapshot`, `FavoriteAppsStore`, `HealthSnapshot`, `JsonSchemaNode`, `LifeOpsTaskDefinitionInput`, `LocalInferenceChatMetadata`, `NativePlugin`, `OverrideTree`, `PairingSnapshotLike`, `ParamRecord`, `PathNode`, `PluginInstance`, `RouteBody`, `SettingsConfigSnapshot`, `SignalPairingEvent`, `SignalPairingOptions`, `SignalPairingSnapshot`, `StatusSummary`, `StorageConfig`, `StoredDocumentMetadata`, `ToolArgs`, `TranslateOptions`, `TranslationVars`, `TriggerRouteHelpers`, `UnknownRecord`, `WalletAddressesSnapshot`, `WalletRouteDependencies`, `WalletRpcReadinessSnapshot`, `WhatsAppPairingEvent`, `WhatsAppPairingEventLike`, `WhatsAppPairingOptions`, `WhatsAppRouteDeps`, `WhatsAppRouteState`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/core`, `@elizaos/electrobun`, `@elizaos/interrupt-bench`, `@elizaos/scenario-runner`, `@elizaos/shared`, `@elizaos/ui`
+  - `packages/agent/src/api/chat-routes.ts:85` (type)
+  - `packages/agent/src/api/index.ts:36` (type, exported)
+  - `packages/agent/src/api/index.ts:40` (type, exported)
+  - `packages/agent/src/api/index.ts:41` (type, exported)
+  - `packages/agent/src/api/index.ts:43` (type, exported)
+  - `packages/agent/src/api/index.ts:44` (type, exported)
+  - `packages/agent/src/api/index.ts:46` (type, exported)
+  - `packages/agent/src/api/index.ts:47` (type, exported)
+  - `packages/agent/src/api/index.ts:49` (type, exported)
+  - `packages/agent/src/api/index.ts:50` (type, exported)
+  - ... 35 more
+- 22 declarations; names: `AccountCredentialRecord`, `AppManagerLike`, `BootElizaRuntimeOptions`, `CloudManagerLike`, `CloudProxyConfigLike`, `ConversationMeta`, `DatabaseSync`, `DocumentAddedByRole`, `DocumentAddedFrom`, `DocumentSearchMode`, `DocumentsLoadFailReason`, `DocumentsServiceLike`, `DocumentsServiceResult`, `DocumentVisibilityScope`, `DropService`, `ElizaConfig`, `PluginModuleShape`, `RegistryService`, `ReleaseChannel`, `StartElizaOptions`, `Trajectory`, `TxService`; packages: `@elizaos/agent`, `@elizaos/app-core`
+  - `packages/agent/src/api/server-types.ts:16` (type, exported)
   - `packages/agent/src/api/server-types.ts:17` (type, exported)
   - `packages/app-core/src/platform/empty-node-module.ts:132` (type, exported)
   - `packages/app-core/src/platform/empty-node-module.ts:133` (type, exported)
@@ -772,8 +773,7 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/app-core/src/platform/empty-node-module.ts:137` (type, exported)
   - `packages/app-core/src/platform/empty-node-module.ts:138` (type, exported)
   - `packages/app-core/src/platform/empty-node-module.ts:139` (type, exported)
-  - `packages/app-core/src/platform/empty-node-module.ts:140` (type, exported)
-  - ... 11 more
+  - ... 12 more
 - 16 declarations; names: `AdminDialogBodyScrollProps`, `AdminDialogFooterProps`, `AdminDialogHeaderProps`, `AdminSegmentedTabListProps`, `PageActionRailProps`, `PagePanelContentAreaProps`, `PagePanelFrameProps`, `PagePanelToolbarProps`, `SettingsMutedTextProps`, `SettingsSegmentedGroupProps`, `SidebarBodyProps`, `SidebarHeaderStackProps`, `SidebarSectionLabelProps`, `SidebarToolbarActionsProps`, `SidebarToolbarPrimaryProps`, `SidebarToolbarProps`; packages: `@elizaos/ui`
   - `packages/ui/src/components/composites/page-panel/page-panel-types.ts:43` (interface, exported)
   - `packages/ui/src/components/composites/page-panel/page-panel-types.ts:62` (interface, exported)
@@ -834,6 +834,13 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/examples/rest-api/express/server.ts:175` (interface; members: `message, userId`)
   - `packages/examples/rest-api/hono/server.ts:162` (interface; members: `message, userId`)
   - `packages/examples/supabase/functions/eliza-chat-wasm/index.ts:39` (interface; members: `message, userId`)
+- 6 declarations; names: `BrowserTabKitCursorPoint`, `CanvasPoint`, `CursorPosition`, `DesktopCursorPosition`, `Point`, `Position`; packages: `@elizaos/bench-vision-language`, `@elizaos/capacitor-canvas`, `@elizaos/electrobun`, `@elizaos/example-game-of-life`, `@elizaos/shared`, `@elizaos/ui`
+  - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:527` (interface, exported; members: `x, y`)
+  - `packages/benchmarks/vision-language/src/types.ts:32` (interface, exported; members: `x, y`)
+  - `packages/examples/game-of-life/game.ts:68` (interface; members: `x, y`)
+  - `packages/native-plugins/canvas/src/definitions.ts:8` (interface, exported; members: `x, y`)
+  - `packages/shared/src/utils/browser-tab-kit-types.ts:23` (interface, exported; members: `x, y`)
+  - `packages/ui/src/utils/desktop-workspace.ts:91` (interface, exported; members: `x, y`)
 - 6 declarations; names: `AdminMetaBadgeProps`, `AdminMonoMetaProps`, `SidebarItemBodyProps`, `SidebarItemDescriptionProps`, `SidebarItemTitleProps`, `SidebarRailMediaProps`; packages: `@elizaos/ui`
   - `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:227` (interface, exported)
   - `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:261` (interface, exported)
@@ -855,12 +862,6 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/shared/src/contracts/config.ts:176` (type, exported; members: `apiKey, model`)
   - `packages/shared/src/contracts/config.ts:181` (type, exported; members: `apiKey, model`)
   - `packages/shared/src/contracts/config.ts:186` (type, exported; members: `apiKey, model`)
-- 5 declarations; names: `BrowserTabKitCursorPoint`, `CanvasPoint`, `CursorPosition`, `DesktopCursorPosition`, `Position`; packages: `@elizaos/capacitor-canvas`, `@elizaos/electrobun`, `@elizaos/example-game-of-life`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:527` (interface, exported; members: `x, y`)
-  - `packages/examples/game-of-life/game.ts:73` (interface; members: `x, y`)
-  - `packages/native-plugins/canvas/src/definitions.ts:8` (interface, exported; members: `x, y`)
-  - `packages/shared/src/utils/browser-tab-kit-types.ts:23` (interface, exported; members: `x, y`)
-  - `packages/ui/src/utils/desktop-workspace.ts:91` (interface, exported; members: `x, y`)
 - 5 declarations; names: `AppLaunchDiagnosticSeverity`, `AppRunEventSeverity`, `TaskTraceLevel`; packages: `@elizaos/example-code`, `@elizaos/shared`, `@elizaos/ui`
   - `packages/examples/code/src/types.ts:51` (type)
   - `packages/shared/src/contracts/apps.ts:75` (type, exported)
@@ -954,10 +955,6 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/core-status.ts:18` (interface, exported; members: `callback, runtime`)
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/list-ejected.ts:15` (interface, exported; members: `callback, runtime`)
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/list.ts:15` (interface, exported; members: `callback, runtime`)
-- 3 declarations; names: `SecretEntry`, `SecretInfo`; packages: `@elizaos/agent`, `@elizaos/ui`
-  - `packages/agent/src/api/plugin-discovery-helpers.ts:706` (interface, exported; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
-  - `packages/agent/src/api/plugin-routes.ts:166` (interface; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
-  - `packages/ui/src/api/client-types-config.ts:83` (interface, exported; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
 - 3 declarations; names: `CapacitorJscEvaluateOptions`, `CapacitorQuickJsEvaluateOptions`, `JsRuntimeEvaluateOptions`; packages: `@elizaos/agent`, `@elizaos/app-core`
   - `packages/agent/src/services/js-runtime-bridge.ts:47` (interface, exported; members: `code, sourceUrl, timeoutMs`)
   - `packages/app-core/src/connectors/capacitor-jsc.ts:32` (interface, exported; members: `code, sourceUrl, timeoutMs`)
@@ -974,10 +971,6 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/agent/src/api/inbox-routes.ts:179` (interface; members: `count, emoji, users`)
   - `packages/ui/src/api/client-types-chat.ts:74` (interface, exported; members: `count, emoji, users`)
   - `packages/ui/src/components/composites/chat/chat-types.ts:55` (interface, exported; members: `count, emoji, users`)
-- 3 declarations; names: `SkillEntry`, `SkillInfo`; packages: `@elizaos/agent`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/agent/src/api/skills-routes.ts:32` (interface, exported; members: `description, enabled, id, name, scanStatus`)
-  - `packages/shared/src/api/agent-api-types.ts:225` (interface, exported; members: `description, enabled, id, name, scanStatus`)
-  - `packages/ui/src/api/client-types-config.ts:771` (interface, exported; members: `description, enabled, id, name, scanStatus`)
 - 3 declarations; names: `BugReportBundleResult`, `DesktopBugReportBundleInfo`; packages: `@elizaos/electrobun`, `@elizaos/ui`
   - `packages/app-core/platforms/electrobun/src/native/agent.ts:73` (interface, exported; members: `directory, reportJsonPath, reportMarkdownPath, startupLogPath, startupStatusPath`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:799` (interface, exported; members: `directory, reportJsonPath, reportMarkdownPath, startupLogPath, startupStatusPath`)
@@ -1015,7 +1008,7 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/core/src/features/plugin-config/actions/poll-plugin-config-status.ts:23` (interface; members: `pluginName`)
   - `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts:23` (interface; members: `pluginName`)
 - 3 declarations; names: `StoppablePairingSession`, `TelegramAccountAuthSessionLike`, `WhatsAppPairingSessionLike`; packages: `@elizaos/agent`
-  - `packages/agent/src/api/index.ts:15` (interface, exported; members: `stop`)
+  - `packages/agent/src/api/index.ts:37` (interface, exported; members: `stop`)
   - `packages/agent/src/api/server-types.ts:19` (interface, exported; members: `stop`)
   - `packages/agent/src/api/server-types.ts:25` (interface, exported; members: `stop`)
 - 3 declarations; names: `ElizaGuidedModeOptions`, `ElizaStrictGuidedModeOptions`, `ElizaUnguidedModeOptions`; packages: `@elizaos/bench-eliza-1`
@@ -1066,8 +1059,16 @@ Showing 80 of 496; see JSON for the full set.
   - `packages/ui/src/components/conversations/ConversationsSidebar.tsx:860` (type)
   - `packages/ui/src/components/settings/DesktopWorkspaceDisplay.tsx:14` (type)
   - `packages/ui/src/components/settings/useDesktopWindowControls.ts:5` (type)
+- 3 declarations; names: `ShellHeaderTranslator`, `ThemeTranslatorFn`, `TranslatorFn`; packages: `@elizaos/ui`
+  - `packages/ui/src/components/shared/LanguageDropdown.tsx:13` (type, exported)
+  - `packages/ui/src/components/shared/ThemeToggle.tsx:7` (type, exported)
+  - `packages/ui/src/components/shell/ShellHeaderControls.tsx:52` (type)
+- 3 declarations; names: `ElectrobunMessageListener`, `RpcMessageListener`; packages: `@elizaos/capacitor-swabble`, `@elizaos/electrobun`, `@elizaos/ui`
+  - `packages/app-core/platforms/electrobun/src/types.ts:18` (type, exported)
+  - `packages/native-plugins/swabble/src/web.ts:18` (type)
+  - `packages/ui/src/bridge/electrobun-rpc.ts:5` (type, exported)
 
-Showing 60 of 222; see JSON for the full set.
+Showing 60 of 223; see JSON for the full set.
 
 ### Different Name but Same Member Signatures
 
@@ -1094,9 +1095,10 @@ Showing 60 of 222; see JSON for the full set.
   - `packages/examples/a2a/test-client.ts:9` (type; members: `[key:string]`)
   - `packages/examples/code/src/types.ts:8` (type, exported; members: `[key:string]`)
   - `packages/native-plugins/gateway/src/definitions.ts:4` (interface, exported; members: `[key:string]`)
-- 7 declarations; names: `BrowserTabKitCursorPoint`, `CanvasPoint`, `CursorPosition`, `DesktopCursorPosition`, `GraphPosition`, `Position`; packages: `@elizaos/capacitor-canvas`, `@elizaos/electrobun`, `@elizaos/example-game-of-life`, `@elizaos/shared`, `@elizaos/ui`
+- 8 declarations; names: `BrowserTabKitCursorPoint`, `CanvasPoint`, `CursorPosition`, `DesktopCursorPosition`, `GraphPosition`, `Point`, `Position`; packages: `@elizaos/bench-vision-language`, `@elizaos/capacitor-canvas`, `@elizaos/electrobun`, `@elizaos/example-game-of-life`, `@elizaos/shared`, `@elizaos/ui`
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:527` (interface, exported; members: `x, y`)
-  - `packages/examples/game-of-life/game.ts:73` (interface; members: `x, y`)
+  - `packages/benchmarks/vision-language/src/types.ts:32` (interface, exported; members: `x, y`)
+  - `packages/examples/game-of-life/game.ts:68` (interface; members: `x, y`)
   - `packages/native-plugins/canvas/src/definitions.ts:8` (interface, exported; members: `x, y`)
   - `packages/shared/src/utils/browser-tab-kit-types.ts:23` (interface, exported; members: `x, y`)
   - `packages/ui/src/components/character/CharacterExperienceWorkspace.tsx:20` (type; members: `x, y`)
@@ -1170,7 +1172,7 @@ Showing 60 of 222; see JSON for the full set.
 - 3 declarations; names: `PluginModuleShape`, `TestPluginModule`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:61` (type, exported; members: `[key:string], default, plugin`)
   - `packages/app-core/src/test-support/test-helpers.ts:60` (type, exported; members: `[key:string], default, plugin`)
-  - `packages/shared/src/test-support/test-helpers.ts:61` (type, exported; members: `[key:string], default, plugin`)
+  - `packages/shared/src/test-support/test-helpers.ts:57` (type, exported; members: `[key:string], default, plugin`)
 - 3 declarations; names: `CapacitorJscImportOptions`, `CapacitorQuickJsImportOptions`, `JsRuntimeImportOptions`; packages: `@elizaos/agent`, `@elizaos/app-core`
   - `packages/agent/src/services/js-runtime-bridge.ts:56` (interface, exported; members: `absolutePath, specifier`)
   - `packages/app-core/src/connectors/capacitor-jsc.ts:38` (interface, exported; members: `absolutePath, specifier`)
@@ -1211,10 +1213,6 @@ Showing 60 of 222; see JSON for the full set.
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/core-status.ts:18` (interface, exported; members: `callback, runtime`)
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/list-ejected.ts:15` (interface, exported; members: `callback, runtime`)
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/list.ts:15` (interface, exported; members: `callback, runtime`)
-- 3 declarations; names: `SecretEntry`, `SecretInfo`; packages: `@elizaos/agent`, `@elizaos/ui`
-  - `packages/agent/src/api/plugin-discovery-helpers.ts:706` (interface, exported; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
-  - `packages/agent/src/api/plugin-routes.ts:166` (interface; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
-  - `packages/ui/src/api/client-types-config.ts:83` (interface, exported; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
 - 3 declarations; names: `CapacitorJscEvaluateOptions`, `CapacitorQuickJsEvaluateOptions`, `JsRuntimeEvaluateOptions`; packages: `@elizaos/agent`, `@elizaos/app-core`
   - `packages/agent/src/services/js-runtime-bridge.ts:47` (interface, exported; members: `code, sourceUrl, timeoutMs`)
   - `packages/app-core/src/connectors/capacitor-jsc.ts:32` (interface, exported; members: `code, sourceUrl, timeoutMs`)
@@ -1235,10 +1233,6 @@ Showing 60 of 222; see JSON for the full set.
   - `packages/agent/src/api/inbox-routes.ts:179` (interface; members: `count, emoji, users`)
   - `packages/ui/src/api/client-types-chat.ts:74` (interface, exported; members: `count, emoji, users`)
   - `packages/ui/src/components/composites/chat/chat-types.ts:55` (interface, exported; members: `count, emoji, users`)
-- 3 declarations; names: `SkillEntry`, `SkillInfo`; packages: `@elizaos/agent`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/agent/src/api/skills-routes.ts:32` (interface, exported; members: `description, enabled, id, name, scanStatus`)
-  - `packages/shared/src/api/agent-api-types.ts:225` (interface, exported; members: `description, enabled, id, name, scanStatus`)
-  - `packages/ui/src/api/client-types-config.ts:771` (interface, exported; members: `description, enabled, id, name, scanStatus`)
 - 3 declarations; names: `WorkbenchTodo`, `WorkbenchTodoResponse`, `WorkbenchTodoView`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/ui`
   - `packages/agent/src/api/workbench-helpers.ts:23` (interface, exported; members: `description, id, isCompleted, isUrgent, name, priority, type`)
   - `packages/app-core/src/api/workbench-compat-routes.ts:18` (type; members: `description, id, isCompleted, isUrgent, name, priority, type`)
@@ -1304,7 +1298,7 @@ Showing 60 of 222; see JSON for the full set.
   - `packages/core/src/features/plugin-config/actions/poll-plugin-config-status.ts:23` (interface; members: `pluginName`)
   - `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts:23` (interface; members: `pluginName`)
 - 3 declarations; names: `StoppablePairingSession`, `TelegramAccountAuthSessionLike`, `WhatsAppPairingSessionLike`; packages: `@elizaos/agent`
-  - `packages/agent/src/api/index.ts:15` (interface, exported; members: `stop`)
+  - `packages/agent/src/api/index.ts:37` (interface, exported; members: `stop`)
   - `packages/agent/src/api/server-types.ts:19` (interface, exported; members: `stop`)
   - `packages/agent/src/api/server-types.ts:25` (interface, exported; members: `stop`)
 - 3 declarations; names: `ElizaGuidedModeOptions`, `ElizaStrictGuidedModeOptions`, `ElizaUnguidedModeOptions`; packages: `@elizaos/bench-eliza-1`
@@ -1339,23 +1333,29 @@ Showing 60 of 222; see JSON for the full set.
 - 2 declarations; names: `ApplyAddressedToArgs`, `ResolveTargetsArgs`; packages: `@elizaos/core`
   - `packages/core/src/runtime/addressed-to.ts:23` (interface, exported; members: `addressedTo, message, runtime`)
   - `packages/core/src/runtime/addressed-to.ts:115` (interface; members: `addressedTo, message, runtime`)
+- 2 declarations; names: `StewardRpcStatus`, `StewardSidecarStatus`; packages: `@elizaos/app-core`, `@elizaos/electrobun`
+  - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:353` (interface, exported; members: `agentId, error, pid, port, restartCount, startedAt, state, tenantId`)
+  - `packages/app-core/src/services/steward-sidecar/types.ts:28` (interface, exported; members: `agentId, error, pid, port, restartCount, startedAt, state, tenantId`)
+- 2 declarations; names: `DesktopBugReportDiagnostics`, `DesktopStartupDiagnostics`; packages: `@elizaos/electrobun`, `@elizaos/ui`
+  - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:779` (interface, exported; members: `agentName, appRuntime, appVersion, arch, configDir, lastError, locale, logPath`)
+  - `packages/ui/src/utils/desktop-bug-report.ts:3` (interface, exported; members: `agentName, appRuntime, appVersion, arch, configDir, lastError, locale, logPath`)
 
-Showing 60 of 162; see JSON for the full set.
+Showing 60 of 161; see JSON for the full set.
 
 ### Different Name but Same Member Names
 
-- 11 declarations; names: `CanvasRect`, `CloudAuthWindowFrame`, `DesktopDisplayBounds`, `DesktopWindowBounds`, `DisplayBounds`, `ManagedWindowFrame`, `SandboxScreenshotRegion`, `WindowBounds`, `WindowFrame`, `WindowState`; packages: `@elizaos/capacitor-canvas`, `@elizaos/capacitor-desktop`, `@elizaos/electrobun`, `@elizaos/ui`
+- 12 declarations; names: `BBox`, `CanvasRect`, `CloudAuthWindowFrame`, `DesktopDisplayBounds`, `DesktopWindowBounds`, `DisplayBounds`, `ManagedWindowFrame`, `SandboxScreenshotRegion`, `WindowBounds`, `WindowFrame`, `WindowState`; packages: `@elizaos/bench-eliza-1-vision-cua-e2e`, `@elizaos/capacitor-canvas`, `@elizaos/capacitor-desktop`, `@elizaos/electrobun`, `@elizaos/ui`
   - `packages/app-core/platforms/electrobun/src/cloud-auth-window.ts:1` (interface, exported; members: `height, width, x, y`)
   - `packages/app-core/platforms/electrobun/src/devtools-layout.ts:1` (type; members: `height, width, x, y`)
   - `packages/app-core/platforms/electrobun/src/index.ts:423` (interface; members: `height, width, x, y`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:142` (interface, exported; members: `height, width, x, y`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:512` (interface, exported; members: `height, width, x, y`)
   - `packages/app-core/platforms/electrobun/src/surface-windows.ts:21` (interface, exported; members: `height, width, x, y`)
+  - `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts:11` (interface, exported; members: `height, width, x, y`)
   - `packages/native-plugins/canvas/src/definitions.ts:13` (interface, exported; members: `height, width, x, y`)
   - `packages/native-plugins/desktop/src/definitions.ts:106` (interface, exported; members: `height, width, x, y`)
   - `packages/ui/src/api/client-types-core.ts:352` (interface, exported; members: `height, width, x, y`)
-  - `packages/ui/src/utils/desktop-workspace.ts:69` (interface, exported; members: `height, width, x, y`)
-  - ... 1 more
+  - ... 2 more
 - 8 declarations; names: `AnthropicMessage`, `CerebrasMessage`, `MessageLike`, `OllamaMessage`, `OpenAiChatMessage`, `ProvisioningAgentChatMessage`, `ScenarioMessage`, `TrajectoryArtMessage`; packages: `@elizaos/agent`, `@elizaos/benchmark-framework`, `@elizaos/core`, `@elizaos/interrupt-bench`, `@elizaos/ui`, `usbeliza-agent`
   - `packages/agent/src/api/compat-utils.ts:41` (interface, exported; members: `content, role`)
   - `packages/agent/src/api/compat-utils.ts:86` (interface, exported; members: `content, role`)
@@ -1365,6 +1365,15 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/core/src/services/trajectory-export.ts:19` (type; members: `content, role`)
   - `packages/os/linux/agent/src/providers/ollama.ts:21` (interface, exported; members: `content, role`)
   - `packages/ui/src/api/client-cloud.ts:127` (type; members: `content, role`)
+- 8 declarations; names: `BrowserTabKitCursorPoint`, `CanvasPoint`, `CursorPosition`, `DesktopCursorPosition`, `GraphPosition`, `Point`, `Position`; packages: `@elizaos/bench-vision-language`, `@elizaos/capacitor-canvas`, `@elizaos/electrobun`, `@elizaos/example-game-of-life`, `@elizaos/shared`, `@elizaos/ui`
+  - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:527` (interface, exported; members: `x, y`)
+  - `packages/benchmarks/vision-language/src/types.ts:32` (interface, exported; members: `x, y`)
+  - `packages/examples/game-of-life/game.ts:68` (interface; members: `x, y`)
+  - `packages/native-plugins/canvas/src/definitions.ts:8` (interface, exported; members: `x, y`)
+  - `packages/shared/src/utils/browser-tab-kit-types.ts:23` (interface, exported; members: `x, y`)
+  - `packages/ui/src/components/character/CharacterExperienceWorkspace.tsx:20` (type; members: `x, y`)
+  - `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx:48` (type; members: `x, y`)
+  - `packages/ui/src/utils/desktop-workspace.ts:91` (interface, exported; members: `x, y`)
 - 7 declarations; names: `WalletBalancesResponse`, `WalletExportResult`, `WalletNftsResponse`, `WalletPrimaryMap`; packages: `@elizaos/core`, `@elizaos/shared`, `@elizaos/ui`
   - `packages/core/src/contracts/wallet.ts:65` (interface, exported; members: `evm, solana`)
   - `packages/core/src/contracts/wallet.ts:89` (interface, exported; members: `evm, solana`)
@@ -1381,14 +1390,6 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/app-core/src/security/export-guard.ts:13` (interface, exported; members: `reason, status`)
   - `packages/core/src/contracts/wallet.ts:739` (interface, exported; members: `reason, status`)
   - `packages/shared/src/contracts/wallet.ts:912` (interface, exported; members: `reason, status`)
-- 7 declarations; names: `BrowserTabKitCursorPoint`, `CanvasPoint`, `CursorPosition`, `DesktopCursorPosition`, `GraphPosition`, `Position`; packages: `@elizaos/capacitor-canvas`, `@elizaos/electrobun`, `@elizaos/example-game-of-life`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:527` (interface, exported; members: `x, y`)
-  - `packages/examples/game-of-life/game.ts:73` (interface; members: `x, y`)
-  - `packages/native-plugins/canvas/src/definitions.ts:8` (interface, exported; members: `x, y`)
-  - `packages/shared/src/utils/browser-tab-kit-types.ts:23` (interface, exported; members: `x, y`)
-  - `packages/ui/src/components/character/CharacterExperienceWorkspace.tsx:20` (type; members: `x, y`)
-  - `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx:48` (type; members: `x, y`)
-  - `packages/ui/src/utils/desktop-workspace.ts:91` (interface, exported; members: `x, y`)
 - 6 declarations; names: `ImageXaiConfig`, `VideoGoogleConfig`, `VideoOpenaiConfig`, `VisionAnthropicConfig`, `VisionGoogleConfig`, `VisionXaiConfig`; packages: `@elizaos/shared`
   - `packages/shared/src/contracts/config.ts:36` (type, exported; members: `apiKey, model`)
   - `packages/shared/src/contracts/config.ts:65` (type, exported; members: `apiKey, model`)
@@ -1445,7 +1446,7 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/agent/src/runtime/plugin-types.ts:35` (interface, exported; members: `[key:string], default, plugin`)
   - `packages/agent/src/test-support/test-helpers.ts:61` (type, exported; members: `[key:string], default, plugin`)
   - `packages/app-core/src/test-support/test-helpers.ts:60` (type, exported; members: `[key:string], default, plugin`)
-  - `packages/shared/src/test-support/test-helpers.ts:61` (type, exported; members: `[key:string], default, plugin`)
+  - `packages/shared/src/test-support/test-helpers.ts:57` (type, exported; members: `[key:string], default, plugin`)
 - 4 declarations; names: `BscTradeQuoteLeg`, `WalletTradeLedgerQuoteLeg`; packages: `@elizaos/core`, `@elizaos/shared`
   - `packages/core/src/contracts/wallet.ts:335` (interface, exported; members: `amount, amountWei, symbol`)
   - `packages/core/src/contracts/wallet.ts:429` (interface, exported; members: `amount, amountWei, symbol`)
@@ -1460,7 +1461,7 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/agent/src/services/update-checker.ts:22` (interface, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
   - `packages/agent/src/test-support/test-helpers.ts:27` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
   - `packages/app-core/src/test-support/test-helpers.ts:26` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
-  - `packages/shared/src/test-support/test-helpers.ts:27` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
+  - `packages/shared/src/test-support/test-helpers.ts:23` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
 - 4 declarations; names: `EjectInput`, `ReinjectInput`, `RuntimeStateInput`, `SyncInput`; packages: `@elizaos/core`
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/eject.ts:16` (interface, exported; members: `callback, name, runtime`)
   - `packages/core/src/features/plugin-manager/actions/plugin-handlers/reinject.ts:15` (interface, exported; members: `callback, name, runtime`)
@@ -1469,8 +1470,8 @@ Showing 60 of 162; see JSON for the full set.
 - 4 declarations; names: `INodeInputConfiguration`, `INodeOutputConfiguration`; packages: `@elizaos/core`, `@elizaos/workflows`
   - `packages/core/src/workflow-types.ts:509` (interface, exported; members: `category, displayName, filter, maxConnections, required, type`)
   - `packages/core/src/workflow-types.ts:518` (interface, exported; members: `category, displayName, filter, maxConnections, required, type`)
-  - `packages/workflows/src/index.ts:488` (interface, exported; members: `category, displayName, filter, maxConnections, required, type`)
-  - `packages/workflows/src/index.ts:497` (interface, exported; members: `category, displayName, filter, maxConnections, required, type`)
+  - `packages/workflows/src/index.ts:483` (interface, exported; members: `category, displayName, filter, maxConnections, required, type`)
+  - `packages/workflows/src/index.ts:492` (interface, exported; members: `category, displayName, filter, maxConnections, required, type`)
 - 4 declarations; names: `CameraErrorEvent`, `LocationErrorEvent`, `ScreenCaptureErrorEvent`, `TalkModeErrorEvent`; packages: `@elizaos/capacitor-camera`, `@elizaos/capacitor-location`, `@elizaos/capacitor-screencapture`, `@elizaos/ui`
   - `packages/native-plugins/camera/src/definitions.ts:100` (interface, exported; members: `code, message`)
   - `packages/native-plugins/location/src/definitions.ts:75` (interface, exported; members: `code, message`)
@@ -1496,16 +1497,11 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/core/src/contracts/onboarding.ts:144` (interface, exported; members: `description, id, name`)
   - `packages/shared/src/contracts/onboarding.ts:129` (interface, exported; members: `description, id, name`)
   - `packages/shared/src/contracts/onboarding.ts:144` (interface, exported; members: `description, id, name`)
-- 4 declarations; names: `DiscordSlashCommand`, `FormDefinitionI18n`, `OptionObject`, `RuntimePluginLike`; packages: `@elizaos/app-core`, `@elizaos/core`, `@elizaos/example-discord`
-  - `packages/app-core/src/api/plugins-routes.ts:184` (interface; members: `description, name`)
-  - `packages/core/src/features/advanced-capabilities/form/types.ts:239` (interface, exported; members: `description, name`)
-  - `packages/core/src/features/basic-capabilities/providers/choice.ts:26` (interface; members: `description, name`)
-  - `packages/examples/discord/handlers.ts:39` (interface; members: `description, name`)
 - 4 declarations; names: `IBuilderHintInputConfig`, `IBuilderHintOutputConfig`; packages: `@elizaos/core`, `@elizaos/workflows`
   - `packages/core/src/workflow-types.ts:456` (interface, exported; members: `displayOptions, required`)
   - `packages/core/src/workflow-types.ts:464` (interface, exported; members: `displayOptions, required`)
-  - `packages/workflows/src/index.ts:439` (interface, exported; members: `displayOptions, required`)
-  - `packages/workflows/src/index.ts:445` (interface, exported; members: `displayOptions, required`)
+  - `packages/workflows/src/index.ts:434` (interface, exported; members: `displayOptions, required`)
+  - `packages/workflows/src/index.ts:440` (interface, exported; members: `displayOptions, required`)
 - 4 declarations; names: `ClaudeFlowReply`, `InstallPackageFlowReply`, `PersistenceFlowReply`, `WifiFlowReply`; packages: `usbeliza-agent`
   - `packages/os/linux/agent/src/runtime/flows/claude-flow.ts:51` (interface, exported; members: `done, reply`)
   - `packages/os/linux/agent/src/runtime/flows/install-package-flow.ts:38` (interface, exported; members: `done, reply`)
@@ -1531,11 +1527,6 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/agent/src/api/diagnostics-routes.ts:12` (interface; members: `level, message, source, tags, timestamp`)
   - `packages/shared/src/api/agent-api-types.ts:214` (interface, exported; members: `level, message, source, tags, timestamp`)
   - `packages/ui/src/api/client-types-core.ts:395` (interface, exported; members: `level, message, source, tags, timestamp`)
-- 4 declarations; names: `BabylonChatResponse`, `ListExternalErr`, `PluginHealthProbeResult`, `RelaunchResponse`; packages: `@elizaos/agent`, `@elizaos/ui`, `@elizaos/vault`
-  - `packages/agent/src/api/plugin-routes.ts:143` (type; members: `message, ok`)
-  - `packages/ui/src/api/client-types-babylon.ts:93` (interface, exported; members: `message, ok`)
-  - `packages/ui/src/components/settings/AppsManagementSection.tsx:40` (interface; members: `message, ok`)
-  - `packages/vault/src/manager.ts:707` (interface; members: `message, ok`)
 - 4 declarations; names: `CarrotManifestValidationIssue`, `CharacterParseIssueLike`, `ConfigSnapshotIssue`, `ConfigValidationIssue`; packages: `@elizaos/agent`, `@elizaos/electrobun-carrots`, `@elizaos/shared`
   - `packages/agent/src/api/character-routes.ts:54` (interface; members: `message, path`)
   - `packages/electrobun-carrots/src/validation.ts:15` (interface, exported; members: `message, path`)
@@ -1634,10 +1625,6 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/benchmarks/eliza-1/src/tasks/action.ts:32` (interface; members: `cases, note`)
   - `packages/benchmarks/eliza-1/src/tasks/planner.ts:35` (interface; members: `cases, note`)
   - `packages/benchmarks/eliza-1/src/tasks/should-respond.ts:28` (interface; members: `cases, note`)
-- 3 declarations; names: `SecretEntry`, `SecretInfo`; packages: `@elizaos/agent`, `@elizaos/ui`
-  - `packages/agent/src/api/plugin-discovery-helpers.ts:706` (interface, exported; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
-  - `packages/agent/src/api/plugin-routes.ts:166` (interface; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
-  - `packages/ui/src/api/client-types-config.ts:83` (interface, exported; members: `category, description, isSet, key, maskedValue, required, sensitive, usedBy`)
 - 3 declarations; names: `AppleCalendarPluginLike`, `CameraPermissionPlugin`, `PushNotificationsPluginLike`; packages: `@elizaos/ui`
   - `packages/ui/src/bridge/native-plugins.ts:138` (interface, exported; members: `checkPermissions, requestPermissions`)
   - `packages/ui/src/bridge/native-plugins.ts:467` (interface, exported; members: `checkPermissions, requestPermissions`)
@@ -1650,8 +1637,20 @@ Showing 60 of 162; see JSON for the full set.
   - `packages/core/src/types/plugin.ts:294` (interface, exported; members: `code, message, severity`)
   - `packages/shared/src/contracts/apps.ts:294` (interface, exported; members: `code, message, severity`)
   - `packages/ui/src/api/client-types-cloud.ts:564` (interface, exported; members: `code, message, severity`)
+- 3 declarations; names: `CapacitorJscEvaluateOptions`, `CapacitorQuickJsEvaluateOptions`, `JsRuntimeEvaluateOptions`; packages: `@elizaos/agent`, `@elizaos/app-core`
+  - `packages/agent/src/services/js-runtime-bridge.ts:47` (interface, exported; members: `code, sourceUrl, timeoutMs`)
+  - `packages/app-core/src/connectors/capacitor-jsc.ts:32` (interface, exported; members: `code, sourceUrl, timeoutMs`)
+  - `packages/app-core/src/connectors/capacitor-quickjs.ts:33` (interface, exported; members: `code, sourceUrl, timeoutMs`)
+- 3 declarations; names: `AppSessionRecommendation`, `PluginAppRecommendation`; packages: `@elizaos/core`, `@elizaos/shared`, `@elizaos/ui`
+  - `packages/core/src/types/plugin.ts:258` (interface, exported; members: `command, id, label, priority, reason, type`)
+  - `packages/shared/src/contracts/apps.ts:94` (interface, exported; members: `command, id, label, priority, reason, type`)
+  - `packages/ui/src/api/client-types-cloud.ts:447` (interface, exported; members: `command, id, label, priority, reason, type`)
+- 3 declarations; names: `MergeCandidateRecord`, `RelationshipsMergeCandidate`; packages: `@elizaos/core`, `@elizaos/ui`
+  - `packages/core/src/services/relationships-graph-builder.ts:36` (type, exported; members: `confidence, entityA, entityB, evidence, id, proposedAt, resolvedAt, status`)
+  - `packages/core/src/services/relationships.ts:379` (interface, exported; members: `confidence, entityA, entityB, evidence, id, proposedAt, resolvedAt, status`)
+  - `packages/ui/src/api/client-types-relationships.ts:166` (interface, exported; members: `confidence, entityA, entityB, evidence, id, proposedAt, resolvedAt, status`)
 
-Showing 60 of 314; see JSON for the full set.
+Showing 60 of 310; see JSON for the full set.
 
 ### Near Member-Name Overlaps
 
@@ -1660,7 +1659,7 @@ Showing 60 of 314; see JSON for the full set.
   - only TrajectoryLlmCallRecord: `createdAt, output, stepId, tokenUsageEstimated, trajectoryId`
 - 100% identical-member-names: `WalletConfigStatus` (`packages/core/src/contracts/wallet.ts:228`) vs `WalletConfigStatus` (`packages/shared/src/contracts/wallet.ts:400`)
   - shared: `alchemyKeySet, ankrKeySet, automationMode, avalancheBalanceReady, baseBalanceReady, birdeyeKeySet, bscBalanceReady, cloudManagedAccess, ethereumBalanceReady, evmBalanceReady, evmChains, evmSigningCapability`
-- 100% identical-member-names: `INodeTypeDescription` (`packages/core/src/workflow-types.ts:618`) vs `INodeTypeDescription` (`packages/workflows/src/index.ts:581`)
+- 100% identical-member-names: `INodeTypeDescription` (`packages/core/src/workflow-types.ts:618`) vs `INodeTypeDescription` (`packages/workflows/src/index.ts:576`)
   - shared: `__loadOptionsMethods, activationMessage, builderHint, capabilities, communityNodePackageVersion, credentials, defaults, eventTriggerDescription, extendsCredential, features, hints, hooks`
 - 100% superset-member-names: `TrajectoryLlmCallRecord` (`packages/core/src/services/trajectory-types.ts:80`) vs `TrajectoryLlmCallDetails` (`packages/core/src/trajectory-utils.ts:33`)
   - shared: `actionType, cacheCreationInputTokens, cacheReadInputTokens, completionTokens, finishReason, latencyMs, maxTokens, messages, model, modelType, modelVersion, output`
@@ -1677,7 +1676,7 @@ Showing 60 of 314; see JSON for the full set.
   - shared: `anthropicApiKey, anthropicLargeModel, anthropicSmallModel, googleGenaiApiKey, googleLargeModel, googleSmallModel, groqApiKey, groqBaseUrl, groqLargeModel, groqSmallModel, ollamaApiEndpoint, ollamaLargeModel`
 - 100% identical-member-names: `ProviderSettings` (`packages/examples/app/electron/backend/src/types.ts:11`) vs `ProviderSettings` (`packages/examples/app/electron/frontend/src/types.ts:11`)
   - shared: `anthropicApiKey, anthropicLargeModel, anthropicSmallModel, googleGenaiApiKey, googleLargeModel, googleSmallModel, groqApiKey, groqBaseUrl, groqLargeModel, groqSmallModel, ollamaApiEndpoint, ollamaLargeModel`
-- 100% identical-member-names: `INodePropertyTypeOptions` (`packages/core/src/workflow-types.ts:231`) vs `INodePropertyTypeOptions` (`packages/workflows/src/index.ts:222`)
+- 100% identical-member-names: `INodePropertyTypeOptions` (`packages/core/src/workflow-types.ts:231`) vs `INodePropertyTypeOptions` (`packages/workflows/src/index.ts:217`)
   - shared: `[key:string], action, alwaysOpenEditWindow, assignment, codeAutocomplete, containerClass, editor, editorIsReadOnly, editorLanguage, expirable, filter, loadOptions`
 - 100% identical-member-names: `BscTradeQuoteResponse` (`packages/core/src/contracts/wallet.ts:341`) vs `BscTradeQuoteResponse` (`packages/shared/src/contracts/wallet.ts:514`)
   - shared: `allowanceTarget, minReceive, ok, preflight, price, quotedAt, quoteIn, quoteOut, route, routeProvider, routeProviderFallbackUsed, routeProviderNotes`
@@ -1709,7 +1708,7 @@ Showing 60 of 314; see JSON for the full set.
   - shared: `agentName, appRuntime, appVersion, arch, configDir, lastError, locale, logPath, logTail, packaged, phase, platform`
 - 100% identical-member-names: `LocalPackageAppMeta` (`packages/agent/src/services/registry-client-local.ts:21`) vs `RegistryAppMeta` (`packages/agent/src/services/registry-client-types.ts:16`)
   - shared: `bridgeExport, capabilities, category, developerOnly, displayName, heroImage, icon, launchType, launchUrl, mainTab, maxPlayers, minPlayers`
-- 100% identical-member-names: `IWorkflowSettings` (`packages/core/src/workflow-types.ts:676`) vs `IWorkflowSettings` (`packages/workflows/src/index.ts:631`)
+- 100% identical-member-names: `IWorkflowSettings` (`packages/core/src/workflow-types.ts:676`) vs `IWorkflowSettings` (`packages/workflows/src/index.ts:626`)
   - shared: `availableInMCP, binaryMode, callerIds, callerPolicy, credentialResolverId, errorWorkflow, executionOrder, executionTimeout, redactionPolicy, saveDataErrorExecution, saveDataSuccessExecution, saveExecutionProgress`
 - 100% subset-member-names: `TrajectoryLlmCall` (`packages/core/src/services/trajectories.ts:28`) vs `TrajectoryLlmCallRecord` (`packages/core/src/services/trajectory-types.ts:80`)
   - shared: `actionType, executionTraceId, latencyMs, maxTokens, messageId, model, modelSlot, purpose, response, roomId, runId, stepId`
@@ -1820,7 +1819,7 @@ Showing 50 of 500; see JSON for the full set.
 - 12 declarations; names: `Window`; packages: `__APP_PACKAGE_NAME__`, `@elizaos/app`, `@elizaos/electrobun`, `@elizaos/shared`, `@elizaos/ui`, `eliza-app`, `llama-server-webui`
   - `packages/app-core/platforms/electrobun/src/bridge/browser-tabs-renderer-registry.ts:33` (interface; members: `[[REGISTRY_KEY]]`)
   - `packages/app-core/platforms/electrobun/src/bridge/electrobun-direct-rpc.ts:228` (interface; members: `__ELIZA_API_BASE__, __ELIZA_API_TOKEN__, __ELIZA_ELECTROBUN_RPC__`)
-  - `packages/app/src/main.tsx:114` (interface; members: `__ELIZA_APP_API_BASE__, __ELIZA_APP_CHARACTER_EDITOR__, __ELIZA_APP_SHARE_QUEUE__, __ELIZA_IOS_LOCAL_AGENT_DEBUG__, __ELIZA_IOS_LOCAL_AGENT_REQUEST__`)
+  - `packages/app/src/main.tsx:110` (interface; members: `__ELIZA_APP_API_BASE__, __ELIZA_APP_CHARACTER_EDITOR__, __ELIZA_APP_SHARE_QUEUE__, __ELIZA_IOS_LOCAL_AGENT_DEBUG__, __ELIZA_IOS_LOCAL_AGENT_REQUEST__`)
   - `packages/elizaos/templates/project/apps/app/src/main.tsx:102` (interface; members: `__ELIZA_API_BASE__, __ELIZA_CHARACTER_EDITOR__, __ELIZA_SHARE_QUEUE__`)
   - `packages/homepage/src/pages/get-started.tsx:42` (interface; members: `Telegram`)
   - `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/components/app/content/MarkdownContent/plugins/rehype/enhance-code-blocks.ts:28` (interface; members: `idxCodeBlock`)
@@ -1951,6 +1950,12 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/core/src/features/documents/types.ts:146` (interface; members: `DOCUMENTS`)
   - `packages/core/src/features/plugin-manager/types.ts:9` (interface; members: `CORE_MANAGER, PLUGIN_CONFIGURATION, PLUGIN_MANAGER, REGISTRY`)
   - `packages/core/src/types/service.ts:17` (interface, exported; members: `AGENT_EVENT, APPROVAL, BROWSER, CONNECTOR_ACCOUNT, CONNECTOR_ACCOUNT_STORAGE, EMAIL, HOOKS, LP_POOL`)
+- 5 declarations; names: `SmokeFile`; packages: `@elizaos/bench-vision-language`
+  - `packages/benchmarks/vision-language/src/adapters/chartqa_adapter.ts:40` (interface; members: `samples`)
+  - `packages/benchmarks/vision-language/src/adapters/docvqa_adapter.ts:36` (interface; members: `samples`)
+  - `packages/benchmarks/vision-language/src/adapters/osworld_adapter.ts:51` (interface; members: `samples`)
+  - `packages/benchmarks/vision-language/src/adapters/screenspot_adapter.ts:42` (interface; members: `samples`)
+  - `packages/benchmarks/vision-language/src/adapters/textvqa_adapter.ts:37` (interface; members: `samples`)
 - 5 declarations; names: `TradePermissionMode`; packages: `@elizaos/core`, `@elizaos/electrobun`, `@elizaos/shared`, `@elizaos/ui`
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:584` (type, exported)
   - `packages/core/src/contracts/wallet.ts:295` (type, exported)
@@ -1978,7 +1983,7 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:30` (interface, exported; members: `createdAt, id, interactiveLiveViewUrl, kind, lastFocusedAt, liveViewUrl, partition, provider`)
   - `packages/ui/src/api/browser-contracts.ts:203` (interface, exported; members: `createdAt, id, interactiveLiveViewUrl, kind, lastFocusedAt, liveViewUrl, partition, provider`)
 - 4 declarations; names: `BrowserWorkspaceTabKind`; packages: `@elizaos/agent`, `@elizaos/electrobun`, `@elizaos/ui`
-  - `packages/agent/src/api/server.ts:102` (type)
+  - `packages/agent/src/api/server.ts:114` (type)
   - `packages/app-core/platforms/electrobun/src/native/browser-workspace.ts:17` (type)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:28` (type)
   - `packages/ui/src/api/browser-contracts.ts:201` (type, exported)
@@ -2012,11 +2017,16 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/core/src/contracts/onboarding.ts:135` (interface, exported; members: `description, free, id, name, provider, recommended`)
   - `packages/shared/src/contracts/onboarding.ts:135` (interface, exported; members: `description, free, id, name, provider, recommended`)
   - `packages/ui/src/components/settings/cloud-model-schema.ts:17` (type; members: `description, free, id, name, provider, recommended`)
+- 4 declarations; names: `OfficialAnnotation`; packages: `@elizaos/bench-vision-language`
+  - `packages/benchmarks/vision-language/src/adapters/chartqa_adapter.ts:50` (interface; members: `answer_type, imgname, label, query`)
+  - `packages/benchmarks/vision-language/src/adapters/docvqa_adapter.ts:45` (interface; members: `answers, image, question, questionId`)
+  - `packages/benchmarks/vision-language/src/adapters/screenspot_adapter.ts:52` (interface; members: `bbox, data_source, data_type, img_filename, instruction`)
+  - `packages/benchmarks/vision-language/src/adapters/textvqa_adapter.ts:46` (interface; members: `answers, image_id, question, question_id`)
 - 4 declarations; names: `PluginModuleShape`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/runtime/plugin-types.ts:35` (interface, exported; members: `[key:string], default, plugin`)
   - `packages/app-core/src/platform/empty-node-module.ts:146` (type, exported)
   - `packages/app-core/src/test-support/test-helpers.ts:60` (type, exported; members: `[key:string], default, plugin`)
-  - `packages/shared/src/test-support/test-helpers.ts:61` (type, exported; members: `[key:string], default, plugin`)
+  - `packages/shared/src/test-support/test-helpers.ts:57` (type, exported; members: `[key:string], default, plugin`)
 - 4 declarations; names: `RateLimitEntry`; packages: `@elizaos/agent`, `@elizaos/app-core`
   - `packages/agent/src/api/memory-bounds.ts:10` (interface; members: `count, resetAt`)
   - `packages/agent/src/api/rate-limiter.ts:25` (interface; members: `timestamps`)
@@ -2033,12 +2043,12 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/examples/avatar/src/runtime/runtimeManager.ts:38` (type; members: `roomId, runtime, userId, worldId`)
   - `packages/examples/browser-extension/shared/eliza-runtime-full.ts:55` (type; members: `roomId, runtime, userId, worldId`)
 - 4 declarations; names: `RuntimeOrderItem`; packages: `@elizaos/agent`, `@elizaos/electrobun`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/agent/src/api/health-routes.ts:73` (interface; members: `className, id, index, name`)
+  - `packages/agent/src/api/health-routes.ts:99` (interface; members: `className, id, index, name`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:688` (interface, exported; members: `className, id, index, name`)
   - `packages/shared/src/api/agent-api-types.ts:197` (interface, exported; members: `className, id, index, name`)
   - `packages/ui/src/api/client-types-core.ts:70` (type, exported)
 - 4 declarations; names: `RuntimeServiceOrderItem`; packages: `@elizaos/agent`, `@elizaos/electrobun`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/agent/src/api/health-routes.ts:80` (interface; members: `count, index, instances, serviceType`)
+  - `packages/agent/src/api/health-routes.ts:106` (interface; members: `count, index, instances, serviceType`)
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:695` (interface, exported; members: `count, index, instances, serviceType`)
   - `packages/shared/src/api/agent-api-types.ts:204` (interface, exported; members: `count, index, instances, serviceType`)
   - `packages/ui/src/api/client-types-core.ts:71` (type, exported)
@@ -2125,12 +2135,8 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/app-core/platforms/electrobun/src/rpc-schema.ts:583` (type, exported)
   - `packages/shared/src/api/agent-api-types.ts:23` (type, exported)
   - `packages/ui/src/api/client-types-core.ts:59` (type, exported)
-- 3 declarations; names: `AgentSkillsServiceLike`; packages: `@elizaos/agent`, `@elizaos/core`
-  - `packages/agent/src/api/skill-discovery-helpers.ts:22` (interface; members: `getLoadedSkills, getSkillScanStatus`)
-  - `packages/agent/src/types/agent-skills.ts:8` (interface, exported; members: `getLoadedSkills, getSkillInstructions`)
-  - `packages/core/src/providers/skill-eligibility.ts:58` (interface; members: `checkSkillEligibility, getAllSkillEligibility, getEligibleSkills, getIneligibleSkills, getLoadedSkills`)
 - 3 declarations; names: `AgentStartupDiagnostics`; packages: `@elizaos/agent`, `@elizaos/shared`, `@elizaos/ui`
-  - `packages/agent/src/api/health-routes.ts:24` (interface; members: `attempt, lastError, lastErrorAt, nextRetryAt, phase`)
+  - `packages/agent/src/api/health-routes.ts:50` (interface; members: `attempt, lastError, lastErrorAt, nextRetryAt, phase`)
   - `packages/shared/src/api/agent-api-types.ts:237` (interface, exported; members: `attempt, lastError, lastErrorAt, nextRetryAt, phase`)
   - `packages/ui/src/api/client-types-core.ts:121` (interface, exported; members: `attempt, embeddingDetail, embeddingPhase, embeddingProgressPct, lastError, lastErrorAt, nextRetryAt, phase`)
 - 3 declarations; names: `AppBootConfig`; packages: `@elizaos/core`, `@elizaos/shared`, `@elizaos/ui`
@@ -2141,8 +2147,12 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/app/app.config.ts:14` (interface; members: `backgroundColor, shareImagePath, shortName, themeColor`)
   - `packages/elizaos/templates/project/apps/app/app.config.ts:16` (interface; members: `backgroundColor, shareImagePath, shortName, themeColor`)
   - `packages/shared/src/config/app-config.ts:64` (interface, exported; members: `backgroundColor, shareImagePath, shortName, themeColor`)
+- 3 declarations; names: `Args`; packages: `@elizaos/bench-eliza-1`, `@elizaos/bench-vision-language`, `@elizaos/interrupt-bench`
+  - `packages/benchmarks/eliza-1/src/index.ts:35` (interface; members: `allowSkipLocal, cerebrasModel, modes, n, out, tasks, tier`)
+  - `packages/benchmarks/interrupt-bench/src/runner.ts:24` (interface; members: `cerebrasModel, judge, mode, out, scenarioFilter`)
+  - `packages/benchmarks/vision-language/src/runner.ts:65` (interface; members: `benchmarks, forceStub, output, samples, smoke, tier`)
 - 3 declarations; names: `BrowserBridgeKind`; packages: `@elizaos/agent`, `@elizaos/browser-bridge-extension`, `@elizaos/ui`
-  - `packages/agent/src/api/server.ts:96` (type)
+  - `packages/agent/src/api/server.ts:108` (type)
   - `packages/browser-bridge-extension/src/browser-bridge-contracts.ts:1` (type, exported)
   - `packages/ui/src/api/browser-contracts.ts:1` (type, exported)
 - 3 declarations; names: `CategoryScore`; packages: `@elizaos/configbench`, `eliza`
@@ -2186,9 +2196,9 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/core/src/app-registry.ts:7` (interface; members: `entries`)
   - `packages/shared/src/contracts/apps.ts:19` (interface; members: `entries`)
 - 3 declarations; names: `DeletedConversationsStateFile`; packages: `@elizaos/agent`
-  - `packages/agent/src/api/conversation-routes.ts:111` (interface; members: `ids, updatedAt, version`)
+  - `packages/agent/src/api/conversation-routes.ts:130` (interface; members: `ids, updatedAt, version`)
   - `packages/agent/src/api/server-helpers.ts:106` (interface, exported; members: `ids, updatedAt, version`)
-  - `packages/agent/src/api/server.ts:400` (interface; members: `ids, updatedAt, version`)
+  - `packages/agent/src/api/server.ts:448` (interface; members: `ids, updatedAt, version`)
 - 3 declarations; names: `DesktopBridgeWindow`; packages: `@elizaos/capacitor-desktop`, `@elizaos/capacitor-swabble`, `@elizaos/ui`
   - `packages/native-plugins/desktop/src/web.ts:32` (interface; members: `__ELIZA_ELECTROBUN_RPC__`)
   - `packages/native-plugins/swabble/src/web.ts:29` (type; members: `__ELIZA_ELECTROBUN_RPC__`)
@@ -2217,6 +2227,10 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/native-plugins/desktop/src/web.ts:27` (type)
   - `packages/native-plugins/swabble/src/web.ts:17` (type)
   - `packages/ui/src/bridge/electrobun-rpc.ts:3` (type, exported)
+- 3 declarations; names: `Eliza1TierId`; packages: `@elizaos/bench-eliza-1`, `@elizaos/bench-vision-language`, `@elizaos/shared`
+  - `packages/benchmarks/eliza-1/src/engine-resolver.ts:27` (type, exported)
+  - `packages/benchmarks/vision-language/src/types.ts:20` (type, exported)
+  - `packages/shared/src/local-inference/catalog.ts:31` (type, exported)
 - 3 declarations; names: `ElizaCuratedAppDefinition`; packages: `@elizaos/app-core`, `@elizaos/core`, `@elizaos/shared`
   - `packages/app-core/src/registry/app-registry.ts:1` (interface, exported; members: `aliases, canonicalName, slug`)
   - `packages/core/src/app-registry.ts:1` (interface, exported; members: `aliases, canonicalName, slug`)
@@ -2284,19 +2298,19 @@ Showing 50 of 500; see JSON for the full set.
 - 3 declarations; names: `MockBodyChunk`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:165` (type)
   - `packages/app-core/src/test-support/test-helpers.ts:435` (type)
-  - `packages/shared/src/test-support/test-helpers.ts:438` (type)
+  - `packages/shared/src/test-support/test-helpers.ts:332` (type)
 - 3 declarations; names: `MockRequestOptions`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:167` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
   - `packages/app-core/src/test-support/test-helpers.ts:437` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
-  - `packages/shared/src/test-support/test-helpers.ts:440` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
+  - `packages/shared/src/test-support/test-helpers.ts:334` (type, exported; members: `body, bodyChunks, headers, json, method, url`)
 - 3 declarations; names: `MockResponsePayload`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:155` (type; members: `getJson, getStatus, res`)
   - `packages/app-core/src/test-support/test-helpers.ts:425` (type; members: `getJson, getStatus, res`)
-  - `packages/shared/src/test-support/test-helpers.ts:426` (type; members: `getJson, getStatus, res`)
+  - `packages/shared/src/test-support/test-helpers.ts:320` (type; members: `getJson, getStatus, res`)
 - 3 declarations; names: `MockUpdateCheckResult`; packages: `@elizaos/agent`, `@elizaos/app-core`, `@elizaos/shared`
   - `packages/agent/src/test-support/test-helpers.ts:27` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
   - `packages/app-core/src/test-support/test-helpers.ts:26` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
-  - `packages/shared/src/test-support/test-helpers.ts:27` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
+  - `packages/shared/src/test-support/test-helpers.ts:23` (type, exported; members: `cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable`)
 - 3 declarations; names: `ModelCategory`; packages: `@elizaos/agent`, `@elizaos/shared`, `usbeliza-agent`
   - `packages/agent/src/api/model-provider-helpers.ts:182` (type, exported)
   - `packages/os/linux/agent/src/local-inference/catalog.ts:27` (type, exported)
@@ -2314,13 +2328,9 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/ui/src/platform/desktop-permissions-client.ts:9` (type; members: `[[PATCH_STATE]]`)
   - `packages/ui/src/platform/onboarding-reset.ts:15` (type; members: `[[PATCH_STATE]]`)
 - 3 declarations; names: `Platform`; packages: `@elizaos/shared`, `eliza-app`
-  - `packages/homepage/src/pages/leaderboard.tsx:129` (type)
+  - `packages/homepage/src/pages/leaderboard.tsx:91` (type)
   - `packages/shared/src/contracts/permissions.ts:78` (type, exported)
   - `packages/shared/src/utils/permission-deep-links.ts:48` (type)
-- 3 declarations; names: `PluginEntry`; packages: `@elizaos/agent`, `@elizaos/app-core`
-  - `packages/agent/src/api/plugin-routes.ts:68` (interface; members: `app, autoEnabled, betaVersion, builtIn, capabilityReason, capabilityStatus, category, configKeys`)
-  - `packages/agent/src/api/server-types.ts:79` (interface, exported; members: `autoEnabled, betaVersion, builtIn, capabilityReason, capabilityStatus, category, configKeys, configUiHints`)
-  - `packages/app-core/src/registry/schema.ts:301` (type, exported)
 - 3 declarations; names: `PluginInfo`; packages: `@elizaos/ui`
   - `packages/ui/src/api/client-types-config.ts:96` (interface, exported; members: `app, betaVersion, builtIn, category, configUiHints, configured, description, directory`)
   - `packages/ui/src/components/settings/ProviderPanels.tsx:27` (interface; members: `category, configUiHints, configured, enabled, id, name, parameters`)
@@ -2361,10 +2371,6 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/agent/src/services/index.ts:30` (type, exported)
   - `packages/ui/src/api/agent-client-type-shim.ts:41` (type, exported)
   - `packages/ui/src/api/client-types-core.ts:75` (type, exported)
-- 3 declarations; names: `SkillEntry`; packages: `@elizaos/agent`, `@elizaos/shared`, `@elizaos/skills`
-  - `packages/agent/src/api/skills-routes.ts:32` (interface, exported; members: `description, enabled, id, name, scanStatus`)
-  - `packages/shared/src/api/agent-api-types.ts:225` (interface, exported; members: `description, enabled, id, name, scanStatus`)
-  - `packages/skills/src/types.ts:201` (interface, exported; members: `frontmatter, invocation, metadata, skill`)
 - 3 declarations; names: `SpawnOptions`; packages: `usbeliza-agent`
   - `packages/os/linux/agent/src/runtime/actions/open-files.ts:68` (interface, exported; members: `findBinary, path, spawnFn`)
   - `packages/os/linux/agent/src/runtime/actions/open-terminal.ts:75` (interface, exported; members: `findBinary, spawnFn`)
@@ -2377,16 +2383,12 @@ Showing 50 of 500; see JSON for the full set.
   - `packages/agent/src/api/misc-routes.ts:36` (interface; members: `agentId, eventId, payload, roomId, stream, ts, type, version`)
   - `packages/shared/src/api/agent-api-types.ts:32` (interface, exported; members: `agentId, eventId, payload, roomId, runId, seq, sessionKey, stream`)
   - `packages/ui/src/api/client-types-core.ts:58` (type, exported)
-- 3 declarations; names: `StuckContainer`; packages: `metrics-dashboard`
-  - `packages/benchmarks/skillsbench/experiments/metrics-dashboard/server/index.ts:566` (interface; members: `image, jobName, logs, name, runningFor, runningForMs, status, taskName`)
-  - `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/StuckContainersPanel.tsx:16` (interface; members: `image, jobName, logs, name, runningFor, runningForMs, status, taskName`)
-  - `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/SystemInfoPanel.tsx:51` (interface; members: `image, jobName, logs, name, runningFor, runningForMs, status, taskName`)
 
-Showing 120 of 875; see JSON for the full set.
+Showing 120 of 866; see JSON for the full set.
 
 ## Full Inventory
 
-<details><summary>All 8670 declarations</summary>
+<details><summary>All 8672 declarations</summary>
 
 | Name | Kind | Exported | Package | File | Line | Members |
 | --- | --- | --- | --- | --- | ---: | --- |
@@ -2396,6 +2398,7 @@ Showing 120 of 875; see JSON for the full set.
 | `A2UIPayload` | interface | yes | `@elizaos/capacitor-canvas` | `packages/native-plugins/canvas/src/definitions.ts` | 266 | action, data |
 | `A2UIPushOptions` | interface | yes | `@elizaos/capacitor-canvas` | `packages/native-plugins/canvas/src/definitions.ts` | 271 | jsonl, messages, payload |
 | `AbortableInflightRuntime` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/turn-controller.ts` | 196 | turnControllers |
+| `AbsoluteClickTarget` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 62 | absoluteX, absoluteY, displayId |
 | `AcceptedToken` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/phrase-chunked-tts.ts` | 30 | acceptedAt, id, index, text |
 | `AccessContext` | type | no | `@elizaos/agent` | `packages/agent/src/security/access.ts` | 10 | message, runtime |
 | `AccessContext` | type | no | `@elizaos/core` | `packages/core/src/features/plugin-manager/security.ts` | 41 | message, runtime |
@@ -2418,8 +2421,8 @@ Showing 120 of 875; see JSON for the full set.
 | `AccountRequiredCardProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/chat/AccountRequiredCard.tsx` | 12 | accounts, className, confirmBusy, confirmLabel, connectBusy, description, loading, onConfirm... (+6) |
 | `AccountsListProvider` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-agent.ts` | 234 | accounts, providerId, strategy |
 | `AccountsListResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-agent.ts` | 240 | providers |
-| `AccountsRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/accounts-routes.ts` | 540 | saveConfig, state |
-| `AccountStrategiesShape` | interface | no | `@elizaos/agent` | `packages/agent/src/api/accounts-routes.ts` | 204 | accountStrategies |
+| `AccountsRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/accounts-routes.ts` | 542 | saveConfig, state |
+| `AccountStrategiesShape` | interface | no | `@elizaos/agent` | `packages/agent/src/api/accounts-routes.ts` | 206 | accountStrategies |
 | `AccountStrategy` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-agent.ts` | 228 |  |
 | `AccountTestResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-agent.ts` | 244 | error, latencyMs, ok, status |
 | `AccountWithCredentialFlag` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-agent.ts` | 230 | hasCredential |
@@ -2444,7 +2447,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ActionContext` | interface | yes | `@elizaos/core` | `packages/core/src/types/components.ts` | 689 | getPreviousResult, previousResults |
 | `ActionContext` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/dispatch-llm.ts` | 54 | actionName, calibration, data, suggestedText, userMessage |
 | `ActionContextValidationOptions` | interface | yes | `@elizaos/core` | `packages/core/src/utils/action-validation.ts` | 7 | contexts, keywordKeys, keywords |
-| `ActionContinuationDecision` | type | yes | `@elizaos/core` | `packages/core/src/services/message.ts` | 6145 | continuingActions, shouldContinue, suppressed, suppressingActions |
+| `ActionContinuationDecision` | type | yes | `@elizaos/core` | `packages/core/src/services/message.ts` | 6216 | continuingActions, shouldContinue, suppressed, suppressingActions |
 | `ActionDefinition` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/config-catalog.ts` | 451 | description, params |
 | `ActionDefinition` | interface | yes | `@elizaos/ui` | `packages/ui/src/config/config-catalog.ts` | 451 | description, params |
 | `ActionDocByName` | type | no | `@elizaos/core` | `packages/core/src/action-docs.ts` | 31 |  |
@@ -2479,8 +2482,8 @@ Showing 120 of 875; see JSON for the full set.
 | `ActionOptions` | type | no | `@elizaos/core` | `packages/core/src/features/trust/actions/requestElevation.ts` | 15 |  |
 | `ActionOptions` | type | no | `@elizaos/core` | `packages/core/src/features/trust/actions/roles.ts` | 76 |  |
 | `ActionOptions` | type | no | `@elizaos/core` | `packages/core/src/features/trust/actions/trust.ts` | 47 |  |
-| `ActionOwnershipCandidate` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 4941 | actionName, reasons, score |
-| `ActionOwnershipSuggestion` | type | yes | `@elizaos/core` | `packages/core/src/services/message.ts` | 4934 | actionName, reasons, score, secondBestScore |
+| `ActionOwnershipCandidate` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 5012 | actionName, reasons, score |
+| `ActionOwnershipSuggestion` | type | yes | `@elizaos/core` | `packages/core/src/services/message.ts` | 5005 | actionName, reasons, score, secondBestScore |
 | `ActionParameter` | interface | yes | `@elizaos/core` | `packages/core/src/types/components.ts` | 60 | compressedDescription, description, descriptionCompressed, examples, name, required, schema |
 | `ActionParameterExampleValue` | type | yes | `@elizaos/core` | `packages/core/src/types/components.ts` | 89 |  |
 | `ActionParameters` | interface | yes | `@elizaos/core` | `packages/core/src/types/components.ts` | 101 | [key:string] |
@@ -2514,12 +2517,11 @@ Showing 120 of 875; see JSON for the full set.
 | `ActivateParams` | interface | no | `@elizaos/core` | `packages/core/src/features/plugin-config/actions/activate-plugin-if-ready.ts` | 26 | pluginName |
 | `ActivationContext` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/form/types.ts` | 529 | control, runtime, session, subValues |
 | `ActivationInput` | interface | no | `@elizaos/core` | `packages/core/src/services/analysis-mode-handler.ts` | 90 | roomId, text |
-| `ActiveAppSession` | interface | no | `@elizaos/agent` | `packages/agent/src/services/app-manager.ts` | 188 | appName, launchType, launchUrl, pluginName, runId, startedAt, viewerUrl |
 | `ActiveClaudeFlow` | interface | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/flows/claude-flow.ts` | 41 | child, oauthUrl, stderr, stdout |
 | `ActiveInboxChat` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/useMiscUiState.ts` | 29 | avatarUrl, canSend, id, source, title, transportSource, worldId, worldLabel |
 | `ActiveJob` | interface | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/downloader.ts` | 46 | abortController, finalPath, job, stagingPath |
 | `ActiveModelBarProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/ActiveModelBar.tsx` | 8 | active, busy, installed, onUnload |
-| `ActiveModelState` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 530 | error, loadedAt, loadedCacheTypeK, loadedCacheTypeV, loadedContextSize, loadedGpuLayers, modelId, status |
+| `ActiveModelState` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 543 | error, loadedAt, loadedCacheTypeK, loadedCacheTypeV, loadedContextSize, loadedGpuLayers, modelId, status |
 | `ActiveTurn` | interface | no | `@elizaos/core` | `packages/core/src/runtime/turn-controller.ts` | 43 | controller, reason, roomId, startedAt |
 | `ActivityCollectorEvent` | interface | yes | `@elizaos/native-activity-tracker` | `packages/native-plugins/activity-tracker/src/index.ts` | 18 | appName, bundleId, event, ts, windowTitle |
 | `ActivityCollectorExit` | interface | yes | `@elizaos/native-activity-tracker` | `packages/native-plugins/activity-tracker/src/index.ts` | 51 | clean, code, reason, signal |
@@ -2641,17 +2643,15 @@ Showing 120 of 875; see JSON for the full set.
 | `AgentsFilesListResult` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 538 | agentId, files, workspace |
 | `AgentsFilesSetResult` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 550 | agentId, file, ok, workspace |
 | `AgentSkillsService` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza-plugin.ts` | 61 | getLoadedSkills |
-| `AgentSkillsServiceLike` | interface | no | `@elizaos/agent` | `packages/agent/src/api/skill-discovery-helpers.ts` | 22 | getLoadedSkills, getSkillScanStatus |
 | `AgentSkillsServiceLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/types/agent-skills.ts` | 8 | getLoadedSkills, getSkillInstructions |
 | `AgentSkillsServiceLike` | interface | no | `@elizaos/core` | `packages/core/src/providers/skill-eligibility.ts` | 58 | checkSkillEligibility, getAllSkillEligibility, getEligibleSkills, getIneligibleSkills, getLoadedSkills |
 | `AgentsListResult` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 515 | agents, defaultId, mainKey, scope |
 | `AgentsListSnapshot` | type | no | `@elizaos/agent` | `packages/agent/src/services/app-manager-agents-list-guard.ts` | 1 |  |
-| `AgentsListSnapshot` | type | no | `@elizaos/agent` | `packages/agent/src/services/app-manager.ts` | 100 |  |
 | `AgentStartOptions` | interface | yes | `@elizaos/capacitor-agent` | `packages/native-plugins/agent/src/definitions.ts` | 32 | apiBase, mode |
-| `AgentStartupDiagnostics` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 24 | attempt, lastError, lastErrorAt, nextRetryAt, phase |
+| `AgentStartupDiagnostics` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 50 | attempt, lastError, lastErrorAt, nextRetryAt, phase |
 | `AgentStartupDiagnostics` | interface | yes | `@elizaos/shared` | `packages/shared/src/api/agent-api-types.ts` | 237 | attempt, lastError, lastErrorAt, nextRetryAt, phase |
 | `AgentStartupDiagnostics` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 121 | attempt, embeddingDetail, embeddingPhase, embeddingProgressPct, lastError, lastErrorAt, nextRetryAt, phase |
-| `AgentState` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 86 | age, dna, energy, generation, id, isAlive, position |
+| `AgentState` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 81 | age, dna, energy, generation, id, isAlive, position |
 | `AgentState` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 113 |  |
 | `AgentStateStatus` | type | no | `@elizaos/agent` | `packages/agent/src/api/agent-admin-routes.ts` | 14 |  |
 | `AgentStateStatus` | type | no | `@elizaos/agent` | `packages/agent/src/api/agent-lifecycle-routes.ts` | 6 |  |
@@ -2663,7 +2663,7 @@ Showing 120 of 875; see JSON for the full set.
 | `AgentStatus` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 134 | agentName, model, pendingRestart, pendingRestartReasons, port, startedAt, startup, state... (+1) |
 | `AgentStatusReader` | type | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/agent-status-rpc.ts` | 131 |  |
 | `AgentStatusResponse` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/status.ts` | 19 | network, schema_version, state |
-| `AgentStatusRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 261 |  |
+| `AgentStatusRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 293 |  |
 | `AgentStatusRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/agent-status-routes.ts` | 111 | deps, error, json, method, pathname, readJsonBody, req, res... (+2) |
 | `AgentStatusRouteDeps` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/agent-status-routes.ts` | 61 | canUseLocalTradeExecution, detectRuntimeModel, getGlobalAwarenessRegistry, getWalletAddresses, RegistryService, resolveProviderFromModel, resolveTradePermissionMode, resolveWalletCapabilityStatus... (+1) |
 | `AgentStatusRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/agent-status-routes.ts` | 98 | agentName, agentState, config, model, runtime, shellEnabled, startedAt |
@@ -2688,7 +2688,7 @@ Showing 120 of 875; see JSON for the full set.
 | `AIEmbeddingModel` | type | no | `@elizaos/core` | `packages/core/src/features/documents/llm.ts` | 16 |  |
 | `AIModel` | type | no | `@elizaos/core` | `packages/core/src/features/documents/llm.ts` | 15 |  |
 | `AINodeConnectionType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 165 |  |
-| `AINodeConnectionType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 159 |  |
+| `AINodeConnectionType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 154 |  |
 | `AiProviderLike` | interface | no | `@elizaos/ui` | `packages/ui/src/components/settings/useProviderSelection.ts` | 27 | id |
 | `AlarmSubaction` | type | no | `@elizaos/macosalarm` | `packages/native-plugins/macosalarm/src/actions.ts` | 30 |  |
 | `AlchemyTokenBalance` | interface | no | `@elizaos/agent` | `packages/agent/src/api/wallet-evm-balance.ts` | 77 | contractAddress, tokenBalance |
@@ -2737,7 +2737,6 @@ Showing 120 of 875; see JSON for the full set.
 | `AnthropicSystemBlock` | type | no | `@elizaos/agent` | `packages/agent/src/auth/claude-code-stealth.ts` | 31 | text, type |
 | `AnthropicUsagePayload` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/account-usage.ts` | 67 | five_hour, five_hour_resets_at, five_hour_utilization, seven_day, seven_day_resets_at, seven_day_utilization |
 | `AnthropicUsageWindow` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/account-usage.ts` | 62 | resets_at, utilization |
-| `AnyFn` | type | yes | `@elizaos/agent` | `packages/agent/src/cli/mobile-fs-sandbox.ts` | 5 |  |
 | `AospVariantConfig` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/app-config.ts` | 155 | appName, bootanimationAssetDir, commonMk, cuttlefishDeviceDir, modelSourceLabel, packageName, productLunch, productName... (+2) |
 | `ApiBaseSnapshot` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/lifecycle/api-base-owner.ts` | 35 | base, token |
 | `ApiBaseUpdateRpc` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/api-base.ts` | 148 | send |
@@ -2785,11 +2784,12 @@ Showing 120 of 875; see JSON for the full set.
 | `AppConfiguration` | interface | no | `@elizaos/example-text-adventure` | `packages/examples/text-adventure/game.ts` | 522 | openaiApiKey, pgliteDataDir, postgresUrl |
 | `AppContextValue` | type | yes | `@elizaos/ui` | `packages/ui/src/state/types.ts` | 1001 |  |
 | `AppCoreAccountPoolCredentialsOptions` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/app-core-runtime-hooks.ts` | 3 | accountStrategies, activeBackend, serviceRouting |
-| `AppCoreEngineLike` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 91 | LocalInferenceEngine |
+| `AppCoreEngineLike` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 90 | LocalInferenceEngine |
 | `AppCoreRuntimeHooks` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/app-core-runtime-hooks.ts` | 9 | applyAccountPoolApiCredentials, ensureLocalInferenceHandler, getDefaultAccountPool, hydrateWalletKeysFromNodePlatformSecureStore, runVaultBootstrap, sharedVault, startAccountPoolKeepAlive |
 | `AppCoreRuntimeHooksGlobal` | type | no | `@elizaos/app-core` | `packages/app-core/src/runtime/app-core-runtime-hooks.ts` | 23 | [[APP_CORE_RUNTIME_HOOKS]] |
 | `AppCoreRuntimeModule` | type | no | `@elizaos/agent` | `packages/agent/src/api/agent-admin-routes.ts` | 23 | sharedVault |
 | `AppCoreRuntimeModule` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 114 | applyAccountPoolApiCredentials, getBuildVariant, getDefaultAccountPool, hydrateWalletKeysFromNodePlatformSecureStore, isStoreBuild, runVaultBootstrap, sharedVault, startAccountPoolKeepAlive |
+| `AppCoreVisionLike` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/runtime-resolver.ts` | 28 | createImageDescriptionRuntime |
 | `AppDesktopConfig` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/app-config.ts` | 21 | bundleId, category, releaseNotesUrl, urlScheme |
 | `AppDetailExtensionComponent` | type | yes | `@elizaos/ui` | `packages/ui/src/components/apps/extensions/types.ts` | 8 |  |
 | `AppDetailExtensionProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/apps/extensions/types.ts` | 4 | app |
@@ -2855,8 +2855,8 @@ Showing 120 of 875; see JSON for the full set.
 | `ApplyProductionWalletDefaultsResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 174 | bscExecutionEnabled, clearedSecrets, ok, profile, tradePermissionMode, walletMode |
 | `ApplyResult` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/onboarding/apply-system.ts` | 32 | applied, field, message |
 | `ApplySavedTokenResult` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/github-credentials.ts` | 153 | applied, envAlreadySet, username |
-| `AppManagerLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 333 | attachRun, detachRun, getInfo, getRun, launch, listAvailable, listInstalled, listRuns... (+3) |
-| `AppManagerOptions` | interface | no | `@elizaos/agent` | `packages/agent/src/services/app-manager.ts` | 198 | heartbeatSweepIntervalMs, heartbeatTimeoutMs, stateDir |
+| `AppManagerLike` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 44 |  |
+| `AppManagerLike` | type | yes | `@elizaos/agent` | `packages/agent/src/api/server-types.ts` | 17 |  |
 | `AppManifestBlock` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/app-manifest.ts` | 54 | candidates, capabilities, defaults |
 | `AppMenuEntry` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/application-menu.ts` | 11 | displayName, hasDetailsPage, name, slug, windowPath |
 | `AppOperatorSurfaceComponent` | type | yes | `@elizaos/ui` | `packages/ui/src/components/apps/surfaces/types.ts` | 12 |  |
@@ -2918,11 +2918,8 @@ Showing 120 of 875; see JSON for the full set.
 | `AppRunHealthState` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 412 |  |
 | `AppRunSessionContext` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 330 | runId, session |
 | `AppRunSessionRefresher` | type | yes | `@elizaos/agent` | `packages/agent/src/services/app-package-modules.ts` | 37 |  |
-| `AppRunSteeringDisposition` | type | no | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 364 |  |
 | `AppRunSteeringDisposition` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-skills.ts` | 61 |  |
-| `AppRunSteeringResult` | interface | no | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 370 | disposition, session, status |
 | `AppRunSteeringResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-skills.ts` | 67 | disposition, message, run, session, status, success |
-| `AppRunStoreFile` | interface | no | `@elizaos/agent` | `packages/agent/src/services/app-run-store.ts` | 22 | runs, updatedAt, version |
 | `AppRunSummary` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 259 | agentId, appName, awaySummary, characterId, chatAvailability, controlAvailability, displayName, health... (+16) |
 | `AppRunSummary` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 529 | agentId, appName, awaySummary, characterId, chatAvailability, controlAvailability, displayName, health... (+16) |
 | `AppRunViewerAttachment` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 60 |  |
@@ -2951,7 +2948,7 @@ Showing 120 of 875; see JSON for the full set.
 | `AppShellState` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/useAppShellState.ts` | 11 | agentSubTab, appsSubTab, configRaw, configText, databaseSubTab, favoriteApps, ownerName, pluginsSubTab... (+1) |
 | `AppSource` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/AppDetailsView.tsx` | 69 |  |
 | `AppsPageViewRenderer` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/AppsPageView.tsx` | 16 |  |
-| `AppsRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 397 | appManager, favoriteApps, getPluginManager, parseBoundedLimit, runtime, url |
+| `AppsRouteContext` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 45 |  |
 | `AppsSectionProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/chat/AppsSection.tsx` | 46 | headerAction |
 | `AppsSidebarAppButtonProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/apps/AppsSidebar.tsx` | 269 | active, displayName, identitySource, name, onClick, selected |
 | `AppsSidebarProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/apps/AppsSidebar.tsx` | 17 | activeAppNames, apps, browseApps, collapsed, favoriteAppNames, maxWidth, minWidth, onCollapsedChange... (+6) |
@@ -2969,7 +2966,6 @@ Showing 120 of 875; see JSON for the full set.
 | `AppViewerAuthMessage` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 85 | agentId, authToken, characterId, followEntity, sessionToken, type |
 | `AppViewerAuthMessage` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 436 | agentId, authToken, characterId, followEntity, sessionToken, type |
 | `AppViewerAuthMessageResolver` | type | yes | `@elizaos/agent` | `packages/agent/src/services/app-package-modules.ts` | 29 |  |
-| `AppViewerConfig` | type | no | `@elizaos/agent` | `packages/agent/src/services/app-manager.ts` | 167 |  |
 | `AppViewerConfig` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 111 | authMessage, embedParams, postMessageAuth, sandbox, url |
 | `AppWebConfig` | interface | no | `@elizaos/app` | `packages/app/app.config.ts` | 14 | backgroundColor, shareImagePath, shortName, themeColor |
 | `AppWebConfig` | interface | no | `__APP_PACKAGE_NAME__` | `packages/elizaos/templates/project/apps/app/app.config.ts` | 16 | backgroundColor, shareImagePath, shortName, themeColor |
@@ -2985,18 +2981,19 @@ Showing 120 of 875; see JSON for the full set.
 | `AptCacheFn` | type | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/flows/install-package-runner.ts` | 22 |  |
 | `AptCacheInfo` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/flows/install-package-runner.ts` | 15 | sizeKb, version |
 | `ArchiveReport` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/scripts/postwrap-diagnostics.ts` | 23 | containsWgpuDawn, path, sampleEntries |
-| `Args` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/index.ts` | 36 | allowSkipLocal, cerebrasModel, modes, n, out, tasks, tier |
+| `Args` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/index.ts` | 35 | allowSkipLocal, cerebrasModel, modes, n, out, tasks, tier |
 | `Args` | interface | no | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/runner.ts` | 24 | cerebrasModel, judge, mode, out, scenarioFilter |
+| `Args` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/runner.ts` | 65 | benchmarks, forceStub, output, samples, smoke, tier |
 | `ARTTrajectory` | interface | yes | `@elizaos/core` | `packages/core/src/features/trajectories/types.ts` | 258 | messages, metadata, metrics, reward |
 | `AsrProvider` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 719 |  |
 | `AssetUrlResolveOptions` | type | no | `@elizaos/shared` | `packages/shared/src/utils/asset-url.ts` | 12 | baseUrl, currentUrl |
 | `AssetUrlResolveOptions` | type | no | `@elizaos/ui` | `packages/ui/src/utils/asset-url.ts` | 12 | baseUrl, currentUrl |
 | `AssignmentCollectionValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 117 | assignments |
-| `AssignmentCollectionValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 112 | assignments |
+| `AssignmentCollectionValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 107 | assignments |
 | `AssignmentJson` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/actions/role.ts` | 86 | entityId, newRole |
 | `AssignmentsFile` | interface | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/assignments.ts` | 23 | assignments, version |
 | `AssignmentValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 121 | id, name, type, value |
-| `AssignmentValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 116 | id, name, type, value |
+| `AssignmentValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 111 | id, name, type, value |
 | `AssistantEditActions` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/contexts/message-edit.context.ts` | 29 | setShouldBranchAfterEdit |
 | `AssistantEventData` | interface | yes | `@elizaos/core` | `packages/core/src/types/agentEvent.ts` | 168 | content, role, tokens, type |
 | `AssistantLaunchHashRouteOptions` | interface | yes | `@elizaos/app` | `packages/app/src/deep-link-routing.ts` | 4 | generateLaunchId |
@@ -3129,7 +3126,7 @@ Showing 120 of 875; see JSON for the full set.
 | `AutonomyRunHealth` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/autonomy.ts` | 9 | gapCount, lastGapAt, lastSeq, missingSeqs, partialAt, recoveredAt, runId, status |
 | `AutonomyRunHealthMap` | type | yes | `@elizaos/ui` | `packages/ui/src/state/autonomy.ts` | 20 |  |
 | `AutonomyRunHealthStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/state/autonomy.ts` | 3 |  |
-| `AutonomyServiceLike` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1040 | enableAutonomy |
+| `AutonomyServiceLike` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1043 | enableAutonomy |
 | `AutonomyServiceLike` | type | no | `@elizaos/app-core` | `packages/app-core/src/runtime/eliza.ts` | 112 | enableAutonomy |
 | `AutonomyStatus` | interface | yes | `@elizaos/core` | `packages/core/src/features/autonomy/types.ts` | 12 | autonomousRoomId, enabled, interval, running, thinking |
 | `AutonomyToggleService` | type | no | `@elizaos/agent` | `packages/agent/src/api/agent-lifecycle-routes.ts` | 29 | disableAutonomy, enableAutonomy |
@@ -3199,6 +3196,8 @@ Showing 120 of 875; see JSON for the full set.
 | `BannerOptions` | type | no | `@elizaos/app-core` | `packages/app-core/src/cli/banner.ts` | 4 | argv, commit, env, richTty |
 | `BannerProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/ui/banner.tsx` | 29 | action, dismissible, dismissLabel, onDismiss |
 | `BargeInInterruptionInput` | type | no | `@elizaos/app-core` | `packages/app-core/scripts/voice-e2e-hardware.ts` | 22 |  |
+| `BaselineEntry` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 173 | benchmark, score, source, tier |
+| `BaselinesFile` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/runner.ts` | 196 | baselines |
 | `BaseLogBody` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 46 | duration, endTime, entityId, messageId, metadata, parentRunId, roomId, runId... (+3) |
 | `BaseMetadata` | interface | yes | `@elizaos/core` | `packages/core/src/types/memory.ts` | 41 | scope, source, sourceId, tags, timestamp, type |
 | `BaseRoute` | interface | no | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 111 | description, filePath, handler, isMultipart, openapi, path, rawPath, routeHandler... (+3) |
@@ -3214,13 +3213,17 @@ Showing 120 of 875; see JSON for the full set.
 | `BatteryLike` | interface | no | `@elizaos/capacitor-mobile-signals` | `packages/native-plugins/mobile-signals/src/web.ts` | 19 | charging, level |
 | `BatteryManager` | type | no | `@elizaos/capacitor-desktop` | `packages/native-plugins/desktop/src/web.ts` | 319 | charging, level |
 | `BatteryReading` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/status.ts` | 60 | capacity, hoursRemaining, status |
+| `BBox` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 11 | height, width, x, y |
+| `BBox` | type | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 29 |  |
 | `BedrockDiscoveryConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 236 | defaultContextWindow, defaultMaxTokens, enabled, providerFilter, refreshInterval, region |
 | `BeginInstallPackageOptions` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/flows/install-package-flow.ts` | 44 | packages, sizeMb, spawnFn |
 | `BehavioralProfile` | interface | yes | `@elizaos/core` | `packages/core/src/features/trust/types/security.ts` | 108 | activeHours, commonPhrases, entityId, interactionPatterns, messageLength, typingSpeed, vocabularyComplexity |
+| `BenchmarkAdapter` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 92 | loadSamples, name, scoreOne |
 | `BenchmarkCommandOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/cli/benchmark.ts` | 301 | server, task, timeout |
 | `BenchmarkCompareResponse` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/training-benchmarks.ts` | 123 | a, b, benchmark, dbReady, delta, modelA, modelB, schema |
 | `BenchmarkContext` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/plugin.ts` | 17 | [key:string], actionSpace, benchmark, elements, goal, html, observation, passages... (+3) |
 | `BenchmarkLlmCallUsage` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/server-utils.ts` | 90 | cacheCreationInputTokens, cachedTokens, cacheReadInputTokens, completionTokens, modelType, promptTokens, provider, source... (+1) |
+| `BenchmarkName` | type | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 13 |  |
 | `BenchmarkOutboxEntry` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/server-utils.ts` | 75 | kind, source, targetId, text, ts |
 | `BenchmarkOutput` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 102 | benchmark, datasetName, datasetPath, iterations, modes, profile, results, runtime... (+3) |
 | `BenchmarkPersonalityAuditEntry` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/server-utils.ts` | 126 | action, actorId, scope, targetId, timestamp |
@@ -3241,6 +3244,7 @@ Showing 120 of 875; see JSON for the full set.
 | `BenchmarkTurnUsage` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/server-utils.ts` | 107 | cacheCreationInputTokens, cachedTokens, cacheHitRatio, cacheReadInputTokens, callCount, calls, completionTokens, promptTokens... (+1) |
 | `BenchPersonalityStore` | interface | no | `@elizaos/app-core` | `packages/app-core/src/benchmark/server-utils.ts` | 1185 | clear, setSlot |
 | `BenchReport` | interface | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/types.ts` | 123 | cases, generatedAt, modes, schemaVersion, skipped, summaries, tasks |
+| `BenchReport` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 153 | baseline_score, benchmark, delta, error_count, generatedAt, runtime_seconds, sample_count, samples... (+3) |
 | `BenchSkeleton` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/modes/eliza-guided.ts` | 38 | id, spans |
 | `BenchSkeleton` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/modes/eliza-strict-guided.ts` | 39 | id, spans |
 | `BenchSkeletonSpan` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/modes/eliza-guided.ts` | 31 | enumValues, key, kind, value |
@@ -3285,7 +3289,7 @@ Showing 120 of 875; see JSON for the full set.
 | `BootConfigStore` | interface | no | `@elizaos/shared` | `packages/shared/src/config/boot-config-store.ts` | 76 | current |
 | `BootConfigStore` | interface | no | `@elizaos/ui` | `packages/ui/src/config/boot-config-store.ts` | 319 | current |
 | `BootConfigWindow` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/bridge/electrobun-direct-rpc.ts` | 40 | [[BOOT_CONFIG_STORE_KEY]], [[BOOT_CONFIG_WINDOW_KEY]] |
-| `BootElizaRuntimeOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2660 | requireConfig |
+| `BootElizaRuntimeOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2662 | requireConfig |
 | `BootElizaRuntimeOptions` | type | yes | `@elizaos/app-core` | `packages/app-core/src/platform/empty-node-module.ts` | 133 |  |
 | `BootElizaRuntimeOptionsExt` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/eliza.ts` | 804 | onEmbeddingProgress |
 | `BootProgressSnapshot` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 972 | agentName, database, lastError, phase, pluginsFailed, pluginsLoaded, port, startedAt... (+2) |
@@ -3301,15 +3305,9 @@ Showing 120 of 875; see JSON for the full set.
 | `BrandIconProps` | type | no | `@elizaos/ui` | `packages/ui/src/components/conversations/brand-icons.tsx` | 3 | className |
 | `BrandingConfig` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/branding.ts` | 23 | appName, appUrl, bugReportUrl, cloudOnly, customProviders, docsUrl, fileExtension, hashtag... (+3) |
 | `BrandingConfig` | interface | yes | `@elizaos/ui` | `packages/ui/src/config/branding-base.ts` | 39 | appName, appUrl, bugReportUrl, cloudOnly, customProviders, docsUrl, fileExtension, hashtag... (+5) |
-| `BridgeFrame` | type | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 72 |  |
 | `BridgeHandler` | type | no | `@elizaos/app-core` | `packages/app-core/src/services/trigger-event-bridge.ts` | 149 |  |
-| `BridgeOutboundFrame` | type | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 73 |  |
-| `BridgeReadyFrame` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 65 | error, ok, result, type |
-| `BridgeRequest` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 26 | id, method, payload |
-| `BridgeResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 32 | error, id, ok, result |
 | `BridgeRpcParams` | interface | yes | `@elizaos/app-core` | `packages/app-core/deploy/cloud-agent-shared.ts` | 14 | channelType, metadata, mode, roomId, sender, source, text |
 | `BridgeStats` | interface | no | `@elizaos/app-core` | `packages/app-core/scripts/streaming-pipeline-bench.ts` | 384 | bridgeTotalMs, firstAudioReadyMs, firstTtsCallMs, phrasesPreview, ttsCallsPerTurn, turns |
-| `BridgeStatusResult` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 56 | bridgeVersion, engine, error, phase, ready, transport |
 | `BriefInput` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/plugins/usbeliza-codegen/prompts.ts` | 15 | builderId, calibration, critique, existingSrc, intent, now, slug |
 | `BroadcastConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.messages.ts` | 131 | [peerId:string], strategy |
 | `BroadcastStrategy` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.messages.ts` | 129 |  |
@@ -3328,10 +3326,10 @@ Showing 120 of 875; see JSON for the full set.
 | `BrowserBridgeCompanionReleaseTarget` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 163 | asset, installKind, installUrl, storeListingUrl |
 | `BrowserBridgeCompanionStatus` | interface | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/browser-bridge-contracts.ts` | 69 | agentId, browser, connectionState, createdAt, extensionVersion, id, label, lastSeenAt... (+8) |
 | `BrowserBridgeCompanionStatus` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 54 | agentId, browser, connectionState, createdAt, extensionVersion, id, label, lastSeenAt... (+8) |
-| `BrowserBridgeKind` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 96 |  |
+| `BrowserBridgeKind` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 108 |  |
 | `BrowserBridgeKind` | type | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/browser-bridge-contracts.ts` | 1 |  |
 | `BrowserBridgeKind` | type | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 1 |  |
-| `BrowserBridgePackagePathTarget` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 97 |  |
+| `BrowserBridgePackagePathTarget` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 109 |  |
 | `BrowserBridgePageContext` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 95 | agentId, browser, capturedAt, forms, headings, id, links, mainText... (+7) |
 | `BrowserBridgePermissionState` | interface | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/browser-bridge-contracts.ts` | 45 | activeTab, allOrigins, grantedOrigins, incognitoEnabled, scripting, tabs |
 | `BrowserBridgePermissionState` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 16 | activeTab, allOrigins, grantedOrigins, incognitoEnabled, scripting, tabs |
@@ -3345,13 +3343,10 @@ Showing 120 of 875; see JSON for the full set.
 | `BrowserBuffer` | type | no | `eliza-react-example` | `packages/examples/react/src/stubs/node-builtins.ts` | 78 | toString |
 | `BrowserConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 116 | attachOnly, cdpUrl, color, defaultProfile, enabled, evaluateEnabled, executablePath, headless... (+5) |
 | `BrowserCookieResult` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/credentials.ts` | 392 | browser, expiresUtc, name, value |
-| `BrowserEvmTransactionRequest` | interface | no | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 364 | broadcast, chainId, data, to, value |
 | `BrowserNavigationOptions` | interface | yes | `@elizaos/core` | `packages/core/src/types/service-interfaces.ts` | 837 | headers, timeout, userAgent, viewport, waitUntil |
 | `BrowserPGliteOptions` | type | no | `eliza-react-example` | `packages/examples/react/src/pglite-browser.ts` | 13 | fsBundle, wasmModule |
 | `BrowserProfileConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 102 | cdpPort, cdpUrl, color, driver |
 | `BrowserSnapshotDefaults` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 112 | mode |
-| `BrowserSolanaCluster` | type | no | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 362 |  |
-| `BrowserSolanaWeb3Module` | interface | no | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 372 | Connection, Keypair, Transaction, VersionedTransaction |
 | `BrowserTabKit` | interface | yes | `@elizaos/shared` | `packages/shared/src/utils/browser-tab-kit-types.ts` | 55 | cursor, dispatchPointerSequence, setFileInput, typeRealistic |
 | `BrowserTabKitCursorPoint` | interface | yes | `@elizaos/shared` | `packages/shared/src/utils/browser-tab-kit-types.ts` | 23 | x, y |
 | `BrowserTabKitDispatchOptions` | interface | yes | `@elizaos/shared` | `packages/shared/src/utils/browser-tab-kit-types.ts` | 33 | button, doubleClick, x, y |
@@ -3361,7 +3356,7 @@ Showing 120 of 875; see JSON for the full set.
 | `BrowserTabsRendererImpl` | type | yes | `@elizaos/shared` | `packages/shared/src/utils/browser-tabs-renderer-registry.ts` | 12 | evaluate, getTabRect |
 | `BrowserWindowConstructorOptions` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/electrobun-window-options.ts` | 3 |  |
 | `BrowserWorkspaceAcquireSessionBody` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/browser-workspace-bridge-server.ts` | 22 | accountId, authState, manualHandoffReason, provider, reuse, show, title, url |
-| `BrowserWorkspaceCommand` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 99 |  |
+| `BrowserWorkspaceCommand` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 111 |  |
 | `BrowserWorkspaceCommand` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/hosted-tools.ts` | 6 | [key:string], subaction |
 | `BrowserWorkspaceConnectorAuthState` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/browser-workspace.ts` | 18 |  |
 | `BrowserWorkspaceConnectorSessionHandle` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/browser-workspace.ts` | 96 | accountId, authState, browser, companionId, created, message, partition, profileId... (+5) |
@@ -3384,7 +3379,7 @@ Showing 120 of 875; see JSON for the full set.
 | `BrowserWorkspaceTab` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/browser-workspace.ts` | 48 |  |
 | `BrowserWorkspaceTab` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 30 | createdAt, id, interactiveLiveViewUrl, kind, lastFocusedAt, liveViewUrl, partition, provider... (+5) |
 | `BrowserWorkspaceTab` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 203 | createdAt, id, interactiveLiveViewUrl, kind, lastFocusedAt, liveViewUrl, partition, provider... (+5) |
-| `BrowserWorkspaceTabKind` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 102 |  |
+| `BrowserWorkspaceTabKind` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 114 |  |
 | `BrowserWorkspaceTabKind` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/browser-workspace.ts` | 17 |  |
 | `BrowserWorkspaceTabKind` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 28 |  |
 | `BrowserWorkspaceTabKind` | type | yes | `@elizaos/ui` | `packages/ui/src/api/browser-contracts.ts` | 201 |  |
@@ -3447,7 +3442,6 @@ Showing 120 of 875; see JSON for the full set.
 | `BucketEntry` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/auth/sensitive-rate-limit.ts` | 29 | count, resetAt |
 | `BudgetPanelProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/training/BudgetPanel.tsx` | 5 | jobId |
 | `BufferedExchange` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/trajectory-internals.ts` | 530 | response, timestamp, trajectoryId, userPrompt |
-| `BufferedHttpResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 113 | body, bodyBase64, bodyEncoding, headers, status, statusText |
 | `BufferEncodingName` | type | no | `@elizaos/core` | `packages/core/src/utils/crypto-compat.ts` | 25 |  |
 | `BufferLike` | type | yes | `@elizaos/core` | `packages/core/src/utils/buffer.ts` | 13 |  |
 | `BugReportBody` | interface | no | `@elizaos/agent` | `packages/agent/src/api/bug-report-routes.ts` | 72 | actualBehavior, appVersion, category, description, environment, expectedBehavior, logs, modelProvider... (+4) |
@@ -3460,9 +3454,9 @@ Showing 120 of 875; see JSON for the full set.
 | `BuildActionCatalogOptions` | type | yes | `@elizaos/core` | `packages/core/src/runtime/action-catalog.ts` | 105 | includeReferencedChildrenAsParents, localizedExamples |
 | `BuildCommandsArgs` | interface | yes | `@elizaos/ui` | `packages/ui/src/chat/index.ts` | 140 | activeGameViewerUrl, agentState, desktopRuntime, focusDesktopMainWindow, handleChatClear, handleRestart, handleStart, handleStop... (+9) |
 | `BuilderHintInputs` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 460 |  |
-| `BuilderHintInputs` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 443 |  |
+| `BuilderHintInputs` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 438 |  |
 | `BuilderHintOutputs` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 468 |  |
-| `BuilderHintOutputs` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 449 |  |
+| `BuilderHintOutputs` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 444 |  |
 | `BuildInfo` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/main-window-session.ts` | 9 | availableRenderers, defaultRenderer |
 | `BuildMessagesArgs` | interface | no | `@elizaos/core` | `packages/core/src/runtime/facts-and-relationships.ts` | 187 | existingRelationships, extract, message, priorDialogue, runtime, similarFacts, state |
 | `BuildOnboardingConnectionArgs` | interface | yes | `@elizaos/ui` | `packages/ui/src/onboarding-config.ts` | 18 | omitRuntimeProvider, onboardingActionPlannerModel, onboardingApiKey, onboardingCloudApiKey, onboardingFeatureBrowser, onboardingFeatureComputerUse, onboardingFeatureCrypto, onboardingFeatureDiscord... (+18) |
@@ -3509,7 +3503,6 @@ Showing 120 of 875; see JSON for the full set.
 | `ByteSizeFormatterOptions` | type | no | `@elizaos/shared` | `packages/shared/src/utils/format.ts` | 33 | gbPrecision, kbPrecision, mbPrecision, tbPrecision, unknownLabel |
 | `CacheableSection` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/provider-cache-plan.ts` | 6 | cacheable, id, priority, segmentHash, segmentIndex, stable, ttl |
 | `CacheableToolDescriptor` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/tool-call-cache/types.ts` | 40 | cacheable, name, ttlMs, version |
-| `CachedCloudWalletDescriptor` | interface | no | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 166 | agentWalletId, balance, walletAddress, walletProvider |
 | `CachedEntry` | interface | no | `@elizaos/core` | `packages/core/src/services/optimized-prompt.ts` | 251 | artifact, loadedAt |
 | `CachedFile` | interface | no | `@elizaos/agent` | `packages/agent/src/api/memory-bounds.ts` | 85 | body, mtimeMs |
 | `CachedModel` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/model-provider-helpers.ts` | 190 | category, id, name |
@@ -3533,9 +3526,9 @@ Showing 120 of 875; see JSON for the full set.
 | `CalibrationBlock` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/persona.ts` | 19 | buildIntent, chronotype, claudeOfferAccepted, errorCommunication, keyboardLayout, language, multitasking, name... (+3) |
 | `CalibrationCase` | interface | yes | `@elizaos/personality-bench` | `packages/benchmarks/personality-bench/src/types.ts` | 147 | adversarial, bucket, ground_truth, personalityExpect, reason, scenario_id, trajectory |
 | `Callback` | type | no | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/webextension.ts` | 1 |  |
-| `CallbackMergeMode` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 141 |  |
+| `CallbackMergeMode` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 164 |  |
 | `CallerPolicy` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 665 |  |
-| `CallerPolicy` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 624 |  |
+| `CallerPolicy` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 619 |  |
 | `CallLogEntry` | interface | yes | `@elizaos/capacitor-phone` | `packages/native-plugins/phone/src/definitions.ts` | 22 | agentSummary, agentTranscript, agentTranscriptUpdatedAt, cachedName, date, durationSeconds, geocodedLocation, id... (+7) |
 | `CallLogEntry` | interface | yes | `@elizaos/ui` | `packages/ui/src/bridge/native-plugins.ts` | 340 | agentSummary, agentTranscript, agentTranscriptUpdatedAt, cachedName, date, durationSeconds, geocodedLocation, id... (+7) |
 | `CallLogType` | type | yes | `@elizaos/capacitor-phone` | `packages/native-plugins/phone/src/definitions.ts` | 12 |  |
@@ -3625,7 +3618,6 @@ Showing 120 of 875; see JSON for the full set.
 | `CapturedAction` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/plugin.ts` | 51 | arguments, command, elementId, operation, params, toolName, value |
 | `CapturedExec` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/secrets-manager-installer.ts` | 482 | exitCode, stderr, stdout |
 | `CapturedModelUsage` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/prompt-optimization.ts` | 138 | cacheCreationInputTokens, cachedInputTokens, cacheReadInputTokens, completionTokens, isEstimated, llmCalls, model, promptTokens... (+2) |
-| `CapturedResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 376 | body, end, getHeader, headers, removeHeader, setHeader, statusCode, writeHead |
 | `CapturedResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/api/dispatch-route.ts` | 135 | chunks, ended, headers, statusCode |
 | `CapturedTerminalRun` | type | no | `@elizaos/agent` | `packages/agent/src/actions/terminal.ts` | 49 | command, exitCode, maxDurationMs, runId, stderr, stdout, timedOut, truncated |
 | `CaptureLifeOpsActivitySignalRequest` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/lifeops.ts` | 3521 | health, idleState, idleTimeSeconds, metadata, observedAt, onBattery, platform, source... (+1) |
@@ -3680,22 +3672,18 @@ Showing 120 of 875; see JSON for the full set.
 | `CaseName` | type | no | `@elizaos/app-core` | `packages/app-core/scripts/voice-e2e-hardware.ts` | 80 |  |
 | `CatalogConfig` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/config-catalog.ts` | 507 | actions, fields, functions |
 | `CatalogConfig` | interface | yes | `@elizaos/ui` | `packages/ui/src/config/config-catalog.ts` | 507 | actions, fields, functions |
-| `CatalogHub` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 307 |  |
+| `CatalogHub` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 314 |  |
 | `CatalogModel` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/local-inference/catalog.ts` | 30 | blurb, bucket, category, dflashDrafter, displayName, ggufFile, hfRepo, id... (+4) |
-| `CatalogModel` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 327 | blurb, bucket, bundleManifestFile, bundleManifestSha256, category, companionForModelId, companionModelIds, contextLength... (+21) |
+| `CatalogModel` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 340 | blurb, bucket, bundleManifestFile, bundleManifestSha256, category, companionForModelId, companionModelIds, contextLength... (+21) |
 | `CatalogPromptOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/shared/ui-catalog-prompt.ts` | 1134 | componentFilter, customRules, includeExamples, mode |
-| `CatalogQuantization` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 320 | defaultVariantId, variants |
-| `CatalogQuantizationId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 309 |  |
-| `CatalogQuantizationMatrix` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 325 |  |
-| `CatalogQuantizationVariant` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 311 | ggufFile, id, label, minRamGb, sizeGb, status |
+| `CatalogQuantization` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 333 | defaultVariantId, variants |
+| `CatalogQuantizationId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 316 |  |
+| `CatalogQuantizationMatrix` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 338 |  |
+| `CatalogQuantizationVariant` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 324 | ggufFile, id, label, minRamGb, sizeGb, status |
 | `CatalogRenderSection` | interface | no | `@elizaos/ui` | `packages/ui/src/components/apps/AppsCatalogGrid.tsx` | 21 | apps, key, label |
-| `CatalogSearchResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-catalog-client.ts` | 41 | displayName, downloads, installs, latestVersion, score, slug, stars, summary |
 | `CatalogSearchResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 833 | displayName, downloads, installs, latestVersion, score, slug, stars, summary |
-| `CatalogSkill` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-catalog-client.ts` | 30 | createdAt, displayName, latestVersion, slug, stats, summary, tags, updatedAt |
 | `CatalogSkill` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 821 | createdAt, displayName, installed, latestVersion, slug, stats, summary, tags... (+1) |
-| `CatalogSkillStats` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-catalog-client.ts` | 15 | comments, downloads, installsAllTime, installsCurrent, stars, versions |
 | `CatalogSkillStats` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 806 | comments, downloads, installsAllTime, installsCurrent, stars, versions |
-| `CatalogSkillVersion` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-catalog-client.ts` | 24 | changelog, createdAt, version |
 | `CatalogSkillVersion` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 815 | changelog, createdAt, version |
 | `CategoryScore` | interface | no | `eliza` | `packages/benchmarks/app-eval/run-benchmarks.ts` | 101 | avg, completed, failed, max, min, tasks, total |
 | `CategoryScore` | interface | yes | `@elizaos/configbench` | `packages/benchmarks/configbench/src/types.ts` | 94 | averageScore, category, passedCount, scenarioCount, securityViolations |
@@ -3797,6 +3785,7 @@ Showing 120 of 875; see JSON for the full set.
 | `CharacterVariant` | type | yes | `@elizaos/shared` | `packages/shared/src/onboarding-presets.characters.ts` | 3 | catchphrase, hint, postExamples |
 | `CharacterX402Settings` | interface | yes | `@elizaos/core` | `packages/core/src/types/payment.ts` | 29 | defaultPaymentConfigs, defaultPriceInCents |
 | `ChartMode` | type | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/CompletionTimelineChart.tsx` | 24 |  |
+| `ChartQaPayload` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/chartqa_adapter.ts` | 35 | answers, answerType |
 | `ChatAction` | type | no | `@elizaos/ui` | `packages/ui/src/state/useChatState.ts` | 74 | conversationId, field, id, message, type, update, value |
 | `ChatActionsContext` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/contexts/chat-actions.context.ts` | 4 | continueAssistantMessage, copy, delete, editUserMessagePreserveResponses, editWithBranching, editWithReplacement, forkConversation, navigateToSibling... (+1) |
 | `ChatAttachmentItem` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/composites/chat/chat-types.ts` | 48 | alt, id, name, src |
@@ -3817,15 +3806,15 @@ Showing 120 of 875; see JSON for the full set.
 | `ChatConversationSummary` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/composites/chat/chat-types.ts` | 96 | avatarUrl, id, source, title, updatedAtLabel |
 | `ChatEmptyStateProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/composites/chat/chat-empty-state.tsx` | 6 | action, agentName, className, hint, labels, onSuggestionClick, suggestions, variant |
 | `ChatEvent` | type | no | `@elizaos/example-browser-extension-chrome` | `packages/examples/browser-extension/chrome/src/background.ts` | 23 | error, messageId, text, type, url |
-| `ChatFailureKind` | type | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 553 |  |
+| `ChatFailureKind` | type | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 576 |  |
 | `ChatFailureKind` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 80 |  |
-| `ChatGenerateOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 130 | isAborted, onChunk, onSnapshot, preferredLanguage, resolveNoResponseText, timeoutDuration |
-| `ChatGenerationResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 106 | actionCallbackHistory, agentName, failureKind, localInference, noResponseReason, responseContent, responseMessages, text... (+2) |
+| `ChatGenerateOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 153 | isAborted, onChunk, onSnapshot, preferredLanguage, resolveNoResponseText, timeoutDuration |
+| `ChatGenerationResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 129 | actionCallbackHistory, agentName, failureKind, localInference, noResponseReason, responseContent, responseMessages, text... (+2) |
 | `ChatImageAttachment` | interface | yes | `@elizaos/shared` | `packages/shared/src/api/agent-api-types.ts` | 248 | data, mimeType, name |
 | `ChatInputInteraction` | interface | no | `@elizaos/example-discord` | `packages/examples/discord/handlers.ts` | 11 | commandName, isChatInputCommand, reply |
 | `ChatLabelSet` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/composites/chat/chat-types.ts` | 3 | actions, agentStarting, agentVoiceOff, agentVoiceOn, attachImage, cancel, chatIconLabel, chats... (+34) |
 | `ChatLaunch` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/dispatch.ts` | 78 | backend, manifestPath, slug |
-| `ChatLogEntry` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2703 | roomId, runtime |
+| `ChatLogEntry` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2705 | roomId, runtime |
 | `ChatMessage` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/benchmark/lifeops-fake-backend.ts` | 71 | attachments, channel, conversation_id, from_handle, id, is_outgoing, is_read, sent_at... (+2) |
 | `ChatMessage` | interface | yes | `@elizaos/core` | `packages/core/src/features/trajectories/types.ts` | 252 | content, name, role |
 | `ChatMessage` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 295 | content, metadata, name, role, toolCallId, toolCalls |
@@ -3882,9 +3871,9 @@ Showing 120 of 875; see JSON for the full set.
 | `ChatResponse` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/chat.ts` | 37 | launch, reply, schema_version |
 | `ChatResult` | interface | yes | `@elizaos/capacitor-agent` | `packages/native-plugins/agent/src/definitions.ts` | 22 | agentName, text |
 | `ChatRoom` | interface | yes | `@elizaos/example-code` | `packages/examples/code/src/types.ts` | 271 | createdAt, elizaRoomId, id, messages, name, taskIds |
-| `ChatRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 19 |  |
-| `ChatRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 1916 | state |
-| `ChatRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 1902 | adminEntityId, agentName, chatConnectionPromise, chatConnectionReady, chatRoomId, chatUserId, config, logBuffer... (+2) |
+| `ChatRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 28 |  |
+| `ChatRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 1941 | state |
+| `ChatRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 1927 | adminEntityId, agentName, chatConnectionPromise, chatConnectionReady, chatRoomId, chatUserId, config, logBuffer... (+2) |
 | `ChatSettings` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/hooks/use-settings-navigation.svelte.ts` | 6 | reset |
 | `ChatSettingsConfigContext` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/contexts/chat-settings-config.context.ts` | 4 | handleConfigChange, handleThemeChange, localConfig |
 | `ChatSidebarPluginState` | type | yes | `@elizaos/ui` | `packages/ui/src/components/chat/widgets/types.ts` | 18 |  |
@@ -3955,7 +3944,7 @@ Showing 120 of 875; see JSON for the full set.
 | `CloneResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/services/pluginRegistryService.ts` | 149 | dependencies, error, hasTests, localPath, pluginName, success |
 | `CloseIntent` | interface | no | `@elizaos/ui` | `packages/ui/src/hooks/useSecretsManagerModal.ts` | 36 | action |
 | `CloudAgentConfig` | interface | yes | `@elizaos/app-core` | `packages/app-core/deploy/cloud-agent-shared.ts` | 92 | bridgePort, bridgeSecret, enableChatMode, maxBodyBytes, maxMemories, port |
-| `CloudAndCoreRouteContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 39 | isAuthorizedRequest, restartRuntime, saveConfig |
+| `CloudAndCoreRouteContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 48 | isAuthorizedRequest, restartRuntime, saveConfig |
 | `CloudAuthApiKeyService` | interface | no | `@elizaos/agent` | `packages/agent/src/api/x-relay-routes.ts` | 46 | getApiKey, isAuthenticated |
 | `CloudAuthWindowFrame` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/cloud-auth-window.ts` | 1 | height, width, x, y |
 | `CloudAuthWindowLike` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/cloud-auth-window.ts` | 8 | close, focus, on, webview |
@@ -3997,13 +3986,14 @@ Showing 120 of 875; see JSON for the full set.
 | `CloudDisconnectMainResult` | type | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/cloud-disconnect-from-main.ts` | 21 | error, ok |
 | `CloudForwardResult` | interface | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 1944 | completionTokens, modelId, promptTokens, text |
 | `CloudHeaderStatusKind` | type | no | `@elizaos/ui` | `packages/ui/src/components/cloud/CloudStatusBadge.tsx` | 4 |  |
+| `CloudHealthApi` | type | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 6 | isCloudProvisionedContainer, resolveCloudApiKey |
 | `CloudHelperModule` | interface | no | `@elizaos/agent` | `packages/agent/src/api/x-relay-routes.ts` | 34 | resolveCloudApiKey, validateCloudBaseUrl |
 | `CloudInferenceMode` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 509 |  |
 | `CloudLinkAdapterDeps` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/sensitive-requests/cloud-link-adapter.ts` | 8 | resolveCloudBase |
 | `CloudLoginPersistResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 184 | error, ok |
 | `CloudLoginPollResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 168 | error, keyPrefix, organizationId, status, token, userId |
 | `CloudLoginResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 161 | browserUrl, error, ok, sessionId |
-| `CloudManagerLike` | type | yes | `@elizaos/agent` | `packages/agent/src/api/server-types.ts` | 17 |  |
+| `CloudManagerLike` | type | yes | `@elizaos/agent` | `packages/agent/src/api/server-types.ts` | 16 |  |
 | `CloudModelConfig` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/useCloudModelConfig.ts` | 26 | cloudModelSchema, currentLargeModel, handleModelFieldChange, initializeFromConfig, largeModelOptions, modelOptions, modelSaveSuccess, modelSaving... (+2) |
 | `CloudModelSchema` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/cloud-model-schema.ts` | 51 | hints, schema |
 | `CloudOAuthConnection` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 336 | avatarUrl, connectionRole, displayName, email, id, lastUsedAt, linkedAt, platform... (+7) |
@@ -4027,9 +4017,9 @@ Showing 120 of 875; see JSON for the full set.
 | `CloudRouteHandler` | type | no | `@elizaos/agent` | `packages/agent/src/index.ts` | 15 |  |
 | `CloudRouteSource` | type | yes | `@elizaos/cloud-routing` | `packages/cloud-routing/src/types.ts` | 3 |  |
 | `CloudRouteSource` | type | yes | `@elizaos/core` | `packages/core/src/cloud-routing.ts` | 1 |  |
-| `CloudRouteState` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 45 | cloudManager, config, createTelemetrySpan, restartRuntime, runtime, saveConfig |
+| `CloudRouteState` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 54 | cloudManager, config, createTelemetrySpan, restartRuntime, runtime, saveConfig |
 | `CloudRpcStatusProps` | type | yes | `@elizaos/ui` | `packages/ui/src/components/pages/config-page-sections.tsx` | 51 | connected, loginBusy, onLogin |
-| `CloudRuntimeProxyLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 4478 | agentName, handleChatMessage, handleChatMessageStream |
+| `CloudRuntimeProxyLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 4480 | agentName, handleChatMessage, handleChatMessageStream |
 | `CloudRuntimeSettings` | interface | yes | `@elizaos/core` | `packages/core/src/cloud-routing.ts` | 39 | getSetting |
 | `CloudServiceKey` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/config-page-sections.tsx` | 257 |  |
 | `CloudServiceToggles` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 540 | embeddings, inference, media, rpc, tts |
@@ -4048,8 +4038,6 @@ Showing 120 of 875; see JSON for the full set.
 | `CloudVfsSourceKind` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/cloud-coding-containers.ts` | 144 |  |
 | `CloudVoiceCatalogEntry` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/cloud-voice-routes.ts` | 29 | category, gender, id, language, name, preview |
 | `CloudVoiceRouteDeps` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/cloud-voice-routes.ts` | 38 | ensureAuthorized, fetchCatalog |
-| `CloudWalletDescriptor` | interface | no | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 35 | agentWalletId, balance, chainType, walletAddress, walletProvider |
-| `CloudWalletProvider` | type | no | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 34 |  |
 | `CLSResult` | interface | no | `eliza` | `packages/benchmarks/skillsbench/tasks/fix-visual-stability/environment/skills/browser-testing/measure-cls.ts` | 3 | cls, metrics, rating, url |
 | `ClusterMemoriesQuery` | type | yes | `@elizaos/core` | `packages/core/src/services/relationships-graph-builder.ts` | 2511 | count, end, limit, metadata, offset, orderBy, orderDirection, roomId... (+4) |
 | `ClusterRecord` | type | no | `@elizaos/core` | `packages/core/src/services/relationships-graph-builder.ts` | 264 | groupId, memberEntityIds, primaryEntityId |
@@ -4064,7 +4052,7 @@ Showing 120 of 875; see JSON for the full set.
 | `CodexAuthJson` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/credentials.ts` | 17 | auth_mode, OPENAI_API_KEY |
 | `CodexCliAuthJson` | interface | no | `@elizaos/agent` | `packages/agent/src/auth/credentials.ts` | 246 | auth_mode, OPENAI_API_KEY, tokens |
 | `CodexData` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 441 | alias, categories, resources, subcategories |
-| `CodexData` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 424 | alias, categories, resources, subcategories |
+| `CodexData` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 419 | alias, categories, resources, subcategories |
 | `CodexFlow` | interface | yes | `@elizaos/agent` | `packages/agent/src/auth/openai-codex.ts` | 15 | authUrl, close, credentials, state, submitCode |
 | `CodexUsagePayload` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/account-usage.ts` | 126 | plan_type, rate_limit |
 | `CodingAgentContext` | interface | no | `@elizaos/agent` | `packages/agent/src/providers/workspace-provider.ts` | 33 | active, allFeedback, connector, interactionMode, iterations, taskDescription, workingDirectory |
@@ -4126,8 +4114,6 @@ Showing 120 of 875; see JSON for the full set.
 | `CompanionSyncRequest` | type | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/protocol.ts` | 14 |  |
 | `CompanionVectorBrowserRuntime` | interface | yes | `@elizaos/ui` | `packages/ui/src/config/boot-config-store.ts` | 101 | createVectorBrowserRenderer, THREE |
 | `CompanionVrmPowerMode` | type | yes | `@elizaos/ui` | `packages/ui/src/state/types.ts` | 83 |  |
-| `CompatPluginParameter` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 189 | currentValue, default, description, isSet, key, options, required, sensitive... (+1) |
-| `CompatPluginRecord` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 201 | category, configKeys, configUiHints, configured, description, enabled, envKey, group... (+18) |
 | `CompatRuntimeState` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/compat-route-shared.ts` | 15 | current, pendingAgentName, pendingRestartReasons |
 | `CompatRuntimeState` | type | yes | `@elizaos/app-core` | `packages/app-core/src/browser.ts` | 3 | current, pendingAgentName, pendingRestartReasons |
 | `CompatStateLike` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/auth.ts` | 351 | current |
@@ -4158,7 +4144,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ConfigFileSnapshot` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 864 | config, exists, hash, issues, parsed, path, raw, valid... (+1) |
 | `ConfigFormBlock` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 47 | hints, pluginId, pluginName, schema, type, values |
 | `ConfigGetter` | type | no | `@elizaos/agent` | `packages/agent/src/services/config-plugin-manager.ts` | 19 |  |
-| `ConfigLike` | type | no | `@elizaos/shared` | `packages/shared/src/elizacloud/server-cloud-tts.ts` | 28 | cloud |
+| `ConfigLike` | type | no | `@elizaos/shared` | `packages/shared/src/elizacloud/server-cloud-tts.ts` | 24 | cloud |
 | `ConfigReader` | type | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/config-and-auth-rpc.ts` | 86 |  |
 | `ConfigReloadIntent` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 39 | changedPaths, kind |
 | `ConfigRendererHandle` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/config-ui/config-renderer.tsx` | 57 | validateAll |
@@ -4367,7 +4353,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ContextResolver` | type | yes | `@elizaos/core` | `packages/core/src/types/prompt-batcher.ts` | 64 |  |
 | `ContextRoutedResponseDecision` | interface | yes | `@elizaos/core` | `packages/core/src/types/message-service.ts` | 65 | primaryContext, secondaryContexts |
 | `ContextRoutingDecision` | interface | yes | `@elizaos/core` | `packages/core/src/utils/context-routing.ts` | 18 | primaryContext, secondaryContexts |
-| `ContextRoutingStateValues` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 6550 | [[AVAILABLE_CONTEXTS_STATE_KEY]], [[CONTEXT_ROUTING_STATE_KEY]] |
+| `ContextRoutingStateValues` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 6621 | [[AVAILABLE_CONTEXTS_STATE_KEY]], [[CONTEXT_ROUTING_STATE_KEY]] |
 | `ContextScoped` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/plugin-lifecycle.ts` | 62 | contexts |
 | `ContextSegmentDiff` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/context-diff.ts` | 18 | current, currentHash, currentIndex, key, previous, previousHash, previousIndex, tokenDelta... (+1) |
 | `ContextSegmentDiffKind` | type | yes | `@elizaos/core` | `packages/core/src/runtime/context-diff.ts` | 11 |  |
@@ -4391,6 +4377,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ContinuousChatState` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useContinuousChat.ts` | 82 | active, interimTranscript, interrupting, latency, mode, pause, resume, speaker... (+2) |
 | `ContinuousChatToggleProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/composites/chat/ContinuousChatToggle.tsx` | 28 | className, compact, data-testid, disabled, onChange, value |
 | `ContradictOp` | type | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | 133 |  |
+| `ControlledWindowHandle` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-driver.ts` | 58 | bounds, close, description, pid, process |
 | `ControlMessage` | interface | yes | `@elizaos/core` | `packages/core/src/types/messaging.ts` | 112 | payload, roomId, type |
 | `ControlMessageAction` | type | yes | `@elizaos/core` | `packages/core/src/types/messaging.ts` | 92 |  |
 | `ControlMessagePayload` | interface | yes | `@elizaos/core` | `packages/core/src/types/events.ts` | 242 | message |
@@ -4420,10 +4407,10 @@ Showing 120 of 875; see JSON for the full set.
 | `ConversationRenameDialogProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/conversations/ConversationRenameDialog.tsx` | 5 | conversationId, initialTitle, onClose, open |
 | `ConversationRoomTitleRef` | type | no | `@elizaos/agent` | `packages/agent/src/api/server-auth.ts` | 639 |  |
 | `ConversationRoomTitleRef` | type | no | `@elizaos/agent` | `packages/agent/src/api/server-helpers.ts` | 580 |  |
-| `ConversationRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 20 |  |
-| `ConversationRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 180 | state |
-| `ConversationRouteMessageRecord` | type | no | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 623 | actionCallbackHistory, actionName, avatarUrl, from, fromUserName, id, rawDiscordChannelId, rawDiscordMessageId... (+9) |
-| `ConversationRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 165 | adminEntityId, agentName, broadcastWs, chatUserId, config, conversationRestorePromise, conversations, deletedConversationIds... (+3) |
+| `ConversationRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 29 |  |
+| `ConversationRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 199 | state |
+| `ConversationRouteMessageRecord` | type | no | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 642 | actionCallbackHistory, actionName, avatarUrl, from, fromUserName, id, rawDiscordChannelId, rawDiscordMessageId... (+9) |
+| `ConversationRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 184 | adminEntityId, agentName, broadcastWs, chatUserId, config, conversationRestorePromise, conversations, deletedConversationIds... (+3) |
 | `ConversationScope` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/conversation-routes.ts` | 122 |  |
 | `ConversationScope` | type | yes | `@elizaos/ui` | `packages/ui/src/api/agent-client-type-shim.ts` | 29 |  |
 | `ConversationScope` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 54 |  |
@@ -4459,8 +4446,6 @@ Showing 120 of 875; see JSON for the full set.
 | `CoreStatusInput` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/actions/plugin-handlers/core-status.ts` | 18 | callback, runtime |
 | `CoreStatusLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/plugin-manager-types.ts` | 131 | commitHash, coreDistPath, corePackagePath, ejected, ejectedPath, localChanges, monorepoPath, npmVersion... (+2) |
 | `CoreSyncResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/services/coreManagerService.ts` | 47 | commitHash, conflicts, ejectedPath, error, localChanges, success, upstreamCommits |
-| `CoreToggleDriftDiagnostic` | interface | no | `@elizaos/agent` | `packages/agent/src/api/plugin-routes.ts` | 179 | drift_flags, enabled_allowlist, enabled_compat, enabled_entries, npmName, pluginId |
-| `CoreToggleDriftFlag` | type | no | `@elizaos/agent` | `packages/agent/src/api/plugin-routes.ts` | 177 |  |
 | `CountBounds` | interface | no | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/types.ts` | 78 | max, min |
 | `CountryFlagProps` | interface | no | `eliza-app` | `packages/homepage/src/components/login/country-flag.tsx` | 10 | className, countryCode, title |
 | `CountryOption` | interface | yes | `eliza-app` | `packages/homepage/src/components/login/phone-number-input.tsx` | 21 | code, dialCode, name |
@@ -4472,11 +4457,11 @@ Showing 120 of 875; see JSON for the full set.
 | `CreateBrowserBridgeCompanionAutoPairRequest` | interface | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/browser-bridge-contracts.ts` | 144 | browser, extensionVersion, label, metadata, profileId, profileLabel |
 | `CreateBrowserSessionOptions` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/auth/sessions.ts` | 49 | identityId, ip, now, rememberDevice, userAgent |
 | `CreateCloudAuthWindowOptions` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/cloud-auth-window.ts` | 21 | frame, preload, sandbox, title, titleBarStyle, transparent, url |
-| `CreateComponentFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2306 |  |
+| `CreateComponentFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2309 |  |
 | `CreateContactOptions` | interface | yes | `@elizaos/capacitor-contacts` | `packages/native-plugins/contacts/src/definitions.ts` | 16 | displayName, emailAddress, emailAddresses, phoneNumber, phoneNumbers |
 | `CreateContextObjectOptions` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/context-object.ts` | 3 | createdAt, events, id, limits, metadata, metrics, plannedQueue, staticPrefix... (+1) |
 | `CreateConversationOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 29 | bootstrapGreeting, includeGreeting, lang, metadata |
-| `CreateEntitiesFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2386 |  |
+| `CreateEntitiesFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2389 |  |
 | `CreateIdentityInput` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/auth-store.ts` | 137 | cloudUserId, createdAt, displayName, id, kind, passwordHash |
 | `CreateJobRequest` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/training/types.ts` | 58 | epochs, registry_key, run_name |
 | `CreateJsonFileRecorderOptions` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 1108 | enabled, logger, rootDir |
@@ -4547,10 +4532,7 @@ Showing 120 of 875; see JSON for the full set.
 | `CuratedAppRegistryStore` | interface | no | `@elizaos/core` | `packages/core/src/app-registry.ts` | 7 | entries |
 | `CuratedAppRegistryStore` | interface | no | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 19 | entries |
 | `CuratedDef` | interface | no | `@elizaos/app-core` | `packages/app-core/src/registry/generate-apps.ts` | 128 | capabilities, dependsOn, description, displayName, groupOrder, icon, id, launchType... (+5) |
-| `CuratedProvenance` | interface | no | `@elizaos/agent` | `packages/agent/src/api/curated-skills-routes.ts` | 33 | createdAt, derivedFromTrajectory, lastEvalScore, refinedCount, source |
 | `CuratedSkill` | interface | no | `@elizaos/ui` | `packages/ui/src/components/character/CharacterLearnedSkillsSection.tsx` | 11 | createdAt, derivedFromTrajectory, description, lastEvalScore, name, refinedCount, source, status |
-| `CuratedSkillsRouteContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/curated-skills-routes.ts` | 212 | url |
-| `CuratedSkillSummary` | interface | no | `@elizaos/agent` | `packages/agent/src/api/curated-skills-routes.ts` | 41 | createdAt, derivedFromTrajectory, description, filePath, lastEvalScore, name, refinedCount, source... (+1) |
 | `CuratedSource` | type | no | `@elizaos/ui` | `packages/ui/src/components/character/CharacterLearnedSkillsSection.tsx` | 9 |  |
 | `CuratedStatus` | type | no | `@elizaos/ui` | `packages/ui/src/components/character/CharacterLearnedSkillsSection.tsx` | 8 |  |
 | `CurrentCategory` | type | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | 44 |  |
@@ -4585,13 +4567,13 @@ Showing 120 of 875; see JSON for the full set.
 | `DateFormatOptions` | type | no | `@elizaos/shared` | `packages/shared/src/utils/format.ts` | 47 | fallback, locale |
 | `DbAdapterLike` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/operations/health-checks.ts` | 25 | isReady |
 | `DbConnection` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 1583 | close, isConnected |
-| `DbErrorLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2130 | cause, code, column, constraint, detail, hint, message, name... (+3) |
+| `DbErrorLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2133 | cause, code, column, constraint, detail, hint, message, name... (+3) |
 | `DbRunRow` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/training-benchmarks.ts` | 159 | benchmark, code_commit, dataset_version, id, model_id, score, ts |
 | `DbRunStatus` | type | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 27 |  |
 | `DbView` | type | yes | `@elizaos/ui` | `packages/ui/src/components/pages/database-utils.tsx` | 7 |  |
 | `DecayConfig` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/experience/utils/confidenceDecay.ts` | 4 | decayStartDelay, halfLife, minConfidence |
 | `DecayOp` | type | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | 132 |  |
-| `DecisionModelParams` | type | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 646 | prompt |
+| `DecisionModelParams` | type | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 651 | prompt |
 | `DecisionTrace` | interface | yes | `@solana-gauntlet/sdk` | `packages/benchmarks/gauntlet/sdk/typescript/src/types.ts` | 80 | elapsedMs, finalAction, finalReasoning, outcomeClassification, scenarioId, steps, taskId |
 | `DeclarativeNetRequestRule` | type | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/webextension.ts` | 505 |  |
 | `DeclaredPluginDependency` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/plugin-resolver.ts` | 120 | name, optional |
@@ -4606,9 +4588,9 @@ Showing 120 of 875; see JSON for the full set.
 | `DefaultVoiceProviderResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/voice/voice-provider-defaults.ts` | 34 | asr, tts |
 | `Deferred` | type | yes | `@elizaos/core` | `packages/core/src/utils/prompt-batcher/shared.ts` | 11 | reject, resolve |
 | `DeleteConnectorAccountParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 318 | accountKey, agentId, id, provider |
-| `DeletedConversationsStateFile` | interface | no | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 111 | ids, updatedAt, version |
+| `DeletedConversationsStateFile` | interface | no | `@elizaos/agent` | `packages/agent/src/api/conversation-routes.ts` | 130 | ids, updatedAt, version |
 | `DeletedConversationsStateFile` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/server-helpers.ts` | 106 | ids, updatedAt, version |
-| `DeletedConversationsStateFile` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 400 | ids, updatedAt, version |
+| `DeletedConversationsStateFile` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 448 | ids, updatedAt, version |
 | `DeleteOAuthFlowStateParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 443 | agentId, flowId, provider, state, stateHash |
 | `DeleteSecretParams` | interface | no | `@elizaos/core` | `packages/core/src/features/secrets/actions/delete-secret.ts` | 23 | key, level |
 | `DeliverApprovalLinkParams` | interface | no | `@elizaos/core` | `packages/core/src/features/approvals/actions/deliver-approval-link.ts` | 43 | approvalRequestId, target, targetChannelId |
@@ -4800,6 +4782,8 @@ Showing 120 of 875; see JSON for the full set.
 | `DiscordUser` | interface | no | `eliza` | `packages/benchmarks/social-alpha/trenches-chat-dataset/scripts/build_dataset.ts` | 33 | global_name, name, nickname |
 | `DiscordUserProfile` | type | no | `@elizaos/agent` | `packages/agent/src/api/inbox-routes.ts` | 681 | avatarUrl, displayName, username |
 | `DiscoveredHook` | interface | yes | `@elizaos/core` | `packages/core/src/types/hook.ts` | 203 | baseDir, description, filePath, frontmatter, handlerPath, name, pluginId, source |
+| `DiscoverOcrResult` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-ocr.ts` | 42 | provider, reason |
+| `DiscoverRuntimeOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-runtime.ts` | 48 | env |
 | `DiscoveryConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.gateway.ts` | 39 | mdns, wideArea |
 | `DiscoveryOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/hooks/discovery.ts` | 190 | bundledDir, extraDirs, workspacePath |
 | `DiscoveryOptions` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 284 | serviceType, timeout |
@@ -4810,20 +4794,23 @@ Showing 120 of 875; see JSON for the full set.
 | `DispatchResult` | type | no | `@elizaos/core` | `packages/core/src/features/plugin-manager/actions/plugin-handlers/create.ts` | 91 | agents, dispatched, reason |
 | `DispatchResult` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/dispatch.ts` | 84 | actionName, launch, reply |
 | `DispatchRouteArgs` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/dispatch-route.ts` | 75 | body, headers, hostContext, inProcess, isAuthorized, method, path, query... (+1) |
-| `DispatchRouteContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 30 | method, pathname, req, res, state, url |
-| `DispatchRouteHelpers` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 24 | error, json, readJsonBody |
+| `DispatchRouteContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 39 | method, pathname, req, res, state, url |
+| `DispatchRouteHelpers` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server-route-dispatch.ts` | 33 | error, json, readJsonBody |
 | `DispatchSensitiveRequest` | interface | yes | `@elizaos/core` | `packages/core/src/sensitive-requests/dispatch-registry.ts` | 52 | [k:string], expiresAt, id, kind |
 | `DisplayBounds` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 512 | height, width, x, y |
+| `DisplayCaptureFixture` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 26 | display, frame, frameAfter |
 | `DisplayCondition` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 174 | _cnd |
-| `DisplayCondition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 165 | _cnd |
+| `DisplayCondition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 160 | _cnd |
+| `DisplayConfig` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 18 | bounds, id, name, primary, scaleFactor |
 | `DisplayInfo` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 519 | bounds, id, isPrimary, scaleFactor, workArea |
 | `DisplayMediaDevices` | type | no | `@elizaos/capacitor-screencapture` | `packages/native-plugins/screencapture/src/web.ts` | 24 | getDisplayMedia |
+| `DisplayRunRecord` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 90 | bounds, clickTarget, displayId, displayName, primary, scaleFactor, stages, stateChangeDetected... (+1) |
 | `DistributeOutcome` | interface | yes | `@elizaos/core` | `packages/core/src/features/ballots/types.ts` | 82 | ballotId, dispatched, target |
 | `DistributionProfile` | type | yes | `@elizaos/shared` | `packages/shared/src/config/distribution-profile.ts` | 15 |  |
 | `DmConfig` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 232 | historyLimit |
 | `DmPolicy` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 48 |  |
 | `DmScope` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 24 |  |
-| `DNA` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 78 | aggression, efficiency, hue, speed, vision |
+| `DNA` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 73 | aggression, efficiency, hue, speed, vision |
 | `DnaLoaderProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/shell/DnaLoader.tsx` | 29 | className, progress, size |
 | `DoctorOptions` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/cli/doctor/checks.ts` | 555 | apiPort, checkPorts, configPath, env, projectRoot, uiPort |
 | `DocumentActionParameters` | type | no | `@elizaos/core` | `packages/core/src/features/documents/actions.ts` | 39 | action, addedBy, content, documentId, filePath, id, includeImageDescriptions, limit... (+12) |
@@ -4888,18 +4875,19 @@ Showing 120 of 875; see JSON for the full set.
 | `DocumentVisibilityScope` | type | yes | `@elizaos/agent` | `packages/agent/src/api/documents-service-loader.ts` | 6 |  |
 | `DocumentVisibilityScope` | type | yes | `@elizaos/app-core` | `packages/app-core/src/platform/empty-node-module.ts` | 140 |  |
 | `DocumentVisibilityScope` | type | yes | `@elizaos/core` | `packages/core/src/features/documents/types.ts` | 155 |  |
+| `DocVqaPayload` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/docvqa_adapter.ts` | 32 | answers |
 | `DomActionRequest` | type | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/protocol.ts` | 66 | kind, selector, text |
 | `DownloadButton` | type | no | `eliza-app` | `packages/homepage/src/pages/marketing.tsx` | 16 | href, id, label, sublabel |
 | `DownloadedFile` | interface | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/downloader.ts` | 77 | path, sha256, sizeBytes |
-| `DownloadEvent` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 552 | job, type |
-| `DownloadJob` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 501 | bytesPerSec, error, etaMs, jobId, modelId, received, startedAt, state... (+2) |
+| `DownloadEvent` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 565 | job, type |
+| `DownloadJob` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 514 | bytesPerSec, error, etaMs, jobId, modelId, received, startedAt, state... (+2) |
 | `DownloadListener` | type | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/downloader.ts` | 53 |  |
 | `DownloadOptions` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/download-model.ts` | 192 | onProgress, progressStepPercent, spawnFn |
 | `DownloadProgressProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/DownloadProgress.tsx` | 4 | job |
 | `DownloadQueueProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/DownloadQueue.tsx` | 9 | catalog, downloads, onCancel |
 | `DownloadResult` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/download-model.ts` | 204 | destPath, exitCode, lastStderr, status |
 | `DownloadRuntimeOptions` | interface | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/download-model.ts` | 306 | progressStepPercent, skipPersist, spawnFn |
-| `DownloadState` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 494 |  |
+| `DownloadState` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 507 |  |
 | `DraftFollowupParams` | interface | yes | `@elizaos/core` | `packages/core/src/features/messaging/triage/actions/_shared.ts` | 282 | body, channelId, source, subject, threadId, to, worldId |
 | `DraftInput` | interface | no | `@elizaos/agent` | `packages/agent/src/triggers/scheduling.ts` | 54 | createdBy, cronExpression, displayName, enabled, eventKind, instructions, intervalMs, kind... (+7) |
 | `DraftMessage` | interface | no | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/stores/draft-messages.svelte.ts` | 3 | files, message |
@@ -4922,11 +4910,11 @@ Showing 120 of 875; see JSON for the full set.
 | `DurationFormatOptions` | type | no | `@elizaos/shared` | `packages/shared/src/utils/format.ts` | 58 | fallback, t |
 | `DurationMsParseOptions` | type | yes | `@elizaos/shared` | `packages/shared/src/cli/parse-duration.ts` | 1 | defaultUnit |
 | `DurationUnit` | type | yes | `@elizaos/ui` | `packages/ui/src/components/pages/heartbeat-utils.ts` | 52 |  |
-| `DynamicNavTab` | interface | yes | `@elizaos/ui` | `packages/ui/src/navigation/index.ts` | 244 | description, icon, label, navGroup, tabId |
+| `DynamicNavTab` | interface | yes | `@elizaos/ui` | `packages/ui/src/navigation/index.ts` | 245 | description, icon, label, navGroup, tabId |
 | `DynamicPromptStreamExtractor` | type | no | `@elizaos/core` | `packages/core/src/runtime.ts` | 297 | diagnose, flush, getValidatedFields, push, reset, signalError, signalRetry |
 | `DynamicProp` | type | yes | `@elizaos/shared` | `packages/shared/src/config/ui-spec.ts` | 17 | $path |
 | `DynamicValue` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 318 | path |
-| `DynamicViewLoaderProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/views/DynamicViewLoader.tsx` | 86 | bundleUrl, componentExport, viewId |
+| `DynamicViewLoaderProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/views/DynamicViewLoader.tsx` | 94 | bundleUrl, componentExport, viewId |
 | `Ed25519PublicKey` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/manifest-signature.ts` | 23 |  |
 | `EdgeTone` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx` | 66 |  |
 | `EdgeTtsConfig` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/ensure-text-to-speech-handler.ts` | 6 | plugins |
@@ -4965,7 +4953,8 @@ Showing 120 of 875; see JSON for the full set.
 | `ElevenLabsPluginModule` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 212 | default, elevenLabsPlugin |
 | `EligibilityResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/hooks/eligibility.ts` | 80 | eligible, missing |
 | `Eliza1TierId` | type | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 27 |  |
-| `Eliza1TierId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 32 |  |
+| `Eliza1TierId` | type | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 20 |  |
+| `Eliza1TierId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 31 |  |
 | `ElizaA2UIBridge` | interface | no | `@elizaos/capacitor-canvas` | `packages/native-plugins/canvas/src/web.ts` | 43 | push, reset |
 | `ElizaAppOrganization` | interface | yes | `eliza-app` | `packages/homepage/src/lib/context/auth-context.tsx` | 39 | credit_balance, id, name |
 | `ElizaAppUser` | interface | yes | `eliza-app` | `packages/homepage/src/lib/context/auth-context.tsx` | 21 | avatar, created_at, discord_avatar_url, discord_global_name, discord_id, discord_username, id, name... (+7) |
@@ -5025,9 +5014,9 @@ Showing 120 of 875; see JSON for the full set.
 | `ElizaNativeModelResponseRecord` | interface | yes | `@elizaos/core` | `packages/core/src/services/trajectory-types.ts` | 307 | finishReason, providerMetadata, text, toolCalls, usage |
 | `ElizaNativeTrajectoryFormat` | type | yes | `@elizaos/core` | `packages/core/src/services/trajectory-types.ts` | 16 |  |
 | `ElizaNativeTrajectoryRow` | interface | yes | `@elizaos/core` | `packages/core/src/services/trajectory-types.ts` | 321 | boundary, cacheStats, format, metadata, request, response, schemaVersion, trajectoryTotals |
-| `ElizaOneBundleManifest` | interface | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/eliza-1-bundle.ts` | 50 | bundleId, draftersPath, final, modelSize, publishEligible, releaseState, sha256, weightsPath |
-| `ElizaOneModelSize` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/eliza-1-bundle.ts` | 41 |  |
-| `ElizaOneReleaseState` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/eliza-1-bundle.ts` | 48 |  |
+| `ElizaOneBundleManifest` | interface | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/eliza-1-bundle.ts` | 49 | bundleId, draftersPath, final, modelSize, publishEligible, releaseState, sha256, weightsPath |
+| `ElizaOneModelSize` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/eliza-1-bundle.ts` | 40 |  |
+| `ElizaOneReleaseState` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/eliza-1-bundle.ts` | 47 |  |
 | `elizaOSPackageManifest` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 354 | channel, extensions, install |
 | `ElizaPathsConfig` | interface | yes | `@elizaos/core` | `packages/core/src/utils/paths.ts` | 17 | charactersDir, databaseDir, dataDir, generatedDir, uploadsAgentsDir, uploadsChannelsDir |
 | `ElizaPluginConfig` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/eliza-plugin.ts` | 54 | agentId, initMaxChars, sessionStorePath, workspaceDir |
@@ -5070,13 +5059,11 @@ Showing 120 of 875; see JSON for the full set.
 | `EmbeddingConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 634 | contextSize, dimensions, gpuLayers, idleTimeoutMinutes, model, modelRepo |
 | `EmbeddingGenerationPayload` | interface | yes | `@elizaos/core` | `packages/core/src/types/events.ts` | 229 | embedding, error, maxRetries, memory, priority, retryCount, runId |
 | `EmbeddingLogBody` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 147 | base, duration, error, memoryId |
-| `EmbeddingPreset` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/embedding-presets.ts` | 5 | contextSize, description, dimensions, downloadSizeMB, gpuLayers, label, model, modelRepo... (+1) |
 | `EmbeddingProgressCallback` | type | no | `@elizaos/app-core` | `packages/app-core/src/runtime/eliza.ts` | 54 |  |
 | `EmbeddingQueueItem` | interface | no | `@elizaos/core` | `packages/core/src/services/embedding.ts` | 9 | memory, priority, runId |
 | `EmbeddingResponse` | interface | no | `@elizaos/personality-bench` | `packages/benchmarks/personality-bench/src/judge/checks/embedding.ts` | 23 | data |
 | `EmbeddingResult` | interface | no | `@elizaos/core` | `packages/core/src/features/documents/document-processor.ts` | 386 | embedding, error, index, success, text |
 | `EmbeddingSearchResult` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 1478 | embedding, levenshtein_score |
-| `EmbeddingTier` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/embedding-presets.ts` | 3 |  |
 | `EmbeddingWarmupPhase` | type | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/startup-overlay.ts` | 6 |  |
 | `EmbedOptions` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 187 | embdNormalize, input |
 | `EmbedResult` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 198 | embedding, tokens |
@@ -5086,14 +5073,14 @@ Showing 120 of 875; see JSON for the full set.
 | `EmptyStateProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/ui/empty-state.tsx` | 9 | action, description, icon, title |
 | `EncryptedSecret` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 181 | algorithm, authTag, iv, keyId, value |
 | `Enemy` | interface | no | `@elizaos/example-text-adventure` | `packages/examples/text-adventure/game.ts` | 56 | damage, defeatedMessage, description, health, name |
-| `EngineGenerateArgs` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 43 | grammar, maxTokens, onTextChunk, prompt, responseSkeleton, signal, stopSequences, temperature |
+| `EngineGenerateArgs` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 42 | grammar, maxTokens, onTextChunk, prompt, responseSkeleton, signal, stopSequences, temperature |
 | `EngineInfo` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-engine.ts` | 307 | arch, available, details, platform, type, version |
-| `EngineLike` | interface | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 37 | generate, load, unload |
+| `EngineLike` | interface | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 36 | generate, load, unload |
 | `EnrichedCall` | interface | no | `eliza` | `packages/benchmarks/social-alpha/trenches-chat-dataset/scripts/build_dataset.ts` | 39 | callId, caMentioned, certainty, chain, content, conviction, enrichedAt, enrichmentError... (+12) |
 | `EnrichedCall` | interface | no | `eliza` | `packages/benchmarks/social-alpha/trenches-chat-dataset/scripts/calculate_realistic_success_metrics.ts` | 15 | callId, priceData, sentiment, timestamp, tokenMentioned, userId, username |
 | `EnsureConnectionParams` | interface | yes | `@elizaos/core` | `packages/core/src/connection.ts` | 16 | agentId, channelId, entityId, messageServerId, metadata, name, roomId, roomName... (+6) |
 | `EnsureConnectionsParams` | interface | yes | `@elizaos/core` | `packages/core/src/connection.ts` | 34 | agentId, connections |
-| `EnsureEntityExistsFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2388 |  |
+| `EnsureEntityExistsFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2391 |  |
 | `EnsureOptions` | interface | no | `@elizaos/ui` | `packages/ui/src/onboarding/ensure-store-build-workspace-folder.ts` | 37 | defaultPath, forcePicker, promptTitle |
 | `EnsureSessionOptions` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/auth/auth-context.ts` | 36 | allowBootstrapBearer, env, now, store |
 | `EnsureWorkspaceFolderResult` | type | yes | `@elizaos/ui` | `packages/ui/src/onboarding/ensure-store-build-workspace-folder.ts` | 31 | folder, freshlyPicked, kind, oldPath, reason |
@@ -5202,7 +5189,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ExecutedTurn` | type | no | `@elizaos/scenario-runner` | `packages/scenario-runner/src/executor.ts` | 68 | apiBody, apiStatus, durationMs |
 | `ExecutePlannedToolCallContext` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/execute-planned-tool-call.ts` | 37 | activeContexts, callback, message, previousResults, responses, state, userRoles |
 | `ExecutePlannedToolCallOptions` | type | yes | `@elizaos/core` | `packages/core/src/runtime/execute-planned-tool-call.ts` | 47 | actions, onStreamChunk |
-| `ExecuteV5PlannedToolCallParams` | interface | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 3012 | evaluate, evaluatorEffects, executorCtx, executorOptions, plannerContext, plannerLoopConfig, plannerRuntime, provider... (+5) |
+| `ExecuteV5PlannedToolCallParams` | interface | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 3076 | evaluate, evaluatorEffects, executorCtx, executorOptions, plannerContext, plannerLoopConfig, plannerRuntime, provider... (+5) |
 | `ExecutionModel` | type | yes | `@elizaos/core` | `packages/core/src/features/advanced-planning/types.ts` | 14 |  |
 | `ExecutionTrace` | interface | yes | `@elizaos/core` | `packages/core/src/types/prompt-optimization-trace.ts` | 30 | artifactVersion, createdAt, enrichedAt, id, latencyMs, messageId, modelId, modelSlot... (+16) |
 | `ExecutorModule` | type | no | `@elizaos/scenario-runner` | `packages/scenario-runner/src/cli.ts` | 21 |  |
@@ -5251,7 +5238,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ExportResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/trajectories/export.ts` | 43 | datasetUrl, error, success, trajectoriesExported |
 | `ExportSizeEstimate` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/agent-export.ts` | 122 | entitiesCount, estimatedBytes, memoriesCount, roomsCount, tasksCount, worldsCount |
 | `ExpressionString` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 527 |  |
-| `ExpressionString` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 506 |  |
+| `ExpressionString` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 501 |  |
 | `ExpressiveEmotionEnumValue` | type | no | `@elizaos/core` | `packages/core/src/runtime/builtin-field-evaluators.ts` | 53 |  |
 | `ExtendedActionPlan` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-planning/types.ts` | 56 | context, createdAt, currentStep, executionModel, goal, id, steps, thought... (+1) |
 | `ExtendedCaps` | type | no | `@elizaos/capacitor-camera` | `packages/native-plugins/camera/src/web.ts` | 543 | focusMode |
@@ -5313,12 +5300,12 @@ Showing 120 of 875; see JSON for the full set.
 | `FamilyMemberCapture` | interface | no | `@elizaos/ui` | `packages/ui/src/components/onboarding/VoicePrefixSteps.tsx` | 612 | displayName, entityId, profileId, relationship |
 | `FamilyMemberCapturePayload` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-profiles.ts` | 84 | audioBase64, displayName, durationMs, ownerEntityId, relationship |
 | `FamilyMemberCaptureResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-profiles.ts` | 97 | displayName, entityId, ownerEntityId, profileId, relationship, relationshipTag |
-| `FavoriteAppsStore` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 390 | read, write |
+| `FavoriteAppsStore` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 46 |  |
 | `FavoritesResponse` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps-favorites-routes.ts` | 59 |  |
 | `Feature` | type | yes | `@elizaos/cloud-routing` | `packages/cloud-routing/src/features.ts` | 50 |  |
 | `FeatureCloudRoute` | type | yes | `@elizaos/cloud-routing` | `packages/cloud-routing/src/types.ts` | 24 | feature, policy |
 | `FeatureCondition` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 201 |  |
-| `FeatureCondition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 192 |  |
+| `FeatureCondition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 187 |  |
 | `FeatureDefinition` | interface | no | `@elizaos/cloud-routing` | `packages/cloud-routing/src/features.ts` | 44 | description, id, settingKey |
 | `FeaturePolicy` | type | yes | `@elizaos/cloud-routing` | `packages/cloud-routing/src/features.ts` | 2 |  |
 | `FeaturePolicyMap` | type | yes | `@elizaos/cloud-routing` | `packages/cloud-routing/src/features.ts` | 72 |  |
@@ -5363,7 +5350,7 @@ Showing 120 of 875; see JSON for the full set.
 | `FieldState` | type | yes | `@elizaos/core` | `packages/core/src/utils/streaming.ts` | 178 |  |
 | `FieldSwitchProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/ui/field-switch.tsx` | 5 | checked, label, onCheckedChange |
 | `FieldType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 128 |  |
-| `FieldType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 123 |  |
+| `FieldType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 118 |  |
 | `FigletModule` | type | no | `@elizaos/app-core` | `packages/app-core/src/runtime/dev-settings-figlet-heading.ts` | 10 | textSync |
 | `FigletModule` | type | no | `@elizaos/shared` | `packages/shared/src/dev-settings-figlet-heading.ts` | 10 | textSync |
 | `FileAllowFromStore` | interface | no | `@elizaos/core` | `packages/core/src/services/pairing-migration.ts` | 41 | allowFrom, version |
@@ -5393,18 +5380,18 @@ Showing 120 of 875; see JSON for the full set.
 | `FilledFieldSummary` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/form/types.ts` | 664 | displayValue, key, label |
 | `FilterBarProps` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/FilterBar.tsx` | 7 | agents, hasActiveFilters, models, onAgentsChange, onClearFilters, onModelsChange, onSearchChange, onStatusesChange... (+5) |
 | `FilterConditionValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 92 | id, leftValue, operator, rightValue |
-| `FilterConditionValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 87 | id, leftValue, operator, rightValue |
+| `FilterConditionValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 82 | id, leftValue, operator, rightValue |
 | `FilterOperatorType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 106 |  |
-| `FilterOperatorType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 101 |  |
+| `FilterOperatorType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 96 |  |
 | `FilterOperatorValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 99 | operation, rightType, singleValue, type |
-| `FilterOperatorValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 94 | operation, rightType, singleValue, type |
+| `FilterOperatorValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 89 | operation, rightType, singleValue, type |
 | `FilterOptionsValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 85 | caseSensitive, leftValue, typeValidation, version |
-| `FilterOptionsValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 80 | caseSensitive, leftValue, typeValidation, version |
+| `FilterOptionsValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 75 | caseSensitive, leftValue, typeValidation, version |
 | `FilterState` | interface | yes | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/hooks/useMetricsFilter.ts` | 4 | agents, jobName, models, searchQuery, statuses, tasks |
 | `FilterTypeCombinator` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 115 |  |
-| `FilterTypeCombinator` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 110 |  |
+| `FilterTypeCombinator` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 105 |  |
 | `FilterValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 79 | combinator, conditions, options |
-| `FilterValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 74 | combinator, conditions, options |
+| `FilterValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 69 | combinator, conditions, options |
 | `FinalCheckHandler` | type | yes | `@elizaos/scenario-runner` | `packages/scenario-runner/src/final-checks/index.ts` | 26 |  |
 | `FinalCheckHandlerContext` | interface | yes | `@elizaos/scenario-runner` | `packages/scenario-runner/src/final-checks/index.ts` | 16 | ctx, runtime |
 | `FinalCheckOutcome` | type | yes | `@elizaos/scenario-runner` | `packages/scenario-runner/src/final-checks/index.ts` | 21 | detail, status |
@@ -5421,6 +5408,8 @@ Showing 120 of 875; see JSON for the full set.
 | `FirstSentenceSnipVersion` | type | yes | `@elizaos/shared` | `packages/shared/src/voice/first-sentence-snip.ts` | 30 |  |
 | `FirstTimeSetupCloudResult` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/first-time-setup.ts` | 46 |  |
 | `FitLevel` | type | yes | `@elizaos/ui` | `packages/ui/src/components/local-inference/hub-utils.ts` | 16 |  |
+| `FixtureId` | type | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/fixtures.ts` | 25 |  |
+| `FixtureSpec` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/fixtures.ts` | 30 | description, displays, id |
 | `FlagState` | interface | no | `@elizaos/core` | `packages/core/src/services/analysis-mode-handler.ts` | 60 | enabled, enabledAt |
 | `FlaminaGuideTopic` | type | yes | `@elizaos/ui` | `packages/ui/src/state/types.ts` | 150 |  |
 | `FlatNode` | interface | no | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/token-tree-codec.ts` | 152 | childPtrs, terminal, tokenId |
@@ -5477,7 +5466,6 @@ Showing 120 of 875; see JSON for the full set.
 | `ForwardedContext` | interface | yes | `@elizaos/core` | `packages/core/src/types/memory.ts` | 123 | date, fromChatType, fromId, fromName, fromSignature, fromTitle, fromType, fromUsername... (+1) |
 | `FragmentMetadata` | interface | yes | `@elizaos/core` | `packages/core/src/types/memory.ts` | 55 | base, documentId, position, type |
 | `FrontendPlatform` | type | yes | `@elizaos/ui` | `packages/ui/src/platform/platform-guards.ts` | 13 |  |
-| `FsAccessMode` | type | yes | `@elizaos/agent` | `packages/agent/src/cli/mobile-fs-sandbox.ts` | 4 |  |
 | `FsLike` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/preload-validation.ts` | 4 |  |
 | `FsPermissions` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/app-permissions.ts` | 67 | read, write |
 | `FsSuccess` | type | no | `@elizaos/shared` | `packages/shared/src/contracts/app-permissions.ts` | 153 | ok, value |
@@ -5540,14 +5528,12 @@ Showing 120 of 875; see JSON for the full set.
 | `GauntletAgent` | interface | yes | `@solana-gauntlet/sdk` | `packages/benchmarks/gauntlet/sdk/typescript/src/interface.ts` | 6 | executeTask, getExplanation, initialize |
 | `GenerateAppModule` | type | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/build-app.ts` | 30 | generateApp |
 | `GenerateArgs` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/engine.ts` | 67 | maxTokens, prompt, stopSequences, temperature, topP |
-| `GeneratedRegistry` | interface | no | `elizaos-plugin-registry-site` | `packages/registry/site/src/App.tsx` | 56 | counts, lastUpdatedAt, registry, schemaVersion |
 | `GeneratedRegistryEntry` | interface | no | `@elizaos/core` | `packages/core/src/features/plugin-manager/services/pluginRegistryService.ts` | 29 | app, builtIn, description, directory, firstParty, git, homepage, kind... (+11) |
 | `GeneratedRegistryFile` | interface | no | `@elizaos/core` | `packages/core/src/features/plugin-manager/services/pluginRegistryService.ts` | 77 | apps, lastUpdatedAt, registry |
 | `GenerateOptions` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 42 | cacheKey, maxTokens, prompt, stopSequences, stream, temperature, topP |
 | `GenerateResult` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 59 | durationMs, outputTokens, promptTokens, text |
 | `GenerateStreamOptions` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 132 | samplerStages, specDecode |
 | `GenerateTextAttachment` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 235 | data, filename, mediaType |
-| `GenerateTextHandler` | type | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 155 |  |
 | `GenerateTextOptions` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 690 | frequencyPenalty, includeCharacter, maxTokens, minP, minTokens, modelType, presencePenalty, repetitionPenalty... (+7) |
 | `GenerateTextParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 467 | attachments, frequencyPenalty, grammar, maxTokens, messages, minP, minTokens, onStreamChunk... (+23) |
 | `GenerateTextResult` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 711 | finishReason, providerMetadata, text, toolCalls, usage |
@@ -5558,12 +5544,12 @@ Showing 120 of 875; see JSON for the full set.
 | `GenerationScript` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 365 | attempts, createdAt, dependencies, error, output, pluginName, script, status... (+1) |
 | `GenericNativePlugin` | type | yes | `@elizaos/ui` | `packages/ui/src/bridge/native-plugins.ts` | 610 |  |
 | `GenericValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 21 |  |
-| `GenericValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 22 |  |
+| `GenericValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 17 |  |
 | `GeoPosition` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/location.ts` | 3 | accuracy, latitude, longitude, timestamp |
 | `GetAppPermissionsResponse` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/app-permissions-routes.ts` | 93 |  |
 | `GetConnectorAccountCredentialRefParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 348 | accountId, credentialType |
 | `GetConnectorAccountParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 287 | accountKey, agentId, id, provider |
-| `GetEntitiesByIdsFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2387 |  |
+| `GetEntitiesByIdsFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2390 |  |
 | `GetIMessageMessagesOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-imessage.ts` | 43 | chatId, limit |
 | `GetLifeOpsCalendarFeedRequest` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/lifeops.ts` | 1996 | calendarId, forceSync, grantId, includeHiddenCalendars, mode, side, timeMax, timeMin... (+1) |
 | `GetLifeOpsGmailRecommendationsRequest` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/lifeops.ts` | 2316 | forceSync, grantId, includeSpamTrash, maxResults, mode, query, replyNeededOnly, side |
@@ -5618,6 +5604,8 @@ Showing 120 of 875; see JSON for the full set.
 | `GroqPluginModule` | type | no | `@elizaos/three-agent-dialogue` | `packages/benchmarks/three-agent-dialogue/runner/run-dialogue.ts` | 152 | default, groqPlugin |
 | `GroqPluginModule` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 211 | default, groqPlugin |
 | `GroundedReplyDomain` | type | no | `@elizaos/agent` | `packages/agent/src/actions/grounded-action-reply.ts` | 11 |  |
+| `GroundingRequest` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 35 | description, displayId, tileId |
+| `GroundingResult` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 45 | bbox, displayId, rationale, tileHeight, tileId, tileLocalX, tileLocalY, tileWidth |
 | `GroundTruth` | interface | yes | `@elizaos/configbench` | `packages/benchmarks/configbench/src/types.ts` | 40 | pluginActivated, pluginDeactivated, pluginsNotUnloaded, secretsDeleted, secretsSet, shouldRefuseInPublic |
 | `GroupChatConfig` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 227 | historyLimit, mentionPatterns |
 | `GroupContext` | interface | yes | `@elizaos/core` | `packages/core/src/types/memory.ts` | 100 | channel, id, members, name, space, systemPrompt |
@@ -5649,9 +5637,9 @@ Showing 120 of 875; see JSON for the full set.
 | `HardenedExportGuard` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/security/export-guard.ts` | 50 | checkRateLimit, getAuditLog, recordAudit, recordSuccessfulExport, requestNonce, validateNonce |
 | `HardenedExportRequestBody` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/server-wallet-trade.ts` | 20 | exportNonce, requestNonce |
 | `HardwareBadgeProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/HardwareBadge.tsx` | 5 | hardware |
-| `HardwareFitLevel` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 452 |  |
+| `HardwareFitLevel` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 465 |  |
 | `HardwareInfo` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 148 | availableRamGb, cpuCores, deviceModel, dflashReason, dflashSupported, forkVariant, freeStorageGb, gpu... (+10) |
-| `HardwareProbe` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 470 | appleSilicon, arch, cpuCores, freeRamGb, gpu, mobile, openvino, platform... (+3) |
+| `HardwareProbe` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 483 | appleSilicon, arch, cpuCores, freeRamGb, gpu, mobile, openvino, platform... (+3) |
 | `Harness` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/metrics-schema.ts` | 30 |  |
 | `HashablePromptSegment` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/context-hash.ts` | 11 | content, id, label, metadata, stable |
 | `HashBuilder` | interface | no | `@elizaos/core` | `packages/core/src/utils/crypto-compat.ts` | 29 | digest, update |
@@ -5679,8 +5667,8 @@ Showing 120 of 875; see JSON for the full set.
 | `HealthResponse` | interface | no | `eliza` | `packages/examples/supabase/test-client.ts` | 101 | runtime, status, version |
 | `HealthResponse` | interface | no | `@elizaos/vercel-edge-examples` | `packages/examples/vercel/api/health.ts` | 9 | runtime, status, version |
 | `HealthResponse` | interface | no | `@elizaos/vercel-edge-examples` | `packages/examples/vercel/test-client.ts` | 24 | runtime, status, version |
-| `HealthRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 45 | error, json, method, pathname, req, res, state, url |
-| `HealthRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 32 | agentName, agentState, config, connectorHealthMonitor, model, pendingRestartReasons, plugins, runtime... (+2) |
+| `HealthRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 71 | error, json, method, pathname, req, res, state, url |
+| `HealthRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 58 | agentName, agentState, config, connectorHealthMonitor, model, pendingRestartReasons, plugins, runtime... (+2) |
 | `HealthSnapshot` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 721 |  |
 | `HealthStatus` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/server/index.ts` | 331 | issues, metrics, status, timestamp |
 | `HeartbeatEventInput` | type | yes | `@elizaos/core` | `packages/core/src/types/agentEvent.ts` | 132 |  |
@@ -5742,7 +5730,6 @@ Showing 120 of 875; see JSON for the full set.
 | `HookToolPayload` | interface | yes | `@elizaos/core` | `packages/core/src/types/events.ts` | 379 | modifiedArgs, modifiedResult, result, skip, toolArgs, toolName |
 | `HostAction` | type | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/types.ts` | 168 |  |
 | `HostActionMessage` | interface | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/types.ts` | 189 | action, payload, type |
-| `HostCallFrame` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 39 | id, method, payload, timeoutMs, type |
 | `HostedBrowserCommandApiResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/services/hosted-tools.ts` | 52 | output, session, snapshot |
 | `HostedBrowserListApiResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/services/hosted-tools.ts` | 48 | sessions |
 | `HostedBrowserSessionApiResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/services/hosted-tools.ts` | 44 | session |
@@ -5754,14 +5741,12 @@ Showing 120 of 875; see JSON for the full set.
 | `HostRequestMessage` | interface | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/types.ts` | 210 | method, params, requestId, type |
 | `HostRequestMethod` | type | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/types.ts` | 195 |  |
 | `HostResponseMessage` | interface | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/types.ts` | 217 | error, payload, requestId, success, type |
-| `HostResultFrame` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 47 | envelope, error, id, ok, result, type |
 | `HotStrategyDeps` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/reload-hot.ts` | 34 | applyProviderEnv, notifyConfigChanged |
 | `HtmlInputType` | enum | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/enums/ui.ts` | 33 | FILE |
 | `HttpMethod` | type | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/mode/route-mode-matrix.ts` | 30 |  |
 | `HttpMethod` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 731 |  |
 | `HttpMethod` | type | yes | `@elizaos/ui` | `packages/ui/src/components/custom-actions/custom-action-form.tsx` | 6 |  |
 | `HttpRequestOptions` | type | yes | `@elizaos/core` | `packages/core/src/testing/http.ts` | 13 | timeoutMs |
-| `HttpRequestPayload` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 75 | body, bodyBase64, bodyEncoding, headers, method, path, timeoutMs |
 | `HttpResponse` | type | yes | `@elizaos/core` | `packages/core/src/testing/http.ts` | 7 | data, headers, status |
 | `HubTab` | type | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/LocalInferencePanel.tsx` | 37 |  |
 | `HumanDelayConfig` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 102 | maxMs, minMs, mode |
@@ -5769,22 +5754,21 @@ Showing 120 of 875; see JSON for the full set.
 | `HybridParsed` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/conversation-compactor.ts` | 1341 | ledger, state |
 | `HybridSource` | type | yes | `@elizaos/core` | `packages/core/src/search.ts` | 1672 |  |
 | `HybridVectorResult` | type | yes | `@elizaos/core` | `packages/core/src/search.ts` | 1675 | endLine, id, path, snippet, source, startLine, vectorScore |
-| `HydratedIosArgvEnv` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 253 | appSupportDir, bundlePath |
 | `HydratingDeps` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/startup-phase-hydrate.ts` | 39 | checkExtensionStatus, fetchAutonomyReplay, hydrateInitialConversationState, initialTabSetRef, loadCharacter, loadInventory, loadPlugins, loadSkills... (+15) |
 | `HyperliquidLiveStatus` | interface | no | `@elizaos/agent` | `packages/agent/src/providers/page-scoped-context.ts` | 472 | accountAddress, executionBlockedReason, executionReady, publicReadReady, signerReady |
 | `IActionRoutingContextManager` | interface | no | `@elizaos/core` | `packages/core/src/runtime/action-routing-context.ts` | 31 | active, run |
 | `IAgentRuntime` | interface | yes | `@elizaos/core` | `packages/core/src/types/runtime.ts` | 453 | abortTurn, actions, adapter, addEmbeddingToMemory, addParticipant, agentId, applyPipelineHooks, applyPluginConfig... (+166) |
 | `IBuilderHint` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 472 | inputs, outputs, relatedNodes, searchHint |
-| `IBuilderHint` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 451 | inputs, outputs, relatedNodes, searchHint |
+| `IBuilderHint` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 446 | inputs, outputs, relatedNodes, searchHint |
 | `IBuilderHintInputConfig` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 456 | displayOptions, required |
-| `IBuilderHintInputConfig` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 439 | displayOptions, required |
+| `IBuilderHintInputConfig` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 434 | displayOptions, required |
 | `IBuilderHintOutputConfig` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 464 | displayOptions, required |
-| `IBuilderHintOutputConfig` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 445 | displayOptions, required |
+| `IBuilderHintOutputConfig` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 440 | displayOptions, required |
 | `Icon` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 415 |  |
-| `Icon` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 398 |  |
+| `Icon` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 393 |  |
 | `IDatabaseAdapter` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 503 | appendConnectorAccountAuditEvent, areRoomParticipants, cleanupAgents, close, consumeOAuthFlowState, countAgents, countMemories, createAgents... (+106) |
 | `IDataObject` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 17 | [key:string] |
-| `IDataObject` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 18 | [key:string] |
+| `IDataObject` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 13 | [key:string] |
 | `IdentityClusterResolver` | type | no | `@elizaos/core` | `packages/core/src/identity-clusters.ts` | 3 | getMemberEntityIds, resolvePrimaryEntityId |
 | `IdentityConfig` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 189 | avatar, emoji, name, theme |
 | `IdentityFields` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/providers/roles.ts` | 19 | name, username, userName |
@@ -5794,10 +5778,10 @@ Showing 120 of 875; see JSON for the full set.
 | `IdentityVerificationClient` | interface | yes | `@elizaos/core` | `packages/core/src/providers/user-identity-verification-status.ts` | 23 | isVerified |
 | `IdentityVerificationGatekeeperClient` | interface | yes | `@elizaos/core` | `packages/core/src/features/approvals/types.ts` | 113 | bindIdentityToSession, verify |
 | `IDisplayOptions` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 188 | hide, hideOnCloud, show |
-| `IDisplayOptions` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 179 | hide, hideOnCloud, show |
+| `IDisplayOptions` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 174 | hide, hideOnCloud, show |
 | `IHookService` | interface | yes | `@elizaos/core` | `packages/core/src/types/hook.ts` | 271 | checkEligibility, checkRequirements, getAllHooks, getHook, getHooksByEvent, getSnapshot, register, registerFromDirectory... (+3) |
 | `IHttpRequestMethods` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 549 |  |
-| `IHttpRequestMethods` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 524 |  |
+| `IHttpRequestMethods` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 519 |  |
 | `ImageAttachment` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 67 | data, mimeType, name |
 | `ImageConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/config.ts` | 41 | defaultSize, enabled, fal, google, mode, openai, provider, xai |
 | `ImageDescriptionJson` | interface | no | `@elizaos/core` | `packages/core/src/features/basic-capabilities/evaluators/attachment-image-analysis.ts` | 31 | description, text, title |
@@ -5883,45 +5867,46 @@ Showing 120 of 875; see JSON for the full set.
 | `InlineSecretRequestEnvelope` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts` | 76 | delivery, expiresAt, form, key, label, reason, requestId, status |
 | `InlineTextareaMeasurement` | type | no | `@elizaos/ui` | `packages/ui/src/components/composites/chat/chat-composer.tsx` | 40 | scrollHeight, wraps |
 | `InMemoryDatabaseAdapterConstructor` | type | no | `@elizaos/configbench` | `packages/benchmarks/configbench/src/handlers/eliza.ts` | 39 |  |
+| `InMemoryDbModule` | type | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 102 |  |
 | `InMemoryDestination` | interface | no | `@elizaos/core` | `packages/core/src/logger.ts` | 116 | clear, recentLogs, write |
 | `INode` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 383 | alwaysOutputData, continueOnFail, credentials, disabled, executeOnce, extendsCredential, forceCustomOperation, id... (+13) |
-| `INode` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 366 | alwaysOutputData, continueOnFail, credentials, disabled, executeOnce, extendsCredential, forceCustomOperation, id... (+13) |
+| `INode` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 361 | alwaysOutputData, continueOnFail, credentials, disabled, executeOnce, extendsCredential, forceCustomOperation, id... (+13) |
 | `INodeCredentialDescription` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 366 | displayName, displayOptions, name, required, testedBy |
-| `INodeCredentialDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 352 | displayName, displayOptions, name, required, testedBy |
+| `INodeCredentialDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 347 | displayName, displayOptions, name, required, testedBy |
 | `INodeCredentials` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 362 | [key:string] |
-| `INodeCredentials` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 348 | [key:string] |
+| `INodeCredentials` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 343 | [key:string] |
 | `INodeCredentialsDetails` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 356 | __aiGatewayManaged, id, name |
-| `INodeCredentialsDetails` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 342 | __aiGatewayManaged, id, name |
+| `INodeCredentialsDetails` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 337 | __aiGatewayManaged, id, name |
 | `INodeHookDescription` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 529 | method |
-| `INodeHookDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 508 | method |
+| `INodeHookDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 503 | method |
 | `INodeInputConfiguration` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 509 | category, displayName, filter, maxConnections, required, type |
-| `INodeInputConfiguration` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 488 | category, displayName, filter, maxConnections, required, type |
+| `INodeInputConfiguration` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 483 | category, displayName, filter, maxConnections, required, type |
 | `INodeOutputConfiguration` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 518 | category, displayName, filter, maxConnections, required, type |
-| `INodeOutputConfiguration` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 497 | category, displayName, filter, maxConnections, required, type |
+| `INodeOutputConfiguration` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 492 | category, displayName, filter, maxConnections, required, type |
 | `INodeParameterResourceLocator` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 48 | __regex, __rl, cachedResultName, cachedResultUrl, mode, value |
-| `INodeParameterResourceLocator` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 43 | __regex, __rl, cachedResultName, cachedResultUrl, mode, value |
+| `INodeParameterResourceLocator` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 38 | __regex, __rl, cachedResultName, cachedResultUrl, mode, value |
 | `INodeParameters` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 44 | [key:string] |
-| `INodeParameters` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 39 | [key:string] |
+| `INodeParameters` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 34 | [key:string] |
 | `INodeProperties` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 262 | allowArbitraryValues, builderHint, credentialTypes, default, description, disabledOptions, displayName, displayOptions... (+18) |
-| `INodeProperties` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 253 | allowArbitraryValues, builderHint, credentialTypes, default, description, disabledOptions, displayName, displayOptions... (+18) |
+| `INodeProperties` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 248 | allowArbitraryValues, builderHint, credentialTypes, default, description, disabledOptions, displayName, displayOptions... (+18) |
 | `INodePropertyCollection` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 316 | builderHint, displayName, name, values |
-| `INodePropertyCollection` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 302 | builderHint, displayName, name, values |
+| `INodePropertyCollection` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 297 | builderHint, displayName, name, values |
 | `INodePropertyMode` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 323 | displayName, entryTypes, extractValue, hint, initType, name, placeholder, search... (+4) |
-| `INodePropertyMode` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 309 | displayName, entryTypes, extractValue, hint, initType, name, placeholder, search... (+4) |
+| `INodePropertyMode` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 304 | displayName, entryTypes, extractValue, hint, initType, name, placeholder, search... (+4) |
 | `INodePropertyOptions` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 303 | action, builderHint, description, disabledOptions, displayOptions, inputSchema, name, outputConnectionType... (+2) |
-| `INodePropertyOptions` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 289 | action, builderHint, description, disabledOptions, displayOptions, inputSchema, name, outputConnectionType... (+2) |
+| `INodePropertyOptions` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 284 | action, builderHint, description, disabledOptions, displayOptions, inputSchema, name, outputConnectionType... (+2) |
 | `INodePropertyRouting` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 345 | operations, output, request, send |
-| `INodePropertyRouting` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 331 | operations, output, request, send |
+| `INodePropertyRouting` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 326 | operations, output, request, send |
 | `INodePropertyTypeOptions` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 231 | [key:string], action, alwaysOpenEditWindow, assignment, codeAutocomplete, containerClass, editor, editorIsReadOnly... (+16) |
-| `INodePropertyTypeOptions` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 222 | [key:string], action, alwaysOpenEditWindow, assignment, codeAutocomplete, containerClass, editor, editorIsReadOnly... (+16) |
+| `INodePropertyTypeOptions` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 217 | [key:string], action, alwaysOpenEditWindow, assignment, codeAutocomplete, containerClass, editor, editorIsReadOnly... (+16) |
 | `INodePropertyValueExtractor` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 343 |  |
-| `INodePropertyValueExtractor` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 329 |  |
+| `INodePropertyValueExtractor` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 324 |  |
 | `INodePropertyValueExtractorRegex` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 338 | regex, type |
-| `INodePropertyValueExtractorRegex` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 324 | regex, type |
+| `INodePropertyValueExtractorRegex` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 319 | regex, type |
 | `INodeTypeBaseDescription` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 483 | badgeIconUrl, builderHint, codex, defaultVersion, description, displayName, documentationUrl, group... (+10) |
-| `INodeTypeBaseDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 462 | badgeIconUrl, builderHint, codex, defaultVersion, description, displayName, documentationUrl, group... (+10) |
+| `INodeTypeBaseDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 457 | badgeIconUrl, builderHint, codex, defaultVersion, description, displayName, documentationUrl, group... (+10) |
 | `INodeTypeDescription` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 618 | __loadOptionsMethods, activationMessage, builderHint, capabilities, communityNodePackageVersion, credentials, defaults, eventTriggerDescription... (+23) |
-| `INodeTypeDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 581 | __loadOptionsMethods, activationMessage, builderHint, capabilities, communityNodePackageVersion, credentials, defaults, eventTriggerDescription... (+23) |
+| `INodeTypeDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 576 | __loadOptionsMethods, activationMessage, builderHint, capabilities, communityNodePackageVersion, credentials, defaults, eventTriggerDescription... (+23) |
 | `InProgressTrial` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/JobActivityPanel.tsx` | 25 | ageDurationMs, agent, lastModified, model, startedAt, taskName, trialName |
 | `InProgressTrial` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/JobTabbedPanel.tsx` | 56 | ageDurationMs, agent, lastModified, model, taskName, trialName |
 | `InputProps` | interface | yes | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/ui/input.tsx` | 4 |  |
@@ -5938,9 +5923,7 @@ Showing 120 of 875; see JSON for the full set.
 | `InstalledAppInfo` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 572 | displayName, installedAt, installPath, isRunning, name, version |
 | `InstalledCarrot` | interface | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/store.ts` | 40 | bundleWorkerPath, currentDir, extractionDir, install, installPath, manifest, rootDir, stateDir... (+3) |
 | `InstalledCarrotSnapshot` | interface | yes | `@elizaos/electrobun-carrots` | `packages/electrobun-carrots/src/store.ts` | 54 | currentHash, description, devMode, grantedPermissions, id, installedAt, lastBuildAt, lastBuildError... (+10) |
-| `InstalledMarketplaceSkill` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-marketplace.ts` | 185 | description, githubUrl, id, installedAt, installPath, name, path, repository... (+2) |
 | `InstalledModel` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 49 | bundleRoot, bundleSizeBytes, bundleVerifiedAt, bundleVersion, companionFor, displayName, externalOrigin, hfRepo... (+11) |
-| `InstalledModelEntry` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 122 | bundleVerifiedAt, dimensions, displayName, embeddingDimension, embeddingDimensions, id, installedAt, lastUsedAt... (+3) |
 | `InstalledPlugin` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 450 | betaVersion, installedAt, installPath, latestVersion, name, releaseStream, requestedVersion, version |
 | `InstalledPluginInfo` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/plugin-manager-types.ts` | 41 | betaVersion, installedAt, latestVersion, name, releaseStream, requestedVersion, version |
 | `InstalledRegistryPluginLike` | interface | no | `@elizaos/agent` | `packages/agent/src/api/registry-routes.ts` | 8 | betaVersion, latestVersion, name, releaseStream, version |
@@ -5965,7 +5948,6 @@ Showing 120 of 875; see JSON for the full set.
 | `InstallResult` | interface | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/flows/install-package-flow.ts` | 176 | durationMs, exitCode, installedCount, lastError, status |
 | `InstallRuntimeOptions` | interface | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/install-package.ts` | 239 | aptCacheFn, spawnFn |
 | `InstallSheetProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx` | 442 | backendId, backendLabel, methods, onCancel, onComplete |
-| `InstallSkillInput` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-marketplace.ts` | 199 | description, githubUrl, name, path, repository, slug, source |
 | `InstallTab` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/skill-marketplace.tsx` | 242 |  |
 | `IntegrationBoundary` | type | yes | `@elizaos/agent` | `packages/agent/src/diagnostics/integration-observability.ts` | 3 |  |
 | `IntegrationBoundary` | type | yes | `@elizaos/app-core` | `packages/app-core/src/diagnostics/integration-observability.ts` | 3 |  |
@@ -6006,12 +5988,9 @@ Showing 120 of 875; see JSON for the full set.
 | `InventoryProviderOption` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/onboarding.ts` | 181 | description, id, name, rpcProviders |
 | `InvokePayload` | interface | yes | `@elizaos/core` | `packages/core/src/types/events.ts` | 167 | callback, roomId, source, userId, worldId |
 | `IosAdapterDeps` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/persistence.ts` | 118 | isSqliteAvailable, openSqliteAdapter, resolvePreferencesAdapter |
-| `IosBridgeBackend` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 85 | close, conversations, runtime |
-| `IosBridgeHost` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 95 | backend, backendPromise, bootError |
 | `IosBundleFileEntry` | interface | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 95 | ctx, path, sha256 |
 | `IosBundleManifest` | interface | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 101 | defaultEligible, files, id, version |
 | `IosBundleRecord` | interface | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 118 | bundleRoot, bundleSizeBytes, bundleVersion, files, installedAt, manifestPath, manifestSha256, modelId |
-| `IosConversation` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 101 | createdAt, id, lastAgentName, lastAssistantText, lastUserText, metadata, roomId, title... (+1) |
 | `IosJavaScriptCoreBoundary` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/mobile-safe-runtime.ts` | 242 | evaluateScript, kind |
 | `IosLocalAgentNativeRequestOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-transport.ts` | 26 | body, headers, method, path, timeoutMs |
 | `IosLocalAgentNativeRequestResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-transport.ts` | 34 | body, headers, status, statusText |
@@ -6020,12 +5999,12 @@ Showing 120 of 875; see JSON for the full set.
 | `IosRuntimeConfig` | interface | yes | `@elizaos/ui` | `packages/ui/src/platform/ios-runtime.ts` | 10 | apiBase, apiToken, cloudApiBase, deviceBridgeToken, deviceBridgeUrl, fullBun, mode, tunnelPairingToken... (+1) |
 | `IosRuntimeMode` | type | yes | `@elizaos/ui` | `packages/ui/src/platform/ios-runtime.ts` | 3 |  |
 | `IParameterBuilderHint` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 298 | placeholderSupported, propertyHint |
-| `IParameterBuilderHint` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 284 | placeholderSupported, propertyHint |
+| `IParameterBuilderHint` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 279 | placeholderSupported, propertyHint |
 | `IPermissionsRegistry` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/permissions.ts` | 146 | check, get, list, pending, recordBlock, registerProber, request, subscribe |
 | `IPlanningService` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-planning/types.ts` | 86 | adaptPlan, cancelPlan, createComprehensivePlan, createSimplePlan, executePlan, getPlanStatus, validatePlan |
 | `IPluginStore` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-store.ts` | 148 | count, delete, getById, insert, query, update |
 | `IRelatedNode` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 451 | nodeType, relationHint |
-| `IRelatedNode` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 434 | nodeType, relationHint |
+| `IRelatedNode` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 429 | nodeType, relationHint |
 | `ISandboxEngine` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-engine.ts` | 316 | engineType, execInContainer, getInfo, healthCheck, imageExists, isAvailable, isContainerRunning, listContainers... (+4) |
 | `ISecretStorage` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 280 | delete, exists, get, getConfig, initialize, list, set, storageType... (+1) |
 | `IStreamExtractor` | interface | yes | `@elizaos/core` | `packages/core/src/types/streaming.ts` | 90 | done, flush, push, reset |
@@ -6041,9 +6020,9 @@ Showing 120 of 875; see JSON for the full set.
 | `IttpRouteKernel` | type | yes | `@elizaos/ui` | `packages/ui/src/api/ittp-agent-transport.ts` | 16 |  |
 | `ITunnelService` | interface | yes | `@elizaos/core` | `packages/core/src/tunnel-service.ts` | 16 | getStatus, getUrl, isActive, startTunnel, stopTunnel |
 | `IWebhookDescription` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 558 | [key:string], httpMethod, isFullPath, name, ndvHideMethod, ndvHideUrl, nodeType, path... (+6) |
-| `IWebhookDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 526 | [key:string], httpMethod, isFullPath, name, ndvHideMethod, ndvHideUrl, nodeType, path... (+6) |
+| `IWebhookDescription` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 521 | [key:string], httpMethod, isFullPath, name, ndvHideMethod, ndvHideUrl, nodeType, path... (+6) |
 | `IWorkflowSettings` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 676 | availableInMCP, binaryMode, callerIds, callerPolicy, credentialResolverId, errorWorkflow, executionOrder, executionTimeout... (+8) |
-| `IWorkflowSettings` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 631 | availableInMCP, binaryMode, callerIds, callerPolicy, credentialResolverId, errorWorkflow, executionOrder, executionTimeout... (+8) |
+| `IWorkflowSettings` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 626 | availableInMCP, binaryMode, callerIds, callerPolicy, credentialResolverId, errorWorkflow, executionOrder, executionTimeout... (+8) |
 | `JobActivity` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/JobActivityPanel.tsx` | 35 | completedCount, inProgress, inProgressCount, jobName, recentCompleted |
 | `JobActivity` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/JobTabbedPanel.tsx` | 76 | inProgress, recentCompleted |
 | `JobActivityPanelProps` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/JobActivityPanel.tsx` | 74 | agent, jobName, model, onClose, onFilesSelect, onTrialSelect |
@@ -6563,7 +6542,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ListStatus` | type | no | `@elizaos/agent` | `packages/agent/src/actions/plugin.ts` | 37 |  |
 | `ListTodosOptions` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/todos/types.ts` | 30 | limit, status |
 | `ListTrajectoriesOptions` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 314 | agentId, limit, since |
-| `LiveAgent` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 789 | runtime, state |
+| `LiveAgent` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 794 | runtime, state |
 | `LiveProviderConfig` | type | yes | `@elizaos/core` | `packages/core/src/testing/live-provider.ts` | 68 | apiKey, baseUrl, env, largeModel, name, pluginPackage, smallModel |
 | `LiveProviderModule` | type | no | `@elizaos/scenario-runner` | `packages/scenario-runner/src/cli.ts` | 24 | availableProviderNames |
 | `LiveProviderName` | type | yes | `@elizaos/core` | `packages/core/src/testing/live-provider.ts` | 61 |  |
@@ -6589,6 +6568,7 @@ Showing 120 of 875; see JSON for the full set.
 | `LLMProvider` | interface | no | `@elizaos/example-convex` | `packages/examples/convex/convex/agent.ts` | 17 | envKey, loadPlugin, name |
 | `LoadCharactersOptions` | interface | yes | `@elizaos/core` | `packages/core/src/runtime-composition.ts` | 212 | cwd |
 | `LoadConversationMessagesResult` | type | yes | `@elizaos/ui` | `packages/ui/src/state/types.ts` | 725 | message, ok, status |
+| `LoadedFixture` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/fixtures.ts` | 104 | captures, description, id |
 | `LoadedMacEffectsLib` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/mac-window-effects.ts` | 26 | close, symbols |
 | `LoadedPacksListProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/settings/LoadedPacksList.tsx` | 5 | activePackId, loadedPacks, onToggle |
 | `LoadedRegistry` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/registry/loader.ts` | 32 | all, byGroup, byId, byKind, byNpmName |
@@ -6607,29 +6587,31 @@ Showing 120 of 875; see JSON for the full set.
 | `LoadPluginOptions` | interface | yes | `@elizaos/core` | `packages/core/src/utils/plugin-loader.ts` | 6 | npmScope, repoRoot |
 | `LoadPluginParams` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/types.ts` | 74 | force, pluginId |
 | `LoadResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/documents/types.ts` | 242 | errors, failed, successful |
-| `LoadSkillsFromDirOptions` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 173 | dir, source |
-| `LoadSkillsOptions` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 183 | agentDir, bundledSkillsDir, cwd, includeDefaults, managedSkillsDir, skillPaths |
-| `LoadSkillsResult` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 163 | diagnostics, skills |
+| `LoadSkillsFromDirOptions` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 88 | dir, source |
+| `LoadSkillsOptions` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 93 | agentDir, bundledSkillsDir, cwd, includeDefaults, managedSkillsDir, skillPaths |
+| `LoadSkillsResult` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 83 | diagnostics, skills |
 | `LocalAgentTokenResult` | interface | yes | `@elizaos/capacitor-agent` | `packages/native-plugins/agent/src/definitions.ts` | 27 | available, token |
 | `LocalAppOverride` | interface | no | `@elizaos/agent` | `packages/agent/src/services/registry-client-app-meta.ts` | 28 | capabilities, category, displayName, launchType, launchUrl, runtimePlugin, session, uiExtension... (+1) |
-| `LocalAppPackageJson` | interface | no | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 82 | elizaos |
 | `LocalBrowserWorkspaceTab` | interface | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 129 | createdAt, id, kind, lastFocusedAt, partition, title, updatedAt, url... (+1) |
 | `LocalConversation` | interface | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 74 | createdAt, id, messages, roomId, title, updatedAt |
 | `LocalDbModule` | type | no | `elizagotchi` | `packages/examples/elizagotchi/src/game/agent.ts` | 30 | default, plugin |
 | `LocalEmbeddingPluginModule` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 213 | default, localEmbeddingPlugin |
 | `LocalExecutionMode` | type | yes | `@elizaos/shared` | `packages/shared/src/config/runtime-mode.ts` | 160 |  |
 | `LocalExperienceGraphLink` | type | no | `@elizaos/ui` | `packages/ui/src/components/character/CharacterExperienceWorkspace.tsx` | 13 | keywords, sourceId, strength, targetId, type |
-| `LocalInferenceChatMetadata` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 88 |  |
+| `LocalInferenceChatApi` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 97 | getLocalInferenceChatStatus, handleLocalInferenceChatCommand |
+| `LocalInferenceChatMetadata` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 85 |  |
 | `LocalInferenceChatMetadata` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 97 | activeModelId, error, intent, modelId, progress, provider, status |
 | `LocalInferenceChatStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 86 |  |
-| `LocalInferenceCommandIntent` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 89 |  |
-| `LocalInferenceDownloadStatus` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 519 | bytesPerSec, errors, etaMs, percent, receivedBytes, state, totalBytes, updatedAt |
+| `LocalInferenceCommandIntent` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 86 |  |
+| `LocalInferenceDownloadStatus` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 532 | bytesPerSec, errors, etaMs, percent, receivedBytes, state, totalBytes, updatedAt |
+| `LocalInferenceHealthApi` | type | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 14 | getLocalInferenceActiveSnapshot |
 | `LocalInferenceLoadArgs` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/active-model.ts` | 76 | cacheTypeK, cacheTypeV, contextSize, disableThinking, draftContextSize, draftMax, draftMin, draftModelPath... (+10) |
 | `LocalInferenceLoader` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/active-model.ts` | 247 | currentModelPath, embed, generate, loadModel, unloadModel |
 | `LocalInferenceLoadOverrides` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/active-model.ts` | 292 | cacheTypeK, cacheTypeV, contextSize, flashAttention, gpuLayers, kvOffload, maxThreads, mlock... (+2) |
-| `LocalInferenceReadiness` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 582 | slots, updatedAt |
+| `LocalInferenceReadiness` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 595 | slots, updatedAt |
+| `LocalInferenceServerApi` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 83 | getLocalInferenceActiveModelId, handleLocalInferenceRoutes |
 | `LocalInferenceSlotDescriptor` | type | yes | `@elizaos/ui` | `packages/ui/src/components/local-inference/slot-metadata.ts` | 3 | description, label, modelType, slot |
-| `LocalInferenceSlotReadiness` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 557 | active, assigned, assignedModelId, displayName, download, downloaded, errors, expectedBytes... (+7) |
+| `LocalInferenceSlotReadiness` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 570 | active, assigned, assignedModelId, displayName, download, downloaded, errors, expectedBytes... (+7) |
 | `LocalizedActionExamplePair` | type | yes | `@elizaos/core` | `packages/core/src/runtime/action-catalog.ts` | 13 |  |
 | `LocalizedActionExampleResolver` | type | yes | `@elizaos/core` | `packages/core/src/runtime/action-catalog.ts` | 27 |  |
 | `LocalizedExamplesProvider` | type | yes | `@elizaos/core` | `packages/core/src/runtime/localized-examples-provider.ts` | 36 |  |
@@ -6657,10 +6639,10 @@ Showing 120 of 875; see JSON for the full set.
 | `LocalPluginManifest` | interface | no | `@elizaos/agent` | `packages/agent/src/services/registry-client-local.ts` | 76 | app, description, homepage, id, kind, name, repository, session... (+3) |
 | `LocalPluginPackageJson` | type | no | `@elizaos/agent` | `packages/agent/src/services/registry-client-local.ts` | 70 | agentConfig, keywords, packageType |
 | `LocalReply` | type | no | `@elizaos/ui` | `packages/ui/src/api/ios-local-agent-kernel.ts` | 1629 | localInference, text, usage |
-| `LocalRuntimeAcceleration` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 257 | dflash, kvCache, optimizations, preferredBackend |
+| `LocalRuntimeAcceleration` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 264 | dflash, kvCache, optimizations, preferredBackend |
 | `LocalRuntimeBackend` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 114 |  |
 | `LocalRuntimeKernel` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 169 |  |
-| `LocalRuntimeOptimizations` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 185 | alias, batchSize, cacheRamMb, cacheReuse, contBatching, ctxCheckpointInterval, ctxCheckpoints, flashAttention... (+12) |
+| `LocalRuntimeOptimizations` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 185 | alias, batchSize, cacheRamMb, cacheReuse, contBatching, ctxCheckpointInterval, ctxCheckpoints, flashAttention... (+13) |
 | `LocalSensitiveRequestRecord` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/sensitive-request-store.ts` | 12 | audit, tokenHash, tokenUsedAt |
 | `LocalSensitiveRequestSubmitTokenCheck` | type | yes | `@elizaos/app-core` | `packages/app-core/src/api/sensitive-request-store.ts` | 34 | ok, reason, record, status |
 | `LocalServerHandle` | interface | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/local-llama-cpp.ts` | 76 | baseUrl, child, kill |
@@ -6758,8 +6740,6 @@ Showing 120 of 875; see JSON for the full set.
 | `ManagerPreferences` | interface | yes | `@elizaos/vault` | `packages/vault/src/manager.ts` | 73 | enabled, routing |
 | `ManagerSetOptions` | interface | yes | `@elizaos/vault` | `packages/vault/src/manager.ts` | 92 | caller, sensitive, store |
 | `ManifestLike` | interface | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/apps.ts` | 34 | last_built_at, last_built_by |
-| `ManifestPluginEntry` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 73 | category, configKeys, configUiHints, description, dirName, envKey, homepage, icon... (+10) |
-| `ManifestPluginParameter` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 63 | default, description, optional, options, required, sensitive, type |
 | `MarkdownConfig` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 92 | tables |
 | `MarkdownIR` | type | yes | `@elizaos/core` | `packages/core/src/markdown/ir.ts` | 82 | links, styles, text |
 | `MarkdownLinkSpan` | type | yes | `@elizaos/core` | `packages/core/src/markdown/ir.ts` | 70 | end, href, start |
@@ -6769,7 +6749,6 @@ Showing 120 of 875; see JSON for the full set.
 | `MarkdownTableMode` | type | yes | `@elizaos/core` | `packages/core/src/markdown/ir.ts` | 94 |  |
 | `MarkdownToken` | type | no | `@elizaos/core` | `packages/core/src/markdown/ir.ts` | 36 | attrGet, attrs, children, content, type |
 | `MarketplaceInstallSource` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/skills-routes.ts` | 166 |  |
-| `MarketplaceScanReport` | interface | no | `@elizaos/agent` | `packages/agent/src/services/skill-marketplace.ts` | 25 | findings, manifestFindings, scannedAt, skillPath, status, summary |
 | `MarshalContext` | interface | no | `@elizaos/agent` | `packages/agent/src/services/js-runtime-bridge.ts` | 72 | functionTable, nextFunctionId |
 | `MasterKeyResolver` | interface | yes | `@elizaos/vault` | `packages/vault/src/master-key.ts` | 27 | describe, load |
 | `Matchable` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/match.ts` | 101 | name, priority, similes |
@@ -6995,7 +6974,7 @@ Showing 120 of 875; see JSON for the full set.
 | `MinimaxResult` | interface | no | `@elizaos/example-tic-tac-toe` | `packages/examples/tic-tac-toe/game.ts` | 86 | move, score |
 | `MintResult` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/drop.ts` | 16 | agentId, isShiny, mintNumber, txHash |
 | `MirrorSecretParams` | interface | no | `@elizaos/core` | `packages/core/src/features/secrets/actions/mirror-secret-to-vault.ts` | 26 | key, level, vaultName |
-| `MiscRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 267 |  |
+| `MiscRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 315 |  |
 | `MiscRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/misc-routes.ts` | 116 | activeTerminalRunCount, AGENT_EVENT_ALLOWED_STREAMS, error, isSharedTerminalClientId, json, method, pathname, readJsonBody... (+7) |
 | `MissingFieldSummary` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/form/types.ts` | 671 | askPrompt, description, key, label |
 | `MobileAgentBridgePlugin` | interface | yes | `@elizaos/capacitor-mobile-agent-bridge` | `packages/native-plugins/mobile-agent-bridge/src/definitions.ts` | 83 | addListener, getTunnelStatus, removeAllListeners, startInboundTunnel, stopInboundTunnel |
@@ -7004,13 +6983,11 @@ Showing 120 of 875; see JSON for the full set.
 | `MobileAgentTunnelStateEvent` | interface | yes | `@elizaos/capacitor-mobile-agent-bridge` | `packages/native-plugins/mobile-agent-bridge/src/definitions.ts` | 68 | reason, state |
 | `MobileAgentTunnelStatus` | interface | yes | `@elizaos/capacitor-mobile-agent-bridge` | `packages/native-plugins/mobile-agent-bridge/src/definitions.ts` | 58 | deviceId, lastError, relayUrl, state |
 | `MobileChatSurface` | type | no | `@elizaos/ui` | `packages/ui/src/App.tsx` | 83 |  |
-| `MobileChatSurfaceButtonProps` | interface | no | `@elizaos/ui` | `packages/ui/src/App.tsx` | 270 | icon, label, onClick, surface |
+| `MobileChatSurfaceButtonProps` | interface | no | `@elizaos/ui` | `packages/ui/src/App.tsx` | 264 | icon, label, onClick, surface |
 | `MobileDeviceBridgeHooks` | interface | yes | `@elizaos/core` | `packages/core/src/mobile-device-bridge-hooks.ts` | 24 | getMobileDeviceBridgeStatus, loadMobileDeviceBridgeModel, unloadMobileDeviceBridgeModel |
 | `MobileDeviceBridgeHooksGlobal` | type | no | `@elizaos/core` | `packages/core/src/mobile-device-bridge-hooks.ts` | 37 | [[MOBILE_DEVICE_BRIDGE_HOOKS]] |
 | `MobileDeviceBridgeStatus` | interface | yes | `@elizaos/core` | `packages/core/src/mobile-device-bridge-hooks.ts` | 1 | connected, devices, enabled, modelPath, pendingRequests, primaryDeviceId |
-| `MobileFsGlobals` | type | yes | `@elizaos/agent` | `packages/agent/src/cli/mobile-fs-sandbox.ts` | 6 | __ELIZA_MOBILE_FS_RESOLVE__ |
-| `MobileFsResolver` | type | no | `@elizaos/agent` | `packages/agent/src/cli/mobile-fs-sandbox.ts` | 13 |  |
-| `MobileHardwareProbe` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 454 | availableRamGb, deviceModel, dflashReason, dflashSupported, freeStorageGb, gpuSupported, isSimulator, lowPowerMode... (+5) |
+| `MobileHardwareProbe` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 467 | availableRamGb, deviceModel, dflashReason, dflashSupported, freeStorageGb, gpuSupported, isSimulator, lowPowerMode... (+5) |
 | `MobilePermissionId` | type | no | `@elizaos/ui` | `packages/ui/src/platform/mobile-permissions-client.ts` | 25 |  |
 | `MobileRuntimeMode` | type | yes | `@elizaos/ui` | `packages/ui/src/onboarding/mobile-runtime-mode.ts` | 21 |  |
 | `MobileRuntimePlatform` | type | no | `@elizaos/ui` | `packages/ui/src/platform/ios-runtime.ts` | 37 |  |
@@ -7078,20 +7055,20 @@ Showing 120 of 875; see JSON for the full set.
 | `MobileSignalsStopResult` | interface | yes | `@elizaos/capacitor-mobile-signals` | `packages/native-plugins/mobile-signals/src/definitions.ts` | 199 | stopped |
 | `MockBodyChunk` | type | no | `@elizaos/agent` | `packages/agent/src/test-support/test-helpers.ts` | 165 |  |
 | `MockBodyChunk` | type | no | `@elizaos/app-core` | `packages/app-core/src/test-support/test-helpers.ts` | 435 |  |
-| `MockBodyChunk` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 438 |  |
-| `MockHttpServerResponse` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 432 | _body, _status, writeHead |
+| `MockBodyChunk` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 332 |  |
+| `MockHttpServerResponse` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 326 | _body, _status, writeHead |
 | `MockPluginDefinition` | interface | yes | `@elizaos/configbench` | `packages/benchmarks/configbench/src/types.ts` | 126 | name, requiredSecrets |
 | `MockRequestOptions` | type | yes | `@elizaos/agent` | `packages/agent/src/test-support/test-helpers.ts` | 167 | body, bodyChunks, headers, json, method, url |
 | `MockRequestOptions` | type | yes | `@elizaos/app-core` | `packages/app-core/src/test-support/test-helpers.ts` | 437 | body, bodyChunks, headers, json, method, url |
-| `MockRequestOptions` | type | yes | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 440 | body, bodyChunks, headers, json, method, url |
+| `MockRequestOptions` | type | yes | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 334 | body, bodyChunks, headers, json, method, url |
 | `MockResponsePayload` | type | no | `@elizaos/agent` | `packages/agent/src/test-support/test-helpers.ts` | 155 | getJson, getStatus, res |
 | `MockResponsePayload` | type | no | `@elizaos/app-core` | `packages/app-core/src/test-support/test-helpers.ts` | 425 | getJson, getStatus, res |
-| `MockResponsePayload` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 426 | getJson, getStatus, res |
+| `MockResponsePayload` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 320 | getJson, getStatus, res |
 | `MockSpawnOptions` | type | no | `@elizaos/agent` | `packages/agent/src/test-support/process-helpers.ts` | 4 | emitError, exitCode, stderrOutput |
 | `MockSpawnOptions` | type | no | `@elizaos/shared` | `packages/shared/src/test-support/process-helpers.ts` | 4 | emitError, exitCode, stderrOutput |
 | `MockUpdateCheckResult` | type | yes | `@elizaos/agent` | `packages/agent/src/test-support/test-helpers.ts` | 27 | cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable |
 | `MockUpdateCheckResult` | type | yes | `@elizaos/app-core` | `packages/app-core/src/test-support/test-helpers.ts` | 26 | cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable |
-| `MockUpdateCheckResult` | type | yes | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 27 | cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable |
+| `MockUpdateCheckResult` | type | yes | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 23 | cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable |
 | `ModalApi` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useModalState.ts` | 23 | close, open, state, submit |
 | `ModalState` | type | yes | `@elizaos/ui` | `packages/ui/src/hooks/useModalState.ts` | 17 | error, status |
 | `Mode` | type | no | `@elizaos/personality-bench` | `packages/benchmarks/personality-bench/src/judge/rubrics/scope-isolated.ts` | 46 |  |
@@ -7118,7 +7095,7 @@ Showing 120 of 875; see JSON for the full set.
 | `ModelHandler` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 1220 | handler, priority, provider, registrationOrder |
 | `ModelHandlerFn` | type | no | `@elizaos/core` | `packages/core/src/testing/integration-runtime.ts` | 83 |  |
 | `ModelHandlerFn` | type | no | `@elizaos/core` | `packages/core/src/testing/ollama-provider.ts` | 291 |  |
-| `ModelHubSnapshot` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 587 | active, assignments, catalog, downloads, hardware, installed, textReadiness |
+| `ModelHubSnapshot` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 600 | active, assignments, catalog, downloads, hardware, installed, textReadiness |
 | `ModelHubViewProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/ModelHubView.tsx` | 26 | active, busy, catalog, downloads, hardware, installed, onActivate, onCancel... (+4) |
 | `ModelInputBudget` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/model-input-budget.ts` | 34 | compactionThresholdTokens, contextWindowTokens, estimatedInputTokens, reserveTokens, resolvedModelKey, shouldCompact |
 | `ModelItem` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/components/app/models/utils.ts` | 4 | flatIndex, option |
@@ -7179,10 +7156,9 @@ Showing 120 of 875; see JSON for the full set.
 | `MusicPlayerDesktopPlaybackUrls` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 461 | apiBase, guildId, nowPlayingUrl, ok, queueUrl, reason, streamUrl |
 | `MusicServiceLike` | type | no | `@elizaos/agent` | `packages/agent/src/api/music-player-route-fallback.ts` | 13 | getCurrentTrack, getIsPaused, getQueues |
 | `MusicTrack` | type | no | `@elizaos/agent` | `packages/agent/src/api/music-player-route-fallback.ts` | 4 | addedAt, duration, id, requestedBy, title, url |
-| `MutableConfigEnv` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 733 | vars |
+| `MutableConfigEnv` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 736 | vars |
 | `MutableElizaConfig` | type | no | `@elizaos/agent` | `packages/agent/src/api/provider-switch-config.ts` | 39 | cloud, deploymentTarget, linkedAccounts, models, serviceRouting, wallet |
 | `MutableJob` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/secrets-manager-installer.ts` | 70 | backendId, child, emitter, endedAt, errorMessage, exitCode, history, id... (+3) |
-| `MutableModule` | type | no | `@elizaos/agent` | `packages/agent/src/cli/mobile-fs-shim.ts` | 393 |  |
 | `MutableTrajectory` | interface | no | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 1114 |  |
 | `NativeAgentPlugin` | type | no | `@elizaos/ui` | `packages/ui/src/api/android-native-agent-transport.ts` | 20 | getStatus, request, start, stop |
 | `NativeAgentPlugin` | type | no | `@elizaos/ui` | `packages/ui/src/components/shell/RuntimeGate.tsx` | 95 | start |
@@ -7191,7 +7167,7 @@ Showing 120 of 875; see JSON for the full set.
 | `NativeAgentRequestOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/android-native-agent-transport.ts` | 5 | body, headers, method, path, timeoutMs |
 | `NativeAgentRequestResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/android-native-agent-transport.ts` | 13 | body, headers, status, statusText |
 | `NativeAppInfo` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/app-updates/update-policy.ts` | 18 | build, id, name, version |
-| `NativeBoundaryRow` | interface | yes | `@elizaos/scenario-runner` | `packages/scenario-runner/src/native-export.ts` | 33 | agentId, batchId, boundary, callId, callIndex, format, metadata, model... (+13) |
+| `NativeBoundaryRow` | interface | yes | `@elizaos/scenario-runner` | `packages/scenario-runner/src/native-export.ts` | 34 | agentId, batchId, boundary, callId, callIndex, format, metadata, model... (+13) |
 | `NativeCommandsSetting` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 236 |  |
 | `NativeCompletionProbability` | type | no | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/capacitor-llama-adapter.ts` | 27 |  |
 | `NativeEditorId` | type | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/editor-bridge.ts` | 24 |  |
@@ -7203,9 +7179,8 @@ Showing 120 of 875; see JSON for the full set.
 | `NativeIosCapabilities` | interface | no | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/device-bridge-client.ts` | 159 | availableRamGb, cpuCores, deviceModel, gpu, gpuSupported, isSimulator, lowPowerMode, machineId... (+4) |
 | `NativeLibraryCandidate` | type | yes | `@elizaos/app-core` | `packages/app-core/src/platform/native-library-policy.ts` | 4 | label, path |
 | `NativeLibraryPolicyOptions` | type | yes | `@elizaos/app-core` | `packages/app-core/src/platform/native-library-policy.ts` | 9 | env, execPath, expectedBasename, moduleDir, warn |
-| `NativeLlamaState` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 136 | contextId, error, loadedAt, modelId, modelPath, status |
 | `NativeModuleStubPluginOptions` | interface | yes | `@elizaos/app` | `packages/app/vite/native-module-stub-plugin.ts` | 170 | isCapacitorMobileBuild, requireModule |
-| `NativePermissionsLib` | interface | no | `@elizaos/agent` | `packages/agent/src/services/permissions/probers/_bridge.ts` | 260 | checkAccessibilityPermission, checkCalendarPermission, checkCameraPermission, checkContactsPermission, checkLocationPermission, checkMicrophonePermission, checkNotificationPermission, checkRemindersPermission... (+10) |
+| `NativePermissionsLib` | interface | no | `@elizaos/agent` | `packages/agent/src/services/permissions/probers/_bridge.ts` | 239 | checkAccessibilityPermission, checkCalendarPermission, checkCameraPermission, checkContactsPermission, checkLocationPermission, checkMicrophonePermission, checkNotificationPermission, checkRemindersPermission... (+10) |
 | `NativePlugin` | type | no | `@elizaos/ui` | `packages/ui/src/bridge/native-plugins.ts` | 3 |  |
 | `NativeRuntimeFeature` | type | yes | `@elizaos/core` | `packages/core/src/plugins/native-features.ts` | 28 |  |
 | `NativeShellRunner` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/desktop.ts` | 174 | read, readSafe |
@@ -7236,26 +7211,26 @@ Showing 120 of 875; see JSON for the full set.
 | `NfaRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/nfa-routes.ts` | 42 |  |
 | `NodeCallback` | type | no | `eliza-react-example` | `packages/examples/react/src/stubs/node-builtins.ts` | 1 |  |
 | `NodeCapabilities` | interface | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 605 | requiresChildProcess, requiresFs, requiresInbound, requiresLongRunning, requiresNet |
-| `NodeCapabilities` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 568 | requiresChildProcess, requiresFs, requiresInbound, requiresLongRunning, requiresNet |
+| `NodeCapabilities` | interface | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 563 | requiresChildProcess, requiresFs, requiresInbound, requiresLongRunning, requiresNet |
 | `NodeConnectionType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 162 |  |
-| `NodeConnectionType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 157 |  |
+| `NodeConnectionType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 152 |  |
 | `NodeDefaults` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 504 |  |
-| `NodeDefaults` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 483 |  |
+| `NodeDefaults` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 478 |  |
 | `NodeDetailDrawerProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/pages/WorkflowGraphViewer.tsx` | 473 | labelId, node, onClose, workflow |
 | `NodeFeaturesDefinition` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 202 |  |
-| `NodeFeaturesDefinition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 193 |  |
+| `NodeFeaturesDefinition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 188 |  |
 | `NodeGroupType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 433 |  |
-| `NodeGroupType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 416 |  |
+| `NodeGroupType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 411 |  |
 | `NodeHint` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 587 | displayCondition, location, message, type, whenToDisplay |
-| `NodeHint` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 550 | displayCondition, location, message, type, whenToDisplay |
+| `NodeHint` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 545 | displayCondition, location, message, type, whenToDisplay |
 | `NodeHostBrowserProxyConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 265 | allowProfiles, enabled |
 | `NodeHostConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 272 | browserProxy |
 | `NodeParameterValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 29 |  |
-| `NodeParameterValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 24 |  |
+| `NodeParameterValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 19 |  |
 | `NodeParameterValueType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 31 |  |
-| `NodeParameterValueType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 26 |  |
+| `NodeParameterValueType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 21 |  |
 | `NodePropertyTypes` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 208 |  |
-| `NodePropertyTypes` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 199 |  |
+| `NodePropertyTypes` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 194 |  |
 | `NonceResult` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/security/export-guard.ts` | 18 | expiresAt, nonce |
 | `NormalizeCharacterMessageExamplesOptions` | interface | no | `@elizaos/shared` | `packages/shared/src/utils/character-message-examples.ts` | 13 | fallbackMissingSpeaker |
 | `NormalizedBridgeMessage` | type | yes | `@elizaos/app-core` | `packages/app-core/deploy/cloud-agent-shared.ts` | 29 | channelType, metadata, mode, roomKey, sender, source, text |
@@ -7289,6 +7264,13 @@ Showing 120 of 875; see JSON for the full set.
 | `OAuthRevokeResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/oauth/types.ts` | 69 | error, oauthIntentId, provider, revoked |
 | `OAuthSubscriptionProvider` | type | yes | `@elizaos/agent` | `packages/agent/src/auth/types.ts` | 19 |  |
 | `ObjectGenerationParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 1050 | enumValues, maxTokens, modelType, output, prompt, schema, stopSequences, temperature |
+| `OcrCoordBlock` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 120 | bbox, text, words |
+| `OcrCoordResult` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 126 | blocks |
+| `OcrCoordWord` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 115 | bbox, text |
+| `OfficialAnnotation` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/chartqa_adapter.ts` | 50 | answer_type, imgname, label, query |
+| `OfficialAnnotation` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/docvqa_adapter.ts` | 45 | answers, image, question, questionId |
+| `OfficialAnnotation` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/screenspot_adapter.ts` | 52 | bbox, data_source, data_type, img_filename, instruction |
+| `OfficialAnnotation` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/textvqa_adapter.ts` | 46 | answers, image_id, question, question_id |
 | `OffscreenApi` | type | no | `@elizaos/example-browser-extension-chrome` | `packages/examples/browser-extension/chrome/src/background.ts` | 35 | createDocument |
 | `OffscreenSendChatRequest` | type | no | `@elizaos/example-browser-extension-chrome` | `packages/examples/browser-extension/chrome/src/offscreen.ts` | 16 | config, messageId, pageContent, type, url, userText |
 | `OllamaChatRequest` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/providers/ollama.ts` | 26 | messages, model, stream |
@@ -7300,7 +7282,7 @@ Showing 120 of 875; see JSON for the full set.
 | `OllamaModelResult` | type | no | `@elizaos/core` | `packages/core/src/testing/ollama-provider.ts` | 286 |  |
 | `OllamaProviderOptions` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/providers/ollama.ts` | 38 | baseUrl, fetchImpl, model, timeoutMs |
 | `OmniVoiceBackend` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/voice-types.ts` | 32 | synthesize |
-| `OmniVoiceQuantLevel` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 382 |  |
+| `OmniVoiceQuantLevel` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 374 |  |
 | `OnboardingAction` | type | no | `@elizaos/ui` | `packages/ui/src/state/useOnboardingState.ts` | 271 | error, field, guide, key, mode, options, status, step... (+4) |
 | `OnboardingCallbacksDeps` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/useOnboardingCallbacks.ts` | 266 | addDeferredOnboardingTask, client, coordinatorOnboardingCompleteRef, defaultLandingTab, elizaCloudConnected, forceLocalBootstrapRef, initialTabSetRef, loadCharacter... (+27) |
 | `OnboardingClientLike` | type | yes | `@elizaos/ui` | `packages/ui/src/platform/types.ts` | 28 |  |
@@ -7350,7 +7332,7 @@ Showing 120 of 875; see JSON for the full set.
 | `OnboardingRemoteProviderConnection` | interface | yes | `@elizaos/core` | `packages/core/src/contracts/onboarding.ts` | 615 | apiKey, kind, primaryModel, provider, remoteAccessToken, remoteApiBase |
 | `OnboardingRemoteProviderConnection` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/onboarding.ts` | 615 | apiKey, kind, primaryModel, provider, remoteAccessToken, remoteApiBase |
 | `OnboardingResult` | interface | yes | `@elizaos/core` | `packages/core/src/types/onboarding.ts` | 258 | context, data, error, isComplete, message, newStep, success |
-| `OnboardingRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 260 |  |
+| `OnboardingRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 292 |  |
 | `OnboardingRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/onboarding-routes.ts` | 191 | applyOnboardingVoicePreset, ensureWalletKeysInEnvAndConfig, error, getCloudProviderOptions, getInventoryProviderOptions, getModelOptions, getProviderOptions, getStylePresets... (+16) |
 | `OnboardingServerState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/onboarding-routes.ts` | 233 | adminEntityId, agentName, chatConnectionPromise, chatConnectionReady, chatUserId, config, runtime |
 | `OnboardingServerTarget` | type | yes | `@elizaos/ui` | `packages/ui/src/onboarding/server-target.ts` | 1 |  |
@@ -7377,7 +7359,7 @@ Showing 120 of 875; see JSON for the full set.
 | `OnePasswordEnrichedItem` | interface | no | `@elizaos/vault` | `packages/vault/src/external-credentials.ts` | 82 | fields |
 | `OnePasswordListItem` | interface | no | `@elizaos/vault` | `packages/vault/src/external-credentials.ts` | 70 | additional_information, category, id, title, updated_at, urls |
 | `OnError` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 378 |  |
-| `OnError` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 364 |  |
+| `OnError` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 359 |  |
 | `OnHandler` | type | no | `elizagotchi` | `packages/examples/elizagotchi/src/game/agent.ts` | 240 |  |
 | `OnMessageCallback` | type | no | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/channels.ts` | 23 |  |
 | `OnPayload` | type | no | `elizagotchi` | `packages/examples/elizagotchi/src/game/agent.ts` | 241 |  |
@@ -7417,8 +7399,8 @@ Showing 120 of 875; see JSON for the full set.
 | `OptimizedPromptTask` | type | yes | `@elizaos/core` | `packages/core/src/services/optimized-prompt.ts` | 65 |  |
 | `OptimizerName` | type | yes | `@elizaos/core` | `packages/core/src/services/optimized-prompt.ts` | 82 |  |
 | `OptionalField` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/extension-rpc.ts` | 7 |  |
-| `OptionalTrainingConfig` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 585 | autoTrain, backends, triggerCooldownHours, triggerThreshold |
-| `OptionalTrainingConfigApi` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 592 | loadTrainingConfig, normalizeTrainingConfig, saveTrainingConfig |
+| `OptionalTrainingConfig` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 633 | autoTrain, backends, triggerCooldownHours, triggerThreshold |
+| `OptionalTrainingConfigApi` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 640 | loadTrainingConfig, normalizeTrainingConfig, saveTrainingConfig |
 | `OptionObject` | interface | no | `@elizaos/core` | `packages/core/src/features/basic-capabilities/providers/choice.ts` | 26 | description, name |
 | `Options` | type | no | `@elizaos/app-core` | `packages/app-core/scripts/copy-runtime-node-modules.ts` | 16 | scanDir, targetDist |
 | `OrchestratorTrajectoryContext` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/trajectory-internals.ts` | 57 | decisionType, originalTask, repo, sessionId, source, taskLabel, workdir |
@@ -7431,6 +7413,7 @@ Showing 120 of 875; see JSON for the full set.
 | `OrVisibility` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/ui-spec.ts` | 56 | or |
 | `OS` | type | no | `eliza-app` | `packages/homepage/src/pages/marketing.tsx` | 10 |  |
 | `OsKeychainOptions` | interface | yes | `@elizaos/vault` | `packages/vault/src/master-key.ts` | 55 | account, service |
+| `OSWorldPayload` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/osworld_adapter.ts` | 44 | taskConfig, trace |
 | `OutboundRetryConfig` | type | yes | `@elizaos/core` | `packages/core/src/types/channel-config.ts` | 55 | attempts, jitter, maxDelayMs, minDelayMs |
 | `OutcomeClassification` | enum | yes | `@solana-gauntlet/sdk` | `packages/benchmarks/gauntlet/sdk/typescript/src/types.ts` | 18 | CORRECT_REFUSAL, INVALID_REFUSAL, SILENT_FAILURE, SUCCESSFUL_EXECUTION, UNSAFE_EXECUTION |
 | `OutcomeType` | enum | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/experience/types.ts` | 34 | MIXED, NEGATIVE, NEUTRAL, POSITIVE |
@@ -7529,14 +7512,14 @@ Showing 120 of 875; see JSON for the full set.
 | `ParsedConfigEnv` | interface | no | `@elizaos/agent` | `packages/agent/src/api/config-env.ts` | 76 | index, lines |
 | `ParsedEvaluatorObject` | interface | no | `@elizaos/core` | `packages/core/src/runtime/evaluator.ts` | 62 | object, parseError |
 | `ParsedFrontmatter` | type | yes | `@elizaos/core` | `packages/core/src/markdown/frontmatter.ts` | 15 |  |
-| `ParsedFrontmatter` | interface | yes | `@elizaos/skills` | `packages/skills/src/frontmatter.ts` | 12 | body, frontmatter |
+| `ParsedFrontmatter` | interface | yes | `@elizaos/skills` | `packages/skills/src/frontmatter.ts` | 9 | body, frontmatter |
 | `ParsedGeneration` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/custom-actions/custom-action-form.tsx` | 19 | description, enabled, handler, handlerType, name, parameters, similes |
+| `ParsedGrounding` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-vlm.ts` | 117 | h, w, x, y |
 | `ParsedHookFrontmatter` | interface | yes | `@elizaos/agent` | `packages/agent/src/hooks/types.ts` | 77 | description, homepage, metadata, name |
-| `ParsedLoginKey` | interface | no | `@elizaos/vault` | `packages/vault/src/credentials.ts` | 176 | account, domain |
+| `ParsedLoginKey` | interface | no | `@elizaos/vault` | `packages/vault/src/credentials.ts` | 175 | account, domain |
 | `ParsedMessageLine` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/conversation-compactor-runtime.ts` | 311 | name, raw, role, tags, text, time, toolName |
 | `ParsedPermissionRequest` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/parse-action-block.ts` | 25 | fallbackLabel, fallbackOffered, feature, permission, reason |
 | `ParsedResolution` | interface | no | `@elizaos/core` | `packages/core/src/entities.ts` | 32 | confidence, matches, resolvedId |
-| `ParsedSkill` | interface | no | `@elizaos/agent` | `packages/agent/src/api/curated-skills-routes.ts` | 112 | body, description, name, provenance |
 | `ParsedSkillFile` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/skill-items.ts` | 104 | body, frontmatter |
 | `ParsedTurn` | interface | no | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/utils/legacy-migration.ts` | 81 | textBefore, toolCalls |
 | `ParsedVfsShellCwd` | interface | no | `@elizaos/agent` | `packages/agent/src/services/shell-execution-router.ts` | 77 | projectId, virtualPath |
@@ -7633,7 +7616,7 @@ Showing 120 of 875; see JSON for the full set.
 | `PermissionRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/permissions-routes.ts` | 211 | saveConfig, scheduleRuntimeRestart, state |
 | `PermissionRouteState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/permissions-routes.ts` | 204 | config, permissionStates, runtime, shellEnabled |
 | `PermissionsClientLike` | type | yes | `@elizaos/ui` | `packages/ui/src/platform/types.ts` | 5 |  |
-| `PermissionsExtraRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 263 |  |
+| `PermissionsExtraRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 311 |  |
 | `PermissionsExtraRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/permissions-routes-extra.ts` | 8 | canUseLocalTradeExecution, error, json, method, parseAgentAutomationMode, pathname, persistAgentAutomationMode, readJsonBody... (+5) |
 | `PermissionsPatchState` | type | yes | `@elizaos/ui` | `packages/ui/src/platform/types.ts` | 16 | getPermission, getPermissions, isShellEnabled, openPermissionSettings, refreshPermissions, requestPermission, setShellEnabled |
 | `PermissionsRegistryServiceLike` | interface | no | `@elizaos/agent` | `packages/agent/src/providers/pending-permissions-provider.ts` | 27 | getRegistry, registry |
@@ -7682,8 +7665,8 @@ Showing 120 of 875; see JSON for the full set.
 | `PGliteClientManager` | interface | no | `eliza-react-example` | `packages/examples/react/src/eliza-runtime.ts` | 69 | close, getConnection, initialize, isShuttingDown |
 | `PgliteConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 424 | dataDir |
 | `PgliteErrorCode` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/pglite-error-compat.ts` | 16 |  |
-| `PglitePidFileStatus` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1770 |  |
-| `PgliteRecoveryAction` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1778 |  |
+| `PglitePidFileStatus` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1773 |  |
+| `PgliteRecoveryAction` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1781 |  |
 | `PgliteVaultOptions` | interface | yes | `@elizaos/vault` | `packages/vault/src/pglite-vault.ts` | 66 | auditPath, dataDir, legacyStorePath, logger, masterKey |
 | `PhaseName` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 108 |  |
 | `PhaseStatus` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 101 |  |
@@ -7712,6 +7695,7 @@ Showing 120 of 875; see JSON for the full set.
 | `PinnedFetchInput` | type | no | `@elizaos/core` | `packages/core/src/features/documents/url-ingest.ts` | 103 | init, target, timeoutMs, url |
 | `PinnedHostname` | type | yes | `@elizaos/core` | `packages/core/src/network/ssrf.ts` | 255 | addresses, hostname, lookup |
 | `PinnedLookup` | type | yes | `@elizaos/core` | `packages/core/src/network/ssrf.ts` | 23 | (call) |
+| `PipelineBackends` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/pipeline.ts` | 238 | click, describe, ground, mode, ocr, recordedClicks |
 | `PipelineBreakdown` | type | no | `eliza` | `packages/benchmarks/framework/compare.ts` | 16 |  |
 | `PipelineBreakdown` | interface | yes | `@elizaos/benchmark-framework` | `packages/benchmarks/framework/typescript/src/metrics.ts` | 28 | action_dispatch_avg_ms, compose_state_avg_ms, evaluator_avg_ms, framework_time_total_ms, memory_create_avg_ms, memory_get_avg_ms, model_call_avg_ms, model_time_total_ms... (+2) |
 | `PipelineHookContext` | type | yes | `@elizaos/core` | `packages/core/src/types/pipeline-hooks.ts` | 155 | accumulated, actionName, chunk, content, durationMs, field, isAutonomous, memory... (+14) |
@@ -7724,8 +7708,10 @@ Showing 120 of 875; see JSON for the full set.
 | `PipelineMessageCorrelation` | type | yes | `@elizaos/core` | `packages/core/src/types/pipeline-hooks.ts` | 116 | responseId, roomId, runId |
 | `PipelineMessageTurnFields` | type | yes | `@elizaos/core` | `packages/core/src/types/pipeline-hooks.ts` | 123 | message |
 | `PipelineNode` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/composites/trajectories/trajectory-pipeline-graph.tsx` | 22 | callCount, icon, id, label, status |
+| `PipelineStage` | type | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 79 |  |
 | `PipelineStageId` | type | yes | `@elizaos/ui` | `packages/ui/src/components/composites/trajectories/trajectory-pipeline-graph.tsx` | 15 |  |
 | `PipelineStageName` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 759 |  |
+| `PipelineTrace` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 102 | displays, duration_ms, failures, finished_at, fixture_id, mode, run_id, stages... (+2) |
 | `PlaceCallOptions` | interface | yes | `@elizaos/capacitor-phone` | `packages/native-plugins/phone/src/definitions.ts` | 1 | number |
 | `PlanActionRecoverySource` | type | yes | `@elizaos/core` | `packages/core/src/runtime/plan-actions-extractor.ts` | 43 |  |
 | `PlanExecutionResult` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-planning/services/planning-service.ts` | 76 | completedSteps, duration, errors, planId, results, success, totalSteps |
@@ -7753,7 +7739,7 @@ Showing 120 of 875; see JSON for the full set.
 | `PlanState` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-planning/types.ts` | 78 | currentStepIndex, endTime, error, startTime, status |
 | `PlanStatus` | type | yes | `@elizaos/core` | `packages/core/src/features/advanced-planning/types.ts` | 16 |  |
 | `PlanSubaction` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-planning/actions/plan.ts` | 29 |  |
-| `Platform` | type | no | `eliza-app` | `packages/homepage/src/pages/leaderboard.tsx` | 129 |  |
+| `Platform` | type | no | `eliza-app` | `packages/homepage/src/pages/leaderboard.tsx` | 91 |  |
 | `Platform` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/permissions.ts` | 78 |  |
 | `Platform` | type | no | `@elizaos/shared` | `packages/shared/src/utils/permission-deep-links.ts` | 48 |  |
 | `PlatformContactSeed` | interface | yes | `@elizaos/core` | `packages/core/src/services/relationships.ts` | 153 | categories, displayLabel, displayName, identifier, notes, platform, tags |
@@ -7799,7 +7785,6 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginCandidate` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 226 | idHint, origin, packageDescription, packageDir, packageManifest, packageName, packageVersion, rootDir... (+2) |
 | `PluginCapabilities` | interface | yes | `@elizaos/ui` | `packages/ui/src/bridge/plugin-bridge.ts` | 56 | camera, canvas, contacts, desktop, gateway, location, messages, phone... (+4) |
 | `PluginCardProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/pages/PluginCard.tsx` | 12 | allowCustomOrder, draggingId, dragOverId, hasPluginToggleInFlight, installingPlugins, installLabel, installProgress, installProgressLabel... (+20) |
-| `PluginCategory` | type | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 55 |  |
 | `PluginChoice` | interface | no | `@elizaos/core` | `packages/core/src/features/plugin-manager/actions/plugin-handlers/create.ts` | 60 | key, label, pluginName, pluginPath |
 | `PluginColumn` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-store.ts` | 39 | default, name, notNull, primaryKey, references, type |
 | `PluginColumnType` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin-store.ts` | 27 |  |
@@ -7809,6 +7794,8 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginCompilerResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/plugin-compiler.ts` | 34 | durationMs, format, outFile, target, warnings |
 | `PluginCompletenessEntry` | interface | no | `@elizaos/core` | `packages/core/src/providers/plugin-configuration-completeness.ts` | 24 | missing, name, ready |
 | `PluginComponents` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/types.ts` | 31 | actions, eventHandlers, providers, services |
+| `PluginComputerUseCaptureModule` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-capture.ts` | 29 | captureAllDisplays, captureDisplay |
+| `PluginComputerUseDisplaysModule` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-capture.ts` | 17 | isHeadless, listDisplays, NoDisplayError |
 | `PluginConfigClient` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-config/types.ts` | 89 | activate, createConfigRequest, getRequirements, getStatus |
 | `PluginConfigDeliveryEntry` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-config/types.ts` | 50 | delivered, error, key, requestId, target |
 | `PluginConfigDeliveryResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-config/types.ts` | 58 | entries, pluginName |
@@ -7827,16 +7814,11 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginDiscoveryResult` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 252 | candidates, diagnostics |
 | `PluginDisposeHook` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/plugin-lifecycle.ts` | 81 |  |
 | `PluginDisposeHook` | type | no | `@elizaos/core` | `packages/core/src/plugin-lifecycle.ts` | 35 |  |
-| `PluginDriftDiagnostic` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 240 | category, drift_flags, enabled_allowlist, enabled_ui, is_active, npmName, pluginId |
-| `PluginDriftDiagnosticsReport` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 256 | plugins, summary |
-| `PluginDriftDiagnosticsSummary` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 250 | byFlag, total, withDrift |
-| `PluginDriftFlag` | type | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 234 |  |
 | `PluginEnableIntent` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 48 | kind, pluginId |
-| `PluginEntry` | interface | no | `@elizaos/agent` | `packages/agent/src/api/plugin-routes.ts` | 68 | app, autoEnabled, betaVersion, builtIn, capabilityReason, capabilityStatus, category, configKeys... (+35) |
 | `PluginEntry` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/server-types.ts` | 79 | autoEnabled, betaVersion, builtIn, capabilityReason, capabilityStatus, category, configKeys, configUiHints... (+33) |
 | `PluginEntry` | type | yes | `@elizaos/app-core` | `packages/app-core/src/registry/schema.ts` | 301 |  |
 | `PluginEntryConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 457 | config, enabled |
-| `PluginEntryLike` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 17 | configured, enabled, isActive, loadError |
+| `PluginEntryLike` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 43 | configured, enabled, isActive, loadError |
 | `PluginEventRegistration` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 552 | eventName, handler |
 | `PluginEvents` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 198 |  |
 | `PluginFilter` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin-store.ts` | 108 |  |
@@ -7846,7 +7828,6 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginForUiSpec` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/plugin-ui-spec.ts` | 23 | category, description, enabled, id, name, parameters |
 | `PluginGameModalProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/pages/plugin-view-modal.tsx` | 12 | effectiveGameSelected, gameMobileDetail, gameNarrow, gameVisiblePlugins, isConnectorLikeMode, onBack, onConfigSave, onOpenExternalUrl... (+16) |
 | `PluginGatewayMethod` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 77 | description, inputSchema, method, outputSchema |
-| `PluginHealthProbeResult` | type | no | `@elizaos/agent` | `packages/agent/src/api/plugin-routes.ts` | 143 | message, ok |
 | `PluginHookContext` | interface | yes | `@elizaos/core` | `packages/core/src/services/plugin-hooks.ts` | 16 | character, env, plugins |
 | `PluginIndex` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/plugin-discovery-helpers.ts` | 117 | $schema, count, generatedAt, plugins |
 | `PluginIndex` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-store.ts` | 55 | columns, name, unique |
@@ -7873,7 +7854,6 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginManifestAppSessionMode` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 88 |  |
 | `PluginManifestAppViewer` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 100 | embedParams, postMessageAuth, sandbox, url |
 | `PluginManifestCandidate` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/plugin-manifest.ts` | 89 | packageName, packageRoot |
-| `PluginManifestFile` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 94 | plugins |
 | `PluginManifestLoadResult` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 205 | error, manifest, manifestPath, ok |
 | `PluginManifestRecord` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 262 | channels, configSchema, configUiHints, description, id, kind, manifestPath, name... (+8) |
 | `PluginManifestRegistry` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 300 | diagnostics, plugins |
@@ -7886,7 +7866,7 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginModuleShape` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/plugin-types.ts` | 35 | [key:string], default, plugin |
 | `PluginModuleShape` | type | yes | `@elizaos/app-core` | `packages/app-core/src/platform/empty-node-module.ts` | 146 |  |
 | `PluginModuleShape` | type | yes | `@elizaos/app-core` | `packages/app-core/src/test-support/test-helpers.ts` | 60 | [key:string], default, plugin |
-| `PluginModuleShape` | type | yes | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 61 | [key:string], default, plugin |
+| `PluginModuleShape` | type | yes | `@elizaos/shared` | `packages/shared/src/test-support/test-helpers.ts` | 57 | [key:string], default, plugin |
 | `PluginMutationApplyMode` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 461 |  |
 | `PluginMutationResponse` | interface | no | `@elizaos/agent` | `packages/agent/src/actions/plugin.ts` | 61 | error, message, ok, pluginName, requiresRestart, success, version |
 | `PluginMutationResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 468 | applied, error, loadedPackages, message, ok, pluginName, reloadedPackages, requiresRestart... (+3) |
@@ -7912,7 +7892,6 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginRegistry` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/types.ts` | 66 | getAllPlugins, getLoadedPlugins, getPlugin, plugins, updatePluginState |
 | `PluginRegistry` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-manifest.ts` | 434 | diagnostics, plugins |
 | `PluginRequirementStatus` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 235 | invalid, message, missingOptional, missingRequired, pluginId, ready |
-| `PluginRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/plugin-routes.ts` | 250 | aggregateSecrets, applySignalQrOverride, applyWhatsAppQrOverride, BLOCKED_ENV_KEYS, buildPluginEvmDiagnosticEntry, discoverInstalledPlugins, error, EVM_PLUGIN_PACKAGE... (+16) |
 | `PluginRuntimeApplyMode` | type | yes | `@elizaos/agent` | `packages/agent/src/api/plugin-runtime-apply.ts` | 6 |  |
 | `PluginRuntimeApplyResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/plugin-runtime-apply.ts` | 13 | appliedConfigPackage, loadedPackages, mode, reason, reloadedPackages, requiresRestart, restartedRuntime, unloadedPackages |
 | `PluginSchema` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin-store.ts` | 76 | pluginName, tables, version |
@@ -7941,11 +7920,13 @@ Showing 120 of 875; see JSON for the full set.
 | `PluginUiTheme` | interface | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 450 | borderColor, errorColor, errorSize, fieldGap, focusRing, groupGap, helpColor, helpSize... (+5) |
 | `PluginUninstallResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/plugin-manager-types.ts` | 75 | error, pluginName, requiresRestart, success |
 | `PluginValidationResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/plugin-validation.ts` | 16 | errors, valid, warnings |
+| `PluginVisionOcrCoordsModule` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-ocr.ts` | 47 | RapidOcrCoordAdapter |
 | `PluginWidgetDeclaration` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 396 | componentExport, defaultEnabled, developerOnly, icon, id, label, navGroup, order... (+2) |
 | `PluginWidgetDeclaration` | interface | yes | `@elizaos/ui` | `packages/ui/src/widgets/types.ts` | 27 | uiSpec |
 | `PluginWidgetDeclarationServer` | type | yes | `@elizaos/agent` | `packages/agent/src/config/plugin-widgets.ts` | 15 |  |
 | `PluginWithAdapter` | type | no | `@elizaos/core` | `packages/core/src/runtime-composition.ts` | 46 | adapter |
 | `PluginWithSecrets` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/services/plugin-activator.ts` | 43 | onSecretChanged, onSecretsReady, requiredSecrets |
+| `Point` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 32 | x, y |
 | `Pointer` | type | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/__stubs__/bun-ffi.ts` | 16 |  |
 | `PolicyAddressableAction` | type | no | `@elizaos/core` | `packages/core/src/runtime/action-role-policy.ts` | 67 | name, similes |
 | `PolicyConfigMap` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/policy-controls/types.ts` | 56 | approved-addresses, auto-approve-threshold, rate-limit, spending-limit, time-window |
@@ -7972,7 +7953,7 @@ Showing 120 of 875; see JSON for the full set.
 | `PopupStatusModel` | interface | yes | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/src/popup-model.ts` | 11 | badge, checklist, detail, kind, primaryAction, primaryLabel, showSync, summary... (+1) |
 | `PortPreferenceResolution` | interface | yes | `@elizaos/core` | `packages/core/src/runtime-env.ts` | 92 | changeLabel, port, sourceLabel, winningKey |
 | `PortPreferenceResolution` | interface | yes | `@elizaos/shared` | `packages/shared/src/runtime-env.ts` | 92 | changeLabel, port, sourceLabel, winningKey |
-| `Position` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 73 | x, y |
+| `Position` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 68 | x, y |
 | `Position` | interface | no | `@elizaos/example-trader-ts` | `packages/examples/trader/src/components/PositionList.tsx` | 1 | amount, currentPrice, entryPrice, id, pnl, pnlPercent, symbol, tokenAddress |
 | `PositionListProps` | interface | no | `@elizaos/example-trader-ts` | `packages/examples/trader/src/components/PositionList.tsx` | 12 | onClosePosition, positions |
 | `PositionSummary` | interface | yes | `@elizaos/example-lp-manager` | `packages/examples/lp-manager/src/types.ts` | 35 | chain, chainId, currentApr, dex, inRange, isConcentrated, poolId, priceDistancePercent... (+7) |
@@ -8066,6 +8047,8 @@ Showing 120 of 875; see JSON for the full set.
 | `PowerState` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 256 | idleState, idleTime, onBattery |
 | `PowerUserCardProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/shell/RuntimeGate.tsx` | 2268 | ctaLabel, description, eyebrow, onClick, title |
 | `PreCallbackHandler` | interface | yes | `@elizaos/core` | `packages/core/src/types/prompt-batcher.ts` | 123 | actionFilter, apply, execOptions, fallback, id, model, preamble, providers... (+2) |
+| `PredictedAction` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 71 | keys, text, type, x, y |
+| `Prediction` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 57 | actions, click, error, latencyMs, text |
 | `PreferencesPlugin` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/persistence.ts` | 34 | get, keys, remove, set |
 | `PrefillPlan` | interface | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 89 | prefix, runs |
 | `PrefixHash` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/context-hash.ts` | 26 | hash, index, segmentHash |
@@ -8276,16 +8259,24 @@ Showing 120 of 875; see JSON for the full set.
 | `ReadJsonBodyOptions` | interface | yes | `@elizaos/core` | `packages/core/src/api/http-helpers.ts` | 147 | nonObjectMessage, nonObjectStatus, parseErrorMessage, parseErrorStatus, readErrorMessage, readErrorStatus, requireObject |
 | `ReadTextBodyOptions` | interface | yes | `@elizaos/core` | `packages/core/src/api/http-helpers.ts` | 133 |  |
 | `ReadyPhaseDeps` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/startup-phase-hydrate.ts` | 67 | activeConversationIdRef, appendAutonomousEvent, elizaCloudLoginPollTimer, elizaCloudPollInterval, hasPtySessionsRef, loadPlugins, loadWalletConfig, notifyAssistantEvent... (+12) |
+| `RealCaptureResult` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-capture.ts` | 54 | captures, providerInfo |
+| `RealDriverOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-driver.ts` | 38 | controlledWindow, noopOnly, sandboxClick |
+| `RealOcrInput` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-ocr.ts` | 28 | displayId, pngBytes, sourceX, sourceY, tileHeight, tileWidth |
+| `RealOcrProvider` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-ocr.ts` | 37 | describe, name |
+| `RealRuntimeAdapter` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-runtime.ts` | 41 | describeImage, providerInfo |
 | `RealTestRuntimeOptions` | interface | yes | `@elizaos/core` | `packages/core/src/testing/real-runtime.ts` | 37 | characterName, pgliteDir, plugins, preferredProvider, removePgliteDirOnCleanup, withDiscord, withLLM, withTelegram |
 | `RealTestRuntimeResult` | interface | yes | `@elizaos/core` | `packages/core/src/testing/real-runtime.ts` | 56 | cleanup, pgliteDir, providerConfig, providerName, runtime |
+| `RealVlmGroundingExtra` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-vlm.ts` | 25 | tileHeight, tileWidth |
 | `ReasoningFormat` | enum | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/enums/chat.ts` | 11 | AUTO, NONE |
 | `RebalanceResult` | interface | no | `@elizaos/example-lp-manager` | `packages/examples/lp-manager/src/services/LpMonitoringService.ts` | 143 | error, executedAt, fromPool, newApr, previousApr, success, toPool, transactionIds |
 | `RecentMessagesProviderRecord` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/conversation-compactor-runtime.ts` | 961 | data, providerName, text, values |
 | `RecognisedPermissionNamespace` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/app-permissions.ts` | 35 |  |
-| `RecommendationOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/recommendation.ts` | 249 | binaryKernels |
+| `RecommendationOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/recommendation.ts` | 252 | binaryKernels |
 | `RecommendationPlatformClass` | type | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/recommendation.ts` | 16 |  |
 | `RecommendedModelSelection` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/recommendation.ts` | 24 | alternatives, fit, model, platformClass, reason, slot |
 | `RecordedCacheStage` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 242 | diffFromPriorStage, prefixHash, segmentHashes |
+| `RecordedClick` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-driver.ts` | 30 | at, mode, note, remappedTo, target |
+| `RecordedClick` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/stubs/stub-driver.ts` | 19 | at, target |
 | `RecordedEvaluationStage` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 211 | [key:string] |
 | `RecordedFactsAndRelationshipsStage` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 221 | candidates, kept, thought, written |
 | `RecordedModelCall` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 60 | costUsd, finishReason, messages, modelName, modelType, priceTableId, prompt, provider... (+6) |
@@ -8305,7 +8296,7 @@ Showing 120 of 875; see JSON for the full set.
 | `RecordLlmCallDetails` | type | yes | `@elizaos/core` | `packages/core/src/trajectory-utils.ts` | 106 | response |
 | `RecursiveCharacterTextSplitterParams` | interface | yes | `@elizaos/core` | `packages/core/src/utils/recursive-character-text-splitter.ts` | 4 | chunkOverlap, chunkSize, keepSeparator, lengthFunction, separators |
 | `RedactionPolicy` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 671 |  |
-| `RedactionPolicy` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 626 |  |
+| `RedactionPolicy` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 621 |  |
 | `RedactOptions` | type | yes | `@elizaos/core` | `packages/core/src/security/redact.ts` | 61 | mode, patterns |
 | `RedactSensitiveMode` | type | yes | `@elizaos/core` | `packages/core/src/security/redact.ts` | 18 |  |
 | `RefinementPrepared` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/skill-items.ts` | 92 | service, skills, trajectory, trajectoryDigest |
@@ -8321,7 +8312,6 @@ Showing 120 of 875; see JSON for the full set.
 | `RegistryAppInfo` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 141 | builtIn, capabilities, category, description, developerOnly, directory, displayName, firstParty... (+21) |
 | `RegistryAppMeta` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/registry-client-types.ts` | 16 | bridgeExport, capabilities, category, developerOnly, displayName, heroImage, icon, launchType... (+9) |
 | `RegistryAppNpmInfo` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/apps.ts` | 134 | package, v0Version, v1Version, v2Version |
-| `RegistryAppPlugin` | interface | no | `@elizaos/agent` | `packages/agent/src/services/app-manager.ts` | 169 | displayName, launchType, launchUrl, runtimePlugin, session, viewer |
 | `RegistryAppSessionFeature` | type | yes | `@elizaos/agent` | `packages/agent/src/services/registry-client-types.ts` | 12 |  |
 | `RegistryAppSessionMeta` | type | yes | `@elizaos/agent` | `packages/agent/src/services/registry-client-types.ts` | 13 |  |
 | `RegistryAppSessionMode` | type | yes | `@elizaos/agent` | `packages/agent/src/services/registry-client-types.ts` | 11 |  |
@@ -8331,13 +8321,9 @@ Showing 120 of 875; see JSON for the full set.
 | `RegistryConfig` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 919 | chainId, collectionAddress, configured, explorerUrl, registryAddress |
 | `RegistryEndpoint` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 483 | enabled, label, url |
 | `RegistryEntry` | type | yes | `@elizaos/app-core` | `packages/app-core/src/registry/schema.ts` | 304 |  |
-| `RegistryEntry` | interface | no | `elizaos-plugin-registry-site` | `packages/registry/site/src/App.tsx` | 20 | app, builtIn, description, directory, firstParty, git, homepage, kind... (+10) |
 | `RegistryFile` | interface | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/registry.ts` | 21 | models, version |
-| `RegistryItem` | interface | no | `elizaos-plugin-registry-site` | `packages/registry/site/src/App.tsx` | 70 | entry, name |
 | `RegistryKind` | type | yes | `@elizaos/app-core` | `packages/app-core/src/registry/schema.ts` | 305 |  |
-| `RegistryKind` | type | no | `elizaos-plugin-registry-site` | `packages/registry/site/src/App.tsx` | 17 |  |
 | `RegistryLike` | interface | no | `@elizaos/app-core` | `packages/app-core/src/services/sensitive-requests/index.ts` | 34 | register |
-| `RegistryOrigin` | type | no | `elizaos-plugin-registry-site` | `packages/registry/site/src/App.tsx` | 18 |  |
 | `RegistryPlugin` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/services/pluginRegistryService.ts` | 87 | builtIn, capabilities, category, description, directory, displayName, firstParty, git... (+20) |
 | `RegistryPlugin` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 389 | builtIn, bundled, compatibility, description, directory, firstParty, git, gitRepo... (+18) |
 | `RegistryPluginAppMeta` | type | yes | `@elizaos/agent` | `packages/agent/src/services/plugin-manager-types.ts` | 20 |  |
@@ -8494,7 +8480,7 @@ Showing 120 of 875; see JSON for the full set.
 | `RequestBodySummary` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/utils/request-helpers.ts` | 7 | kind, size |
 | `RequestCodingAgentContainerRequest` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/cloud-coding-containers.ts` | 155 |  |
 | `RequestCodingAgentContainerResponse` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/cloud-coding-containers.ts` | 198 | data, message, success |
-| `RequestContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 1212 | onRestart, onRuntimeSwapped |
+| `RequestContext` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 1260 | onRestart, onRuntimeSwapped |
 | `RequestIdentityVerificationParams` | interface | no | `@elizaos/core` | `packages/core/src/features/approvals/actions/request-identity-verification.ts` | 38 | challengeKind, challengePayload, expectedSignerIdentityId, expiresInMs, metadata |
 | `RequestSchema` | type | no | `@elizaos/example-mcp-server` | `packages/examples/mcp/server.ts` | 194 |  |
 | `RequestTiming` | interface | no | `eliza` | `packages/benchmarks/skillsbench/tasks/fix-visual-stability/environment/skills/browser-testing/measure.ts` | 3 | end, start, url |
@@ -8504,7 +8490,6 @@ Showing 120 of 875; see JSON for the full set.
 | `RequiredStateFragments` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/conversation-compactor.ts` | 241 | decisions, entities, facts, forbidden_behaviors, pending_actions |
 | `RequiredTask` | interface | no | `@elizaos/browser-bridge-extension` | `packages/browser-bridge-extension/entrypoints/blocked.ts` | 3 | completed, id, title |
 | `RequiredVoiceArtifact` | type | no | `@elizaos/app-core` | `packages/app-core/scripts/voice-e2e-hardware.ts` | 30 |  |
-| `RequireFn` | type | no | `@elizaos/agent` | `packages/agent/src/cli/mobile-fs-shim.ts` | 335 | __mobileFsShimGuarded |
 | `ResearchAnnotation` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 924 | endIndex, startIndex, title, url |
 | `ResearchCodeInterpreterCall` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 967 | code, id, output, status, type |
 | `ResearchCodeInterpreterTool` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 826 | container, type |
@@ -8528,7 +8513,6 @@ Showing 120 of 875; see JSON for the full set.
 | `ResolvedApiSecurityConfig` | interface | yes | `@elizaos/core` | `packages/core/src/runtime-env.ts` | 34 | allowedHosts, allowedOrigins, allowNullOrigin, bindHost, disableAutoApiToken, isLoopbackBind, isWildcardBind, token |
 | `ResolvedApiSecurityConfig` | interface | yes | `@elizaos/shared` | `packages/shared/src/runtime-env.ts` | 34 | allowedHosts, allowedOrigins, allowNullOrigin, bindHost, disableAutoApiToken, isLoopbackBind, isWildcardBind, token |
 | `ResolvedApp` | interface | no | `@elizaos/ui` | `packages/ui/src/components/pages/AppDetailsView.tsx` | 71 | info, pluginId, source, windowPath |
-| `ResolvedAppHero` | type | no | `@elizaos/agent` | `packages/agent/src/api/apps-routes.ts` | 277 | absolutePath, contentType, kind, svg |
 | `ResolvedAppModuleTarget` | interface | no | `@elizaos/agent` | `packages/agent/src/services/app-package-modules.ts` | 221 | bridgeExport, localPath, packageName |
 | `ResolvedAuthContext` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/auth/auth-context.ts` | 30 | identity, session, source |
 | `ResolvedBundleArtifacts` | interface | no | `@elizaos/app-core` | `packages/app-core/scripts/voice-e2e-hardware.ts` | 104 | asrMmproj, asrModel, bundleRoot, dylib, speakerPreset, ttsModel, ttsTokenizer |
@@ -8538,10 +8522,10 @@ Showing 120 of 875; see JSON for the full set.
 | `ResolvedContentPack` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/content-pack.ts` | 103 | avatarIndex, backgroundUrl, colorScheme, manifest, personality, source, streamOverlayPath, vrmPreviewUrl... (+2) |
 | `ResolvedContextSignalSpec` | type | yes | `@elizaos/agent` | `packages/agent/src/actions/context-signal-lexicon.ts` | 47 | contextLimit, locale, strongTerms, weakTerms |
 | `ResolvedCredential` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/credential-resolver.ts` | 133 | apiKey, authType, envVar, providerId |
-| `ResolvedDynamicPage` | interface | no | `@elizaos/ui` | `packages/ui/src/App.tsx` | 383 | componentExport, developerOnly, id, pluginId, registration |
+| `ResolvedDynamicPage` | interface | no | `@elizaos/ui` | `packages/ui/src/App.tsx` | 377 | componentExport, developerOnly, id, pluginId, registration |
 | `ResolvedElizaCloudTopology` | type | yes | `@elizaos/core` | `packages/core/src/contracts/cloud-topology.ts` | 15 | linked, provider, runtime, services, shouldLoadPlugin |
 | `ResolvedElizaCloudTopology` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/cloud-topology.ts` | 15 | linked, provider, runtime, services, shouldLoadPlugin |
-| `ResolvedEngine` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 54 | engine, modelPath, tierId |
+| `ResolvedEngine` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 53 | engine, modelPath, tierId |
 | `ResolvedField` | interface | yes | `@elizaos/shared` | `packages/shared/src/config/config-catalog.ts` | 998 | advanced, fieldType, group, hidden, hint, key, order, readonly... (+5) |
 | `ResolvedField` | interface | yes | `@elizaos/ui` | `packages/ui/src/config/config-catalog.ts` | 998 | advanced, fieldType, group, hidden, hint, key, order, readonly... (+5) |
 | `ResolvedGpuLayers` | type | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/engine.ts` | 35 |  |
@@ -8572,13 +8556,13 @@ Showing 120 of 875; see JSON for the full set.
 | `ResolveOwnerLocaleOptions` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/locale-detection.ts` | 151 | defaultLocale, ownerLocale, recentMessage |
 | `ResolveProfilesResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/vault-profile-resolver.ts` | 28 | failed, overridden, skipped |
 | `ResolveRendererAssetOptions` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/renderer-static.ts` | 12 | existsSync, rendererDir, statSync, urlPath |
-| `ResolveResult` | type | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 60 | engine, kind, reason |
+| `ResolveResult` | type | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 59 | engine, kind, reason |
 | `ResolveResult` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference-gpu/gpu-profile-loader.ts` | 189 | detectedName, error, gpuId, ok, profile, reason |
 | `ResolveTargetsArgs` | interface | no | `@elizaos/core` | `packages/core/src/runtime/addressed-to.ts` | 115 | addressedTo, message, runtime |
 | `ResourceMapperField` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 66 | canBeUsedToMatch, defaultMatch, display, displayName, id, options, readOnly, removed... (+2) |
-| `ResourceMapperField` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 61 | canBeUsedToMatch, defaultMatch, display, displayName, id, options, readOnly, removed... (+2) |
+| `ResourceMapperField` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 56 | canBeUsedToMatch, defaultMatch, display, displayName, id, options, readOnly, removed... (+2) |
 | `ResourceMapperValue` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 57 | attemptToConvertTypes, convertFieldsToString, mappingMode, matchingColumns, schema, value |
-| `ResourceMapperValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 52 | attemptToConvertTypes, convertFieldsToString, mappingMode, matchingColumns, schema, value |
+| `ResourceMapperValue` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 47 | attemptToConvertTypes, convertFieldsToString, mappingMode, matchingColumns, schema, value |
 | `Resources` | type | yes | `@elizaos/app-core` | `packages/app-core/src/registry/schema.ts` | 146 |  |
 | `ResourceStats` | interface | yes | `@elizaos/benchmark-framework` | `packages/benchmarks/framework/typescript/src/metrics.ts` | 43 | heap_used_end_mb, heap_used_peak_mb, heap_used_start_mb, memory_delta_mb, memory_rss_end_mb, memory_rss_peak_mb, memory_rss_start_mb |
 | `ResourceTreeNode` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/components/app/mcp/McpResourcesBrowser/mcp-resources-browser.ts` | 4 | children, isFiltered, name, resource |
@@ -8732,6 +8716,8 @@ Showing 120 of 875; see JSON for the full set.
 | `RunBenchOptions` | interface | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/runner.ts` | 20 | modes, n, onProgress, tasks |
 | `RunCommandOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/providers/workspace.ts` | 26 | cwd, env, timeoutMs |
 | `RunCommandResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/providers/workspace.ts` | 20 | code, stderr, stdout |
+| `RunDisplayArgs` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/pipeline.ts` | 257 | backends, capture, groundingTarget, maxTileEdge |
+| `RunDisplayResult` | interface | no | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/pipeline.ts` | 264 | failures, record, stages |
 | `RunEvaluatorParams` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/planner-types.ts` | 175 | context, effects, iteration, modelType, parentStageId, provider, recorder, runtime... (+2) |
 | `RunEventPayload` | interface | yes | `@elizaos/core` | `packages/core/src/types/events.ts` | 178 | duration, endTime, entityId, error, messageId, roomId, runId, startTime... (+1) |
 | `RunLifeOpsWorkflowRequest` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/lifeops.ts` | 3616 | confirmBrowserActions, now |
@@ -8741,6 +8727,10 @@ Showing 120 of 875; see JSON for the full set.
 | `RunnerContext` | interface | yes | `@elizaos/scenario-runner` | `packages/scenario-runner/src/types.ts` | 83 | actionsCalled, approvalRequests, artifacts, connectorDispatches, memoryWrites, stateTransitions, turns |
 | `RunningAppsRowProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/apps/RunningAppsRow.tsx` | 7 | busyRunId, catalogApps, onOpenRun, onStopRun, runs, stoppingRunId |
 | `RunningInstall` | interface | no | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/flows/install-package-flow.ts` | 184 | promise, state |
+| `RunOneArgs` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/runner.ts` | 224 | benchmark, runtime, samples, smoke, tier |
+| `RunPipelineOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/pipeline.ts` | 70 | fixtureId, groundingTarget, maxTileEdge, reportDir, runId, writeReport |
+| `RunPipelineResult` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/pipeline.ts` | 111 | recordedClicks, reportPath, trace |
+| `RunRealPipelineOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/pipeline.ts` | 84 | controlledWindowBinary, groundingTarget, maxTileEdge, noopClick, reportDir, runId, skipControlledWindow, writeReport |
 | `RunResetParams` | interface | no | `@elizaos/app-core` | `packages/app-core/src/cli/program/register.auth.ts` | 138 | challenge, cleanup, env, log, proofPollIntervalMs, proofReader, proofTimeoutMs, skipProofCleanup... (+1) |
 | `RunResetResult` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/cli/program/register.auth.ts` | 158 | message, ok, reason |
 | `RunResult` | interface | no | `@elizaos/app-core` | `packages/app-core/scripts/streaming-pipeline-bench.ts` | 125 | firstPhraseToTtsMs, interTokenSamples, phraseTexts, tokenCount, totalMs, ttftMs, ttftToTtsMs, ttsCalls |
@@ -8757,7 +8747,7 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimeActionLike` | type | yes | `@elizaos/core` | `packages/core/src/runtime/action-catalog.ts` | 32 | cacheScope, cacheStable, compressedDescription, contexts, description, descriptionCompressed, examples, name... (+5) |
 | `RuntimeAdapter` | interface | no | `@elizaos/app-core` | `packages/app-core/src/cli/program/register.auth.ts` | 49 | close, db, initialize |
 | `RuntimeAdapterAutonomyCompat` | interface | no | `@elizaos/app-core` | `packages/app-core/src/runtime/eliza.ts` | 166 | upsertEntities |
-| `RuntimeAdapterWithClose` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 957 | close |
+| `RuntimeAdapterWithClose` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 960 | close |
 | `RuntimeAutonomyCompat` | interface | no | `@elizaos/app-core` | `packages/app-core/src/runtime/eliza.ts` | 135 | addParticipant, createEntity, ensureParticipantInRoom, ensureRoomExists, ensureWorldExists, getEntityById, updateEntity |
 | `RuntimeBundle` | type | no | `@elizaos/example-app-capacitor-backend` | `packages/examples/app/capacitor/backend/src/runtimeManager.ts` | 24 | roomId, runtime, userId, worldId |
 | `RuntimeBundle` | type | no | `@elizaos/example-app-electron` | `packages/examples/app/electron/backend/src/runtimeManager.ts` | 22 | roomId, runtime, userId, worldId |
@@ -8772,7 +8762,7 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimeDb` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/trajectory-internals.ts` | 40 | execute |
 | `RuntimeDbExecutor` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/_factCandidates.ts` | 15 | execute |
 | `RuntimeDbExecutor` | interface | no | `@elizaos/core` | `packages/core/src/services/relationships.ts` | 2332 | execute |
-| `RuntimeDebugSerializeOptions` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 66 | maxArrayLength, maxDepth, maxObjectEntries, maxStringLength |
+| `RuntimeDebugSerializeOptions` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 92 | maxArrayLength, maxDepth, maxObjectEntries, maxStringLength |
 | `RuntimeDebugSerializeSettings` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 681 | maxArrayLength, maxDepth, maxObjectEntries, maxStringLength |
 | `RuntimeDebugSnapshot` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 702 | generatedAt, meta, order, runtimeAvailable, sections, settings |
 | `RuntimeDebugSnapshot` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 290 | generatedAt, meta, order, runtimeAvailable, sections, settings |
@@ -8803,7 +8793,6 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimeLike` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/actions/room.ts` | 57 | getRoomsForParticipant |
 | `RuntimeLike` | type | yes | `@elizaos/example-roblox-agent` | `packages/examples/roblox/app.ts` | 43 | agentId, character, ensureConnection, getService, messageService |
 | `RuntimeLoggerWithLevel` | type | no | `@elizaos/agent` | `packages/agent/src/actions/logs.ts` | 26 | level |
-| `RuntimeMessageService` | interface | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 145 | handleMessage |
 | `RuntimeMessageServiceCompat` | type | no | `@elizaos/app-core` | `packages/app-core/src/runtime/telegram-standalone-handler.ts` | 44 | messageService |
 | `RuntimeMode` | type | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/mode/runtime-mode.ts` | 33 |  |
 | `RuntimeMode` | type | yes | `@elizaos/ui` | `packages/ui/src/api/runtime-mode-client.ts` | 13 |  |
@@ -8821,7 +8810,7 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimeOperationListOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 158 | includeTerminal, limit, status |
 | `RuntimeOperationManager` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 264 | findActive, get, list, start |
 | `RuntimeOperationRepository` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/operations/types.ts` | 165 | appendPhase, create, findActive, findByIdempotencyKey, get, list, update, updateLastPhase |
-| `RuntimeOrderItem` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 73 | className, id, index, name |
+| `RuntimeOrderItem` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 99 | className, id, index, name |
 | `RuntimeOrderItem` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 688 | className, id, index, name |
 | `RuntimeOrderItem` | interface | yes | `@elizaos/shared` | `packages/shared/src/api/agent-api-types.ts` | 197 | className, id, index, name |
 | `RuntimeOrderItem` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 70 |  |
@@ -8829,7 +8818,6 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimePermissionId` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/runtime-permissions.ts` | 11 |  |
 | `RuntimePermissionOperation` | type | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/runtime-permissions.ts` | 12 |  |
 | `RuntimePickerTarget` | type | yes | `@elizaos/ui` | `packages/ui/src/onboarding/reload-into-runtime-picker.ts` | 27 |  |
-| `RuntimePluginLike` | interface | no | `@elizaos/app-core` | `packages/app-core/src/api/plugins-routes.ts` | 184 | description, name |
 | `RuntimePluginModule` | type | no | `@elizaos/core` | `packages/core/src/testing/pglite-runtime.ts` | 58 | default, elizaPlugin |
 | `RuntimePluginModule` | type | no | `@elizaos/core` | `packages/core/src/testing/real-runtime.ts` | 92 | default, elizaPlugin |
 | `RuntimePluginOwnership` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/plugin-lifecycle.ts` | 121 |  |
@@ -8856,7 +8844,7 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimeSendHandler` | type | no | `@elizaos/core` | `packages/core/src/plugin-lifecycle.ts` | 29 |  |
 | `RuntimeServiceClass` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/plugin-lifecycle.ts` | 70 |  |
 | `RuntimeServiceClass` | type | no | `@elizaos/core` | `packages/core/src/plugin-lifecycle.ts` | 23 |  |
-| `RuntimeServiceOrderItem` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 80 | count, index, instances, serviceType |
+| `RuntimeServiceOrderItem` | interface | no | `@elizaos/agent` | `packages/agent/src/api/health-routes.ts` | 106 | count, index, instances, serviceType |
 | `RuntimeServiceOrderItem` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 695 | count, index, instances, serviceType |
 | `RuntimeServiceOrderItem` | interface | yes | `@elizaos/shared` | `packages/shared/src/api/agent-api-types.ts` | 204 | count, index, instances, serviceType |
 | `RuntimeServiceOrderItem` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 71 |  |
@@ -8874,15 +8862,14 @@ Showing 120 of 875; see JSON for the full set.
 | `RuntimeTrajectoryExportOptions` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/trajectory-export.ts` | 32 |  |
 | `RuntimeTreeSectionKey` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/RuntimeView.tsx` | 36 |  |
 | `RuntimeUseModel` | type | no | `@elizaos/example-agent-console` | `packages/examples/agent-console/server.ts` | 290 |  |
-| `RuntimeWithActionAliases` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2125 | __elizaActionAliasesInstalled, actions |
+| `RuntimeWithActionAliases` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2128 | __elizaActionAliasesInstalled, actions |
 | `RuntimeWithBootstrapRetries` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/roles/src/index.ts` | 38 | [[BOOTSTRAP_RETRY_TIMERS_KEY]] |
 | `RuntimeWithDeleteEntities` | type | no | `@elizaos/agent` | `packages/agent/src/actions/contact.ts` | 206 | deleteEntities |
 | `RuntimeWithEmitEvent` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/prompt-optimization.ts` | 119 | emitEvent |
 | `RuntimeWithLegacySendHandlers` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/actions/message.ts` | 310 | getMessageConnectors, sendHandlers |
 | `RuntimeWithMessageConnectors` | type | no | `@elizaos/core` | `packages/core/src/features/basic-capabilities/providers/platformContext.ts` | 38 | getMessageConnectors |
 | `RuntimeWithMessageHistoryCompactionHook` | type | yes | `@elizaos/core` | `packages/core/src/runtime/conversation-compaction-hook.ts` | 45 | [[MESSAGE_HISTORY_COMPACTION_HOOK]] |
-| `RuntimeWithMethodBindings` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2118 | __elizaComponentWriteDiagnosticsInstalled, __elizaEntityCreateMutex, __elizaEntityWriteDiagnosticsInstalled, __elizaMethodBindingsInstalled |
-| `RuntimeWithModelRegistration` | type | no | `@elizaos/agent` | `packages/agent/src/cli/ios-bridge.ts` | 160 | registerModel |
+| `RuntimeWithMethodBindings` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2121 | __elizaComponentWriteDiagnosticsInstalled, __elizaEntityCreateMutex, __elizaEntityWriteDiagnosticsInstalled, __elizaMethodBindingsInstalled |
 | `RuntimeWithModelRegistration` | type | no | `@elizaos/app-core` | `packages/app-core/src/runtime/ensure-text-to-speech-handler.ts` | 35 | getModel, registerModel |
 | `RuntimeWithOrchestratorTrajectoryContext` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/trajectory-internals.ts` | 67 | __orchestratorTrajectoryCtx |
 | `RuntimeWithOverrides` | type | no | `@elizaos/agent` | `packages/agent/src/actions/logs.ts` | 73 | logLevelOverrides |
@@ -8897,6 +8884,8 @@ Showing 120 of 875; see JSON for the full set.
 | `RunVerificationReport` | interface | yes | `@elizaos/three-agent-dialogue` | `packages/benchmarks/three-agent-dialogue/verify/verify-run.ts` | 24 | emotionEntries, mixWavDurationSec, mixWavExists, mixWavNonBlank, pass, runDir, transcriptCount, turnEventCount... (+1) |
 | `SaltCache` | interface | no | `@elizaos/core` | `packages/core/src/settings.ts` | 40 | timestamp, value |
 | `SamOptions` | type | no | `eliza-vrm-demo` | `packages/examples/avatar/src/runtime/samTts.ts` | 10 | mouth, pitch, speed, throat |
+| `Sample` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 41 | id, imagePath, payload, question |
+| `SampleResult` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 80 | detail, prediction, sampleId, score |
 | `SamplerStage` | type | yes | `@elizaos/capacitor-llama` | `packages/native-plugins/llama/src/definitions.ts` | 99 | bias, descriptor, kind, plan, schema |
 | `SampleSummary` | interface | no | `@elizaos/app-core` | `packages/app-core/scripts/local-stt-bench.ts` | 53 | count, max, mean, min, p50, p90, p99 |
 | `SampleSummary` | interface | no | `@elizaos/app-core` | `packages/app-core/scripts/streaming-pipeline-bench.ts` | 82 | count, max, mean, min, p50, p90, p99 |
@@ -8908,7 +8897,7 @@ Showing 120 of 875; see JSON for the full set.
 | `SandboxEvent` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-manager.ts` | 115 | detail, metadata, timestamp, type |
 | `SandboxExecOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-manager.ts` | 73 | command, env, stdin, timeoutMs, workdir |
 | `SandboxExecResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-manager.ts` | 81 | durationMs, executedInSandbox, exitCode, stderr, stdout |
-| `SandboxFetchAuditEvent` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 573 | direction, tokenIds, url |
+| `SandboxFetchAuditEvent` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 576 | direction, tokenIds, url |
 | `SandboxManagerConfig` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-manager.ts` | 26 | binds, browser, capDrop, containerPrefix, cpus, dns, engineType, env... (+9) |
 | `SandboxMode` | type | yes | `@elizaos/agent` | `packages/agent/src/services/sandbox-manager.ts` | 15 |  |
 | `SandboxPlatformStatus` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 328 | appleContainerAvailable, arch, dockerAvailable, dockerInstalled, dockerRunning, platform, recommended, wsl2 |
@@ -8923,22 +8912,21 @@ Showing 120 of 875; see JSON for the full set.
 | `SaveCommandModalProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/chat/SaveCommandModal.tsx` | 14 | onClose, onSave, open, text |
 | `SaveData` | interface | yes | `elizagotchi` | `packages/examples/elizagotchi/src/game/types.ts` | 149 | createdAt, pet, updatedAt, version |
 | `SaveDataExecution` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 670 |  |
-| `SaveDataExecution` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 625 |  |
+| `SaveDataExecution` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 620 |  |
 | `SavedCustomCommand` | interface | yes | `@elizaos/ui` | `packages/ui/src/chat/index.ts` | 20 | createdAt, name, text |
 | `SavedLogin` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/vault-tabs/types.ts` | 96 | domain, identifier, source, title, updatedAt, username |
-| `SavedLogin` | interface | yes | `@elizaos/vault` | `packages/vault/src/credentials.ts` | 29 | domain, lastModified, notes, otpSeed, password, username |
+| `SavedLogin` | interface | yes | `@elizaos/vault` | `packages/vault/src/credentials.ts` | 28 | domain, lastModified, notes, otpSeed, password, username |
 | `SavedLoginListFailure` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-vault.ts` | 27 | message, source |
 | `SavedLoginListRecord` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-vault.ts` | 18 | domain, identifier, source, title, updatedAt, username |
 | `SavedLoginRevealRecord` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-vault.ts` | 32 | domain, identifier, password, source, totp, username |
 | `SavedLoginsListFailure` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/vault-tabs/types.ts` | 105 | message, source |
 | `SavedLoginSource` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-vault.ts` | 16 |  |
 | `SavedLoginSource` | type | yes | `@elizaos/ui` | `packages/ui/src/components/settings/vault-tabs/types.ts` | 94 |  |
-| `SavedLoginSummary` | interface | yes | `@elizaos/vault` | `packages/vault/src/credentials.ts` | 44 | domain, lastModified, username |
+| `SavedLoginSummary` | interface | yes | `@elizaos/vault` | `packages/vault/src/credentials.ts` | 43 | domain, lastModified, username |
 | `SaveFooterProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/ui/save-footer.tsx` | 5 | dirty, onSave, savedLabel, saveError, saveLabel, saveSuccess, saving, savingLabel |
 | `ScannedAction` | type | no | `@elizaos/example-agent-console` | `packages/examples/agent-console/action-scanner.ts` | 55 | absoluteFile, actionType, contextGate, contexts, declarationName, description, detectedBy, file... (+18) |
 | `ScannedParameter` | type | no | `@elizaos/example-agent-console` | `packages/examples/agent-console/action-scanner.ts` | 30 | description, enumValues, name, required, schemaType, source |
 | `ScanRoot` | interface | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/external-scanner.ts` | 24 | dir, kind, origin |
-| `ScanSeverity` | type | no | `@elizaos/agent` | `packages/agent/src/services/skill-marketplace.ts` | 23 |  |
 | `Scenario` | interface | yes | `@elizaos/configbench` | `packages/benchmarks/configbench/src/types.ts` | 49 | category, channel, checks, description, groundTruth, id, messages, name |
 | `Scenario` | interface | no | `@elizaos/benchmark-framework` | `packages/benchmarks/framework/typescript/src/bench.ts` | 133 | config, description, id, messages, name |
 | `Scenario` | interface | yes | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/types.ts` | 145 | category, description, expectedFinalState, expectedTrace, id, interruptionType, quiesceAfterMs, responseRubric... (+3) |
@@ -9007,6 +8995,8 @@ Showing 120 of 875; see JSON for the full set.
 | `ScreenshotOptions` | interface | yes | `@elizaos/capacitor-screencapture` | `packages/native-plugins/screencapture/src/definitions.ts` | 3 | captureSystemUI, format, quality, scale |
 | `ScreenshotResult` | interface | yes | `@elizaos/capacitor-screencapture` | `packages/native-plugins/screencapture/src/definitions.ts` | 10 | base64, format, height, timestamp, width |
 | `ScreenSource` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/rpc-schema.ts` | 384 | appIcon, id, name, thumbnail |
+| `ScreenSpotPayload` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/screenspot_adapter.ts` | 37 | bbox, platform |
+| `ScreenTile` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/screen-tiler.ts` | 20 | displayId, id, pngBytes, sourceH, sourceW, sourceX, sourceY, tileH... (+1) |
 | `ScriptedLlmInput` | interface | no | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/llm-scripted.ts` | 19 | callIndex, history, message, scenario, state |
 | `ScriptedLlmOutput` | interface | no | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/llm-scripted.ts` | 30 | latencyMs, parsed |
 | `ScriptedLlmProvider` | type | yes | `@elizaos/interrupt-bench` | `packages/benchmarks/interrupt-bench/src/llm-scripted.ts` | 36 |  |
@@ -9042,7 +9032,6 @@ Showing 120 of 875; see JSON for the full set.
 | `SecretConfig` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 66 | attempts, canGenerate, createdAt, description, encrypted, expiresAt, lastError, level... (+10) |
 | `SecretContext` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 118 | agentId, level, requesterId, userId, worldId |
 | `SecretEntry` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/plugin-discovery-helpers.ts` | 706 | category, description, isSet, key, maskedValue, required, sensitive, usedBy |
-| `SecretEntry` | interface | no | `@elizaos/agent` | `packages/agent/src/api/plugin-routes.ts` | 166 | category, description, isSet, key, maskedValue, required, sensitive, usedBy |
 | `SecretInfo` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 83 | category, description, isSet, key, maskedValue, required, sensitive, usedBy |
 | `SecretLevel` | type | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 22 |  |
 | `SecretMetadata` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 150 | [key:string] |
@@ -9053,7 +9042,7 @@ Showing 120 of 875; see JSON for the full set.
 | `SecretsManager` | interface | yes | `@elizaos/vault` | `packages/vault/src/manager.ts` | 99 | detectBackends, get, getActive, getPreferences, has, list, listAllSavedLogins, remove... (+4) |
 | `SecretsManagerModalState` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useSecretsManagerModal.ts` | 80 | clearFocus, close, focusKey, focusProfileId, initialTab, isOpen, open, openOnTab... (+2) |
 | `SecretsManagerOpenOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useSecretsManagerModal.ts` | 47 | focusKey, focusProfileId, tab |
-| `SecretsManagerPluginConfig` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/plugin.ts` | 31 | activationPollingMs, enableAccessLogging, enableAutoActivation, enableEncryption, encryptionSalt |
+| `SecretsManagerPluginConfig` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/plugin.ts` | 35 | activationPollingMs, enableAccessLogging, enableAutoActivation, enableEncryption, encryptionSalt |
 | `SecretsRedactOptions` | type | yes | `@elizaos/core` | `packages/core/src/security/redact.ts` | 71 | applyPatterns, secrets |
 | `SecretsServiceApi` | interface | no | `@elizaos/configbench` | `packages/benchmarks/configbench/src/handlers/eliza.ts` | 232 | getGlobal, list |
 | `SecretsServiceConfig` | interface | yes | `@elizaos/core` | `packages/core/src/features/secrets/types.ts` | 393 | enableAccessLogging, enableEncryption, encryptionSalt, maxAccessLogEntries |
@@ -9263,8 +9252,8 @@ Showing 120 of 875; see JSON for the full set.
 | `SetupIncompatibleHandler` | interface | yes | `@elizaos/configbench` | `packages/benchmarks/configbench/src/types.ts` | 112 | handlerName, reason, traces |
 | `SetupState` | type | yes | `@elizaos/app-core` | `packages/app-core/src/api/setup-contract.ts` | 18 |  |
 | `SetupStatusResponse` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/setup-contract.ts` | 27 | connector, detail, state |
-| `SharedCatalogLike` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 85 | findCatalogModel |
-| `SharedPathsLike` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 66 | elizaModelsDir |
+| `SharedCatalogLike` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 84 | findCatalogModel |
+| `SharedPathsLike` | interface | no | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/engine-resolver.ts` | 65 | elizaModelsDir |
 | `SharedWindow` | interface | no | `@elizaos/ui` | `packages/ui/src/components/shell/ShellOverlays.tsx` | 16 | __ELIZA_APP_SHARE_QUEUE__, __ELIZAOS_SHARE_QUEUE__ |
 | `ShareIngestItem` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/server-types.ts` | 59 | id, receivedAt, source, suggestedPrompt, text, title, url |
 | `ShareIngestItem` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 490 | files, suggestedPrompt |
@@ -9337,7 +9326,7 @@ Showing 120 of 875; see JSON for the full set.
 | `SignalPairingStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 75 |  |
 | `SignalProbe` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 223 | elapsedMs, error, ok, status, version |
 | `SignalQrOverlayProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/connectors/SignalQrOverlay.tsx` | 7 | accountId, onConnected |
-| `SignalShutdownContext` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 445 | beforeShutdown, getRuntime, getSandboxManager |
+| `SignalShutdownContext` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 448 | beforeShutdown, getRuntime, getSandboxManager |
 | `SignalStatus` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 231 | baseUrl, configured, lastError, lastProbeAt, lastStartAt, lastStopAt, probe, running |
 | `SignalStatusResponse` | type | no | `@elizaos/ui` | `packages/ui/src/hooks/useSignalPairing.ts` | 16 |  |
 | `SignatureVerifyInput` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/manifest-signature.ts` | 25 | body, publicKeys, signatureBase64 |
@@ -9356,35 +9345,30 @@ Showing 120 of 875; see JSON for the full set.
 | `SimulationNode` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx` | 303 | pinned, vx, vy |
 | `SkeletonFreeField` | interface | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/types.ts` | 196 | description, enumValues, key, kind |
 | `SkeletonHint` | interface | yes | `@elizaos/bench-eliza-1` | `packages/benchmarks/eliza-1/src/types.ts` | 188 | enumKey, enumValues, freeFields, type |
-| `Skill` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 73 | actions, baseDir, description, disableModelInvocation, enabled, examples, filePath, instructions... (+8) |
-| `SkillAcknowledgmentMap` | type | no | `@elizaos/agent` | `packages/agent/src/api/skill-discovery-helpers.ts` | 81 |  |
-| `SkillAcknowledgmentMap` | type | no | `@elizaos/agent` | `packages/agent/src/api/skills-routes.ts` | 165 |  |
-| `SkillActionDefinition` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 117 | description, handler, name |
-| `SkillCommandSpec` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 239 | description, dispatch, name, skillName |
+| `Skill` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 33 | actions, baseDir, description, disableModelInvocation, enabled, examples, filePath, instructions... (+8) |
+| `SkillActionDefinition` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 53 | description, handler, name |
+| `SkillCommandSpec` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 121 | description, dispatch, name, skillName |
 | `SkillConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 146 | apiKey, config, enabled, env |
-| `SkillDiagnostic` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 144 | collision, message, path, type |
+| `SkillDiagnostic` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 71 | collision, message, path, type |
 | `SkillDoc` | interface | no | `@elizaos/agent` | `packages/agent/src/providers/skill-provider.ts` | 127 | description, name, slug, tf, totalTerms, triggers |
 | `SkillEligibility` | interface | no | `@elizaos/core` | `packages/core/src/providers/skill-eligibility.ts` | 31 | checkedAt, eligible, installOptions, reasons, slug |
-| `SkillEntry` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/skills-routes.ts` | 32 | description, enabled, id, name, scanStatus |
 | `SkillEntry` | interface | yes | `@elizaos/shared` | `packages/shared/src/api/agent-api-types.ts` | 225 | description, enabled, id, name, scanStatus |
-| `SkillEntry` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 201 | frontmatter, invocation, metadata, skill |
+| `SkillEntry` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 102 | frontmatter, invocation, metadata, skill |
 | `SkillEnvironment` | interface | no | `solana-swap-environment` | `packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/test_simple.ts` | 1 | simulateTransaction |
 | `SkillExecutionResult` | type | no | `solana-swap-environment` | `packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/runCode.ts` | 7 |  |
 | `SkillExecutionResult` | type | no | `solana-swap-environment` | `packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/runSkill.ts` | 4 |  |
-| `SkillFrontmatter` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 34 | [key:string], command_dispatch, command_tool, command-arg-mode, command-dispatch, command-tool, description, disable-model-invocation... (+7) |
+| `SkillFrontmatter` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 15 | [key:string], command_dispatch, command_tool, command-arg-mode, command-dispatch, command-tool, description, disable-model-invocation... (+7) |
 | `SkillInfo` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 771 | description, enabled, id, name, scanStatus |
 | `SkillInstallOption` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 675 | bins, id, kind, label |
 | `SkillInvocationIOCapture` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 1033 | args, result, truncated |
 | `SkillInvocationIOInput` | interface | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 1020 | args, capBytes, result |
-| `SkillInvocationPolicy` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 229 | disableModelInvocation, userInvocable |
+| `SkillInvocationPolicy` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 116 | disableModelInvocation, userInvocable |
 | `SkillInvocationTruncationMarker` | type | yes | `@elizaos/core` | `packages/core/src/runtime/trajectory-recorder.ts` | 1026 | field |
 | `SkillMarketplaceResult` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 845 | description, githubUrl, id, name, path, repository, score, slug... (+2) |
-| `SkillMetadata` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 215 | primaryEnv, requiredBins, requiredEnv, requiredOs |
-| `SkillPreferencesMap` | type | no | `@elizaos/agent` | `packages/agent/src/api/skill-discovery-helpers.ts` | 20 |  |
-| `SkillPreferencesMap` | type | no | `@elizaos/agent` | `packages/agent/src/api/skills-routes.ts` | 130 |  |
+| `SkillMetadata` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 109 | primaryEnv, requiredBins, requiredEnv, requiredOs |
 | `SkillProposalOutput` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/skill-items.ts` | 69 | body, description, extract, name, reason |
-| `SkillProvenance` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 5 | createdAt, derivedFromTrajectory, lastEvalScore, optimizationLineage, refinedCount, source |
-| `SkillProviderDefinition` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 126 | description, get, name |
+| `SkillProvenance` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 1 | createdAt, derivedFromTrajectory, lastEvalScore, optimizationLineage, refinedCount, source |
+| `SkillProviderDefinition` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 59 | description, get, name |
 | `SkillRefinementOutput` | interface | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/skill-items.ts` | 77 | refinements |
 | `SkillScanReportSummary` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 779 | findings, manifestFindings, scannedAt, skillPath, status, summary |
 | `SkillsConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 170 | allowBundled, denyBundled, entries, install, load |
@@ -9393,14 +9377,11 @@ Showing 120 of 875; see JSON for the full set.
 | `SkillsInput` | interface | yes | `@elizaos/core` | `packages/core/src/types/onboarding.ts` | 230 | install, preferences, skills, skip |
 | `SkillsInstallConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 165 | nodeManager, preferBrew |
 | `SkillsLoadConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 153 | extraDirs, watch, watchDebounceMs |
-| `SkillsMarketplaceSearchItem` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/skill-marketplace.ts` | 172 | description, githubUrl, id, name, path, repository, score, slug... (+2) |
-| `SkillsRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/skills-routes.ts` | 40 | discoverSkills, error, json, method, pathname, readBody, readJsonBody, req... (+4) |
-| `SkillsServerState` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/skills-routes.ts` | 65 | config, runtime, skills |
 | `SkillsSettings` | interface | yes | `@elizaos/core` | `packages/core/src/types/onboarding.ts` | 96 | enabledSkills, nodeManager, skillsToInstall, useHomebrew |
 | `SkillsStatusConfigCheck` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 669 | path, satisfied, value |
 | `SkillStatusEntry` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 682 | always, baseDir, blockedByAllowlist, bundled, configChecks, description, disabled, eligible... (+10) |
 | `SkillStatusReport` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 713 | managedSkillsDir, skills, workspaceDir |
-| `SkillToolDefinition` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 135 | [key:string], description, name |
+| `SkillToolDefinition` | interface | yes | `@elizaos/skills` | `packages/skills/src/types.ts` | 65 | [key:string], description, name |
 | `SkillTrajectory` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.ts` | 18 | agentId, endTime, metadata, metrics, startTime, steps, trajectoryId |
 | `SkillTrajectoryListItem` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.ts` | 28 | endTime, id, metadata, status, stepCount |
 | `SkillTrajectoryLlmCall` | interface | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.ts` | 3 | actionType, purpose, response, systemPrompt, userPrompt |
@@ -9415,6 +9396,11 @@ Showing 120 of 875; see JSON for the full set.
 | `SlotAssignmentsProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/local-inference/SlotAssignments.tsx` | 11 | assignments, installed, onChange |
 | `SlotKey` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/personality/services/personality-store.ts` | 16 |  |
 | `SlotKey` | type | yes | `@elizaos/core` | `packages/core/src/types/prompt-optimization-trace.ts` | 11 |  |
+| `SmokeFile` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/chartqa_adapter.ts` | 40 | samples |
+| `SmokeFile` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/docvqa_adapter.ts` | 36 | samples |
+| `SmokeFile` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/osworld_adapter.ts` | 51 | samples |
+| `SmokeFile` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/screenspot_adapter.ts` | 42 | samples |
+| `SmokeFile` | interface | no | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/textvqa_adapter.ts` | 37 | samples |
 | `SmsMessageSummary` | interface | yes | `@elizaos/capacitor-messages` | `packages/native-plugins/messages/src/definitions.ts` | 6 | address, body, date, id, read, threadId, type |
 | `SmsMessageSummary` | interface | yes | `@elizaos/ui` | `packages/ui/src/bridge/native-plugins.ts` | 389 | address, body, date, id, read, threadId, type |
 | `Snapshot` | interface | no | `@elizaos/app-core` | `packages/app-core/src/runtime/startup-overlay.ts` | 12 | detail, phase, updatedAt |
@@ -9437,12 +9423,13 @@ Showing 120 of 875; see JSON for the full set.
 | `SortDir` | type | yes | `@elizaos/ui` | `packages/ui/src/components/pages/database-utils.tsx` | 8 |  |
 | `SortDirection` | type | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/CombinationTable.tsx` | 14 |  |
 | `SortMode` | type | no | `@elizaos/ui` | `packages/ui/src/components/character/CharacterExperienceWorkspace.tsx` | 12 |  |
-| `SourceComponentMap` | type | no | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 353 |  |
+| `SourceComponentMap` | type | no | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 345 |  |
 | `SourceIconProps` | type | no | `@elizaos/ui` | `packages/ui/src/components/composites/chat/chat-source.tsx` | 7 | className |
 | `SourceResolution` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/actions/message.ts` | 782 |  |
 | `SourceTailEntry` | interface | no | `@elizaos/agent` | `packages/agent/src/providers/page-scoped-context.ts` | 66 | ageLabel, role, speaker, text |
 | `SpanSamplerOverride` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 412 | spanIndex, temperature, topK, topP |
 | `SpanSamplerPlan` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 438 | overrides, strict |
+| `SpawnControlledWindowOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-driver.ts` | 147 | args, binary, bounds, description |
 | `SpawnFn` | type | yes | `@elizaos/app-core` | `packages/app-core/src/services/secrets-manager-installer.ts` | 89 |  |
 | `SpawnFn` | type | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/login-claude.ts` | 55 |  |
 | `SpawnHandle` | interface | yes | `usbeliza-agent` | `packages/os/linux/agent/src/runtime/actions/login-claude.ts` | 44 | exit, kill, stderrBuf, stdoutBuf |
@@ -9513,12 +9500,13 @@ Showing 120 of 875; see JSON for the full set.
 | `StackProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/ui/stack.tsx` | 37 |  |
 | `StageKind` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/metrics-schema.ts` | 46 |  |
 | `StageMetrics` | type | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/metrics-schema.ts` | 113 |  |
+| `StageRecord` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 69 | displayId, duration_ms, error, ok, output_summary, stage |
 | `StaleTrial` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/SystemInfoPanel.tsx` | 64 | ageDurationMs, hasResultJson, jobName, lastModified, path, resultJsonEmpty, startedAt, trialName |
 | `StandaloneTrajectoryOptions` | type | no | `@elizaos/core` | `packages/core/src/trajectory-utils.ts` | 411 | errorStatus, metadata, source, successStatus |
 | `StandardMemoryOptions` | interface | yes | `@elizaos/core` | `packages/core/src/types/database.ts` | 1553 | agentId, end, limit, roomId, start, unique |
 | `StartDeviceBridgeClientOptions` | interface | yes | `__APP_PACKAGE_NAME__` | `packages/elizaos/templates/project/apps/app/src/native-plugin-stubs.ts` | 45 | agentUrl, deviceId, onStateChange, pairingToken |
 | `StartedStack` | type | no | `@elizaos/app-core` | `packages/app-core/scripts/playwright-ui-live-stack.ts` | 39 | apiBase, apiChild, stateDir, uiBase, uiServer |
-| `StartElizaOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2640 | headless, pgliteRecoveryAttempted, serverOnly |
+| `StartElizaOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2642 | headless, pgliteRecoveryAttempted, serverOnly |
 | `StartElizaOptions` | type | yes | `@elizaos/app-core` | `packages/app-core/src/platform/empty-node-module.ts` | 149 |  |
 | `StartElizaOptionsExt` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/runtime/eliza.ts` | 841 | onEmbeddingProgress |
 | `StartingRuntimeDeps` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/startup-phase-runtime.ts` | 31 | setAgentStatus, setAuthRequired, setConnected, setOnboardingLoading, setPairingEnabled, setPairingExpiresAt, setPendingRestart, setPendingRestartReasons... (+1) |
@@ -9618,7 +9606,7 @@ Showing 120 of 875; see JSON for the full set.
 | `StewardTxStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-steward.ts` | 48 |  |
 | `StewardWalletAddressesResponse` | interface | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 588 |  |
 | `StewardWalletAddressesResponse` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 761 |  |
-| `StewardWalletCoreRoutesHandler` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 934 |  |
+| `StewardWalletCoreRoutesHandler` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 982 |  |
 | `StewardWalletInfo` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/steward-sidecar/types.ts` | 40 | agentId, agentName, agentToken, tenantApiKey, tenantId, walletAddress |
 | `StewardWebhookEvent` | interface | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 622 | data, event, timestamp |
 | `StewardWebhookEvent` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 795 | data, event, timestamp |
@@ -9674,7 +9662,7 @@ Showing 120 of 875; see JSON for the full set.
 | `StreamingParams` | interface | no | `@elizaos/core` | `packages/core/src/runtime.ts` | 4508 | onStreamChunk, responseSkeleton, signal, stream, streamStructured |
 | `StreamingPermissionMode` | type | yes | `@elizaos/ui` | `packages/ui/src/components/permissions/StreamingPermissions.tsx` | 9 |  |
 | `StreamingPermissionsSettingsViewProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/permissions/StreamingPermissions.tsx` | 297 | description, mode, testId, title |
-| `StreamingPluginDestinationFactories` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 488 | createCustomRtmpDestination, createNamedRtmpDestination, createPumpfunDestination, createTwitchDestination, createXStreamDestination, createYoutubeDestination |
+| `StreamingPluginDestinationFactories` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 536 | createCustomRtmpDestination, createNamedRtmpDestination, createPumpfunDestination, createTwitchDestination, createXStreamDestination, createYoutubeDestination |
 | `StreamingSettingsModule` | type | no | `@elizaos/agent` | `packages/agent/src/api/mobile-optional-routes.ts` | 5 | readStreamSettings, validateStreamSettings, writeStreamSettings |
 | `StreamingTextModification` | type | yes | `@elizaos/ui` | `packages/ui/src/state/useStreamingText.ts` | 42 | failureKind, fullText, messageId, mode, token |
 | `StreamingTextSetter` | type | yes | `@elizaos/ui` | `packages/ui/src/state/useStreamingText.ts` | 32 |  |
@@ -9683,8 +9671,8 @@ Showing 120 of 875; see JSON for the full set.
 | `StreamingTtsBackend` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/voice-types.ts` | 47 | synthesizeStream |
 | `StreamingUpdateResult` | type | yes | `@elizaos/shared` | `packages/shared/src/utils/streaming-text.ts` | 137 | emittedText, kind, nextText |
 | `StreamPhonemesOptions` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/phoneme-stream.ts` | 34 | flushAt, lang, phonemizer |
-| `StreamRouteDestination` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 483 | [key:string], name |
-| `StreamSource` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 1198 |  |
+| `StreamRouteDestination` | interface | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 531 | [key:string], name |
+| `StreamSource` | type | no | `@elizaos/agent` | `packages/agent/src/api/chat-routes.ts` | 1221 |  |
 | `StrengthenOp` | type | yes | `@elizaos/core` | `packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | 131 |  |
 | `StringArraySuccess` | type | no | `@elizaos/shared` | `packages/shared/src/contracts/app-permissions.ts` | 152 | ok, value |
 | `StripeEmbeddedCheckoutInstance` | interface | no | `@elizaos/ui` | `packages/ui/src/components/cloud/StripeEmbeddedCheckout.tsx` | 9 | destroy, mount, unmount |
@@ -9697,6 +9685,10 @@ Showing 120 of 875; see JSON for the full set.
 | `StructuredResponseCandidate` | type | no | `@elizaos/core` | `packages/core/src/runtime.ts` | 291 | formats, source, text |
 | `StructuredResponseFormat` | type | no | `@elizaos/core` | `packages/core/src/runtime.ts` | 289 |  |
 | `StructuredState` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/conversation-compactor.ts` | 892 | decisions, entities, facts, forbidden_behaviors, pending_actions |
+| `StubFixtureId` | type | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/stubs/stub-vlm.ts` | 32 |  |
+| `StubGroundingExtra` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/stubs/stub-vlm.ts` | 47 | tileHeight, tileWidth |
+| `StubOcrInput` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/stubs/stub-ocr.ts` | 15 | displayId, sourceX, sourceY, tileHeight, tileWidth |
+| `StubVlmOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/stubs/stub-vlm.ts` | 37 | fixtureId |
 | `StuckContainer` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/server/index.ts` | 566 | image, jobName, logs, name, runningFor, runningForMs, status, taskName... (+2) |
 | `StuckContainer` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/StuckContainersPanel.tsx` | 16 | image, jobName, logs, name, runningFor, runningForMs, status, taskName... (+2) |
 | `StuckContainer` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/SystemInfoPanel.tsx` | 51 | image, jobName, logs, name, runningFor, runningForMs, status, taskName... (+2) |
@@ -9970,14 +9962,15 @@ Showing 120 of 875; see JSON for the full set.
 | `TextToSpeechOptions` | interface | yes | `@elizaos/core` | `packages/core/src/types/service-interfaces.ts` | 719 | format, model, response_format, speed, voice |
 | `TextToSpeechParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 780 | signal, speed, text, voice |
 | `TextTriggerWorkflowDraft` | interface | yes | `@elizaos/agent` | `packages/agent/src/triggers/text-to-workflow.ts` | 19 | displayName, instructions, wakeMode |
+| `TextVqaPayload` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/adapters/textvqa_adapter.ts` | 33 | answers |
 | `Theme` | type | no | `modern-marketplace` | `packages/benchmarks/skillsbench/tasks/fix-visual-stability/environment/app/src/components/ThemeProvider.tsx` | 11 |  |
 | `ThemeColorSet` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/theme.ts` | 13 | accent, accentForeground, accentHover, accentMuted, accentRgb, accentSubtle, bg, bgAccent... (+62) |
 | `Themed` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 414 | dark, light |
-| `Themed` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 397 | dark, light |
+| `Themed` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 392 | dark, light |
 | `ThemeDefinition` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/theme.ts` | 139 | dark, description, fonts, id, light, name, preview |
 | `ThemeFonts` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/theme.ts` | 121 | body, chat, display, fontImportUrl, mono |
 | `ThemeIconColor` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 416 |  |
-| `ThemeIconColor` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 399 |  |
+| `ThemeIconColor` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 394 |  |
 | `ThemeToggleProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/shared/ThemeToggle.tsx` | 9 | className, setUiTheme, t, uiTheme, variant |
 | `ThemeTranslatorFn` | type | yes | `@elizaos/ui` | `packages/ui/src/components/shared/ThemeToggle.tsx` | 7 |  |
 | `ThemeValidationError` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/theme.ts` | 250 | field, message |
@@ -9994,7 +9987,9 @@ Showing 120 of 875; see JSON for the full set.
 | `TieredParentAction` | type | yes | `@elizaos/core` | `packages/core/src/runtime/action-tiering.ts` | 19 | childNames, childNormalizedNames, name, normalizedName, result, score |
 | `TierKey` | type | no | `@elizaos/ui` | `packages/ui/src/components/settings/cloud-model-schema.ts` | 27 |  |
 | `TierSpec` | interface | yes | `@elizaos-benchmarks/lib` | `packages/benchmarks/lib/src/model-tiers.ts` | 28 | baseUrl, bundlePath, contextWindow, modelName, notes, provider, tier |
-| `TierSpec` | interface | no | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 163 | bucket, contextLength, drafterMinRamGb, drafterParams, drafterSizeGb, gpuProfile, hasEmbedding, hasImageGen... (+8) |
+| `TierSpec` | interface | no | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 177 | bucket, contextLength, drafterMinRamGb, drafterParams, drafterSizeGb, gpuProfile, hasEmbedding, hasImageGen... (+8) |
+| `TileScreenshotInput` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/screen-tiler.ts` | 32 | displayId, height, pngBytes, width |
+| `TileScreenshotOptions` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/screen-tiler.ts` | 39 | maxEdge, overlapFraction |
 | `TimeBucket` | interface | no | `@elizaos/ui` | `packages/ui/src/components/conversations/conversation-sidebar-model.ts` | 319 | key, label, rank |
 | `TimeRange` | type | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/CompletionTimelineChart.tsx` | 23 |  |
 | `TimeRange` | type | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/JobTabbedPanel.tsx` | 54 |  |
@@ -10020,7 +10015,7 @@ Showing 120 of 875; see JSON for the full set.
 | `TokenizationStats` | interface | no | `@elizaos/core` | `packages/core/src/search.ts` | 801 | originalWordCount, processingTimeMs, stemmedWords, stopWordsRemoved |
 | `TokenizerClientOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/services/local-inference/tokenizer-client.ts` | 36 | fetch, maxEntriesPerModel, timeoutMs |
 | `TokenizeResponseBody` | interface | no | `@elizaos/ui` | `packages/ui/src/services/local-inference/tokenizer-client.ts` | 55 | tokens |
-| `TokenizerFamily` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 301 |  |
+| `TokenizerFamily` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/types.ts` | 308 |  |
 | `TokenizerOptions` | interface | yes | `@elizaos/core` | `packages/core/src/search.ts` | 837 | minLength, stemming, stemmingRules, stopWords |
 | `TokenizeTextParams` | interface | yes | `@elizaos/core` | `packages/core/src/types/model.ts` | 722 | modelType, prompt |
 | `TokenLot` | interface | no | `@elizaos/agent` | `packages/agent/src/api/wallet-trading-profile.ts` | 50 | costBnb, qty |
@@ -10100,7 +10095,7 @@ Showing 120 of 875; see JSON for the full set.
 | `TrainingJobStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 235 |  |
 | `TrainingModel` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/training/types.ts` | 31 | base_repo_id, gguf_repo_id, max_context, recommended_gpu, short_name, tier |
 | `TrainingModelRecord` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 320 | active, adapterPath, backend, benchmark, createdAt, id, jobId, modelPath... (+3) |
-| `TrainingServiceCtor` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 1219 |  |
+| `TrainingServiceCtor` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 1267 |  |
 | `TrainingServiceLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/training-service-like.ts` | 3 | activateModel, benchmarkModel, buildDataset, cancelJob, getJob, getStatus, getTrajectoryById, importModelToOllama... (+5) |
 | `TrainingServiceWithRuntime` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/training-service-like.ts` | 43 | initialize, subscribe |
 | `TrainingStatus` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 242 | completedJobs, datasetCount, failedJobs, modelCount, queuedJobs, runningJobs, runtimeAvailable |
@@ -10182,12 +10177,12 @@ Showing 120 of 875; see JSON for the full set.
 | `TrajectoryLlmLog` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 183 | latencyMs, model, purpose, response, stepId, userPrompt |
 | `TrajectoryLlmPurpose` | type | yes | `@elizaos/core` | `packages/core/src/trajectory-utils.ts` | 31 |  |
 | `TrajectoryLogger` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-memory/trajectory.ts` | 5 |  |
-| `TrajectoryLoggerControl` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1027 | isEnabled, setEnabled |
+| `TrajectoryLoggerControl` | interface | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1030 | isEnabled, setEnabled |
 | `TrajectoryLoggerLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/prompt-optimization.ts` | 103 | getLlmCallLogs, getProviderAccessLogs, logLlmCall, logProviderAccess, updateLatestLlmCall |
 | `TrajectoryLoggerLike` | type | yes | `@elizaos/agent` | `packages/agent/src/runtime/trajectory-internals.ts` | 44 | getLlmCallLogs, getProviderAccessLogs, getTrajectoryDetail, isEnabled, listTrajectories, llmCalls, logLlmCall, logProviderAccess... (+2) |
 | `TrajectoryLoggerLike` | type | no | `@elizaos/core` | `packages/core/src/trajectory-utils.ts` | 389 | annotateStep, endTrajectory, flushWriteQueue, isEnabled, logLlmCall, startStep, startTrajectory |
-| `TrajectoryLoggerRegistrationStatus` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1032 |  |
-| `TrajectoryLoggerRuntimeLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1068 | getService, getServiceLoadPromise, getServiceRegistrationStatus, getServicesByType |
+| `TrajectoryLoggerRegistrationStatus` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1035 |  |
+| `TrajectoryLoggerRuntimeLike` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 1071 | getService, getServiceLoadPromise, getServiceRegistrationStatus, getServicesByType |
 | `TrajectoryLoggerServiceLike` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 198 | getLlmCallLogs, getProviderAccessLogs, getStep |
 | `TrajectoryMetadata` | interface | yes | `@elizaos/core` | `packages/core/src/features/trajectories/integration.ts` | 11 | [key:string] |
 | `TrajectoryMetadataPrimitive` | type | no | `@elizaos/core` | `packages/core/src/services/trajectory-export.ts` | 30 |  |
@@ -10315,10 +10310,10 @@ Showing 120 of 875; see JSON for the full set.
 | `TriggerMetricsState` | interface | no | `@elizaos/agent` | `packages/agent/src/triggers/runtime.ts` | 26 | lastExecutionAt, totalExecutions, totalFailures, totalSkipped |
 | `TriggerOp` | type | no | `@elizaos/agent` | `packages/agent/src/actions/trigger.ts` | 64 |  |
 | `TriggerPanelDefinition` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 580 | activationHint, executionsHelp, header, hideContent |
-| `TriggerPanelDefinition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 543 | activationHint, executionsHelp, header, hideContent |
+| `TriggerPanelDefinition` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 538 | activationHint, executionsHelp, header, hideContent |
 | `TriggerParameters` | interface | no | `@elizaos/agent` | `packages/agent/src/actions/trigger.ts` | 70 | action, cronExpression, displayName, enabled, instructions, intervalMs, maxRuns, op... (+5) |
-| `TriggerRouteContext` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 20 |  |
-| `TriggerRouteHelpers` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 21 |  |
+| `TriggerRouteContext` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 42 |  |
+| `TriggerRouteHelpers` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 43 |  |
 | `TriggerRunRecord` | interface | yes | `@elizaos/core` | `packages/core/src/types/trigger.ts` | 37 | error, eventKind, finishedAt, latencyMs, source, startedAt, status, taskId... (+2) |
 | `TriggerRunRecord` | type | yes | `@elizaos/ui` | `packages/ui/src/api/agent-client-type-shim.ts` | 54 |  |
 | `TriggerSummary` | interface | yes | `@elizaos/shared` | `packages/shared/src/api/agent-api-types.ts` | 66 | createdBy, cronExpression, displayName, enabled, eventKind, id, instructions, intervalMs... (+16) |
@@ -10360,7 +10355,7 @@ Showing 120 of 875; see JSON for the full set.
 | `TtsModelOverrideConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.messages.ts` | 35 | allowModelId, allowNormalization, allowProvider, allowSeed, allowText, allowVoice, allowVoiceSettings, enabled |
 | `TtsPcmChunk` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/voice-types.ts` | 41 | isFinal, pcm, sampleRate |
 | `TtsProvider` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.messages.ts` | 29 |  |
-| `TtsRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 262 |  |
+| `TtsRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 294 | ELEVENLABS_AUDIO_MAX_BYTES, ELEVENLABS_FETCH_TIMEOUT_MS, error, fetchWithTimeoutGuard, isAbortError, isRedactedSecretValue, json, method... (+7) |
 | `TTSSpeakingEvent` | interface | yes | `@elizaos/capacitor-talkmode` | `packages/native-plugins/talkmode/src/definitions.ts` | 206 | isSystemTts, text |
 | `TunnelCredentialInput` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/credential-tunnel-service.ts` | 54 | childSessionId, credentialScopeId, key, value |
 | `TunnelLinkAdapterDeps` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/sensitive-requests/tunnel-link-adapter.ts` | 12 | getTunnelStatus |
@@ -10412,7 +10407,7 @@ Showing 120 of 875; see JSON for the full set.
 | `UninstallResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/plugin-installer.ts` | 114 | error, pluginName, requiresRestart, success |
 | `UninstallResult` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/types.ts` | 177 | error, pluginName, requiresRestart, success |
 | `UnixPermission` | interface | yes | `@elizaos/core` | `packages/core/src/features/trust/types/permissions.ts` | 180 | group, mode, owner, setgid, setuid, sticky |
-| `UnknownRecord` | type | yes | `@elizaos/shared` | `packages/shared/src/type-guards.ts` | 7 |  |
+| `UnknownRecord` | type | yes | `@elizaos/shared` | `packages/shared/src/type-guards.ts` | 1 |  |
 | `UnloadPluginFromVfsOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/runtime/load-plugin-from-vfs.ts` | 102 | pluginName, runtime |
 | `UnloadPluginParams` | interface | yes | `@elizaos/core` | `packages/core/src/features/plugin-manager/types.ts` | 79 | force, pluginId |
 | `UnsignedTransaction` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/remote-signing-service.ts` | 20 | chainId, data, gasLimit, maxFeePerGas, maxPriorityFeePerGas, nonce, to, value |
@@ -10424,7 +10419,7 @@ Showing 120 of 875; see JSON for the full set.
 | `UpdateChannel` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/tail-routes.ts` | 78 |  |
 | `UpdateCheckResult` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/update-checker.ts` | 22 | cached, channel, currentVersion, distTag, error, latestVersion, updateAvailable |
 | `UpdateCommandInfo` | interface | yes | `@elizaos/agent` | `packages/agent/src/services/self-updater.ts` | 46 | args, command, displayCommand |
-| `UpdateComponentFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2307 |  |
+| `UpdateComponentFn` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/eliza.ts` | 2310 |  |
 | `UpdateConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 651 | channel, checkIntervalSeconds, checkOnStart, lastCheckAt, lastCheckVersion |
 | `UpdateLifeOpsBrowserSessionProgressRequest` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/lifeops.ts` | 3679 | currentActionIndex, metadata, result |
 | `UpdateLifeOpsDefinitionRequest` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/lifeops.ts` | 3295 | cadence, description, goalId, metadata, originalIntent, ownership, priority, progressionRule... (+6) |
@@ -10455,7 +10450,7 @@ Showing 120 of 875; see JSON for the full set.
 | `UriTemplateVariable` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/utils/uri-template.ts` | 41 | name, operator |
 | `UrlProtocol` | enum | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/enums/ui.ts` | 25 | DATA, HTTP, HTTPS, WEBSOCKET, WEBSOCKET_SECURE |
 | `UsableAsToolDescription` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 479 | replacements |
-| `UsableAsToolDescription` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 458 | replacements |
+| `UsableAsToolDescription` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 453 | replacements |
 | `UsageBarProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/accounts/AccountCard.tsx` | 71 | label, pct, resetsAt |
 | `UsageEntry` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/account-usage.ts` | 30 | errorCode, latencyMs, model, ok, tokens, ts |
 | `UsageSnapshot` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/services/account-usage.ts` | 26 | refreshedAt |
@@ -10465,7 +10460,7 @@ Showing 120 of 875; see JSON for the full set.
 | `UseAppLifecycleEventsParams` | interface | no | `@elizaos/ui` | `packages/ui/src/state/useAppLifecycleEvents.ts` | 31 | activeConversationIdRef, chatAbortRef, conversationMessagesRef, setConversationMessages |
 | `UseAttachmentMenuReturn` | interface | yes | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/hooks/use-attachment-menu.svelte.ts` | 18 | callbacks, getSystemMessageTooltip, isItemEnabled, isItemVisible |
 | `UseAuthStatusOptions` | interface | no | `@elizaos/ui` | `packages/ui/src/hooks/useAuthStatus.ts` | 36 | observeOnly, pollIntervalMs, skip |
-| `UseAvailableViewsResult` | interface | no | `@elizaos/ui` | `packages/ui/src/hooks/useAvailableViews.ts` | 50 | error, loading, refresh, views |
+| `UseAvailableViewsResult` | interface | no | `@elizaos/ui` | `packages/ui/src/hooks/useAvailableViews.ts` | 52 | error, loading, refresh, views |
 | `UseBrowserWorkspaceWalletBridgeOptions` | interface | no | `@elizaos/ui` | `packages/ui/src/components/pages/useBrowserWorkspaceWalletBridge.ts` | 247 | iframeRefs, loadWalletState, walletState, workspaceTabs |
 | `UseChatAvatarVoiceBridgeOptions` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useChatAvatarVoiceBridge.ts` | 7 | isSpeaking, mouthOpen, onSpeakingChange |
 | `UseChatCallbacksDeps` | interface | yes | `@elizaos/ui` | `packages/ui/src/state/useChatCallbacks.ts` | 136 | activeConversationId, activeConversationIdRef, agentStatus, beginLifecycleAction, chatAbortRef, chatInput, chatInputRef, chatPendingImagesRef... (+89) |
@@ -10507,8 +10502,8 @@ Showing 120 of 875; see JSON for the full set.
 | `UUID` | type | yes | `@elizaos/core` | `packages/core/src/types/primitives.ts` | 25 |  |
 | `V5MessageHandlerOutput` | type | yes | `@elizaos/core` | `packages/core/src/runtime/message-handler.ts` | 11 |  |
 | `V5MessageRuntimeStage1Result` | type | yes | `@elizaos/core` | `packages/core/src/services/message.ts` | 1386 | action, kind, messageHandler, result, state |
-| `V5PlannerActionSurface` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 1724 | exposedActionNames, summary |
-| `V5PlannerActionSurfaceSummary` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 1707 | actionSurfaceHash, candidateActionCount, candidateActions, catalogParentCount, exposedActionCount, fallback, mode, omittedParentCount... (+6) |
+| `V5PlannerActionSurface` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 1778 | exposedActionNames, summary |
+| `V5PlannerActionSurfaceSummary` | type | no | `@elizaos/core` | `packages/core/src/services/message.ts` | 1761 | actionSurfaceHash, candidateActionCount, candidateActions, catalogParentCount, exposedActionCount, fallback, mode, omittedParentCount... (+6) |
 | `VADControls` | type | no | `eliza-vrm-demo` | `packages/examples/avatar/src/hooks/useVoiceActivityDetection.ts` | 30 | clear, restart, setAgentSpeaking, start, stop |
 | `VADOptions` | type | no | `eliza-vrm-demo` | `packages/examples/avatar/src/hooks/useVoiceActivityDetection.ts` | 3 | bargeInDuration, bargeInThreshold, echoCancellation, echoCooldownMs, lang, sampleRate, silenceThreshold |
 | `VADState` | type | no | `eliza-vrm-demo` | `packages/examples/avatar/src/hooks/useVoiceActivityDetection.ts` | 20 | audioLevel, error, interimTranscript, listening, speaking, supported, transcript |
@@ -10539,7 +10534,7 @@ Showing 120 of 875; see JSON for the full set.
 | `VaultEntryMeta` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/vault-tabs/types.ts` | 51 | activeProfile, category, hasProfiles, key, kind, label, lastModified, lastUsed... (+2) |
 | `VaultEntryMeta` | interface | yes | `@elizaos/vault` | `packages/vault/src/inventory.ts` | 80 | activeProfile, category, hasProfiles, key, kind, label, lastModified, lastUsed... (+2) |
 | `VaultEntryMetaRecord` | interface | yes | `@elizaos/vault` | `packages/vault/src/inventory.ts` | 65 | activeProfile, category, label, lastModified, lastUsed, profiles, providerId |
-| `VaultEntryMetaUpdate` | interface | yes | `@elizaos/vault` | `packages/vault/src/inventory.ts` | 227 | activeProfile, category, label, lastUsed, profiles, providerId |
+| `VaultEntryMetaUpdate` | interface | yes | `@elizaos/vault` | `packages/vault/src/inventory.ts` | 214 | activeProfile, category, label, lastUsed, profiles, providerId |
 | `VaultEntryProfile` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/vault-tabs/types.ts` | 45 | createdAt, id, label |
 | `VaultEntryProfile` | interface | yes | `@elizaos/vault` | `packages/vault/src/inventory.ts` | 54 | createdAt, id, label |
 | `VaultInventoryPanelProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/settings/VaultInventoryPanel.tsx` | 82 | entries, focusKey, focusProfileId, onChanged, onFocusApplied, onJumpToRouting |
@@ -10603,14 +10598,15 @@ Showing 120 of 875; see JSON for the full set.
 | `VideoRecordingState` | interface | yes | `@elizaos/capacitor-camera` | `packages/native-plugins/camera/src/definitions.ts` | 68 | duration, fileSize, isRecording |
 | `VideoResult` | interface | yes | `@elizaos/capacitor-camera` | `packages/native-plugins/camera/src/definitions.ts` | 74 | duration, fileSize, height, mimeType, path, width |
 | `VideoSearchOptions` | interface | yes | `@elizaos/core` | `packages/core/src/types/service-interfaces.ts` | 1112 | duration, quality, resolution |
+| `ViewBundleModule` | interface | no | `@elizaos/ui` | `packages/ui/src/components/views/DynamicViewLoader.tsx` | 24 | cleanup, component |
 | `ViewCapability` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 443 | description, id, params |
 | `ViewDeclaration` | interface | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 470 | bundlePath, capabilities, componentExport, description, desktopTabEnabled, developerOnly, heroImagePath, icon... (+7) |
 | `ViewMode` | type | yes | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/ViewToggle.tsx` | 4 |  |
 | `ViewMode` | type | no | `@elizaos/ui` | `packages/ui/src/components/pages/MemoryViewerView.tsx` | 66 |  |
 | `ViewMode` | type | yes | `@elizaos/ui` | `packages/ui/src/components/pages/vector-browser-utils.ts` | 8 |  |
 | `ViewPlatform` | type | yes | `@elizaos/core` | `packages/core/src/types/plugin.ts` | 440 |  |
-| `ViewRegistryEntry` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/views-registry.ts` | 27 | available, bundleUrl, heroImageUrl, loadedAt, platform, pluginDir, pluginName |
-| `ViewRegistryEntry` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useAvailableViews.ts` | 17 | available, bundleUrl, capabilities, description, developerOnly, heroImageUrl, icon, id... (+5) |
+| `ViewRegistryEntry` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/views-registry.ts` | 36 | available, bundleUrl, heroImageUrl, loadedAt, platform, pluginDir, pluginName |
+| `ViewRegistryEntry` | interface | yes | `@elizaos/ui` | `packages/ui/src/hooks/useAvailableViews.ts` | 17 | available, bundleUrl, capabilities, componentExport, description, developerOnly, heroImageUrl, icon... (+6) |
 | `ViewsRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/views-routes.ts` | 34 | broadcastWs, developerMode, url |
 | `ViewToggleProps` | interface | no | `metrics-dashboard` | `packages/benchmarks/skillsbench/experiments/metrics-dashboard/src/components/ViewToggle.tsx` | 6 | errorCount, onViewChange, viewMode |
 | `VincentLiveStatus` | interface | no | `@elizaos/agent` | `packages/agent/src/providers/page-scoped-context.ts` | 458 | connected, connectedAt, tradingVenues |
@@ -10638,17 +10634,21 @@ Showing 120 of 875; see JSON for the full set.
 | `VisionOllamaConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/config.ts` | 191 | autoDownload, baseUrl, maxTokens, model |
 | `VisionOpenaiConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/config.ts` | 170 | apiKey, maxTokens, model |
 | `VisionProvider` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/config.ts` | 161 |  |
+| `VisionProviderInfo` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/real-runtime.ts` | 35 | providerName, reason |
+| `VisionRuntime` | interface | yes | `@elizaos/bench-vision-language` | `packages/benchmarks/vision-language/src/types.ts` | 116 | ask, cleanup, ground, id, runActionLoop |
 | `VisionXaiConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/config.ts` | 186 | apiKey, model |
 | `VisualizeWorkflowEventDetail` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/pages/workflow-graph-events.ts` | 13 | workflowId |
 | `ViteDevServerRuntime` | interface | yes | `@elizaos/app` | `packages/app/vite-dev-origin.ts` | 8 | hmr, origin |
 | `ViteDevServerRuntime` | interface | yes | `__APP_PACKAGE_NAME__` | `packages/elizaos/templates/project/apps/app/vite-dev-origin.ts` | 8 | hmr, origin |
 | `ViteHmrConfig` | interface | yes | `@elizaos/app` | `packages/app/vite-dev-origin.ts` | 1 | clientPort, host, port, protocol |
 | `ViteHmrConfig` | interface | yes | `__APP_PACKAGE_NAME__` | `packages/elizaos/templates/project/apps/app/vite-dev-origin.ts` | 1 | clientPort, host, port, protocol |
+| `VlmDescribeRequest` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 130 | imageUrl, prompt |
+| `VlmDescribeResult` | interface | yes | `@elizaos/bench-eliza-1-vision-cua-e2e` | `packages/benchmarks/eliza-1/vision-cua-e2e/src/types.ts` | 137 | description |
 | `VmRunner` | type | no | `@elizaos/agent` | `packages/agent/src/runtime/custom-actions.ts` | 61 | runInNewContext |
 | `VoiceAssistantSpeechTelemetry` | interface | yes | `@elizaos/ui` | `packages/ui/src/voice/voice-chat-types.ts` | 189 | assistantFirstTextAtMs, assistantTextUpdatedAtMs, messageId, speechEndedAtMs, voiceTurnId |
 | `VoiceBackendChoice` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/runtime-selection.ts` | 42 |  |
 | `VoiceBackendDecision` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/runtime-selection.ts` | 76 | backend, reason |
-| `VoiceBackendId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 125 |  |
+| `VoiceBackendId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/catalog.ts` | 140 |  |
 | `VoiceBackendInputs` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/runtime-selection.ts` | 46 | kokoroAvailable, kokoroRtf, mode, omnivoiceAvailable, omnivoiceRtf, requireVoiceCloning, targetTtfaMs, tierVoiceBackends |
 | `VoiceBackendMode` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/kokoro/runtime-selection.ts` | 44 |  |
 | `VoicebenchConfig` | type | no | `eliza` | `packages/benchmarks/voicebench/typescript/src/bench.ts` | 26 | benchmarkName, defaultIterations, modes, responseMaxChars, responsePrompt |
@@ -10673,19 +10673,21 @@ Showing 120 of 875; see JSON for the full set.
 | `VoiceLocalCloudStrategy` | type | yes | `@elizaos/ui` | `packages/ui/src/components/settings/VoiceSection.tsx` | 33 |  |
 | `VoiceMode` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 711 |  |
 | `VoiceModelCheckStatus` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 27 | allow, id, installedVersion, latestKnown, pinned, reason |
-| `VoiceModelEvalDeltas` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 75 | eerDelta, f1Delta, falseBargeInDelta, mosDelta, netImprovement, rtfDelta, werDelta |
-| `VoiceModelGgufAsset` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 51 | filename, quant, sha256, sizeBytes |
+| `VoiceModelEvalDeltas` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 92 | eerDelta, f1Delta, falseBargeInDelta, mosDelta, netImprovement, rtfDelta, werDelta |
+| `VoiceModelGgufAsset` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 53 | filename, quant, sha256, sizeBytes |
 | `VoiceModelId` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 25 |  |
 | `VoiceModelInstallationView` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 20 | id, installedVersion, lastError, pinned |
 | `VoiceModelInstallationView` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/local-inference/ModelUpdatesPanel.tsx` | 31 | id, installedVersion, lastError, pinned |
-| `VoiceModelQuant` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 41 |  |
+| `VoiceModelMissingAsset` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 68 | expectedSizeBytes, filename, quant, reason |
+| `VoiceModelMissingAssetReason` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 64 |  |
+| `VoiceModelQuant` | type | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 42 |  |
 | `VoiceModelsCheckResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 46 | lastCheckedAt, statuses |
 | `VoiceModelsListResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 42 | installations |
 | `VoiceModelsPinResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 60 | id, ok, pinned |
 | `VoiceModelsPreferencesResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 66 | isOwner, preferences |
 | `VoiceModelsSetPreferencesResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 71 | ok, preferences |
 | `VoiceModelsUpdateResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-voice-models.ts` | 51 | finalPath, id, ok, sha256, sizeBytes, version |
-| `VoiceModelVersion` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 97 | changelogEntry, evalDeltas, ggufAssets, hfRepo, hfRevision, id, minBundleVersion, parentVersion... (+2) |
+| `VoiceModelVersion` | interface | yes | `@elizaos/shared` | `packages/shared/src/local-inference/voice-models.ts` | 114 | changelogEntry, evalDeltas, ggufAssets, hfRepo, hfRevision, id, minBundleVersion, missingAssets... (+3) |
 | `VoiceOutputProvider` | type | yes | `eliza-vrm-demo` | `packages/examples/avatar/src/runtime/types.ts` | 16 |  |
 | `VoicePlaybackStartEvent` | interface | yes | `@elizaos/ui` | `packages/ui/src/voice/voice-chat-types.ts` | 147 | assistantFirstTextAtMs, assistantTextUpdatedAtMs, cached, messageId, provider, queuedAtMs, segment, speechEndedAtMs... (+3) |
 | `VoicePrefixGateProps` | interface | yes | `@elizaos/ui` | `packages/ui/src/components/onboarding/VoicePrefixGate.tsx` | 20 | onDone |
@@ -10720,6 +10722,7 @@ Showing 120 of 875; see JSON for the full set.
 | `WakeTelemetry` | interface | yes | `@elizaos/app-core` | `packages/app-core/src/api/internal-routes.ts` | 50 | lastWakeDurationMs, lastWakeError, lastWakeFiredAt, lastWakeKind, lastWakeRanTasks |
 | `WalletAddresses` | interface | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 17 |  |
 | `WalletAddresses` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 17 |  |
+| `WalletAddressesSnapshot` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 47 |  |
 | `WalletAddressPair` | interface | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 12 | evmAddress, solanaAddress |
 | `WalletAddressPair` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 12 | evmAddress, solanaAddress |
 | `WalletAsset` | interface | yes | `@elizaos/core` | `packages/core/src/types/service-interfaces.ts` | 45 | address, balance, decimals, logoUri, name, priceUsd, symbol, uiAmount... (+1) |
@@ -10784,13 +10787,14 @@ Showing 120 of 875; see JSON for the full set.
 | `WalletPrimaryUpdateResponse` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 460 | chain, ok, source, warnings |
 | `WalletProviderKind` | type | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 268 |  |
 | `WalletProviderKind` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 440 |  |
-| `WalletRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 328 | config, deps, ensureWalletKeysInEnvAndConfig, resolveWalletExportRejection, restartRuntime, runtime, saveConfig, scheduleRuntimeRestart |
-| `WalletRouteDependencies` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/wallet-routes.ts` | 142 | fetchEvmBalances, fetchSolanaBalances, fetchSolanaNativeBalanceViaRpc, generateWalletForChain, getWalletAddresses, importWallet, validatePrivateKey |
+| `WalletRouteContext` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 48 |  |
+| `WalletRouteDependencies` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 49 |  |
 | `WalletRpcChain` | type | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 114 |  |
 | `WalletRpcChain` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 114 |  |
 | `WalletRpcCredentialKey` | type | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 187 |  |
 | `WalletRpcCredentialKey` | type | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 187 |  |
 | `WalletRpcReadiness` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/wallet-rpc.ts` | 101 | avalancheRpcUrls, baseRpcUrls, bscRpcUrls, cloudManagedAccess, ethereumRpcUrls, evmBalanceReady, legacyCustomChains, managedBscRpcReady... (+4) |
+| `WalletRpcReadinessSnapshot` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 50 |  |
 | `WalletRpcResolutionOptions` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/wallet-rpc.ts` | 94 | cloudApiKey, cloudBaseUrl, cloudManagedAccess, walletNetwork |
 | `WalletRpcSelections` | interface | yes | `@elizaos/core` | `packages/core/src/contracts/wallet.ts` | 122 | bsc, evm, solana |
 | `WalletRpcSelections` | interface | yes | `@elizaos/shared` | `packages/shared/src/contracts/wallet.ts` | 122 | bsc, evm, solana |
@@ -10840,11 +10844,11 @@ Showing 120 of 875; see JSON for the full set.
 | `WebGpuBrowserStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/components/release-center/types.ts` | 62 | available, chromeBetaPath, downloadUrl, reason, renderer |
 | `WebGpuSupportStatus` | interface | yes | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/native/webgpu-browser-support.ts` | 6 | available, chromeBetaPath, downloadUrl, reason, renderer |
 | `WebhookResponseData` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 543 |  |
-| `WebhookResponseData` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 522 |  |
+| `WebhookResponseData` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 517 |  |
 | `WebhookResponseMode` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 535 |  |
-| `WebhookResponseMode` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 514 |  |
+| `WebhookResponseMode` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 509 |  |
 | `WebhookType` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 533 |  |
-| `WebhookType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 512 |  |
+| `WebhookType` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 507 |  |
 | `WebReconnectConfig` | type | yes | `@elizaos/shared` | `packages/shared/src/config/types.eliza.ts` | 360 | factor, initialMs, jitter, maxAttempts, maxMs |
 | `WebsiteBlockerElevationMethod` | type | yes | `@elizaos/capacitor-websiteblocker` | `packages/native-plugins/websiteblocker/src/definitions.ts` | 13 |  |
 | `WebsiteBlockerEngine` | type | yes | `@elizaos/capacitor-websiteblocker` | `packages/native-plugins/websiteblocker/src/definitions.ts` | 7 |  |
@@ -10880,17 +10884,17 @@ Showing 120 of 875; see JSON for the full set.
 | `WhatsAppDisconnect` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 93 | at, error, loggedOut, status |
 | `WhatsAppLoginResult` | type | yes | `eliza-app` | `packages/homepage/src/lib/context/auth-context.tsx` | 53 |  |
 | `WhatsAppPairingEvent` | type | yes | `@elizaos/agent` | `packages/agent/src/services/index.ts` | 31 |  |
-| `WhatsAppPairingEventLike` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 14 |  |
+| `WhatsAppPairingEventLike` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 36 |  |
 | `WhatsAppPairingOptions` | type | yes | `@elizaos/agent` | `packages/agent/src/services/index.ts` | 32 |  |
 | `WhatsAppPairingSession` | type | yes | `@elizaos/agent` | `packages/agent/src/services/index.ts` | 33 |  |
-| `WhatsAppPairingSessionLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 15 | stop |
+| `WhatsAppPairingSessionLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 37 | stop |
 | `WhatsAppPairingState` | interface | no | `@elizaos/ui` | `packages/ui/src/hooks/useWhatsAppPairing.ts` | 9 | error, phoneNumber, qrDataUrl, status |
 | `WhatsAppPairingStatus` | type | yes | `@elizaos/agent` | `packages/agent/src/services/index.ts` | 36 |  |
 | `WhatsAppPairingStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/api/agent-client-type-shim.ts` | 50 |  |
 | `WhatsAppPairingStatus` | type | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-core.ts` | 84 |  |
 | `WhatsAppQrOverlayProps` | interface | no | `@elizaos/ui` | `packages/ui/src/components/connectors/WhatsAppQrOverlay.tsx` | 7 | accountId, connectedMessage, onConnected |
-| `WhatsAppRouteDeps` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 18 |  |
-| `WhatsAppRouteState` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 19 |  |
+| `WhatsAppRouteDeps` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 40 |  |
+| `WhatsAppRouteState` | type | yes | `@elizaos/agent` | `packages/agent/src/api/index.ts` | 41 |  |
 | `WhatsAppSelf` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 88 | e164, jid |
 | `WhatsAppStatus` | type | yes | `@elizaos/shared` | `packages/shared/src/types/index.ts` | 100 | authAgeMs, configured, connected, lastConnectedAt, lastDisconnect, lastError, lastEventAt, lastMessageAt... (+4) |
 | `WhitelistStatus` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-cloud.ts` | 927 | eligible, ogCode, twitterVerified, walletAddress |
@@ -10915,7 +10919,7 @@ Showing 120 of 875; see JSON for the full set.
 | `WifiStateResult` | interface | yes | `@elizaos/capacitor-wifi` | `packages/native-plugins/wifi/src/definitions.ts` | 52 | connected, enabled, rssi |
 | `Window` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/bridge/browser-tabs-renderer-registry.ts` | 33 | [[REGISTRY_KEY]] |
 | `Window` | interface | no | `@elizaos/electrobun` | `packages/app-core/platforms/electrobun/src/bridge/electrobun-direct-rpc.ts` | 228 | __ELIZA_API_BASE__, __ELIZA_API_TOKEN__, __ELIZA_ELECTROBUN_RPC__ |
-| `Window` | interface | no | `@elizaos/app` | `packages/app/src/main.tsx` | 114 | __ELIZA_APP_API_BASE__, __ELIZA_APP_CHARACTER_EDITOR__, __ELIZA_APP_SHARE_QUEUE__, __ELIZA_IOS_LOCAL_AGENT_DEBUG__, __ELIZA_IOS_LOCAL_AGENT_REQUEST__ |
+| `Window` | interface | no | `@elizaos/app` | `packages/app/src/main.tsx` | 110 | __ELIZA_APP_API_BASE__, __ELIZA_APP_CHARACTER_EDITOR__, __ELIZA_APP_SHARE_QUEUE__, __ELIZA_IOS_LOCAL_AGENT_DEBUG__, __ELIZA_IOS_LOCAL_AGENT_REQUEST__ |
 | `Window` | interface | no | `__APP_PACKAGE_NAME__` | `packages/elizaos/templates/project/apps/app/src/main.tsx` | 102 | __ELIZA_API_BASE__, __ELIZA_CHARACTER_EDITOR__, __ELIZA_SHARE_QUEUE__ |
 | `Window` | interface | no | `eliza-app` | `packages/homepage/src/pages/get-started.tsx` | 42 | Telegram |
 | `Window` | interface | no | `llama-server-webui` | `packages/ios-native-deps/llama.cpp/src/tools/server/webui/src/lib/components/app/content/MarkdownContent/plugins/rehype/enhance-code-blocks.ts` | 28 | idxCodeBlock |
@@ -10958,7 +10962,7 @@ Showing 120 of 875; see JSON for the full set.
 | `WizardStepResult` | interface | yes | `@elizaos/core` | `packages/core/src/services/onboarding-rpc.ts` | 83 | error, message, state, success |
 | `WorkbenchLoadedVfsPlugin` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 595 | loadedAt, pluginName, projectId, vfsPath |
 | `WorkbenchOverview` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 542 | autonomy, tasks, todos, triggers |
-| `WorkbenchRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 266 |  |
+| `WorkbenchRouteArg` | type | no | `@elizaos/agent` | `packages/agent/src/api/server.ts` | 314 |  |
 | `WorkbenchRouteContext` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/workbench-routes.ts` | 29 | asObject, decodePathComponent, error, json, listTriggerTasks, method, normalizeTags, parseNullableNumber... (+10) |
 | `WorkbenchTask` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-config.ts` | 523 | description, id, isCompleted, name, tags, updatedAt |
 | `WorkbenchTaskView` | interface | yes | `@elizaos/agent` | `packages/agent/src/api/workbench-helpers.ts` | 33 | description, id, isCompleted, name, tags, updatedAt |
@@ -11008,7 +11012,7 @@ Showing 120 of 875; see JSON for the full set.
 | `WorkflowServiceLike` | interface | yes | `@elizaos/agent` | `packages/agent/src/triggers/text-to-workflow.ts` | 39 | deployWorkflow |
 | `WorkflowServiceRuntime` | interface | yes | `@elizaos/agent` | `packages/agent/src/triggers/text-to-workflow.ts` | 30 | getService |
 | `WorkflowSettingsBinaryMode` | type | yes | `@elizaos/core` | `packages/core/src/workflow-types.ts` | 674 |  |
-| `WorkflowSettingsBinaryMode` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 629 |  |
+| `WorkflowSettingsBinaryMode` | type | yes | `@elizaos/workflows` | `packages/workflows/src/index.ts` | 624 |  |
 | `WorkflowStatusResponse` | interface | yes | `@elizaos/ui` | `packages/ui/src/api/client-types-chat.ts` | 500 | cloudConnected, cloudHealth, host, localEnabled, mode, platform, status |
 | `WorkingMemory` | type | no | `@elizaos/core` | `packages/core/src/features/advanced-planning/services/planning-service.ts` | 86 |  |
 | `WorkingMemory` | type | yes | `@elizaos/core` | `packages/core/src/types/state.ts` | 70 |  |
@@ -11036,7 +11040,7 @@ Showing 120 of 875; see JSON for the full set.
 | `WorldOwnership` | interface | yes | `@elizaos/core` | `packages/core/src/types/environment.ts` | 47 | ownerId |
 | `WorldPayload` | interface | yes | `@elizaos/core` | `packages/core/src/types/events.ts` | 128 | entities, rooms, world |
 | `WorldSettings` | interface | yes | `@elizaos/core` | `packages/core/src/types/settings.ts` | 44 | [key:string], settings |
-| `WorldState` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 96 | agents, food, height, tick, width |
+| `WorldState` | interface | no | `@elizaos/example-game-of-life` | `packages/examples/game-of-life/game.ts` | 91 | agents, food, height, tick, width |
 | `WrapExternalContentOptions` | type | yes | `@elizaos/core` | `packages/core/src/security/external-content.ts` | 172 | includeWarning, sender, source, subject |
 | `WrappedFunctionArgs` | type | yes | `@elizaos/core` | `packages/core/src/features/trajectories/integration.ts` | 25 |  |
 | `WrappedHandler` | interface | no | `@elizaos/scenario-runner` | `packages/scenario-runner/src/interceptor.ts` | 35 | (call), [[INTERCEPTOR_MARKER]] |

@@ -1,7 +1,18 @@
 {
   "$schema": "https://elizaos.dev/schemas/voice-manifest/v1.json",
   "version": 1,
-  "generatedAt": "2026-05-14T00:00:00Z",
+  "generatedAt": "2026-05-15T00:00:00Z",
+  "assetAudit": {
+    "auditedAt": "2026-05-15T13:00:00Z",
+    "status": "all-10-voice-repos-live-on-hf-with-real-weights",
+    "notes": [
+      "All 10 elizaos/eliza-1-voice-* HF repos confirmed live with real ONNX/GGUF weights.",
+      "SHA256 and sizeBytes verified against HF LFS metadata for every binary asset.",
+      "turn-detector updated to v0.2.0 (DailyDialog fine-tune, F1=0.9811); hfRevision updated to 9eaff4947ebd87b1d811e27dec939e29362a9e42.",
+      "Kokoro same voice and voice-emotion remain quality-gate=false; staged and published as-is per spec.",
+      "OmniVoice same preset (716 bytes frozen conditioning) live on HF at b766eb23d5f6c84d580973c0f2013b6fcbd561c0."
+    ]
+  },
   "models": [
     {
       "id": "speaker-encoder",
@@ -14,27 +25,11 @@
       "introducedIn": "R2/I2",
       "variants": [
         {
-          "variantId": "wespeaker-resnet34-lm-int8",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 7340032,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "embedding": {
-            "dim": 256,
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "normalize": "l2"
-          },
-          "evalMetrics": {
-            "voxceleb1OEer": 0.0072
-          }
-        },
-        {
-          "variantId": "wespeaker-resnet34-lm-fp32",
+          "variantId": "wespeaker-resnet34-lm",
+          "filename": "wespeaker-resnet34-lm.onnx",
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 26214400,
-          "sha256": "TBD-populated-by-publish-pipeline",
           "embedding": {
             "dim": 256,
             "sampleRate": 16000,
@@ -43,97 +38,21 @@
           },
           "evalMetrics": {
             "voxceleb1OEer": 0.0072
-          }
-        }
-      ]
-    },
-    {
-      "id": "voice-emotion",
-      "displayName": "Wav2Small acoustic emotion classifier",
-      "purpose": "continuous V-A-D emotion regression, projected to 7-class ExpressiveEmotion tags",
-      "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
-      "license": "Apache-2.0",
-      "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim (CC-BY-NC-SA-4.0 — teacher only, NEVER bundled). Wav2Small architecture from Wagner et al., arXiv:2408.13920.",
-      "introducedIn": "R3/I3",
-      "variants": [
-        {
-          "variantId": "wav2small-msp-dim-int8",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 122880,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "emotion": {
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "minSeconds": 1.0,
-            "maxSeconds": 12.0,
-            "outputDims": 3,
-            "outputLabels": ["valence", "arousal", "dominance"],
-            "paramCount": 72256
           },
-          "evalMetrics": {
-            "macroF1MeldTest": null,
-            "macroF1IemocapTest": null,
-            "mseMspPodcastVad": null,
-            "meanCpuLatencyMs": null
-          }
-        },
-        {
-          "variantId": "wav2small-msp-dim-fp32",
-          "format": "onnx",
-          "precision": "fp32",
-          "approxSizeBytes": 491520,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "emotion": {
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "minSeconds": 1.0,
-            "maxSeconds": 12.0,
-            "outputDims": 3,
-            "outputLabels": ["valence", "arousal", "dominance"],
-            "paramCount": 72256
-          },
-          "evalMetrics": {
-            "macroF1MeldTest": null,
-            "macroF1IemocapTest": null,
-            "mseMspPodcastVad": null,
-            "meanCpuLatencyMs": null
-          }
+          "sizeBytes": 26530309,
+          "sha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/speaker/wespeaker-resnet34-lm.onnx",
+          "sourceRepo": "Wespeaker/wespeaker-voxceleb-resnet34-LM",
+          "sourcePath": "voxceleb_resnet34_LM.onnx"
         }
-      ]
-    },
-    {
-      "id": "voice-emotion-text",
-      "displayName": "Roberta GoEmotions text classifier (optional fallback)",
-      "purpose": "text-only fallback when the Stage-1 LM `emotion` field-evaluator quality regresses; off by default",
-      "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
-      "license": "MIT",
-      "attribution": "https://huggingface.co/SamLowe/roberta-base-go_emotions-onnx",
-      "introducedIn": "R3/I3",
-      "variants": [
-        {
-          "variantId": "roberta-go-emotions-int8",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 125000000,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "emotion": {
-            "labelCount": 28,
-            "projectedLabelCount": 7,
-            "maxTokenLength": 512
-          },
-          "evalMetrics": {
-            "macroF1GoemotionsTest": 0.49
-          }
-        }
-      ]
+      ],
+      "hfRevision": "3d882d6dfb00c9eed49f89bb7cc2e45ac3497159"
     },
     {
       "id": "diarizer",
       "displayName": "pyannote-segmentation-3.0",
-      "purpose": "local speaker-activity segmentation (powerset, 3 local speakers, 5s window)",
+      "purpose": "local speaker-activity segmentation",
       "runtime": "onnxruntime-node",
       "currentVersion": "0.1.0",
       "license": "MIT",
@@ -142,43 +61,421 @@
       "variants": [
         {
           "variantId": "pyannote-segmentation-3.0-int8",
+          "filename": "pyannote-segmentation-3.0-int8.onnx",
           "format": "onnx",
           "precision": "int8",
           "approxSizeBytes": 1614807,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "diarizer": {
-            "windowSeconds": 5,
-            "framesPerWindow": 293,
-            "classCount": 7,
-            "maxLocalSpeakers": 3,
-            "sampleRate": 16000,
-            "channelCount": 1
-          }
+          "sizeBytes": 1542304,
+          "sha256": "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/diarizer/pyannote-segmentation-3.0-int8.onnx",
+          "sourceRepo": "onnx-community/pyannote-segmentation-3.0",
+          "sourcePath": "onnx/model_int8.onnx"
         },
         {
           "variantId": "pyannote-segmentation-3.0-fp32",
+          "filename": "pyannote-segmentation-3.0-fp32.onnx",
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 6291456,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "diarizer": {
-            "windowSeconds": 5,
-            "framesPerWindow": 293,
-            "classCount": 7,
-            "maxLocalSpeakers": 3,
-            "sampleRate": 16000,
-            "channelCount": 1
-          }
+          "sizeBytes": 5986908,
+          "sha256": "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/diarizer/pyannote-segmentation-3.0-fp32.onnx",
+          "sourceRepo": "onnx-community/pyannote-segmentation-3.0",
+          "sourcePath": "onnx/model.onnx"
         }
-      ]
+      ],
+      "hfRevision": "7a8d059b770aeab08e6eabcf9dcbfc051e5bafef"
+    },
+    {
+      "id": "turn-detector",
+      "displayName": "LiveKit turn-detector v0.2.0 (DailyDialog fine-tune)",
+      "purpose": "end-of-turn detection for the voice pipeline",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.2.0",
+      "license": "Apache-2.0",
+      "attribution": "Based on livekit/turn-detector v1.2.2-en; fine-tuned on DailyDialog (APOLLO-Mini, prefix-augmented EOU corpus)",
+      "introducedIn": "R1/I1",
+      "variants": [
+        {
+          "variantId": "turn-detector-en-q8-onnx",
+          "filename": "onnx/model_q8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 37736316,
+          "sizeBytes": 37736316,
+          "sha256": "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
+          "assetStatus": "available",
+          "stagedPath": "models/voice/turn-detector-en/model_q8.onnx",
+          "sourceRepo": "elizaos/eliza-1-voice-turn",
+          "sourcePath": "onnx/model_q8.onnx",
+          "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
+        },
+        {
+          "variantId": "turn-detector-en-q8-gguf",
+          "filename": "onnx/turn-detector-en-q8.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 41275296,
+          "sizeBytes": 41275296,
+          "sha256": "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
+          "assetStatus": "available",
+          "stagedPath": "models/voice/turn-detector-en-q8.gguf",
+          "sourceRepo": "elizaos/eliza-1-voice-turn",
+          "sourcePath": "onnx/turn-detector-en-q8.gguf",
+          "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
+        }
+      ],
+      "hfRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
+    },
+    {
+      "id": "voice-emotion",
+      "displayName": "Wav2Small 7-class emotion classifier (cls7 head)",
+      "purpose": "7-class voice-emotion classifier (argmax over EXPRESSIVE_EMOTION_TAGS)",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.2.0",
+      "license": "Apache-2.0",
+      "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim; teacher weights are not bundled.",
+      "introducedIn": "R3/I3",
+      "variants": [
+        {
+          "variantId": "wav2small-cls7-int8",
+          "filename": "wav2small-cls7-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 524750,
+          "sizeBytes": 524750,
+          "sha256": "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-cls7-int8.onnx",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-pathB/wav2small-cls7-int8.onnx",
+          "evalGatePass": true,
+          "evalMacroF1": 0.3550
+        },
+        {
+          "variantId": "wav2small-msp-dim-int8",
+          "filename": "wav2small-msp-dim-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 122880,
+          "sizeBytes": 516877,
+          "sha256": "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-int8.onnx",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.onnx",
+          "evalGatePass": false,
+          "evalMacroF1": 0.3192,
+          "note": "Legacy V-A-D head — kept for parity; current runtime auto-detects head by output dim and prefers cls7 when both exist."
+        },
+        {
+          "variantId": "wav2small-msp-dim-fp32",
+          "filename": "wav2small-msp-dim-fp32.onnx",
+          "format": "onnx",
+          "precision": "fp32",
+          "approxSizeBytes": 491520,
+          "sizeBytes": 1211917,
+          "sha256": "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-fp32.onnx",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx"
+        },
+        {
+          "variantId": "wav2small-msp-dim-fp32-onnx-data",
+          "filename": "wav2small-msp-dim-fp32.onnx.data",
+          "format": "onnx-data",
+          "precision": "onnx-fp32",
+          "approxSizeBytes": 967000,
+          "sizeBytes": 989472,
+          "sha256": "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-fp32.onnx.data",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx.data"
+        }
+      ],
+      "hfRevision": "85c56b6f5aa4bdef801aa6d5ea082eb92f90b463"
+    },
+    {
+      "id": "kokoro",
+      "displayName": "Kokoro 82M base + voice presets",
+      "purpose": "Kokoro TTS base weights and voice presets",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "introducedIn": "R7/I7",
+      "variants": [
+        {
+          "variantId": "kokoro-v1.0-q4",
+          "filename": "kokoro-v1.0-q4.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 326144000,
+          "sizeBytes": 305215966,
+          "sha256": "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/kokoro-v1.0-q4.onnx",
+          "sourceRepo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+          "sourcePath": "onnx/model_q4.onnx"
+        },
+        {
+          "variantId": "kokoro-af-bella",
+          "filename": "voices/af_bella.bin",
+          "format": "bin",
+          "precision": "fp16",
+          "approxSizeBytes": 524288,
+          "sizeBytes": 522240,
+          "sha256": "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/voices/af_bella.bin",
+          "sourceRepo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+          "sourcePath": "voices/af_bella.bin"
+        },
+        {
+          "variantId": "kokoro-af-same",
+          "filename": "voices/af_same.bin",
+          "format": "bin",
+          "precision": "fp16",
+          "approxSizeBytes": 524288,
+          "sizeBytes": 522240,
+          "sha256": "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/voices/af_same.bin",
+          "sourceRepo": "local-kokoro-same-sweep",
+          "sourcePath": "packages/training/out/kokoro-same-sweep/anchor-0.0/af_same-anchor-0.0.bin"
+        }
+      ],
+      "hfRevision": "967f7449f79414d2b49db3b2441ea683630c11ab"
+    },
+    {
+      "id": "omnivoice",
+      "displayName": "OmniVoice frozen conditioning",
+      "purpose": "primary TTS path with same voice preset",
+      "runtime": "llama.cpp",
+      "currentVersion": "0.2.0",
+      "license": "Apache-2.0",
+      "attribution": "OmniVoice architecture; elizaOS llama.cpp fork integration",
+      "introducedIn": "R6/I6",
+      "variants": [
+        {
+          "variantId": "omnivoice-base-q4_k_m",
+          "filename": "omnivoice-base-q4_k_m.gguf",
+          "format": "gguf",
+          "precision": "q4_k_m",
+          "approxSizeBytes": 388000000,
+          "sizeBytes": 407485216,
+          "sha256": "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/omnivoice-base-q4_k_m.gguf",
+          "sourceRepo": "Serveurperso/OmniVoice-GGUF",
+          "sourcePath": "omnivoice-base-Q4_K_M.gguf"
+        },
+        {
+          "variantId": "omnivoice-tokenizer-q4_k_m",
+          "filename": "omnivoice-tokenizer-q4_k_m.gguf",
+          "format": "gguf",
+          "precision": "q4_k_m",
+          "approxSizeBytes": 51200000,
+          "sizeBytes": 252474112,
+          "sha256": "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/omnivoice-tokenizer-q4_k_m.gguf",
+          "sourceRepo": "Serveurperso/OmniVoice-GGUF",
+          "sourcePath": "omnivoice-tokenizer-Q4_K_M.gguf"
+        },
+        {
+          "variantId": "omnivoice-base-q8_0",
+          "filename": "omnivoice-base-q8_0.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 620000000,
+          "sizeBytes": 656395008,
+          "sha256": "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/omnivoice-base-q8_0.gguf",
+          "sourceRepo": "Serveurperso/OmniVoice-GGUF",
+          "sourcePath": "omnivoice-base-Q8_0.gguf"
+        },
+        {
+          "variantId": "omnivoice-same-preset",
+          "filename": "presets/voice-preset-same.bin",
+          "format": "bin",
+          "precision": "fp16",
+          "approxSizeBytes": 8192,
+          "sizeBytes": 716,
+          "sha256": "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/presets/voice-preset-same.bin",
+          "sourceRepo": "local-release-staging",
+          "sourcePath": "release-staging/omnivoice-same-v01/voice-preset.elz2"
+        }
+      ],
+      "hfRevision": "b766eb23d5f6c84d580973c0f2013b6fcbd561c0"
+    },
+    {
+      "id": "vad",
+      "displayName": "Silero VAD v5.1.2",
+      "purpose": "speech/silence endpoint detection",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "MIT",
+      "attribution": "https://github.com/snakers4/silero-vad",
+      "introducedIn": "R2/I2",
+      "variants": [
+        {
+          "variantId": "silero-vad-int8",
+          "filename": "silero-vad-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 1056768,
+          "sizeBytes": 639383,
+          "sha256": "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/vad/silero-vad-int8.onnx",
+          "sourceRepo": "onnx-community/silero-vad",
+          "sourcePath": "onnx/model_int8.onnx"
+        },
+        {
+          "variantId": "silero-vad-v5.1.2-ggml",
+          "filename": "silero-vad-v5.1.2.ggml.bin",
+          "format": "ggml",
+          "precision": "fp16",
+          "approxSizeBytes": 2093056,
+          "sizeBytes": 885098,
+          "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/vad/silero-vad-v5.1.2.ggml.bin",
+          "sourceRepo": "ggml-org/whisper-vad",
+          "sourcePath": "ggml-silero-v5.1.2.bin"
+        }
+      ],
+      "hfRevision": "7fc2359bbc0ee1e0dd7de2acb126f6872a4fb4c2"
+    },
+    {
+      "id": "wakeword",
+      "displayName": "hey-eliza wake-word head",
+      "purpose": "always-on wake-word detection",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "hey-eliza wake-word head",
+      "introducedIn": "R2/I2",
+      "variants": [
+        {
+          "variantId": "hey-eliza-int8",
+          "filename": "hey-eliza-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 1048576,
+          "sizeBytes": 630032,
+          "sha256": "e565952901cd4203baacef7cb8700891c9bee4e6f42fc9bc0aa03b9c39a2da92",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/wakeword/hey-eliza-int8.onnx",
+          "sourceRepo": "local-installed-bundle",
+          "sourcePath": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/wake/hey-eliza.onnx"
+        },
+        {
+          "variantId": "melspectrogram-onnx",
+          "filename": "melspectrogram.onnx",
+          "format": "onnx",
+          "precision": "onnx-fp32",
+          "approxSizeBytes": 1050000,
+          "sizeBytes": 1087958,
+          "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/wakeword/melspectrogram.onnx",
+          "sourceRepo": "openWakeWord v0.5.1",
+          "sourcePath": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx"
+        },
+        {
+          "variantId": "embedding_model-onnx",
+          "filename": "embedding_model.onnx",
+          "format": "onnx",
+          "precision": "onnx-fp32",
+          "approxSizeBytes": 1300000,
+          "sizeBytes": 1326578,
+          "sha256": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/wakeword/embedding_model.onnx",
+          "sourceRepo": "openWakeWord v0.5.1",
+          "sourcePath": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx"
+        }
+      ],
+      "hfRevision": "bcd866bc070a649dfd2dfbf7aadbd01b3cc68c4b"
+    },
+    {
+      "id": "embedding",
+      "displayName": "Qwen3-Embedding 0.6B GGUF",
+      "purpose": "text embedding for voice profile matching",
+      "runtime": "llama.cpp",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+      "introducedIn": "R2/I2",
+      "variants": [
+        {
+          "variantId": "eliza-1-embedding-q8_0",
+          "filename": "eliza-1-embedding-q8_0.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 650000000,
+          "sizeBytes": 639150592,
+          "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/embedding/eliza-1-embedding-q8_0.gguf",
+          "sourceRepo": "Qwen/Qwen3-Embedding-0.6B-GGUF",
+          "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf"
+        }
+      ],
+      "hfRevision": "bf6afa907c83ec98e487f018cfb4e29ec3cb7c03"
+    },
+    {
+      "id": "asr",
+      "displayName": "Qwen3-ASR GGUF",
+      "purpose": "streaming speech recognition",
+      "runtime": "llama.cpp",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "Derived from Qwen/Qwen3-ASR",
+      "introducedIn": "R2/I2",
+      "variants": [
+        {
+          "variantId": "eliza-1-asr-q8_0",
+          "filename": "eliza-1-asr-q8_0.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 2165034944,
+          "sizeBytes": 2165034944,
+          "sha256": "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/asr/eliza-1-asr-q8_0.gguf",
+          "sourceRepo": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+          "sourcePath": "Qwen3-ASR-1.7B-Q8_0.gguf"
+        },
+        {
+          "variantId": "eliza-1-asr-mmproj",
+          "filename": "eliza-1-asr-mmproj.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 355709344,
+          "sizeBytes": 355709344,
+          "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/asr/eliza-1-asr-mmproj.gguf",
+          "sourceRepo": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+          "sourcePath": "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf"
+        }
+      ],
+      "hfRevision": "c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f"
     }
   ],
   "notes": [
-    "This manifest is the asset-level registry for voice sub-models. Its",
-    "machine-readable twin is packages/shared/src/local-inference/voice-models.ts",
-    "(history + auto-updater metadata). The CHANGELOG.md at",
-    "models/voice/CHANGELOG.md is the human-readable counterpart.",
-    "Add per-variant entries here; do not edit a published variant — bump",
-    "the parent currentVersion and append a new variant row instead."
+    "This manifest is the asset-level registry for voice sub-models.",
+    "The machine-readable auto-updater registry is packages/shared/src/local-inference/voice-models.ts.",
+    "Only record sha256 and sizeBytes after verifying an actual file."
   ]
 }

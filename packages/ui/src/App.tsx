@@ -69,8 +69,11 @@ import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
   APPS_ENABLED,
+  getAppSlugFromPath,
+  getWindowNavigationPath,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
+  shouldUseHashNavigation,
 } from "./navigation";
 import { isIOS, isNative } from "./platform/init";
 import { useApp } from "./state";
@@ -130,12 +133,6 @@ import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { useAvailableViews } from "./hooks/useAvailableViews";
 import { useIsDeveloperMode } from "./state/useDeveloperMode";
 
-// True lazy boundaries: these views are only imported here, so Rollup can
-// honour the split into separate chunks.
-const AppsPageView = lazyNamedView(
-  () => import("./components/pages/AppsPageView"),
-  "AppsPageView",
-);
 const ViewManagerPage = lazyNamedView(
   () => import("./components/pages/ViewManagerPage"),
   "ViewManagerPage",
@@ -479,6 +476,20 @@ function ViewRouter({
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
   const developerModeEnabled = useIsDeveloperMode();
+  const [navigationPath, setNavigationPath] = useState(() =>
+    typeof window === "undefined" ? "/" : getWindowNavigationPath(),
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
+    const handleNavigationChange = () => {
+      setNavigationPath(getWindowNavigationPath());
+    };
+    window.addEventListener(navEvt, handleNavigationChange);
+    return () => window.removeEventListener(navEvt, handleNavigationChange);
+  }, []);
+
   // Available views from /api/views — used to route to DynamicViewLoader
   // when a tab ID matches a view entry that ships a remote bundle URL.
   const { views: availableViews } = useAvailableViews();
@@ -493,15 +504,25 @@ function ViewRouter({
     // Check if the current tab matches a dynamically-registered view with a
     // remote bundle URL. These are plugin-contributed views loaded at runtime
     // from /api/views — they live outside the main bundle.
+    const appSlug = tab === "apps" ? getAppSlugFromPath(navigationPath) : null;
     const remoteView = availableViews.find(
-      (v) => v.bundleUrl && (v.id === tab || v.path === `/${tab}` || v.path === `/apps/${tab}`),
+      (v) =>
+        v.bundleUrl &&
+        (v.id === tab ||
+          v.path === navigationPath ||
+          v.path === `/${tab}` ||
+          v.path === `/apps/${tab}` ||
+          (appSlug !== null &&
+            (v.id === appSlug ||
+              v.path === `/apps/${appSlug}` ||
+              v.path === `/${appSlug}`))),
     );
     if (remoteView?.bundleUrl) {
       return (
         <TabContentView>
           <DynamicViewLoader
             bundleUrl={remoteView.bundleUrl}
-            componentExport={remoteView.id}
+            componentExport={remoteView.componentExport}
             viewId={remoteView.id}
           />
         </TabContentView>
@@ -881,13 +902,20 @@ export function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleNavigateView = (event: Event) => {
-      const detail = (event as CustomEvent<{ viewId?: string; viewPath?: string }>).detail;
+      const detail = (
+        event as CustomEvent<{ viewId?: string; viewPath?: string }>
+      ).detail;
       if (!detail) return;
-      const path = detail.viewPath ?? (detail.viewId ? `/apps/${detail.viewId}` : null);
+      const path =
+        detail.viewPath ?? (detail.viewId ? `/apps/${detail.viewId}` : null);
       if (!path) return;
       // For the Views manager specifically, navigate the tab directly so the
       // nav bar becomes visible without relying solely on URL routing.
-      if (path === "/views" || path === "/apps" || detail.viewId === "views-manager") {
+      if (
+        path === "/views" ||
+        path === "/apps" ||
+        detail.viewId === "views-manager"
+      ) {
         setTab("apps");
         return;
       }

@@ -206,10 +206,10 @@ def test_redactor_phone_dashed() -> None:
 
 
 def test_redactor_handle() -> None:
-    record = _wrap_native_record("ping @samantha_ops about it")
+    record = _wrap_native_record("ping @sam_ops about it")
     formatted = format_record(record)
     rendered = _dump(formatted)
-    assert "@samantha_ops" not in rendered
+    assert "@sam_ops" not in rendered
     assert "<REDACTED:contact-handle>" in rendered
 
 

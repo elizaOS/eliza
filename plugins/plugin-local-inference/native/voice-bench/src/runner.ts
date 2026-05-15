@@ -136,10 +136,10 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     }
   }
   return {
-    bundle: args.bundle ?? "eliza-1-2b",
-    backend: args.backend ?? "real",
-    scenario: args.scenario ?? "all",
-    runs: Number.parseInt(args.runs ?? "1", 10) || 1,
+    bundle: args.bundle,
+    backend: args.backend,
+    scenario: args.scenario,
+    runs: Number.parseInt(args.runs, 10) || 1,
     output: args.output,
     baseline: args.baseline,
   };

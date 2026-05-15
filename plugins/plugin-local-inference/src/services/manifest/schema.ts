@@ -47,8 +47,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
-// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. Enum stays size-ordered.
+// Tiers — size-ordered and capped at the native 262,144-token context.
 export const ELIZA_1_TIERS = [
 	"0_8b",
 	"2b",
@@ -56,7 +55,6 @@ export const ELIZA_1_TIERS = [
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
@@ -155,7 +153,6 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -168,8 +165,6 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
-	// 1M context only ships verified on CUDA today (GH200-class hosts).
-	"27b-1m": ["cuda"],
 };
 
 // ---------------------------------------------------------------------------
@@ -196,6 +191,7 @@ export const Eliza1LineageSchema = z.object({
 	// entry undefined. The validator enforces lineage-vs-files consistency.
 	asr: lineageEntry.optional(),
 	embedding: lineageEntry.optional(),
+	imagegen: lineageEntry.optional(),
 	vision: lineageEntry.optional(),
 	vad: lineageEntry.optional(),
 	wakeword: lineageEntry.optional(),
@@ -235,15 +231,23 @@ export const Eliza1FilesSchema = z.object({
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
-	// a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-	// optional in the schema — the 0_8b tier intentionally omits the
-	// dedicated embedding (pools from text backbone) and a tier may
-	// ship without wake-word support.
+	// a Silero-VAD ONNX + an optional openWakeWord GGUF (replacing the
+	// previous three-file ONNX layout — the combined GGUF carries the
+	// mel filterbank + speech embedding model + every per-phrase head).
+	// All three are optional in the schema — the 0_8b tier intentionally
+	// omits the dedicated embedding (pools from text backbone) and a
+	// tier may ship without wake-word support.
 	//
 	// Schema-level optionality: empty array = "this bundle does not
 	// ship this component"; the validator enforces tier-specific
 	// consistency rules (e.g. 4b-and-up MUST ship `embedding[]`).
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
+	// Optional image-generation artifacts. Most Eliza-1 base bundles do not
+	// carry diffusion weights; those are documented in
+	// docs/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When a
+	// future bundle does ship local image-gen weights inline, list them here
+	// and provide matching `lineage.imagegen`.
+	imagegen: z.array(Eliza1FileEntrySchema).optional(),
 	vad: z.array(Eliza1FileEntrySchema).optional(),
 	wakeword: z.array(Eliza1FileEntrySchema).optional(),
 	// Voice Wave 2 (2026-05-14): bundled semantic turn detector. Optional —
@@ -256,6 +260,15 @@ export const Eliza1FilesSchema = z.object({
 	// 0_8b/2b ship the EN-only SmolLM2-135M distill (~66 MB Q8 ONNX);
 	// 4b/9b/27b ship the multilingual pruned Qwen2.5-0.5B (~396 MB Q8 ONNX).
 	turn: z.array(Eliza1FileEntrySchema).optional(),
+	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
+	// present, the runtime layers this adapter onto the in-process
+	// drafter at voice-session start (`voice/eliza1-eot-scorer.ts`) so
+	// P(`<|im_end|>`) calibration matches a fine-tuned EOT head without
+	// shipping a second base model. When both `turn` and `eotLoraAdapter`
+	// are present the operator picks via `ELIZA_VOICE_EOT_BACKEND` or
+	// `startVoiceSession({ useEliza1Eot })`. Training recipe:
+	// `packages/training/scripts/turn_detector/configs/turn_detector_eliza1_drafter.yaml`.
+	eotLoraAdapter: z.array(Eliza1FileEntrySchema).optional(),
 	// Voice Wave 2 (2026-05-14): bundled acoustic-prosody emotion classifier
 	// (Wav2Small student, ~120 KB int8 ONNX). Optional — when omitted, the
 	// runtime falls back to the lexicon + audio-prosody heuristic path inside
@@ -407,6 +420,12 @@ export const Eliza1EvalsSchema = z.object({
 			f1: z.number().min(0).max(1),
 			meanLatencyMs: z.number().nonnegative(),
 			passed: z.boolean(),
+			// Which detector backend the eval was run against. Optional for
+			// back-compat with bundles staged before the eliza-1 EOT path;
+			// when absent, consumers should assume `livekit`.
+			kind: z
+				.enum(["livekit", "turnsense", "eliza-1-drafter"])
+				.optional(),
 		})
 		.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gates.
@@ -500,6 +519,7 @@ export const ELIZA_1_PROVENANCE_SLOTS = [
 	"asr",
 	"vad",
 	"embedding",
+	"imagegen",
 	"vision",
 	"drafter",
 ] as const;

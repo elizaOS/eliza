@@ -1,0 +1,36 @@
+# OmniVoice fine-tune (Path B) on the `same` voice.
+#
+# Status (Wave 3, W3-11):
+#   Path A (preset-based freeze, I6) is SHIPPED and is the default same path.
+#   Path B (LM weight fine-tune) requires GGUF→HF conversion tooling not yet
+#   available. This config documents the target hyperparameters for when
+#   that tooling ships.
+#
+# The shipped same OmniVoice path is the ELZ2 v2 preset from I6:
+#   packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs
+#   --voice same --corpus packages/training/data/voice/same/
+#
+# See .swarm/impl/W3-11-finetune.md §2 for the Path B gap analysis.
+
+extends: base.yaml
+
+voice_name: same
+voice_display_name: Same OmniVoice (AI Voices, US English)
+
+# Data paths (override via CLI for portability).
+dataset_path: packages/training/data/voice/same
+run_dir: /tmp/omnivoice-runs/same
+
+# Corpus-tuned: 58 clips / 3.5 min.
+max_steps: 500             # cap tight; scale up if Path B tooling lands
+eval_every: 100
+checkpoint_every: 100
+warmup_steps: 20
+val_fraction: 0.10
+early_stop_patience: 2
+
+# Eval gates — relaxed speaker similarity for 5-clip val noise.
+gates:
+  wer_max: 0.10
+  speaker_similarity_min: 0.50
+  rtf_min: 3.0

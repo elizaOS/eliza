@@ -32,6 +32,7 @@ Deviations from upstream:
 
 from __future__ import annotations
 
+import ast
 import copy
 import importlib
 import inspect
@@ -234,7 +235,10 @@ class ExecutableRuntime:
         instances owned by this runtime. Returns one stringified result per
         call (or an ``"Error during execution: ..."`` marker on failure)."""
         # eval() needs the instance bindings in its locals.
-        eval_globals = {name: inst for name, inst in self._instances.items()}
+        eval_globals = {
+            "__builtins__": {},
+            **{name: inst for name, inst in self._instances.items()},
+        }
 
         results: list[str] = []
         for raw_call in func_call_list:
@@ -269,21 +273,39 @@ class ExecutableRuntime:
         e.g. ``ls(a=True)`` -> ``GorillaFileSystem.ls(a=True)`` when ``ls``
         belongs to GorillaFileSystem.
         """
-        def replace(match: re.Match[str]) -> str:
-            name = match.group(1)
-            return f"{self._method_to_class[name]}.{name}" if name in self._method_to_class else name
+        try:
+            tree = ast.parse(call, mode="eval")
+        except SyntaxError:
+            return call
 
-        return re.sub(r"\b([a-zA-Z_]\w*)\s*(?=\()", replace, call)
+        method_to_class = self._method_to_class
+
+        class _Qualifier(ast.NodeTransformer):
+            def visit_Call(self, node: ast.Call) -> ast.AST:
+                self.generic_visit(node)
+                if isinstance(node.func, ast.Name) and node.func.id in method_to_class:
+                    node.func = ast.Attribute(
+                        value=ast.Name(id=method_to_class[node.func.id], ctx=ast.Load()),
+                        attr=node.func.id,
+                        ctx=ast.Load(),
+                    )
+                return node
+
+        qualified = _Qualifier().visit(tree)
+        ast.fix_missing_locations(qualified)
+        return ast.unparse(qualified)
 
     @staticmethod
     def _reject_forbidden(call: str) -> None:
-        head = call
-        if "(" in head:
-            head = head.split("(", 1)[0]
-        if "." in head:
-            head = head.rsplit(".", 1)[-1]
-        if head in _FORBIDDEN_NAMES:
-            raise RuntimeError(f"Function call {head!r} is not allowed.")
+        try:
+            tree = ast.parse(call, mode="eval")
+        except SyntaxError as exc:
+            raise RuntimeError(f"Invalid function call syntax: {exc}") from exc
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id in _FORBIDDEN_NAMES:
+                raise RuntimeError(f"Function call {node.id!r} is not allowed.")
+            if isinstance(node, ast.Attribute) and node.attr in _FORBIDDEN_NAMES:
+                raise RuntimeError(f"Function call {node.attr!r} is not allowed.")
 
 
 def execute_multi_turn_func_call(

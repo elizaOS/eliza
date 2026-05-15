@@ -1325,7 +1325,7 @@ export function installPromptOptimizations(
   installedRuntimes.add(runtime);
 
   // Validate intent-action map against registered actions
-  const actionNames = runtime.actions?.map((a) => a.name);
+  const actionNames = runtime.actions.map((a) => a.name);
   if (actionNames.length > 0) {
     validateIntentActionMap(actionNames, runtime.logger);
   }

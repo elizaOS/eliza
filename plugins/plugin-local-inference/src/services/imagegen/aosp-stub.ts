@@ -177,7 +177,7 @@ export async function loadAospImageGenBackend(
 					"[imagegen/aosp] generate called after dispose()",
 				);
 			}
-			if (!req.prompt?.trim()) {
+			if (!req.prompt.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"aosp",
 					"unsupported_request",

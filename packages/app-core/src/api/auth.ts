@@ -132,7 +132,7 @@ export function ensureCompatApiAuthorized(
     return false;
   }
 
-  const ip = req.socket?.remoteAddress ?? null;
+  const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     sendJsonError(res, 429, "Too many authentication attempts");
     return false;
@@ -180,7 +180,7 @@ export async function ensureCompatApiAuthorizedAsync(
     skipCsrf?: boolean;
   },
 ): Promise<boolean> {
-  const ip = req.socket?.remoteAddress ?? null;
+  const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     sendJsonError(res, 429, "Too many authentication attempts");
     return false;
@@ -302,7 +302,7 @@ export type AuthSessionOrBootstrapResult =
 export function ensureAuthSessionOrBootstrap(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
 ): AuthSessionOrBootstrapResult {
-  const ip = req.socket?.remoteAddress ?? null;
+  const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     return { kind: "denied", status: 429, reason: "rate_limited" };
   }

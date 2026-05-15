@@ -4,10 +4,10 @@ Core types for AgentBench benchmark.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol, TypedDict, Union, runtime_checkable
-import re
 
 
 class AgentBenchEnvironment(Enum):
@@ -36,6 +36,14 @@ class BenchmarkSplit(Enum):
 
     DEV = "dev"
     TEST = "test"
+
+
+class AgentBenchDataMode(Enum):
+    """How AgentBench task data should be loaded."""
+
+    AUTO = "auto"
+    FIXTURE = "fixture"
+    FULL = "full"
 
 
 # JSON-like value types (no Any)
@@ -373,6 +381,16 @@ class AgentBenchConfig:
     # uses the official "standard" split corresponding to the public
     # leaderboard. Per-env counts: see ``upstream_loader``.
     split: BenchmarkSplit = BenchmarkSplit.TEST
+
+    # ``auto`` uses full upstream data when present and compact fixtures
+    # otherwise. ``full`` refuses fixture fallback. ``fixture`` is an
+    # explicit smoke-test mode for offline CI.
+    data_mode: AgentBenchDataMode = AgentBenchDataMode.AUTO
+
+    # Empty task sets usually mean a broken data setup. These switches are
+    # explicit escape hatches for discovery or adapter dry-runs.
+    allow_empty_tasks: bool = False
+    dry_run: bool = False
 
     # Dataset paths (legacy field, no longer used for task loading;
     # kept for back-compat with config files in the wild).

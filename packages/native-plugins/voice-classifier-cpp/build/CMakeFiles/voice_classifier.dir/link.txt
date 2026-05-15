@@ -1,0 +1,2 @@
+/usr/bin/ar qc libvoice_classifier.a CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o
+/usr/bin/ranlib libvoice_classifier.a

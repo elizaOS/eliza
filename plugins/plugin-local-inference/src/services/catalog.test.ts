@@ -100,7 +100,6 @@ describe("local inference catalog", () => {
 			"eliza-1-9b": 65536,
 			"eliza-1-27b": 131072,
 			"eliza-1-27b-256k": 262144,
-			"eliza-1-27b-1m": 1_048_576,
 		};
 		for (const [id, expectedLength] of Object.entries(expected)) {
 			const model = findCatalogModel(id);
@@ -199,27 +198,21 @@ describe("local inference catalog", () => {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
 			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
+				"q3_k_m",
 				"q4_k_m",
+				"q5_k_m",
 				"q6_k",
 				"q8_0",
 			]);
 		}
 
-		// Small/mid tiers: OmniVoice first (fused expressive path), Kokoro as
-		// low-latency/thermal fallback. Large tiers: OmniVoice only.
+		// 0_8b/2b/4b default to Kokoro for small-device latency/memory.
+		// 9B keeps OmniVoice plus Kokoro;
+		// large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
-		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
-			"omnivoice",
-			"kokoro",
-		]);
-		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual([
-			"omnivoice",
-			"kokoro",
-		]);
-		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
-			"omnivoice",
-			"kokoro",
-		]);
+		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
 			"omnivoice",
 			"kokoro",
@@ -230,29 +223,6 @@ describe("local inference catalog", () => {
 		expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
 			"omnivoice",
 		]);
-		expect(findCatalogModel("eliza-1-27b-1m")?.voiceBackends).toEqual([
-			"omnivoice",
-		]);
-	});
-
-	it("records 27b-1m text source provenance with the long-context vision projector (WS2)", () => {
-		const model = findCatalogModel("eliza-1-27b-1m");
-		expect(model?.sourceModel?.finetuned).toBe(false);
-		const components = model?.sourceModel?.components;
-		expect(components?.text).toEqual({
-			repo: "elizaos/eliza-1",
-			file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
-		});
-		// WS2 (vision-describe): vision is enabled on the 1M-context tier
-		// because the bundle plan ships the same Q8_0 mmproj used by 27b /
-		// 27b-256k, and the use case (long-document pipelines where a
-		// screenshot lands inside a million-token context) justifies the
-		// projector cost on server-class hosts. On smaller hosts the
-		// arbiter evicts vision under pressure before the text model.
-		expect(components?.vision).toEqual({
-			repo: "elizaos/eliza-1",
-			file: "bundles/27b-1m/vision/mmproj-27b-1m.gguf",
-		});
 	});
 
 	it("does not leak implementation-family names in visible catalog copy", () => {

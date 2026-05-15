@@ -818,7 +818,7 @@ interface ProviderImageGenResult {
 function paramsToImageGenRequest(
 	params: ImageGenerationParams,
 ): ProviderImageGenRequest {
-	if (typeof params?.prompt !== "string" || !params.prompt.trim()) {
+	if (typeof params.prompt !== "string" || !params.prompt.trim()) {
 		throw unavailable(
 			ModelType.IMAGE,
 			"invalid_input",
@@ -873,7 +873,7 @@ function paramsToImageGenRequest(
 function imageGenResultToUrls(
 	result: ProviderImageGenResult,
 ): ImageGenerationResult[] {
-	if (!(result?.image instanceof Uint8Array) || result.image.length === 0) {
+	if (!(result.image instanceof Uint8Array) || result.image.length === 0) {
 		throw unavailable(
 			ModelType.IMAGE,
 			"invalid_output",
@@ -949,9 +949,9 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
 	const r = runtime as IAgentRuntime & {
 		getSetting?: (key: string) => unknown;
 	};
-	const pinned = r.getSetting?.("LOCAL_INFERENCE_IMAGE_MODEL_KEY");
+	const pinned = r.getSetting("LOCAL_INFERENCE_IMAGE_MODEL_KEY");
 	if (typeof pinned === "string" && pinned.trim()) return pinned.trim();
-	const tier = r.getSetting?.("LOCAL_INFERENCE_ACTIVE_TIER");
+	const tier = r.getSetting("LOCAL_INFERENCE_ACTIVE_TIER");
 	if (typeof tier === "string" && tier.trim()) {
 		const mapped = TIER_TO_DEFAULT_IMAGE_MODEL_KEY[tier.trim()];
 		if (mapped) return mapped;
@@ -974,7 +974,6 @@ const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
 	"eliza-1-9b": "imagegen-z-image-turbo-q4_k_m",
 	"eliza-1-27b": "imagegen-z-image-turbo-q4_k_m",
 	"eliza-1-27b-256k": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b-1m": "imagegen-z-image-turbo-q4_k_m",
 };
 
 export function createLocalInferenceModelHandlers(): NonNullable<

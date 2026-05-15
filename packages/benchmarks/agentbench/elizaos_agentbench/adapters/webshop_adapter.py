@@ -7,16 +7,17 @@ This adapter handles online shopping tasks - product search and purchase.
 import logging
 import re
 from collections.abc import Callable
+from importlib import import_module
 from typing import TypedDict
 
+from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.types import (
     AgentBenchEnvironment,
-    AgentRuntimeProtocol,
     AgentBenchTask,
+    AgentRuntimeProtocol,
     EnvironmentConfig,
     ObservationType,
 )
-from elizaos_agentbench.adapters.base import EnvironmentAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,30 @@ WEBSHOP_REQUIRES_CORPUS_MSG = (
     "supply products in task.initial_state to run locally."
 )
 
+_WEBSHOP_BRIDGE_CACHE: tuple[type | None, type | None] | None = None
+
+
+def _load_elizaos_webshop_bridge() -> tuple[type | None, type | None]:
+    """Lazy-load the optional local WebShop benchmark package."""
+    global _WEBSHOP_BRIDGE_CACHE
+    if _WEBSHOP_BRIDGE_CACHE is not None:
+        return _WEBSHOP_BRIDGE_CACHE
+    try:
+        dataset_mod = import_module("elizaos_webshop.dataset")
+        env_mod = import_module("elizaos_webshop.environment")
+        dataset_cls = getattr(dataset_mod, "WebShopDataset")
+        env_cls = getattr(env_mod, "WebShopEnvironment")
+        _WEBSHOP_BRIDGE_CACHE = (dataset_cls, env_cls)
+    except Exception as e:
+        logger.info("[WebShop] Optional elizaos_webshop bridge unavailable: %s", e)
+        _WEBSHOP_BRIDGE_CACHE = (None, None)
+    return _WEBSHOP_BRIDGE_CACHE
+
+
+def _reset_elizaos_webshop_bridge_for_tests() -> None:
+    global _WEBSHOP_BRIDGE_CACHE
+    _WEBSHOP_BRIDGE_CACHE = None
+
 
 class WebShopEnvironmentAdapter(EnvironmentAdapter):
     """
@@ -109,6 +134,10 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
         self._selected_product: ProductType | None = None
         self._selected_options: dict[str, str] = {}
         self._action_history: list[str] = []
+        self._bridge_env = None
+        self._bridge_tasks: list[object] | None = None
+        self._bridge_active = False
+        self._bridge_last_reward = 0.0
 
     async def initialize(self) -> None:
         """Initialize WebShop environment."""
@@ -117,9 +146,25 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
 
         logger.info("[WebShop] Initializing WebShop environment adapter...")
 
+        dataset_cls, env_cls = _load_elizaos_webshop_bridge()
+        if dataset_cls is not None and env_cls is not None:
+            try:
+                dataset = dataset_cls()
+                load_sync = getattr(dataset, "load_sync", None)
+                if callable(load_sync):
+                    load_sync()
+                get_tasks = getattr(dataset, "get_tasks", None)
+                self._bridge_tasks = list(get_tasks()) if callable(get_tasks) else []
+                self._bridge_env = env_cls(dataset)
+                logger.info("[WebShop] Optional elizaos_webshop bridge enabled")
+            except Exception as e:
+                logger.warning("[WebShop] Failed to initialize WebShop bridge: %s", e)
+                self._bridge_env = None
+                self._bridge_tasks = None
+
         # No built-in corpus; products are supplied per-task via
-        # ``initial_state.products`` (test fixtures) or by a future
-        # WebShop bridge that imports the official Flask sim.
+        # ``initial_state.products`` (test fixtures) or by the optional
+        # WebShop bridge above.
         self._products = []
 
         self._initialized = True
@@ -133,6 +178,27 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
         self._selected_product = None
         self._selected_options = {}
         self._action_history = []
+        self._bridge_active = False
+        self._bridge_last_reward = 0.0
+
+        bridge_index = task.initial_state.get("webshop_index")
+        if (
+            self._bridge_env is not None
+            and self._bridge_tasks
+            and isinstance(bridge_index, int)
+            and 0 <= bridge_index < len(self._bridge_tasks)
+        ):
+            bridge_task = self._bridge_tasks[bridge_index]
+            reset = getattr(self._bridge_env, "reset", None)
+            if callable(reset):
+                obs = reset(bridge_task)
+                self._bridge_active = True
+                return {
+                    "bridge": True,
+                    "message": getattr(obs, "message", str(obs)),
+                    "available_actions": getattr(obs, "available_actions", []),
+                    "task_description": task.description,
+                }
 
         # Load custom products if specified in task
         custom_products = task.initial_state.get("products")
@@ -200,6 +266,25 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
 
     async def step(self, action: str) -> tuple[ObservationType, float, bool, StepInfoType]:
         """Execute shopping action and return result."""
+        if self._bridge_active and self._bridge_env is not None:
+            step = getattr(self._bridge_env, "step", None)
+            if callable(step):
+                outcome = step(action)
+                reward = float(getattr(outcome, "reward", 0.0))
+                done = bool(getattr(outcome, "done", False))
+                self._bridge_last_reward = reward
+                obs = getattr(outcome, "observation", None)
+                return (
+                    {
+                        "bridge": True,
+                        "message": getattr(obs, "message", str(obs)),
+                        "available_actions": getattr(obs, "available_actions", []),
+                    },
+                    reward,
+                    done,
+                    {"action_type": "bridge"},
+                )
+
         parsed_action = self._parse_shopping_action(action)
         action_type = parsed_action.get("type", "invalid")
         params = parsed_action.get("params", {})
@@ -525,6 +610,9 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
 
     async def evaluate(self, task: AgentBenchTask, trajectory: list[str]) -> bool:
         """Evaluate if shopping task was completed correctly."""
+        if self._bridge_active:
+            return self._bridge_last_reward >= 1.0
+
         # Must have completed checkout for a successful purchase
         if self._current_page != "checkout_complete":
             return False
@@ -585,6 +673,7 @@ class WebShopEnvironmentAdapter(EnvironmentAdapter):
         self._cart = []
         self._search_results = []
         self._selected_product = None
+        self._bridge_active = False
         self._initialized = False
 
     def get_action_space(self) -> list[str]:

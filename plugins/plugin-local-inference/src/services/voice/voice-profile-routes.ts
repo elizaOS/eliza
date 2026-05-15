@@ -69,7 +69,7 @@ export interface VoiceProfileRouteOptions {
 	bundleRoot?: string;
 }
 
-const DEFAULT_PROFILE_ID = "samantha";
+const DEFAULT_PROFILE_ID = "same";
 
 // ---------------------------------------------------------------------------
 // Catalog helpers

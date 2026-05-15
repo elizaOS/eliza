@@ -308,7 +308,7 @@ function percentile(values: number[], p: number): number {
 }
 
 function nowMs(): number {
-  return globalThis.performance?.now?.() ?? Date.now();
+  return globalThis.performance.now();
 }
 
 function peakRssMb(): number {

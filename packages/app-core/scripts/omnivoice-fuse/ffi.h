@@ -48,13 +48,25 @@
  *     call and applies the persisted `(instruct, ref_audio_tokens, ref_T,
  *     ref_text)` triple to `ov_tts_params`. v3 callers that passed
  *     `speaker_preset_id == NULL` (auto-voice) keep that behaviour;
- *     `speaker_preset_id == "default"` / `"samantha"` / etc. now resolve
+ *     `speaker_preset_id == "default"` / `"sam"` / etc. now resolve
  *     to a real preset file instead of being misread as a VoiceDesign
  *     attribute string.
  *   - `eliza_inference_encode_reference` is added so the freeze CLI can
  *     pre-encode a reference WAV's HuBERT+RVQ tokens once and persist
  *     them in the preset file. Symbol is additive — v3 callers that
  *     don't use it are unaffected.
+ *
+ * ABI v5 adds the native openWakeWord surface — the GGML/llama.cpp
+ * replacement for the previous `onnxruntime-node`-backed wake-word path:
+ *   - the "wakeword" mmap region for the combined wake-word GGUF
+ *     (melspectrogram filterbank + speech embedding model + per-phrase
+ *     head, all in one file under `wake/openwakeword.gguf`);
+ *   - `eliza_inference_wakeword_supported/open/score/reset/close`,
+ *     matching the JS openWakeWord contract: 16 kHz mono fp32 PCM,
+ *     1280-sample frames (80 ms), one P(wake) per frame in [0, 1];
+ *   - `head_name` selects which classifier head inside the GGUF gets
+ *     bound at `_open` time (e.g. "hey-eliza").
+ * v4 callers that never touched the wake-word entries are unaffected.
  *
  * Errors are propagated via heap-allocated `char *` strings written to
  * `out_error` arguments; callers MUST free them with
@@ -81,7 +93,7 @@ extern "C" {
 /* Bump on any breaking shape change. The Node loader checks the value
  * returned by `eliza_inference_abi_version()` against this constant on
  * load and refuses to bind if they disagree. */
-#define ELIZA_INFERENCE_ABI_VERSION 4
+#define ELIZA_INFERENCE_ABI_VERSION 5
 
 /* Returns a static, NUL-terminated string of the form "4" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
@@ -131,6 +143,8 @@ void eliza_inference_destroy(EliInferenceContext * ctx);
  *   - "text" : text+vision weights (kept hot — always acquired)
  *   - "dflash" : drafter weights (kept hot — always acquired)
  *   - "vad" : Silero VAD weights / runtime pages
+ *   - "wakeword" : openWakeWord combined GGUF (mel filterbank + speech
+ *     embedding model + per-phrase head)
  *
  * Returns ELIZA_OK on success, negative on failure with
  * `*out_error` populated. Implementations may either issue an OS paging
@@ -233,8 +247,8 @@ int eliza_inference_cancel_tts(
  *
  * This is the encode-only half of the TTS pipeline that the freeze CLI
  * (`packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs`) uses to
- * persist a samantha-locked preset under
- * `<bundle_dir>/cache/voice-preset-samantha.bin`. At runtime the
+ * persist a same-locked preset under
+ * `<bundle_dir>/cache/voice-preset-same.bin`. At runtime the
  * synthesis path reads the preset back and feeds the persisted tokens
  * into `params.ref_audio_tokens` — there is no per-utterance encode
  * cost.
@@ -444,6 +458,72 @@ int eliza_inference_asr_stream_finish(
 
 /* Close + free a streaming ASR session. Idempotent on NULL. */
 void eliza_inference_asr_stream_close(EliAsrStream * stream);
+
+/* ---- Native wake-word (ABI v5) ------------------------------------ *
+ *
+ * Native openWakeWord backend. The shape mirrors
+ * `voice/wake-word.ts::OpenWakeWordModel`: a streaming pipeline over
+ * 16 kHz mono fp32 PCM in 1280-sample frames (80 ms). The library owns
+ * the three sub-models (mel filterbank, speech embedding model, head)
+ * and all the intermediate ring buffers (audio tail, mel ring,
+ * embedding ring); the JS side feeds one 1280-sample frame per call
+ * and reads back the most recent P(wake) in [0, 1].
+ *
+ * The weights live in one combined GGUF at
+ * `<bundle_dir>/wake/openwakeword.gguf` (see
+ * `packages/training/scripts/wakeword/convert_openwakeword_to_gguf.py`).
+ * `head_name` selects which classifier head inside that GGUF is bound
+ * at session open (e.g. "hey-eliza"). The JS binding chooses this
+ * backend unconditionally — there is no ONNX fallback. */
+
+/* Capability probe: 1 when this build implements native wake-word
+ * detection (mel filterbank + speech embedding + head wired against
+ * the combined GGUF), 0 when it does not (stub / wake-word-disabled
+ * build). The JS binding throws a structured "wake-word runtime not
+ * ready in this build" error when this returns 0 — no silent
+ * fallback (AGENTS.md §3, §8). */
+int eliza_inference_wakeword_supported(void);
+
+/* Opaque native wake-word session. One per detector instance. */
+typedef struct EliWakeWord EliWakeWord;
+
+/* Open a wake-word session anchored to `ctx`. `sample_rate_hz` MUST be
+ * 16000 (openWakeWord is fixed to 16 kHz mono). `head_name` is a
+ * NUL-terminated UTF-8 string naming the classifier head inside the
+ * combined wake-word GGUF (e.g. "hey-eliza"); the library resolves it
+ * against the head tensors stored in the GGUF and binds the matching
+ * one for the lifetime of the session. Returns NULL on failure with
+ * `*out_error` populated (unknown head, mismatched embedding dim,
+ * missing weights, etc.). */
+EliWakeWord * eliza_inference_wakeword_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    const char * head_name,
+    char ** out_error);
+
+/* Score exactly one 1280-sample fp32 mono frame at 16 kHz. The library
+ * appends the frame to its internal audio buffer, runs as many
+ * embedding hops + head passes as became due, and writes the latest
+ * P(wake) into `*out_probability`. Early frames before enough context
+ * accumulates write 0. Returns ELIZA_OK on success or a negative
+ * ELIZA_* code on failure. */
+int eliza_inference_wakeword_score(
+    EliWakeWord * wake,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error);
+
+/* Clear all internal state at the start of a fresh listening session.
+ * Drops the audio tail, mel ring and embedding ring; future frames are
+ * scored as if the detector had just been opened. Returns ELIZA_OK or
+ * a negative ELIZA_* code. */
+int eliza_inference_wakeword_reset(
+    EliWakeWord * wake,
+    char ** out_error);
+
+/* Close + free a native wake-word session. Idempotent on NULL. */
+void eliza_inference_wakeword_close(EliWakeWord * wake);
 
 /* ---- Memory ownership helpers -------------------------------------- */
 

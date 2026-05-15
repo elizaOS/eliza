@@ -1342,7 +1342,7 @@ export class LifeOpsFakeBackend {
     }
     const parent = this.stores.email[parentId];
     const threadId =
-      parent?.thread_id ?? syntheticId("thread_auto", { p: parentId });
+      parent?.thread_id;
     const body = pickString(kw, ["body"], "");
     const subject = parent
       ? `Re: ${parent.subject}`

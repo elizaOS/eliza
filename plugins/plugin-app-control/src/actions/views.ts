@@ -16,19 +16,14 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { hasOwnerAccess, logger } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { type ViewsClient, createViewsClient } from "./views-client.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
 import { readStringOption } from "../params.js";
 
-export type ViewsMode =
-	| "list"
-	| "show"
-	| "open"
-	| "search"
-	| "manager";
+export type ViewsMode = "list" | "show" | "open" | "search" | "manager";
 
 const MODES: readonly ViewsMode[] = [
 	"list",
@@ -44,6 +39,8 @@ const LIST_VERBS =
 const SEARCH_VERBS = /\b(search|find|look for|filter)\b.*\bview/i;
 const MANAGER_VERBS =
 	/\b(view manager|views manager|manage views|open manager|show manager)\b/i;
+const SHOW_ALL_VIEWS_MANAGER =
+	/\b(show|open|bring up|pull up)\b\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?views\b/i;
 const SHOW_VERBS =
 	/\b(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i;
 const VIEW_NOUN = /\bview[s]?\b/i;
@@ -56,7 +53,8 @@ function inferMode(
 	text: string,
 	options?: Record<string, unknown>,
 ): ViewsMode | null {
-	const explicit = readStringOption(options, "action") ?? readStringOption(options, "mode");
+	const explicit =
+		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	if (explicit && (MODES as readonly string[]).includes(explicit)) {
 		return explicit as ViewsMode;
 	}
@@ -65,6 +63,7 @@ function inferMode(
 	if (!trimmed) return null;
 
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
+	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
 	if (SEARCH_VERBS.test(trimmed)) return "search";
 	if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "list";
 	if (SHOW_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "show";
@@ -76,7 +75,8 @@ function extractSearchQuery(
 	text: string,
 	options?: Record<string, unknown>,
 ): string {
-	const explicit = readStringOption(options, "query") ?? readStringOption(options, "search");
+	const explicit =
+		readStringOption(options, "query") ?? readStringOption(options, "search");
 	if (explicit) return explicit;
 
 	// Strip "search views <query>" / "find view <query>"
@@ -91,8 +91,8 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 	return {
 		name: "VIEWS",
-		contexts: ["automation", "settings"],
-		contextGate: { anyOf: ["automation", "settings"] },
+		contexts: ["general", "automation", "settings"],
+		contextGate: { anyOf: ["general", "automation", "settings"] },
 		roleGate: { minRole: "USER" },
 		similes: [
 			"VIEW",
@@ -213,7 +213,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						pluginName: "core",
 						available: true,
 					};
-					const resultText = await navigateToPath(managerView.path, managerView.label);
+					const resultText = await navigateToPath(
+						managerView.path,
+						managerView.label,
+					);
 					await callback?.({ text: resultText });
 					return {
 						success: true,

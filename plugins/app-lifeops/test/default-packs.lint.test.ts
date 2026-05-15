@@ -26,11 +26,11 @@ describe("W1-D prompt-content lint — clean shipped packs", () => {
 });
 
 describe("W1-D prompt-content lint — pii_name rule", () => {
-  it("flags Samantha", () => {
+  it("flags Sam", () => {
     const findings = lintPromptText({
       packKey: "test",
       recordKey: "test-record",
-      prompt: "If user is Samantha, do X.",
+      prompt: "If user is Sam, do X.",
     });
     expect(findings.some((f) => f.rule === "pii_name")).toBe(true);
   });
@@ -192,7 +192,7 @@ describe("W1-D prompt-content lint — pack-level lintPack helper", () => {
         {
           kind: "reminder" as const,
           promptInstructions:
-            "If user is Samantha, fire at 08:00 and write to /tmp/foo.",
+            "If user is Sam, fire at 08:00 and write to /tmp/foo.",
           trigger: { kind: "manual" as const },
           priority: "low" as const,
           respectsGlobalPause: true,

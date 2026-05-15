@@ -135,7 +135,7 @@ export function isTrustedLocalRequest(
 ): boolean {
 	if (isLocalAuthRequiredByEnv()) return false;
 	if (isCloudProvisionedByEnv()) return false;
-	if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+	if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
 	if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 
 	const host = firstHeaderValue(req.headers.host);

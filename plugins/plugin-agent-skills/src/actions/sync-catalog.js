@@ -4,6 +4,7 @@
  * Manually trigger a sync of the skill catalog from the registry.
  */
 import { createAgentSkillsActionValidator } from "./validators";
+
 const SYNC_CATALOG_TIMEOUT_MS = 30_000;
 export const syncCatalogAction = {
     name: "SKILL",

@@ -46,7 +46,7 @@ describe("local inference recommendations", () => {
 		expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
 		// assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
 		// 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-		// not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
+		// not. Ladder is 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
 		expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
 	});
 
@@ -214,6 +214,72 @@ describe("local inference recommendations", () => {
 		expect(recommended.TEXT_LARGE.model?.id).toMatch(/^eliza-1-/);
 	});
 
+	it("still recommends Eliza-1 text on a binary that advertises BOTH DFlash kernels AND OpenVINO", () => {
+		// Intel hosts will ship binaries that link both the DFlash/W4-B
+		// kernels (for text) and the OpenVINO backend (for ASR/Whisper).
+		// The `unsupportedKernels: ["openvino"]` annotation on text tiers
+		// must NOT reject these — DFlash is present and is the right route
+		// for autoregressive text. The dispatcher steers OpenVINO off at
+		// spawn time via `applyUnsupportedKernelEnv`.
+		const probe = hardware({
+			totalRamGb: 64,
+			freeRamGb: 48,
+			gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+			source: "node-llama-cpp",
+		});
+
+		const mixedBinary = {
+			dflash: true,
+			turbo3: true,
+			turbo4: true,
+			turbo3_tcq: true,
+			qjl_full: true,
+			polarquant: true,
+			openvino: true,
+			lookahead: true,
+			ngramDraft: true,
+		};
+
+		const recommended = selectRecommendedModels(probe, undefined, {
+			binaryKernels: mixedBinary,
+		});
+
+		expect(recommended.TEXT_SMALL.model?.id).toMatch(/^eliza-1-/);
+		expect(recommended.TEXT_LARGE.model?.id).toMatch(/^eliza-1-/);
+	});
+
+	it("rejects Eliza-1 text on an OpenVINO-only binary (no DFlash kernels)", () => {
+		// Intel hosts running a stock OpenVINO-only build can transcribe
+		// (OpenVINO Whisper) but cannot serve Eliza-1 text — the required
+		// DFlash/W4-B kernels aren't there. The `requiresKernel` anchor
+		// drops the tier.
+		const probe = hardware({
+			totalRamGb: 64,
+			freeRamGb: 48,
+			gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+			source: "node-llama-cpp",
+		});
+
+		const openvinoOnlyBinary = {
+			dflash: false,
+			turbo3: false,
+			turbo4: false,
+			turbo3_tcq: false,
+			qjl_full: false,
+			polarquant: false,
+			openvino: true,
+			lookahead: true,
+			ngramDraft: true,
+		};
+
+		const recommended = selectRecommendedModels(probe, undefined, {
+			binaryKernels: openvinoOnlyBinary,
+		});
+
+		expect(recommended.TEXT_SMALL.model).toBeNull();
+		expect(recommended.TEXT_LARGE.model).toBeNull();
+	});
+
 	it("recommended entries are always default-eligible", () => {
 		const probe = hardware({
 			totalRamGb: 64,
@@ -297,7 +363,7 @@ function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
 			vision: [],
 			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
-			vad: [{ path: "vad/silero-vad-int8.onnx", sha256: SHA }],
+			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
 		},
 		kernels: {
 			required: [...REQUIRED_KERNELS_BY_TIER[tier]],

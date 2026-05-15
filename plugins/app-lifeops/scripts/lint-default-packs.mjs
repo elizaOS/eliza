@@ -39,7 +39,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packsDir = path.resolve(here, "..", "src", "default-packs");
 
-const PII_NAMES = ["Jill", "Marco", "Sarah", "Suran", "Samantha"];
+const PII_NAMES = ["Jill", "Marco", "Sarah", "Suran", "Sam"];
 const PII_REGEX = new RegExp(`\\b(${PII_NAMES.join("|")})\\b`, "g");
 
 const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;

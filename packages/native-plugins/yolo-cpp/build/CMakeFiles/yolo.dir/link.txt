@@ -1,0 +1,2 @@
+/usr/bin/ar qc libyolo.a CMakeFiles/yolo.dir/src/yolo_classes.c.o CMakeFiles/yolo.dir/src/yolo_nms.c.o CMakeFiles/yolo.dir/src/yolo_postprocess.c.o CMakeFiles/yolo.dir/src/yolo_stub.c.o
+/usr/bin/ranlib libyolo.a

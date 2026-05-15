@@ -64,7 +64,7 @@ const SYNTHETIC_CASES: ReadonlyArray<SyntheticCase> = [
   {
     name: "PII name",
     rule: "pii_name",
-    prompt: "Reply to Samantha kindly.",
+    prompt: "Reply to Sam kindly.",
   },
   {
     name: "email PII",
@@ -169,7 +169,7 @@ describe("W3-B prompt-content lint — synthetic-fail corpus (lintPack)", () => 
 
   it("flags every documented rule when one fixture combines them all", () => {
     const combined =
-      "If user is Samantha, email owner.account@example.com or call +1 415-555-0123. " +
+      "If user is Sam, email owner.account@example.com or call +1 415-555-0123. " +
       "Save to /Users/owner/notes.md and fire at 08:00. Open https://example.com. " +
       "Wave-1 TODO: tighten this.";
     const findings = lintPack(buildPack(combined));

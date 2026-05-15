@@ -23,8 +23,7 @@
   "types": "./index.d.ts",
   "files": [
     "index.js",
-    "index.d.ts",
-    "dist"
+    "index.d.ts"
   ],
   "publishConfig": {
     "access": "public"
@@ -35,12 +34,6 @@
       "import": "./index.js",
       "default": "./index.js"
     },
-    "./package.json": "./package.json",
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
-    }
+    "./package.json": "./package.json"
   }
 }

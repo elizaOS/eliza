@@ -255,8 +255,8 @@ function contextVariantStem(model: CatalogModel): string {
 
 /**
  * Given a catalog entry, pick the variant of the same model "line" (same
- * param count and display-name stem — e.g. `eliza-1-27b` / `eliza-1-27b-256k`
- * / `eliza-1-27b-1m`) with the largest context window that still fits a
+ * param count and display-name stem — e.g. `eliza-1-27b` / `eliza-1-27b-256k`)
+ * with the largest context window that still fits a
  * host with `hostRamMb` of RAM. Returns `model` itself when it's already
  * the best fit (or the only variant), or `null` when not even `model` fits
  * — callers turn that into a refusal.

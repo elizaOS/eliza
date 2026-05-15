@@ -113,7 +113,7 @@ function resolveUtilsUserData(): string | null {
 	const maybeUtils = Utils as typeof Utils & {
 		paths?: { userData?: string };
 	};
-	const value = maybeUtils.paths?.userData;
+	const value = maybeUtils.paths.userData;
 	return typeof value === "string" && value.length > 0 ? value : null;
 }
 

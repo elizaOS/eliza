@@ -252,6 +252,13 @@ export interface LocalRuntimeOptimizations {
    * provide these kernels.
    */
   requiresKernel?: LocalRuntimeKernel[];
+  /**
+   * Kernels that must be disabled at spawn time for this model. The
+   * dflash-server reads this and emits matching `GGML_*_DISABLE` env vars
+   * before invoking llama-server. Used when a fused build co-compiles a
+   * backend (e.g. OpenVINO) that this model is known not to support.
+   */
+  unsupportedKernels?: LocalRuntimeKernel[];
 }
 
 export interface LocalRuntimeAcceleration {
@@ -306,11 +313,17 @@ export type TokenizerFamily =
 
 export type CatalogHub = "huggingface" | "modelscope";
 
-export type CatalogQuantizationId = "q4_0" | "q4_k_m" | "q6_k" | "q8_0";
+export type CatalogQuantizationId =
+  | "q3_k_m"
+  | "q4_0"
+  | "q4_k_m"
+  | "q5_k_m"
+  | "q6_k"
+  | "q8_0";
 
 export interface CatalogQuantizationVariant {
   id: CatalogQuantizationId;
-  label: "4-bit" | "6-bit" | "8-bit";
+  label: "3-bit" | "4-bit" | "5-bit" | "6-bit" | "8-bit";
   ggufFile: string;
   sizeGb: number;
   minRamGb: number;

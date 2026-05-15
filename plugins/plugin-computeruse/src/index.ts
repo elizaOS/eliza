@@ -31,6 +31,7 @@ import { computerStateProvider } from "./providers/computer-state.js";
 import { sceneProvider } from "./providers/scene.js";
 import { computerUseRouteHandler } from "./routes/computer-use-compat-routes.js";
 import { ComputerUseService } from "./services/computer-use-service.js";
+import { VisionContextProvider } from "./services/vision-context-provider.js";
 
 const computerUseRoutes: Route[] = [
   {
@@ -69,7 +70,7 @@ export const computerUsePlugin: Plugin = {
     "automate web browsers via CDP, and manage desktop windows. " +
     "Ported from open-computer-use (Apache 2.0).",
 
-  services: [ComputerUseService],
+  services: [ComputerUseService, VisionContextProvider],
 
   async dispose(runtime) {
     const svc = runtime.getService<ComputerUseService>(ComputerUseService.serviceType);
@@ -167,6 +168,15 @@ export type {
   DesktopScreenshotRegion,
   DesktopWindowInfo,
 } from "./services/desktop-control.js";
+export {
+  type VisionContext,
+  type VisionContextBBox,
+  type VisionContextFocusedWindow,
+  type VisionContextRecentAction,
+  VisionContextProvider,
+  VISION_CONTEXT_SERVICE_TYPE,
+  VISION_CONTEXT_TASK_GOAL_CACHE_KEY,
+} from "./services/vision-context-provider.js";
 export {
   captureDesktopScreenshot,
   commandExists,

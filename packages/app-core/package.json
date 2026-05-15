@@ -56,6 +56,36 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./agent-bridge": {
+      "types": "./dist/agent-bridge.d.ts",
+      "import": "./dist/agent-bridge.js",
+      "default": "./dist/agent-bridge.js"
+    },
+    "./api/auth": {
+      "types": "./dist/api/auth.d.ts",
+      "import": "./dist/api/auth.js",
+      "default": "./dist/api/auth.js"
+    },
+    "./api/compat-route-shared": {
+      "types": "./dist/api/compat-route-shared.d.ts",
+      "import": "./dist/api/compat-route-shared.js",
+      "default": "./dist/api/compat-route-shared.js"
+    },
+    "./api/response": {
+      "types": "./dist/api/response.d.ts",
+      "import": "./dist/api/response.js",
+      "default": "./dist/api/response.js"
+    },
+    "./registry": {
+      "types": "./dist/registry/index.d.ts",
+      "import": "./dist/registry/index.js",
+      "default": "./dist/registry/index.js"
+    },
+    "./services/vault-mirror": {
+      "types": "./dist/services/vault-mirror.d.ts",
+      "import": "./dist/services/vault-mirror.js",
+      "default": "./dist/services/vault-mirror.js"
+    },
     "./platform/native-plugin-entrypoints": {
       "types": "./dist/platform/native-plugin-entrypoints.d.ts",
       "import": "./dist/platform/native-plugin-entrypoints.js",
@@ -114,6 +144,7 @@
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",

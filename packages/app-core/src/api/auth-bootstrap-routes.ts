@@ -85,7 +85,7 @@ export async function handleAuthBootstrapRoutes(
     return false;
   }
 
-  const ip = req.socket?.remoteAddress ?? null;
+  const ip = req.socket.remoteAddress ?? null;
   if (!bootstrapExchangeLimiter.consume(ip)) {
     sendJsonResponse(res, 429, {
       error: "rate_limited",

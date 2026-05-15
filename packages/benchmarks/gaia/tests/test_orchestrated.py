@@ -143,6 +143,11 @@ async def test_run_provider_sets_harness_env_and_telemetry(
     assert payload["metrics"]["observed_total_tokens"] == 17
     assert payload["metadata"]["model_provider"] == "openai"
     assert payload["metadata"]["model_api_base"] == "https://api.cerebras.ai/v1"
+    assert payload["metadata"]["benchmark_harness"] == "hermes"
+    assert payload["metadata"]["harness_backend"] == "hermes_adapter_via_eliza_client"
+    assert payload["trajectory_artifacts"]["canonical_latest"].endswith(
+        "gaia_orchestrated-trajectories-latest.jsonl"
+    )
 
 
 @pytest.mark.asyncio

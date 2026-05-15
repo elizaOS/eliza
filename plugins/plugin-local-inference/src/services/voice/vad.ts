@@ -5,16 +5,15 @@
  *            Sub-frame latency, no model. Its rising edge is the "wake the
  *            response pipeline" signal (KV-prefill the response prompt,
  *            preload the drafter, pre-generate the first filler). It NEVER
- *            substitutes for Silero — it only decides "is there acoustic
- *            activity right now".
+ *            substitutes for the model VAD — it only decides "is there
+ *            acoustic activity right now".
  *
  *   Tier 2 — a model VAD provider. Resolver order is Qwen toolkit adapter
- *            when supplied, native libelizainference Silero, then the
- *            MIT-licensed Silero VAD v5 ONNX model
- *            (`vad/silero-vad-int8.onnx` in the Eliza-1 bundle layout). 512-
- *            sample windows at 16 kHz (32 ms hop), one speech probability per
- *            window. This is the *authoritative* speech/no-speech signal — it
- *            gates ASR and drives turn-taking.
+ *            when supplied, otherwise the native libelizainference Silero v5
+ *            GGML backend (`vad/silero-vad-v5.1.2.ggml.bin` in the Eliza-1
+ *            bundle layout). 512-sample windows at 16 kHz (32 ms hop), one
+ *            speech probability per window. This is the *authoritative*
+ *            speech/no-speech signal — it gates ASR and drives turn-taking.
  *
  *   `VadDetector` wires both together and emits the `VadEvent` stream
  *   (`speech-start` / `speech-active` / `speech-pause` / `speech-end` /
@@ -24,6 +23,16 @@
  * `createVadDetector()` throws `VadUnavailableError`. The caller surfaces
  * "VAD unavailable — voice features degrade" — there is no silent downgrade to
  * the RMS gate (AGENTS.md §3).
+ *
+ * GGML migration: the runtime VAD used to be Silero v5 in ONNX
+ * (`silero-vad-int8.onnx`) loaded via `onnxruntime-node`. That dependency is
+ * gone — every local-inference path is ggml/llama.cpp-native now. The
+ * authoritative VAD goes through the `eliza_inference_vad_*` FFI on
+ * libelizainference, which loads the Silero v5 GGML binary
+ * (`silero-vad-v5.1.2.ggml.bin`) into the shared ggml context. The bundled
+ * GGML file uses the whisper.cpp `whisper_vad_*`-style layout so a single
+ * upstream-aligned converter (`tools/convert_silero_vad_to_ggml.py` in
+ * whisper.cpp) produces the artifact.
  */
 
 import { existsSync } from "node:fs";
@@ -34,12 +43,6 @@ import type {
 	ElizaInferenceFfi,
 	NativeVadHandle,
 } from "./ffi-bindings";
-import {
-	loadOnnxRuntime,
-	OnnxRuntimeUnavailableError,
-	type OrtInferenceSession,
-	type OrtTensorCtor,
-} from "./onnx-runtime";
 import type {
 	EnergyGateEvent,
 	EnergyGateListener,
@@ -48,12 +51,13 @@ import type {
 	VadEventListener,
 } from "./types";
 
-/** Thrown when the Silero VAD backend cannot be loaded — missing
- *  `onnxruntime-node`, missing model file, or a corrupt model. There is no
- *  fallback; voice features that depend on VAD must surface this. */
+/** Thrown when the Silero VAD backend cannot be loaded — the native VAD FFI
+ *  is missing or stubbed, the model file is absent, or the model is corrupt.
+ *  There is no fallback; voice features that depend on VAD must surface
+ *  this. */
 export class VadUnavailableError extends Error {
 	readonly code:
-		| "ort-missing"
+		| "ffi-missing"
 		| "model-missing"
 		| "model-load-failed"
 		| "provider-missing";
@@ -64,33 +68,20 @@ export class VadUnavailableError extends Error {
 	}
 }
 
-async function loadOrt() {
-	try {
-		return await loadOnnxRuntime();
-	} catch (err) {
-		if (err instanceof OnnxRuntimeUnavailableError) {
-			throw new VadUnavailableError(
-				"ort-missing",
-				`${err.message} Install it to enable on-device VAD; voice turn-taking and barge-in are unavailable without it.`,
-			);
-		}
-		throw err;
-	}
-}
-
-/** Relative path of the Silero model inside an Eliza-1 bundle. */
+/** Relative path of the Silero v5 GGML VAD model inside an Eliza-1 bundle.
+ *  The file is produced by whisper.cpp's `convert_silero_vad_to_ggml.py`. */
 export const SILERO_VAD_BUNDLE_REL_PATH = path.join(
 	"vad",
-	"silero-vad-int8.onnx",
+	"silero-vad-v5.1.2.ggml.bin",
 );
 
 /**
- * Resolve the Silero model on disk. An explicit `modelPath` is honored
+ * Resolve the Silero GGML model on disk. An explicit `modelPath` is honored
  * exactly — if it is set but missing, the result is `null` (no silent
  * substitution of a different model). When `modelPath` is not given the
  * search order is:
- *   1. `<bundleRoot>/vad/silero-vad-int8.onnx`
- *   2. `<state-dir>/local-inference/vad/silero-vad-int8.onnx` (shared cache)
+ *   1. `<bundleRoot>/vad/silero-vad-v5.1.2.ggml.bin`
+ *   2. `<state-dir>/local-inference/vad/silero-vad-v5.1.2.ggml.bin`
  *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
  */
@@ -115,7 +106,6 @@ export function resolveSileroVadPath(opts: {
 }
 
 const SILERO_WINDOW_16K = 512; // samples per inference window @ 16 kHz
-const SILERO_STATE_SHAPE = [2, 1, 128] as const; // combined LSTM (h, c)
 
 function validateSileroSampleRate(sampleRate: number): void {
 	if (sampleRate !== 16_000) {
@@ -127,93 +117,13 @@ function validateSileroSampleRate(sampleRate: number): void {
 }
 
 /**
- * Thin wrapper over the Silero VAD v5 ONNX graph. Stateful: `process()`
- * carries the LSTM state across calls and expects a 512-sample window at
- * 16 kHz (the only window size this graph supports). `reset()` clears the
- * state at utterance boundaries.
+ * Native libelizainference-backed Silero v5 GGML VAD. The model
+ * (`silero-vad-v5.1.2.ggml.bin`) is loaded by the shared ggml context owned
+ * by the FFI; `process()` runs one 512-sample 16 kHz window through the
+ * native VAD and returns the speech probability. `reset()` clears the
+ * recurrent state at utterance boundaries.
  */
-export class SileroVad {
-	private constructor(
-		private readonly session: OrtInferenceSession,
-		private readonly Tensor: OrtTensorCtor,
-		readonly sampleRate: number,
-	) {}
-
-	/** Window size in samples this model expects (512 @ 16 kHz). */
-	get windowSamples(): number {
-		return SILERO_WINDOW_16K;
-	}
-
-	private state: Float32Array = new Float32Array(2 * 1 * 128);
-
-	/** Load the Silero model. Throws `VadUnavailableError` on any failure. */
-	static async load(
-		opts: { modelPath?: string; bundleRoot?: string; sampleRate?: number } = {},
-	): Promise<SileroVad> {
-		const sampleRate = opts.sampleRate ?? 16_000;
-		validateSileroSampleRate(sampleRate);
-		const resolved = resolveSileroVadPath(opts);
-		if (!resolved) {
-			throw new VadUnavailableError(
-				"model-missing",
-				`[voice] Silero VAD model not found. Looked for ${SILERO_VAD_BUNDLE_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}. Download the MIT-licensed Silero VAD (~2 MB) and stage it there, or set ELIZA_VAD_MODEL_PATH.`,
-			);
-		}
-		const ort = await loadOrt();
-		let session: OrtInferenceSession;
-		try {
-			session = await ort.InferenceSession.create(resolved);
-		} catch (err) {
-			throw new VadUnavailableError(
-				"model-load-failed",
-				`[voice] Failed to load Silero VAD model at ${resolved}: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
-		return new SileroVad(session, ort.Tensor, sampleRate);
-	}
-
-	/** Clear the LSTM state. Call at the start of a new utterance. */
-	reset(): void {
-		this.state = new Float32Array(2 * 1 * 128);
-	}
-
-	/**
-	 * Run one window. `window` MUST be exactly `windowSamples` long. Returns
-	 * the speech probability in [0, 1].
-	 */
-	async process(window: Float32Array): Promise<number> {
-		if (window.length !== SILERO_WINDOW_16K) {
-			throw new Error(
-				`[voice] SileroVad.process expects a ${SILERO_WINDOW_16K}-sample window; got ${window.length}`,
-			);
-		}
-		const Tensor = this.Tensor;
-		const input = new Tensor("float32", window, [1, SILERO_WINDOW_16K]);
-		const state = new Tensor("float32", this.state, [...SILERO_STATE_SHAPE]);
-		const sr = new Tensor("int64", BigInt64Array.from([16_000n]), []);
-		const out = await this.session.run({ input, state, sr });
-		const prob = out.output?.data;
-		const nextState = out.stateN?.data;
-		if (!(prob instanceof Float32Array)) {
-			throw new Error(
-				"[voice] SileroVad: model output 'output' was not float32",
-			);
-		}
-		if (nextState instanceof Float32Array) {
-			this.state = nextState;
-		}
-		return prob[0] ?? 0;
-	}
-}
-
-/**
- * Native libelizainference-backed Silero VAD. It implements the same
- * narrow interface as the ONNX wrapper so `VadDetector` remains backend
- * agnostic: one 512-sample 16 kHz window in, one speech probability out.
- */
-export class NativeSileroVad {
+export class GgmlSileroVad {
 	readonly sampleRate: number;
 	readonly windowSamples = SILERO_WINDOW_16K;
 	private closed = false;
@@ -226,6 +136,9 @@ export class NativeSileroVad {
 		this.sampleRate = sampleRate;
 	}
 
+	/** True when the libelizainference build exports the native VAD ABI and
+	 *  advertises support. False on stub builds or when the C++ side has not
+	 *  yet been linked against the whisper-style `whisper_vad_*` runtime. */
 	static isSupported(ffi: ElizaInferenceFfi | null | undefined): boolean {
 		if (!ffi || typeof ffi.vadSupported !== "function") return false;
 		return ffi.vadSupported();
@@ -235,13 +148,13 @@ export class NativeSileroVad {
 		ffi: ElizaInferenceFfi;
 		ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
 		sampleRate?: number;
-	}): Promise<NativeSileroVad> {
+	}): Promise<GgmlSileroVad> {
 		const sampleRate = opts.sampleRate ?? 16_000;
 		validateSileroSampleRate(sampleRate);
-		if (!NativeSileroVad.isSupported(opts.ffi)) {
+		if (!GgmlSileroVad.isSupported(opts.ffi)) {
 			throw new VadUnavailableError(
-				"model-missing",
-				"[voice] Native Silero VAD is not supported by this libelizainference build.",
+				"ffi-missing",
+				"[voice] Native GGML Silero VAD is not supported by this libelizainference build. Rebuild with the whisper-style VAD runtime linked in (eliza_inference_vad_* symbols).",
 			);
 		}
 		if (
@@ -252,38 +165,37 @@ export class NativeSileroVad {
 		) {
 			throw new VadUnavailableError(
 				"model-load-failed",
-				"[voice] Native Silero VAD support probe succeeded, but the required VAD FFI methods are missing.",
+				"[voice] Native GGML Silero VAD support probe succeeded, but the required VAD FFI methods are missing.",
 			);
 		}
 		const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
 		const handle = opts.ffi.vadOpen({ ctx, sampleRateHz: sampleRate });
-		return new NativeSileroVad(opts.ffi, handle, sampleRate);
+		return new GgmlSileroVad(opts.ffi, handle, sampleRate);
 	}
 
 	async process(window: Float32Array): Promise<number> {
 		if (this.closed) {
-			throw new Error("[voice] NativeSileroVad.process called after close()");
+			throw new Error("[voice] GgmlSileroVad.process called after close()");
 		}
 		if (window.length !== SILERO_WINDOW_16K) {
 			throw new Error(
-				`[voice] NativeSileroVad.process expects a ${SILERO_WINDOW_16K}-sample window; got ${window.length}`,
+				`[voice] GgmlSileroVad.process expects a ${SILERO_WINDOW_16K}-sample window; got ${window.length}`,
 			);
 		}
 		const vadProcess = this.ffi.vadProcess;
 		if (!vadProcess) {
-			throw new Error("[voice] NativeSileroVad.process missing FFI method");
+			throw new Error("[voice] GgmlSileroVad.process missing FFI method");
 		}
 		return vadProcess({ vad: this.handle, pcm: window });
 	}
 
 	reset(): void {
-		if (!this.closed) {
-			const vadReset = this.ffi.vadReset;
-			if (!vadReset) {
-				throw new Error("[voice] NativeSileroVad.reset missing FFI method");
-			}
-			vadReset(this.handle);
+		if (this.closed) return;
+		const vadReset = this.ffi.vadReset;
+		if (!vadReset) {
+			throw new Error("[voice] GgmlSileroVad.reset missing FFI method");
 		}
+		vadReset(this.handle);
 	}
 
 	close(): void {
@@ -291,11 +203,16 @@ export class NativeSileroVad {
 		this.closed = true;
 		const vadClose = this.ffi.vadClose;
 		if (!vadClose) {
-			throw new Error("[voice] NativeSileroVad.close missing FFI method");
+			throw new Error("[voice] GgmlSileroVad.close missing FFI method");
 		}
 		vadClose(this.handle);
 	}
 }
+
+/** @deprecated Use `GgmlSileroVad`. Kept as an alias while callers migrate
+ *  off the legacy ONNX-era name. */
+export const NativeSileroVad = GgmlSileroVad;
+export type NativeSileroVad = GgmlSileroVad;
 
 // ---------------------------------------------------------------------------
 // Tier 1: cheap always-on RMS energy gate.
@@ -467,7 +384,7 @@ export interface VadLike {
 	reset(): void;
 }
 
-export type VadProviderId = "qwen-toolkit" | "silero-native" | "silero-onnx";
+export type VadProviderId = "qwen-toolkit" | "silero-ggml";
 export type VadProviderPreference = "auto" | VadProviderId;
 
 export interface QwenToolkitVadAdapter {
@@ -494,7 +411,7 @@ export function vadProviderOrder(
 	prefer: VadProviderPreference = "auto",
 ): VadProviderId[] {
 	if (prefer !== "auto") return [prefer];
-	return ["qwen-toolkit", "silero-native", "silero-onnx"];
+	return ["qwen-toolkit", "silero-ggml"];
 }
 
 export async function resolveVadProvider(
@@ -502,40 +419,58 @@ export async function resolveVadProvider(
 ): Promise<ResolvedVadProvider> {
 	const sampleRate = opts.config?.sampleRate ?? 16_000;
 	const tried: string[] = [];
+	const reasons: string[] = [];
 
 	for (const provider of vadProviderOrder(opts.prefer)) {
 		switch (provider) {
 			case "qwen-toolkit": {
 				tried.push(provider);
-				if (!opts.qwenToolkitVad) break;
+				if (!opts.qwenToolkitVad) {
+					reasons.push("qwen-toolkit: no adapter supplied");
+					break;
+				}
 				const available = (await opts.qwenToolkitVad.isAvailable?.()) ?? true;
-				if (!available) break;
+				if (!available) {
+					reasons.push("qwen-toolkit: adapter reported unavailable");
+					break;
+				}
 				return {
 					id: provider,
 					vad: await opts.qwenToolkitVad.loadVad({ sampleRate }),
 				};
 			}
-			case "silero-native": {
+			case "silero-ggml": {
 				tried.push(provider);
-				if (!opts.ffi || !opts.ctx || !NativeSileroVad.isSupported(opts.ffi)) {
+				if (!opts.ffi || !opts.ctx) {
+					reasons.push(
+						"silero-ggml: libelizainference FFI / context not supplied",
+					);
 					break;
+				}
+				if (!GgmlSileroVad.isSupported(opts.ffi)) {
+					reasons.push(
+						"silero-ggml: libelizainference build does not export the VAD ABI (eliza_inference_vad_supported() == 0)",
+					);
+					break;
+				}
+				// Ensure the bundled GGML model is on disk before opening the
+				// native session. This keeps the failure mode "no model file"
+				// distinct from a build with a stubbed VAD.
+				const modelPath = resolveSileroVadPath({
+					modelPath: opts.modelPath,
+					bundleRoot: opts.bundleRoot,
+				});
+				if (!modelPath) {
+					throw new VadUnavailableError(
+						"model-missing",
+						`[voice] Silero v5 GGML VAD model not found. Looked for ${SILERO_VAD_BUNDLE_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}. Stage the whisper.cpp-converted GGML file there, or set ELIZA_VAD_MODEL_PATH.`,
+					);
 				}
 				return {
 					id: provider,
-					vad: await NativeSileroVad.load({
+					vad: await GgmlSileroVad.load({
 						ffi: opts.ffi,
 						ctx: opts.ctx,
-						sampleRate,
-					}),
-				};
-			}
-			case "silero-onnx": {
-				tried.push(provider);
-				return {
-					id: provider,
-					vad: await SileroVad.load({
-						modelPath: opts.modelPath,
-						bundleRoot: opts.bundleRoot,
 						sampleRate,
 					}),
 				};
@@ -545,7 +480,7 @@ export async function resolveVadProvider(
 
 	throw new VadUnavailableError(
 		"provider-missing",
-		`[voice] No VAD provider available. Tried: ${tried.join(", ")}.`,
+		`[voice] No VAD provider available. Tried: ${tried.join(", ")}. Reasons: ${reasons.join("; ") || "none reported"}.`,
 	);
 }
 
@@ -598,7 +533,7 @@ export class VadDetector {
 
 	constructor(silero: VadLike, config: VadDetectorConfig = {}) {
 		this.silero = silero;
-		this.sampleRate = config.sampleRate ?? silero.sampleRate ?? 16_000;
+		this.sampleRate = config.sampleRate ?? silero.sampleRate;
 		if (this.sampleRate !== silero.sampleRate) {
 			throw new Error(
 				`[voice] VadDetector sample rate ${this.sampleRate} != Silero model rate ${silero.sampleRate}`,
@@ -858,8 +793,9 @@ export class VadDetector {
 }
 
 /**
- * Back-compat wrapper for callers that still use the old Silero-specific
- * helper name. It now goes through the full provider resolver.
+ * Back-compat wrapper for callers that still use the legacy
+ * `createSileroVadDetector` name. It now goes through the full provider
+ * resolver — same as `createVadDetector`.
  */
 export async function createSileroVadDetector(
 	opts: CreateVadDetectorOptions = {},

@@ -1559,6 +1559,15 @@ function appendPriorDialogueEvents(
 	runtime: IAgentRuntime,
 	state: State,
 	currentMessage: Memory,
+	options?: {
+		/**
+		 * Tool-planner/evaluator contexts need prior dialogue only as background.
+		 * Prior assistant replies are answer-shaped and can overpower the current
+		 * tool result on repeated tool-use prompts, so planner scope keeps prior
+		 * user turns but suppresses previous agent answers.
+		 */
+		plannerScope?: boolean;
+	},
 ): void {
 	const providers = state.data.providers;
 	if (!providers || typeof providers !== "object") {
@@ -1576,6 +1585,7 @@ function appendPriorDialogueEvents(
 	if (!Array.isArray(recentMessages)) {
 		return;
 	}
+	let suppressedAssistantReplies = 0;
 	const dialogue = recentMessages
 		.filter((memory): memory is Memory => {
 			if (!memory || typeof memory !== "object") return false;
@@ -1588,9 +1598,36 @@ function appendPriorDialogueEvents(
 			if (contentType === "action_result") return false;
 			const text =
 				typeof m.content.text === "string" ? m.content.text.trim() : "";
-			return text.length > 0;
+			if (text.length === 0) return false;
+			if (options?.plannerScope === true && m.entityId === runtime.agentId) {
+				suppressedAssistantReplies++;
+				return false;
+			}
+			return true;
 		})
 		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+	if (options?.plannerScope === true && suppressedAssistantReplies > 0) {
+		events.push({
+			id: "prior-dialogue-policy",
+			type: "segment",
+			source: "message-service",
+			createdAt: Date.now(),
+			metadata: {
+				suppressedAssistantReplies,
+			},
+			segment: {
+				id: "prior-dialogue-policy",
+				label: "prior_dialogue_policy",
+				content:
+					"Prior assistant replies from earlier turns are omitted from this planner/evaluator context. " +
+					"Treat prior user messages as background only; the current user message and current-turn tool results are authoritative.",
+				stable: false,
+				metadata: {
+					suppressedAssistantReplies,
+				},
+			},
+		});
+	}
 	for (const memory of dialogue) {
 		const isAgent = memory.entityId === runtime.agentId;
 		events.push({
@@ -1609,6 +1646,23 @@ function appendPriorDialogueEvents(
 			},
 		});
 	}
+}
+
+function hasStructuredRecentMessages(state: State): boolean {
+	const providers = state.data.providers;
+	if (!providers || typeof providers !== "object") {
+		return false;
+	}
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") {
+		return false;
+	}
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	return Array.isArray(recentMessages);
 }
 
 function getRecentConversationSearchText(
@@ -2087,12 +2141,22 @@ async function createV5MessageContextObject(args: {
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
+	const excludeRecentMessagesProviderText =
+		args.includeTools === true && hasStructuredRecentMessages(args.state);
 	const renderExclusions = args.extraProviderExclusions?.length
 		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
 		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
-	appendStateProviderEvents(events, args.state, renderExclusions);
+	appendStateProviderEvents(
+		events,
+		args.state,
+		excludeRecentMessagesProviderText
+			? [...renderExclusions, "RECENT_MESSAGES"]
+			: renderExclusions,
+	);
 
-	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
+	appendPriorDialogueEvents(events, args.runtime, args.state, args.message, {
+		plannerScope: args.includeTools === true,
+	});
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -3638,11 +3702,18 @@ export async function runV5MessageRuntimeStage1(args: {
 		const stage1SpanSamplerPlan = buildSpanSamplerPlan(
 			responseGrammar.responseSkeleton,
 		);
+		const shouldStreamStage1Envelope = Boolean(
+			getStreamingContext()?.onStreamChunk,
+		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
-			tools: messageHandlerTools,
-			toolChoice: "required" as const,
+			...(shouldStreamStage1Envelope
+				? { responseFormat: { type: "json_object" as const } }
+				: {
+						tools: messageHandlerTools,
+						toolChoice: "required" as const,
+					}),
 			maxTokens: 1024,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`

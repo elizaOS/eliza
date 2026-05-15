@@ -183,10 +183,10 @@ export class BirdeyeProvider {
     options: RequestInit = {},
   ): Promise<T> {
     let attempts = 0;
+    const headers = new Headers(options.headers);
 
     // allow the user to override the chain
-    const chain =
-      options.headers?.["x-chain"] || settings.BIRDEYE_CHAIN || "solana";
+    const chain = headers.get("x-chain") || settings.BIRDEYE_CHAIN || "solana";
 
     while (attempts < this.maxRetries) {
       attempts++;

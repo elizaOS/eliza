@@ -4521,7 +4521,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const msgId = streamingCtx?.messageId;
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
-		const resolvedProviderName = resolvedModel.provider;
+		const resolvedProviderName = resolvedModel?.provider ?? provider;
 		const streamStructuredOnNonLocalProvider =
 			paramsAsStreaming?.streamStructured === true &&
 			explicitStream !== true &&
@@ -4551,6 +4551,7 @@ export class AgentRuntime implements IAgentRuntime {
 				? new ResponseSkeletonStreamExtractor({
 						skeleton: paramsAsStreaming.responseSkeleton,
 						streamFields: structuredStreamFields,
+						unordered: true,
 						onChunk: (chunk, _field, accumulated) =>
 							downstreamChunk(chunk, accumulated),
 						...(abortSignal ? { abortSignal } : {}),

@@ -460,17 +460,16 @@ describe("local inference downloader status", () => {
 	it("aborts before any weight byte when no verified backend overlaps the device", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		// The 27b-1m tier ships verified only on CUDA (GH200-class). It is not a
-		// visible catalog entry in the active small-tier catalog, so build the
-		// test object from a visible bundle entry while preserving the same
-		// downloader shape.
+		// Simulate a CUDA-only bundle that a CPU-only host cannot run. Build the
+		// test object from a visible catalog entry while restricting verifiedBackends
+		// to CUDA only so the CPU-only host probe triggers the backend-mismatch path.
 		const baseModel = findCatalogModel("eliza-1-4b");
 		if (!baseModel) throw new Error("missing test catalog model");
 		const model = {
 			...baseModel,
-			id: "eliza-1-27b-1m",
-			hfPathPrefix: "bundles/27b-1m",
-			ggufFile: "text/eliza-1-27b-1m-1m.gguf",
+			id: "eliza-1-27b-256k",
+			hfPathPrefix: "bundles/27b-256k",
+			ggufFile: "text/eliza-1-27b-256k-256k.gguf",
 			bundleManifestFile: "eliza-1.manifest.json",
 			companionModelIds: [],
 		};
@@ -479,11 +478,11 @@ describe("local inference downloader status", () => {
 
 		const textPath = model.ggufFile;
 		const voicePath = "tts/voice.gguf";
-		const drafterPath = "dflash/drafter-27b-1m.gguf";
+		const drafterPath = "dflash/drafter-27b-256k.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
 		const manifest = JSON.stringify({
-			id: "eliza-1-27b-1m",
-			tier: "27b-1m",
+			id: "eliza-1-27b-256k",
+			tier: "27b-256k",
 			version: "1.0.0",
 			publishedAt: "2026-05-11T00:00:00.000Z",
 			lineage: {
@@ -550,7 +549,7 @@ describe("local inference downloader status", () => {
 		await downloader.start(model);
 		const job = await failed;
 		expect(job.state).toBe("failed");
-		expect(job.error).toMatch(/no required-kernel backend/i);
+		expect(job.error).toMatch(/kernels\.verifiedBackends/i);
 		// Manifest is fetched (it's metadata, not a weight); nothing else is.
 		const weightFetches = fetchSpy.mock.calls.filter(
 			([u]) => remotePathOf(u) !== bundleRemotePath(model, manifestFile),

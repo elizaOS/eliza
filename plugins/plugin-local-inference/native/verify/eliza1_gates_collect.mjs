@@ -24,7 +24,7 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_8b|2b|4b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
+ *     [--tier 0_8b|2b|4b|9b|27b|27b-256k|27b-256k] [--gates PATH] [--report PATH] [--json]
  */
 
 import fs from "node:fs";
@@ -75,7 +75,7 @@ const ACTIVE_VISION_TIERS = new Set([
   "9b",
   "27b",
   "27b-256k",
-  "27b-1m",
+  "27b-256k",
 ]);
 
 function timestamp() {

@@ -583,7 +583,7 @@ function extractDiscordReactionEvent(
       emoji: structuredEmoji,
       targetMessageId,
       userKey:
-        memory.entityId ?? memory.id,
+        memory.entityId,
       userLabel: extractFrom(memory) ?? extractFromUserName(memory),
     };
   }
@@ -604,7 +604,7 @@ function extractDiscordReactionEvent(
     emoji: legacyMatch[2].trim(),
     targetMessageId,
     userKey:
-      memory.entityId ?? memory.id,
+      memory.entityId,
     userLabel: extractFrom(memory) ?? extractFromUserName(memory),
   };
 }
@@ -2089,7 +2089,7 @@ export async function handleInboxRoute(
     const parsed = PostInboxMessageRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".");
+      const issuePath = issue?.path.join(".");
       helpers.error(
         res,
         `Invalid request body at ${issuePath}: ${issue?.message}`,

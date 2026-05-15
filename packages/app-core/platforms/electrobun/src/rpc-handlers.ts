@@ -1352,7 +1352,7 @@ export function registerRpcHandlers(
 	}
 
 	wireBrowserWorkspaceCaller(rpc);
-	rpc?.setRequestHandler?.(buildBunRpcHandlers({ sendToWebview }));
+	rpc.setRequestHandler?.(buildBunRpcHandlers({ sendToWebview }));
 
 	logger.info("[RPC] All handlers registered");
 }

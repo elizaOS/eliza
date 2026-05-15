@@ -1,15 +1,10 @@
-// @elizaos/workflows
-//
-// Public type surface consumed by @elizaos/plugin-workflow.
-// This package is intentionally types-only — no runtime exports, no helpers.
+// Workflow type contracts consumed by workflow-capable packages.
 //
 // The five top-level types (INode, INodeCredentialsDetails, INodeProperties,
 // INodeTypeDescription, IWorkflowSettings) and their transitive type closure
-// are defined inline here so the package has no internal modules to maintain.
+// are defined inline here with NodeConnectionTypes as the only runtime export.
 //
-// Inner types whose shape is not exercised by plugin-workflow are kept as
-// opaque `unknown`-shaped aliases. If a downstream consumer needs richer
-// shapes, restore them here — do not re-introduce side modules.
+// Inner types whose shape is not exercised by current consumers stay opaque.
 
 // ---------------------------------------------------------------------------
 // Primitives + small shared shapes

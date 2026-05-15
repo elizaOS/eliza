@@ -25,6 +25,7 @@ Apache-2.0 attribution preserved for compatibility with upstream semantics.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any, Optional
 
 
@@ -179,6 +180,7 @@ class RESTRunner:
 
         client = self._ensure_client()
 
+        started = perf_counter()
         try:
             response = client.request(
                 spec.method,
@@ -195,6 +197,7 @@ class RESTRunner:
             # caller can fail the test (not skip it — a network error on
             # an opt-in run is a real signal).
             raise RESTExecutionError(f"REST request failed: {exc}") from exc
+        elapsed_seconds = perf_counter() - started
 
         if response.status_code == 429:
             raise RESTRateLimited(
@@ -210,7 +213,7 @@ class RESTRunner:
             status_code=response.status_code,
             json_body=json_body,
             text=response.text,
-            elapsed_seconds=response.elapsed.total_seconds(),
+            elapsed_seconds=elapsed_seconds,
             headers=dict(response.headers),
         )
 

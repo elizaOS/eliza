@@ -22,6 +22,14 @@ def _sanitize(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-").lower() or "run"
 
 
+def _provider_model_name(provider: str, model: str) -> str:
+    provider_name = provider.strip().lower()
+    model_name = model.strip()
+    if provider_name == "cerebras" and model_name.startswith("openai/"):
+        return model_name.split("/", 1)[1]
+    return model_name
+
+
 def _find_latest_by_patterns(root: Path, patterns: list[str]) -> Path | None:
     matches: list[Path] = []
     for pattern in patterns:
@@ -49,6 +57,8 @@ IGNORED_BENCHMARK_DIRS = {
     "mmau",
     "elizaos_mmau",
     "eliza-adapter",
+    # Legacy/partial shim with no source files in this checkout.
+    "eliza-format",
     "hermes-adapter",
     "openclaw-adapter",
     "lib",
@@ -64,9 +74,14 @@ IGNORED_BENCHMARK_DIRS = {
     "swe-bench-multilingual",
     "swe-bench-workspace",
     "tests",
+    # Standalone dialogue runner; not wired into the normalized benchmark
+    # orchestrator contract yet.
+    "three-agent-dialogue",
     "viewer",
     # Standalone package; not yet wired as an orchestrator adapter.
     "voice-emotion",
+    # Plugin validation tests/fixtures, not a normalized benchmark adapter.
+    "voice-speaker-validation",
 }
 
 
@@ -75,30 +90,38 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # CompactBench currently exercises elizaOS conversation-compactor
-    # implementations through a Python bridge. Hermes/OpenClaw rows would be
-    # misleading labels unless explicit per-agent compactor methods are added.
-    "compactbench": ("eliza",),
+    # CompactBench has concrete Eliza and Hermes compactor methods. OpenClaw's
+    # current CLI path intentionally fails closed because it has no
+    # transcript-in/artifact-out native compactor API.
+    "compactbench": ("eliza", "hermes"),
+    # Vending-Bench currently has heuristic/direct providers and an Eliza TS
+    # bridge path. Hermes/OpenClaw labels would still exercise the Eliza bridge
+    # or a non-agent provider, so publish only the concrete Eliza harness row.
+    "vending_bench": ("eliza",),
+    # HyperliquidBench plan generation is wired to the Eliza TS bridge plus a
+    # deterministic Python smoke path. Hermes/OpenClaw labels do not yet select
+    # distinct harness implementations.
+    "hyperliquid_bench": ("eliza",),
+    "hyperliquidbench": ("eliza",),
     # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
     "loca_bench": ("eliza", "hermes"),
+    # The lifecycle benchmark's real bridge mode starts the Eliza benchmark
+    # server; simulate mode is deterministic and not a harness comparison.
+    "orchestrator_lifecycle": ("eliza",),
     # ConfigBench currently has an in-process Eliza handler plus oracle/mock
     # handlers. Hermes/OpenClaw rows were previously scored against the
     # Perfect oracle fallback, which is not a real harness comparison.
     "configbench": ("eliza",),
-    # REALM currently has a real Eliza bridge adapter only. Hermes/OpenClaw
-    # rows previously used the Eliza bridge under different labels.
-    "realm": ("eliza",),
-    # MINT currently supports the Eliza TS bridge or direct provider calls, but
-    # not native Hermes/OpenClaw agent loops.
-    "mint": ("eliza",),
     # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
     "framework": ("eliza",),
-    # VoiceBench currently instantiates the local TypeScript runtime directly;
-    # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
+    # VoiceBench currently instantiates the local TypeScript runtime directly
+    # for real profiles, with an explicit mock artifact path for no-key smoke
+    # validation. Hermes/OpenClaw labels would still run the same voicebench
+    # runtime/profile rather than distinct agent harnesses.
     "voicebench": ("eliza",),
     # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
     # mode, not Hermes/OpenClaw agent harnesses.
@@ -119,12 +142,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    if benchmark_id == "voicebench" and not os.environ.get("GROQ_API_KEY"):
-        return ()
-    if benchmark_id == "hermes_swe_env":
-        return ()
-    if benchmark_id in {"hermes_tblite", "hermes_terminalbench_2"} and not _has_hermes_sandbox_backend():
-        return ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
@@ -221,7 +238,20 @@ def _make_registry_adapter(
             if existing
             else os.pathsep.join(adapter_python_paths)
         )
-        env = {"PYTHONPATH": pythonpath}
+        harness = str(
+            ctx.request.extra_config.get("agent")
+            or ctx.request.extra_config.get("harness")
+            or ctx.request.agent
+        ).strip().lower()
+        model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
+        env = {
+            "PYTHONPATH": pythonpath,
+            "BENCHMARK_HARNESS": harness,
+            "ELIZA_BENCH_HARNESS": harness,
+            "BENCHMARK_MODEL_PROVIDER": ctx.request.provider.strip(),
+            "BENCHMARK_MODEL_NAME": model_name,
+            "MODEL_NAME": model_name,
+        }
         for extra_key, env_key in (
             ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
             ("hermes_timeout_s", "HERMES_TIMEOUT_S"),
@@ -230,11 +260,6 @@ def _make_registry_adapter(
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
-        harness = str(
-            ctx.request.extra_config.get("agent")
-            or ctx.request.extra_config.get("harness")
-            or ctx.request.agent
-        ).strip().lower()
         if benchmark_id == "bfcl" and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
@@ -252,6 +277,7 @@ def _make_registry_adapter(
         default_extra_config=dict(default_extra_config or {}),
         env_builder=env_builder,
         agent_compatibility=_agent_compatibility_for(benchmark_id),
+        result_patterns=("registry locate_result(output_dir)", "**/*.json fallback"),
     )
 
 
@@ -295,6 +321,7 @@ def _make_extra_adapter(
         capability_notes=capability_notes,
         default_timeout_seconds=default_timeout_seconds,
         agent_compatibility=_agent_compatibility_for(adapter_id),
+        result_patterns=tuple(result_patterns),
     )
 
 
@@ -321,9 +348,12 @@ def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
     # opt out via extra_config "use_direct_provider": True.
     bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
     use_direct = bool(ctx.request.extra_config.get("use_direct_provider"))
-    effective_provider = (
-        "eliza" if (provider in bridge_providers and not use_direct) else ctx.request.provider
-    )
+    if ctx.request.extra_config.get("mock") is True or provider == "mock":
+        effective_provider = "mock-passthrough"
+    else:
+        effective_provider = (
+            "eliza" if (provider in bridge_providers and not use_direct) else ctx.request.provider
+        )
     args = [
         sys.executable,
         "scripts/run_benchmark.py",
@@ -378,32 +408,35 @@ def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
 
 def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     provider_name = ctx.request.provider.strip().lower()
+    model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
     env: dict[str, str] = {}
     if provider_name in {"groq", "openai", "anthropic"}:
         env["CONFIGBENCH_AGENT_PROVIDER"] = provider_name
     elif provider_name in {"cerebras", "openrouter", "vllm"}:
         env["CONFIGBENCH_AGENT_PROVIDER"] = "openai"
-    if provider_name == "groq" and ctx.request.model.strip():
-        env["GROQ_SMALL_MODEL"] = ctx.request.model.strip()
-        env["GROQ_LARGE_MODEL"] = ctx.request.model.strip()
-    elif provider_name in {"openai", "cerebras", "openrouter", "vllm"} and ctx.request.model.strip():
-        env["OPENAI_SMALL_MODEL"] = ctx.request.model.strip()
-        env["OPENAI_LARGE_MODEL"] = ctx.request.model.strip()
+    if provider_name == "groq" and model_name:
+        env["GROQ_SMALL_MODEL"] = model_name
+        env["GROQ_LARGE_MODEL"] = model_name
+    elif provider_name in {"openai", "cerebras", "openrouter", "vllm"} and model_name:
+        env["OPENAI_SMALL_MODEL"] = model_name
+        env["OPENAI_LARGE_MODEL"] = model_name
     return env
 
 
 def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    mode = str(ctx.request.extra_config.get("mode", "eliza-agent"))
+    provider = ctx.request.provider.strip().lower()
+    if ctx.request.extra_config.get("mock") is True or provider == "mock":
+        mode = "direct"
+    else:
+        mode = str(ctx.request.extra_config.get("mode", "eliza-agent"))
     args = [
         sys.executable,
         "run_benchmark.py",
         "--mode",
         mode,
-        "--provider",
-        ctx.request.provider,
-        "--model",
-        ctx.request.model,
     ]
+    if mode != "direct":
+        args.extend(["--provider", ctx.request.provider, "--model", ctx.request.model])
     if "output_file" in ctx.request.extra_config:
         args.extend(["--output", str(ctx.request.extra_config["output_file"])])
     else:
@@ -459,6 +492,8 @@ def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         "--output",
         str(ctx.output_root / "summary.json"),
     ]
+    if ctx.request.extra_config.get("mock") is True or ctx.request.provider.strip().lower() == "mock":
+        args.append("--mock")
     task_type = ctx.request.extra_config.get("type")
     if isinstance(task_type, str) and task_type.strip():
         args.extend(["--type", task_type.strip()])
@@ -480,7 +515,7 @@ def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
         "ELIZA_HEADLESS": "1",
         "LOG_LEVEL": "error",
     }
-    model = ctx.request.model.strip()
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().upper()
     if model:
         env.update({
@@ -568,7 +603,9 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
     # Route LLM-backed providers through the eliza TS bridge handler when
     # the caller didn't explicitly request a different handler.
     bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-    if (
+    if ctx.request.extra_config.get("mock") is True or provider_name == "mock":
+        handler = "oracle"
+    elif (
         handler == "oracle"
         and "handler" not in ctx.request.extra_config
         and provider_name in bridge_providers
@@ -728,7 +765,7 @@ def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
     env = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
     }
-    model = ctx.request.model.strip()
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().upper()
     if model:
         env.update({
@@ -749,7 +786,7 @@ def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -
     env: dict[str, str] = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
     }
-    model = ctx.request.model.strip()
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().lower()
     if model:
         env["MODEL_NAME"] = model
@@ -768,7 +805,7 @@ def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]
     env: dict[str, str] = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
     }
-    model = ctx.request.model.strip()
+    model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().lower()
     model_name = model if "/" in model or not provider else f"{provider}/{model}"
     env.update({
@@ -836,10 +873,20 @@ def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[st
 
 def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     existing = ctx.env.get("PYTHONPATH", "")
-    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    adapter_paths = [
+        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+        str((ctx.benchmarks_root / "hermes-adapter").resolve()),
+        str((ctx.benchmarks_root / "openclaw-adapter").resolve()),
+    ]
+    harness = ctx.request.agent.strip().lower()
+    model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
     env: dict[str, str] = {
-        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
-        "MODEL_NAME": ctx.request.model.strip(),
+        "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
+        "BENCHMARK_HARNESS": harness,
+        "ELIZA_BENCH_HARNESS": harness,
+        "BENCHMARK_MODEL_PROVIDER": ctx.request.provider.strip(),
+        "BENCHMARK_MODEL_NAME": model_name,
+        "MODEL_NAME": model_name,
         "OUTPUT_DIR": str(ctx.output_root),
         "USE_EXTERNAL_SURFPOOL": "true"
         if bool(ctx.request.extra_config.get("use_external_surfpool", False))
@@ -1130,6 +1177,36 @@ def _score_from_experience(path: Path) -> ScoreSummary:
 
     data = json.loads(path.read_text(encoding="utf-8"))
     agent = data.get("eliza_agent", {}) if isinstance(data, dict) else {}
+    if isinstance(data, dict) and not agent:
+        direct_values: list[float] = []
+        direct_metrics: dict[str, Any] = {}
+        retrieval = data.get("retrieval")
+        if isinstance(retrieval, dict):
+            for metric_name in ("mean_reciprocal_rank",):
+                raw = retrieval.get(metric_name)
+                if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                    direct_metrics[metric_name] = float(raw)
+                    direct_values.append(float(raw))
+        learning = data.get("learning_cycle")
+        if isinstance(learning, dict):
+            raw = learning.get("cycle_success_rate")
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                direct_metrics["cycle_success_rate"] = float(raw)
+                direct_values.append(float(raw))
+        hard_cases = data.get("hard_cases")
+        if isinstance(hard_cases, dict):
+            for metric_name in ("jaccard_rate", "semantic_rate"):
+                raw = hard_cases.get(metric_name)
+                if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                    direct_metrics[metric_name] = float(raw)
+                    direct_values.append(float(raw))
+        if direct_values:
+            return ScoreSummary(
+                score=sum(direct_values) / len(direct_values),
+                unit="ratio",
+                higher_is_better=True,
+                metrics=direct_metrics,
+            )
     if not isinstance(agent, dict):
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
 
@@ -1355,12 +1432,17 @@ def _score_from_framework(path: Path) -> ScoreSummary:
 
 
 def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    method = str(
-        ctx.request.extra_config.get(
-            "method",
-            "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
-        )
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    default_method = (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+        if harness == "hermes"
+        else "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     )
+    method = str(ctx.request.extra_config.get("method", default_method))
     compactbench_root = Path(adapter.cwd)
     venv_python = compactbench_root / ".venv" / "bin" / "python"
     python_executable = str(venv_python) if venv_python.exists() else sys.executable
@@ -1400,6 +1482,14 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             ]
         )
     return args
+
+
+def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    provider = ctx.request.provider.strip().lower()
+    env: dict[str, str] = {}
+    if provider:
+        env["HERMES_BENCH_PROVIDER"] = provider
+    return env
 
 
 def _score_from_compactbench(path: Path) -> ScoreSummary:
@@ -1878,6 +1968,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "task_types": "web_caption",
         },
+        "vision_language": {
+            "sub_benchmark": "textvqa",
+            "samples": 5,
+            "tier": "stub",
+        },
         "abliteration-robustness": {
             "max_examples": 2,
             "max_new_tokens": 128,
@@ -1952,6 +2047,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "voicebench_quality": "voicebench-quality",
+        "vision_language": "vision-language",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",
@@ -2136,6 +2232,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="CompactBench conversation-compaction benchmark",
             cwd=str((benchmarks_root / "compactbench").resolve()),
             command_builder=_command_compactbench,
+            env_builder=_env_compactbench,
             result_patterns=["compactbench-results.jsonl", "*.jsonl"],
             score_extractor=_score_from_compactbench,
             default_extra_config={

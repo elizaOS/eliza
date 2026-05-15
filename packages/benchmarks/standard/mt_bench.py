@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -144,6 +145,12 @@ def _load_dataset_questions(limit: int | None) -> list[dict[str, object]]:
     The community mirror at ``lmsys/mt_bench_human_judgments`` exposes
     each question with ``turns`` (list of turn-1 + turn-2 strings).
     """
+    if (
+        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
+        and limit is not None
+        and limit <= len(SMOKE_QUESTIONS)
+    ):
+        return list(SMOKE_QUESTIONS)[:limit]
 
     try:
         from datasets import load_dataset
@@ -423,19 +430,26 @@ class _MTBenchFactory(RunnerFactory):
         )
 
     def build(self, args: argparse.Namespace) -> tuple[MTBenchRunner, Sequence[str] | None]:
-        candidate_endpoint = resolve_endpoint(
-            model_endpoint=args.model_endpoint,
-            provider=args.provider,
+        candidate_endpoint = (
+            "mock://standard-mt-bench"
+            if args.mock
+            else resolve_endpoint(
+                model_endpoint=args.model_endpoint,
+                provider=args.provider,
+            )
         )
         judge_endpoint_input = args.judge_endpoint or args.model_endpoint
         judge_provider = args.judge_provider or args.provider
-        try:
-            judge_endpoint = resolve_endpoint(
-                model_endpoint=judge_endpoint_input,
-                provider=judge_provider,
-            )
-        except ValueError:
+        if args.mock:
             judge_endpoint = candidate_endpoint
+        else:
+            try:
+                judge_endpoint = resolve_endpoint(
+                    model_endpoint=judge_endpoint_input,
+                    provider=judge_provider,
+                )
+            except ValueError:
+                judge_endpoint = candidate_endpoint
         judge_api_key = resolve_api_key(args.judge_api_key_env)
 
         judge: OpenAICompatibleClient

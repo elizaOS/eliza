@@ -238,7 +238,7 @@ function normalizeLocaIncomingToolCall(
     type: "function",
     function: {
       name,
-      arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      arguments: typeof args === "string" ? args : JSON.stringify(args),
     },
   };
 }
@@ -282,7 +282,7 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
       type: "function",
       function: {
         name,
-        arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
+        arguments: typeof args === "string" ? args : JSON.stringify(args),
       },
     });
   }
@@ -479,7 +479,7 @@ function disableManualCompactionAction(runtime: AgentRuntime): void {
     return;
   }
   const compactSessionIndex = runtimeWithActions.actions.findIndex(
-    (action) => action?.name?.toUpperCase() === "COMPACT_SESSION",
+    (action) => action.name.toUpperCase() === "COMPACT_SESSION",
   );
   if (compactSessionIndex === -1) {
     return;
@@ -530,7 +530,7 @@ async function collectSessionDiagnostics(
     ]);
 
   const compactionSummaries = allMessages
-    .filter((m) => m.content?.source === "compaction")
+    .filter((m) => m.content.source === "compaction")
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
   const latestCompactionSummary = compactionSummaries.at(-1) ?? null;
   const latestSummaryText =
@@ -542,11 +542,11 @@ async function collectSessionDiagnostics(
   const providerNames = runtime.providers.map((provider) => provider.name);
   const evaluatorNames =
     (runtime as { evaluators?: Array<{ name?: string }> }).evaluators
-      ?.map((evaluator) => evaluator?.name ?? "")
+      ?.map((evaluator) => evaluator.name ?? "")
       .filter((name) => name.length > 0) ?? [];
   const actionNames =
     (runtime as { actions?: Array<{ name?: string }> }).actions
-      ?.map((action) => action?.name?.toUpperCase() ?? "")
+      ?.map((action) => action.name?.toUpperCase() ?? "")
       .filter((name) => name.length > 0) ?? [];
 
   return {
@@ -1107,17 +1107,23 @@ export async function startBenchmarkServer() {
   // and harmlessly skips handler upgrades when no backend is available —
   // matching the main app's behavior so benchmark runs reflect real
   // retrieval semantics.
-  try {
-    const { ensureLocalInferenceHandler } = await import(
-      "@elizaos/plugin-local-inference/runtime"
-    );
-    await ensureLocalInferenceHandler(runtime);
+  if (!skipEmbeddingPlugin) {
+    try {
+      const { ensureLocalInferenceHandler } = await import(
+        "@elizaos/plugin-local-inference/runtime"
+      );
+      await ensureLocalInferenceHandler(runtime);
+      elizaLogger.info(
+        "[bench] Wired @elizaos/plugin-local-inference loader (embedding + voice handlers)",
+      );
+    } catch (err: unknown) {
+      elizaLogger.warn(
+        `[bench] Could not wire @elizaos/plugin-local-inference runtime: ${formatUnknownError(err)}`,
+      );
+    }
+  } else {
     elizaLogger.info(
-      "[bench] Wired @elizaos/plugin-local-inference loader (embedding + voice handlers)",
-    );
-  } catch (err: unknown) {
-    elizaLogger.warn(
-      `[bench] Could not wire @elizaos/plugin-local-inference runtime: ${formatUnknownError(err)}`,
+      "[bench] Skipping @elizaos/plugin-local-inference runtime wiring because benchmark embedding skip is enabled",
     );
   }
   disableManualCompactionAction(runtime);

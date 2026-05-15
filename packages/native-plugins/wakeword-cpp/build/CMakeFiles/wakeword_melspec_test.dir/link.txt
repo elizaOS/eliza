@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/wakeword_melspec_test.dir/test/wakeword_melspec_test.c.o -o wakeword_melspec_test  libwakeword.a -lm 

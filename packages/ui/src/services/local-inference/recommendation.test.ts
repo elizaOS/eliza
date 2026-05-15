@@ -187,6 +187,70 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toMatch(/^eliza-1-/);
   });
 
+  it("still recommends Eliza-1 text on a binary that advertises BOTH DFlash kernels AND OpenVINO", () => {
+    // Intel hosts ship binaries that link both DFlash/W4-B (for text) and
+    // OpenVINO (for ASR/Whisper). The `unsupportedKernels: ["openvino"]`
+    // annotation on text tiers must NOT reject these — DFlash is present
+    // and is the right route. The dispatcher steers OpenVINO off at spawn
+    // time via `applyUnsupportedKernelEnv`.
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+
+    const mixedBinary = {
+      dflash: true,
+      turbo3: true,
+      turbo4: true,
+      turbo3_tcq: true,
+      qjl_full: true,
+      polarquant: true,
+      openvino: true,
+      lookahead: true,
+      ngramDraft: true,
+    };
+
+    const recommended = selectRecommendedModels(probe, undefined, {
+      binaryKernels: mixedBinary,
+    });
+
+    expect(recommended.TEXT_SMALL.model?.id).toMatch(/^eliza-1-/);
+    expect(recommended.TEXT_LARGE.model?.id).toMatch(/^eliza-1-/);
+  });
+
+  it("rejects Eliza-1 text on an OpenVINO-only binary (no DFlash kernels)", () => {
+    // OpenVINO-only Intel build: ASR works, text cannot — the required
+    // DFlash kernels aren't there. The `requiresKernel` anchor drops the
+    // tier.
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+
+    const openvinoOnlyBinary = {
+      dflash: false,
+      turbo3: false,
+      turbo4: false,
+      turbo3_tcq: false,
+      qjl_full: false,
+      polarquant: false,
+      openvino: true,
+      lookahead: true,
+      ngramDraft: true,
+    };
+
+    const recommended = selectRecommendedModels(probe, undefined, {
+      binaryKernels: openvinoOnlyBinary,
+    });
+
+    expect(recommended.TEXT_SMALL.model).toBeNull();
+    expect(recommended.TEXT_LARGE.model).toBeNull();
+  });
+
   it("recommended entries are always default-eligible", () => {
     const probe = hardware({
       totalRamGb: 64,

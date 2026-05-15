@@ -34,8 +34,15 @@ export type WhatsAppPairingSession = InstanceType<
   typeof WhatsAppPairingSession
 >;
 export type WhatsAppPairingStatus = string;
+const appManagerModule = await import("@elizaos/plugin-app-manager");
+export const {
+  AppManager,
+  readAppRunStore,
+  resolveAppRunStoreFilePath,
+  resolveLegacyAppRunStoreFilePath,
+  writeAppRunStore,
+} = appManagerModule;
 export * from "./agent-export.ts";
-export * from "./app-manager.ts";
 export * from "./app-session-gate.ts";
 export {
   type AuditedDecision,

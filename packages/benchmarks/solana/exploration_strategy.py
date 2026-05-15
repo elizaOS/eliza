@@ -50,8 +50,16 @@ class DiscoveryState:
 
 class ExplorationStrategy:
 
-    def __init__(self, max_messages: int = 50):
+    def __init__(
+        self,
+        max_messages: int = 50,
+        *,
+        max_context_programs: int = 5,
+        max_instructions_per_program: int = 12,
+    ):
         self.max_messages = max_messages
+        self.max_context_programs = max_context_programs
+        self.max_instructions_per_program = max_instructions_per_program
         self.state = DiscoveryState()
         self._det_idx = 0
 
@@ -87,24 +95,54 @@ class ExplorationStrategy:
 
     def _build_llm_context(self) -> str:
         undiscovered = self.state.get_undiscovered_by_program()
+        ranked_program_ids = sorted(
+            undiscovered,
+            key=lambda pid: (
+                min(
+                    PROGRAM_BY_ID[pid].instructions_by_discriminator[d].difficulty.value
+                    for d in undiscovered[pid]
+                    if d in PROGRAM_BY_ID[pid].instructions_by_discriminator
+                )
+                if pid in PROGRAM_BY_ID else 99,
+                len(undiscovered[pid]),
+            ),
+        )
         lines = [
             f"Discovered: {len(self.state.discovered)}  Reward: {self.state.total_reward}  "
             f"Messages left: {self.max_messages - self.state.current_step}",
+            "Goal: produce one unsigned base64 Solana transaction from executeSkill(blockhash).",
+            "Prefer easy undiscovered discriminators, combine compatible instructions, and avoid memo-only repeats.",
             "",
         ]
-        for prog_id, discs in undiscovered.items():
+        omitted_programs = max(0, len(ranked_program_ids) - self.max_context_programs)
+        for prog_id in ranked_program_ids[: self.max_context_programs]:
+            discs = undiscovered[prog_id]
             prog = PROGRAM_BY_ID.get(prog_id)
             name = prog.name if prog else prog_id[:12]
-            lines.append(f"\n{name} ({prog_id}):")
+            lines.append(f"\n{name} ({prog_id}) missing {len(discs)}:")
             if prog:
-                ix_by_disc = {ix.discriminator: ix for ix in prog.instructions}
-                for d in discs:
+                ix_by_disc = prog.instructions_by_discriminator
+                easy_first = sorted(
+                    discs,
+                    key=lambda d: (
+                        ix_by_disc[d].difficulty.value if d in ix_by_disc else 99,
+                        d,
+                    ),
+                )
+                for d in easy_first[: self.max_instructions_per_program]:
                     ix = ix_by_disc.get(d)
                     if ix:
-                        lines.append(f"  disc {d}: {ix.name} [{ix.difficulty.name}] {ix.notes}")
+                        note = f" - {ix.notes}" if ix.notes else ""
+                        prereq = f" prereq={','.join(ix.prerequisites)}" if ix.prerequisites else ""
+                        lines.append(f"  {d}: {ix.name} [{ix.difficulty.name}]{prereq}{note}")
+                omitted = max(0, len(easy_first) - self.max_instructions_per_program)
+                if omitted:
+                    lines.append(f"  ... {omitted} more omitted for prompt compactness")
             else:
                 lines.append(f"  discs: {discs}")
-        lines.append("\nTarget EASY first. Pack multiple per tx. Token-2022 extensions before InitializeMint2.")
+        if omitted_programs:
+            lines.append(f"\n... {omitted_programs} programs omitted; ask for breadth after exhausting easy targets.")
+        lines.append("\nRules: Target EASY first. Pack multiple per tx. Token-2022 extensions before InitializeMint2.")
         return "\n".join(lines)
 
     def get_summary(self) -> str:

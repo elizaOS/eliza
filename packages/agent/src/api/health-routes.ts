@@ -3,12 +3,38 @@ import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
-const { isCloudProvisionedContainer, resolveCloudApiKey } = await import(
-  "@elizaos/plugin-elizacloud"
-);
-const { getLocalInferenceActiveSnapshot } = await import(
-  "@elizaos/plugin-local-inference"
-);
+type CloudHealthApi = {
+  isCloudProvisionedContainer: () => boolean;
+  resolveCloudApiKey: (
+    config: ElizaConfig,
+    runtime: AgentRuntime | null,
+  ) => string | undefined;
+};
+
+type LocalInferenceHealthApi = {
+  getLocalInferenceActiveSnapshot: () => Promise<{
+    status?: string;
+    modelId?: string;
+  } | null>;
+};
+
+let cloudHealthApiPromise: Promise<CloudHealthApi> | null = null;
+let localInferenceHealthApiPromise: Promise<LocalInferenceHealthApi> | null =
+  null;
+
+function getCloudHealthApi(): Promise<CloudHealthApi> {
+  cloudHealthApiPromise ??= import("@elizaos/plugin-elizacloud") as Promise<
+    CloudHealthApi
+  >;
+  return cloudHealthApiPromise;
+}
+
+function getLocalInferenceHealthApi(): Promise<LocalInferenceHealthApi> {
+  localInferenceHealthApiPromise ??= import(
+    "@elizaos/plugin-local-inference"
+  ) as Promise<LocalInferenceHealthApi>;
+  return localInferenceHealthApiPromise;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -386,6 +412,8 @@ export async function handleHealthRoutes(
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
+    const { getLocalInferenceActiveSnapshot } =
+      await getLocalInferenceHealthApi();
     const localInferenceActive = await getLocalInferenceActiveSnapshot().catch(
       () => null,
     );
@@ -395,6 +423,8 @@ export async function handleHealthRoutes(
         ? localInferenceActive.modelId.trim()
         : undefined;
     const model = state.model ?? activeLocalModel;
+    const { isCloudProvisionedContainer, resolveCloudApiKey } =
+      await getCloudHealthApi();
     const cloudProvisioned = isCloudProvisionedContainer();
     const hasCloudApiKey = Boolean(
       resolveCloudApiKey(state.config, state.runtime),

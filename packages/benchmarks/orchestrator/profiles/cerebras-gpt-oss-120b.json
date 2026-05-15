@@ -1,0 +1,7 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "extra": {
+    "reasoning_effort": "low"
+  }
+}

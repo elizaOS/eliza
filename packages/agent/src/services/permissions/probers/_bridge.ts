@@ -15,9 +15,12 @@
  * in the codebase (see `permissions-darwin.ts`).
  */
 
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import type {
   PermissionId,
@@ -30,6 +33,8 @@ export const PLATFORM: PermissionPlatform =
   process.platform as PermissionPlatform;
 
 export const IS_DARWIN = PLATFORM === "darwin";
+const execFileAsync = promisify(execFile);
+const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Build a `PermissionState` with sane defaults (`lastChecked = now`,
@@ -88,24 +93,10 @@ export async function runOsascript(
 ): Promise<string | null> {
   if (!IS_DARWIN) return null;
   try {
-    const proc = Bun.spawn(["osascript", "-e", script], {
-      stdout: "pipe",
-      stderr: "pipe",
+    const { stdout } = await execFileAsync("osascript", ["-e", script], {
+      timeout: timeoutMs,
+      encoding: "utf8",
     });
-    const timer = setTimeout(() => {
-      try {
-        proc.kill();
-      } catch {
-        // process already exited
-      }
-    }, timeoutMs);
-    const [stdout, _stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    clearTimeout(timer);
-    if (exitCode !== 0) return null;
     return stdout.trim();
   } catch {
     return null;
@@ -134,22 +125,16 @@ export async function queryTccStatus(
     );
     if (!existsSync(tccDb)) return null;
 
-    const proc = Bun.spawn(
+    const { stdout, stderr } = await execFileAsync(
+      "sqlite3",
       [
-        "sqlite3",
         tccDb,
         `SELECT auth_value FROM access WHERE service=${sqliteStringLiteral(service)} AND client=${sqliteStringLiteral(bundleIdentifier)}`,
       ],
-      { stdout: "pipe", stderr: "pipe" },
+      { encoding: "utf8" },
     );
 
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-
-    if (exitCode !== 0 || stderr.includes("authorization denied")) return null;
+    if (stderr.includes("authorization denied")) return null;
 
     const value = stdout.trim();
     if (value === "2") return "granted";
@@ -186,9 +171,9 @@ export async function queryAppleEventsTccStatus(
     );
     if (!existsSync(tccDb)) return null;
 
-    const proc = Bun.spawn(
+    const { stdout, stderr } = await execFileAsync(
+      "sqlite3",
       [
-        "sqlite3",
         tccDb,
         [
           "SELECT auth_value FROM access",
@@ -198,16 +183,10 @@ export async function queryAppleEventsTccStatus(
           "ORDER BY last_modified DESC LIMIT 1",
         ].join(" "),
       ],
-      { stdout: "pipe", stderr: "pipe" },
+      { encoding: "utf8" },
     );
 
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-
-    if (exitCode !== 0 || stderr.includes("authorization denied")) return null;
+    if (stderr.includes("authorization denied")) return null;
 
     const value = stdout.trim();
     if (value === "2") return "granted";
@@ -300,10 +279,17 @@ export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
   for (const candidate of DYLIB_CANDIDATES) {
     const dylibPath = path.isAbsolute(candidate)
       ? candidate
-      : path.resolve(import.meta.dir, candidate);
+      : path.resolve(CURRENT_DIR, candidate);
     if (!existsSync(dylibPath)) continue;
     try {
-      const { dlopen, FFIType } = await import("bun:ffi");
+      const bunFfiSpecifier = "bun:ffi";
+      const { dlopen, FFIType } = (await import(bunFfiSpecifier)) as {
+        dlopen: (
+          dylibPath: string,
+          symbols: Record<string, { args: unknown[]; returns: unknown }>,
+        ) => { symbols: unknown };
+        FFIType: Record<string, unknown>;
+      };
       const { symbols } = dlopen(dylibPath, {
         requestAccessibilityPermission: { args: [], returns: FFIType.bool },
         checkAccessibilityPermission: { args: [], returns: FFIType.bool },
@@ -371,8 +357,7 @@ export async function openPrivacyPane(pane: string): Promise<void> {
   if (!IS_DARWIN) return;
   const url = `x-apple.systempreferences:com.apple.preference.security?Privacy_${pane}`;
   try {
-    const proc = Bun.spawn(["open", url], { stdout: "pipe", stderr: "pipe" });
-    await proc.exited;
+    await execFileAsync("open", [url], { encoding: "utf8" });
   } catch {
     // no-op
   }

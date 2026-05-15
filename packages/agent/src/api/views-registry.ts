@@ -24,6 +24,15 @@ const HERO_CONTENT_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+function escapeSvgText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 export interface ViewRegistryEntry extends ViewDeclaration {
   /** Owning plugin name. */
   pluginName: string;
@@ -144,7 +153,8 @@ export async function findHeroOnDisk(
  * Build a minimal SVG placeholder when no hero image is available.
  */
 export function generateViewHeroSvg(label: string, icon?: string): string {
-  const displayIcon = icon ?? label.slice(0, 2).toUpperCase();
+  const displayIcon = escapeSvgText(icon ?? label.slice(0, 2).toUpperCase());
+  const displayLabel = escapeSvgText(label);
   // Use a simple gradient tile — readable at any size.
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
   <defs>
@@ -160,7 +170,7 @@ export function generateViewHeroSvg(label: string, icon?: string): string {
   </text>
   <text x="200" y="210" font-family="system-ui,sans-serif" font-size="20"
         text-anchor="middle" dominant-baseline="middle" fill="#e0e0e0" opacity="0.7">
-    ${label}
+    ${displayLabel}
   </text>
 </svg>`;
 }
@@ -180,11 +190,28 @@ export async function registerPluginViews(
   const views = plugin.views;
   if (!views || views.length === 0) return;
 
+  // A plugin can be hot-reloaded with a changed views array. Remove the old
+  // entries first so deleted or renamed views do not survive the reload.
+  unregisterPluginViews(plugin.name);
+
   // Resolve plugin directory once for all views in this plugin.
   const resolvedDir = pluginDir ?? (await resolvePluginPackageDir(plugin.name));
 
   for (const view of views) {
     const entry = await buildEntry(view, plugin.name, resolvedDir);
+    const existing = registry.get(entry.id);
+    if (existing && existing.pluginName !== plugin.name) {
+      logger.warn(
+        {
+          src: "ViewRegistry",
+          viewId: entry.id,
+          existingPlugin: existing.pluginName,
+          incomingPlugin: plugin.name,
+        },
+        `[ViewRegistry] View id "${entry.id}" from plugin "${plugin.name}" conflicts with plugin "${existing.pluginName}"; keeping existing entry`,
+      );
+      continue;
+    }
     registry.set(entry.id, entry);
     logger.debug(
       {
@@ -229,7 +256,12 @@ export function listViews(filter?: {
     if (entry.developerOnly && !developerMode) continue;
     results.push(entry);
   }
-  results.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+  results.sort(
+    (a, b) =>
+      (a.order ?? 100) - (b.order ?? 100) ||
+      a.label.localeCompare(b.label) ||
+      a.id.localeCompare(b.id),
+  );
   return results;
 }
 
@@ -249,8 +281,9 @@ async function buildEntry(
   pluginName: string,
   pluginDir: string | undefined,
 ): Promise<ViewRegistryEntry> {
+  const loadedAt = Date.now();
   const bundleUrl = view.bundlePath
-    ? `/api/views/${encodeURIComponent(view.id)}/bundle.js`
+    ? `/api/views/${encodeURIComponent(view.id)}/bundle.js?v=${loadedAt}`
     : undefined;
 
   const heroImageUrl = `/api/views/${encodeURIComponent(view.id)}/hero`;
@@ -278,7 +311,7 @@ async function buildEntry(
     bundleUrl,
     heroImageUrl,
     available,
-    loadedAt: Date.now(),
+    loadedAt,
     platform,
   };
 }

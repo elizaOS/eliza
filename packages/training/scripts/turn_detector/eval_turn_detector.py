@@ -34,19 +34,26 @@ MEAN_LATENCY_MS_GATE: Final[float] = 30.0
 
 @dataclass(frozen=True)
 class EvalRecord:
-    """A single (transcript, gold_label) row."""
+    """A single (transcript, gold_label, lang) row.
+
+    ``lang`` is optional — only the multilingual eval JSONL sets it. When
+    absent we treat the row as `"und"` (undetermined). Per-language F1
+    rolls up by this field; the gate is still computed on the full set.
+    """
 
     transcript: str
     label: int  # 1 = end-of-turn, 0 = mid-turn
+    lang: str = "und"
 
 
 def load_records(path: Path) -> list[EvalRecord]:
     """Load JSONL records from ``path``.
 
-    Each row must be ``{"transcript": str, "label": 0|1}``. Lines that
-    fail validation are rejected; we never silently coerce labels (a
-    model that mis-classifies is a measured failure, but a corrupt eval
-    fixture is a contract bug).
+    Each row must be ``{"transcript": str, "label": 0|1}`` and may
+    optionally carry ``"lang": str`` (used to stratify the report).
+    Lines that fail validation are rejected; we never silently coerce
+    labels (a model that mis-classifies is a measured failure, but a
+    corrupt eval fixture is a contract bug).
     """
     out: list[EvalRecord] = []
     with path.open("r", encoding="utf-8") as fh:
@@ -67,7 +74,13 @@ def load_records(path: Path) -> list[EvalRecord]:
                 raise ValueError(
                     f"{path}:{line_no}: label must be 0 or 1, got {label!r}"
                 )
-            out.append(EvalRecord(transcript=transcript, label=int(label)))
+            lang_value = record.get("lang")
+            lang = str(lang_value) if isinstance(lang_value, str) else "und"
+            out.append(
+                EvalRecord(
+                    transcript=transcript, label=int(label), lang=lang,
+                )
+            )
     return out
 
 
@@ -109,6 +122,25 @@ def gate_report(*, f1: float, mean_latency_ms: float) -> dict[str, Any]:
     }
 
 
+LIVEKIT_IM_END_TOKEN: Final[str] = "<|im_end|>"
+
+
+def _format_livekit_prompt(tokenizer: Any, transcript: str) -> str:
+    """Replicate ``formatLiveKitTurnDetectorPrompt`` from
+    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``.
+    """
+    templated = tokenizer.apply_chat_template(
+        [{"role": "user", "content": transcript}],
+        add_generation_prompt=False,
+        tokenize=False,
+        add_special_tokens=False,
+    )
+    ix = templated.rfind(LIVEKIT_IM_END_TOKEN)
+    if ix >= 0:
+        templated = templated[:ix]
+    return templated
+
+
 def run_onnx_eval(
     *,
     model_path: Path,
@@ -118,12 +150,17 @@ def run_onnx_eval(
 ) -> dict[str, Any]:
     """Run the fine-tuned ONNX against ``records``.
 
-    Imports are deferred so the smoke tests can exercise the
-    threshold/gate logic without onnxruntime/transformers being
-    installed. The decision rule mirrors the runtime: probability >=
-    ``decision_threshold`` ⇒ predict EOU.
+    Scoring matches ``probabilityFromOnnxOutput`` in
+    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``:
+    apply the chat template (minus trailing ``<|im_end|>``), forward,
+    then ``P(EOU) = softmax(logits[:, last_real_pos, :])[<|im_end|>]``.
+
+    When any record carries a non-``"und"`` ``lang`` field we additionally
+    roll up ``f1ByLang[<lang>]`` into the report so the multilingual
+    publisher can record per-locale gate numbers in the model card.
     """
     try:
+        import numpy as np
         import onnxruntime  # type: ignore[import-not-found]
         from transformers import AutoTokenizer  # type: ignore[import-not-found]
     except ModuleNotFoundError as exc:  # pragma: no cover - env-only path
@@ -133,16 +170,26 @@ def run_onnx_eval(
         ) from exc
 
     tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path.parent))
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    im_end_ids = tokenizer(LIVEKIT_IM_END_TOKEN, add_special_tokens=False)[
+        "input_ids"
+    ]
+    if not im_end_ids:
+        raise SystemExit("tokenizer did not produce an <|im_end|> id")
+    im_end_id = int(im_end_ids[0])
     session = onnxruntime.InferenceSession(
         str(model_path), providers=["CPUExecutionProvider"]
     )
     predictions: list[int] = []
     golds: list[int] = []
+    langs: list[str] = []
     total_ms = 0.0
     for r in records:
         started = time.perf_counter()
+        prompt = _format_livekit_prompt(tokenizer, r.transcript)
         encoded = tokenizer(
-            r.transcript,
+            prompt,
             return_tensors="np",
             max_length=128,
             truncation=True,
@@ -151,19 +198,35 @@ def run_onnx_eval(
         outputs = session.run(
             None, {"input_ids": encoded["input_ids"].astype("int64")}
         )
-        # Softmax of the last position; index 1 = EOU on Turnsense exports;
-        # the LiveKit ONNX returns logits over vocab — both paths route
-        # through the runtime classifier shape, so the real driver here
-        # should call the same TS helpers. Scaffold uses argmax-style.
-        logits = outputs[0]
-        # Flatten + softmax over the last axis. Argmax sign-bit only.
-        probability = float(logits.flatten()[-1])
+        logits = outputs[0]  # [1, seq, vocab]
+        last_logits = logits[0, -1, :].astype("float64")
+        last_logits = last_logits - last_logits.max()
+        probs = np.exp(last_logits) / np.exp(last_logits).sum()
+        probability = float(probs[im_end_id])
         predictions.append(1 if probability >= decision_threshold else 0)
         golds.append(r.label)
+        langs.append(r.lang)
         total_ms += (time.perf_counter() - started) * 1000.0
     f1 = compute_f1(predictions, golds)
     mean_latency_ms = total_ms / max(1, len(records))
-    return gate_report(f1=f1, mean_latency_ms=mean_latency_ms)
+    report = gate_report(f1=f1, mean_latency_ms=mean_latency_ms)
+    # If we have language-tagged rows, roll up per-lang F1.
+    by_lang_counts: dict[str, int] = {}
+    by_lang_buckets: dict[str, tuple[list[int], list[int]]] = {}
+    for p, g, lang in zip(predictions, golds, langs, strict=True):
+        if lang == "und":
+            continue
+        by_lang_counts[lang] = by_lang_counts.get(lang, 0) + 1
+        pl, gl = by_lang_buckets.setdefault(lang, ([], []))
+        pl.append(p)
+        gl.append(g)
+    if by_lang_buckets:
+        per_lang_f1: dict[str, float] = {}
+        for lang, (pl, gl) in by_lang_buckets.items():
+            per_lang_f1[lang] = round(compute_f1(pl, gl), 4)
+        report["f1ByLang"] = dict(sorted(per_lang_f1.items()))
+        report["countByLang"] = dict(sorted(by_lang_counts.items()))
+    return report
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

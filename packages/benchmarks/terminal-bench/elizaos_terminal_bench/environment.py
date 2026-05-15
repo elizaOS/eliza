@@ -7,6 +7,7 @@ Manages Docker-based sandboxed terminal environments for task execution.
 import asyncio
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -14,6 +15,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 try:
     import docker
@@ -40,6 +42,98 @@ class TerminalEnvironmentError(Exception):
     pass
 
 
+class TerminalBenchDockerUnavailableError(TerminalEnvironmentError):
+    """Raised when Docker is unavailable or the daemon is unreachable."""
+
+
+class TerminalBenchImagePullError(TerminalEnvironmentError):
+    """Raised for actionable Docker image pull failures."""
+
+
+_pulled_images: set[str] = set()
+_auth_hint_logged = False
+
+
+def _docker_install_hint() -> str:
+    system = platform.system()
+    if system == "Darwin":
+        return "Install Docker Desktop with `brew install --cask docker` and start it."
+    if system == "Windows":
+        return "Install and start Docker Desktop."
+    return "Install Docker with your package manager, for example `sudo apt install docker.io`, and start the daemon."
+
+
+def check_docker():
+    """Return a Docker client after verifying the package and daemon."""
+    if docker is None:
+        raise TerminalBenchDockerUnavailableError(
+            "Docker Python package is unavailable. Install with `pip install docker`. "
+            f"{_docker_install_hint()}"
+        )
+    try:
+        client = docker.from_env()
+        client.ping()
+        return client
+    except Exception as exc:
+        raise TerminalBenchDockerUnavailableError(
+            "Docker daemon is not reachable. "
+            f"{_docker_install_hint()} "
+            "Use --skip-on-docker-error to skip Docker-backed tasks. "
+            f"Original error: {exc}"
+        ) from exc
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    return status == 429 or "toomanyrequests" in text or "too many requests" in text or "rate limit" in text
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    return status in {401, 403} or "unauthorized" in text or "access denied" in text or "denied" in text
+
+
+def _pull_image_with_retries(client, image: str, *, max_retries: int = 2):
+    """Ensure a Docker image is available locally, with actionable errors."""
+    global _auth_hint_logged
+    if image in _pulled_images:
+        return None
+    try:
+        local = client.images.get(image)
+        _pulled_images.add(image)
+        return local
+    except Exception:
+        pass
+
+    attempts = max_retries + 1
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            result = client.images.pull(image)
+            _pulled_images.add(image)
+            return result
+        except Exception as exc:
+            last_exc = exc
+            if _is_rate_limit_error(exc):
+                raise TerminalBenchImagePullError(
+                    f"Failed to pull image {image}: Docker registry rate limit/429. "
+                    "Run `docker login` or use a pre-pulled image."
+                ) from exc
+            if _is_auth_error(exc):
+                login_hint = "docker login ghcr.io with a token that has read:packages" if image.startswith("ghcr.io/") else "docker login"
+                if not _auth_hint_logged:
+                    _auth_hint_logged = True
+                raise TerminalBenchImagePullError(
+                    f"Failed to pull image {image}: authentication required. {login_hint}."
+                ) from exc
+            if attempt < max_retries:
+                time.sleep(min(2 ** attempt, 4))
+
+    raise TerminalEnvironmentError(f"Failed to pull image {image}: {last_exc}") from last_exc
+
+
 class TerminalEnvironment:
     """Manages sandboxed terminal environment for task execution."""
 
@@ -63,11 +157,6 @@ class TerminalEnvironment:
             working_dir: Working directory inside container
             timeout_seconds: Default command timeout
         """
-        if not DOCKER_AVAILABLE:
-            raise ImportError(
-                "Docker package not available. Install with: pip install docker"
-            )
-
         self.image = image
         self.memory_limit = memory_limit
         self.cpu_limit = cpu_limit
@@ -94,20 +183,7 @@ class TerminalEnvironment:
         if self._started:
             await self.stop()
 
-        # Initialize Docker client with retries for intermittent 500 errors
-        import time as _time
-        for _attempt in range(5):
-            try:
-                self._client = docker.from_env()
-                self._client.ping()  # Verify connection
-                break
-            except Exception as e:
-                if _attempt < 4:
-                    wait = 2 ** _attempt
-                    logger.warning(f"Docker connection attempt {_attempt+1}/5 failed: {e}. Retrying in {wait}s...")
-                    _time.sleep(wait)
-                else:
-                    raise TerminalEnvironmentError(f"Failed to connect to Docker after 5 attempts: {e}") from e
+        self._client = check_docker()
 
         # Determine configuration
         image = task.docker_image if task else self.image
@@ -115,11 +191,7 @@ class TerminalEnvironment:
         timeout = task.timeout_seconds if task else self.timeout_seconds
 
         # Pull image if needed
-        try:
-            self._client.images.get(image)
-        except docker.errors.ImageNotFound:
-            logger.info(f"Pulling Docker image: {image}")
-            self._client.images.pull(image)
+        _pull_image_with_retries(self._client, image)
 
         # Create container configuration
         config = {
@@ -259,6 +331,12 @@ class TerminalEnvironment:
             timestamp=timestamp,
             working_directory=working_dir,
             status=status,
+            params={
+                "cmd": exec_command,
+                "timeout_seconds": timeout,
+                "working_directory": working_dir,
+                "network_mode": self.network_mode,
+            },
         )
 
     async def run_test(self, test_script: str) -> tuple[bool, str, int]:
@@ -416,6 +494,11 @@ class MockTerminalEnvironment(TerminalEnvironment):
                     timestamp=timestamp,
                     working_directory=working_dir,
                     status=CommandStatus.SUCCESS if exit_code == 0 else CommandStatus.FAILED,
+                    params={
+                        "timeout_seconds": timeout,
+                        "working_directory": working_dir,
+                        "backend": "mock",
+                    },
                 )
 
         # Default response
@@ -428,6 +511,11 @@ class MockTerminalEnvironment(TerminalEnvironment):
             timestamp=timestamp,
             working_directory=working_dir,
             status=CommandStatus.SUCCESS,
+            params={
+                "timeout_seconds": timeout,
+                "working_directory": working_dir,
+                "backend": "mock",
+            },
         )
 
     async def run_test(self, test_script: str) -> tuple[bool, str, int]:
@@ -586,6 +674,11 @@ class LocalTerminalEnvironment:
             timestamp=timestamp,
             working_directory=working_dir or self.working_dir,
             status=status,
+            params={
+                "timeout_seconds": timeout,
+                "working_directory": working_dir or self.working_dir,
+                "backend": "local",
+            },
         )
 
     async def run_test(self, test_script: str) -> tuple[bool, str, int]:
@@ -644,6 +737,10 @@ class TmuxDockerEnvironment(TerminalEnvironment):
         super().__init__(*args, **kwargs)
         self._tmux_started = False
         self._image_built: Optional[str] = None
+        self._compose_project: Optional[str] = None
+        self._compose_file: Optional[Path] = None
+        self._compose_env: Optional[dict[str, str]] = None
+        self._compose_logs_root: Optional[Path] = None
 
     def _build_per_task_image(self, task: TerminalTask) -> str:
         """Build an image from the task's vendored Dockerfile, if present."""
@@ -679,41 +776,131 @@ class TmuxDockerEnvironment(TerminalEnvironment):
             )
             return task.docker_image
 
+    def _task_compose_file(self, task: Optional[TerminalTask]) -> Optional[Path]:
+        if task is None:
+            return None
+        meta = task.metadata or {}
+        compose = meta.get("docker_compose") if isinstance(meta, dict) else None
+        if not compose:
+            return None
+        compose_path = Path(str(compose))
+        return compose_path if compose_path.exists() else None
+
+    def _task_requires_compose(self, task: Optional[TerminalTask]) -> bool:
+        if task is None:
+            return False
+        meta = task.metadata or {}
+        raw = meta.get("docker_compose_has_sidecars") if isinstance(meta, dict) else None
+        if str(raw).strip().lower() == "true":
+            return True
+        services = str(meta.get("docker_compose_services", "") if isinstance(meta, dict) else "")
+        return any(name.strip() and name.strip() != "client" for name in services.split(","))
+
+    def _compose_available(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "version"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            return result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+    def _build_compose_env(self, task: TerminalTask, compose_path: Path) -> dict[str, str]:
+        tag_safe = task.task_id.replace("_", "-").lower()
+        project = f"elizaos-tbench-{tag_safe}-{uuid4().hex[:8]}"
+        logs_root = Path(tempfile.mkdtemp(prefix=f"{project}-logs-"))
+        task_logs = logs_root / "task"
+        agent_logs = logs_root / "agent"
+        task_logs.mkdir(parents=True, exist_ok=True)
+        agent_logs.mkdir(parents=True, exist_ok=True)
+        self._compose_project = project
+        self._compose_file = compose_path
+        self._compose_logs_root = logs_root
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "T_BENCH_TASK_DOCKER_CLIENT_IMAGE_NAME": f"elizaos-tbench/{tag_safe}:latest",
+                "T_BENCH_TASK_DOCKER_CLIENT_CONTAINER_NAME": f"{project}-client",
+                "T_BENCH_TEST_DIR": "/tests",
+                "T_BENCH_TASK_LOGS_PATH": str(task_logs),
+                "T_BENCH_CONTAINER_LOGS_PATH": "/tmp/tbench/logs",
+                "T_BENCH_TASK_AGENT_LOGS_PATH": str(agent_logs),
+                "T_BENCH_CONTAINER_AGENT_LOGS_PATH": "/tmp/tbench/agent-logs",
+            }
+        )
+        self._compose_env = env
+        return env
+
+    async def _start_compose_task(self, task: TerminalTask, compose_path: Path) -> None:
+        if not self._compose_available():
+            raise TerminalEnvironmentError(
+                f"Task {task.task_id} requires docker-compose sidecars, but "
+                "`docker compose` is not available. Install the Docker Compose "
+                "plugin or run a task whose docker-compose.yaml only defines client."
+            )
+
+        env = self._build_compose_env(task, compose_path)
+        cmd = [
+            "docker",
+            "compose",
+            "-p",
+            self._compose_project or "",
+            "-f",
+            str(compose_path),
+            "up",
+            "-d",
+            "--build",
+        ]
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            cwd=str(compose_path.parent),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=max(task.timeout_seconds, 300),
+            check=False,
+        )
+        if result.returncode != 0:
+            raise TerminalEnvironmentError(
+                "docker compose up failed for "
+                f"{task.task_id}: {result.stdout}{result.stderr}"
+            )
+
+        container_name = env["T_BENCH_TASK_DOCKER_CLIENT_CONTAINER_NAME"]
+        self._container = self._client.containers.get(container_name)
+        self._started = True
+        logger.info("Started compose task %s with client %s", task.task_id, container_name)
+
     async def start(self, task: Optional[TerminalTask] = None) -> None:
         if self._started:
             await self.stop()
 
-        import time as _time
-        for _attempt in range(5):
-            try:
-                self._client = docker.from_env()
-                self._client.ping()
-                break
-            except Exception as e:
-                if _attempt < 4:
-                    wait = 2 ** _attempt
-                    logger.warning(
-                        "Docker connect attempt %d/5 failed: %s. Retrying in %ds.",
-                        _attempt + 1, e, wait,
-                    )
-                    _time.sleep(wait)
-                else:
-                    raise TerminalEnvironmentError(
-                        f"Failed to connect to Docker after 5 attempts: {e}"
-                    ) from e
+        self._client = check_docker()
+
+        compose_path = self._task_compose_file(task)
+        if task is not None and compose_path is not None and self._task_requires_compose(task):
+            await self._start_compose_task(task, compose_path)
+            await asyncio.sleep(0.5)
+            await self._ensure_tmux()
+            self._start_tmux_session()
+            self._tmux_started = True
+            if task.setup_script:
+                await self.execute(task.setup_script)
+            if task.initial_state:
+                await self.execute(task.initial_state)
+            return
 
         image = self.image
         if task is not None:
             image = self._build_per_task_image(task) or task.docker_image
 
-        try:
-            self._client.images.get(image)
-        except Exception:
-            logger.info("Pulling Docker image: %s", image)
-            try:
-                self._client.images.pull(image)
-            except Exception as exc:
-                logger.warning("Image pull failed for %s: %s", image, exc)
+        _pull_image_with_retries(self._client, image)
 
         network = "bridge" if (task and task.network_enabled) else self.network_mode
         config = {
@@ -802,6 +989,37 @@ class TmuxDockerEnvironment(TerminalEnvironment):
             except Exception:
                 pass
             self._tmux_started = False
+        if self._compose_project and self._compose_file:
+            try:
+                await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        "docker",
+                        "compose",
+                        "-p",
+                        self._compose_project,
+                        "-f",
+                        str(self._compose_file),
+                        "down",
+                        "-v",
+                        "--remove-orphans",
+                    ],
+                    cwd=str(self._compose_file.parent),
+                    env=self._compose_env,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    check=False,
+                )
+            except Exception as exc:
+                logger.warning("Error stopping compose project %s: %s", self._compose_project, exc)
+            finally:
+                if self._compose_logs_root:
+                    shutil.rmtree(self._compose_logs_root, ignore_errors=True)
+                self._compose_project = None
+                self._compose_file = None
+                self._compose_env = None
+                self._compose_logs_root = None
         await super().stop()
 
     def _capture_pane(self) -> str:
@@ -891,6 +1109,12 @@ class TmuxDockerEnvironment(TerminalEnvironment):
                 timestamp=timestamp,
                 working_directory=working_dir or self.working_dir,
                 status=status,
+                params={
+                    "timeout_seconds": timeout,
+                    "working_directory": working_dir or self.working_dir,
+                    "backend": "tmux",
+                    "compose_project": self._compose_project,
+                },
             )
         except Exception as exc:
             return TerminalCommand(
@@ -902,6 +1126,12 @@ class TmuxDockerEnvironment(TerminalEnvironment):
                 timestamp=timestamp,
                 working_directory=working_dir or self.working_dir,
                 status=CommandStatus.ERROR,
+                params={
+                    "timeout_seconds": timeout,
+                    "working_directory": working_dir or self.working_dir,
+                    "backend": "tmux",
+                    "compose_project": self._compose_project,
+                },
             )
 
     async def run_test(self, test_script: str) -> tuple[bool, str, int]:

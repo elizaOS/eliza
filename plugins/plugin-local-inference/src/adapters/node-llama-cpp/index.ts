@@ -846,7 +846,7 @@ class LocalAIManager {
 			},
 		);
 
-		const usedTokensBefore = entry.session.sequence?.contextTokens?.length ?? 0;
+		const usedTokensBefore = entry.session.sequence.contextTokens.length;
 		logger.info(
 			{
 				modelType,
@@ -880,7 +880,7 @@ class LocalAIManager {
 			const toolCalls = extractToolCalls(meta.response);
 			const text = stripThinkTags(meta.responseText);
 			const usedTokensAfter =
-				entry.session.sequence?.contextTokens?.length ?? 0;
+				entry.session.sequence.contextTokens.length;
 			logger.info(
 				{
 					toolCallCount: toolCalls.length,
@@ -899,7 +899,7 @@ class LocalAIManager {
 			});
 			const text = stripThinkTags(meta.responseText);
 			const usedTokensAfter =
-				entry.session.sequence?.contextTokens?.length ?? 0;
+				entry.session.sequence.contextTokens.length;
 			logger.info(
 				{
 					kind: plan.kind,
@@ -948,7 +948,7 @@ class LocalAIManager {
 
 		const responseText = await entry.session.prompt(prompt, baseOptions);
 		const text = stripThinkTags(responseText);
-		const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
+		const usedTokensAfter = entry.session.sequence.contextTokens.length;
 		logger.info(
 			{
 				textLength: text.length,

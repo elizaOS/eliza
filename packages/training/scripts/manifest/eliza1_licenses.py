@@ -204,8 +204,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="DFlash speculative-decode drafter",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="elizalabs/eliza-1/bundles/<tier> (distilled from the text backbone)",
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
             "The DFlash drafter is a small student model aligned to the Eliza-1 "
@@ -247,7 +247,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
+        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",
@@ -277,8 +277,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="Eliza-1 bundle (umbrella)",
         spdx="CC-BY-NC-SA-4.0",
         text_file=_CC_BY_NC_SA,
-        upstream_repo="elizalabs/eliza-1/bundles/<tier>",
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_repo="elizaos/eliza-1/bundles/<tier>",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs and the upstream component authors (see per-component LICENSE.* files)",
         note=(
             "Eliza-1 is a non-commercial open-source on-device model line. This "

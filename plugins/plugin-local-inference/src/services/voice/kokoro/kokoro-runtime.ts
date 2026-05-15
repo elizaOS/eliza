@@ -313,7 +313,7 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 			speed: speedTensor,
 		};
 		const out = await session.run(feeds);
-		const waveform = out.waveform?.data ?? out.audio?.data;
+		const waveform = out.waveform.data;
 		if (!(waveform instanceof Float32Array)) {
 			throw new Error(
 				"[kokoro] ONNX session returned no float32 waveform tensor (expected 'waveform' or 'audio' output)",

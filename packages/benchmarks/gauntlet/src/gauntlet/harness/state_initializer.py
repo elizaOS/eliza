@@ -16,8 +16,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
+try:
+    from solders.keypair import Keypair
+    from solders.pubkey import Pubkey
+except ModuleNotFoundError:
+    from gauntlet.sdk.types import Pubkey
+
+    class Keypair:
+        def __init__(self, value: str) -> None:
+            self._pubkey = Pubkey(value)
+
+        @classmethod
+        def from_seed(cls, seed: bytes) -> "Keypair":
+            return cls("Mock" + seed.hex()[:40])
+
+        def pubkey(self) -> Pubkey:
+            return self._pubkey
 
 
 @dataclass

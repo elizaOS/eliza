@@ -5,11 +5,11 @@
  *   - the catalog entry resolves (and is visible/not hidden),
  *   - the bundle's text GGUF path is declared (per-tier `textFile`),
  *   - the bundle's embedding GGUF path is declared on tiers that have a
- *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k/27b-1m),
+ *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k),
  *   - the bundle's drafter GGUF path is declared (DFlash speculative
  *     decoding companion),
  *   - the HuggingFace resolve URL for the text and embedding components
- *     resolves to `elizalabs/eliza-1` and includes the expected
+ *     resolves to `elizaos/eliza-1` and includes the expected
  *     per-tier prefix.
  *
  * Why this matters: the publish pipeline stages a bundle per tier; if a
@@ -92,7 +92,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 				}
 			});
 
-			it("resolves the text component to a HuggingFace URL on elizalabs/eliza-1", () => {
+			it("resolves the text component to a HuggingFace URL on elizaos/eliza-1", () => {
 				const file = model?.sourceModel?.components.text?.file;
 				expect(file).toBeTruthy();
 				if (!model || !file) return;
@@ -134,7 +134,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 			it("declares a kvCache profile (TurboQuant / QJL / PolarQuant types) — these are wired into llama-server args at boot", () => {
 				expect(model?.runtime?.kvCache).toBeTruthy();
 				expect(model?.runtime?.kvCache?.typeK).toBe("qjl1_256");
-				expect(model?.runtime?.kvCache?.typeV).toBe("q4_polar");
+				expect(model?.runtime?.kvCache?.typeV).toBe("tbq3_0");
 				expect(model?.runtime?.kvCache?.requiresFork).toBe("buun-llama-cpp");
 			});
 		});

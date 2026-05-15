@@ -160,9 +160,9 @@ const H200: GpuProfile = {
   cuda_compute: "9.0",
   features: ["fp16", "bf16", "int8", "int4", "fp8"],
   recommended_tiers: {
-    primary: "eliza-1-27b-1m",
-    secondary: "eliza-1-27b-256k",
-    heavy: "eliza-1-27b",
+    primary: "eliza-1-27b-256k",
+    secondary: "eliza-1-27b",
+    heavy: "eliza-1-9b",
   },
   llama_cpp_flags: {
     n_gpu_layers: 99,
@@ -178,7 +178,7 @@ const H200: GpuProfile = {
   },
   ctx_size_tokens: 262144,
   notes:
-    "141 GB HBM3e. SXM5 form factor. Best fit is the 27B 1M bundle in the single-GPU profile. DFlash uses the 4B drafter for high throughput.",
+    "141 GB HBM3e. SXM5 form factor. Best fit is the 27B 256k bundle (262k natural context). DFlash uses the 4B drafter for high throughput.",
 };
 
 // ---------------------------------------------------------------------------

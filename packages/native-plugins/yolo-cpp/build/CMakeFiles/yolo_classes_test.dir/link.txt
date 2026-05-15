@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/yolo_classes_test.dir/test/yolo_classes_test.c.o -o yolo_classes_test  libyolo.a 

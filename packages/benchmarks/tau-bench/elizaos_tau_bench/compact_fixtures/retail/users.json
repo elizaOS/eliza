@@ -1,0 +1,32 @@
+{
+  "yusuf_rossi_9620": {
+    "name": {
+      "first_name": "Yusuf",
+      "last_name": "Rossi"
+    },
+    "address": {
+      "address1": "763 Broadway",
+      "address2": "Suite 135",
+      "city": "Philadelphia",
+      "country": "USA",
+      "state": "PA",
+      "zip": "19122"
+    },
+    "email": "yusuf.rossi7301@example.com",
+    "payment_methods": {
+      "credit_card_9513926": {
+        "source": "credit_card",
+        "brand": "mastercard",
+        "last_four": "2478",
+        "id": "credit_card_9513926"
+      }
+    },
+    "orders": [
+      "#W6247578",
+      "#W9711842",
+      "#W4776164",
+      "#W6679257",
+      "#W2378156"
+    ]
+  }
+}

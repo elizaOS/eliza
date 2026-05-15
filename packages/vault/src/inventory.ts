@@ -194,12 +194,7 @@ function defaultLabel(key: string, providerId: string | null): string {
 
 // ── Public API ─────────────────────────────────────────────────────
 
-/**
- * Read the meta record for `key`, parsing the underlying JSON. Returns
- * null when no meta has been written. Malformed JSON is treated as
- * "no meta" and logged at warn — we never silently coerce a corrupt
- * blob into a valid meta to mask the underlying problem.
- */
+/** Read the meta record for `key`; malformed JSON is rejected. */
 export async function readEntryMeta(
   vault: Vault,
   key: string,
@@ -210,14 +205,6 @@ export async function readEntryMeta(
   return parseMetaRecord(raw, metaKey);
 }
 
-/**
- * Merge `partial` into the existing meta for `key`. Writing partial
- * meta is the only public way to mutate metadata — callers always
- * read-modify-write through this helper so concurrent fields don't
- * clobber each other.
- *
- * Wipe a field by setting its value to `null` in the partial.
- */
 /**
  * Partial-update payload accepted by `setEntryMeta`. Fields are
  * optional; passing `null` deletes the underlying field from the

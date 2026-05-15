@@ -1017,18 +1017,14 @@ export class SlackService extends Service implements ISlackService {
     key: string,
     accountId?: string | null,
   ): string {
-    const normalized = normalizeAccountId(
-      accountId ?? this.defaultAccountId,
-    );
+    const normalized = normalizeAccountId(accountId ?? this.defaultAccountId);
     return normalized === DEFAULT_ACCOUNT_ID
       ? `${prefix}-${key}`
       : `${prefix}-${normalized}-${key}`;
   }
 
   private buildEventPayload(accountId?: string | null): EventPayload {
-    const normalized = normalizeAccountId(
-      accountId ?? this.defaultAccountId,
-    );
+    const normalized = normalizeAccountId(accountId ?? this.defaultAccountId);
     return {
       runtime: this.runtime,
       source: "slack",

@@ -131,7 +131,7 @@ export const marketProvider: Provider = {
       const tokenSymbolsPromise =
         solanaService && typeof solanaService.getTokensSymbols === "function"
           ? solanaService.getTokensSymbols(CAs)
-          : Promise.resolve({});
+          : Promise.resolve({} as Record<string, string>);
 
       const [result, tokenSymbols] = await Promise.all([
         birdeyeService.getTokensMarketData("solana", CAs),

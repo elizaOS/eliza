@@ -926,7 +926,7 @@ export function startAccountPoolKeepAlive(
   };
 
   keepAliveTimer = setInterval(run, Math.max(60_000, intervalMs));
-  keepAliveTimer.unref?.();
+  keepAliveTimer.unref();
   run();
 }
 

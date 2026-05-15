@@ -1,0 +1,55 @@
+{
+  "_note": "Mini OSWorld smoke fixtures. Each sample is a short instruction + a known-good action trace expressed in the computer_13 schema (subset). The smoke scorer compares predicted and reference traces directly via osworldStepMatch — it does NOT spin up the OSWorld VM. The VM-backed scorer lives in plugin-computeruse/src/osworld/ and runs only in the full eval.",
+  "samples": [
+    {
+      "id": "smoke-osworld-0001",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Open the Files application from the dock",
+      "trace": [
+        { "type": "CLICK", "x": 480, "y": 1820 },
+        { "type": "WAIT" },
+        { "type": "DONE" }
+      ]
+    },
+    {
+      "id": "smoke-osworld-0002",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Type 'hello world' into the focused text field then press Enter",
+      "trace": [
+        { "type": "TYPING", "text": "hello world" },
+        { "type": "HOTKEY", "keys": ["Enter"] },
+        { "type": "DONE" }
+      ]
+    },
+    {
+      "id": "smoke-osworld-0003",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Save the document with Ctrl+S",
+      "trace": [
+        { "type": "HOTKEY", "keys": ["Ctrl", "s"] },
+        { "type": "DONE" }
+      ]
+    },
+    {
+      "id": "smoke-osworld-0004",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Scroll down then click the 'Accept' button",
+      "trace": [
+        { "type": "SCROLL" },
+        { "type": "CLICK", "x": 640, "y": 720 },
+        { "type": "DONE" }
+      ]
+    },
+    {
+      "id": "smoke-osworld-0005",
+      "imagePath": "samples/_placeholder.png",
+      "instruction": "Open settings and quit",
+      "trace": [
+        { "type": "CLICK", "x": 100, "y": 200 },
+        { "type": "WAIT" },
+        { "type": "HOTKEY", "keys": ["Cmd", "q"] },
+        { "type": "DONE" }
+      ]
+    }
+  ]
+}

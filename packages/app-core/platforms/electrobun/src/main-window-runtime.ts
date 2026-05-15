@@ -85,14 +85,14 @@ export function getCurrentMainWindowSnapshot(): MainWindowRuntimeSnapshot {
 
 	return {
 		present: true,
-		windowId: currentWindow.id ?? null,
-		webviewId: currentWindow.webviewId ?? null,
+		windowId: currentWindow.id,
+		webviewId: currentWindow.webviewId,
 		url:
 			(currentWindow.webview as { url?: string | null } | undefined)?.url ??
 			null,
 		bounds: {
-			x: position.x ?? 0,
-			y: position.y ?? 0,
+			x: position.x,
+			y: position.y,
 			width: size.width,
 			height: size.height,
 		},

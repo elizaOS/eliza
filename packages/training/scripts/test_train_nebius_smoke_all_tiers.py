@@ -210,7 +210,7 @@ def test_smoke_all_help_lists_tiers():
     assert "TIERS" in out, f"help output missing TIERS doc:\n{out}"
     assert "SMOKE_MAX_STEPS" in out
     assert "SMOKE_DATA_DIR" in out
-    assert "0_8b" in out and "27b-1m" in out
+    assert "0_8b" in out and "27b-256k" in out
 
 
 # ---------- run_pipeline.py end-to-end skip-everything smoke ----------------
@@ -269,7 +269,6 @@ def test_run_pipeline_skip_everything_exits_clean(tmp_path: Path):
             for _ in range(3):
                 f.write(_json.dumps(record) + "\n")
 
-    out_dir = tmp_path / "out"
     env = os.environ.copy()
     # Force the test to invoke the script with the in-repo training tree as
     # the working dir so the relative paths in run_pipeline.py resolve.

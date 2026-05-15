@@ -640,7 +640,7 @@ async function handleTestConnection(
   let Pool: typeof import("pg").Pool;
   try {
     const pgModule = await import("pg");
-    Pool = pgModule.default?.Pool;
+    Pool = pgModule.default.Pool;
   } catch {
     sendJson(res, {
       success: false,

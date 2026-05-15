@@ -1,0 +1,35 @@
+{
+  "_note": "Mini smoke fixtures for TextVQA. Synthesised in-house from CC-BY photos of public signage; no upstream image pixels are checked into this repo. Each `imagePath` is a deterministic placeholder that the runtime / scorer only needs to be able to open — for smoke runs the runner uses a 1x1 PNG placeholder under samples/_placeholder.png. References mirror the VQAv2 10-answer convention so the soft-score scorer is exercised.",
+  "samples": [
+    {
+      "id": "smoke-textvqa-0001",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What word is written on the orange sign?",
+      "answers": ["stop", "stop", "stop", "stop", "stop", "stop", "stop", "stop", "stop", "stop"]
+    },
+    {
+      "id": "smoke-textvqa-0002",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the time on the clock?",
+      "answers": ["3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15"]
+    },
+    {
+      "id": "smoke-textvqa-0003",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What number is printed on the jersey?",
+      "answers": ["7", "seven", "7", "7", "7", "seven", "7", "7", "seven", "7"]
+    },
+    {
+      "id": "smoke-textvqa-0004",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What city is on the airport sign?",
+      "answers": ["paris", "paris", "paris", "paris", "paris", "paris", "paris", "paris", "paris", "paris"]
+    },
+    {
+      "id": "smoke-textvqa-0005",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What does the small label on the bottle say?",
+      "answers": ["water", "water", "water", "water", "water", "water", "water", "water", "water", "water"]
+    }
+  ]
+}

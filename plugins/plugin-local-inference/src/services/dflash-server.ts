@@ -398,6 +398,38 @@ function envWithBinaryLibraryPath(binaryPath: string): NodeJS.ProcessEnv {
 	return env;
 }
 
+/**
+ * Honor `model.runtime.optimizations.unsupportedKernels` at spawn time.
+ *
+ * When a text tier declares OpenVINO as unsupported, we keep the GGML
+ * OpenVINO backend out of layer placement for *this* spawn. Two signals
+ * are set on the child env:
+ *
+ *   - `GGML_OPENVINO_DISABLE=1` — checked by the elizaOS/llama.cpp fork's
+ *     `ggml_backend_openvino_get_device_count()` to return 0 (i.e. don't
+ *     register the backend at all). This is the strict guarantee.
+ *   - `GGML_OPENVINO_DEVICE=NONE` — falls back through the upstream
+ *     "device not available, fallback to CPU" path on any build that
+ *     doesn't carry the disable patch yet. The OpenVINO CPU device's
+ *     `supports_op` does not accept the dynamic autoregressive ops our
+ *     text path emits, so it loses backend scoring to the native CPU /
+ *     CUDA / Metal / Vulkan backend in practice.
+ *
+ * The setting is per-spawn: the ASR Whisper worker runs in a separate
+ * process tree and is unaffected.
+ */
+export function applyUnsupportedKernelEnv(
+	env: NodeJS.ProcessEnv,
+	optimizations: LocalRuntimeOptimizations | null | undefined,
+): NodeJS.ProcessEnv {
+	const unsupported = optimizations?.unsupportedKernels ?? [];
+	if (unsupported.includes("openvino")) {
+		env.GGML_OPENVINO_DISABLE = "1";
+		env.GGML_OPENVINO_DEVICE = "NONE";
+	}
+	return env;
+}
+
 function allowZeroDraftForDiagnostics(): boolean {
 	return readBool("ELIZA_DFLASH_ALLOW_ZERO_DRAFT");
 }
@@ -608,7 +640,7 @@ export function resolveFusedDflashBinary(): string | null {
 	if (!caps) return null;
 	const fused =
 		caps.fused === true ||
-		(caps.binaries ?? []).some(
+		(caps.binaries).some(
 			(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 		);
 	return fused ? bin : null;
@@ -796,10 +828,10 @@ function capabilitiesAdvertiseDflashSpecType(binaryPath: string): boolean {
 	return Boolean(
 		capabilitiesAreFreshForBinary(binaryPath) &&
 			caps.publishable === true &&
-			caps.kernels?.dflash === true &&
+			caps.kernels.dflash === true &&
 			caps.dflashDraftArchitecture === true &&
 			(caps.missingRequiredKernels?.length ?? 0) === 0 &&
-			(caps.binaries ?? []).includes("llama-server") &&
+			(caps.binaries).includes("llama-server") &&
 			((caps.supportedArchitectures ?? []).includes("dflash-draft") ||
 				(caps.draftArchitectures ?? []).includes("dflash-draft")),
 	);
@@ -912,7 +944,7 @@ export function probeCtxCheckpointsSupported(binaryPath: string): boolean {
 			timeout: 30_000,
 			maxBuffer: 4 * 1024 * 1024,
 		});
-		const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+		const text = `${result.stdout}\n${result.stderr}`;
 		supported = /--ctx-checkpoints\b/.test(text);
 	} catch {
 		supported = false;
@@ -1010,7 +1042,7 @@ function llamaServerHelpText(binaryPath: string): string {
 			timeout: 30_000,
 			maxBuffer: 4 * 1024 * 1024,
 		});
-		return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+		return `${result.stdout}\n${result.stderr}`;
 	} catch {
 		return "";
 	}
@@ -2879,7 +2911,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		if (!caps) return null;
 		const fused =
 			caps.fused === true ||
-			(caps.binaries ?? []).some(
+			(caps.binaries).some(
 				(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 			);
 		if (!fused) return null;
@@ -3116,7 +3148,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
 		// `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
 		// and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
-		const kvCache = catalog?.runtime?.kvCache;
+		const kvCache = catalog.runtime?.kvCache;
 		const cacheTypeK =
 			typeof overrides?.cacheTypeK === "string"
 				? overrides.cacheTypeK
@@ -3162,7 +3194,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				cacheTypeV,
 				disableThinking: dflash.disableThinking,
 				kvSpillPlan,
-				params: catalog?.params,
+				params: catalog.params,
 				ttsModelPath: ttsAssets?.modelPath,
 				ttsCodecPath: ttsAssets?.codecPath,
 				mmprojPath: overrides?.mmprojPath,
@@ -3435,7 +3467,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
 		this.stderrTail = [];
 		const child = spawn(status.binaryPath, args, {
-			env: envWithBinaryLibraryPath(status.binaryPath),
+			env: applyUnsupportedKernelEnv(
+				envWithBinaryLibraryPath(status.binaryPath),
+				optimizations ?? null,
+			),
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		this.child = child;
@@ -3443,8 +3478,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		this.loadedPlan = effectivePlan;
 		this.loadedBinaryPath = status.binaryPath;
 
-		child.stdout?.on("data", (chunk) => this.captureLog(chunk));
-		child.stderr?.on("data", (chunk) => this.captureLog(chunk));
+		child.stdout.on("data", (chunk) => this.captureLog(chunk));
+		child.stderr.on("data", (chunk) => this.captureLog(chunk));
 		child.on("exit", (code, signal) => {
 			if (this.child && (code !== null || signal !== null)) {
 				this.child = null;

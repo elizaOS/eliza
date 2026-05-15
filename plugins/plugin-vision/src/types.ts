@@ -79,12 +79,29 @@ export interface ScreenTile {
   id: string;
   row: number;
   col: number;
+  /** Tile origin X within the source capture (display-local pixels). */
   x: number;
+  /** Tile origin Y within the source capture (display-local pixels). */
   y: number;
   width: number;
   height: number;
   data?: Buffer;
   analysis?: TileAnalysis;
+  /**
+   * Source display id, when the tile came from a per-display capture pass.
+   * Stringified so opaque platform ids (CGDirectDisplayID, sway output names)
+   * round-trip without lossy coercion.
+   */
+  displayId?: string;
+  /**
+   * Absolute pixel X of the tile origin in the source display's native space.
+   * Same value as `x` when `displayId` refers to a single-display capture; it
+   * becomes load-bearing once the capture pipeline composes per-display
+   * screenshots into a multi-monitor stream.
+   */
+  sourceX?: number;
+  /** Absolute pixel Y of the tile origin in the source display's native space. */
+  sourceY?: number;
 }
 
 export interface TileAnalysis {

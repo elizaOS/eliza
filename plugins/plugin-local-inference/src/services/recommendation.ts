@@ -32,7 +32,6 @@ const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
-const TIER_27B_1M: Eliza1TierId = "eliza-1-27b-1m";
 
 export type RecommendationPlatformClass =
 	| "mobile"
@@ -74,15 +73,7 @@ const SLOT_LADDERS: Record<
 	},
 	"linux-gpu": {
 		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-		TEXT_LARGE: [
-			TIER_27B_1M,
-			TIER_27B_256K,
-			TIER_27B,
-			TIER_9B,
-			TIER_4B,
-			TIER_2B,
-			TIER_0_8B,
-		],
+		TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
 	},
 	"linux-cpu": {
 		TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
@@ -248,15 +239,27 @@ function canFit(
  * filtering would hide every kernel-required model and the dispatcher's
  * load-time check will surface the real error if/when the user tries to
  * activate it.
+ *
+ * `unsupportedKernels` is a soft signal layered on top: when the binary
+ * has no satisfied `requiresKernel` anchor and exposes only an unsupported
+ * backend (OpenVINO-only Intel build for an Eliza-1 text tier), drop the
+ * tier so the recommender doesn't suggest a path that has no kernel route.
+ * A binary that already satisfies `requiresKernel` stays eligible even
+ * when it also advertises an unsupported backend (e.g. DFlash + OpenVINO
+ * co-compiled — the dispatcher steers the spawn off OpenVINO via
+ * `applyUnsupportedKernelEnv` at runtime).
  */
 function kernelRequirementsSatisfied(
 	model: CatalogModel,
 	binaryKernels: Partial<Record<string, boolean>> | null,
 ): boolean {
 	const required = model.runtime?.optimizations?.requiresKernel ?? [];
-	if (required.length === 0) return true;
 	if (!binaryKernels) return true;
-	return required.every((k) => binaryKernels[k] === true);
+	if (required.length > 0) {
+		return required.every((k) => binaryKernels[k] === true);
+	}
+	const unsupported = model.runtime?.optimizations?.unsupportedKernels ?? [];
+	return !unsupported.some((k) => binaryKernels[k] === true);
 }
 
 function modelsFromLadder(

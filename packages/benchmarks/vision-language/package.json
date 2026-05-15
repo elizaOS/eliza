@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/bench-vision-language",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vision-language + UI grounding eval harness for eliza-1 (TextVQA, DocVQA, ChartQA, ScreenSpot, OSWorld). Wires the local-inference IMAGE_DESCRIPTION model and (for OSWorld) plugin-computeruse's OSWorld adapter into a uniform sample → score → report pipeline.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runner": "./src/runner.ts",
+    "./adapters/textvqa": "./src/adapters/textvqa_adapter.ts",
+    "./adapters/docvqa": "./src/adapters/docvqa_adapter.ts",
+    "./adapters/chartqa": "./src/adapters/chartqa_adapter.ts",
+    "./adapters/screenspot": "./src/adapters/screenspot_adapter.ts",
+    "./adapters/osworld": "./src/adapters/osworld_adapter.ts",
+    "./scorers": "./src/scorers/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/runner.ts",
+    "smoke": "bun run src/runner.ts --smoke",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  }
+}

@@ -62,7 +62,12 @@ import {
 } from "./kernel-patches/cuda-kernels.mjs";
 import { patchDflashDrafterArch as patchDflashDrafterArchImpl } from "./kernel-patches/dflash-drafter-arch.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
-import { patchServerOmnivoiceRoute as patchServerOmnivoiceRouteImpl } from "./kernel-patches/server-omnivoice-route.mjs";
+// W3-3 H2.c cleanup: the preset-aware `/v1/audio/speech` mount has been
+// moved into committed fork source (`tools/server/server.cpp` carries the
+// `eliza_omnivoice` namespace permanently, guarded by `#ifdef
+// ELIZA_FUSE_OMNIVOICE`). The kernel-patches/server-omnivoice-route.mjs
+// patcher is therefore gone — a fresh `git clone` of the fork now produces
+// the production route without any runtime patching.
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 import {
@@ -2044,17 +2049,12 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
       patchServerStructuredOutputImpl(cacheDir, { dryRun });
     }
   }
-  // Fused omnivoice TTS: mount `POST /v1/audio/speech` onto the same
-  // `llama-server` that serves `/completion` + `/v1/chat/completions` + the
-  // DFlash speculative loop (packages/inference/AGENTS.md §4 — one process,
-  // not two over IPC; remaining-work-ledger P0 #3 merged-route item). The
-  // route handler is guarded by `#ifdef ELIZA_FUSE_OMNIVOICE` so non-fused
-  // builds are byte-for-byte unchanged; the cmake-graft separately links
+  // W3-3 H2.c: the fused `/v1/audio/speech` mount lives in committed fork
+  // source (`tools/server/server.cpp` namespace `eliza_omnivoice`, guarded
+  // by `#ifdef ELIZA_FUSE_OMNIVOICE`). The cmake-graft separately links
   // `omnivoice-core` into `llama-server` and sets that define for fused
-  // targets. Idempotent via the route patch's own sentinel.
-  if (isFusedTarget(target) && !target?.startsWith("ios-")) {
-    patchServerOmnivoiceRouteImpl(cacheDir, { dryRun });
-  }
+  // targets — no runtime patcher needed. Pre-H2.c the route was injected
+  // by kernel-patches/server-omnivoice-route.mjs; that patcher is deleted.
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
   // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in
   // ggml-cpu/qjl/. Any build where ggml-base is its own shared object

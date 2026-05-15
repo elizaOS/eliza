@@ -3,6 +3,7 @@
  * Adapted from openclaw/src/security/skill-scanner.ts.
  */
 import { truncateEvidence } from "./types";
+
 const SCANNABLE_EXTENSIONS = new Set([
     ".js",
     ".ts",

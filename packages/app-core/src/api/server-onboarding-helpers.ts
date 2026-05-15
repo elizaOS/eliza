@@ -24,7 +24,7 @@ import {
   PREMADE_VOICES,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-import { getCompatApiToken } from "./auth";
+import { getCompatApiToken } from "./auth.ts";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------
@@ -255,17 +255,17 @@ export function persistCompatOnboardingDefaults(
     Number.isFinite(body.avatarIndex)
   ) {
     ui.avatarIndex = Number(body.avatarIndex);
-  } else if (typeof stylePreset?.avatarIndex === "number") {
+  } else if (typeof stylePreset.avatarIndex === "number") {
     ui.avatarIndex = stylePreset.avatarIndex;
   }
   if (trimToUndefined(body.presetId)) {
     ui.presetId = trimToUndefined(body.presetId);
-  } else if (stylePreset?.id) {
+  } else if (stylePreset.id) {
     ui.presetId = stylePreset.id;
   }
 
   const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
-  const voicePresetId = stylePreset?.voicePresetId?.trim();
+  const voicePresetId = stylePreset.voicePresetId.trim();
   const voiceId = voicePresetId
     ? ELEVENLABS_VOICE_ID_BY_PRESET.get(voicePresetId)
     : undefined;

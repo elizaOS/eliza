@@ -94,7 +94,7 @@ function bytesToUint8Array(b: TtsHandlerOutput): Uint8Array {
 }
 
 function extractText(input: TtsHandlerInput): string {
-	return typeof input === "string" ? input : (input.text ?? "");
+	return typeof input === "string" ? input : (input.text);
 }
 
 function withText(input: TtsHandlerInput, text: string): TtsHandlerInput {
@@ -259,7 +259,7 @@ function schedulePopulate(args: PopulateArgs): void {
 			};
 			args.cache.put(put);
 		} catch (err) {
-			logger.debug?.(
+			logger.debug(
 				`[tts-cache] first-line populate failed for "${args.snip.normalized}": ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}

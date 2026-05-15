@@ -81,7 +81,7 @@ describe("AgentRuntime structured streaming", () => {
 		]);
 	});
 
-	it("does not turn streamStructured into provider streaming for non-local handlers", async () => {
+	it("streams structured fields from non-local handlers that return text streams", async () => {
 		const runtime = makeRuntime();
 		const streamed: string[] = [];
 		const raw =
@@ -91,9 +91,18 @@ describe("AgentRuntime structured streaming", () => {
 				stream?: boolean;
 				onStreamChunk?: (chunk: string) => Promise<void> | void;
 			};
-			expect(streamingParams.stream).toBe(false);
+			expect(streamingParams.stream).toBe(true);
 			expect(streamingParams.onStreamChunk).toBeUndefined();
-			return raw;
+			return {
+				textStream: (async function* () {
+					yield '{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],';
+					yield '"replyText":"auth-';
+					yield 'ok","facts":[]}';
+				})(),
+				text: Promise.resolve(raw),
+				usage: Promise.resolve(undefined),
+				finishReason: Promise.resolve("stop"),
+			};
 		});
 		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "openai");
 
@@ -113,7 +122,7 @@ describe("AgentRuntime structured streaming", () => {
 		);
 
 		expect(result).toBe(raw);
-		expect(streamed).toEqual([]);
+		expect(streamed.join("")).toBe("auth-ok");
 	});
 
 	it("treats built-in Eliza local providers as local model routes", () => {
