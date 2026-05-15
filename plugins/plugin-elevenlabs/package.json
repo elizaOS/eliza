@@ -30,9 +30,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "files": [
@@ -46,7 +46,8 @@
     "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
   },
   "scripts": {
     "build": "bun run build.ts",

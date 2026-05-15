@@ -72,7 +72,6 @@ KNOWN_TIERS: tuple[str, ...] = (
     "9b",
     "27b",
     "27b-256k",
-    "27b-1m",
 )
 
 _OPS: dict[str, Any] = {

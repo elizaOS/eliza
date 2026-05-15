@@ -45,7 +45,7 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${TRAINING_ROOT}"
 
-readonly TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k" "27b-1m")
+readonly TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k")
 
 DRY_RUN=0
 PUBLIC=0
@@ -57,7 +57,6 @@ METAL_PATH_4B=""
 METAL_PATH_9B=""
 METAL_PATH_27B=""
 METAL_PATH_27B_256K=""
-METAL_PATH_27B_1M=""
 
 usage() {
   sed -n '2,40{s/^# //;s/^#//;p;}' "${SCRIPT_PATH}"
@@ -75,7 +74,6 @@ while [[ $# -gt 0 ]]; do
     --metal-verification-9b)      METAL_PATH_9B="$2"; shift 2 ;;
     --metal-verification-27b)     METAL_PATH_27B="$2"; shift 2 ;;
     --metal-verification-27b-256k) METAL_PATH_27B_256K="$2"; shift 2 ;;
-    --metal-verification-27b-1m)  METAL_PATH_27B_1M="$2"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2
@@ -117,7 +115,6 @@ metal_path_for_tier() {
     9b)        printf '%s' "${METAL_PATH_9B}" ;;
     27b)       printf '%s' "${METAL_PATH_27B}" ;;
     27b-256k)  printf '%s' "${METAL_PATH_27B_256K}" ;;
-    27b-1m)    printf '%s' "${METAL_PATH_27B_1M}" ;;
     *)         printf '%s' "" ;;
   esac
 }

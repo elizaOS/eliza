@@ -80,7 +80,7 @@ export function detectAudioMimeType(buffer: Buffer): AudioMimeType {
   return "application/octet-stream";
 }
 
-export function getExtensionForMimeType(mimeType: AudioMimeType): string {
+function getExtensionForMimeType(mimeType: AudioMimeType): string {
   switch (mimeType) {
     case "audio/wav":
       return "wav";
@@ -102,14 +102,4 @@ export function getExtensionForMimeType(mimeType: AudioMimeType): string {
 export function getFilenameForMimeType(mimeType: AudioMimeType): string {
   const ext = getExtensionForMimeType(mimeType);
   return `recording.${ext}`;
-}
-
-export function validateAudioFormat(buffer: Buffer): AudioMimeType {
-  const mimeType = detectAudioMimeType(buffer);
-  if (mimeType === "application/octet-stream") {
-    throw new Error(
-      "Unable to detect audio format. Supported formats: WAV, MP3, OGG, FLAC, M4A, WebM"
-    );
-  }
-  return mimeType;
 }

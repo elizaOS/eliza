@@ -3659,9 +3659,17 @@ export async function runV5MessageRuntimeStage1(args: {
 			// deterministic-token prefill plan and the fork fast-forwards the
 			// forced scaffold spans. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`.
 			// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
-			providerOptions: withGuidedDecodeProviderOptions(
-				messageHandlerProviderOptions,
-			),
+			providerOptions: withGuidedDecodeProviderOptions({
+				...messageHandlerProviderOptions,
+				eliza: {
+					...((
+						messageHandlerProviderOptions as {
+							eliza?: Record<string, unknown>;
+						}
+					).eliza ?? {}),
+					thinking: "off",
+				},
+			}),
 		};
 		// Empty-completion retry: cloud reasoning models reached over
 		// OpenAI-compatible providers intermittently return a completion with no

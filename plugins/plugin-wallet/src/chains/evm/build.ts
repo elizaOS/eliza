@@ -34,8 +34,6 @@ async function runBuild(): Promise<boolean> {
       "viem/accounts",
       "viem/chains",
       "@lifi/sdk",
-      "@lifi/types",
-      "@lifi/data-types",
       "zod",
       "https",
       "http",

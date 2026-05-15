@@ -211,13 +211,27 @@ class BFCLDataset:
         synthesized_no_snippet: list[BFCLTestCase] = []
         if want_no_snippet:
             from dataclasses import replace as _replace
+            used_ids = {tc.id for tc in explicit_no_snippet}
             for tc in kept_base:
+                candidate_id = (
+                    tc.id.replace("web_search", "web_search_no_snippet", 1)
+                    if "web_search" in tc.id
+                    else f"{tc.id}_no_snippet"
+                )
+                if candidate_id in used_ids:
+                    candidate_id = f"{tc.id}_no_snippet"
+                unique_id = candidate_id
+                suffix = 2
+                while unique_id in used_ids:
+                    unique_id = f"{candidate_id}_{suffix}"
+                    suffix += 1
+                used_ids.add(unique_id)
+                if tc.id in self._ground_truth and unique_id not in self._ground_truth:
+                    self._ground_truth[unique_id] = self._ground_truth[tc.id]
                 synthesized_no_snippet.append(
                     _replace(
                         tc,
-                        id=tc.id.replace(
-                            "web_search", "web_search_no_snippet", 1
-                        ) if "web_search" in tc.id else f"{tc.id}_no_snippet",
+                        id=unique_id,
                         category=BFCLCategory.WEB_SEARCH_NO_SNIPPET,
                     )
                 )
@@ -278,8 +292,9 @@ class BFCLDataset:
         ]
 
         for file_key, file_name, category in data_files_to_load:
-            # Skip if category not in configured categories
-            if self.config.categories and category not in self.config.categories:
+            # Skip if category not in configured categories. The web_search
+            # source file feeds both base and no_snippet buckets.
+            if not self._should_load_source_category(category):
                 continue
 
             count = await self._load_from_cache_file(file_key, file_name, category)
@@ -445,11 +460,9 @@ class BFCLDataset:
             **self.V4_CATEGORY_FILES,
         }
         for file_name, category in file_map.items():
-            # Skip if category not in configured categories
-            if (
-                self.config.categories
-                and category not in self.config.categories
-            ):
+            # Skip if category not in configured categories. The web_search
+            # source file feeds both base and no_snippet buckets.
+            if not self._should_load_source_category(category):
                 continue
 
             file_path = data_path / f"{file_name}.json"
@@ -495,6 +508,16 @@ class BFCLDataset:
                 except Exception as e:
                     logger.debug(f"Error loading local ground truth from {gt_file}: {e}")
             break
+
+    def _should_load_source_category(self, category: BFCLCategory) -> bool:
+        if not self.config.categories:
+            return True
+        if category in self.config.categories:
+            return True
+        return (
+            category == BFCLCategory.WEB_SEARCH_BASE
+            and BFCLCategory.WEB_SEARCH_NO_SNIPPET in self.config.categories
+        )
 
     @staticmethod
     def _iter_local_records(file_path: Path) -> Iterator[dict[str, object]]:

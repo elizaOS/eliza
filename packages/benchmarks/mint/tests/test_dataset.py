@@ -11,7 +11,12 @@ from benchmarks.mint.dataset import MINTDataset
 class TestUpstreamMINTDataset:
     @pytest.fixture
     def dataset(self) -> MINTDataset:
-        return MINTDataset()
+        dataset = MINTDataset()
+        if not dataset.data_path.exists() or not any(dataset.data_path.rglob("*.jsonl")):
+            pytest.skip(
+                f"upstream MINT processed data is not installed at {dataset.data_path}"
+            )
+        return dataset
 
     @pytest.mark.asyncio
     async def test_load_upstream(self, dataset: MINTDataset) -> None:

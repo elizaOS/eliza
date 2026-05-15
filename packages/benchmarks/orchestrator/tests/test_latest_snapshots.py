@@ -162,6 +162,36 @@ def test_rebuild_latest_prunes_stale_managed_snapshots_when_db_has_rows(
         assert not path.exists()
 
 
+def test_rebuild_latest_index_is_stable_for_unchanged_database(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
+    first = (tmp_path / "latest" / "index.json").read_text(encoding="utf-8")
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
+    second = (tmp_path / "latest" / "index.json").read_text(encoding="utf-8")
+
+    assert second == first
+
+
 def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     tmp_path: Path,
 ) -> None:
@@ -206,6 +236,8 @@ def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     assert json.loads(baseline.read_text(encoding="utf-8"))["synthetic"] is True
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert set(index["latest"]) == {"bfcl::eliza"}
+    assert all("perfect_v1" not in key for key in index["latest_by_signature"])
+    assert all("perfect_v1" not in key for key in index["latest_by_comparison_signature"])
 
 
 def test_rebuild_latest_publishes_estimated_token_rows_with_warning(

@@ -78,7 +78,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 95
     estimated_prefill_tps: 3900
-    notes: "High-quality Qwen3.5 27B tier for RTX 5090."
+    notes: "High-quality Qwen3.6 27B tier for RTX 5090."
   eliza-1-27b-256k:
     n_gpu_layers: -1
     ctx_size: 262144

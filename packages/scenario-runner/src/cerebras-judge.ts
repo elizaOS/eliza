@@ -16,9 +16,6 @@
 /** Canonical verdict alias re-exported for callers that don't pull types.ts. */
 export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
 
-/** Verdicts produced by personality-bench style judges that use NEEDS_REVIEW. */
-export type CerebrasJudgeVerdictWide = CerebrasJudgeVerdict | "NEEDS_REVIEW";
-
 /** Canonical response shape every Cerebras judge call resolves to. */
 export interface JudgeResponse {
   /** Raw model text — exactly what the API returned, before parsing. */

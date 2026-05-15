@@ -19,9 +19,9 @@ import { getIssueAction } from "./getIssue";
 import { searchIssuesAction } from "./searchIssues";
 import { updateIssueAction } from "./updateIssue";
 
-export const LINEAR_ISSUE_CONTEXT = "linear_issue";
-export const LINEAR_COMMENT_CONTEXT = "linear_comment";
-export const LINEAR_WORKFLOW_CONTEXT = "linear_workflow";
+const LINEAR_ISSUE_CONTEXT = "linear_issue";
+const LINEAR_COMMENT_CONTEXT = "linear_comment";
+const LINEAR_WORKFLOW_CONTEXT = "linear_workflow";
 
 /**
  * Common envelope every Linear router result carries. `actionName` and
@@ -55,7 +55,7 @@ interface LinearIssueSummary {
  * createIssue/getIssue/updateIssue/deleteIssue place in `data`. Each is
  * optional because only the routed child populates its subset.
  */
-export interface LinearIssueRouterResultData extends LinearRouterEnvelope {
+interface LinearIssueRouterResultData extends LinearRouterEnvelope {
   actionName: "LINEAR_ISSUE";
   /** createIssue, updateIssue, deleteIssue (also prompt branches). */
   issueId?: string;
@@ -83,7 +83,7 @@ export interface LinearIssueRouterResultData extends LinearRouterEnvelope {
 /**
  * `LINEAR_COMMENT` router result. Sourced from createComment.
  */
-export interface LinearCommentRouterResultData extends LinearRouterEnvelope {
+interface LinearCommentRouterResultData extends LinearRouterEnvelope {
   actionName: "LINEAR_COMMENT";
   /** createComment success. */
   commentId?: string;
@@ -126,7 +126,7 @@ interface LinearSearchIssue {
  * `LINEAR_WORKFLOW` router result. Sourced from
  * getActivity/clearActivity/searchIssues.
  */
-export interface LinearWorkflowRouterResultData extends LinearRouterEnvelope {
+interface LinearWorkflowRouterResultData extends LinearRouterEnvelope {
   actionName: "LINEAR_WORKFLOW";
   /** getActivity. */
   activity?: LinearActivityItem[];

@@ -24,7 +24,6 @@ body {
   --color-brand-orange: #ff5800;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-inter: var(--font-geist-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -139,36 +138,6 @@ body {
   body {
     @apply bg-background text-foreground;
   }
-}
-
-/* Landing page scrollbar */
-.landing-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.landing-scroll::-webkit-scrollbar-track {
-  background: #000;
-}
-.landing-scroll::-webkit-scrollbar-thumb {
-  background: #ff5800;
-  border-radius: 3px;
-}
-.landing-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #ff5800 #000;
-}
-
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-.animate-blink {
-  animation: blink 1s step-end infinite;
 }
 
 /* Intro SVG wordmark */

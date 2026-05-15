@@ -365,6 +365,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseSkeleton?: {
 				spans: Array<{ kind: string; key?: string; enumValues?: string[] }>;
 			};
+			providerOptions?: {
+				eliza?: { guidedDecode?: boolean; thinking?: string };
+			};
 			spanSamplerPlan?: {
 				overrides: Array<{
 					spanIndex: number;
@@ -375,6 +378,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		// Skeleton is present and contains the canonical shouldRespond enum.
 		expect(params.responseSkeleton?.spans).toBeDefined();
+		expect(params.providerOptions?.eliza).toMatchObject({
+			guidedDecode: true,
+			thinking: "off",
+		});
 		const shouldRespondSpan = params.responseSkeleton?.spans.find(
 			(s) => s.key === "shouldRespond",
 		);

@@ -18,9 +18,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "scripts": {
@@ -40,8 +40,6 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-browser": "workspace:*",
-    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },

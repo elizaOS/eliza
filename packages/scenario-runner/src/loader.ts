@@ -40,7 +40,7 @@ function toPosixPath(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
-export function matchesScenarioFileGlobs(
+function matchesScenarioFileGlobs(
   file: string,
   fileGlobs: readonly string[],
 ): boolean {

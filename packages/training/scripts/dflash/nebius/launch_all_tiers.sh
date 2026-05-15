@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch DFlash drafter distillation for all 7 Eliza-1 tiers on Nebius H200.
+# Launch DFlash drafter distillation for required Eliza-1 tiers on Nebius H200.
 #
 # By default, jobs run sequentially. Use --tiers to run a subset.
 #
@@ -35,10 +35,11 @@
 #   EXTRA_TRAIN_ARGS         Extra args passed to distill_drafter_h200.py.
 #
 # Tier-to-hardware mapping (1 GPU unless noted):
-#   0_8b  2b  4b  9b  → 1× H200 each
-#   27b  27b-256k  27b-1m  → 2× H200 each (target + student don't fit on 1)
+#   0_8b  → disabled; writes no-drafter policy evidence, no GPU
+#   2b  4b  9b  → 1× H200 each
+#   27b  27b-256k  → 2× H200 each (target + student don't fit on 1)
 #
-# All 7 tiers are listed in canonical order matching the tier-ID table in
+# All 6 tiers are listed in canonical order matching the tier-ID table in
 # ELIZA_1_GGUF_READINESS.md and packages/shared/src/local-inference/catalog.ts.
 set -euo pipefail
 
@@ -46,16 +47,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DFLASH_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TRAINING_SCRIPT="${SCRIPT_DIR}/distill_drafter_h200.py"
 
-# Canonical tier list + drafter sizes (matches ELIZA_1_GGUF_READINESS.md).
-# Format: TIER:DRAFTER_SIZE_B:EPOCHS:BATCH_SIZE:GRAD_ACCUM:LR
+# Canonical tier list + drafter sizes. 0_8b is explicit no-drafter policy
+# evidence; all other rows are required DFlash distills.
+# Format: TIER:POLICY:DRAFTER_SIZE_B:EPOCHS:BATCH_SIZE:GRAD_ACCUM:LR
 ALL_TIERS=(
-  "0_8b:0.5:3:16:2:2e-4"
-  "2b:0.5:3:16:2:2e-4"
-  "4b:1.5:3:8:4:2e-4"
-  "9b:1.5:5:8:4:1.5e-4"
-  "27b:3.0:5:8:4:1e-4"
-  "27b-256k:3.0:5:8:4:1e-4"
-  "27b-1m:3.0:5:8:4:1e-4"
+  "0_8b:disabled:0.0:0:0:0:0"
+  "2b:required:0.8:3:16:2:2e-4"
+  "4b:required:0.8:3:8:4:2e-4"
+  "9b:required:0.8:5:8:4:1.5e-4"
+  "27b:required:0.8:5:8:4:1e-4"
+  "27b-256k:required:0.8:5:8:4:1e-4"
 )
 
 # --------------------------------------------------------------------------
@@ -122,6 +123,28 @@ tier_in_selected() {
   return 1
 }
 
+text_gguf_path_for_tier() {
+  local root="$1"
+  local tier="$2"
+  case "${tier}" in
+    0_8b|2b)
+      printf '%s/eliza-1-%s/text/eliza-1-%s-32k.gguf\n' "${root}" "${tier}" "${tier}"
+      ;;
+    4b|9b)
+      printf '%s/eliza-1-%s/text/eliza-1-%s-64k.gguf\n' "${root}" "${tier}" "${tier}"
+      ;;
+    27b)
+      printf '%s/eliza-1-%s/text/eliza-1-%s-128k.gguf\n' "${root}" "${tier}" "${tier}"
+      ;;
+    27b-256k)
+      printf '%s/eliza-1-%s/text/eliza-1-%s.gguf\n' "${root}" "${tier}" "${tier}"
+      ;;
+    *)
+      die "unknown tier for target GGUF path: ${tier}"
+      ;;
+  esac
+}
+
 resolve_python() {
   # Prefer the training venv if present (has torch, APOLLO, flash-attn).
   if [[ -x "${HOME}/train-env/bin/python" ]]; then
@@ -156,7 +179,7 @@ skipped=0
 ts_launch="$(date -u +%Y%m%dT%H%M%SZ)"
 
 for entry in "${ALL_TIERS[@]}"; do
-  IFS=':' read -r TIER DRAFTER_SIZE_B EPOCHS BATCH_SIZE GRAD_ACCUM LR <<< "${entry}"
+  IFS=':' read -r TIER POLICY DRAFTER_SIZE_B EPOCHS BATCH_SIZE GRAD_ACCUM LR <<< "${entry}"
 
   if ! tier_in_selected "${TIER}"; then
     skipped=$(( skipped + 1 ))
@@ -172,25 +195,30 @@ for entry in "${ALL_TIERS[@]}"; do
     --target-tier "${TIER}"
     --drafter-size-b "${DRAFTER_SIZE_B}"
     --output-dir "${out_dir}"
-    --epochs "${EPOCHS}"
-    --batch-size "${BATCH_SIZE}"
-    --grad-accum "${GRAD_ACCUM}"
-    --lr "${LR}"
   )
 
-  if (( SYNTHETIC_SMOKE )); then
+  if [[ "${POLICY}" == "disabled" ]]; then
+    cmd+=(--dataset-path "/dev/null")
+  elif (( SYNTHETIC_SMOKE )); then
     cmd+=(--synthetic-smoke)
-    # Smoke doesn't need real data paths.
     cmd+=(--dataset-path "/dev/null")
   else
-    dataset="${DATASET_ROOT}/eliza-1-${TIER}/distill.jsonl"
-    checkpoint="${TARGET_CHECKPOINT_ROOT}/eliza-1-${TIER}"
+    dataset="${DATASET_ROOT:-/data/distill-datasets}/eliza-1-${TIER}/distill.jsonl"
+    checkpoint="${TARGET_CHECKPOINT_ROOT:-/data/checkpoints}/eliza-1-${TIER}"
     cmd+=(
       --dataset-path "${dataset}"
       --target-checkpoint "${checkpoint}"
+      --epochs "${EPOCHS}"
+      --batch-size "${BATCH_SIZE}"
+      --grad-accum "${GRAD_ACCUM}"
+      --lr "${LR}"
     )
-    if [[ -n "${TARGET_GGUF_ROOT:-}" ]]; then
-      gguf="${TARGET_GGUF_ROOT}/eliza-1-${TIER}/text/eliza-1-${TIER}-32k.gguf"
+    gguf_root="${TARGET_GGUF_ROOT:-}"
+    if (( DRY_RUN )) && [[ -z "${gguf_root}" ]]; then
+      gguf_root="/data/eliza-1-final-gguf"
+    fi
+    if [[ -n "${gguf_root}" ]]; then
+      gguf="$(text_gguf_path_for_tier "${gguf_root}" "${TIER}")"
       cmd+=(--target-gguf "${gguf}")
     fi
   fi
@@ -202,7 +230,16 @@ for entry in "${ALL_TIERS[@]}"; do
   fi
 
   # Log intent.
-  log "tier=${TIER} drafter=${DRAFTER_SIZE_B}B out=${out_dir}"
+  if [[ "${POLICY}" != "disabled" && "${cmd[*]}" != *"--epochs"* ]]; then
+    cmd+=(
+      --epochs "${EPOCHS}"
+      --batch-size "${BATCH_SIZE}"
+      --grad-accum "${GRAD_ACCUM}"
+      --lr "${LR}"
+    )
+  fi
+
+  log "tier=${TIER} policy=${POLICY} drafter=${DRAFTER_SIZE_B}B out=${out_dir}"
   log "  cmd: ${cmd[*]}"
 
   if (( DRY_RUN )); then

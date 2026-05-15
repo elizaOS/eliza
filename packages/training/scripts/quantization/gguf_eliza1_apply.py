@@ -56,7 +56,9 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
+    ELIZA_1_TIERS,
     Eliza1ManifestError,
+    canonical_qwen_source_repo_error,
     merge_kernel_manifest_fragments,
 )
 
@@ -76,6 +78,18 @@ ELIZA1_GGML_TYPES = {
     "QJL1_256": 46,
     "Q4_POLAR": 47,
 }
+
+
+def _infer_eliza1_tier_from_output(output: Path) -> str | None:
+    """Infer an Eliza-1 tier from a release GGUF filename, if possible."""
+    name = output.name.lower()
+    if name.endswith(".gguf"):
+        name = name[: -len(".gguf")]
+    for tier in sorted(ELIZA_1_TIERS, key=len, reverse=True):
+        marker = f"eliza-1-{tier}".lower()
+        if name == marker or name.startswith(f"{marker}-"):
+            return tier
+    return None
 
 
 def _load_sidecar(path: Path) -> dict[str, object] | None:
@@ -329,6 +343,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     ap.add_argument(
+        "--tier",
+        choices=ELIZA_1_TIERS,
+        default=None,
+        help=(
+            "Eliza-1 tier for release-source validation. If omitted, the "
+            "script infers it from output filenames like "
+            "text/eliza-1-27b-128k.gguf when possible."
+        ),
+    )
+    ap.add_argument(
         "--force",
         action="store_true",
         help=(
@@ -455,6 +479,27 @@ def main(argv: list[str] | None = None) -> int:
             if isinstance(sc, dict) and sc.get("source_model"):
                 source_repo = str(sc.get("source_model"))
                 break
+    release_tier = args.tier or _infer_eliza1_tier_from_output(args.output)
+    if args.release_state == "base-v1":
+        if not source_repo:
+            log.error(
+                "release-state=base-v1 requires --source-repo or a "
+                "source_model field in one quantization sidecar"
+            )
+            return 2
+        if release_tier is not None:
+            repo_error = canonical_qwen_source_repo_error(
+                "text",
+                source_repo,
+                tier=release_tier,
+            )
+            if repo_error:
+                log.error(
+                    "invalid base-v1 source repo for tier %s: %s",
+                    release_tier,
+                    repo_error,
+                )
+                return 2
     provenance: dict[str, object] | None = None
     if args.release_state is not None:
         provenance = {
@@ -464,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
             # base-v1 is the upstream base model, GGUF + fully optimized,
             # NOT fine-tuned. finetuned-v2 records the trained checkpoint.
             "finetuned": args.release_state == "finetuned-v2",
+            "tier": release_tier,
             "sourceRepo": source_repo,
             "convertedVia": str(convert_path) if convert_path else None,
             "outtype": args.outtype,

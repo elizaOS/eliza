@@ -75,10 +75,45 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # CompactBench currently exercises elizaOS conversation-compactor
-    # implementations through a Python bridge. Hermes/OpenClaw rows would be
-    # misleading labels unless explicit per-agent compactor methods are added.
-    "compactbench": ("eliza",),
+    # Direct model/provider benchmarks do not invoke the selected agent
+    # harness. Keep them out of Eliza/Hermes/OpenClaw publication matrices.
+    "abliteration-robustness": (),
+    "gsm8k": (),
+    "humaneval": (),
+    "mmlu": (),
+    "mt_bench": (),
+    "scambench": (),
+    "swe_bench": (),
+    "swe_bench_orchestrated": (),
+    "trajectory_replay": (),
+    # These adapters currently run the Eliza bridge/runtime regardless of the
+    # requested harness, so Hermes/OpenClaw rows would be mislabeled.
+    "adhdbench": ("eliza",),
+    "agentbench": ("eliza",),
+    "app-eval": ("eliza",),
+    "clawbench": ("eliza",),
+    "eliza_replay": ("eliza",),
+    "evm": ("eliza",),
+    "experience": ("eliza",),
+    "gaia": ("eliza",),
+    "gauntlet": ("eliza",),
+    "hyperliquid_bench": ("eliza",),
+    "hyperliquidbench": ("eliza",),
+    "mind2web": ("eliza",),
+    "orchestrator_lifecycle": ("eliza",),
+    "osworld": ("eliza",),
+    "rlm_bench": ("eliza",),
+    "social_alpha": ("eliza",),
+    "solana": ("eliza",),
+    "trust": ("eliza",),
+    "vending_bench": ("eliza",),
+    "visualwebbench": ("eliza",),
+    "webshop": ("eliza",),
+    "woobench": ("eliza",),
+    # CompactBench has real Eliza and Hermes compactor adapters. OpenClaw is
+    # still gated because its public CLI does not expose a transcript-in /
+    # artifact-out compactor API.
+    "compactbench": ("eliza", "hermes"),
     # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
@@ -90,9 +125,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # REALM currently has a real Eliza bridge adapter only. Hermes/OpenClaw
     # rows previously used the Eliza bridge under different labels.
     "realm": ("eliza",),
-    # MINT currently supports the Eliza TS bridge or direct provider calls, but
-    # not native Hermes/OpenClaw agent loops.
-    "mint": ("eliza",),
     # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
@@ -120,6 +152,8 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "voicebench" and not os.environ.get("GROQ_API_KEY"):
+        return ()
+    if benchmark_id == "voicebench_quality" and not os.environ.get("GROQ_API_KEY"):
         return ()
     if benchmark_id == "hermes_swe_env":
         return ()
@@ -235,7 +269,7 @@ def _make_registry_adapter(
             or ctx.request.extra_config.get("harness")
             or ctx.request.agent
         ).strip().lower()
-        if benchmark_id == "bfcl" and harness == "openclaw":
+        if benchmark_id in {"bfcl", "lifeops_bench", "mint"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
         return env
@@ -1355,10 +1389,16 @@ def _score_from_framework(path: Path) -> ScoreSummary:
 
 
 def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    harness = ctx.request.agent.strip().lower()
+    default_method = (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+        if harness == "hermes"
+        else "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
+    )
     method = str(
         ctx.request.extra_config.get(
             "method",
-            "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
+            default_method,
         )
     )
     compactbench_root = Path(adapter.cwd)
@@ -1805,11 +1845,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mint": {
             "agent": "eliza",
-            "categories": ["reasoning"],
+            "subtasks": ["gsm8k"],
             "max_tasks": 1,
             "max_turns": 3,
             "timeout": 60,
             "no_ablation": True,
+            "use_sample_tasks": True,
         },
         "mind2web": {
             "max_tasks": 1,
@@ -1864,6 +1905,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "tau_bench": {
             "max_tasks": 1,
             "sample": True,
+            "no_llm_judge": True,
+            "agent_max_turns": 10,
+        },
+        "vending_bench": {
+            "max_tasks": 1,
         },
         "terminal_bench": {
             "max_tasks": 1,
@@ -1930,7 +1976,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "voicebench_quality": {
             "suite": "openbookqa",
             "limit": 2,
-            "fixtures": True,
         },
         "voiceagentbench": {
             "suite": "single",

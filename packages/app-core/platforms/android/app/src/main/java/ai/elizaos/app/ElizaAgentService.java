@@ -27,6 +27,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -743,6 +745,17 @@ public class ElizaAgentService extends Service {
             }
             bun = preferPackagedExecutable(bun, "libeliza_bun.so");
 
+            clearPublishedLocalAgentTokens();
+            stopDetachedAgentProcess();
+            if (!waitForLocalAgentPortClosed(PROCESS_TERMINATE_GRACE_MS)) {
+                Log.e(TAG, "Local agent port " + AGENT_PORT
+                    + " is already in use after app-owned cleanup; refusing to publish a new token.");
+                currentStatus = "port-in-use";
+                updateNotification();
+                scheduleRestart();
+                return;
+            }
+
             // Generate a fresh per-boot token for the WebView↔agent loopback.
             // Without this the loopback API would accept any local request
             // — including from other apps on the device — because the
@@ -787,6 +800,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("BUN_PATH", bun.getAbsolutePath());
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
+            agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
@@ -1257,6 +1271,7 @@ public class ElizaAgentService extends Service {
             currentLocalAgentToken = null;
             currentTerminalRunToken = null;
         }
+        deleteLocalAgentTokenFile();
         if (wasDetached) {
             stopDetachedAgentProcess();
         }
@@ -1310,6 +1325,29 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    private boolean waitForLocalAgentPortClosed(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (!isLocalAgentPortOpen()) return true;
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return !isLocalAgentPortOpen();
+    }
+
+    private boolean isLocalAgentPortOpen() {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", AGENT_PORT), 250);
+            return true;
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
     private static String shellQuote(String value) {
         return "'" + value.replace("'", "'\\''") + "'";
     }
@@ -1345,6 +1383,19 @@ public class ElizaAgentService extends Service {
         file.setReadable(true, true);
         file.setWritable(false, false);
         file.setWritable(true, true);
+    }
+
+    private void clearPublishedLocalAgentTokens() {
+        currentLocalAgentToken = null;
+        currentTerminalRunToken = null;
+        deleteLocalAgentTokenFile();
+    }
+
+    private void deleteLocalAgentTokenFile() {
+        File file = new File(new File(getFilesDir(), "auth"), "local-agent-token");
+        if (file.exists() && !file.delete()) {
+            Log.w(TAG, "Could not delete stale local-agent token file at " + file);
+        }
     }
 
     private long safePid(Process process) {

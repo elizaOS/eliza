@@ -111,6 +111,27 @@ describe("iOS local agent transport bridge", () => {
     });
   });
 
+  it("routes IPv6 loopback local-agent URLs through the ITTP transport", async () => {
+    const { iosInProcessAgentTransportForUrl } = await import(
+      "./ios-local-agent-transport"
+    );
+
+    const transport = await iosInProcessAgentTransportForUrl(
+      "http://[::1]:31337/api/health",
+    );
+    expect(transport).toBeTruthy();
+
+    const response = await transport?.request("http://[::1]:31337/api/health", {
+      method: "GET",
+    });
+
+    await expect(response?.json()).resolves.toMatchObject({
+      localAgent: {
+        mode: "ios-local",
+      },
+    });
+  });
+
   it("routes iOS IPC local-agent URLs through the same in-process transport", async () => {
     const { iosInProcessAgentTransportForUrl } = await import(
       "./ios-local-agent-transport"

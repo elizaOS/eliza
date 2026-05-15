@@ -56,22 +56,28 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
 
 
+def test_vision_mmproj_required_for_active_tiers() -> None:
+    plan = build_plan()
+    assert "vision/mmproj-0_8b.gguf" not in plan["0_8b"].required_files
+    assert "vision/mmproj-2b.gguf" not in plan["2b"].required_files
+    for tier in ("4b", "9b", "27b", "27b-256k"):
+        assert f"vision/mmproj-{tier}.gguf" in plan[tier].required_files
+
+
 def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
     plan = build_plan()
     assert "text/eliza-1-27b-256k.gguf" in plan["27b-256k"].required_files
     assert "text/eliza-1-27b-256k-256k.gguf" not in plan["27b-256k"].required_files
-    assert "text/eliza-1-27b-1m.gguf" in plan["27b-1m"].required_files
-    assert "text/eliza-1-27b-1m-1m.gguf" not in plan["27b-1m"].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
     assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["0_8b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["2b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["4b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["4b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
     assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
@@ -105,6 +111,8 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
     assert "No-larp release readiness" in text
+    assert "0.8B and 2B are text/voice-only" in text
+    assert "ASR mmproj is audio-only" in text
     # v1 release shape is documented in the readiness ledger.
     assert "releaseState=base-v1" in text
     assert "NOT fine-tuned" in text
@@ -179,7 +187,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
+                    "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -195,15 +203,15 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "uploaded",
                     "uploadEvidence": {
-                        "repoId": "elizalabs/eliza-1",
+                        "repoId": "elizaos/eliza-1",
                         "pathPrefix": "bundles/2b",
                         "status": "uploaded",
                         "commit": "abc123",
-                        "url": "https://huggingface.co/elizalabs/eliza-1/commit/abc123",
+                        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
                         "uploadedPaths": required_weights,
                     },
                 },
@@ -245,7 +253,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "pending-upload",
                 },
@@ -286,7 +294,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "weights": [],
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "status": "pending-upload",
                 },
             }

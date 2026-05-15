@@ -26,7 +26,7 @@ import {
 } from "@elizaos/core";
 import { readLinearAccounts } from "./accounts";
 
-export const LINEAR_PROVIDER_NAME = "linear";
+const LINEAR_PROVIDER_NAME = "linear";
 
 const LINEAR_AUTHORIZATION_ENDPOINT = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_ENDPOINT = "https://api.linear.app/oauth/token";

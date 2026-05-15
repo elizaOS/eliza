@@ -183,7 +183,7 @@ export class BotManager {
  * Exported for tests; lives here rather than in sdk/ because it's a
  * lifecycle concern, not a protocol one.
  */
-export function assessTransportSecurity(rawUrl: string): {
+function assessTransportSecurity(rawUrl: string): {
   risk: "safe" | "warn" | "block";
   reason?: string;
 } {

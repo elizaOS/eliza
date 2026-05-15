@@ -29,8 +29,6 @@ Respond with JSON only. Use this shape:
 Extract the core message the user wants to convey as the comment body.
 Omit unknown fields. Output only the JSON object, with no prose before or after it.`;
 
-export const CREATE_COMMENT_TEMPLATE = createCommentTemplate;
-
 export const createIssueTemplate = `Given the user's request, extract the information needed to create a Linear issue.
 
 User request: "{{userMessage}}"
@@ -47,8 +45,6 @@ Respond with JSON only. Use this shape:
 
 Omit optional fields when they are not provided. Output only the JSON object, with no prose before or after it.`;
 
-export const CREATE_ISSUE_TEMPLATE = createIssueTemplate;
-
 export const deleteIssueTemplate = `Given the user's request to delete/archive a Linear issue, extract the issue identifier.
 
 User request: "{{userMessage}}"
@@ -59,8 +55,6 @@ Respond with JSON only:
 }
 
 Output only the JSON object, with no prose before or after it.`;
-
-export const DELETE_ISSUE_TEMPLATE = deleteIssueTemplate;
 
 export const getActivityTemplate = `Extract activity filter criteria from the user's request.
 
@@ -90,8 +84,6 @@ Respond with JSON only. Use this shape:
 }
 
 Only include fields that are clearly mentioned. Output only the JSON object, with no prose before or after it.`;
-
-export const GET_ACTIVITY_TEMPLATE = getActivityTemplate;
 
 export const getIssueTemplate = `Extract issue identification from the user's request.
 
@@ -123,66 +115,6 @@ When no issue ID is provided, use searchBy fields:
 }
 
 Only include fields that are clearly mentioned or implied. Output only the JSON object, with no prose before or after it.`;
-
-export const GET_ISSUE_TEMPLATE = getIssueTemplate;
-
-export const listProjectsTemplate = `Extract project filter criteria from the user's request.
-
-User request: "{{userMessage}}"
-
-The user might ask for projects in various ways:
-- "Show me all projects" → list all projects
-- "Active projects" → filter by state (active/planned/completed)
-- "Projects due this quarter" → filter by target date
-- "Which projects is Sarah managing?" → filter by lead/owner
-- "Projects with high priority issues" → filter by contained issue priority
-- "Projects for the engineering team" → filter by team
-- "Completed projects" → filter by state
-- "Projects starting next month" → filter by start date
-
-Respond with JSON only. Use this shape:
-{
-  "teamFilter": "Team name or key if mentioned",
-  "stateFilter": "active|planned|completed|all",
-  "dateFilter": {
-    "type": "due|starting",
-    "period": "this-week|this-month|this-quarter|next-month|next-quarter",
-    "from": "ISO date if a specific start is mentioned",
-    "to": "ISO date if a specific end is mentioned"
-  },
-  "leadFilter": "Project lead name if mentioned",
-  "showAll": true
-}
-
-Only include fields that are clearly mentioned. Output only the JSON object, with no prose before or after it.`;
-
-export const LIST_PROJECTS_TEMPLATE = listProjectsTemplate;
-
-export const listTeamsTemplate = `Extract team filter criteria from the user's request.
-
-User request: "{{userMessage}}"
-
-The user might ask for teams in various ways:
-- "Show me all teams" → list all teams
-- "Engineering teams" → filter by teams with engineering in name/description
-- "List teams I'm part of" → filter by membership
-- "Which teams work on the mobile app?" → filter by description/focus
-- "Show me the ELIZA team details" → specific team lookup
-- "Active teams" → teams with recent activity
-- "Frontend and backend teams" → multiple team types
-
-Respond with JSON only. Use this shape:
-{
-  "nameFilter": "Keywords to search in team names",
-  "specificTeam": "Specific team name or key if looking for one team",
-  "myTeams": true,
-  "showAll": true,
-  "includeDetails": true
-}
-
-Only include fields that are clearly mentioned. Output only the JSON object, with no prose before or after it.`;
-
-export const LIST_TEAMS_TEMPLATE = listTeamsTemplate;
 
 export const searchIssuesTemplate = `Extract search criteria from the user's request for Linear issues.
 
@@ -222,8 +154,6 @@ Respond with JSON only. Use this shape:
 
 Only include fields that are clearly mentioned or implied. For "my" issues, set assignees to ["me"]. Output only the JSON object, with no prose before or after it.`;
 
-export const SEARCH_ISSUES_TEMPLATE = searchIssuesTemplate;
-
 export const updateIssueTemplate = `Given the user's request to update a Linear issue, extract the information needed.
 
 User request: "{{userMessage}}"
@@ -243,5 +173,3 @@ Respond with JSON only. Use this shape:
 }
 
 Only include fields that are being updated. Use an empty labels array to clear all labels. Output only the JSON object, with no prose before or after it.`;
-
-export const UPDATE_ISSUE_TEMPLATE = updateIssueTemplate;

@@ -245,10 +245,14 @@ export async function probeHardware(): Promise<HardwareProbe> {
 	// and any other call site that depends on the probe. Wrap the init
 	// call in a try/catch so we fall back to the same OS-only probe
 	// we use when the import itself was unavailable.
-	let llama: Awaited<ReturnType<LlamaBindingModule["getLlama"]>>;
+	let llama: LlamaBinding;
 	try {
 		llama = await binding.getLlama({ gpu: "auto" });
-	} catch {
+	} catch (err) {
+		console.warn(
+			"[hardware] getLlama() threw during native init, falling back to OS probe:",
+			err,
+		);
 		const totalRamGb = bytesToGb(totalRamBytes);
 		return {
 			totalRamGb,

@@ -28,18 +28,6 @@ import { buildTwitterMessageMetadata, createMemorySafe } from "./utils/memory";
 import { getEpochMs } from "./utils/time";
 
 /**
- * Extracts the answer from the given text.
- *
- * @param {string} text - The text containing the answer
- * @returns {string} The extracted answer
- */
-export function extractAnswer(text: string): string {
-  const startIndex = text.indexOf("Answer: ") + 8;
-  const endIndex = text.indexOf("<|endoftext|>", 11);
-  return text.slice(startIndex, endIndex);
-}
-
-/**
  * Represents a Twitter Profile.
  * @typedef {Object} TwitterProfile
  * @property {string} id - The unique identifier of the profile.

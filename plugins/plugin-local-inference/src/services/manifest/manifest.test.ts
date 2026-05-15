@@ -93,7 +93,6 @@ describe("Eliza-1 manifest schema constants", () => {
 			"9b",
 			"27b",
 			"27b-256k",
-			"27b-1m",
 		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),

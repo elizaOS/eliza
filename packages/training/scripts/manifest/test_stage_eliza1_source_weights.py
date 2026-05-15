@@ -40,6 +40,7 @@ def test_lite_tiers_are_source_only_and_keep_dflash_missing(
 
     kinds = [f["kind"] for f in report["files"]]
     assert "text" in kinds
+    assert "vision" not in kinds
     assert "dflash" not in kinds
     assert "unsloth/Qwen3.5-0.8B-GGUF" in report["sources"]
     assert any("No upstream DFlash drafter" in b for b in report["blockers"])
@@ -54,6 +55,7 @@ def test_mobile_tier_uses_qwen35_2b_source(
     report = stage.stage_sources(_args(tmp_path, "2b"))
 
     assert "unsloth/Qwen3.5-2B-GGUF" in report["sources"]
+    assert all(f["kind"] != "vision" for f in report["files"])
 
 
 def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
@@ -70,7 +72,7 @@ def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
 
-def test_stage_sources_accepts_large_active_tier(
+def test_stage_sources_accepts_large_active_tier_with_compatible_vision_source(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -79,9 +81,11 @@ def test_stage_sources_accepts_large_active_tier(
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
+    assert any(f["kind"] == "vision" for f in report["files"])
 
 
-@pytest.mark.parametrize("tier", ["27b", "27b-256k", "27b-1m"])
+@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
 def test_27b_class_tiers_use_qwen36_source(
     tmp_path: Path,
     monkeypatch,
@@ -92,4 +96,21 @@ def test_27b_class_tiers_use_qwen36_source(
     report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
     assert all("Qwen3.5-27B" not in f["repo"] for f in report["files"])
+
+
+@pytest.mark.parametrize("tier", ["4b", "9b", "27b", "27b-256k"])
+def test_vision_tiers_record_image_mmproj_source(
+    tmp_path: Path,
+    monkeypatch,
+    tier: str,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, tier))
+
+    vision = [f for f in report["files"] if f["kind"] == "vision"]
+    assert len(vision) == 1
+    assert vision[0]["destination"].startswith("source/vision/")
+    assert "mmproj" in vision[0]["filename"].lower()

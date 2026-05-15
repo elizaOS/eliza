@@ -357,6 +357,75 @@ function resolveXcframeworkBinary(root, targetInfo = info) {
   return { binary, frameworkDir, libraryIdentifier: library.LibraryIdentifier };
 }
 
+function xcframeworkHasRequestedLibrary(root, targetInfo = info) {
+  const infoPlist = path.join(root, "Info.plist");
+  if (!fs.existsSync(infoPlist)) return false;
+  let plist;
+  try {
+    plist = parsePlistJson(infoPlist);
+  } catch {
+    return false;
+  }
+  const libraries = Array.isArray(plist.AvailableLibraries)
+    ? plist.AvailableLibraries
+    : [];
+  return libraries.some((library) => {
+    if (!isSameRequestedTarget(library, targetInfo)) return false;
+    const libraryPath =
+      typeof library.LibraryPath === "string"
+        ? library.LibraryPath
+        : `${frameworkName}.framework`;
+    return fs.existsSync(
+      path.join(root, library.LibraryIdentifier, libraryPath, frameworkName),
+    );
+  });
+}
+
+function isSameRequestedTarget(library, targetInfo = info) {
+  if (!library || library.SupportedPlatform !== "ios") return false;
+  const wantSimulator = targetInfo.sdk === "iphonesimulator";
+  const variant = library.SupportedPlatformVariant;
+  return wantSimulator ? variant === "simulator" : !variant;
+}
+
+function collectPreservedXcframeworkFrameworks(root, targetInfo = info) {
+  if (!fs.existsSync(root)) return [];
+  const infoPlist = path.join(root, "Info.plist");
+  if (!fs.existsSync(infoPlist)) return [];
+  const plist = parsePlistJson(infoPlist);
+  const libraries = Array.isArray(plist.AvailableLibraries)
+    ? plist.AvailableLibraries
+    : [];
+  const keep = libraries.filter(
+    (library) =>
+      library?.SupportedPlatform === "ios" &&
+      !isSameRequestedTarget(library, targetInfo),
+  );
+  if (keep.length === 0) return [];
+
+  const stage = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-bun-ios-preserve-"),
+  );
+  const preserved = [];
+  for (const library of keep) {
+    const libraryPath =
+      typeof library.LibraryPath === "string"
+        ? library.LibraryPath
+        : `${frameworkName}.framework`;
+    const sourceFrameworkDir = path.join(root, library.LibraryIdentifier, libraryPath);
+    if (!fs.existsSync(path.join(sourceFrameworkDir, frameworkName))) continue;
+    const destFrameworkDir = path.join(
+      stage,
+      library.LibraryIdentifier,
+      path.basename(libraryPath),
+    );
+    fs.mkdirSync(path.dirname(destFrameworkDir), { recursive: true });
+    fs.cpSync(sourceFrameworkDir, destFrameworkDir, { recursive: true });
+    preserved.push(destFrameworkDir);
+  }
+  return preserved;
+}
+
 function findFrameworkBinaries(root) {
   if (!fs.existsSync(root)) return [];
   const found = [];
@@ -398,10 +467,14 @@ function validateXcframework(root) {
   );
 }
 
-if (fs.existsSync(artifact) && !rebuild) {
+if (fs.existsSync(artifact) && !rebuild && xcframeworkHasRequestedLibrary(artifact)) {
   validateXcframework(artifact);
   console.log(`[bun-ios-runtime] Found ${artifact}`);
   process.exit(0);
+} else if (fs.existsSync(artifact) && !rebuild) {
+  console.log(
+    `[bun-ios-runtime] Existing ${artifact} does not contain the requested ${info.platform} slice; building it now`,
+  );
 }
 
 if (verifyOnly) {
@@ -921,15 +994,19 @@ function linkFramework({ buildDir, webkitPath, info }) {
 }
 
 function createXcframework(frameworkDir) {
+  const preservedFrameworks = collectPreservedXcframeworkFrameworks(artifact, info);
   fs.rmSync(artifact, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(artifact), { recursive: true });
-  run("xcodebuild", [
+  const args = [
     "-create-xcframework",
     "-framework",
     frameworkDir,
-    "-output",
-    artifact,
-  ]);
+  ];
+  for (const preservedFramework of preservedFrameworks) {
+    args.push("-framework", preservedFramework);
+  }
+  args.push("-output", artifact);
+  run("xcodebuild", args);
   validateXcframework(artifact);
 }
 

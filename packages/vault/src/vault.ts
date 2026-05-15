@@ -265,9 +265,6 @@ class VaultImpl implements Vault {
   }
 }
 
-// re-exports for ergonomic imports
-export { emptyStore } from "./store.js";
-
 const PROCESS_STORE_LOCKS = new Map<string, Promise<void>>();
 
 async function withStoreMutationLock<T>(

@@ -344,7 +344,7 @@ export function normalizeNativeTools(tools: unknown): ToolSet | undefined {
   return Object.keys(toolSet).length > 0 ? (toolSet as ToolSet) : undefined;
 }
 
-export function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefined {
+function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefined {
   if (!toolChoice) {
     return undefined;
   }
@@ -422,7 +422,7 @@ function normalizeNativeMessage(message: unknown): ModelMessage {
   } as ModelMessage;
 }
 
-export function normalizeNativeMessages(messages: unknown): ModelMessage[] | undefined {
+function normalizeNativeMessages(messages: unknown): ModelMessage[] | undefined {
   if (!Array.isArray(messages)) {
     return undefined;
   }

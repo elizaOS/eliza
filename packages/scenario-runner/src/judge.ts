@@ -94,7 +94,7 @@ function parseJudgeJson(raw: string): JudgeResult | null {
   };
 }
 
-export class JudgeParseError extends Error {
+class JudgeParseError extends Error {
   readonly raw: string;
   constructor(attempts: number, raw: string) {
     const preview =

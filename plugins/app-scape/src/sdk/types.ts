@@ -13,13 +13,13 @@
 
 // ─── Authentication / session frames (client → server) ───────────────────
 
-export interface AuthFrame {
+interface AuthFrame {
   kind: "auth";
   token: string;
   version?: number;
 }
 
-export interface SpawnFrame {
+interface SpawnFrame {
   kind: "spawn";
   agentId: string;
   displayName: string;
@@ -32,7 +32,7 @@ export interface SpawnFrame {
   controller?: "llm" | "user" | "hybrid";
 }
 
-export interface DisconnectFrame {
+interface DisconnectFrame {
   kind: "disconnect";
   reason?: string;
 }
@@ -45,29 +45,29 @@ interface ActionEnvelope {
   correlationId?: string;
 }
 
-export interface WalkToAction extends ActionEnvelope {
+interface WalkToAction extends ActionEnvelope {
   action: "walkTo";
   x: number;
   z: number;
   run?: boolean;
 }
 
-export interface ChatPublicAction extends ActionEnvelope {
+interface ChatPublicAction extends ActionEnvelope {
   action: "chatPublic";
   text: string;
 }
 
-export interface AttackNpcAction extends ActionEnvelope {
+interface AttackNpcAction extends ActionEnvelope {
   action: "attackNpc";
   npcId: number;
 }
 
-export interface DropItemAction extends ActionEnvelope {
+interface DropItemAction extends ActionEnvelope {
   action: "dropItem";
   slot: number;
 }
 
-export interface EatFoodAction extends ActionEnvelope {
+interface EatFoodAction extends ActionEnvelope {
   action: "eatFood";
   slot?: number;
 }
@@ -104,7 +104,7 @@ export type ClientFrame =
 
 // ─── Server frames (server → client) ─────────────────────────────────────
 
-export interface AuthOkFrame {
+interface AuthOkFrame {
   kind: "authOk";
   server: string;
   version: number;
@@ -124,7 +124,7 @@ export interface SpawnOkFrame {
   level: number;
 }
 
-export interface ActionAckFrame {
+interface ActionAckFrame {
   kind: "ack";
   correlationId: string;
   success: boolean;
@@ -133,7 +133,7 @@ export interface ActionAckFrame {
 
 // ─── Perception ──────────────────────────────────────────────────────────
 
-export interface PerceptionSelf {
+interface PerceptionSelf {
   id: number;
   name: string;
   combatLevel: number;
@@ -187,14 +187,14 @@ export interface PerceptionGroundItem {
   count: number;
 }
 
-export interface PerceptionObject {
+interface PerceptionObject {
   locId: number;
   name: string;
   x: number;
   z: number;
 }
 
-export interface PerceptionEvent {
+interface PerceptionEvent {
   timestamp: number;
   kind: string;
   message: string;
@@ -213,7 +213,7 @@ export interface PerceptionSnapshot {
   recentEvents: PerceptionEvent[];
 }
 
-export interface PerceptionFrame {
+interface PerceptionFrame {
   kind: "perception";
   snapshot: PerceptionSnapshot;
 }

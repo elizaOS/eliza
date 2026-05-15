@@ -13,9 +13,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "homepage": "https://www.defenseoftheagents.com/",
@@ -40,7 +40,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "react": "^19.2.3"
   },
   "elizaos": {
     "kind": "app",
@@ -81,6 +81,8 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
   }
 }

@@ -43,10 +43,13 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("prepare_distill_dataset")
 
-# Mirrors distill_dflash_drafter.DEFAULT_STUDENT_BASE / DEFAULT_TARGET_MODEL —
-# the canonical Eliza-1 tier set lives in that script. Listed here so the prep
-# step refuses an unknown tier early.
-KNOWN_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+_TRAINING_ROOT = Path(__file__).resolve().parents[2]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.dflash.release_policy import ACTIVE_TIERS, is_dflash_disabled  # noqa: E402
+
+KNOWN_TIERS = ACTIVE_TIERS
 
 
 def _sha256_file(path: Path) -> str:
@@ -158,6 +161,12 @@ def _run_real(args: argparse.Namespace) -> int:
     if args.tier not in KNOWN_TIERS:
         log.error("unknown tier %s (expected one of %s)", args.tier, KNOWN_TIERS)
         return 2
+    if is_dflash_disabled(args.tier):
+        log.error(
+            "tier %s has DFlash disabled; no distillation corpus should be produced",
+            args.tier,
+        )
+        return 3
     if not args.target_checkpoint:
         log.error("--target-checkpoint is required for a real run")
         return 2

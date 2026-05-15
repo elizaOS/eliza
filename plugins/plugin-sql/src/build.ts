@@ -35,7 +35,6 @@ const nodeExternals = [
   "drizzle-orm",
   "drizzle-orm/pg-core",
   "drizzle-orm/pglite",
-  "drizzle-orm/neon-http",
 ];
 
 console.log("Building Node.js ESM bundle...");

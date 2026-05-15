@@ -26,7 +26,7 @@ export interface X402Response {
   headersSent?: boolean;
 }
 
-export interface X402ResponseStatus {
+interface X402ResponseStatus {
   json(data: unknown): void;
 }
 
@@ -52,12 +52,6 @@ export interface EIP712Domain {
   verifyingContract: string;
 }
 
-// Export for use in payment-wrapper
-export type {
-  EIP712Authorization as EIP712AuthorizationType,
-  EIP712Domain as EIP712DomainType,
-};
-
 /**
  * Payment proof data (EIP-712 format)
  */
@@ -76,23 +70,6 @@ export interface EIP712PaymentProof {
     signature: string;
     authorization: EIP712Authorization;
   };
-}
-
-/**
- * Solana payment proof
- */
-export interface SolanaPaymentProof {
-  signature: string;
-  network: "SOLANA";
-}
-
-/**
- * Legacy payment proof format
- */
-export interface LegacyPaymentProof {
-  network: string;
-  address: string;
-  signature: string;
 }
 
 /**
@@ -132,19 +109,6 @@ export interface PaymentVerifiedDetails {
 export type VerifyPaymentResult =
   | { ok: false }
   | { ok: true; details: PaymentVerifiedDetails };
-
-/**
- * Payment receipt for tracking
- */
-export interface PaymentReceipt {
-  paymentId: string;
-  route: string;
-  amount: string;
-  network: string;
-  timestamp: number;
-  signature?: string;
-  verified: boolean;
-}
 
 /**
  * Facilitator verification response

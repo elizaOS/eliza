@@ -24,8 +24,18 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "streaming",
+        "rtmp"
+      ]
+    }
+  },
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",

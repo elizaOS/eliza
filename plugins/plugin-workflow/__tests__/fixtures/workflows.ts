@@ -1,11 +1,8 @@
 import type {
-  WorkflowCredential,
   WorkflowDefinition,
   WorkflowDefinitionResponse,
   WorkflowExecution,
-  WorkflowMatchResult,
   WorkflowNode,
-  WorkflowTag,
 } from '../../src/types/index';
 
 // ============================================================================
@@ -62,28 +59,6 @@ export function createSlackNode(overrides?: Partial<WorkflowNode>): WorkflowNode
   };
 }
 
-export function createGmailTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
-  return {
-    name: 'Gmail Trigger',
-    type: 'workflows-nodes-base.gmailTrigger',
-    typeVersion: 1,
-    position: [250, 300],
-    parameters: {},
-    ...overrides,
-  };
-}
-
-export function createGithubTriggerNode(overrides?: Partial<WorkflowNode>): WorkflowNode {
-  return {
-    name: 'GitHub Trigger',
-    type: 'workflows-nodes-base.githubTrigger',
-    typeVersion: 1,
-    position: [250, 300],
-    parameters: {},
-    ...overrides,
-  };
-}
-
 // ============================================================================
 // WORKFLOWS
 // ============================================================================
@@ -101,60 +76,6 @@ export function createValidWorkflow(overrides?: Partial<WorkflowDefinition>): Wo
   };
 }
 
-export function createWorkflowWithoutPositions(): WorkflowDefinition {
-  const trigger = createTriggerNode();
-  const gmail = createGmailNode();
-  delete (trigger as Partial<typeof trigger>).position;
-  delete (gmail as Partial<typeof gmail>).position;
-
-  return {
-    name: 'No Positions Workflow',
-    nodes: [trigger, gmail],
-    connections: {
-      'Schedule Trigger': {
-        main: [[{ node: 'Gmail', type: 'main', index: 0 }]],
-      },
-    },
-  };
-}
-
-export function createWorkflowWithBranching(): WorkflowDefinition {
-  return {
-    name: 'Branching Workflow',
-    nodes: [createTriggerNode(), createGmailNode(), createSlackNode()],
-    connections: {
-      'Schedule Trigger': {
-        main: [
-          [
-            { node: 'Gmail', type: 'main', index: 0 },
-            { node: 'Slack', type: 'main', index: 0 },
-          ],
-        ],
-      },
-    },
-  };
-}
-
-export function createWorkflowWithPlaceholderCreds(): WorkflowDefinition {
-  return {
-    name: 'Placeholder Creds Workflow',
-    nodes: [
-      createTriggerNode(),
-      {
-        ...createGmailNode(),
-        credentials: {
-          gmailOAuth2Api: { id: 'PLACEHOLDER', name: 'Gmail account' },
-        },
-      },
-    ],
-    connections: {
-      'Schedule Trigger': {
-        main: [[{ node: 'Gmail', type: 'main', index: 0 }]],
-      },
-    },
-  };
-}
-
 export function createInvalidWorkflow_noNodes(): WorkflowDefinition {
   return {
     name: 'Invalid',
@@ -163,52 +84,11 @@ export function createInvalidWorkflow_noNodes(): WorkflowDefinition {
   };
 }
 
-export function createInvalidWorkflow_brokenConnection(): WorkflowDefinition {
-  return {
-    name: 'Broken Connection',
-    nodes: [createTriggerNode()],
-    connections: {
-      'Schedule Trigger': {
-        main: [[{ node: 'NonExistent', type: 'main', index: 0 }]],
-      },
-    },
-  };
-}
-
 export function createInvalidWorkflow_duplicateNames(): WorkflowDefinition {
   return {
     name: 'Duplicate Names',
     nodes: [createTriggerNode({ name: 'Node A' }), createGmailNode({ name: 'Node A' })],
     connections: {},
-  };
-}
-
-export function createSimpleWorkflowNoCredentials(
-  overrides?: Partial<WorkflowDefinition>
-): WorkflowDefinition {
-  return {
-    name: 'Simple No-Creds Workflow',
-    nodes: [
-      createTriggerNode(),
-      {
-        name: 'Set',
-        type: 'workflows-nodes-base.set',
-        typeVersion: 3,
-        position: [500, 300],
-        parameters: {
-          assignments: {
-            assignments: [{ name: 'message', value: 'Hello World', type: 'string' }],
-          },
-          options: {},
-        },
-      },
-    ],
-    connections: {
-      'Schedule Trigger': {
-        main: [[{ node: 'Set', type: 'main', index: 0 }]],
-      },
-    },
-    ...overrides,
   };
 }
 
@@ -240,49 +120,5 @@ export function createExecution(overrides?: Partial<WorkflowExecution>): Workflo
     workflowId: 'wf-001',
     status: 'success',
     ...overrides,
-  };
-}
-
-export function createCredential(overrides?: Partial<WorkflowCredential>): WorkflowCredential {
-  return {
-    id: 'cred-001',
-    name: 'Gmail OAuth2',
-    type: 'gmailOAuth2Api',
-    createdAt: '2025-01-01T00:00:00.000Z',
-    updatedAt: '2025-01-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-export function createTag(overrides?: Partial<WorkflowTag>): WorkflowTag {
-  return {
-    id: 'tag-001',
-    name: 'user:test-user',
-    createdAt: '2025-01-01T00:00:00.000Z',
-    updatedAt: '2025-01-01T00:00:00.000Z',
-    ...overrides,
-  };
-}
-
-// ============================================================================
-// LLM OUTPUTS
-// ============================================================================
-
-export function createMatchResult(overrides?: Partial<WorkflowMatchResult>): WorkflowMatchResult {
-  return {
-    matchedWorkflowId: 'wf-001',
-    confidence: 'high',
-    matches: [{ id: 'wf-001', name: 'Test Workflow', score: 0.95 }],
-    reason: 'Exact name match',
-    ...overrides,
-  };
-}
-
-export function createNoMatchResult(): WorkflowMatchResult {
-  return {
-    matchedWorkflowId: null,
-    confidence: 'none',
-    matches: [],
-    reason: 'No matching workflow found',
   };
 }

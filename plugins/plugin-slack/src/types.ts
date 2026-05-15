@@ -50,24 +50,24 @@ export interface SlackReactionPayload extends EventPayload {
   itemUser: string | undefined;
 }
 
-export interface SlackChannelPayload extends WorldPayload {
+interface SlackChannelPayload extends WorldPayload {
   channelId: string;
   channelName: string;
   channelType: SlackChannelType;
 }
 
-export interface SlackMemberPayload extends EntityPayload {
+interface SlackMemberPayload extends EntityPayload {
   userId: string;
   channelId: string;
 }
 
-export interface SlackAppMentionPayload extends MessagePayload {
+interface SlackAppMentionPayload extends MessagePayload {
   channelId: string;
   userId: string;
   threadTs: string | undefined;
 }
 
-export interface SlackSlashCommandPayload extends EventPayload {
+interface SlackSlashCommandPayload extends EventPayload {
   command: string;
   text: string;
   userId: string;
@@ -173,13 +173,13 @@ export interface SlackChannel {
   creator: string;
 }
 
-export interface SlackChannelTopic {
+interface SlackChannelTopic {
   value: string;
   creator: string;
   lastSet: number;
 }
 
-export interface SlackChannelPurpose {
+interface SlackChannelPurpose {
   value: string;
   creator: string;
   lastSet: number;
@@ -226,7 +226,7 @@ export interface SlackAttachment {
   ts: string | undefined;
 }
 
-export interface SlackAttachmentField {
+interface SlackAttachmentField {
   title: string;
   value: string;
   short: boolean;
@@ -239,7 +239,7 @@ export interface SlackBlock {
   text: SlackBlockText | undefined;
 }
 
-export interface SlackBlockElement {
+interface SlackBlockElement {
   type: string;
   text: SlackBlockText | undefined;
   actionId: string | undefined;
@@ -248,7 +248,7 @@ export interface SlackBlockElement {
   style: string | undefined;
 }
 
-export interface SlackBlockText {
+interface SlackBlockText {
   type: string;
   text: string;
   emoji: boolean | undefined;
@@ -263,7 +263,7 @@ export interface SlackTeam {
   icon: SlackTeamIcon;
 }
 
-export interface SlackTeamIcon {
+interface SlackTeamIcon {
   image34: string | undefined;
   image44: string | undefined;
   image68: string | undefined;
@@ -283,10 +283,6 @@ export interface ISlackService {
 }
 
 export const SLACK_SERVICE_NAME = "slack";
-
-export const ServiceType = {
-  SLACK: "slack",
-} as const;
 
 export interface SlackSettings {
   allowedChannelIds: string[] | undefined;

@@ -78,45 +78,6 @@ import {
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
-
-type HistoryWindow =
-  | "active"
-  | "today"
-  | "yesterday"
-  | "last_7_days"
-  | "last_30_days";
-
-function startOfDay(date: Date): Date {
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-    0,
-    0,
-    0,
-    0,
-  );
-}
-
-function endOfDay(date: Date): Date {
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-    23,
-    59,
-    59,
-    999,
-  );
-}
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 const WORKSPACE_PATH_MAX_CHARS = 500;
 const ISSUE_RESULT_LIMIT = 25;
 const ISSUE_BODY_MAX_CHARS = 4_000;

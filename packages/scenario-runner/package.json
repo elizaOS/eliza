@@ -40,9 +40,9 @@
     "./package.json": "./package.json",
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "scripts": {
@@ -58,8 +58,7 @@
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/scenario-schema": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/scenario-schema": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

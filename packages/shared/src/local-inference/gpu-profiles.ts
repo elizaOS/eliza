@@ -18,8 +18,8 @@
  * them straight through to `--cache-type-k` / `--cache-type-v`.
  *
  * The active mobile/local release exposes Qwen3.5-backed Eliza-1 0_8b, 2b,
- * 4b, 9b, and 27b tiers, with larger cards recommended toward the biggest
- * installed bundle that leaves memory headroom.
+ * 4b, and 9b tiers plus Qwen3.6-backed 27b tiers, with larger cards
+ * recommended toward the biggest installed bundle that leaves memory headroom.
  */
 
 import type { Eliza1TierId } from "./catalog.js";
@@ -214,7 +214,7 @@ const RTX_5090: GpuProfile = {
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
  * Best current release fit: Eliza-1 27B-1M. H200 still runs the full kernel
- * verification recipe before defaulting to the maximum-context bundle.
+ * verification recipe before defaulting to the maximum active native-context bundle.
  */
 const H200: GpuProfile = {
   id: "h200",
@@ -236,7 +236,7 @@ const H200: GpuProfile = {
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
   nGpuLayers: -1,
-  contextSize: 1_048_576,
+  contextSize: 1048576,
   parallel: 16,
   batchSize: 4096,
   ubatchSize: 2048,

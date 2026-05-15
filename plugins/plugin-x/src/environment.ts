@@ -7,7 +7,7 @@ import { getSetting } from "./utils/settings";
  * Simplified Twitter environment schema
  * All time intervals are in minutes for consistency
  */
-export const twitterEnvSchema = z.object({
+const twitterEnvSchema = z.object({
   // Auth mode
   TWITTER_AUTH_MODE: z.enum(["env", "oauth"]).default("env"),
 
@@ -343,109 +343,6 @@ export async function validateTwitterConfig(
     }
     throw error;
   }
-}
-
-/**
- * Get configuration from environment variables
- * @returns Partial<TwitterConfig>
- */
-function getEnvConfig(): Partial<TwitterConfig> {
-  const config: Partial<TwitterConfig> = {};
-
-  const getConfig = (key: keyof TwitterConfig): string | undefined => {
-    if (typeof process !== "undefined" && process.env) {
-      return process.env[key];
-    }
-    return undefined;
-  };
-
-  // Map all environment variables
-  Object.keys(twitterEnvSchema.shape).forEach((key) => {
-    const typedKey = key as keyof TwitterConfig;
-    const value = getConfig(typedKey);
-    if (value !== undefined) {
-      if (typedKey === "TWITTER_AUTH_MODE") {
-        if (value === "env" || value === "oauth") {
-          config.TWITTER_AUTH_MODE = value;
-        }
-      } else {
-        (config as Record<string, string>)[typedKey] = value;
-      }
-    }
-  });
-
-  return config;
-}
-
-/**
- * Get default configuration
- * @returns TwitterConfig with default values
- */
-function getDefaultConfig(): TwitterConfig {
-  const getConfig = (key: keyof TwitterConfig): string | undefined => {
-    if (typeof process !== "undefined" && process.env) {
-      return process.env[key];
-    }
-    return undefined;
-  };
-
-  const rawAuthMode = getConfig("TWITTER_AUTH_MODE");
-  const TWITTER_AUTH_MODE: TwitterConfig["TWITTER_AUTH_MODE"] =
-    rawAuthMode === "env" || rawAuthMode === "oauth" ? rawAuthMode : "env";
-
-  return {
-    TWITTER_AUTH_MODE,
-    TWITTER_ACCOUNT_ID: getConfig("TWITTER_ACCOUNT_ID") || "",
-    TWITTER_DEFAULT_ACCOUNT_ID: getConfig("TWITTER_DEFAULT_ACCOUNT_ID") || "",
-    TWITTER_ACCOUNTS: getConfig("TWITTER_ACCOUNTS") || "",
-    TWITTER_API_KEY: getConfig("TWITTER_API_KEY") || "",
-    TWITTER_API_SECRET_KEY: getConfig("TWITTER_API_SECRET_KEY") || "",
-    TWITTER_ACCESS_TOKEN: getConfig("TWITTER_ACCESS_TOKEN") || "",
-    TWITTER_ACCESS_TOKEN_SECRET: getConfig("TWITTER_ACCESS_TOKEN_SECRET") || "",
-    TWITTER_CLIENT_ID: getConfig("TWITTER_CLIENT_ID") || "",
-    TWITTER_REDIRECT_URI: getConfig("TWITTER_REDIRECT_URI") || "",
-    TWITTER_SCOPES:
-      getConfig("TWITTER_SCOPES") ||
-      "tweet.read tweet.write users.read offline.access",
-    TWITTER_DRY_RUN: getConfig("TWITTER_DRY_RUN") || "false",
-    TWITTER_TARGET_USERS: getConfig("TWITTER_TARGET_USERS") || "",
-    TWITTER_ENABLE_POST: getConfig("TWITTER_ENABLE_POST") || "false",
-    TWITTER_ENABLE_REPLIES: getConfig("TWITTER_ENABLE_REPLIES") || "true",
-    TWITTER_ENABLE_ACTIONS: getConfig("TWITTER_ENABLE_ACTIONS") || "false",
-    TWITTER_POST_INTERVAL: getConfig("TWITTER_POST_INTERVAL") || "120",
-    TWITTER_POST_INTERVAL_MIN: getConfig("TWITTER_POST_INTERVAL_MIN") || "90",
-    TWITTER_POST_INTERVAL_MAX: getConfig("TWITTER_POST_INTERVAL_MAX") || "180",
-    TWITTER_ENGAGEMENT_INTERVAL:
-      getConfig("TWITTER_ENGAGEMENT_INTERVAL") || "30",
-    TWITTER_ENGAGEMENT_INTERVAL_MIN:
-      getConfig("TWITTER_ENGAGEMENT_INTERVAL_MIN") || "20",
-    TWITTER_ENGAGEMENT_INTERVAL_MAX:
-      getConfig("TWITTER_ENGAGEMENT_INTERVAL_MAX") || "40",
-    TWITTER_DISCOVERY_INTERVAL_MIN:
-      getConfig("TWITTER_DISCOVERY_INTERVAL_MIN") || "15",
-    TWITTER_DISCOVERY_INTERVAL_MAX:
-      getConfig("TWITTER_DISCOVERY_INTERVAL_MAX") || "30",
-    TWITTER_MAX_ENGAGEMENTS_PER_RUN:
-      getConfig("TWITTER_MAX_ENGAGEMENTS_PER_RUN") || "5",
-    TWITTER_MAX_TWEET_LENGTH: getConfig("TWITTER_MAX_TWEET_LENGTH") || "280",
-    TWITTER_RETRY_LIMIT: getConfig("TWITTER_RETRY_LIMIT") || "5",
-  };
-}
-
-export function loadConfig(): TwitterConfig {
-  return {
-    ...getDefaultConfig(),
-    ...getEnvConfig(),
-  };
-}
-
-/**
- * Validate configuration
- * @param config - Configuration to validate
- * @throws Error if configuration is invalid
- */
-export function validateConfig(config: unknown): TwitterConfig {
-  return twitterEnvSchema.parse(config);
 }
 
 /**

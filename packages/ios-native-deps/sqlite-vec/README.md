@@ -71,9 +71,9 @@ s.vendored_frameworks = [
 ]
 ```
 
-The Swift side (`SqliteVecLoader.swift`) discovers the extension at
-runtime via `dlsym(RTLD_DEFAULT, "sqlite3_vec_init")`, so no Swift
-changes are needed when toggling the link.
+For App Store/full-engine builds, also set `ELIZA_IOS_INCLUDE_SQLITE_VEC=1`
+so `SqliteVecLoader.swift` calls the linked symbols directly. Compatibility
+development builds can omit the flag and use the dynamic probe path.
 
 ## Verifying the link
 

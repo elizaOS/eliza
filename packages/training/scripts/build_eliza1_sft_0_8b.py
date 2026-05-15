@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from build_eliza1_sft_0_6b import main
+from build_eliza1_sft_0_8b_impl import main
 
 
 if __name__ == "__main__":

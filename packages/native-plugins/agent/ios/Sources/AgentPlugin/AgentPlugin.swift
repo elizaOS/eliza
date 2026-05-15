@@ -735,7 +735,9 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
             return true
         }
         guard scheme == "http" else { return false }
-        return (host == "127.0.0.1" || host == "localhost") && (url.port ?? 80) == localAgentPort
+        let normalizedHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        return (normalizedHost == "localhost" || normalizedHost == "::1" || normalizedHost.hasPrefix("127."))
+            && (url.port ?? 80) == localAgentPort
     }
 
     private func isLocalAgentIdentity(_ value: String) -> Bool {

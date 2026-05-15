@@ -63,6 +63,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "bun-types": "^1.2.25",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

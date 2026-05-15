@@ -8,7 +8,7 @@
 
 import { logger } from "@elizaos/core";
 import { coerceEmotion, emotionToOmnivoiceKeyword } from "./emotion-local";
-import { type OmnivoiceContext, OV_TTS_PARAMS_LAYOUT } from "./ffi";
+import type { OmnivoiceContext } from "./ffi";
 import type {
   OmnivoiceSynthesisResult,
   OmnivoiceSynthesizeOptions,
@@ -190,6 +190,3 @@ export function pcmFloatToWavBuffer(
 
 /** Re-export for tests. */
 export const _internal = { buildInstruct, encodeCString };
-
-// Public re-exports for the OV_TTS_PARAMS_LAYOUT consumers.
-export { OV_TTS_PARAMS_LAYOUT };

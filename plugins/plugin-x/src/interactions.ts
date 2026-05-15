@@ -82,41 +82,6 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Template for generating dialog and actions for a Twitter message handler.
- *
- * @type {string}
- */
-export const twitterMessageHandlerTemplate = `# Task: Generate dialog and actions for {{agentName}}.
-{{providers}}
-Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact)
-{{currentPost}}
-{{imageDescriptions}}
-
-# Instructions: Write the next message for {{agentName}}. Include the appropriate action from the list: {{actionNames}}
-Respond with JSON only, with no prose or fences:
-{
-  "thought": "<string>",
-  "name": "{{agentName}}",
-  "text": "<string>",
-  "action": "<string>"
-}
-
-The "action" field should be one of the options in [Available Actions] and the "text" field should be the response you want to send. Do not including any thinking or internal reflection in the "text" field. "thought" should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response.`;
-
-/**
- * Template for generating dialog and actions for a message handler.
- * @type {string}
- */
-export const messageHandlerTemplate = `
-{{agentName}} is replying to you:
-{{senderName}}: {{userMessage}}
-
-# Task: Generate a reply for {{agentName}}.
-{{providers}}
-
-# Instructions: Write a thoughtful response to {{senderName}} that is appropriate and relevant to their message. Do not including any thinking, self-reflection or internal dialog in your response.`;
-
-/**
  * The TwitterInteractionClient class manages Twitter interactions,
  * including handling mentions, managing timelines, and engaging with other users.
  * It extends the base Twitter client functionality to provide mention handling,

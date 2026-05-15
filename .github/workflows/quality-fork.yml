@@ -42,6 +42,9 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: Run Cloud lint
+        run: bun run lint:cloud
+
       - name: Run format check
         run: bun run format:check
 
@@ -80,6 +83,9 @@ jobs:
       - name: Run typecheck
         run: bun run typecheck
 
+      - name: Run Cloud typecheck
+        run: bun run typecheck:cloud
+
   build:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
@@ -103,6 +109,9 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Build Cloud
+        run: bun run build:cloud
 
       - name: Build homepage
         working-directory: packages/homepage

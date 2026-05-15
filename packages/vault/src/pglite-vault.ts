@@ -473,6 +473,3 @@ function toMillis(value: string | number): number {
   if (typeof value === "number") return value;
   return Number.parseInt(value, 10);
 }
-
-// Re-export emptyStore for callers that previously imported it via vault.ts.
-export { emptyStore };

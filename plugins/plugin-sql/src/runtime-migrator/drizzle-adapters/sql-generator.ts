@@ -864,23 +864,6 @@ function generateDropForeignKeySQL(fk: SchemaForeignKey): string {
   return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${fk.name}";`;
 }
 
-/**
- * Generate SQL for renaming a table
- */
-export function generateRenameTableSQL(oldName: string, newName: string): string {
-  const [oldSchema, oldTable] = oldName.includes(".") ? oldName.split(".") : ["public", oldName];
-  const [, newTable] = newName.includes(".") ? newName.split(".") : ["public", newName];
-  return `ALTER TABLE "${oldSchema}"."${oldTable}" RENAME TO "${newTable}";`;
-}
-
-/**
- * Generate SQL for renaming a column
- */
-export function generateRenameColumnSQL(table: string, oldName: string, newName: string): string {
-  const [schema, tableName] = table.includes(".") ? table.split(".") : ["public", table];
-  return `ALTER TABLE "${schema}"."${tableName}" RENAME COLUMN "${oldName}" TO "${newName}";`;
-}
-
 // Extended constraint interfaces with table reference
 interface UniqueConstraintWithTable extends SchemaUniqueConstraint {
   table?: string;

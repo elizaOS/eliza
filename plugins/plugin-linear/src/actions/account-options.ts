@@ -1,7 +1,7 @@
 import type { HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { resolveLinearAccountId } from "../accounts";
 
-export function getLinearActionOptions(
+function getLinearActionOptions(
   options?: HandlerOptions | Record<string, unknown>
 ): Record<string, unknown> {
   const direct = (options ?? {}) as Record<string, unknown>;

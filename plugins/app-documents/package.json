@@ -12,9 +12,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "dependencies": {
@@ -46,6 +46,9 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "dotenv": "^16.4.7",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
   }
 }

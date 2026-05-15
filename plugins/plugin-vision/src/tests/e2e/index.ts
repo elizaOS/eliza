@@ -1,13 +1,4 @@
-// Export all E2E test suites
-
-export { default as ScreenVisionE2ETestSuite } from "./screen-vision";
-export { default as VisionBasicE2ETestSuite } from "./vision-basic";
-export { default as VisionCaptureLogTestSuite } from "./vision-capture-log";
-export { default as VisionRuntimeTestSuite } from "./vision-runtime";
-export { default as VisionWorkerE2ETestSuite } from "./vision-worker-tests";
-
 import ScreenVisionE2ETestSuite from "./screen-vision";
-// Export as array for convenience
 import VisionBasicE2ETestSuite from "./vision-basic";
 import VisionCaptureLogTestSuite from "./vision-capture-log";
 import VisionRuntimeTestSuite from "./vision-runtime";
@@ -20,5 +11,3 @@ export const testSuites = [
   ScreenVisionE2ETestSuite,
   VisionWorkerE2ETestSuite, // Worker-based tests
 ];
-
-export default testSuites;

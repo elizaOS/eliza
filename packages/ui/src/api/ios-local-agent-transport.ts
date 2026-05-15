@@ -5,6 +5,13 @@ import {
   startIosLocalAgentKernel,
 } from "./ios-local-agent-kernel";
 import { createIttpAgentTransport } from "./ittp-agent-transport";
+import {
+  IOS_LOCAL_AGENT_IPC_BASE,
+  isIosLocalAgentIpcUrl,
+  isLoopbackLocalAgentHost,
+  isMobileNativeLocalAgentUrl,
+  localAgentPathFromUrl,
+} from "./mobile-native-agent-url";
 import type { AgentRequestTransport } from "./transport";
 
 let transport: AgentRequestTransport | null = null;
@@ -15,9 +22,6 @@ let fullBunRuntime:
   | Promise<FullBunRuntimePlugin | null>
   | PrimedFullBunRuntime
   | null = null;
-const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
-const LOCAL_AGENT_PORT = "31337";
-const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -196,11 +200,7 @@ function isLoopbackLocalAgentUrl(value: string): boolean {
     return (
       parsed.protocol === "http:" &&
       parsed.port === "31337" &&
-      (parsed.hostname === "127.0.0.1" ||
-        parsed.hostname.startsWith("127.") ||
-        parsed.hostname === "localhost" ||
-        parsed.hostname === "::1" ||
-        parsed.hostname === "[::1]")
+      isLoopbackLocalAgentHost(parsed.hostname)
     );
   } catch {
     return false;
@@ -245,23 +245,8 @@ function isCleartextNetworkUrl(url: URL): boolean {
   return url.protocol === "http:" || url.protocol === "ws:";
 }
 
-function isIosLocalAgentIpcUrl(url: URL): boolean {
-  return url.protocol === "eliza-local-agent:" && url.hostname === "ipc";
-}
-
 function isMobileLocalAgentUrl(value: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
-  }
-  if (isIosLocalAgentIpcUrl(parsed)) return true;
-  return (
-    parsed.protocol === "http:" &&
-    parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(parsed.hostname)
-  );
+  return isMobileNativeLocalAgentUrl(value);
 }
 
 function canUseIosLocalAgentIpc(): boolean {
@@ -333,8 +318,7 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function requestPathFromUrl(url: string): string {
-  const parsed = new URL(url, `${IOS_LOCAL_AGENT_IPC_BASE}/`);
-  return `${parsed.pathname}${parsed.search}`;
+  return localAgentPathFromUrl(url);
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {

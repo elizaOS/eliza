@@ -1119,5 +1119,3 @@ export async function handleActionPlanner(
 export const __INTERNAL_resolveProviderOptions = resolveProviderOptions;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_normalizeNativeMessages = normalizeNativeMessages;
-/** @internal — exported for unit tests only. */
-export const __INTERNAL_stripReasoningParts = stripReasoningParts;

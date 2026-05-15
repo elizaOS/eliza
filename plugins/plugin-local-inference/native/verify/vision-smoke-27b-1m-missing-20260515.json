@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "metric": "vision_smoke",
+  "generatedAt": "2026-05-15T01:38:27.048Z",
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-1m.bundle",
+  "tier": "27b-1m",
+  "expectedVisionTier": true,
+  "optionalVisionTier": false,
+  "textVoiceOnlyTier": false,
+  "supported": false,
+  "passed": false,
+  "status": "fail",
+  "action": "stage-bundle-with-compatible-mmproj",
+  "reason": "27b-1m is a configured vision tier but the local bundle manifest is missing: /Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-1m.bundle/eliza-1.manifest.json",
+  "smokeConfig": {
+    "image": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
+    "expected": [
+      "\\bhello\\b",
+      "\\bred\\b"
+    ],
+    "prompt": "Look at the image carefully. Answer with the exact visible word and the color of the large square.",
+    "ctxSize": 2048,
+    "batchSize": 2048,
+    "nPredict": 64,
+    "gpuLayers": "auto",
+    "timeoutMs": 600000
+  },
+  "manifest": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-1m.bundle/eliza-1.manifest.json",
+    "present": false,
+    "filesText": [],
+    "filesVision": [],
+    "lineageVisionPresent": false
+  },
+  "mtmdCli": {
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "candidates": [
+      {
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.078 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0 (Apple M4 Max)\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+      }
+    ],
+    "buildCommands": [
+      "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+      "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+    ]
+  },
+  "visionAssetCommands": {
+    "stageSource": "python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier 27b-1m --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-1m.bundle --link-mode hardlink",
+    "consolidateLocalBundle": "python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier 27b-1m --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-1m.bundle --force"
+  },
+  "inventory": {
+    "visionFiles": [],
+    "sourceVisionFiles": [],
+    "asrMmprojFiles": [],
+    "borrowedVisionArtifactsSeen": [
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/vision/mmproj-4b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/vision/mmproj-27b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/vision/mmproj-27b-256k.gguf"
+    ]
+  },
+  "imageAnalysis": {
+    "attempted": false,
+    "status": "skipped",
+    "reason": "skipped because local bundle manifest is missing"
+  }
+}

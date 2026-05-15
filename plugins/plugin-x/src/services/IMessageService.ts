@@ -5,7 +5,6 @@ export enum MessageType {
   DIRECT_MESSAGE = "dm",
   MENTION = "mention",
   REPLY = "reply",
-  QUOTE = "quote",
 }
 
 export interface Message {

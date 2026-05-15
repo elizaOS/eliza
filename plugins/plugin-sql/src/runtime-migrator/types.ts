@@ -17,13 +17,6 @@ export interface JournalEntry {
   breakpoints: boolean;
 }
 
-export interface MigrationMeta {
-  sql: string[];
-  folderMillis: number;
-  hash: string;
-  bps: boolean;
-}
-
 // Schema column definition
 export interface SchemaColumn {
   name: string;
@@ -106,7 +99,7 @@ export interface SchemaEnum {
 }
 
 // Meta information
-export interface SchemaMeta {
+interface SchemaMeta {
   schemas: Record<string, string>;
   tables: Record<string, string>;
   columns: Record<string, string>;
@@ -174,11 +167,6 @@ export interface EnumInfoRow {
   schema: string;
   name: string;
   value: string;
-}
-
-export interface MigrationOptions {
-  migrationsTable?: string;
-  migrationsSchema?: string;
 }
 
 export interface RuntimeMigrationOptions {

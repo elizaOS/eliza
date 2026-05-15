@@ -15,7 +15,7 @@ export interface Post {
   metadata?: Record<string, unknown>;
 }
 
-export interface PostMetrics {
+interface PostMetrics {
   likes: number;
   reposts: number;
   replies: number;
@@ -23,7 +23,7 @@ export interface PostMetrics {
   views?: number;
 }
 
-export interface MediaAttachment {
+interface MediaAttachment {
   type: "image" | "video" | "gif";
   url: string;
   thumbnailUrl?: string;

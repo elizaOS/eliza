@@ -85,13 +85,10 @@ except ImportError:  # pragma: no cover - direct script execution path
 from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 
 VISION_TIERS: Final[set[str]] = {
-    "0_8b",
-    "2b",
     "4b",
     "9b",
     "27b",
     "27b-256k",
-    "27b-1m",
 }
 EMBEDDING_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
@@ -104,7 +101,6 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "9b": (10000, 14000),
     "27b": (24000, 32000),
     "27b-256k": (36000, 48000),
-    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
@@ -252,7 +248,14 @@ def _publish_blocking_reasons(*, tier: str, text_substituted: bool, drafter_stam
     return reasons
 
 
-def _write_licenses(bundle_dir: Path, *, tier: str, text_lineage_repo: str, force: bool) -> None:
+def _write_licenses(
+    bundle_dir: Path,
+    *,
+    tier: str,
+    text_lineage_repo: str,
+    force: bool,
+    has_vision: bool = False,
+) -> None:
     texts = {
         "LICENSE.text": (
             "Eliza-1 text backbone license notice.\n\n"
@@ -276,7 +279,7 @@ def _write_licenses(bundle_dir: Path, *, tier: str, text_lineage_repo: str, forc
             "to commercial licensing, the CC-BY-NC-SA voice training-data lineage must be re-evaluated.\n"
         ),
     }
-    if tier in VISION_TIERS:
+    if has_vision:
         texts["LICENSE.vision"] = (
             "Eliza-1 vision (mmproj) license notice.\n\n"
             "The multimodal projector weights are derived from the text backbone's vision tower "
@@ -576,11 +579,12 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
             return []
         return sorted(str(p.relative_to(bundle_dir)) for p in root.iterdir() if p.is_file())
 
+    vision_weight_files = rels("vision")
     license_files = [
         "licenses/LICENSE.text", "licenses/LICENSE.voice", "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1", "licenses/LICENSE.asr", "licenses/LICENSE.vad",
     ]
-    if tier in VISION_TIERS:
+    if vision_weight_files:
         license_files.append("licenses/LICENSE.vision")
     if tier in EMBEDDING_TIERS:
         license_files.append("licenses/LICENSE.embedding")
@@ -598,7 +602,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
             "sizeFirstRepoIds": False,
         },
         "weights": [*rels("text"), *rels("tts"), *rels("asr"), *rels("vad"),
-                    *rels("vision"), *rels("embedding"), *rels("dflash")],
+                    *vision_weight_files, *rels("embedding"), *rels("dflash")],
         "stagedFiles": [asdict(it) for it in staged],
         "checksumManifest": str(CHECKSUM_PATH),
         "evalReports": rels("evals"),
@@ -707,7 +711,13 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
     staged.extend(_stage_recipe_sidecars(bundle_dir, recipes_dir, force=args.force))
 
     drafter_target_sha = _read_drafter_target_checkpoint_sha256(Path(drafter_staged.destination))
-    _write_licenses(bundle_dir, tier=tier, text_lineage_repo=args.text_lineage_repo, force=args.force)
+    _write_licenses(
+        bundle_dir,
+        tier=tier,
+        text_lineage_repo=args.text_lineage_repo,
+        force=args.force,
+        has_vision=vision_staged is not None,
+    )
     lineage = _write_lineage(bundle_dir=bundle_dir, tier=tier, text_repo=args.text_lineage_repo,
                              text_rev=args.text_lineage_rev, text_note=args.text_lineage_note,
                              drafter_target_sha=drafter_target_sha, drafter_stamp_only=drafter_stamp_only,

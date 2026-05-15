@@ -20,7 +20,6 @@ import {
   resolveTier,
 } from "../../../../packages/benchmarks/lib/src/model-tiers.ts";
 import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
-import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import type {
   PromptBenchmarkCase,
   PromptBenchmarkRiskClass,
@@ -147,6 +146,14 @@ function normalizeActionName(
     .trim()
     .toUpperCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+function actionsAreScenarioEquivalent(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const normalizedLeft = normalizeActionName(left);
+  return normalizedLeft !== null && normalizedLeft === normalizeActionName(right);
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {

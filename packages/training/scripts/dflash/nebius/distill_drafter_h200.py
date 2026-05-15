@@ -9,7 +9,7 @@ Key design points:
   - FlashAttention2 for H200 (sm_90 architecture)
   - BF16 training (H200 native precision)
   - Gradient checkpointing to reduce activation memory
-  - Vocab size: 151936 (Qwen3 tokenizer — resolves prior 248320 mismatch)
+  - Vocab size: 248320 (Qwen3.5 tokenizer — Qwen3/151936 is wrong here)
   - Checkpoint every 500 steps
   - After training, gates via validate_drafter.py acceptance check
 
@@ -18,7 +18,7 @@ Usage:
     # Synthetic smoke (no GPU, no real models — CI/local validation only)
     python distill_drafter_h200.py \
         --target-tier 2b \
-        --drafter-size-b 0.5 \
+        --drafter-size-b 0.8 \
         --dataset-path /tmp/smoke \
         --output-dir /tmp/dflash-smoke-out \
         --synthetic-smoke
@@ -26,15 +26,17 @@ Usage:
     # Real H200 run
     python distill_drafter_h200.py \
         --target-tier 2b \
-        --drafter-size-b 0.5 \
+        --drafter-size-b 0.8 \
         --dataset-path /data/distill/eliza-1-2b/distill.jsonl \
         --output-dir /data/dflash-out/2b \
         --target-checkpoint /data/checkpoints/eliza-1-2b \
         --target-gguf /data/out/eliza-1-2b/text/eliza-1-2b-32k.gguf \
         --max-steps 10000
 
-All real training must run on an H200 instance. This script will exit with a
-clear error if invoked without CUDA outside --synthetic-smoke mode.
+All real training for required DFlash tiers must run on an H200 instance.
+`0_8b` is a no-drafter policy tier and only writes release-policy evidence.
+This script will exit with a clear error if invoked without CUDA outside
+--synthetic-smoke mode for required tiers.
 
 Optimizer: APOLLO is the only supported optimizer. Imports will fail loudly
 if apollo-torch is not installed. Do not replace APOLLO with AdamW or SGD.
@@ -58,41 +60,31 @@ logging.basicConfig(
 )
 log = logging.getLogger("distill_drafter_h200")
 
-# Canonical vocab size for Qwen3-family tokenizer — this resolves the prior
-# mismatch (old drafter shipped with 248320-token vocab; Qwen3 uses 151936).
-QWEN3_VOCAB_SIZE: int = 151936
+_TRAINING_ROOT = Path(__file__).resolve().parents[3]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
 
-# Per-tier acceptance-rate gates (mirrors distill_dflash_drafter.ACCEPTANCE_GATE).
-ACCEPTANCE_GATE: dict[str, float] = {
-    "0_8b": 0.40,
-    "2b": 0.50,
-    "4b": 0.52,
-    "9b": 0.55,
-    "27b": 0.55,
-    "27b-256k": 0.55,
-    "27b-1m": 0.55,
-}
+from scripts.dflash.release_policy import (  # noqa: E402
+    ACCEPTANCE_GATE,
+    ACTIVE_TIERS,
+    DEFAULT_STUDENT_BASE,
+    disabled_policy_manifest,
+    is_dflash_disabled,
+    required_artifact_manifest_path,
+)
+from scripts.distill_dflash_drafter import _tokenizer_parity_report  # noqa: E402
 
-# Default student base per tier (Qwen3.5 family, tokenizer-compatible).
-DEFAULT_STUDENT_BASE: dict[str, str] = {
-    "0_8b": "Qwen/Qwen3.5-0.8B",
-    "2b": "Qwen/Qwen3.5-0.8B",
-    "4b": "Qwen/Qwen3.5-0.8B",
-    "9b": "Qwen/Qwen3.5-2B",
-    "27b": "Qwen/Qwen3.5-4B",
-    "27b-256k": "Qwen/Qwen3.5-4B",
-    "27b-1m": "Qwen/Qwen3.5-4B",
-}
+# Canonical vocab size for the active Qwen3.5/Qwen3.6-family tokenizer.
+# A Qwen3 151936-vocab student is not release-valid for Eliza-1 DFlash.
+QWEN3_VOCAB_SIZE: int = 248320
 
 # Approximate drafter size-B per tier (used for --drafter-size-b default).
 DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
-    "0_8b": 0.5,
-    "2b": 0.5,
-    "4b": 1.5,
-    "9b": 1.5,
-    "27b": 3.0,
-    "27b-256k": 3.0,
-    "27b-1m": 3.0,
+    "2b": 0.8,
+    "4b": 0.8,
+    "9b": 0.8,
+    "27b": 0.8,
+    "27b-256k": 0.8,
 }
 
 CHECKPOINT_EVERY_STEPS: int = 500
@@ -204,6 +196,24 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
         "[synthetic-smoke] PASS — environment validated (2 APOLLO steps, vocab=%d); no artifacts written to %s",
         QWEN3_VOCAB_SIZE,
         args.output_dir,
+    )
+
+
+def write_disabled_policy(args: argparse.Namespace, *, synthetic: bool) -> None:
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = disabled_policy_manifest(
+        tier=args.target_tier,
+        synthetic=synthetic,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        training_commit=_git_commit(),
+    )
+    manifest_path = out_dir / f"dflash-disabled-{args.target_tier}.release-policy.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    log.info(
+        "DFlash disabled for tier=%s; wrote no-drafter policy %s",
+        args.target_tier,
+        manifest_path,
     )
 
 
@@ -482,13 +492,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--target-tier",
         required=True,
-        choices=sorted(ACCEPTANCE_GATE.keys()),
+        choices=ACTIVE_TIERS,
         help="Eliza-1 target tier (e.g. 2b, 9b, 27b).",
     )
     p.add_argument(
         "--drafter-size-b",
         type=float,
-        help="Approximate drafter parameter count in billions (0.5 / 1.5 / 3.0). "
+        help="Approximate drafter parameter count in billions. "
         "Used for logging/manifest only; actual size comes from --student-base.",
     )
     p.add_argument(
@@ -570,7 +580,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # Fill in default drafter size if not supplied.
     if args.drafter_size_b is None:
-        args.drafter_size_b = DEFAULT_DRAFTER_SIZE_B.get(args.target_tier, 0.5)
+        args.drafter_size_b = DEFAULT_DRAFTER_SIZE_B.get(args.target_tier, 0.0)
 
     return args
 
@@ -581,6 +591,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+
+    if is_dflash_disabled(args.target_tier):
+        write_disabled_policy(args, synthetic=args.synthetic_smoke)
+        return
 
     if args.synthetic_smoke:
         run_synthetic_smoke(args)
@@ -622,6 +636,21 @@ def main(argv: list[str] | None = None) -> None:
 
     student_model, student_tok = load_drafter_model(args)
     target_model, target_tok = load_target_model(args)
+
+    tokenizer_parity = _tokenizer_parity_report(target_tok, student_tok)
+    if not tokenizer_parity["matches"]:
+        log.error(
+            "tokenizer mismatch for tier=%s: targetTokenizerSha256=%s "
+            "studentTokenizerSha256=%s",
+            args.target_tier,
+            tokenizer_parity["target"]["sha256"],
+            tokenizer_parity["student"]["sha256"],
+        )
+        sys.exit(3)
+    log.info(
+        "tokenizer parity verified: sha256=%s",
+        tokenizer_parity["target"]["sha256"],
+    )
 
     device = "cuda"
     student_model = student_model.to(device)
@@ -673,6 +702,15 @@ def main(argv: list[str] | None = None) -> None:
         "studentBase": args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier),
         "targetCheckpoint": args.target_checkpoint,
         "targetGguf": args.target_gguf,
+        "targetGgufSha256": (
+            _sha256_file(Path(args.target_gguf))
+            if args.target_gguf and Path(args.target_gguf).exists()
+            else None
+        ),
+        "tokenizerParity": tokenizer_parity,
+        "targetTokenizerSha256": tokenizer_parity["target"]["sha256"],
+        "studentTokenizerSha256": tokenizer_parity["student"]["sha256"],
+        "artifactManifestPath": required_artifact_manifest_path(args.target_tier),
         "generatedAt": ts_end.isoformat(),
         "elapsedSeconds": elapsed_s,
         "synthetic": False,

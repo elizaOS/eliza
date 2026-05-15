@@ -13,9 +13,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "keywords": [
@@ -147,6 +147,8 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "react": "^19.2.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

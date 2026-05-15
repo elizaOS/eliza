@@ -62,7 +62,7 @@ export type FacilitatorPaymentRequirements = {
   extra?: Record<string, unknown>;
 };
 
-export type StandardPaymentRequiredAccept = {
+type StandardPaymentRequiredAccept = {
   scheme: "exact";
   network: string;
   maxAmountRequired: string;
@@ -163,7 +163,7 @@ export function isX402StandardPaymentPayload(
   );
 }
 
-export function toStandardNetwork(
+function toStandardNetwork(
   network: PaymentConfigDefinition["network"],
 ): string {
   if (network === "BASE") return "eip155:8453";
@@ -202,14 +202,14 @@ function assetMatchesAccepted(
   return false;
 }
 
-export function standardAssetForConfig(cfg: PaymentConfigDefinition): string {
+function standardAssetForConfig(cfg: PaymentConfigDefinition): string {
   if (cfg.assetNamespace === "erc20") {
     return cfg.assetReference;
   }
   return cfg.assetReference;
 }
 
-export function buildStandardPaymentRequiredAccept(params: {
+function buildStandardPaymentRequiredAccept(params: {
   routePath: string;
   description: string;
   priceInCents: number;
@@ -368,13 +368,13 @@ function getFacilitatorEndpoint(
   }
 }
 
-export function getFacilitatorVerifyPostUrl(
+function getFacilitatorVerifyPostUrl(
   runtime: X402Runtime,
 ): string | null {
   return getFacilitatorEndpoint(runtime, "verify");
 }
 
-export function getFacilitatorSettlePostUrl(
+function getFacilitatorSettlePostUrl(
   runtime: X402Runtime,
 ): string | null {
   return getFacilitatorEndpoint(runtime, "settle");

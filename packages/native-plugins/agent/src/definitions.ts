@@ -5,10 +5,12 @@
  * communicating with the embedded Eliza agent.
  *
  * - Electrobun desktop: RPC to the main-process AgentManager
- * - Android/Web: HTTP calls to the API server or bundled loopback agent
- * - iOS: HTTP for remote/cloud endpoints; local dev/sideload foreground
- *   requests bridge into the WebView ITTP kernel until the native route-kernel
- *   backend lands
+ * - Android: Capacitor IPC to the Agent plugin; the native plugin owns the
+ *   app-local tokenized loopback hop into ElizaAgentService
+ * - Web: HTTP calls to the configured API server
+ * - iOS: HTTP for remote/cloud endpoints; local foreground requests use
+ *   ElizaBunRuntime IPC when available, with the WebView ITTP kernel retained
+ *   only as a development compatibility path
  */
 
 export interface AgentStatus {
@@ -32,8 +34,9 @@ export interface LocalAgentTokenResult {
 export interface AgentStartOptions {
   /**
    * Optional API base for native shells that need an explicit endpoint.
-   * Android local uses loopback; iOS local dev/sideload builds use the same
-   * URL shape as a stable identity but route app requests through ITTP.
+   * Android local accepts loopback only as a native-service identity; WebView
+   * requests should still go through Capacitor Agent.request. iOS local should
+   * prefer `eliza-local-agent://ipc` and must not open a local TCP listener.
    */
   apiBase?: string;
   /** Runtime mode hint for native shells that cannot read WebView storage. */
@@ -75,10 +78,11 @@ export interface AgentPlugin {
    * Path-only request bridge for the bundled local agent.
    *
    * Native implementations must reject absolute URLs and route only to the
-   * app-owned local backend. This is a transitional transport before the
-   * backend route kernel can run over Binder/LocalSocket/WKURLSchemeHandler.
-   * On iOS local dev/sideload builds this requires the WebView ITTP bridge to
-   * be installed, so it is a foreground-only path.
+   * app-owned local backend. Android forwards over native code to its
+   * tokenized app-local service; iOS forwards through full-Bun IPC or the
+   * foreground ITTP compatibility handler. Callers should treat unsupported
+   * body types as non-bridgeable instead of falling back to WebView loopback
+   * fetches.
    */
   request?(options: AgentRequestOptions): Promise<AgentRequestResult>;
 }

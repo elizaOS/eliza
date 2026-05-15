@@ -27,6 +27,13 @@
       "@elizaos/core": ["../../../packages/core/dist"]
     }
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "index.ts",
+    "plugin.ts",
+    "auto-enable.ts",
+    "models/**/*.ts",
+    "types/**/*.ts",
+    "utils/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
 }

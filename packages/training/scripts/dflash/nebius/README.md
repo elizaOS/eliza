@@ -15,24 +15,25 @@ compute suitable for large-scale LLM training jobs without Kubernetes overhead.
 DFlash is speculative decoding: a small distilled "drafter" model proposes N
 tokens per step; the full target model verifies them in one forward pass.
 Acceptance rate drives the speed-up. The drafter must be vocab-aligned to the
-target (Qwen3-based, 151936-token vocabulary) and distilled from the exact
+target (Qwen3.5-family, 248320-token vocabulary) and distilled from the exact
 target checkpoint it ships with.
 
-The drafter is currently **INACTIVE** due to a vocab mismatch (target:
-151936 tokens, old drafter: 248320 tokens). These scripts produce a
-freshly distilled, vocab-aligned drafter for each tier.
+The required drafters are currently **INACTIVE** until each target has
+a freshly distilled, vocab-aligned drafter. The `0_8b` tier is
+intentionally DFlash-disabled: it ships no drafter and fails open to
+normal target decoding because a same-size drafter has poor memory and
+speedup economics.
 
 ## Tier mapping
 
-| Target tier | Drafter size | Student base |
+| Target tier | DFlash policy | Student base |
 |---|---|---|
-| 0_8b | 0.5B | Qwen/Qwen3.5-0.8B |
-| 2b | 0.5B | Qwen/Qwen3.5-0.8B |
-| 4b | 1.5B | Qwen/Qwen3.5-0.8B |
-| 9b | 1.5B | Qwen/Qwen3.5-2B |
-| 27b | 3B | Qwen/Qwen3.5-4B |
-| 27b-256k | 3B | Qwen/Qwen3.5-4B |
-| 27b-1m | 3B | Qwen/Qwen3.5-4B |
+| 0_8b | disabled, no drafter | n/a |
+| 2b | required, 0.8B drafter | Qwen/Qwen3.5-0.8B-Base |
+| 4b | required, 0.8B drafter | Qwen/Qwen3.5-0.8B-Base |
+| 9b | required, 0.8B drafter | Qwen/Qwen3.5-0.8B-Base |
+| 27b | required, 0.8B drafter | Qwen/Qwen3.5-0.8B-Base |
+| 27b-256k | required, 0.8B drafter | Qwen/Qwen3.5-0.8B-Base |
 
 ## Recommended instance type
 
@@ -41,8 +42,8 @@ freshly distilled, vocab-aligned drafter for each tier.
 - **Region**: `eu-north1` or `us-east1` (check current availability)
 - **OS image**: Ubuntu 22.04 + CUDA 12.4 base, or the NVIDIA NGC PyTorch container
 
-For the 27b/27b-256k/27b-1m tiers, use a 2-GPU instance to fit both the
-27B target and the 4B student in bf16 simultaneously.
+For the 27b/27b-256k tiers, use a 2-GPU instance to fit both the
+27B target and the 0.8B student in bf16 simultaneously.
 
 ## Container
 
@@ -64,15 +65,14 @@ Estimated wall times and cost per tier (1 GPU unless noted):
 
 | Tier | Est. wall time | Est. cost |
 |---|---|---|
-| 0_8b | 6 h | ~$24 |
+| 0_8b | n/a | $0 |
 | 2b | 8–10 h | ~$40 |
 | 4b | 12 h | ~$48 |
 | 9b | 24 h | ~$96 |
 | 27b | 72 h (2 GPU) | ~$576 |
 | 27b-256k | 72 h (2 GPU) | ~$576 |
-| 27b-1m | 72 h (2 GPU) | ~$576 |
 
-Total for all 7 tiers: budget **~$1,950** (single-pass, no retries).
+Total for required tiers: budget **~$1,925** (single-pass, no retries).
 
 ## Quickstart
 
@@ -94,7 +94,7 @@ nebius compute instance create \
   --zone eu-north1-a
 ```
 
-For 27b/27b-256k/27b-1m, set `--gpus 2`.
+For 27b/27b-256k, set `--gpus 2`.
 
 ### 2. Copy scripts to the instance
 
@@ -123,11 +123,14 @@ All checks must print PASS before proceeding.
 # Dry run first
 bash ~/dflash/nebius/launch_all_tiers.sh --dry-run
 
-# Real run (set required env vars first)
+# Real run (set required env vars first; 0_8b only writes policy evidence)
 export TARGET_CHECKPOINT_ROOT=/data/checkpoints
 export DATASET_ROOT=/data/distill-datasets
 export OUTPUT_ROOT=/data/dflash-out
 bash ~/dflash/nebius/launch_all_tiers.sh
+
+# Recommended first required tier
+bash ~/dflash/nebius/launch_all_tiers.sh --tiers 2b
 ```
 
 ### 6. Synthetic smoke (local, no GPU)
@@ -154,6 +157,14 @@ bash packages/training/scripts/dflash/nebius/launch_all_tiers.sh \
 
 Each tier writes to `<OUTPUT_ROOT>/<tier>-<timestamp>/`:
 
+```
+
+For `0_8b`, the output directory contains only:
+
+```
+0_8b-<timestamp>/
+  dflash-disabled-0_8b.release-policy.json
+  distill.log
 ```
 <tier>-<timestamp>/
   drafter-<tier>.gguf          # distilled drafter GGUF (vocab-aligned)
