@@ -914,8 +914,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--config",
         type=str,
-        default="kokoro_sam_full.yaml",
-        help="YAML config under packages/training/scripts/kokoro/configs/ (default kokoro_sam_full.yaml).",
+        default="kokoro_same_full.yaml",
+        help="YAML config under packages/training/scripts/kokoro/configs/ (default kokoro_same_full.yaml).",
     )
     p.add_argument(
         "--init-from-voice",
