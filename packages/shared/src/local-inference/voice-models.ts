@@ -155,13 +155,15 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "voice-preset.elz2",
-        sha256: "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
+        sha256:
+          "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
         sizeBytes: 716,
         quant: "fp16",
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)",
+    changelogEntry:
+      "OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)",
     minBundleVersion: "0.0.0",
   },
   {

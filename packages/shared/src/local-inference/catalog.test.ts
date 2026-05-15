@@ -8,11 +8,7 @@ import {
 } from "./catalog.js";
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
-const LARGE_TIERS = [
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-] as const;
+const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
 const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 
 describe("voiceQuantLadderForTier", () => {
