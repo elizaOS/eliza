@@ -1,8 +1,9 @@
 # Turn detector fine-tune config — multilingual tier (4b / 9b / 27b).
 #
-# Targets the LiveKit `v0.4.1-intl` revision (Qwen2.5-0.5B-pruned, 14
-# languages). Bundle target is ~396 MB Q8 ONNX — significant footprint;
-# only published on tiers with ≥16 GB RAM budgets per .swarm/research/R1-turn.md §3.
+# Targets the LiveKit `v0.4.1-intl` revision (Qwen2-0.5B, 14 languages).
+# Bundle target is ~396 MB Q8 ONNX in upstream; the APOLLO-Mini fine-tune
+# re-exports a Q8 ONNX at the same shape (drop-in for runtime callers
+# that score `P(<|im_end|>)` at the last real-token position).
 #
 # Per repo policy (packages/training/AGENTS.md §1): APOLLO optimizer only.
 
@@ -12,13 +13,15 @@ teacher_revision: v0.4.1-intl
 
 lora_rank: 16
 optimizer: apollo
-epochs: 3
-learning_rate: 5.0e-5
+epochs: 1
+learning_rate: 3.0e-5
 
+# Auto-staged by `--pretrain-corpus oasst1-intl` — these paths are
+# overwritten at runtime to the staged splits under <run-dir>/data/turn/.
 train_data:
-  - packages/training/data/turn/dailydialog.jsonl
+  - packages/training/data/turn/oasst1-intl.train.jsonl
 eval_data:
-  - packages/training/data/turn/dailydialog.eval.jsonl
+  - packages/training/data/turn/oasst1-intl.eval.jsonl
 
 f1_gate: 0.85
 mean_latency_ms_gate: 30.0
