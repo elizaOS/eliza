@@ -206,7 +206,76 @@ describe("Character files", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Integration smoke (only with GROQ_API_KEY)
+// Synthetic fallback integration (always run — no API key needed)
+// Exercises the full harness pipeline end-to-end with synthetic TTS audio.
+// This is the CI smoke gate: it runs on every PR, exercises real code paths.
+// ---------------------------------------------------------------------------
+
+describe("Synthetic fallback integration (no API key required)", () => {
+  const SYNTHETIC_TIMEOUT_MS = 90_000;
+
+  it(
+    "runs 4-turn smoke with synthetic audio and passes all verifications",
+    async () => {
+      const { runDialogue } = await import("../runner/run-dialogue.ts");
+
+      const runId = `synthetic-ci-${Date.now()}`;
+      const outputDir = join(
+        REPO_ROOT,
+        "artifacts",
+        "three-agent-dialogue",
+        runId,
+      );
+
+      // Ensure no Groq key is set so synthetic path is exercised
+      const originalKey = process.env.GROQ_API_KEY;
+      delete process.env.GROQ_API_KEY;
+
+      try {
+        const result = await runDialogue({
+          scenarioId: "canonical",
+          outputDir,
+          smoke: true,
+        });
+
+        // Artefacts must exist
+        expect(existsSync(join(outputDir, "transcripts.json"))).toBe(true);
+        expect(existsSync(join(outputDir, "emotion.json"))).toBe(true);
+        expect(existsSync(join(outputDir, "turn-events.json"))).toBe(true);
+        expect(existsSync(join(outputDir, "verification.json"))).toBe(true);
+        expect(existsSync(join(outputDir, "mix.wav"))).toBe(true);
+        expect(existsSync(join(outputDir, "turns", "000-alice.wav"))).toBe(
+          true,
+        );
+        expect(existsSync(join(outputDir, "turns", "001-bob.wav"))).toBe(true);
+        expect(existsSync(join(outputDir, "turns", "002-cleo.wav"))).toBe(true);
+
+        // Verification must pass
+        expect(result.pass).toBe(true);
+        expect(result.distinctSpeakersDetected).toBeGreaterThanOrEqual(3);
+        expect(result.emotionDetectedFraction).toBeGreaterThanOrEqual(0.8);
+        expect(result.audioNotBlank).toBe(true);
+        expect(result.transcriptNotNull).toBe(true);
+        expect(result.durationSec).toBeGreaterThan(1.0);
+        expect(result.turnsTaken).toBeGreaterThanOrEqual(4);
+
+        // Double-check with verifyRun
+        const report = verifyRun(outputDir);
+        expect(report.pass).toBe(true);
+        expect(report.mixWavNonBlank).toBe(true);
+        expect(report.mixWavDurationSec).toBeGreaterThan(1.0);
+      } finally {
+        if (originalKey !== undefined) {
+          process.env.GROQ_API_KEY = originalKey;
+        }
+      }
+    },
+    SYNTHETIC_TIMEOUT_MS,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Integration smoke (only with GROQ_API_KEY — real TTS + ASR)
 // ---------------------------------------------------------------------------
 
 const GROQ_KEY_SET = Boolean(process.env.GROQ_API_KEY);
