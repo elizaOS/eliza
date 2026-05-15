@@ -7,19 +7,23 @@ import {
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/shared";
-import {
-  normalizeCloudSecret as normalizeSecret,
   resolveCloudApiBaseUrl,
-  resolveCloudApiKey,
-} from "@elizaos/plugin-elizacloud";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 
-// Cloud-auth helpers (`resolveCloudApiKey`, `resolveCloudApiBaseUrl`,
-// `DEFAULT_CLOUD_API_BASE_URL`, `CloudApiKeyRuntimeLike`) live in
-// `@elizaos/plugin-elizacloud/cloud/cloud-api-key`. They are imported above
-// for use within this module; consumers should import them from
-// `@elizaos/plugin-elizacloud/cloud/cloud-api-key` directly.
+function normalizeSecret(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveCloudApiKey(
+  config?: Pick<WalletCapableConfig, "cloud"> | null,
+): string | null {
+  return normalizeSecret(
+    config?.cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY,
+  );
+}
 
 // Multiple BSC public RPCs so we have working fallbacks when Eliza
 // Cloud's proxy returns 401 (plan/account issue) AND the primary

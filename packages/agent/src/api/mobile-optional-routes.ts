@@ -1,7 +1,8 @@
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import type { StreamVisualSettings } from "@elizaos/plugin-streaming";
-import { isMobilePlatform } from "@elizaos/shared";
+import { isMobilePlatform, normalizeDeploymentTargetConfig } from "@elizaos/shared";
+import { loadElizaConfig } from "../config/config.ts";
 
 type StreamingSettingsModule = {
   readStreamSettings: () => StreamVisualSettings;
@@ -139,6 +140,38 @@ function mobileLocalCompatibilityEnabled(): boolean {
   );
 }
 
+function isTrueMobileLocalAgent(): boolean {
+  return isMobilePlatform() || process.env.ELIZA_MOBILE_LOCAL_AGENT === "1";
+}
+
+function getRuntimeModeFallbackSnapshot(): {
+  mode: "local" | "cloud" | "remote";
+  deploymentRuntime: "local" | "cloud" | "remote";
+  isRemoteController: boolean;
+  remoteApiBaseConfigured: boolean;
+} {
+  if (isTrueMobileLocalAgent()) {
+    return {
+      mode: "local",
+      deploymentRuntime: "local",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
+    };
+  }
+  const deploymentTarget = normalizeDeploymentTargetConfig(
+    loadElizaConfig().deploymentTarget,
+  );
+  const deploymentRuntime = deploymentTarget?.runtime ?? "local";
+  return {
+    mode: deploymentRuntime,
+    deploymentRuntime,
+    isRemoteController: deploymentRuntime === "remote",
+    remoteApiBaseConfigured: Boolean(
+      deploymentRuntime === "remote" && deploymentTarget.remoteApiBase?.trim(),
+    ),
+  };
+}
+
 function parseJsonPayload(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
   if (raw.trim().length === 0) return {};
@@ -185,12 +218,7 @@ export async function handleMobileOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/runtime/mode") {
-    sendJson(res, {
-      mode: "local",
-      deploymentRuntime: "local",
-      isRemoteController: false,
-      remoteApiBaseConfigured: false,
-    });
+    sendJson(res, getRuntimeModeFallbackSnapshot());
     return true;
   }
 
@@ -205,7 +233,22 @@ export async function handleMobileOptionalRoutes(
   }
 
   if (method === "POST" && pathname === "/api/computer-use/approval-mode") {
-    await readRequestBody(req).catch(() => undefined);
+    try {
+      const body = parseJsonPayload(await readRequestBody(req)) as
+        | { mode?: unknown }
+        | undefined;
+      if (body?.mode !== undefined && body.mode !== "off") {
+        sendJsonError(res, "Mobile fallback only supports approval mode off", 400);
+        return true;
+      }
+    } catch (err) {
+      sendJsonError(
+        res,
+        err instanceof Error ? err.message : "Invalid approval mode payload",
+        400,
+      );
+      return true;
+    }
     sendJson(res, { mode: EMPTY_MOBILE_APPROVAL_SNAPSHOT.mode });
     return true;
   }

@@ -127,3 +127,30 @@ Still needs native engineering:
   privapp allowlist, SELinux policy, signing under the platform key.
 - Lock-screen / keyguard replacement on Android; replaceable
   compositor / layer-shell surface on Linux.
+
+## Workstreams I + J — scaffolded (2026-05-15)
+
+The TypeScript-only surfaces for I and J have landed under `packages/app-core/src/services/ambient-audio/` and `packages/app-core/src/services/voice-profiles/`. What is implemented is real (types, consent state machine, ring-buffer data structure, pure response-gate, in-memory voice profile store with cosine search, owner-confidence scoring, SHA-256 challenge service, naive nickname evaluator) and tested. What is **still missing** for either workstream to be shipping:
+
+### I — Ambient audio, replay buffer, response gating
+
+- Native audio capture per platform (CoreAudio / WASAPI / PipeWire / AVAudioSession / AudioRecord) and 16 kHz mono Int16 normalization. The `AmbientAudioService` interface is the seam; only `MockAmbientAudioService` exists today.
+- Real VAD (Silero v5 or webrtcvad) driving `ResponseGateSignals.vadActive`.
+- Real wake-intent classifier (openWakeWord or a distilled model) driving `wakeIntent`.
+- Streaming ASR (Whisper-small int8 desktop, llama.cpp GGUF mobile) populating `TranscribedSegment` with real confidences.
+- Retention policy enforcement and a heard-but-did-not-respond debug surface wired into the desktop bar.
+- ANT-style consent UI integration with Workstream F so the service refuses to `start()` without an explicit `ConsentRecord`.
+- See `packages/app-core/src/services/ambient-audio/IMPL_NOTES.md`.
+
+### J — Owner facts, nicknames, diarization, voice profiles
+
+- pyannote-audio v3 diarization replacing `MOCK_DIARIZATION_PIPELINE`.
+- SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) embeddings, L2-normalized, full vector in durable storage (not just `vectorPreview`).
+- Durable `VoiceProfileStore` backed by PGlite (desktop) / SQLite (mobile) with an append-only audit log for upsert/delete.
+- Argon2id-salted challenge answers in `InMemoryChallengeService`'s production replacement, plus per-id rate-limiting on `verify`.
+- Real nickname evaluator (LLM- or classifier-driven) replacing `NAIVE_NICKNAME_EVALUATOR`, with dedupe against the owner-facts memory store.
+- Owner-facts memory schema and evaluator (the Workstream-J extension in `packages/app-core/src/evaluators/` and `packages/app-core/src/memory/`) — those directories do not yet exist and are the next thing to land for this stream.
+- Threat model write-up covering voice cloning, replay, embedding leakage, household-vs-owner escalation, drift, and cross-device sync key handling.
+- See `packages/app-core/src/services/voice-profiles/IMPL_NOTES.md`.
+
+Both directories explicitly avoid the active swarm workspaces (kokoro, emotion, turn-intl, diarizer-*, voice-classifier, wakeword, vad). They wire in once those interfaces stabilize.

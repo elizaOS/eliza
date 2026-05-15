@@ -49,12 +49,18 @@ function makeReq(body?: string): http.IncomingMessage {
 
 describe("handleMobileOptionalRoutes", () => {
   const oldEnv = process.env.ELIZA_MOBILE_LOCAL_AGENT;
+  const oldBridgeEnv = process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
 
   afterEach(() => {
     if (oldEnv === undefined) {
       delete process.env.ELIZA_MOBILE_LOCAL_AGENT;
     } else {
       process.env.ELIZA_MOBILE_LOCAL_AGENT = oldEnv;
+    }
+    if (oldBridgeEnv === undefined) {
+      delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
+    } else {
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED = oldBridgeEnv;
     }
   });
 
@@ -93,6 +99,26 @@ describe("handleMobileOptionalRoutes", () => {
       deploymentRuntime: "local",
       isRemoteController: false,
       remoteApiBaseConfigured: false,
+    });
+  });
+
+  it("does not force local runtime mode for device bridge cloud controllers", async () => {
+    delete process.env.ELIZA_MOBILE_LOCAL_AGENT;
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    const res = makeRes();
+
+    const handled = await handleMobileOptionalRoutes(
+      makeReq(),
+      res,
+      "/api/runtime/mode",
+      "GET",
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      mode: expect.stringMatching(/^(local|cloud|remote)$/),
+      deploymentRuntime: expect.stringMatching(/^(local|cloud|remote)$/),
     });
   });
 
@@ -170,5 +196,37 @@ describe("handleMobileOptionalRoutes", () => {
     );
 
     expect(getRes.json()).toEqual(postRes.json());
+  });
+
+  it("rejects invalid mobile fallback stream settings", async () => {
+    process.env.ELIZA_MOBILE_LOCAL_AGENT = "1";
+    const res = makeRes();
+
+    const handled = await handleMobileOptionalRoutes(
+      makeReq(JSON.stringify({ settings: { avatarIndex: -1 } })),
+      res,
+      "/api/stream/settings",
+      "POST",
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.body()).toContain("avatarIndex");
+  });
+
+  it("rejects unsupported mobile fallback approval modes", async () => {
+    process.env.ELIZA_MOBILE_LOCAL_AGENT = "1";
+    const res = makeRes();
+
+    const handled = await handleMobileOptionalRoutes(
+      makeReq(JSON.stringify({ mode: "manual" })),
+      res,
+      "/api/computer-use/approval-mode",
+      "POST",
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.body()).toContain("approval mode");
   });
 });
