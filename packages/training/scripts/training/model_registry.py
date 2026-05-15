@@ -147,8 +147,9 @@ class ModelEntry:
 
     APOLLO is important for this pipeline because it keeps optimizer memory
     small on commodity GPUs. Do not swap this registry to AdamW/Muon-style
-    training recipes; the release flow expects APOLLO plus GGUF q4/q6/q8
-    outputs and the Eliza-specific runtime optimization sidecars.
+    training recipes; the release flow expects APOLLO plus the full
+    TurboQuant/PolarQuant/QJL + GGUF q3/q4/q5/q6/q8 ladder and the
+    Eliza-specific runtime optimization sidecars.
     """
 
     unverified_base: bool = False
@@ -227,6 +228,19 @@ def _entry(**kw) -> ModelEntry:
     return ModelEntry(**kw)
 
 
+ELIZA1_REQUIRED_QUANTIZATION_AFTER: tuple[str, ...] = (
+    "polarquant",
+    "turboquant",
+    "fused_turboquant",
+    "qjl",
+    "gguf-q3_k_m",
+    "gguf-q4_k_m",
+    "gguf-q5_k_m",
+    "gguf-q6_k",
+    "gguf-q8_0",
+)
+
+
 # Layer counts / head shapes come straight from the HF `config.json` of each
 # base model. Active entries are Qwen3.5/Qwen3.6 hybrid linear-attn VLMs
 # (`model_type: qwen3_5`/`qwen3_6`, `full_attention_interval=4` → 3:1
@@ -295,14 +309,7 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
+        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B "
               "backbone. "
               "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
@@ -328,14 +335,7 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
+        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="Mid local tier (eliza-1-2b). Trains from Qwen/Qwen3.5-2B-Base "
               "(pretrain checkpoint, not the instruct release).",
     ),
@@ -349,14 +349,7 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=7, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
+        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="Local/workstation tier (eliza-1-4b) on the Qwen3.5-4B-Base "
               "backbone. Full-param APOLLO SFT fits a single H200 easily. "
               "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
@@ -372,14 +365,7 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
+        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
               "and the 9B Qwen3.5 checkpoint.",
     ),
@@ -393,14 +379,7 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
+        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="Legacy 27B lookup retained for experiments only. The active "
               "eliza-1 27B release family uses Qwen/Qwen3.6-27B.",
         extra={"legacy": "true", "replaced_by": "qwen3.6-27b"},
@@ -415,14 +394,7 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
+        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
               "27B backbone. Use this for the 27B and 27B-256k "
               "release families.",
