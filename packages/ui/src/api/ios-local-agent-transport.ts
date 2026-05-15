@@ -543,10 +543,17 @@ async function dispatchIosLocalAgentRequest(
   request: Request,
   context?: { timeoutMs?: number },
 ): Promise<Response> {
-  const options = await requestToNativeBridgeOptions(request, context);
-  return nativeResultToResponse(
-    await handleIosLocalAgentNativeRequest(options),
-  );
+  try {
+    const options = await requestToNativeBridgeOptions(request, context);
+    return nativeResultToResponse(
+      await handleIosLocalAgentNativeRequest(options),
+    );
+  } catch (error) {
+    return localUnavailableResponse(
+      "ios-local-agent-request-failed",
+      `iOS local-agent IPC request failed: ${errorMessage(error)}`,
+    );
+  }
 }
 
 export async function handleIosLocalAgentNativeRequest(
@@ -563,21 +570,38 @@ export async function handleIosLocalAgentNativeRequest(
     throw new Error("Unsupported HTTP method");
   }
 
-  const fullBunResult = await tryFullBunNativeRequest({
-    ...options,
-    method,
-    path,
-  });
+  let fullBunResult: IosLocalAgentNativeRequestResult | null;
+  try {
+    fullBunResult = await tryFullBunNativeRequest({
+      ...options,
+      method,
+      path,
+    });
+  } catch (error) {
+    if (shouldRequireFullBunRuntime()) {
+      return localUnavailableNativeResult(
+        "ios-full-bun-unavailable",
+        errorMessage(error),
+      );
+    }
+    throw error;
+  }
   if (fullBunResult) return fullBunResult;
 
   if (isNativeIosStoreBuild()) {
-    throw fullBunStartupError(
-      "the foreground ITTP compatibility transport is disabled for iOS store builds",
+    return localUnavailableNativeResult(
+      "ios-ittp-disabled",
+      fullBunStartupError(
+        "the foreground ITTP compatibility transport is disabled for iOS store builds",
+      ).message,
     );
   }
   if (!canUseJsContextCompatibilityFallback()) {
-    throw fullBunStartupError(
-      "the JSContext compatibility transport is disabled outside iOS development builds",
+    return localUnavailableNativeResult(
+      "ios-jscontext-disabled",
+      fullBunStartupError(
+        "the JSContext compatibility transport is disabled outside iOS development builds",
+      ).message,
     );
   }
 
