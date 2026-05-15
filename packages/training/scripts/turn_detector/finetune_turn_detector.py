@@ -47,6 +47,20 @@ DEFAULT_REPO_EN: Final[str] = "livekit/turn-detector"
 DEFAULT_REVISION_EN: Final[str] = "v1.2.2-en"
 DEFAULT_REVISION_INTL: Final[str] = "v0.4.1-intl"
 DEFAULT_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
+DEFAULT_ELIZA1_REPO: Final[str] = "elizaos/eliza-1"
+
+# Supported teacher backends. `eliza-1-drafter` produces a GGUF LoRA
+# adapter the runtime layers onto the in-process drafter at voice
+# session start (`plugins/plugin-local-inference/src/services/voice/
+# eliza1-eot-scorer.ts`); the runtime reads P(`<|im_end|>`) directly off
+# the live model, so the trained artifact is a LoRA adapter rather than
+# a standalone ONNX graph. `livekit` and `turnsense` retain the legacy
+# ONNX export path.
+TEACHER_KINDS: Final[tuple[str, ...]] = (
+    "livekit",
+    "turnsense",
+    "eliza-1-drafter",
+)
 
 # Eval gate constants — mirrors `TURN_DETECTOR_F1_THRESHOLD` /
 # `TURN_DETECTOR_MEAN_LATENCY_MS_LIMIT` in the runtime manifest schema
@@ -68,6 +82,9 @@ class TurnFinetuneConfig:
     learning_rate: float
     train_data: list[str]
     eval_data: list[str]
+    # Which detector backend this run trains against. Default `livekit`
+    # for back-compat with configs staged before the eliza-1 path landed.
+    teacher_kind: str = "livekit"
     f1_gate: float = F1_GATE
     mean_latency_ms_gate: float = MEAN_LATENCY_MS_GATE
 
@@ -125,6 +142,11 @@ def load_config(path: Path) -> TurnFinetuneConfig:
         raise ValueError(
             f"{path}: optimizer must be 'apollo' or 'adamw', got {optimizer!r}"
         )
+    teacher_kind = str(data.get("teacher_kind", "livekit")).lower()
+    if teacher_kind not in TEACHER_KINDS:
+        raise ValueError(
+            f"{path}: teacher_kind must be one of {TEACHER_KINDS}, got {teacher_kind!r}"
+        )
     return TurnFinetuneConfig(
         tier=str(data["tier"]),
         teacher_repo=str(data["teacher_repo"]),
@@ -135,6 +157,7 @@ def load_config(path: Path) -> TurnFinetuneConfig:
         learning_rate=float(data["learning_rate"]),
         train_data=list(data["train_data"]),
         eval_data=list(data["eval_data"]),
+        teacher_kind=teacher_kind,
         f1_gate=float(data.get("f1_gate", F1_GATE)),
         mean_latency_ms_gate=float(
             data.get("mean_latency_ms_gate", MEAN_LATENCY_MS_GATE)
@@ -1672,16 +1695,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     if summary["top_k"]:
         best = summary["top_k"][0]
-        onnx_dir = run_dir / "onnx"
-        export_onnx(
-            teacher_repo=resolved.teacher_repo,
-            teacher_revision=resolved.teacher_revision,
-            checkpoint_path=Path(best["path"]),
-            out_path=onnx_dir / "model_q8.onnx",
-        )
-        export_tokenizer_artifacts(
-            resolved.teacher_repo, resolved.teacher_revision, onnx_dir,
-        )
+        if resolved.teacher_kind == "eliza-1-drafter":
+            # Eliza-1 path: the runtime layers a GGUF LoRA adapter onto
+            # the in-process drafter (see
+            # `plugins/plugin-local-inference/src/services/voice/
+            # eliza1-eot-scorer.ts`). Convert the saved torch checkpoint
+            # to a llama.cpp-compatible LoRA via `convert_lora_to_gguf.py`
+            # — that script ships with the upstream llama.cpp checkout and
+            # is invoked by the publish pipeline, not from inside the
+            # python training process. Operators run it as a follow-on
+            # step pointed at `best.path`.
+            lora_dir = run_dir / "lora"
+            lora_dir.mkdir(parents=True, exist_ok=True)
+            (lora_dir / "EXPORT-NEXT-STEP.txt").write_text(
+                "Next step: convert the saved torch LoRA at\n"
+                f"  {best['path']}\n"
+                "to GGUF by running llama.cpp's convert_lora_to_gguf.py.\n"
+                "The resulting `*.gguf` adapter ships under the manifest\n"
+                "slot `files.eotLoraAdapter` and the runtime loads it via\n"
+                "`startVoiceSession({ useEliza1Eot: true, eliza1EotLoraPath })`.\n",
+                encoding="utf-8",
+            )
+        else:
+            onnx_dir = run_dir / "onnx"
+            export_onnx(
+                teacher_repo=resolved.teacher_repo,
+                teacher_revision=resolved.teacher_revision,
+                checkpoint_path=Path(best["path"]),
+                out_path=onnx_dir / "model_q8.onnx",
+            )
+            export_tokenizer_artifacts(
+                resolved.teacher_repo, resolved.teacher_revision, onnx_dir,
+            )
     return 0
 
 
