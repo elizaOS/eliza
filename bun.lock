@@ -452,6 +452,7 @@
         "@neondatabase/serverless": "^1.1.0",
         "@upstash/redis": "^1.37.0",
         "ai": "^6.0.170",
+        "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.1",
         "file-type": "^22.0.0",
         "hono": "4.12.18",
