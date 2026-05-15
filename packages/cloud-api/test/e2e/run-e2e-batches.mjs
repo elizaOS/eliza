@@ -21,7 +21,7 @@ for (const testFile of testFiles) {
       "test",
       "--max-concurrency=1",
       "--preload",
-      "../../packages/tests/e2e/preload.ts",
+      "test/e2e/preload.ts",
       testFile,
       "--timeout",
       "120000",

@@ -13,6 +13,7 @@ import { defineConfig, loadEnv } from "vite";
 // package at `packages/cloud-shared/src/{lib,db,types}` and to the local
 // `content/` directory in this package.
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+const localLibPrefix = `${r("./src/lib")}/`;
 
 // Some subtrees under `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` were
 // moved into this package (browser-only files: utils.ts, hooks, providers,
@@ -20,29 +21,35 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // and prefers the local `src/<subpath>` when the file exists, falling back to
 // cloud-shared otherwise. This avoids touching hundreds of imports in source
 // files.
-function resolveLocalFirst(
-  id: string,
-  localBase: string,
-  sharedBase: string,
-): string {
-  const sub = id.replace(/^@\/(?:lib|db|types|components)\/?/, "");
-  const localPath = r(`${localBase}/${sub}`);
+function resolveExistingFile(base: string, sub: string): string | null {
+  const basePath = r(`${base}/${sub}`);
   const candidates = [
-    localPath,
-    `${localPath}.ts`,
-    `${localPath}.tsx`,
-    `${localPath}/index.ts`,
-    `${localPath}/index.tsx`,
+    basePath,
+    `${basePath}.ts`,
+    `${basePath}.tsx`,
+    `${basePath}/index.ts`,
+    `${basePath}/index.tsx`,
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate) && statSync(candidate).isFile()) {
       return candidate;
     }
   }
-  if (existsSync(localPath) && statSync(localPath).isDirectory()) {
-    return localPath;
-  }
-  return r(`${sharedBase}/${sub}`);
+  return null;
+}
+
+function resolveLocalFirst(
+  id: string,
+  localBase: string,
+  sharedBase: string,
+  importPrefix: RegExp = /^@\/(?:lib|db|types|components)\/?/,
+): string {
+  const sub = id.replace(importPrefix, "");
+  return (
+    resolveExistingFile(localBase, sub) ??
+    resolveExistingFile(sharedBase, sub) ??
+    r(`${sharedBase}/${sub}`)
+  );
 }
 
 // Whitelist of env vars that get baked into the client bundle. Anything not
@@ -148,6 +155,37 @@ export default defineConfig(({ mode }) => {
         name: "eliza-cloud-frontend-alias-fallback",
         enforce: "pre",
         resolveId(source) {
+          if (source.startsWith(localLibPrefix)) {
+            const sub = source.slice(localLibPrefix.length);
+            if (sub.startsWith("hooks/")) {
+              return resolveLocalFirst(
+                `@/lib/${sub}`,
+                "./src/hooks",
+                "../cloud-shared/src/lib/hooks",
+                /^@\/lib\/hooks\//,
+              );
+            }
+            if (sub.startsWith("providers/")) {
+              return resolveLocalFirst(
+                `@/lib/${sub}`,
+                "./src/providers",
+                "../cloud-shared/src/lib/providers",
+                /^@\/lib\/providers\//,
+              );
+            }
+            if (sub.startsWith("stores/")) {
+              return resolveLocalFirst(
+                `@/lib/${sub}`,
+                "./src/lib/stores",
+                "../cloud-shared/src/lib/stores",
+                /^@\/lib\/stores\//,
+              );
+            }
+            return (
+              resolveExistingFile("./src/lib", sub) ??
+              resolveExistingFile("../cloud-shared/src/lib", sub)
+            );
+          }
           if (source === "@/lib/utils") {
             return r("./src/lib/utils.ts");
           }
@@ -156,6 +194,7 @@ export default defineConfig(({ mode }) => {
               source,
               "./src/hooks",
               "../cloud-shared/src/lib/hooks",
+              /^@\/lib\/hooks\//,
             );
           }
           if (source.startsWith("@/lib/providers/")) {
@@ -163,6 +202,7 @@ export default defineConfig(({ mode }) => {
               source,
               "./src/providers",
               "../cloud-shared/src/lib/providers",
+              /^@\/lib\/providers\//,
             );
           }
           if (source.startsWith("@/lib/stores/")) {
@@ -170,6 +210,7 @@ export default defineConfig(({ mode }) => {
               source,
               "./src/lib/stores",
               "../cloud-shared/src/lib/stores",
+              /^@\/lib\/stores\//,
             );
           }
           if (source.startsWith("@/lib/")) {
