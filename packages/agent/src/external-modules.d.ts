@@ -40,6 +40,8 @@ declare module "@elizaos/plugin-capacitor-bridge" {
   export function ensureMobileDeviceBridgeInferenceHandlers(
     runtime: AgentRuntime,
   ): Promise<boolean>;
+  export function runIosBridgeCli(argv: string[]): Promise<void>;
+  export function runAndroidBridgeCli(): Promise<void>;
 }
 declare module "qrcode-terminal" {
   export function generate(
