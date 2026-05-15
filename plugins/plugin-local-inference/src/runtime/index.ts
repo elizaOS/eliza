@@ -14,7 +14,7 @@ export {
 	findExistingEmbeddingModelForWarmupReuse,
 	isEmbeddingWarmupReuseDisabled,
 } from "./embedding-manager-support.js";
-export { detectEmbeddingPreset } from "../config/embedding-presets.js";
+export { detectEmbeddingPreset } from "./embedding-presets.js";
 export { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
 export { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 export { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
