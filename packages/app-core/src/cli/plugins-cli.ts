@@ -398,7 +398,7 @@ export function registerPluginsCli(program: Command): void {
           console.log(`  [${progress.phase}] ${progress.message}`);
         };
 
-        const { installPlugin } = await import("../services/plugin-installer");
+        const { installPlugin } = await import("@elizaos/plugin-registry");
         const result = await installPlugin(
           normalizedName,
           progressHandler,
