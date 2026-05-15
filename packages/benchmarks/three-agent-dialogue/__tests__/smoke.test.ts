@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
@@ -215,7 +215,7 @@ const INTEGRATION_TIMEOUT_MS = 120_000; // 2 minutes for 4 turns
 describe.skipIf(!GROQ_KEY_SET)(
   "Integration smoke (requires GROQ_API_KEY)",
   () => {
-    let runOutputDir: string | null = null;
+    let _runOutputDir: string | null = null;
 
     afterEach(() => {
       // Don't clean up — artefacts are the point
@@ -234,7 +234,7 @@ describe.skipIf(!GROQ_KEY_SET)(
           "three-agent-dialogue",
           runId,
         );
-        runOutputDir = outputDir;
+        _runOutputDir = outputDir;
 
         const result = await runDialogue({
           scenarioId: "canonical",

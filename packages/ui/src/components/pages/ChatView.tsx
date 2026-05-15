@@ -751,6 +751,7 @@ export function ChatView({
                 compact
                 value={continuousChatMode}
                 onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
                 data-testid="chat-view-continuous-chat-toggle"
               />
             </div>
