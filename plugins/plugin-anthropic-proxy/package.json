@@ -1,0 +1,122 @@
+{
+  "name": "@elizaos/plugin-anthropic-proxy",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-anthropic-proxy"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "elizaos": {
+    "plugin": {
+      "capabilities": []
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {},
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/bun": "^1.3.9",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bunx vitest run --config vitest.config.ts",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "CLAUDE_MAX_PROXY_MODE": {
+        "type": "string",
+        "description": "Proxy mode: inline | shared | off (default: inline)",
+        "required": false,
+        "default": "inline"
+      },
+      "CLAUDE_MAX_PROXY_PORT": {
+        "type": "number",
+        "description": "Listen port for inline mode (default: 18801)",
+        "required": false,
+        "default": 18801
+      },
+      "CLAUDE_MAX_PROXY_UPSTREAM": {
+        "type": "string",
+        "description": "Upstream proxy URL for shared mode",
+        "required": false
+      },
+      "CLAUDE_MAX_PROXY_BIND_HOST": {
+        "type": "string",
+        "description": "Bind address for inline mode (default: 127.0.0.1)",
+        "required": false,
+        "default": "127.0.0.1"
+      },
+      "CLAUDE_MAX_PROXY_VERBOSE": {
+        "type": "boolean",
+        "description": "Verbose request logging",
+        "required": false,
+        "default": false
+      },
+      "CLAUDE_MAX_CREDENTIALS_PATH": {
+        "type": "string",
+        "description": "Path to Claude Code .credentials.json (default: ~/.claude/.credentials.json)",
+        "required": false
+      },
+      "ANTHROPIC_BASE_URL": {
+        "type": "string",
+        "description": "Override Anthropic base URL. Use 'auto' to let plugin set it. Leave unset = plugin sets automatically.",
+        "required": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  }
+}
