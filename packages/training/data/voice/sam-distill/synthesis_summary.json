@@ -1,13 +1,21 @@
 {
-  "generatedAt": "2026-05-15T04:26:58.975902+00:00",
-  "totalClips": 826,
-  "totalDurationS": 3604.33,
-  "totalDurationMin": 60.07,
-  "trainLines": 744,
-  "valLines": 82,
-  "targetMinutes": 60.0,
-  "teacher": "sam-melfit-ref_s (NOT af_bella)",
-  "voiceBin": "/tmp/kokoro-f2/melfit-5/af_samantha.bin",
-  "outDir": "/home/shaw/milady/eliza/packages/training/data/voice/sam-distill",
-  "note": "G3 OmniVoice-sam teacher. F2 used af_bella which dominated training signal. G3 uses sam ref_s so model learns sam timbre."
+  "generatedAt": "2026-05-15T07:10:21.429304+00:00",
+  "totalClips": 1090,
+  "totalDurationS": 5703.82,
+  "totalDurationMin": 95.06,
+  "trainLines": 982,
+  "valLines": 108,
+  "extension": {
+    "addedClips": 260,
+    "addedDurationS": 2070.3,
+    "addedDurationMin": 34.5,
+    "textDataset": "agentlans/high-quality-english-sentences",
+    "textCap": 1500,
+    "voiceBin": "/tmp/kokoro-f2/melfit-5/af_samantha.bin",
+    "voiceId": "af_heart",
+    "teacher": "sam-melfit-ref_s"
+  },
+  "targetTotalMinutes": 95.0,
+  "outDir": "packages/training/data/voice/sam-distill",
+  "note": "L-kokoro-distill extension on top of G3's 60-min sam-distill base. Teacher = OmniVoice (Kokoro KPipeline + sam mel-fit ref_s)."
 }
