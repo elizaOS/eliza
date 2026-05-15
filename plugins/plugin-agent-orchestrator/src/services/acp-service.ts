@@ -817,7 +817,7 @@ export class AcpService extends Service {
       stopReason = result.stopReason;
       if (emitPromptTerminalEvents && stopReason === "end_turn") {
         this.emitSessionEvent(sessionId, "task_complete", {
-          response: finalText,
+          response: completionResponseText(finalText),
           durationMs: Date.now() - startedAt,
           stopReason,
         });
@@ -1075,6 +1075,26 @@ function stringifyMaybe(value: unknown): string {
 function appendTextBlock(current: string, block: string): string {
   if (!current) return block;
   return `${current}${current.endsWith("\n") ? "" : "\n"}${block}`;
+}
+
+function completionResponseText(text: string): string {
+  if (!text.includes(TOOL_OUTPUT_END_MARKER)) return text;
+  let insideToolOutput = false;
+  const remainder: string[] = [];
+  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+    const trimmed = line.trim();
+    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
+      insideToolOutput = true;
+      continue;
+    }
+    if (insideToolOutput && trimmed === TOOL_OUTPUT_END_MARKER) {
+      insideToolOutput = false;
+      continue;
+    }
+    if (!insideToolOutput) remainder.push(line);
+  }
+  const userFacingText = remainder.join("\n").trim();
+  return userFacingText || text;
 }
 
 function captureTerminalToolOutput(

@@ -63,5 +63,9 @@ describe("renderMessageHandlerStablePrefix", () => {
 		const runtime = makeRuntime();
 		await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
 		expect(runtime.composeState).toHaveBeenCalledTimes(1);
+		const providerNames = (
+			runtime.composeState as { mock: { calls: unknown[][] } }
+		).mock.calls[0]?.[1] as string[];
+		expect(providerNames).toContain("RUNTIME_MODEL_CONTEXT");
 	});
 });
