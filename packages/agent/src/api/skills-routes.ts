@@ -15,43 +15,15 @@ import {
   PutSkillSourceRequestSchema,
   parseClampedInteger,
 } from "@elizaos/shared";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
-} from "../services/skill-marketplace";
-import { skillScaffoldMarkdown } from "./skill-scaffold";
-
-/**
- * Minimal structural shape of the agent's on-disk config used by the
- * skills routes. Avoids a hard type dependency on `@elizaos/agent`'s
- * private `ElizaConfig` shape — the route handlers only ever touch the
- * fields below.
- */
-export interface ElizaSkillConfigEntry {
-  enabled?: boolean;
-  [key: string]: unknown;
-}
-
-export interface ElizaConfig {
-  agents?: {
-    defaults?: {
-      workspace?: string;
-    };
-  };
-  env?: Record<string, string>;
-  skills?: {
-    denyBundled?: string[];
-    allowBundled?: string[];
-    entries?: Record<string, ElizaSkillConfigEntry>;
-    load?: {
-      extraDirs?: string[];
-    };
-  };
-  [key: string]: unknown;
-}
+} from "../services/skill-marketplace.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { skillScaffoldMarkdown } from "../templates/skill-scaffold.ts";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)
@@ -306,7 +278,7 @@ export async function handleSkillsRoutes(
   if (method === "GET" && pathname === "/api/skills/catalog") {
     try {
       const { getCatalogSkills } = await import(
-        "../services/skill-catalog-client"
+        "../services/skill-catalog-client.ts"
       );
       const all = (await getCatalogSkills()).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
@@ -392,7 +364,7 @@ export async function handleSkillsRoutes(
     }
     try {
       const { searchCatalogSkills } = await import(
-        "../services/skill-catalog-client"
+        "../services/skill-catalog-client.ts"
       );
       const limit = Math.min(
         100,
@@ -425,7 +397,7 @@ export async function handleSkillsRoutes(
       }
       try {
         const { getCatalogSkill } = await import(
-          "../services/skill-catalog-client"
+          "../services/skill-catalog-client.ts"
         );
         const skill = await getCatalogSkill(slug);
         if (!skill) {
@@ -461,7 +433,7 @@ export async function handleSkillsRoutes(
       }
       // Then re-read the now-updated local catalog file
       const { refreshCatalog } = await import(
-        "../services/skill-catalog-client"
+        "../services/skill-catalog-client.ts"
       );
       const skills = await refreshCatalog();
       json(res, { ok: true, count: skills.length });
@@ -1224,7 +1196,7 @@ export async function handleSkillsRoutes(
     } else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
       try {
         const { uninstallMarketplaceSkill: uninstallMp } = await import(
-          "../services/skill-marketplace"
+          "../services/skill-marketplace.ts"
         );
         await uninstallMp(workspaceDir, skillId);
         deleted = true;
