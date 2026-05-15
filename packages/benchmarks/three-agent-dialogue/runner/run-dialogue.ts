@@ -457,14 +457,7 @@ export async function runDialogue(options: {
       `turns=${turnsToRun.length} smoke=${isSmoke} output=${outputDir}`,
   );
 
-  // --- Load Groq plugin (required) ---
-  if (!process.env.GROQ_API_KEY) {
-    console.warn(
-      "[three-agent-dialogue] WARNING: GROQ_API_KEY not set. TTS and transcription will fail. " +
-        "Set GROQ_API_KEY to run with real audio.",
-    );
-  }
-
+  // --- Load Groq plugin (optional — falls back to synthetic audio) ---
   const groqPlugin = await resolveGroqPlugin();
   const embeddingPlugin = await resolveLocalEmbeddingPlugin();
 
@@ -525,34 +518,42 @@ export async function runDialogue(options: {
     // --- TTS: convert prompt text to audio ---
     let ttsBytes: Buffer = Buffer.alloc(0);
     let ttsError: string | null = null;
+    let ttsSynthetic = false;
 
-    try {
-      const ttsResult = await runtime.useModel(
-        ModelType.TEXT_TO_SPEECH,
-        {
-          text: prompt,
-          voice: (
-            characters[speaker] as Character & {
-              settings?: Record<string, string>;
-            }
-          )?.settings?.GROQ_TTS_VOICE,
-        },
-        "groq",
-      );
-      ttsBytes = coerceToBuffer(ttsResult);
-      console.log(
-        `[three-agent-dialogue]   TTS: ${ttsBytes.length} bytes | duration≈${estimateWavDurationSec(ttsBytes).toFixed(2)}s`,
-      );
-    } catch (err) {
-      ttsError = String(err);
-      console.warn(
-        `[three-agent-dialogue]   TTS cloud failed turn=${turnIdx}, using synthetic fallback: ${ttsError.slice(0, 120)}`,
-      );
+    if (groqPlugin !== null) {
+      try {
+        const ttsResult = await runtime.useModel(
+          ModelType.TEXT_TO_SPEECH,
+          {
+            text: prompt,
+            voice: (
+              characters[speaker] as Character & {
+                settings?: Record<string, string>;
+              }
+            )?.settings?.GROQ_TTS_VOICE,
+          },
+          "groq",
+        );
+        ttsBytes = coerceToBuffer(ttsResult);
+        console.log(
+          `[three-agent-dialogue]   TTS (groq): ${ttsBytes.length} bytes | duration≈${estimateWavDurationSec(ttsBytes).toFixed(2)}s`,
+        );
+      } catch (err) {
+        ttsError = String(err);
+        console.warn(
+          `[three-agent-dialogue]   TTS cloud failed turn=${turnIdx}, using synthetic fallback: ${ttsError.slice(0, 120)}`,
+        );
+      }
+    }
+
+    if (ttsBytes.length === 0) {
       // Synthetic fallback: generate a real sine-wave WAV at a speaker-specific
-      // frequency. Documents the fallback path per W3-2 spec.
+      // frequency. Documented fallback per W3-2 spec when cloud TTS unavailable.
       ttsBytes = generateSyntheticWav(prompt, speaker);
+      ttsSynthetic = true;
       console.log(
-        `[three-agent-dialogue]   TTS (synthetic): ${ttsBytes.length} bytes | duration≈${estimateWavDurationSec(ttsBytes).toFixed(2)}s | freq=${SYNTHETIC_VOICE_FREQ[speaker] ?? 440}Hz`,
+        `[three-agent-dialogue]   TTS (synthetic ${speaker} @ ${SYNTHETIC_VOICE_FREQ[speaker] ?? 440}Hz): ` +
+          `${ttsBytes.length} bytes | duration≈${estimateWavDurationSec(ttsBytes).toFixed(2)}s`,
       );
     }
 
@@ -570,7 +571,8 @@ export async function runDialogue(options: {
     // --- ASR: transcribe the audio back ---
     let asrText: string | null = null;
 
-    if (ttsBytes.length > 0) {
+    if (groqPlugin !== null && ttsBytes.length > 0 && !ttsSynthetic) {
+      // Only attempt real ASR when we have a Groq plugin and real (non-synthetic) audio.
       try {
         const asrResult = await runtime.useModel(
           ModelType.TRANSCRIPTION,
@@ -583,14 +585,20 @@ export async function runDialogue(options: {
             : String(asrResult ?? "").trim();
         console.log(`[three-agent-dialogue]   ASR: "${asrText}"`);
       } catch (err) {
-        // ASR failed — use the ground-truth text as fallback (from the scenario
-        // script). This is acceptable for synthetic audio since we know what
-        // was "said". Real audio paths will have real ASR.
-        asrText = ttsError
-          ? `[synthetic-fallback] ${prompt}`
-          : null;
         console.warn(
-          `[three-agent-dialogue]   ASR failed turn=${turnIdx}, using GT fallback: ${err}`,
+          `[three-agent-dialogue]   ASR failed turn=${turnIdx}: ${err}`,
+        );
+      }
+    }
+
+    if (asrText === null) {
+      // Fallback: use the ground-truth scenario prompt as the ASR text.
+      // For synthetic audio this is correct (we know what was "said").
+      // For real audio this should not occur unless ASR is broken.
+      asrText = ttsSynthetic ? `[synthetic] ${prompt}` : null;
+      if (ttsSynthetic) {
+        console.log(
+          `[three-agent-dialogue]   ASR (gt-fallback for synthetic): "${prompt.slice(0, 60)}..."`,
         );
       }
     }
