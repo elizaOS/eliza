@@ -4,8 +4,26 @@ vi.mock("./registry", () => ({
 	listInstalledModels: vi.fn(async () => []),
 }));
 
+vi.mock("./dflash-server", () => ({
+	dflashLlamaServer: {
+		hasLoadedModel: () => false,
+		getMetrics: async () => null,
+	},
+	getDflashRuntimeStatus: () => ({
+		enabled: false,
+		required: false,
+		binaryPath: null,
+		reason: "mocked in dflash-doctor.test",
+		capabilities: null,
+	}),
+	validateDflashDrafterCompatibility: () => ({
+		compatible: true,
+		reason: "mocked in dflash-doctor.test",
+	}),
+}));
+
 afterEach(() => {
-	vi.restoreAllMocks();
+	vi.clearAllMocks();
 });
 
 describe("runDflashDoctor — tokenizer parity check", () => {
