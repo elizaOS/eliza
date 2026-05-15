@@ -1,16 +1,20 @@
 import { logger } from "@elizaos/core";
-import { RapidOCRService, shouldPreferAppleVision } from "./ocr-service-rapid";
-import { RealOCRService } from "./ocr-service-real";
+import {
+  DoctrOCRService,
+  shouldPreferAppleVision,
+} from "./ocr-service-doctr";
 import type { BoundingBox, OCRResult, ScreenTile } from "./types";
 
-export type OCRBackendName = "rapid" | "apple-vision" | "tesseract";
+export type OCRBackendName = "doctr" | "apple-vision";
 
 export interface OCRServiceConfig {
   /**
    * Force a specific backend. If unset, the chain is:
-   *   1. RapidOCR (PP-OCRv5 via onnxruntime-node) when available
-   *   2. Apple Vision when running on darwin (stubbed — owned by WS9)
-   *   3. Tesseract.js as the last-resort fallback
+   *   1. Apple Vision (darwin only, when a provider has been registered)
+   *   2. doCTR (ggml-backed CRNN+DBNet via native/doctr.cpp)
+   *
+   * There is no tesseract / onnx fallback — the migration removed both.
+   * If neither backend can initialize, `initialize()` throws.
    */
   backend?: OCRBackendName;
 }
@@ -19,34 +23,12 @@ interface OCRBackend {
   name: OCRBackendName;
   initialize(): Promise<void>;
   extractText(buffer: Buffer): Promise<OCRResult>;
-  extractStructuredData?(buffer: Buffer): Promise<{
-    tables?: Array<{ rows: string[][]; bbox: BoundingBox }>;
-    forms?: Array<{ label: string; value: string; bbox: BoundingBox }>;
-    lists?: Array<{ items: string[]; bbox: BoundingBox }>;
-  }>;
   dispose(): Promise<void>;
 }
 
-class TesseractBackend implements OCRBackend {
-  readonly name: OCRBackendName = "tesseract";
-  private impl = new RealOCRService();
-  initialize() {
-    return this.impl.initialize();
-  }
-  extractText(buffer: Buffer) {
-    return this.impl.extractText(buffer);
-  }
-  extractStructuredData(buffer: Buffer) {
-    return this.impl.extractStructuredData(buffer);
-  }
-  dispose() {
-    return this.impl.dispose();
-  }
-}
-
-class RapidBackend implements OCRBackend {
-  readonly name: OCRBackendName = "rapid";
-  private impl = new RapidOCRService();
+class DoctrBackend implements OCRBackend {
+  readonly name: OCRBackendName = "doctr";
+  private impl = new DoctrOCRService();
   initialize() {
     return this.impl.initialize();
   }
@@ -67,7 +49,7 @@ class RapidBackend implements OCRBackend {
  * `createIosVisionOcrProvider(...)` from
  * `@elizaos/plugin-computeruse/mobile/ocr-provider`. Until a provider is
  * registered, `AppleVisionBackend.extractText` throws so the chooser falls
- * through to RapidOCR / Tesseract.
+ * through to the doCTR ggml backend.
  *
  * The provider shape is intentionally structural so plugin-vision stays
  * Node-importable on hosts that don't ship Capacitor.
@@ -98,10 +80,6 @@ export interface AppleVisionOcrProvider {
 
 let registeredAppleVisionProvider: AppleVisionOcrProvider | null = null;
 
-/**
- * Register the Apple Vision OCR provider. Idempotent — last call wins so a
- * hot-reload of the bridge swaps cleanly. Pass `null` to unregister.
- */
 export function registerAppleVisionOcrProvider(
   provider: AppleVisionOcrProvider | null,
 ): void {
@@ -113,17 +91,10 @@ export function registerAppleVisionOcrProvider(
   );
 }
 
-/** Test/inspection helper. */
 export function getAppleVisionOcrProvider(): AppleVisionOcrProvider | null {
   return registeredAppleVisionProvider;
 }
 
-/**
- * Apple Vision backend — delegates to a runtime-registered provider supplied
- * by WS9's `createIosVisionOcrProvider`. When no provider is registered the
- * backend throws so the chooser falls through to the next entry in the
- * priority chain.
- */
 class AppleVisionBackend implements OCRBackend {
   readonly name: OCRBackendName = "apple-vision";
   async initialize(): Promise<void> {
@@ -171,9 +142,8 @@ class AppleVisionBackend implements OCRBackend {
 }
 
 /**
- * Choose the highest-priority available backend. We do this at every
- * `extractText` call (cheaply — backend instances are cached) so a
- * runtime-loaded RapidOCR can take over from Tesseract without restart.
+ * Walk the priority chain and pick the first backend that initializes.
+ * Backend instances are cached; per-call we just dispatch to the active one.
  */
 export class OCRService {
   private backends: OCRBackend[] = [];
@@ -190,30 +160,25 @@ export class OCRService {
 
     logger.info("[OCR] initializing OCR service…");
 
-    // Build the priority chain. Order matters.
     const candidates: Array<() => Promise<OCRBackend | null>> = [];
-    if (!this.forced || this.forced === "rapid") {
-      candidates.push(async () =>
-        (await RapidOCRService.isAvailable()) ? new RapidBackend() : null,
-      );
-    }
     if (!this.forced || this.forced === "apple-vision") {
       candidates.push(async () =>
         shouldPreferAppleVision() ? new AppleVisionBackend() : null,
       );
     }
-    if (!this.forced || this.forced === "tesseract") {
-      candidates.push(async () => new TesseractBackend());
+    if (!this.forced || this.forced === "doctr") {
+      candidates.push(async () =>
+        (await DoctrOCRService.isAvailable()) ? new DoctrBackend() : null,
+      );
     }
 
     for (const factory of candidates) {
       const backend = await factory();
       if (!backend) continue;
       try {
-        if (backend.name === "rapid") {
-          // Defer fetch/load until first use so OCRService.initialize stays
-          // cheap. RapidBackend.initialize() is what actually triggers the
-          // ONNX model download.
+        if (backend.name === "doctr") {
+          // Defer GGUF load until first use so OCRService.initialize stays
+          // cheap. DoctrBackend.initialize() is what triggers the FFI load.
           this.backends.push(backend);
           if (!this.chosen) this.chosen = backend;
           continue;
@@ -230,7 +195,9 @@ export class OCRService {
     }
 
     if (!this.chosen) {
-      throw new Error("No OCR backend available (Tesseract fallback failed)");
+      throw new Error(
+        "No OCR backend available — doctr.cpp GGUFs not built and no Apple Vision provider registered.",
+      );
     }
     this.initialized = true;
     logger.info(`[OCR] active backend: ${this.chosen.name}`);
@@ -240,10 +207,6 @@ export class OCRService {
     if (!this.initialized) await this.initialize();
     if (!this.chosen) throw new Error("OCR not initialized");
 
-    // Walk the priority list — if the chosen backend throws, fall back to
-    // the next loaded backend instead of returning an empty result. This is
-    // intentionally narrow: a failure in the active backend is logged and
-    // counted, but the call still produces text where possible.
     const ordered = [
       this.chosen,
       ...this.backends.filter((b) => b !== this.chosen),
@@ -251,8 +214,7 @@ export class OCRService {
     let lastError: unknown = null;
     for (const backend of ordered) {
       try {
-        if (backend.name === "rapid" && backend instanceof RapidBackend) {
-          // Lazy-init on first call so cold start doesn't block boot.
+        if (backend.name === "doctr" && backend instanceof DoctrBackend) {
           await backend.initialize();
         }
         return await backend.extractText(imageBuffer);
@@ -262,8 +224,6 @@ export class OCRService {
           `[OCR] backend ${backend.name} failed:`,
           error instanceof Error ? error.message : error,
         );
-        // If this was the chosen backend, demote it so subsequent calls go
-        // straight to the fallback.
         if (backend === this.chosen && ordered.length > 1) {
           this.chosen = ordered[1];
           logger.warn(`[OCR] demoted to backend: ${this.chosen.name}`);
@@ -286,34 +246,22 @@ export class OCRService {
     return this.extractText(imageBuffer);
   }
 
-  async extractStructuredData(imageBuffer: Buffer): Promise<{
+  /**
+   * Structured data extraction (tables / forms / lists) is not implemented in
+   * the doCTR path yet — the previous tesseract-based implementation owned
+   * this surface. Returns an empty result so callers don't break; structured
+   * extraction is a follow-up that will live in a separate post-process
+   * module (it's pure geometry, not model output).
+   */
+  async extractStructuredData(_imageBuffer: Buffer): Promise<{
     tables?: Array<{ rows: string[][]; bbox: BoundingBox }>;
     forms?: Array<{ label: string; value: string; bbox: BoundingBox }>;
     lists?: Array<{ items: string[]; bbox: BoundingBox }>;
   }> {
     if (!this.initialized) await this.initialize();
-    // Only Tesseract has structured-data support today; if our chosen
-    // backend doesn't implement it, fall through to the Tesseract backend
-    // when present.
-    const fallback = this.backends.find(
-      (b): b is TesseractBackend => b.name === "tesseract",
-    );
-    const target =
-      this.chosen && this.chosen.extractStructuredData
-        ? this.chosen
-        : (fallback ?? null);
-    if (!target?.extractStructuredData) {
-      return { tables: [], forms: [], lists: [] };
-    }
-    try {
-      return await target.extractStructuredData(imageBuffer);
-    } catch (error) {
-      logger.error("[OCR] structured-data extraction failed:", error);
-      return { tables: [], forms: [], lists: [] };
-    }
+    return { tables: [], forms: [], lists: [] };
   }
 
-  /** Test/inspection helper. */
   getActiveBackend(): OCRBackendName | null {
     return this.chosen?.name ?? null;
   }

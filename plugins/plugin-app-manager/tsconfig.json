@@ -18,7 +18,15 @@
       "node"
     ],
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/config/*": ["../../packages/agent/src/config/*.ts"],
+      "@elizaos/agent/utils/*": ["../../packages/agent/src/utils/*.ts"],
+      "@elizaos/agent/services/*": ["../../packages/agent/src/services/*.ts"]
+    }
   },
   "include": [
     "src/**/*"

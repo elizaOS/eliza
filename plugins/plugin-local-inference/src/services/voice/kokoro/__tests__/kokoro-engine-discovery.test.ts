@@ -73,20 +73,46 @@ describe("resolveKokoroEngineConfig", () => {
 		expect(resolveKokoroEngineConfig()).toBeNull();
 	});
 
-	it("returns the default voice when af_bella.bin is staged", () => {
+	it("returns the canonical Samantha default when af_same.bin is staged", () => {
 		const fx = makeStaged({
 			modelFile: "kokoro-v1.0.onnx",
-			voices: ["af_bella.bin"],
+			voices: ["af_same.bin", "af_bella.bin"],
 		});
 		cleanups.push(fx.cleanup);
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
-		expect(cfg?.defaultVoiceId).toBe("af_bella");
+		expect(cfg?.defaultVoiceId).toBe("af_same");
 		expect(cfg?.layout.modelFile).toBe("kokoro-v1.0.onnx");
 		expect(cfg?.layout.sampleRate).toBe(24_000);
 		expect(cfg?.layout.root).toBe(fx.root);
 		expect(cfg?.layout.voicesDir).toBe(path.join(fx.root, "voices"));
+	});
+
+	it("falls back to af_bella with a console warning when Samantha preset is missing", () => {
+		const fx = makeStaged({
+			modelFile: "kokoro-v1.0.onnx",
+			voices: ["af_bella.bin"], // Samantha (af_same) absent
+		});
+		cleanups.push(fx.cleanup);
+		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
+
+		const warnings: string[] = [];
+		const origWarn = console.warn;
+		console.warn = (msg: unknown) => {
+			warnings.push(String(msg));
+		};
+		try {
+			const cfg = resolveKokoroEngineConfig();
+			expect(cfg).not.toBeNull();
+			expect(cfg?.defaultVoiceId).toBe("af_bella");
+			expect(warnings.some((w) => /af_same/.test(w))).toBe(true);
+			expect(
+				warnings.some((w) => /falling back to af_bella/.test(w)),
+			).toBe(true);
+		} finally {
+			console.warn = origWarn;
+		}
 	});
 
 	it("auto-prefers the INT8 ONNX when it is the only one staged", () => {

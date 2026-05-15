@@ -1,20 +1,27 @@
 #!/usr/bin/env bun
 /**
- * VAD / wake-word ONNX smoke harness.
+ * VAD / wake-word smoke harness.
  *
  * Feeds a `silence + synthesized-speech + silence` PCM fixture through the
  * real Silero VAD ONNX model (`SileroVad` + `VadDetector`) and asserts it
  * detects exactly one speech segment whose boundaries land inside the
- * voiced region — i.e. the leading/trailing silence is gated out. If the
- * openWakeWord graphs resolve, it also runs ~2 s of silence through the
- * `OpenWakeWordModel` streaming pipeline and asserts P(wake) stays low.
+ * voiced region — i.e. the leading/trailing silence is gated out.
+ *
+ * The wake-word portion of this smoke ran through `OpenWakeWordModel`
+ * (ONNX) until the GGUF port (`packages/plugin-local-inference/native/
+ * libelizainference` ABI v5, `eliza_inference_wakeword_*`). The native
+ * runtime requires a loaded FFI context, which this lightweight script
+ * does not bring up — wake-word smoke now lives in
+ * `packages/inference/voice-bench/` against the fused library and the
+ * bundled `wake/openwakeword.gguf`. This script still resolves the
+ * bundled GGUF to report its presence, then exits the wake-word section.
  *
  * Usage:
  *   # use the bundled model under <state-dir>/local-inference/vad/silero-vad-int8.onnx
  *   bun packages/app-core/scripts/voice-vad-smoke.ts
  *   # or point at an explicit model:
  *   ELIZA_VAD_MODEL_PATH=/path/to/silero-vad-int8.onnx bun packages/app-core/scripts/voice-vad-smoke.ts
- *   # or a staged bundle dir (expects vad/silero-vad-int8.onnx, optionally wake/*.onnx):
+ *   # or a staged bundle dir (expects vad/silero-vad-int8.onnx, optionally wake/openwakeword.gguf):
  *   bun packages/app-core/scripts/voice-vad-smoke.ts --bundle /path/to/eliza-1-9b
  *
  * Exit code: 0 on pass, 1 on any assertion failure or unavailable runtime.
@@ -47,11 +54,7 @@ async function main(): Promise<void> {
   } = await import(
     "../../../plugins/plugin-local-inference/src/services/voice/vad"
   );
-  const {
-    loadBundledWakeWordModel,
-    resolveWakeWordModel,
-    WakeWordUnavailableError,
-  } = await import(
+  const { resolveWakeWordModel } = await import(
     "../../../plugins/plugin-local-inference/src/services/voice/wake-word"
   );
   const bundleRoot = arg("--bundle");
@@ -133,36 +136,21 @@ async function main(): Promise<void> {
     `[voice-vad-smoke] PASS: one speech segment, onset at ${start.timestampMs.toFixed(0)} ms (voiced region ${speechStartMs.toFixed(0)}-${speechEndMs.toFixed(0)} ms)`,
   );
 
-  // Optional wake-word smoke.
-  const wwPaths = resolveWakeWordModel({ bundleRoot });
+  // Wake-word: report bundled GGUF presence only. Runtime inference is
+  // covered by the fused-library smoke under packages/inference/voice-bench/
+  // — this script doesn't bring up a libelizainference FFI context.
+  const wwPaths = bundleRoot
+    ? resolveWakeWordModel({ bundleRoot })
+    : resolveWakeWordModel({});
   if (!wwPaths) {
     console.log(
-      "[voice-vad-smoke] wake-word: no bundled openWakeWord graphs (optional asset) — skipping.",
+      "[voice-vad-smoke] wake-word: no bundled openwakeword.gguf (optional asset) — skipping.",
     );
     return;
   }
   console.log(
-    `[voice-vad-smoke] wake-word graphs: ${wwPaths.melspectrogram} / ${wwPaths.embedding} / ${wwPaths.head}`,
+    `[voice-vad-smoke] wake-word GGUF present: ${wwPaths.gguf} (head=${wwPaths.head}). Runtime inference smoke lives in packages/inference/voice-bench/.`,
   );
-  let maxWake = 0;
-  try {
-    const model = await loadBundledWakeWordModel({ bundleRoot });
-    if (!model) fail("resolveWakeWordModel succeeded but load returned null");
-    for (let i = 0; i < Math.floor((2 * SR) / model.frameSamples); i++) {
-      const p = await model.scoreFrame(new Float32Array(model.frameSamples));
-      maxWake = Math.max(maxWake, p);
-    }
-  } catch (err) {
-    if (err instanceof WakeWordUnavailableError) {
-      fail(`wake-word unavailable (${err.code}): ${err.message}`);
-    }
-    throw err;
-  }
-  console.log(
-    `[voice-vad-smoke] max P(wake | silence) = ${maxWake.toFixed(4)}`,
-  );
-  if (maxWake >= 0.3) fail(`wake-word read too high on silence (${maxWake})`);
-  console.log("[voice-vad-smoke] PASS: wake-word stayed quiet on silence.");
 }
 
 main().catch((err) => {

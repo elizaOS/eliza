@@ -12,6 +12,7 @@ import {
 	appendKvOffloadFlags,
 	appendMetalSafeStartupFlags,
 	appendOptimizationFlags,
+	applyUnsupportedKernelEnv,
 	attachDflashSpeculativeRequestFields,
 	DEFAULT_CTX_CHECKPOINT_INTERVAL,
 	DEFAULT_CTX_CHECKPOINTS,
@@ -1619,5 +1620,54 @@ describe("appendCtxCheckpointFlags", () => {
 			"--ctx-checkpoints",
 			String(DEFAULT_CTX_CHECKPOINTS),
 		]);
+	});
+});
+
+describe("applyUnsupportedKernelEnv — OpenVINO opt-out at spawn", () => {
+	it("sets GGML_OPENVINO_DISABLE and GGML_OPENVINO_DEVICE when a text tier marks openvino unsupported", () => {
+		const env: NodeJS.ProcessEnv = {};
+		const result = applyUnsupportedKernelEnv(env, {
+			unsupportedKernels: ["openvino"],
+		});
+		expect(result.GGML_OPENVINO_DISABLE).toBe("1");
+		expect(result.GGML_OPENVINO_DEVICE).toBe("NONE");
+	});
+
+	it("leaves the env untouched when optimizations is null", () => {
+		const env: NodeJS.ProcessEnv = { FOO: "bar" };
+		const result = applyUnsupportedKernelEnv(env, null);
+		expect(result.GGML_OPENVINO_DISABLE).toBeUndefined();
+		expect(result.GGML_OPENVINO_DEVICE).toBeUndefined();
+		expect(result.FOO).toBe("bar");
+	});
+
+	it("leaves the env untouched when unsupportedKernels is empty", () => {
+		const env: NodeJS.ProcessEnv = {};
+		const result = applyUnsupportedKernelEnv(env, {
+			unsupportedKernels: [],
+		});
+		expect(result.GGML_OPENVINO_DISABLE).toBeUndefined();
+		expect(result.GGML_OPENVINO_DEVICE).toBeUndefined();
+	});
+
+	it("only sets the OpenVINO env when openvino is the listed kernel", () => {
+		const env: NodeJS.ProcessEnv = {};
+		const result = applyUnsupportedKernelEnv(env, {
+			unsupportedKernels: ["turbo3"],
+		});
+		expect(result.GGML_OPENVINO_DISABLE).toBeUndefined();
+		expect(result.GGML_OPENVINO_DEVICE).toBeUndefined();
+	});
+
+	it("overrides a pre-existing GGML_OPENVINO_DEVICE the user set to keep ASR routing for text spawns", () => {
+		// A user who set GGML_OPENVINO_DEVICE=NPU for their ASR worker shouldn't
+		// leak that selection into the text llama-server spawn — the text path
+		// owns this env on its own child env.
+		const env: NodeJS.ProcessEnv = { GGML_OPENVINO_DEVICE: "NPU" };
+		const result = applyUnsupportedKernelEnv(env, {
+			unsupportedKernels: ["openvino"],
+		});
+		expect(result.GGML_OPENVINO_DEVICE).toBe("NONE");
+		expect(result.GGML_OPENVINO_DISABLE).toBe("1");
 	});
 });
