@@ -36,7 +36,7 @@
  *   --out <path>           Output file (default:
  *                          `<bundle>/cache/voice-preset-<voice>.bin`).
  *   --bundle <dir>         Bundle root for default `--out` resolution.
- *                          Default: `~/.eliza/local-inference/models/eliza-1-1_7b.bundle`.
+ *                          Default: `~/.eliza/local-inference/models/eliza-1-2b.bundle`.
  *   --instruct <text>      Resolved VoiceDesign instruct string.
  *                          Default: empty (model picks from reference audio).
  *   --max-seconds <n>      Max reference duration in seconds (default 15).
@@ -74,7 +74,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-1_7b.bundle",
+  "eliza-1-2b.bundle",
 );
 const DEFAULT_MAX_SECONDS = 15;
 
@@ -88,7 +88,7 @@ function usage(code = 0) {
       "  --corpus <dir>         Corpus root (with manifest.jsonl or audio/*.txt)",
       "  --ai-voices-dir <dir>  Alias for the audio/ sub-directory",
       "  --out <path>           Output file (default <bundle>/cache/voice-preset-<voice>.bin)",
-      "  --bundle <dir>         Bundle root (default eliza-1-1_7b.bundle)",
+      "  --bundle <dir>         Bundle root (default eliza-1-2b.bundle)",
       "  --instruct <text>      VoiceDesign instruct string",
       "  --max-seconds <n>      Max reference seconds (default 15)",
       "  --skip-encode          Skip FFI encode (writes refText+instruct only)",
