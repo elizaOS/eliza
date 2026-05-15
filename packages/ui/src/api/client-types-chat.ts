@@ -206,6 +206,19 @@ export interface ConversationMessage {
   localInference?: LocalInferenceChatMetadata;
   /** Structured sensitive/private information request metadata. */
   secretRequest?: ConversationSecretRequest;
+  /**
+   * Voice speaker attribution carried back from the server when this turn was
+   * captured via voice and R2's speaker-id pipeline labelled it. Populated by
+   * the runtime's voice ingress path; absent for text turns and assistant
+   * responses. Mirrors the `ChatVoiceSpeaker` shape consumed by the chat
+   * renderer.
+   */
+  voiceSpeaker?: {
+    entityId?: string;
+    name?: string;
+    userName?: string;
+    isOwner?: boolean;
+  };
 }
 
 export type ConversationChannelType =
