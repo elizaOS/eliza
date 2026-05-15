@@ -141,6 +141,40 @@ describe("VoiceCancellationCoordinator — barge-in fan-out", () => {
 		expect(slotAbort).toHaveBeenCalledTimes(1);
 	});
 
+	it("bindBargeInController translates hard-stop into coordinator.bargeIn", () => {
+		const rt = makeFakeRuntime();
+		const slotAbort = vi.fn();
+		const ttsStop = vi.fn();
+		const c = new VoiceCancellationCoordinator({
+			runtime: rt,
+			slotAbort,
+			ttsStop,
+		});
+		const bic = new BargeInController();
+		const token = c.armTurn({ roomId: "r1", runId: "t1", slot: 9 });
+		const unsub = c.bindBargeInController("r1", bic);
+
+		// Simulate the agent speaking + an authoritative ASR word event so the
+		// controller's onWordsDetected promotes pause-tts into hard-stop.
+		bic.setAgentSpeaking(true);
+		// Pretend VAD just reported speech-active (sets the deadline window).
+		// We dispatch directly via `hardStop` for a deterministic test —
+		// barge-in.test.ts covers the VAD→words ladder.
+		bic.hardStop("barge-in-words");
+		expect(token.aborted).toBe(true);
+		expect(token.reason).toBe("barge-in");
+		expect(rt.abortCalls).toEqual([{ roomId: "r1", reason: "barge-in" }]);
+		expect(slotAbort).toHaveBeenCalledWith(9, "barge-in");
+		expect(ttsStop).toHaveBeenCalledWith("barge-in");
+
+		unsub();
+		// Subsequent hard-stops on a torn-down binding are inert.
+		const second = c.armTurn({ roomId: "r1", runId: "t2", slot: 9 });
+		bic.reset();
+		bic.hardStop("manual");
+		expect(second.aborted).toBe(false);
+	});
+
 	it("listener errors do not block fan-out", () => {
 		const rt = makeFakeRuntime();
 		// First fan-out callback throws; ttsStop must still fire.

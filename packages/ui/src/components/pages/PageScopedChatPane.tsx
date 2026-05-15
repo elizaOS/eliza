@@ -18,9 +18,18 @@ import type {
   ImageAttachment,
 } from "../../api/client-types";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
+import { useContinuousChat } from "../../hooks/useContinuousChat";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
+import {
+  loadContinuousChatMode,
+  saveContinuousChatMode,
+} from "../../state/persistence";
+import type {
+  VoiceContinuousMode,
+  VoiceSpeakerMetadata,
+} from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
 import {
@@ -32,6 +41,8 @@ import {
 } from "../chat/connector-send-as";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { Spinner } from "../ui/spinner";
 import {
   buildPageScopedConversationMetadata,
@@ -184,6 +195,18 @@ export function PageScopedChatPane({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [imageDragOver, setImageDragOver] = useState(false);
   const [voicePreview, setVoicePreview] = useState("");
+  const [voiceSpeaker, setVoiceSpeaker] = useState<VoiceSpeakerMetadata | null>(
+    null,
+  );
+  const [continuousChatMode, setContinuousChatMode] =
+    useState<VoiceContinuousMode>(loadContinuousChatMode);
+  const handleContinuousChatModeChange = useCallback(
+    (next: VoiceContinuousMode) => {
+      setContinuousChatMode(next);
+      saveContinuousChatMode(next);
+    },
+    [],
+  );
   const [sending, setSending] = useState(false);
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const [clearing, setClearing] = useState(false);
