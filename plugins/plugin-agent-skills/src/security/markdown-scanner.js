@@ -4,6 +4,7 @@
  * pipe-to-shell, prompt injection, credential exfiltration instructions.
  */
 import { truncateEvidence } from "./types";
+
 const MARKDOWN_EXTENSIONS = new Set([".md", ".mdx", ".markdown"]);
 export function isMarkdown(filePath) {
     const dotIndex = filePath.lastIndexOf(".");

@@ -7,6 +7,7 @@
  */
 import { extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
+
 const SKILL_SEARCH_LIMIT = 5;
 const SKILL_INSTALL_TEXT_MAX_CHARS = 3_000;
 function truncateInstallSkillText(text) {

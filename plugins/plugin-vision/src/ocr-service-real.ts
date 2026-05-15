@@ -297,7 +297,10 @@ export class RealOCRService {
       );
 
       if (listMatch || numberedMatch) {
-        const itemText = listMatch ? listMatch[1] : numberedMatch?.[2];
+        const itemText = listMatch?.[1] ?? numberedMatch?.[2];
+        if (!itemText) {
+          continue;
+        }
         currentList.push(itemText.trim());
 
         if (!listBounds) {

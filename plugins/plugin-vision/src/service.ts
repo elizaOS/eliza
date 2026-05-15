@@ -261,7 +261,7 @@ export class VisionService extends Service {
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",
-        this.DEFAULT_CONFIG.ocrEnabled,
+        this.DEFAULT_CONFIG.ocrEnabled ?? true,
       ),
     };
   }

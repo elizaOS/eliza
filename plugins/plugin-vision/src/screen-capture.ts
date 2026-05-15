@@ -21,6 +21,63 @@ const execAsync = promisify(exec);
 const MIN_TILER_EDGE = 64;
 const SINGLE_DISPLAY_ID = "primary";
 
+/**
+ * Project a tiler ScreenTile onto the plugin-vision ScreenTile shape consumed
+ * by `service.ts` and `ocr-service.ts`. We carry through `displayId`,
+ * `sourceX`, and `sourceY` for absolute-coord reconstruction; `row`/`col` are
+ * recovered from the tiler id (`tile-<row>-<col>`).
+ */
+function toVisionTile(
+  tile: TilerScreenTile,
+  index: number,
+  total: number,
+): ScreenTile {
+  const { row, col } = parseTilerId(tile.id, index, total);
+  return {
+    id: tile.id,
+    row,
+    col,
+    x: tile.sourceX,
+    y: tile.sourceY,
+    width: tile.tileW,
+    height: tile.tileH,
+    displayId: tile.displayId,
+    sourceX: tile.sourceX,
+    sourceY: tile.sourceY,
+  };
+}
+
+const TILER_ID_RE = /^tile-(\d+)-(\d+)$/;
+
+function parseTilerId(
+  id: string,
+  index: number,
+  total: number,
+): { row: number; col: number } {
+  const match = TILER_ID_RE.exec(id);
+  if (match?.[1] && match[2]) {
+    return {
+      row: Number.parseInt(match[1], 10),
+      col: Number.parseInt(match[2], 10),
+    };
+  }
+  // Fall back to a single-row layout when the id format ever drifts.
+  const cols = Math.max(1, total);
+  return { row: Math.floor(index / cols), col: index % cols };
+}
+
+function computeCols(tiles: TilerScreenTile[]): number {
+  let maxCol = 0;
+  for (const tile of tiles) {
+    const match = TILER_ID_RE.exec(tile.id);
+    if (match?.[2]) {
+      const col = Number.parseInt(match[2], 10);
+      if (col > maxCol) maxCol = col;
+    }
+  }
+  return maxCol + 1;
+}
+
 export class ScreenCaptureService {
   private config: VisionConfig;
   private activeTileIndex = 0;
@@ -95,48 +152,41 @@ export class ScreenCaptureService {
       // Capture the screen
       await this.captureScreenToFile(tempFile);
 
-      // Load and process the image
+      // Load and decode the image. The tiler does its own crop/extract so we
+      // only need the metadata + raw bytes here.
       const imageBuffer = await fs.readFile(tempFile);
-      const image = sharp(imageBuffer);
-      const metadata = await image.metadata();
+      const metadata = await sharp(imageBuffer).metadata();
 
       const width = metadata.width || 1920;
       const height = metadata.height || 1080;
 
-      // Create tiles
-      const tileSize = this.config.tileSize || 256;
-      const tiles: ScreenTile[] = [];
-
-      for (let row = 0; row < Math.ceil(height / tileSize); row++) {
-        for (let col = 0; col < Math.ceil(width / tileSize); col++) {
-          const x = col * tileSize;
-          const y = row * tileSize;
-          const tileWidth = Math.min(tileSize, width - x);
-          const tileHeight = Math.min(tileSize, height - y);
-
-          tiles.push({
-            id: `tile-${row}-${col}`,
-            row,
-            col,
-            x,
-            y,
-            width: tileWidth,
-            height: tileHeight,
-          });
-        }
-      }
+      // Hand layout to the overlap-aware tiler. It sizes tiles to the model
+      // sweet spot (Qwen3.5-VL) and seams them with overlap so glyphs that
+      // straddle a boundary still appear intact in at least one tile.
+      const maxEdge = Math.max(MIN_TILER_EDGE, this.config.tileSize ?? DEFAULT_MAX_EDGE);
+      const tilerTiles = await tileScreenshot(
+        {
+          displayId: SINGLE_DISPLAY_ID,
+          width,
+          height,
+          pngBytes: imageBuffer,
+        },
+        { maxEdge, overlapFraction: DEFAULT_OVERLAP_FRACTION },
+      );
+      const tiles = tilerTiles.map((tile, index) =>
+        toVisionTile(tile, index, tilerTiles.length),
+      );
 
       // Process active tile based on order
+      const cols = computeCols(tilerTiles);
       if (this.config.tileProcessingOrder === "priority") {
         // Focus on center tiles first
-        const centerRow = Math.floor(
-          tiles.length / 2 / Math.ceil(width / tileSize),
+        const centerRow = Math.floor(tiles.length / 2 / cols);
+        const centerCol = Math.floor((tiles.length / 2) % cols);
+        this.activeTileIndex = Math.min(
+          tiles.length - 1,
+          centerRow * cols + centerCol,
         );
-        const centerCol = Math.floor(
-          (tiles.length / 2) % Math.ceil(width / tileSize),
-        );
-        this.activeTileIndex =
-          centerRow * Math.ceil(width / tileSize) + centerCol;
       } else if (this.config.tileProcessingOrder === "random") {
         this.activeTileIndex = Math.floor(Math.random() * tiles.length);
       } else {
@@ -144,24 +194,12 @@ export class ScreenCaptureService {
         this.activeTileIndex = (this.activeTileIndex + 1) % tiles.length;
       }
 
-      // Extract active tile data
+      // Tiler already produced a PNG buffer for every tile — wire the chosen
+      // one into the active slot for downstream OCR / VLM consumption.
       const activeTile = tiles[this.activeTileIndex];
-      if (activeTile) {
-        try {
-          const tileBuffer = await image
-            .extract({
-              left: activeTile.x,
-              top: activeTile.y,
-              width: activeTile.width,
-              height: activeTile.height,
-            })
-            .png()
-            .toBuffer();
-
-          activeTile.data = tileBuffer;
-        } catch (error) {
-          logger.error("[ScreenCapture] Failed to extract tile:", error);
-        }
+      const activeTilerTile = tilerTiles[this.activeTileIndex];
+      if (activeTile && activeTilerTile) {
+        activeTile.data = activeTilerTile.pngBytes;
       }
 
       // Clean up temp file
