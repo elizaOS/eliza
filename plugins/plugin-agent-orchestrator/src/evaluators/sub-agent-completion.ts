@@ -28,6 +28,13 @@ function textOf(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function stringArrayOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => textOf(entry))
+    .filter((entry) => entry.length > 0);
+}
+
 function hasStrings(values: readonly string[] | undefined): boolean {
   return (
     Array.isArray(values) && values.some((value) => value.trim().length > 0)
@@ -43,14 +50,45 @@ function normalizedActionHints(
     .filter((value) => value.length > 0);
 }
 
-function hasOnlyGenericTaskHints(values: readonly string[] | undefined) {
+function hasOnlyStaleCompletionHints(values: readonly string[] | undefined) {
   const hints = normalizedActionHints(values);
-  return hints.length > 0 && hints.every((hint) => hint === "TASKS");
+  return (
+    hints.length > 0 &&
+    hints.every(
+      (hint) =>
+        hint === "TASKS" ||
+        hint === "SPAWN_AGENT" ||
+        hint === "TASKS_SPAWN_AGENT",
+    )
+  );
 }
 
 function hasUrl(text: string): boolean {
   URL_IN_TEXT_RE.lastIndex = 0;
   return URL_IN_TEXT_RE.test(text);
+}
+
+function userFacingVerifiedUrl(urls: readonly string[]): string | undefined {
+  const parsed = urls
+    .map((url) => {
+      try {
+        return { url, parsed: new URL(url) };
+      } catch {
+        return undefined;
+      }
+    })
+    .filter(
+      (entry): entry is { url: string; parsed: URL } => entry !== undefined,
+    );
+  return (
+    parsed.find((entry) => !isLoopbackHost(entry.parsed.hostname))?.url ??
+    parsed[0]?.url
+  );
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
 function looksLikeCapturedToolOutput(text: string): boolean {
@@ -133,6 +171,10 @@ function completionHasVerificationFailure(text: string): boolean {
   );
 }
 
+function verifiedUrlsFromMetadata(message: Memory): string[] {
+  return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
+}
+
 function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   const content = contentRecord(message);
   const metadata = metadataRecord(message);
@@ -147,10 +189,13 @@ function isSuccessfulSubAgentCompletion(message: Memory): boolean {
 function replyPatchFromCompletion(
   currentReply: string,
   completionText: string,
+  verifiedUrls: readonly string[] = [],
 ) {
   const body = userFacingCompletionBody(completionText);
-  if (!body) return undefined;
+  const verifiedUrl = userFacingVerifiedUrl(verifiedUrls);
+  if (!body && !verifiedUrl) return undefined;
   if (hasUrl(currentReply)) return currentReply;
+  if (verifiedUrl) return verifiedUrl;
   if (currentReply.length === 0) return body;
   if (!hasUrl(currentReply) && hasUrl(body)) return body;
   return body;
@@ -159,9 +204,14 @@ function replyPatchFromCompletion(
 function hasVerifiedCompletionReply(
   currentReply: string,
   completionText: string,
+  verifiedUrls: readonly string[] = [],
 ) {
   const body = userFacingCompletionBody(completionText);
-  return hasUrl(currentReply) || hasUrl(body);
+  return (
+    hasUrl(currentReply) ||
+    hasUrl(body) ||
+    userFacingVerifiedUrl(verifiedUrls) !== undefined
+  );
 }
 
 export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
@@ -174,29 +224,33 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     if (messageHandler.processMessage !== "RESPOND") return false;
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
+    const verifiedUrls = verifiedUrlsFromMetadata(message);
+    if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
+      return true;
     const hasConcreteFollowUp =
       hasStrings(messageHandler.plan.candidateActions) &&
-      !hasOnlyGenericTaskHints(messageHandler.plan.candidateActions);
+      !hasOnlyStaleCompletionHints(messageHandler.plan.candidateActions);
     const hasConcreteParentHint =
       hasStrings(messageHandler.plan.parentActionHints) &&
-      !hasOnlyGenericTaskHints(messageHandler.plan.parentActionHints);
+      !hasOnlyStaleCompletionHints(messageHandler.plan.parentActionHints);
     if (hasConcreteFollowUp || hasConcreteParentHint) return false;
-    if (
-      hasStrings(messageHandler.plan.candidateActions) ||
-      hasStrings(messageHandler.plan.parentActionHints)
-    ) {
-      return hasVerifiedCompletionReply(currentReply, completionText);
-    }
     return true;
   },
   evaluate: ({ message, messageHandler }) => {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
-    const reply = replyPatchFromCompletion(currentReply, completionText);
+    const verifiedUrls = verifiedUrlsFromMetadata(message);
+    const reply = replyPatchFromCompletion(
+      currentReply,
+      completionText,
+      verifiedUrls,
+    );
     if (reply && hasUrl(reply)) {
       return {
         requiresTool: false,
         setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
         reply,
         debug: [
           "verified sub-agent completion has no concrete follow-up action; using direct reply",
@@ -219,6 +273,8 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     return {
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
       ...(reply ? { reply } : {}),
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",

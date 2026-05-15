@@ -2,6 +2,10 @@ import { v4 } from "uuid";
 import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
+	DEFAULT_SUBACTION_KEYS,
+	normalizeSubaction,
+} from "../actions/subaction-dispatch";
+import {
 	actionToTool,
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
@@ -2919,6 +2923,7 @@ function inferAckIntentCandidateActions(
 	if (looksLikeCodingDelegationRequest(actionText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
+			"TASKS_SPAWN_AGENT",
 			"SPAWN_AGENT",
 			"START_CODING_TASK",
 			"CODE_TASK",
@@ -2952,6 +2957,7 @@ function inferDirectCurrentRequestCandidateActions(
 	if (looksLikeCodingDelegationRequest(messageText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
+			"TASKS_SPAWN_AGENT",
 			"SPAWN_AGENT",
 			"START_CODING_TASK",
 			"CODE_TASK",
@@ -3558,7 +3564,11 @@ async function executeV5PlannedToolCall(
 		(candidate) => candidate.name === toolCall.name,
 	);
 
-	if (action && actionHasSubActions(action)) {
+	if (
+		action &&
+		actionHasSubActions(action) &&
+		!hasExplicitSubActionDispatch(action, toolCall)
+	) {
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
 			action,
@@ -3582,6 +3592,47 @@ async function executeV5PlannedToolCall(
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
 	return actionResultToPlannerToolResult(actionResult);
+}
+
+function hasExplicitSubActionDispatch(
+	action: Action,
+	toolCall: PlannerToolCall,
+): boolean {
+	const rawParams =
+		(toolCall as { params?: unknown; args?: unknown; arguments?: unknown })
+			.params ??
+		(toolCall as { args?: unknown }).args ??
+		(toolCall as { arguments?: unknown }).arguments;
+	const params = parseToolArguments(rawParams) ?? {};
+	if (Object.keys(params).length === 0) {
+		return false;
+	}
+	for (const parameter of action.parameters ?? []) {
+		const name = parameter.name;
+		if (
+			typeof name !== "string" ||
+			!DEFAULT_SUBACTION_KEYS.includes(name) ||
+			!(name in params)
+		) {
+			continue;
+		}
+		const schema = parameter.schema as {
+			enum?: unknown[];
+			enumValues?: unknown[];
+		};
+		const enumValues = schema.enumValues ?? schema.enum;
+		if (!Array.isArray(enumValues) || enumValues.length === 0) {
+			continue;
+		}
+		const value = normalizeSubaction(params[name]);
+		if (!value) {
+			continue;
+		}
+		if (enumValues.some((entry) => normalizeSubaction(entry) === value)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 export function subPlannerResultToPlannerToolResult(
@@ -5557,6 +5608,16 @@ function looksLikeCodingDelegationRequest(text: string): boolean {
 		return false;
 	}
 
+	const asksCodingWork =
+		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|web\s+app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:app|web\s+app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		);
+
+	if (asksCodingWork) return true;
+
 	const asksDelegation =
 		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
 			normalized,
@@ -5565,14 +5626,6 @@ function looksLikeCodingDelegationRequest(text: string): boolean {
 			normalized,
 		);
 	if (!asksDelegation) return false;
-
-	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
-			normalized,
-		);
 	return asksCodingWork;
 }
 

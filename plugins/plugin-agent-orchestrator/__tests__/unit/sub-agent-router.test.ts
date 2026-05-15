@@ -497,6 +497,36 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("stores verified reference URLs in metadata when completion text omits them", async () => {
+      const appBase = "https://example.test/apps/reference-only/";
+      const fetchMock = vi.fn(async () => {
+        return new Response("<html><body>ok</body></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask(`build and verify ${appBase}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: "Created the app directory and files.",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      const metadata = posted?.content?.metadata as
+        | Record<string, unknown>
+        | undefined;
+      expect(metadata?.subAgentVerifiedUrls).toEqual([appBase]);
+    });
+
     it("ignores model-introduced same-path external URL aliases when the requested target verifies", async () => {
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);

@@ -59,6 +59,8 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
       reply: "https://example.test/apps/demo/",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
@@ -83,6 +85,8 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
       reply: "https://example.test/apps/demo/",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
@@ -107,6 +111,8 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
       reply: "The static app is live at https://example.test/apps/demo/",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
@@ -131,6 +137,8 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
       reply: "Root / is 84% used. /home is 57% used.",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
@@ -181,6 +189,8 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
       reply: "Root / is 84% used with 7.0G available.",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
@@ -190,6 +200,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
 
   it("keeps the normal action layer when Stage 1 requested a follow-up action", async () => {
     const context = makeContext({
+      text: "[sub-agent: demo (opencode) — task_complete]\nThe app still needs an API key before it can finish.",
       messageHandler: {
         plan: {
           contexts: ["general"],
@@ -201,6 +212,91 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
+  });
+
+  it("overrides stale concrete action hints when the verified completion already has a URL reply", async () => {
+    const context = makeContext({
+      text: "[sub-agent: demo (opencode) — task_complete]\n[tool output: tool output]\nNo files found\n[/tool output]\nYour app is live at https://example.test/apps/demo/.",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "Your app is live at https://example.test/apps/demo/.",
+          requiresTool: true,
+          candidateActions: ["SHELL"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "Your app is live at https://example.test/apps/demo/.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("uses router-verified URLs when the sub-agent completion text omits them", async () => {
+    const context = makeContext({
+      text: "[sub-agent: demo (opencode) — task_complete]\nCreated app directory and files.",
+      metadata: {
+        subAgentVerifiedUrls: [
+          "http://127.0.0.1:6900/apps/demo/",
+          "https://example.test/apps/demo/",
+        ],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "On it — spawning opencode sub-agent now.",
+          requiresTool: true,
+          candidateActions: ["TASKS_SPAWN_AGENT"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "https://example.test/apps/demo/",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("does not respawn after a successful completion when Stage 1 inferred a stale spawn hint", async () => {
+    const context = makeContext({
+      text: "[sub-agent: tweet app (opencode) — task_complete]\nCreated the random tweet app files and verified the build.",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "On it — spawning opencode sub-agent to handle your request.",
+          requiresTool: true,
+          candidateActions: ["TASKS_SPAWN_AGENT"],
+          parentActionHints: ["TASKS"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "Created the random tweet app files and verified the build.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
   });
 
   it("does not suppress incomplete build reports", async () => {

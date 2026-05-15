@@ -266,6 +266,200 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("preserves direct app-build routing when explicitly addressed Stage 1 stays empty", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			{
+				thought: "A coding task should be delegated.",
+				toolCalls: [
+					{
+						id: "spawn-app-builder",
+						name: "TASKS_SPAWN_AGENT",
+						args: { task: "Build a random tweet app." },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The app-build task was delegated.",
+				messageToUser: "Started the app build.",
+			}),
+		]);
+		const fileHandler = vi.fn(async () => ({
+			success: true,
+			text: "File should not be selected first.",
+			data: { actionName: "FILE" },
+		}));
+		const taskHandler = vi.fn(async () => ({
+			success: true,
+			text: "Spawned coding agent.",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		runtime.actions = [
+			{
+				name: "FILE",
+				similes: ["WRITE_FILE"],
+				description: "Read or write files directly.",
+				examples: [],
+				validate: async () => true,
+				handler: fileHandler,
+			},
+			{
+				name: "TASKS_SPAWN_AGENT",
+				similes: ["SPAWN_AGENT"],
+				description: "Spawn a coding task agent.",
+				parameters: [
+					{
+						name: "task",
+						description: "Coding task to perform",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: taskHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "build an app that generates a random tweet",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(taskHandler).toHaveBeenCalledTimes(1);
+		expect(fileHandler).not.toHaveBeenCalled();
+		const calls = useModelCalls(runtime);
+		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[3]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain(
+			'"candidateActions":["TASKS_SPAWN_AGENT"]',
+		);
+		expect(plannerUserContent).toContain(
+			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+		);
+	});
+
+	it("executes an umbrella action directly when the planner supplies its dispatcher enum", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			{
+				thought: "A coding task should be delegated.",
+				toolCalls: [
+					{
+						id: "spawn-app-builder",
+						name: "TASKS",
+						args: {
+							action: "spawn_agent",
+							task: "Build a random tweet app.",
+						},
+					},
+				],
+			},
+		]);
+		const parentHandler = vi.fn(async (_runtime, _message, _state, options) => {
+			expect(options.parameters).toMatchObject({
+				action: "spawn_agent",
+				task: "Build a random tweet app.",
+			});
+			return {
+				success: true,
+				text: "Spawned coding agent.",
+				continueChain: false,
+				data: { actionName: "TASKS" },
+			};
+		});
+		const childHandler = vi.fn(async () => ({
+			success: true,
+			text: "Child should not be selected by a sub-planner.",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		runtime.actions = [
+			{
+				name: "TASKS",
+				similes: ["SPAWN_AGENT"],
+				description: "Planner surface for coding task delegation.",
+				parameters: [
+					{
+						name: "action",
+						description: "Task operation",
+						required: false,
+						schema: { type: "string", enum: ["create", "spawn_agent"] },
+					},
+					{
+						name: "task",
+						description: "Coding task to perform",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				subActions: ["TASKS_SPAWN_AGENT"],
+				examples: [],
+				validate: async () => true,
+				handler: parentHandler,
+			},
+			{
+				name: "TASKS_SPAWN_AGENT",
+				similes: ["SPAWN_AGENT"],
+				description: "Spawn a coding task agent.",
+				parameters: [
+					{
+						name: "task",
+						description: "Coding task to perform",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: childHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "build an app that generates a random tweet",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(parentHandler).toHaveBeenCalledTimes(1);
+		expect(childHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Spawned coding agent.");
+		}
+	});
+
 	it("preserves direct current-info candidates when explicitly addressed Stage 1 stays empty", async () => {
 		const runtime = makeRuntime([
 			"",

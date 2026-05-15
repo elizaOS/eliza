@@ -68,7 +68,12 @@ function extractVerifiableUrls(
   referenceText?: string,
   ignoredUrls?: ReadonlySet<string>,
 ): string[] {
-  const candidates = collectVerifiableUrlCandidates(text, ignoredUrls);
+  const candidates = [
+    ...collectVerifiableUrlCandidates(text, ignoredUrls),
+    ...(referenceText
+      ? collectVerifiableUrlCandidates(referenceText, ignoredUrls)
+      : []),
+  ].filter((url, index, all) => all.indexOf(url) === index);
   const filtered = candidates.filter((url) => {
     const prefix = url.endsWith("/") ? url : `${url}/`;
     return !candidates.some(
@@ -76,7 +81,7 @@ function extractVerifiableUrls(
     );
   });
   const referenceUrls = referenceText
-    ? new Set(collectVerifiableUrlCandidates(referenceText))
+    ? new Set(collectVerifiableUrlCandidates(referenceText, ignoredUrls))
     : undefined;
   const routeFocused = referenceUrls?.size
     ? filterToReferencedAppRoute(filtered, referenceUrls)
@@ -420,6 +425,7 @@ export class SubAgentRouter {
     // accurate status report.
     let text = baseText;
     let deadUrls: DeadUrl[] = [];
+    let verifiedUrls: string[] = [];
     if (event === "task_complete") {
       const meta = session.metadata as Record<string, unknown> | undefined;
       const verificationReferenceText =
@@ -434,6 +440,7 @@ export class SubAgentRouter {
       );
       text = verified.text;
       deadUrls = verified.dead;
+      verifiedUrls = verified.verifiedUrls;
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -466,6 +473,9 @@ export class SubAgentRouter {
           subAgentRoundTrip: nextCount,
           subAgentRoundTripCap: this.roundTripCap,
           ...(capExceeded ? { subAgentCapExceeded: true } : {}),
+          ...(verifiedUrls.length > 0
+            ? { subAgentVerifiedUrls: verifiedUrls }
+            : {}),
           ...(origin.userId ? { originUserId: origin.userId } : {}),
           ...(origin.parentMessageId
             ? { originMessageId: origin.parentMessageId }
@@ -835,9 +845,9 @@ async function annotateUnverifiedUrls(
   referenceText?: string,
   ignoredUrls?: ReadonlySet<string>,
   runtime?: IAgentRuntime,
-): Promise<{ text: string; dead: DeadUrl[] }> {
+): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
   const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
-  if (urls.length === 0) return { text, dead: [] };
+  if (urls.length === 0) return { text, dead: [], verifiedUrls: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
   );
@@ -947,7 +957,7 @@ async function annotateUnverifiedUrls(
   log?.(
     `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
   );
-  if (dead.length === 0) return { text, dead };
+  if (dead.length === 0) return { text, dead, verifiedUrls: urls };
   const lines = dead
     .map((d) =>
       d.via
@@ -958,6 +968,9 @@ async function annotateUnverifiedUrls(
   return {
     text: `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`,
     dead,
+    verifiedUrls: urls.filter(
+      (url) => !dead.some((entry) => entry.url === url || entry.via === url),
+    ),
   };
 }
 

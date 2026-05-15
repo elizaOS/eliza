@@ -323,6 +323,30 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe("");
 	});
 
+	it("infers TASKS for direct app-build requests without explicit sub-agent wording", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [TASKS_SPAWN_AGENT],
+				messageText: "build an app that generates a random tweet",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
 	it("adds a real lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
