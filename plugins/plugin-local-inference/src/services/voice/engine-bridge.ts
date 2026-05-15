@@ -31,12 +31,12 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { VoiceCancellationReason } from "@elizaos/shared";
 import {
 	type KokoroEngineDiscoveryResult,
 	KokoroOnnxRuntime,
 	KokoroTtsBackend,
-	type VoiceCancellationReason,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference";
 import { localInferenceRoot } from "../paths";
 import {
 	type CoordinatorRuntime,

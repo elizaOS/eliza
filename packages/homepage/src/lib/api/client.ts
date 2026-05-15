@@ -80,14 +80,14 @@ export async function elizacloudAuthFetch<T = unknown>(
   });
 }
 
-export class UnauthorizedError extends Error {
+class UnauthorizedError extends Error {
   constructor(message = "Unauthorized") {
     super(message);
     this.name = "UnauthorizedError";
   }
 }
 
-export async function elizacloudAuthFetchStrict<T = unknown>(
+async function elizacloudAuthFetchStrict<T = unknown>(
   path: string,
   init?: ApiRequestInit,
 ): Promise<T> {

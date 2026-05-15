@@ -50,6 +50,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
+    "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",

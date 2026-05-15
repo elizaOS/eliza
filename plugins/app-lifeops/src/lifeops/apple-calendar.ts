@@ -2,7 +2,7 @@
 import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
