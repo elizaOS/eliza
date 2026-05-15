@@ -453,6 +453,8 @@ export function request(): never {
   return unavailable("http.request");
 }
 
+export class ServerResponse {}
+
 export function connect(): never {
   return unavailable("net.connect");
 }
@@ -591,6 +593,7 @@ const nodeBuiltins = {
   rm,
   runInNewContext,
   scryptSync,
+  ServerResponse,
   sep,
   stat,
   statSync,
