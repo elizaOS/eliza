@@ -31,7 +31,9 @@ export interface VisionVastFallbackOptions {
 }
 
 function resolveVastApiKey(options: VisionVastFallbackOptions): string | null {
-	return options.apiKey?.trim() || process.env.ELIZA_VAST_API_KEY?.trim() || null;
+	return (
+		options.apiKey?.trim() || process.env.ELIZA_VAST_API_KEY?.trim() || null
+	);
 }
 
 function resolveVastBaseUrl(options: VisionVastFallbackOptions): string {
@@ -84,7 +86,9 @@ async function callVastVision(
 	if (!response.ok) {
 		throw new Error(`VAST image fallback failed with ${response.status}`);
 	}
-	return normalizeVisionDescription((await response.json()) as ImageDescriptionResult);
+	return normalizeVisionDescription(
+		(await response.json()) as ImageDescriptionResult,
+	);
 }
 
 export function wrapImageDescriptionHandlerWithVastFallback(
