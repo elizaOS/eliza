@@ -58,10 +58,11 @@ export function isDefaultEligibleId(id: string): boolean {
  * and for installs that depend on a private HF mirror).
  *
  * W3-12 audit (2026-05-14): the following tiers require publish attention:
- *   - `eliza-1-27b-1m`: bundle/manifest not yet present on HF. Gated on
- *     hardware (160 GB RAM requirement; multi-GPU cluster needed for both
- *     training and serving). Next step: provision H200 cluster, run
- *     stage_eliza1_bundle_assets.py --tier 27b-1m, push bundle.
+ *   - `eliza-1-27b-1m`: bundle staged 2026-05-15 (F4). Q4_K_M primary GGUF
+ *     (16.5 GB) converted from Qwen/Qwen3.6-27B on Nebius H200 with
+ *     `--override-kv llama.context_length=int:1048576` (YaRN 1M context).
+ *     Full quant ladder (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0) uploaded to
+ *     elizaos/eliza-1/bundles/27b-1m/. Eval gates pending (weights-staged).
  *   - `eliza-1-0_8b`: published but vision mmproj missing from bundle.
  *     `hasVision: true` in catalog but `vision/mmproj-0_8b.gguf` absent.
  *     Next step: quantize mmproj from Qwen3.5-0.8B VL variant, push to
@@ -80,8 +81,8 @@ export function isDefaultEligibleId(id: string): boolean {
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
 > = {
-  // 27b-1m bundle missing from HF — hardware-gated (160 GB RAM, H200 cluster).
-  "eliza-1-27b-1m": "pending",
+  // 27b-1m bundle staged 2026-05-15 (F4): weights-staged, eval gates pending.
+  // Remove entry once eval gates pass and bundle is promoted to published.
 };
 
 export function eliza1TierPublishStatus(
