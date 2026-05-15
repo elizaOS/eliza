@@ -1257,6 +1257,17 @@ function cmakeFlagsForTarget(target, ctx) {
   const isCross =
     platform === "android" || platform === "windows" || platform === "ios";
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
+  if (platform === "linux") {
+    // The build script copies executables and shared libraries out of the
+    // CMake build tree into the managed runtime directory. Keep Linux
+    // artifacts self-contained after that copy by resolving llama/ggml
+    // sidecar libraries next to the executable or shared object itself.
+    flags.push(
+      "-DCMAKE_BUILD_RPATH=$ORIGIN",
+      "-DCMAKE_INSTALL_RPATH=$ORIGIN",
+      "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
+    );
+  }
 
   // Disable backends we don't want by default; flip the chosen one back on.
   const offByDefault = [
@@ -3532,7 +3543,9 @@ function buildTarget({ target, args, ctx }) {
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.
-      ...(fused ? ["llama-omnivoice-server"] : []),
+      ...(fused
+        ? ["llama-omnivoice-server", "omnivoice-tts", "omnivoice-codec"]
+        : []),
     ];
     // Cross-compiled binaries can have a host-specific suffix (.exe). Match
     // by base name so Windows builds still install the right files.
@@ -3613,9 +3626,10 @@ function buildTarget({ target, args, ctx }) {
     cacheDir: args.cacheDir,
     forkCommit: ctx.forkCommit,
     binaries: installedBaseNames,
-    omnivoice:
-      fused && omnivoiceInfo
+    omnivoice: fused
+      ? omnivoiceInfo
         ? {
+            mode: "legacy-graft",
             ref: omnivoiceInfo.ref,
             commit: omnivoiceInfo.commit,
             ggmlSubmoduleCommit: omnivoiceInfo.ggmlSubmoduleCommit,
@@ -3624,7 +3638,16 @@ function buildTarget({ target, args, ctx }) {
             appliedPatches: omnivoiceInfo.appliedPatches,
             verification: omnivoiceVerification,
           }
-        : null,
+        : {
+            mode: "merged-tools/omnivoice",
+            commit: ctx.forkCommit,
+            cmake: {
+              LLAMA_BUILD_OMNIVOICE: true,
+              OMNIVOICE_SHARED: true,
+            },
+            verification: omnivoiceVerification,
+          }
+      : null,
   });
   console.log(
     `[dflash-build] installed ${target} binaries to ${outDir} (kernels: ${
