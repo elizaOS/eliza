@@ -176,6 +176,35 @@ def _looks_like_webshop_action(action_line: str) -> bool:
     )
 
 
+def _normalize_action_for_environment(
+    action_line: str,
+    available_actions: list[str],
+) -> str:
+    stripped = action_line.strip()
+    available_by_lower = {action.lower(): action for action in available_actions}
+    exact = available_by_lower.get(stripped.lower())
+    if exact:
+        return exact
+
+    lower = stripped.lower()
+    if lower == "buy" and "click[buy now]" in available_by_lower:
+        return available_by_lower["click[buy now]"]
+    if lower == "back" and "click[back to search]" in available_by_lower:
+        return available_by_lower["click[back to search]"]
+
+    select_match = re.match(
+        r"select_option\[[^,\]]+,\s*([^\]]+)\]$",
+        stripped,
+        re.IGNORECASE,
+    )
+    if select_match:
+        click_value = f"click[{select_match.group(1).strip().lower()}]"
+        if click_value in available_by_lower:
+            return available_by_lower[click_value]
+
+    return stripped
+
+
 class ElizaBridgeWebShopAgent:
     """WebShop agent driven by the eliza TS bridge (no Python AgentRuntime)."""
 
