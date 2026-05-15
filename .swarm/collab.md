@@ -624,6 +624,9 @@ Same hard rules: no worktrees, no stash, no branch hops, commit dirty
 code, coordinate here, don't kill peer processes. **HF token handling:**
 read from `HF_TOKEN` env. Never commit it.
 
+### H-wave cycle log (H5 watcher, newest at top)
+
+- 2026-05-15 H5 cycle=1 verify: RED on @elizaos/app-core#lint — 6 biome format errors (automations-compat-routes.ts, lifeops-fake-backend.ts, benchmark/plugin.ts, cli/profile.ts, mobile-safe-runtime.ts, phrase-chunked-tts.ts). Auto-fixed via biome. Committed db2950803b + pushed. H1/H2/H3 PIDs all DEAD; H4 phase=impl-done. green_streak=0.
 
 ---
 
