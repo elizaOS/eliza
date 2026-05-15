@@ -20,6 +20,8 @@
 			"@elizaos/plugin-local-inference": ["./src/index.ts"],
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
+			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/local-inference": [
 				"../../packages/shared/src/local-inference/index.ts"
@@ -28,6 +30,8 @@
 			"@elizaos/plugin-capacitor-bridge": [
 				"../plugin-capacitor-bridge/src/index.ts"
 			],
+			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
+			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],

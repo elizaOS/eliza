@@ -59,6 +59,12 @@
 			"@elizaos/plugin-local-inference/*": [
 				"../../../../plugins/plugin-local-inference/src/*"
 			],
+			"@elizaos/plugin-app-manager": [
+				"../../../../plugins/plugin-app-manager/src/index.ts"
+			],
+			"@elizaos/plugin-app-manager/*": [
+				"../../../../plugins/plugin-app-manager/src/*"
+			],
 			"@elizaos/plugin-workflow": [
 				"../../../../plugins/plugin-workflow/src/index.ts"
 			],

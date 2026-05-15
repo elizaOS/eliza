@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import textwrap
 import time
@@ -27,6 +28,7 @@ from pathlib import Path
 
 from .dataset import SWEBenchDataset
 from .evaluator import SWEBenchEvaluator
+from .repo_manager import RepositoryManager
 from .types import (
     PatchStatus,
     RepoStats,
@@ -70,6 +72,7 @@ _DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
 }
 _CLAUDE_AGENT_KEY_ENVS = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CLAUDE_CODE_API_KEY")
 _CODEX_AGENT_KEY_ENVS = ("OPENAI_API_KEY", "CODEX_API_KEY")
+_SUBTASK_PROVIDERS = {"opencode", "codex", "claude-code"}
 
 
 def _parse_required_capabilities(raw: str | None) -> list[str]:
@@ -249,6 +252,269 @@ def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
         "Do not include commentary outside the diff. The diff must be applicable with `git apply` from "
         "the repository root."
     )
+
+
+def _build_subtask_prompt(instance: SWEBenchInstance) -> str:
+    """Build a prompt for an external task agent running inside the checkout."""
+    return (
+        "You are working inside a freshly checked-out SWE-bench repository.\n"
+        "Edit the working tree to fix the issue below. Keep the fix narrow. "
+        "You may inspect files and run tests as needed. Do not commit changes. "
+        "When finished, leave the changes in the working tree and provide a brief "
+        "final note. If you cannot edit files directly, output a unified diff "
+        "starting with `diff --git`.\n\n"
+        f"Repository: {instance.repo}\n"
+        f"Base commit: {instance.base_commit}\n"
+        f"Instance: {instance.instance_id}\n\n"
+        "Problem statement:\n"
+        f"{instance.problem_statement}\n\n"
+        + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
+        + (
+            "Fail-to-pass tests named by SWE-bench:\n"
+            + "\n".join(f"- {test}" for test in instance.fail_to_pass)
+            + "\n\n"
+            if instance.fail_to_pass
+            else ""
+        )
+    )
+
+
+def _opencode_config_content(model_name: str) -> str:
+    """Return an OpenCode config for Cerebras/OpenAI-compatible SWE-bench runs."""
+    return json.dumps(
+        {
+            "$schema": "https://opencode.ai/config.json",
+            "model": model_name,
+            "share": "disabled",
+            "autoupdate": False,
+            "provider": {
+                "cerebras": {
+                    "name": "Cerebras",
+                    "npm": "@ai-sdk/openai-compatible",
+                    "env": ["CEREBRAS_API_KEY"],
+                    "options": {
+                        "baseURL": "https://api.cerebras.ai/v1",
+                        "timeout": 600000,
+                    },
+                    "models": {
+                        "gpt-oss-120b": {
+                            "name": "gpt-oss-120b",
+                            "tool_call": True,
+                            "reasoning": False,
+                            "interleaved": False,
+                            "limit": {"context": 131072, "output": 65536},
+                        }
+                    },
+                }
+            },
+            "permission": {"edit": "allow", "bash": "allow"},
+            "tool_output": {"max_lines": 200, "max_bytes": 20000},
+        }
+    )
+
+
+def _resolve_subtask_executable(provider: str) -> str:
+    """Find the external task-agent executable for a provider."""
+    env_key = {
+        "opencode": "OPENCODE_BIN",
+        "codex": "CODEX_BIN",
+        "claude-code": "CLAUDE_BIN",
+    }.get(provider)
+    if env_key and os.environ.get(env_key):
+        return os.environ[env_key]
+
+    candidates = {
+        "opencode": ["opencode", str(Path.home() / ".opencode" / "bin" / "opencode")],
+        "codex": ["codex"],
+        "claude-code": ["claude"],
+    }.get(provider)
+    if candidates is None:
+        raise ValueError(f"unsupported subtask provider: {provider}")
+
+    for candidate in candidates:
+        resolved = shutil.which(candidate) if os.sep not in candidate else candidate
+        if resolved and Path(resolved).exists():
+            return resolved
+    raise FileNotFoundError(
+        f"{provider} executable not found; install it or set {env_key}"
+    )
+
+
+def _provider_model_name(provider: str, model_name: str | None) -> str:
+    """Normalize model labels for provider CLIs."""
+    raw = model_name or "cerebras/gpt-oss-120b"
+    if provider == "opencode":
+        return raw if "/" in raw else f"cerebras/{raw}"
+    return raw
+
+
+def _subtask_provider_command(
+    provider: str,
+    model_name: str | None,
+) -> list[str]:
+    """Build the non-interactive provider command; prompt is sent on stdin."""
+    binary = _resolve_subtask_executable(provider)
+    model = _provider_model_name(provider, model_name)
+    if provider == "opencode":
+        return [
+            binary,
+            "run",
+            "--model",
+            model,
+            "--format",
+            "json",
+            "--dangerously-skip-permissions",
+        ]
+    if provider == "codex":
+        return [
+            binary,
+            "exec",
+            "--sandbox",
+            "danger-full-access",
+            "--skip-git-repo-check",
+            "--model",
+            model,
+        ]
+    if provider == "claude-code":
+        return [binary, "-p", "--model", model]
+    raise ValueError(f"unsupported subtask provider: {provider}")
+
+
+def _subtask_provider_env(provider: str, model_name: str | None) -> dict[str, str]:
+    env = dict(os.environ)
+    if provider == "opencode":
+        model = _provider_model_name(provider, model_name)
+        if model.startswith("cerebras/"):
+            env.setdefault("OPENCODE_CONFIG_CONTENT", _opencode_config_content(model))
+    return env
+
+
+async def _run_subtask_provider_instance(
+    provider: str,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None = None,
+) -> SWEBenchResult:
+    """Run one instance by delegating the repo edit to an external task agent."""
+    started = time.time()
+    manager = RepositoryManager(config.workspace_dir)
+    try:
+        repo_root = await manager.setup_repo(instance)
+        prompt = _build_subtask_prompt(instance)
+        cmd = _subtask_provider_command(provider, model_name)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(repo_root),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=_subtask_provider_env(provider, model_name),
+        )
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(prompt.encode("utf-8")),
+            timeout=config.timeout_seconds,
+        )
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        patch = await manager.get_diff()
+        if not patch:
+            emitted_patch = _extract_patch(stdout)
+            if not emitted_patch:
+                emitted_patch = _extract_patch(stderr)
+            if emitted_patch:
+                ok, error = await manager.apply_patch(emitted_patch)
+                if ok:
+                    patch = await manager.get_diff()
+                else:
+                    patch = emitted_patch
+                    stderr = (stderr + "\n" + error).strip()
+
+        if not patch:
+            preview = textwrap.shorten(
+                (stdout + "\n" + stderr).replace("\n", " "),
+                width=500,
+                placeholder="...",
+            )
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch="",
+                patch_status=PatchStatus.NOT_GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - started,
+                tokens_used=None,
+                error=(
+                    f"{provider} produced no working-tree diff; "
+                    f"exit_code={process.returncode}; preview={preview}"
+                ),
+                status=f"subtask_provider={provider}",
+            )
+
+        result = await evaluator.evaluate_patch(instance, patch)
+        result.duration_seconds = time.time() - started
+        status_bits = [result.status or "", f"subtask_provider={provider}"]
+        if process.returncode not in (0, None):
+            status_bits.append(f"provider_exit={process.returncode}")
+            if not result.error:
+                result.error = f"{provider} exited with code {process.returncode}"
+        result.status = " ".join(bit for bit in status_bits if bit).strip()
+        return result
+    except asyncio.TimeoutError:
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=f"{provider} timed out after {config.timeout_seconds}s",
+            status=f"subtask_provider={provider}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=str(exc),
+            status=f"subtask_provider={provider}",
+        )
+
+
+async def _run_subtask_provider_instances(
+    provider: str,
+    instances: list[SWEBenchInstance],
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None = None,
+) -> list[SWEBenchResult]:
+    results: list[SWEBenchResult] = []
+    for idx, inst in enumerate(instances):
+        logger.info(
+            "[swe_bench] %d/%d %s provider=%s subtask",
+            idx + 1,
+            len(instances),
+            inst.instance_id,
+            provider,
+        )
+        results.append(
+            await _run_subtask_provider_instance(
+                provider,
+                inst,
+                evaluator,
+                config,
+                model_name,
+            )
+        )
+    return results
 
 
 async def _run_instance(
@@ -799,13 +1065,28 @@ async def _run(args: argparse.Namespace) -> int:
             provider_scores: dict[str, float] = {}
             all_results: list[SWEBenchResult] = []
             for provider in providers:
-                provider_results = await _run_instances(
-                    client,
-                    instances,
-                    evaluator,
-                    provider_label=provider,
-                    model_name=config.model_name,
-                )
+                if (
+                    config.harness == "eliza"
+                    and config.baseline is None
+                    and not args.mock
+                    and args.execution_mode == "orchestrated"
+                    and provider in _SUBTASK_PROVIDERS
+                ):
+                    provider_results = await _run_subtask_provider_instances(
+                        provider,
+                        instances,
+                        evaluator,
+                        config,
+                        config.model_name,
+                    )
+                else:
+                    provider_results = await _run_instances(
+                        client,
+                        instances,
+                        evaluator,
+                        provider_label=provider,
+                        model_name=config.model_name,
+                    )
                 all_results.extend(provider_results)
                 provider_report = _build_report(
                     config,
