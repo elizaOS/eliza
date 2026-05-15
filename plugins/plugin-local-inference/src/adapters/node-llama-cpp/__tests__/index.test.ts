@@ -154,20 +154,12 @@ describe("Local AI Plugin", () => {
 			});
 		});
 
-		it("blocks the legacy Florence vision path unless explicitly opted in", async () => {
-			const previous = process.env.LOCAL_AI_ENABLE_LEGACY_VISION;
-			delete process.env.LOCAL_AI_ENABLE_LEGACY_VISION;
-			try {
-				await expect(
-					localAiPlugin.models?.[ModelType.IMAGE_DESCRIPTION]?.({} as never, {
-						imageUrl: "data:image/png;base64,AAAA",
-					}),
-				).rejects.toThrow(/legacy Florence/);
-			} finally {
-				if (previous === undefined)
-					delete process.env.LOCAL_AI_ENABLE_LEGACY_VISION;
-				else process.env.LOCAL_AI_ENABLE_LEGACY_VISION = previous;
-			}
+		it("rejects image description when no local-inference backend is wired", async () => {
+			await expect(
+				localAiPlugin.models?.[ModelType.IMAGE_DESCRIPTION]?.({} as never, {
+					imageUrl: "data:image/png;base64,AAAA",
+				}),
+			).rejects.toThrow(/Florence-2 \/ Transformers\.js/);
 		});
 	});
 

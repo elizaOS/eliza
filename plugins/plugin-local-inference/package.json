@@ -38,8 +38,8 @@
 		"src"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node --external ws",
-		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external @huggingface/transformers --external whisper-node --external ws",
+		"build": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --clean --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external ws",
+		"dev": "tsup src/index.ts src/runtime/index.ts src/routes/index.ts src/services/index.ts --format esm --watch --external node-llama-cpp --external @node-llama-cpp/* --external @reflink/reflink --external onnxruntime-node --external ws",
 		"test": "vitest run",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"clean": "rm -rf dist .turbo node_modules",
@@ -56,8 +56,7 @@
 	},
 	"optionalDependencies": {
 		"node-llama-cpp": "3.18.1",
-		"onnxruntime-node": "1.24.3",
-		"@huggingface/transformers": "^4.0.0"
+		"onnxruntime-node": "1.24.3"
 	},
 	"peerDependencies": {
 		"@elizaos/app-core": "workspace:*",
@@ -73,9 +72,6 @@
 			"optional": true
 		},
 		"onnxruntime-node": {
-			"optional": true
-		},
-		"@huggingface/transformers": {
 			"optional": true
 		}
 	},

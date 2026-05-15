@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path, { basename } from "node:path";
-import type { Readable } from "node:stream";
 import type {
 	DetokenizeTextParams,
 	EventPayload,
@@ -47,9 +46,6 @@ import { streamLlamaPrompt } from "./text-streaming";
 import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
 import { getPlatformManager } from "./utils/platform";
-import { TokenizerManager } from "./utils/tokenizerManager";
-import { TTSManager } from "./utils/ttsManager";
-import { VisionManager } from "./utils/visionManager";
 
 const DEFAULT_LOCAL_SYSTEM_PROMPT =
 	"You are a helpful AI assistant. Respond to the current request only.";
@@ -125,55 +121,6 @@ function extractEmbeddingText(
 	}
 	const text = getObjectField(params, "text");
 	return typeof text === "string" ? text : null;
-}
-
-function extractTokenizerPrompt(params: TokenizeTextParams): string {
-	if (typeof params.prompt === "string") {
-		return params.prompt;
-	}
-	const legacyText = getObjectField(params, "text");
-	if (typeof legacyText === "string") {
-		return legacyText;
-	}
-	throw new Error("TEXT_TOKENIZER_ENCODE requires a prompt");
-}
-
-function extractImageUrl(params: ImageDescriptionParams | string): string {
-	if (typeof params === "string") {
-		return params;
-	}
-	if (typeof params.imageUrl === "string") {
-		return params.imageUrl;
-	}
-	throw new Error("IMAGE_DESCRIPTION requires an image URL");
-}
-
-function extractSpeechText(params: TextToSpeechParams | string): string {
-	if (typeof params === "string") {
-		return params;
-	}
-	if (typeof params.text === "string") {
-		return params.text;
-	}
-	throw new Error("TEXT_TO_SPEECH requires text");
-}
-
-async function readableToBuffer(readable: Readable): Promise<Buffer> {
-	const chunks: Buffer[] = [];
-	for await (const chunk of readable as AsyncIterable<unknown>) {
-		if (typeof chunk === "string") {
-			chunks.push(Buffer.from(chunk));
-		} else if (Buffer.isBuffer(chunk)) {
-			chunks.push(chunk);
-		} else if (chunk instanceof Uint8Array) {
-			chunks.push(Buffer.from(chunk));
-		} else if (chunk instanceof ArrayBuffer) {
-			chunks.push(Buffer.from(chunk));
-		} else {
-			chunks.push(Buffer.from(String(chunk)));
-		}
-	}
-	return Buffer.concat(chunks);
 }
 
 const wordsToPunish = [
@@ -313,11 +260,6 @@ function shouldFallbackFromLocalInference(error: unknown): boolean {
 	);
 }
 
-function legacyVisionEnabled(): boolean {
-	const value = process.env.LOCAL_AI_ENABLE_LEGACY_VISION?.trim().toLowerCase();
-	return value === "1" || value === "true" || value === "yes";
-}
-
 async function tryLocalInferenceModel<T>(
 	runtime: IAgentRuntime,
 	modelType: ModelTypeName,
@@ -422,26 +364,19 @@ class LocalAIManager {
 	private mediumModelPath!: string;
 	private embeddingModelPath!: string;
 	private cacheDir!: string;
-	private tokenizerManager!: TokenizerManager;
 	private downloadManager!: DownloadManager;
-	private visionManager!: VisionManager;
 	private activeModelConfig: ModelSpec;
 	private embeddingModelConfig: EmbeddingModelSpec;
-	private ttsManager!: TTSManager;
 	private config: Config | null = null;
 
 	private smallModelInitialized = false;
 	private mediumModelInitialized = false;
 	private embeddingInitialized = false;
-	private visionInitialized = false;
-	private ttsInitialized = false;
 	private environmentInitialized = false;
 
 	private smallModelInitializingPromise: Promise<void> | null = null;
 	private mediumModelInitializingPromise: Promise<void> | null = null;
 	private embeddingInitializingPromise: Promise<void> | null = null;
-	private visionInitializingPromise: Promise<void> | null = null;
-	private ttsInitializingPromise: Promise<void> | null = null;
 	private environmentInitializingPromise: Promise<void> | null = null;
 
 	private modelsDir!: string;
@@ -462,12 +397,6 @@ class LocalAIManager {
 			this.cacheDir,
 			this.modelsDir,
 		);
-		this.tokenizerManager = TokenizerManager.getInstance(
-			this.cacheDir,
-			this.modelsDir,
-		);
-		this.visionManager = VisionManager.getInstance(this.cacheDir);
-		this.ttsManager = TTSManager.getInstance(this.cacheDir);
 	}
 
 	private _setupModelsDir(): void {
@@ -959,46 +888,6 @@ class LocalAIManager {
 		return { text, toolCalls: [], finishReason: undefined };
 	}
 
-	public async describeImage(
-		imageData: Buffer,
-		mimeType: string,
-	): Promise<{ title: string; description: string }> {
-		await this.lazyInitVision();
-
-		const base64 = imageData.toString("base64");
-		const dataUrl = `data:${mimeType};base64,${base64}`;
-		return await this.visionManager.processImage(dataUrl);
-	}
-
-	public async transcribeAudio(_audioBuffer: Buffer): Promise<string> {
-		throw new Error(
-			"plugin-local-ai whisper.cpp transcription has been removed. Use " +
-				"@elizaos/plugin-local-inference with an Eliza-1 bundle " +
-				"(Qwen3-ASR via libelizainference) for canonical local ASR.",
-		);
-	}
-
-	public async generateSpeech(text: string): Promise<Readable> {
-		try {
-			await this.lazyInitTTS();
-
-			return await this.ttsManager.generateSpeech(text);
-		} catch (error) {
-			logger.error(
-				{
-					error: error instanceof Error ? error.message : String(error),
-					textLength: text.length,
-				},
-				"Speech generation failed:",
-			);
-			throw error;
-		}
-	}
-
-	public getTokenizerManager(): TokenizerManager {
-		return this.tokenizerManager;
-	}
-
 	public getActiveModelConfig(): ModelSpec {
 		return this.activeModelConfig;
 	}
@@ -1057,42 +946,6 @@ class LocalAIManager {
 		await this.mediumModelInitializingPromise;
 	}
 
-	private async lazyInitVision(): Promise<void> {
-		if (this.visionInitialized) return;
-
-		if (!this.visionInitializingPromise) {
-			this.visionInitializingPromise = (async () => {
-				try {
-					this.visionInitialized = true;
-					logger.info("Vision model initialized successfully");
-				} catch (error) {
-					logger.error(
-						error instanceof Error ? error : String(error),
-						"Failed to initialize vision model:",
-					);
-					this.visionInitializingPromise = null;
-					throw error;
-				}
-			})();
-		}
-
-		await this.visionInitializingPromise;
-	}
-
-	private async lazyInitTTS(): Promise<void> {
-		if (this.ttsInitialized) return;
-
-		if (!this.ttsInitializingPromise) {
-			this.ttsInitializingPromise = (async () => {
-				await this.initializeEnvironment();
-				this.ttsManager = TTSManager.getInstance(this.cacheDir);
-				this.ttsInitialized = true;
-				logger.info("TTS model initialized successfully");
-			})();
-		}
-
-		await this.ttsInitializingPromise;
-	}
 }
 
 /**
@@ -1302,22 +1155,35 @@ export const localAiPlugin: Plugin = {
 		},
 
 		[ModelType.TEXT_TOKENIZER_ENCODE]: async (
-			_runtime: IAgentRuntime,
+			runtime: IAgentRuntime,
 			params: TokenizeTextParams,
 		) => {
-			const manager = localAIManager.getTokenizerManager();
-			const config = localAIManager.getActiveModelConfig();
-			const text = extractTokenizerPrompt(params);
-			return await manager.encode(text, config);
+			const routed = await tryLocalInferenceModel<number[]>(
+				runtime,
+				ModelType.TEXT_TOKENIZER_ENCODE,
+				params,
+			);
+			if (routed.handled) return routed.value;
+			throw new Error(
+				"plugin-local-ai tokenizer (Transformers.js) has been removed. " +
+					"Use @elizaos/plugin-local-inference with an Eliza-1 bundle for local tokenization.",
+			);
 		},
 
 		[ModelType.TEXT_TOKENIZER_DECODE]: async (
-			_runtime: IAgentRuntime,
-			{ tokens }: DetokenizeTextParams,
+			runtime: IAgentRuntime,
+			params: DetokenizeTextParams,
 		) => {
-			const manager = localAIManager.getTokenizerManager();
-			const config = localAIManager.getActiveModelConfig();
-			return await manager.decode(tokens, config);
+			const routed = await tryLocalInferenceModel<string>(
+				runtime,
+				ModelType.TEXT_TOKENIZER_DECODE,
+				params,
+			);
+			if (routed.handled) return routed.value;
+			throw new Error(
+				"plugin-local-ai tokenizer (Transformers.js) has been removed. " +
+					"Use @elizaos/plugin-local-inference with an Eliza-1 bundle for local tokenization.",
+			);
 		},
 
 		[ModelType.IMAGE_DESCRIPTION]: async (
@@ -1331,23 +1197,10 @@ export const localAiPlugin: Plugin = {
 			);
 			if (routed.handled) return routed.value;
 
-			if (!legacyVisionEnabled()) {
-				throw new Error(
-					"plugin-local-ai image description is a legacy Florence/Transformers.js compatibility path. Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local vision, or set LOCAL_AI_ENABLE_LEGACY_VISION=1 to opt in to the legacy path.",
-				);
-			}
-
-			const imageUrl = extractImageUrl(params);
-			logger.info("Processing image from URL:", imageUrl);
-
-			const response = await fetch(imageUrl);
-			if (!response.ok) {
-				throw new Error(`Failed to fetch image: ${response.statusText}`);
-			}
-
-			const buffer = Buffer.from(await response.arrayBuffer());
-			const mimeType = response.headers.get("content-type") || "image/jpeg";
-			return await localAIManager.describeImage(buffer, mimeType);
+			throw new Error(
+				"plugin-local-ai image description (Florence-2 / Transformers.js) has been removed. " +
+					"Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local vision.",
+			);
 		},
 
 		[ModelType.TRANSCRIPTION]: async (
@@ -1382,8 +1235,10 @@ export const localAiPlugin: Plugin = {
 			);
 			if (routed.handled) return routed.value;
 
-			const text = extractSpeechText(params);
-			return await readableToBuffer(await localAIManager.generateSpeech(text));
+			throw new Error(
+				"plugin-local-ai TTS (Transformers.js) has been removed. " +
+					"Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local TTS.",
+			);
 		},
 	},
 	tests: [
@@ -1510,249 +1365,6 @@ export const localAiPlugin: Plugin = {
 									stack: error instanceof Error ? error.stack : undefined,
 								},
 								"TEXT_EMBEDDING test failed:",
-							);
-							throw error;
-						}
-					},
-				},
-				{
-					name: "local_ai_test_tokenizer_encode",
-					fn: async (runtime) => {
-						try {
-							logger.info("Starting TEXT_TOKENIZER_ENCODE test");
-							const text = "Hello tokenizer test!";
-							const tokens = await runtime.useModel(
-								ModelType.TEXT_TOKENIZER_ENCODE,
-								{
-									prompt: text,
-									modelType: ModelType.TEXT_TOKENIZER_ENCODE,
-								},
-							);
-							logger.info({ count: tokens.length }, "Encoded tokens:");
-
-							if (!Array.isArray(tokens)) {
-								throw new Error("Tokens output is not an array");
-							}
-
-							if (tokens.length === 0) {
-								throw new Error("No tokens generated");
-							}
-
-							if (tokens.some((token) => !Number.isInteger(token))) {
-								throw new Error("Tokens contain non-integer values");
-							}
-
-							logger.success(
-								"TEXT_TOKENIZER_ENCODE test completed successfully",
-							);
-						} catch (error) {
-							logger.error(
-								{
-									error: error instanceof Error ? error.message : String(error),
-									stack: error instanceof Error ? error.stack : undefined,
-								},
-								"TEXT_TOKENIZER_ENCODE test failed:",
-							);
-							throw error;
-						}
-					},
-				},
-				{
-					name: "local_ai_test_tokenizer_decode",
-					fn: async (runtime) => {
-						try {
-							logger.info("Starting TEXT_TOKENIZER_DECODE test");
-
-							const originalText = "Hello tokenizer test!";
-							const tokens = await runtime.useModel(
-								ModelType.TEXT_TOKENIZER_ENCODE,
-								{
-									prompt: originalText,
-									modelType: ModelType.TEXT_TOKENIZER_ENCODE,
-								},
-							);
-
-							const decodedText = await runtime.useModel(
-								ModelType.TEXT_TOKENIZER_DECODE,
-								{
-									tokens,
-									modelType: ModelType.TEXT_TOKENIZER_DECODE,
-								},
-							);
-							logger.info(
-								{
-									original: originalText,
-									decoded: decodedText,
-								},
-								"Round trip tokenization:",
-							);
-
-							if (typeof decodedText !== "string") {
-								throw new Error("Decoded output is not a string");
-							}
-
-							logger.success(
-								"TEXT_TOKENIZER_DECODE test completed successfully",
-							);
-						} catch (error) {
-							logger.error(
-								{
-									error: error instanceof Error ? error.message : String(error),
-									stack: error instanceof Error ? error.stack : undefined,
-								},
-								"TEXT_TOKENIZER_DECODE test failed:",
-							);
-							throw error;
-						}
-					},
-				},
-				{
-					name: "local_ai_test_image_description",
-					fn: async (runtime) => {
-						try {
-							logger.info("Starting IMAGE_DESCRIPTION test");
-
-							const imageUrl =
-								"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg";
-							const result = await runtime.useModel(
-								ModelType.IMAGE_DESCRIPTION,
-								imageUrl,
-							);
-
-							logger.info(
-								{ title: result.title, description: result.description },
-								"Image description result:",
-							);
-
-							if (!result || typeof result !== "object") {
-								throw new Error("Invalid response format");
-							}
-
-							if (!result.title || !result.description) {
-								throw new Error("Missing title or description in response");
-							}
-
-							if (
-								typeof result.title !== "string" ||
-								typeof result.description !== "string"
-							) {
-								throw new Error("Title or description is not a string");
-							}
-
-							logger.success("IMAGE_DESCRIPTION test completed successfully");
-						} catch (error) {
-							logger.error(
-								{
-									error: error instanceof Error ? error.message : String(error),
-									stack: error instanceof Error ? error.stack : undefined,
-								},
-								"IMAGE_DESCRIPTION test failed:",
-							);
-							throw error;
-						}
-					},
-				},
-				{
-					name: "local_ai_test_transcription",
-					fn: async (runtime) => {
-						try {
-							logger.info("Starting TRANSCRIPTION test");
-
-							const channels = 1;
-							const sampleRate = 16000;
-							const bitsPerSample = 16;
-							const duration = 0.5; // 500ms for better transcription
-							const numSamples = Math.floor(sampleRate * duration);
-							const dataSize = numSamples * channels * (bitsPerSample / 8);
-
-							const buffer = Buffer.alloc(44 + dataSize);
-
-							buffer.write("RIFF", 0);
-							buffer.writeUInt32LE(36 + dataSize, 4);
-							buffer.write("WAVE", 8);
-
-							buffer.write("fmt ", 12);
-							buffer.writeUInt32LE(16, 16);
-							buffer.writeUInt16LE(1, 20);
-							buffer.writeUInt16LE(channels, 22);
-							buffer.writeUInt32LE(sampleRate, 24);
-							buffer.writeUInt32LE(
-								sampleRate * channels * (bitsPerSample / 8),
-								28,
-							);
-							buffer.writeUInt16LE(channels * (bitsPerSample / 8), 32);
-							buffer.writeUInt16LE(bitsPerSample, 34);
-
-							buffer.write("data", 36);
-							buffer.writeUInt32LE(dataSize, 40);
-
-							const frequency = 440;
-							for (let i = 0; i < numSamples; i++) {
-								const sample =
-									Math.sin((2 * Math.PI * frequency * i) / sampleRate) *
-									0.1 *
-									32767;
-								buffer.writeInt16LE(Math.floor(sample), 44 + i * 2);
-							}
-
-							const transcription = await runtime.useModel(
-								ModelType.TRANSCRIPTION,
-								buffer,
-							);
-							logger.info("Transcription result:", transcription);
-
-							if (typeof transcription !== "string") {
-								throw new Error("Transcription result is not a string");
-							}
-
-							logger.info(
-								"Transcription completed (may be empty for non-speech audio)",
-							);
-
-							logger.success("TRANSCRIPTION test completed successfully");
-						} catch (error) {
-							logger.error(
-								{
-									error: error instanceof Error ? error.message : String(error),
-									stack: error instanceof Error ? error.stack : undefined,
-								},
-								"TRANSCRIPTION test failed",
-							);
-							throw error;
-						}
-					},
-				},
-				{
-					name: "local_ai_test_text_to_speech",
-					fn: async (runtime) => {
-						try {
-							logger.info("Starting TEXT_TO_SPEECH test");
-
-							const testText = "This is a test of the text to speech system.";
-							const audioData = await runtime.useModel(
-								ModelType.TEXT_TO_SPEECH,
-								testText,
-							);
-
-							if (
-								!(audioData instanceof Uint8Array) &&
-								!(audioData instanceof ArrayBuffer)
-							) {
-								throw new Error("TTS output is not binary audio data");
-							}
-
-							if (audioData.byteLength === 0) {
-								throw new Error("No audio data received");
-							}
-
-							logger.success("TEXT_TO_SPEECH test completed successfully");
-						} catch (error) {
-							logger.error(
-								{
-									error: error instanceof Error ? error.message : String(error),
-									stack: error instanceof Error ? error.stack : undefined,
-								},
-								"TEXT_TO_SPEECH test failed",
 							);
 							throw error;
 						}
