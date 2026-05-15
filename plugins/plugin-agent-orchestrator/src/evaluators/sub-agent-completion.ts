@@ -1,6 +1,7 @@
 import {
   type AgentContext,
   type Memory,
+  type MessageHandlerResult,
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
@@ -66,6 +67,25 @@ function hasOnlyStaleCompletionHints(values: readonly string[] | undefined) {
 function hasUrl(text: string): boolean {
   URL_IN_TEXT_RE.lastIndex = 0;
   return URL_IN_TEXT_RE.test(text);
+}
+
+function hasUserFacingUrl(text: string): boolean {
+  URL_IN_TEXT_RE.lastIndex = 0;
+  for (const match of text.matchAll(URL_IN_TEXT_RE)) {
+    try {
+      if (!isLoopbackHost(new URL(match[0]).hostname)) return true;
+    } catch {}
+  }
+  return false;
+}
+
+function looksLikeRawToolTranscript(text: string): boolean {
+  return (
+    text.includes("[tool output:") ||
+    text.includes("[/tool output]") ||
+    text.includes("Full output saved to:") ||
+    /^\/[^\s]+/m.test(text)
+  );
 }
 
 function userFacingVerifiedUrl(urls: readonly string[]): string | undefined {
@@ -193,12 +213,23 @@ function replyPatchFromCompletion(
 ) {
   const body = userFacingCompletionBody(completionText);
   const verifiedUrl = userFacingVerifiedUrl(verifiedUrls);
+  const cleanBody = body && !looksLikeRawToolTranscript(body) ? body : "";
   if (!body && !verifiedUrl) return undefined;
-  if (hasUrl(currentReply)) return currentReply;
+  if (verifiedUrl && looksLikeRawToolTranscript(completionText)) {
+    return verifiedUrl;
+  }
+  if (
+    cleanBody &&
+    !looksLikeCapturedToolOutput(cleanBody) &&
+    hasUserFacingUrl(cleanBody)
+  ) {
+    return cleanBody;
+  }
   if (verifiedUrl) return verifiedUrl;
-  if (currentReply.length === 0) return body;
-  if (!hasUrl(currentReply) && hasUrl(body)) return body;
-  return body;
+  if (hasUrl(currentReply)) return currentReply;
+  if (currentReply.length === 0) return cleanBody || body;
+  if (!hasUrl(currentReply) && cleanBody && hasUrl(cleanBody)) return cleanBody;
+  return cleanBody || body;
 }
 
 function hasVerifiedCompletionReply(
@@ -214,6 +245,12 @@ function hasVerifiedCompletionReply(
   );
 }
 
+function respondIfNeeded(messageHandler: MessageHandlerResult) {
+  return messageHandler.processMessage === "RESPOND"
+    ? {}
+    : { processMessage: "RESPOND" as const };
+}
+
 export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
   name: "agent-orchestrator.sub-agent-completion",
   description:
@@ -221,7 +258,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
   priority: 10,
   shouldRun: ({ message, messageHandler }) => {
     if (!isSuccessfulSubAgentCompletion(message)) return false;
-    if (messageHandler.processMessage !== "RESPOND") return false;
+    if (messageHandler.processMessage === "STOP") return false;
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
@@ -247,6 +284,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     );
     if (reply && hasUrl(reply)) {
       return {
+        ...respondIfNeeded(messageHandler),
         requiresTool: false,
         setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
@@ -260,6 +298,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const completionBody = stripRouterAnnotations(completionText);
     if (looksLikeCapturedToolOutput(completionBody)) {
       return {
+        ...respondIfNeeded(messageHandler),
         requiresTool: true,
         setContexts: [GENERAL_CONTEXT_ID],
         clearReply: true,
@@ -271,6 +310,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       };
     }
     return {
+      ...respondIfNeeded(messageHandler),
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
       clearCandidateActions: true,

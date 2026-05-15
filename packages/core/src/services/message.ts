@@ -2640,6 +2640,26 @@ function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	return value as Record<string, unknown>;
 }
 
+function extractToolCallArguments(
+	entry: Record<string, unknown>,
+): Record<string, unknown> | null {
+	const rawFunction =
+		entry.function && typeof entry.function === "object"
+			? (entry.function as Record<string, unknown>)
+			: null;
+	return (
+		parseToolArguments(entry.arguments) ??
+		parseToolArguments(entry.args) ??
+		parseToolArguments(entry.input) ??
+		parseToolArguments(entry.params) ??
+		parseToolArguments(entry.parameters) ??
+		parseToolArguments(rawFunction?.arguments) ??
+		parseToolArguments(rawFunction?.args) ??
+		parseToolArguments(rawFunction?.input) ??
+		parseToolArguments(rawFunction?.parameters)
+	);
+}
+
 function parseMessageHandlerNativeToolCall(
 	raw: GenerateTextResult,
 ): MessageHandlerResult | null {
@@ -2659,7 +2679,9 @@ function extractHandleResponseToolArguments(
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
-		const args = parseToolArguments(entry.arguments);
+		const args = extractToolCallArguments(
+			entry as unknown as Record<string, unknown>,
+		);
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
 		}
@@ -4780,7 +4802,9 @@ function extractMessageHandlerToolCalls(
 			continue;
 		}
 		const name = String(entry.name ?? entry.toolName).trim();
-		const args = parseToolArguments(entry.arguments);
+		const args = extractToolCallArguments(
+			entry as unknown as Record<string, unknown>,
+		);
 		toolCalls.push({
 			id:
 				typeof entry.id === "string"

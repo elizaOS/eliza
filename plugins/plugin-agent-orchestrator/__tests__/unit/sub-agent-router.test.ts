@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -525,6 +528,64 @@ describe("SubAgentRouter", () => {
         | Record<string, unknown>
         | undefined;
       expect(metadata?.subAgentVerifiedUrls).toEqual([appBase]);
+    });
+
+    it("rejects mapped app URLs whose local target was not written this session", async () => {
+      const tmpRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "sub-agent-router-"),
+      );
+      try {
+        const appUrl = "https://example.test/apps/random-tweet-generator/";
+        const staleDir = path.join(tmpRoot, "data/apps/random-tweet-generator");
+        fs.mkdirSync(staleDir, { recursive: true });
+        const staleIndex = path.join(staleDir, "index.html");
+        fs.writeFileSync(staleIndex, "<html><body>old app</body></html>");
+        const staleTime = new Date("2026-05-07T11:00:00.000Z");
+        fs.utimesSync(staleIndex, staleTime, staleTime);
+
+        const fetchMock = vi.fn(async () => {
+          return new Response("<html><body>old app</body></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        session = {
+          ...sessionWithTask(`build and verify ${appUrl}`, 2, {
+            workdirRoute: {
+              id: "static-apps",
+              workdir: tmpRoot,
+              urlMappings: [
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          }),
+          workdir: tmpRoot,
+        };
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
+
+        acp.emit(SESSION_ID, "task_complete", {
+          response: `Wrote files under apps/random-tweet-generator/. Public URL ${appUrl}`,
+        });
+        await new Promise((r) => setTimeout(r, 200));
+
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.text).toContain(
+          "not updated during this session",
+        );
+        expect(posted?.content?.text).toContain("[verification:");
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
     });
 
     it("ignores model-introduced same-path external URL aliases when the requested target verifies", async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Memory } from "../../../types/memory.ts";
 import { ModelType } from "../../../types/model.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import { runtimeModelContextProvider } from "./runtimeModelContext.ts";
@@ -17,6 +18,15 @@ function makeRuntime(
 	} as unknown as IAgentRuntime;
 }
 
+function makeMessage(
+	text: string,
+	content: Partial<Memory["content"]> = {},
+): Memory {
+	return {
+		content: { text, ...content },
+	} as Memory;
+}
+
 describe("runtimeModelContextProvider", () => {
 	it("exposes configured runtime model slots for self-model questions", async () => {
 		const runtime = makeRuntime({
@@ -29,7 +39,7 @@ describe("runtimeModelContextProvider", () => {
 
 		const result = await runtimeModelContextProvider.get(
 			runtime,
-			{} as never,
+			makeMessage("what model are you using?"),
 			{} as never,
 		);
 
@@ -51,7 +61,7 @@ describe("runtimeModelContextProvider", () => {
 
 		const result = await runtimeModelContextProvider.get(
 			runtime,
-			{} as never,
+			makeMessage("which provider powers the agent right now?"),
 			{} as never,
 		);
 
@@ -59,5 +69,43 @@ describe("runtimeModelContextProvider", () => {
 		expect(result.text).toContain(
 			"Action planner model: resolved-ACTION_PLANNER",
 		);
+	});
+
+	it("stays silent for unrelated live-data questions", async () => {
+		const runtime = makeRuntime({
+			OPENAI_LARGE_MODEL: "gpt-oss-120b",
+			ELIZA_DEFAULT_AGENT_TYPE: "opencode",
+		});
+
+		const result = await runtimeModelContextProvider.get(
+			runtime,
+			makeMessage("what is the current BTC price in USD?"),
+			{} as never,
+		);
+
+		expect(result.text).toBe("");
+		expect(result.data).toEqual({});
+	});
+
+	it("stays silent for sub-agent completion transcripts", async () => {
+		const runtime = makeRuntime({
+			OPENAI_LARGE_MODEL: "gpt-oss-120b",
+			ELIZA_DEFAULT_AGENT_TYPE: "opencode",
+		});
+
+		const result = await runtimeModelContextProvider.get(
+			runtime,
+			makeMessage(
+				"[sub-agent: Build a static web app (opencode) — task_complete]\nCreated files and verified https://example.test/apps/demo/",
+				{
+					source: "sub_agent",
+					metadata: { subAgent: true, subAgentEvent: "task_complete" },
+				},
+			),
+			{} as never,
+		);
+
+		expect(result.text).toBe("");
+		expect(result.data).toEqual({});
 	});
 });

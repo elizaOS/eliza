@@ -172,6 +172,44 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("parses provider-native message-handler calls that use args instead of arguments", async () => {
+		const runtime = makeRuntime([
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "mh-args-1",
+						name: "HANDLE_RESPONSE",
+						args: {
+							shouldRespond: "RESPOND",
+							thought: "Direct answer.",
+							replyText: "Hello from args.",
+							contexts: ["simple"],
+							intents: [],
+							candidateActionNames: [],
+							facts: [],
+							relationships: [],
+							addressedTo: [],
+						},
+					},
+				],
+				finishReason: "tool_calls",
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Hello from args.");
+		}
+	});
+
 	it("retries empty Stage 1 completions until a usable response arrives", async () => {
 		const runtime = makeRuntime([
 			"",

@@ -30,6 +30,50 @@ const MODEL_SETTING_SUFFIX: Record<string, string> = {
 };
 
 const MODEL_PROVIDER_PREFIXES = ["OLLAMA_", "OPENAI_", "ANTHROPIC_", ""];
+const MODEL_CONTEXT_TERMS = new Set([
+	"model",
+	"models",
+	"llm",
+	"provider",
+	"providers",
+	"gpt",
+	"claude",
+	"sonnet",
+]);
+const REQUEST_CONTEXT_TERMS = new Set([
+	"what",
+	"which",
+	"who",
+	"how",
+	"tell",
+	"show",
+	"list",
+	"name",
+	"identify",
+]);
+const SELF_MODEL_CONTEXT_TERMS = new Set([
+	"you",
+	"your",
+	"yours",
+	"agent",
+	"assistant",
+	"bot",
+	"runtime",
+	"system",
+	"current",
+	"using",
+	"running",
+	"powered",
+	"configured",
+	"default",
+]);
+const CODING_AGENT_CONTEXT_TERMS = new Set([
+	"opencode",
+	"codex",
+	"claude",
+	"gemini",
+	"aider",
+]);
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 	const value = runtime.getSetting(key);
@@ -78,6 +122,45 @@ function optionalLine(label: string, value: string | undefined): string | null {
 	return value ? `- ${label}: ${value}` : null;
 }
 
+function tokenize(text: string): Set<string> {
+	return new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+}
+
+function shouldRenderRuntimeModelContext(message: Memory): boolean {
+	if (
+		message.content.source === "sub_agent" ||
+		(message.content.metadata &&
+			typeof message.content.metadata === "object" &&
+			(message.content.metadata as Record<string, unknown>).subAgent === true)
+	) {
+		return false;
+	}
+
+	const text =
+		typeof message.content.text === "string" ? message.content.text : "";
+	const tokens = tokenize(text);
+	if (tokens.size === 0) return false;
+
+	const hasRequestCue =
+		text.includes("?") ||
+		[...REQUEST_CONTEXT_TERMS].some((term) => tokens.has(term));
+	if (!hasRequestCue) return false;
+
+	const hasModelTerm = [...MODEL_CONTEXT_TERMS].some((term) =>
+		tokens.has(term),
+	);
+	const hasSelfTerm = [...SELF_MODEL_CONTEXT_TERMS].some((term) =>
+		tokens.has(term),
+	);
+	if (hasModelTerm && hasSelfTerm) return true;
+
+	const hasCodingAgentTerm =
+		(tokens.has("coding") && tokens.has("agent")) ||
+		(tokens.has("sub") && tokens.has("agent")) ||
+		[...CODING_AGENT_CONTEXT_TERMS].some((term) => tokens.has(term));
+	return hasCodingAgentTerm && hasSelfTerm;
+}
+
 export const runtimeModelContextProvider: Provider = {
 	name: "RUNTIME_MODEL_CONTEXT",
 	description:
@@ -101,7 +184,11 @@ export const runtimeModelContextProvider: Provider = {
 		"opencode",
 	],
 
-	get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+		if (!shouldRenderRuntimeModelContext(message)) {
+			return { text: "", values: {}, data: {} };
+		}
+
 		const runtimeWithModels = runtime as RuntimeWithModelHelpers;
 		const responseHandlerModel = configuredModelString(
 			runtimeWithModels,
