@@ -41,18 +41,39 @@ export interface DisplayInfo {
   name: string;
 }
 
+/**
+ * Error thrown when the host has no usable display surface. Headless Linux
+ * (no `DISPLAY` and no `WAYLAND_DISPLAY`), CI containers without an X
+ * server, and macOS/Windows hosts that report zero active displays all
+ * surface as this typed error so callers can distinguish "no monitors" from
+ * a transient enumeration failure.
+ */
+export class NoDisplayError extends Error {
+  readonly code = "NO_DISPLAY" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "NoDisplayError";
+  }
+}
+
 let cached: DisplayInfo[] | null = null;
 let cachedAt = 0;
-const CACHE_MS = 1500;
+const CACHE_MS = 2000;
 
 /**
  * List all attached displays. Cached briefly to avoid spamming xrandr /
  * PowerShell on burst calls (provider runs every turn).
+ *
+ * Returns a single-display fallback when the OS reports nothing — most
+ * callers want a sensible default, not an empty array. Use `isHeadless()`
+ * or `assertHasDisplays()` to distinguish the truly-headless case from a
+ * single attached monitor.
  */
 export function listDisplays(): DisplayInfo[] {
   const now = Date.now();
   if (cached && now - cachedAt < CACHE_MS) return cached;
-  const fresh = enumerateDisplays();
+  const real = enumerateDisplays();
+  const fresh = real.length > 0 ? real : [fallbackPrimary()];
   cached = fresh;
   cachedAt = now;
   return fresh;
@@ -82,16 +103,49 @@ export function findDisplay(id: number): DisplayInfo | null {
   return listDisplays().find((d) => d.id === id) ?? null;
 }
 
+/**
+ * Detect a truly headless host. Returns true when:
+ *   - Linux: neither `DISPLAY` nor `WAYLAND_DISPLAY` is set, AND no
+ *     compositor / X server enumeration tool reports anything.
+ *   - macOS / Windows: enumeration via system_profiler / PowerShell yields
+ *     zero displays.
+ * The single-display fallback returned by `listDisplays()` does NOT count as
+ * a real display for this check.
+ */
+export function isHeadless(): boolean {
+  const os = currentPlatform();
+  if (os === "linux") {
+    const hasX = (process.env.DISPLAY ?? "").length > 0;
+    const hasWayland = (process.env.WAYLAND_DISPLAY ?? "").length > 0;
+    if (!hasX && !hasWayland) return true;
+  }
+  return enumerateDisplays().length === 0;
+}
+
+/**
+ * Capture-path guard: throws `NoDisplayError` on a truly headless host.
+ * Callers that hit "no monitor" should surface this typed error rather than
+ * returning an empty buffer or a generic `Error`.
+ */
+export function assertHasDisplays(): void {
+  if (isHeadless()) {
+    throw new NoDisplayError(
+      "[displays] No attached display. Headless host detected — set DISPLAY/WAYLAND_DISPLAY or run on a desktop session.",
+    );
+  }
+}
+
+/**
+ * Run the platform-specific enumeration. Returns an empty array when nothing
+ * is attached or the OS returned no displays — callers wanting the legacy
+ * single-display fallback should call `listDisplays()` instead.
+ */
 function enumerateDisplays(): DisplayInfo[] {
   const os = currentPlatform();
-  try {
-    if (os === "linux") return enumerateLinux();
-    if (os === "darwin") return enumerateDarwin();
-    if (os === "win32") return enumerateWindows();
-  } catch {
-    // Fall through to single-display fallback.
-  }
-  return [fallbackPrimary()];
+  if (os === "linux") return enumerateLinux();
+  if (os === "darwin") return enumerateDarwin();
+  if (os === "win32") return enumerateWindows();
+  return [];
 }
 
 function fallbackPrimary(): DisplayInfo {
@@ -152,8 +206,11 @@ export function parseXrandrMonitors(output: string): DisplayInfo[] {
 }
 
 function enumerateLinux(): DisplayInfo[] {
+  const hasX = (process.env.DISPLAY ?? "").length > 0;
+  const hasWayland = (process.env.WAYLAND_DISPLAY ?? "").length > 0;
+  if (!hasX && !hasWayland) return [];
   const sessionType = (process.env.XDG_SESSION_TYPE ?? "").toLowerCase();
-  if (sessionType === "wayland") {
+  if (sessionType === "wayland" || hasWayland) {
     const w = enumerateWayland();
     if (w.length > 0) return w;
   }
@@ -167,9 +224,9 @@ function enumerateLinux(): DisplayInfo[] {
     const parsed = parseXrandrMonitors(output);
     if (parsed.length > 0) return parsed;
   } catch {
-    /* fall through */
+    /* xrandr unavailable — fall through to empty */
   }
-  return [fallbackPrimary()];
+  return [];
 }
 
 function enumerateWayland(): DisplayInfo[] {

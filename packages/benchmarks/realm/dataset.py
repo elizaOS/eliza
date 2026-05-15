@@ -128,7 +128,7 @@ class REALMDataset:
         self,
         data_path: str | Path = DEFAULT_UPSTREAM_PATH,
         *,
-        max_instances_per_problem: int = DEFAULT_INSTANCES_PER_PROBLEM,
+        max_instances_per_problem: Optional[int] = DEFAULT_INSTANCES_PER_PROBLEM,
         use_sample_tasks: bool = False,
     ) -> None:
         self.data_path = Path(data_path)
@@ -237,7 +237,8 @@ class REALMDataset:
                 seen.add(p)
                 unique_paths.append(p)
 
-        for path in unique_paths[: self.max_instances_per_problem]:
+        paths = unique_paths if self.max_instances_per_problem is None else unique_paths[: self.max_instances_per_problem]
+        for path in paths:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except Exception as exc:
@@ -258,7 +259,8 @@ class REALMDataset:
             for path in sorted(sub_dir.glob("*.txt")):
                 instances.append((path.stem, path))
 
-        for instance_id, path in instances[: self.max_instances_per_problem]:
+        selected = instances if self.max_instances_per_problem is None else instances[: self.max_instances_per_problem]
+        for instance_id, path in selected:
             try:
                 parsed = parse_jssp_instance(path.read_text(encoding="utf-8"))
             except Exception as exc:

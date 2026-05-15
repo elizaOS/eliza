@@ -52,6 +52,7 @@ export interface BackendLoadOverrides {
 	mmap?: boolean;
 	mlock?: boolean;
 	useGpu?: boolean;
+	mmprojPath?: string;
 }
 
 export function gpuLayersForKvOffload(

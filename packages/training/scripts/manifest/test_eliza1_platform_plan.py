@@ -60,8 +60,6 @@ def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
     plan = build_plan()
     assert "text/eliza-1-27b-256k.gguf" in plan["27b-256k"].required_files
     assert "text/eliza-1-27b-256k-256k.gguf" not in plan["27b-256k"].required_files
-    assert "text/eliza-1-27b-1m.gguf" in plan["27b-1m"].required_files
-    assert "text/eliza-1-27b-1m-1m.gguf" not in plan["27b-1m"].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:

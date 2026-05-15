@@ -324,7 +324,7 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", PYTHON, [
   const tmpReportDir = fs.mkdtempSync(
     path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-gates-"),
   );
-  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"]) {
+  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]) {
     step(`eliza1_gates_collect.mjs --tier ${tier}`, "node", [
       "plugins/plugin-local-inference/native/verify/eliza1_gates_collect.mjs",
       "--tier",
@@ -360,7 +360,7 @@ const ok = results.filter((r) => r.status === "ok");
 const REMAINING_HW = [
   [
     "Fork build per backend + metal/vulkan/cuda/rocm verify + platform-dispatch smokes",
-    "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for 27b-1m)",
+    "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD)",
     "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C plugins/plugin-local-inference/native/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1",
   ],
   [

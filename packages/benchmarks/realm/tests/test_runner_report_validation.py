@@ -10,6 +10,7 @@ includes a real makespan and a meaningful optimality ratio (close to
 from __future__ import annotations
 
 import math
+import json
 
 import pytest
 
@@ -86,3 +87,23 @@ async def test_per_problem_breakdown_totals_match_results() -> None:
         assert isinstance(total_val, (int, float))
         total_from_breakdown += int(total_val)
     assert total_from_breakdown == report.metrics.total_tasks
+
+
+@pytest.mark.asyncio
+async def test_trajectory_export_writes_jsonl(tmp_path) -> None:
+    config = REALMConfig(
+        data_path="./does-not-exist",
+        output_dir=str(tmp_path),
+        generate_report=True,
+        save_trajectories=True,
+        save_detailed_logs=False,
+        use_sample_tasks=True,
+    )
+    runner = REALMRunner(config, use_mock=True)
+    report = await runner.run_benchmark()
+
+    exports = list(tmp_path.glob("realm-trajectories-*.jsonl"))
+    assert len(exports) == 1
+    rows = [json.loads(line) for line in exports[0].read_text().splitlines()]
+    assert len(rows) == report.metrics.total_tasks
+    assert {"task_id", "problem", "trajectory"} <= set(rows[0])

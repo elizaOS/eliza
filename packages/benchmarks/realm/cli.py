@@ -120,6 +120,20 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Max instances per problem type",
     )
+    parser.add_argument(
+        "--max-instances-per-problem",
+        type=int,
+        default=None,
+        help=(
+            "Max upstream instances to load per problem before filtering. "
+            "Defaults to --max-tasks when provided, otherwise 5."
+        ),
+    )
+    parser.add_argument(
+        "--full-dataset",
+        action="store_true",
+        help="Load every vendored upstream instance instead of the default per-problem cap.",
+    )
     parser.add_argument("--max-steps", type=int, default=32)
     parser.add_argument("--timeout", type=int, default=300_000)
     parser.add_argument(
@@ -142,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json", action="store_true")
     parser.add_argument(
         "--provider",
-        choices=["eliza", "mock", "local"],
+        choices=["eliza", "hermes", "openclaw", "mock", "local"],
         default="eliza",
     )
     parser.add_argument("--mock", action="store_true")
@@ -156,6 +170,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check-env", action="store_true")
     parser.add_argument("--export-trajectories", action="store_true")
     parser.add_argument("--no-trajectory-logging", action="store_true")
+    parser.add_argument(
+        "--auto-install-ortools",
+        action="store_true",
+        help=(
+            "If OR-Tools is missing, install it into an isolated user-cache venv "
+            "for this run."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -209,21 +231,34 @@ def create_config(args: argparse.Namespace) -> REALMConfig:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_dir = f"./benchmark_results/realm/{timestamp}"
 
+    if args.full_dataset:
+        max_instances_per_problem = None
+    else:
+        max_instances_per_problem = (
+            args.max_instances_per_problem
+            if args.max_instances_per_problem is not None
+            else args.max_tasks
+            if args.max_tasks is not None
+            else 5
+        )
+
     return REALMConfig(
         data_path=args.data_path,
         output_dir=output_dir,
         max_tasks_per_problem=args.max_tasks,
+        max_instances_per_problem=max_instances_per_problem,
         timeout_per_task_ms=args.timeout,
         max_steps=args.max_steps,
         execution_model=ExecutionModel(args.execution_model),
         problems=problems,
         enable_adaptation=not args.no_adaptation,
         save_detailed_logs=True,
-        save_trajectories=True,
+        save_trajectories=args.export_trajectories and not args.no_trajectory_logging,
         generate_report=not args.no_save,
         model_name=args.model,
         use_sample_tasks=args.use_sample_tasks,
         solver_timeout_s=args.solver_timeout,
+        auto_install_ortools=args.auto_install_ortools,
     )
 
 
@@ -270,7 +305,11 @@ async def run_benchmark(
     else:
         from eliza_adapter import ElizaREALMAgent, ElizaServerManager
 
-        if not os.environ.get("ELIZA_BENCH_URL"):
+        harness = provider.strip().lower()
+        os.environ["BENCHMARK_HARNESS"] = harness
+        os.environ["ELIZA_BENCH_HARNESS"] = harness
+
+        if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
             eliza_server = ElizaServerManager()
             eliza_server.start()
             client = eliza_server.client
@@ -322,6 +361,14 @@ def main() -> int:
             f"  Problems:  {[p.value for p in config.problems] if config.problems else 'all'}"
         )
         print(f"  Sample:    {config.use_sample_tasks}")
+        print(
+            "  Instances: "
+            + (
+                "full dataset"
+                if config.max_instances_per_problem is None
+                else f"{config.max_instances_per_problem} loaded per problem"
+            )
+        )
         print()
 
     try:

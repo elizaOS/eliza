@@ -15,6 +15,7 @@
  */
 import { logger } from "@elizaos/core";
 import { summarizeEvents } from "./dflash-event-schema";
+
 const DEFAULT_HISTORY_LIMIT = 64;
 /** Rolling-window size for the per-step acceptance rate (Step 3). */
 const VERIFY_ACCEPTANCE_WINDOW = 50;

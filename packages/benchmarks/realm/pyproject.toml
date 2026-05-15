@@ -18,16 +18,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
-# OR-Tools is REQUIRED. The optimality scoring for JSSP / TSP-TW / DARP all
-# depend on CP-SAT or RoutingModel; without OR-Tools the oracle would only
-# produce a loose lower bound (JSSP) or a greedy upper bound (DARP), which
-# turns "optimality_ratio" into a meaningless number. We pin a recent
-# version because the RoutingModel API has stabilised since 9.x.
 dependencies = [
-    "ortools>=9.5,<10.0",
 ]
 
 [project.optional-dependencies]
+ortools = [
+    "ortools>=9.5,<10.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

@@ -141,15 +141,6 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         status="source-only",
         notes=("Final Eliza-1 27B-256k uses Qwen3.6 and still needs long-context assembly plus Q4_K_M quantization.",),
     ),
-    "27b-1m": SourceArtifact(
-        kind="text",
-        repo="unsloth/Qwen3.6-27B-GGUF",
-        filename="Qwen3.6-27B-Q8_0.gguf",
-        destination="source/text/qwen3.6-27b-1m-q8_0.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=("Final Eliza-1 27B-1m uses Qwen3.6 and still needs long-context assembly plus Q4_K_M quantization.",),
-    ),
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
@@ -159,12 +150,11 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "9b": None,
     "27b": None,
     "27b-256k": None,
-    "27b-1m": None,
 }
 
 # mmproj-F16 sources per tier. Every Qwen3.5 base (0.8B/2B/4B/9B/27B) ships
 # its own `mmproj-F16.gguf` in the matching unsloth repo. The 27B projector
-# is shared verbatim across the 27b / 27b-256k / 27b-1m text-context variants
+# is shared verbatim across the 27b / 27b-256k text-context variants
 # (per the catalog comment at packages/shared/src/local-inference/catalog.ts
 # and `plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md`),
 # so the long-context tiers reuse the 27B source byte-for-byte.
@@ -173,7 +163,7 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
 # fork at `plugins/plugin-local-inference/native/llama.cpp/`):
 #   0_8b              -> Q4_K_M
 #   2b / 4b / 9b      -> Q8_0
-#   27b / 27b-256k / 27b-1m -> Q8_0
+#   27b / 27b-256k    -> Q8_0
 # The full canonical chain and the architectural reasoning for why
 # TurboQuant / PolarQuant / QJL are NOT applied to mmproj projectors are
 # documented in the 2026-05-14 plan memo cited above and in
@@ -201,7 +191,6 @@ VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "9b": _vision_source("9b", "9B"),
     "27b": _vision_source("27b", "27B"),
     "27b-256k": _vision_source("27b-256k", "27B"),
-    "27b-1m": _vision_source("27b-1m", "27B"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live
@@ -215,7 +204,6 @@ MMPROJ_QUANT_BY_TIER: Final[dict[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
-    "27b-1m": "Q8_0",
 }
 
 # Per-tier tensor-type overrides passed to `llama-quantize --tensor-type`.
@@ -243,10 +231,6 @@ MMPROJ_QUANT_TENSOR_OVERRIDES: Final[dict[str, dict[str, str]]] = {
         "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
     },
     "27b-256k": {
-        "v\\.patch_embd\\.weight": "f16",
-        "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
-    },
-    "27b-1m": {
         "v\\.patch_embd\\.weight": "f16",
         "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
     },

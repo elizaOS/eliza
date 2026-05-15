@@ -23,9 +23,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
+import runpy
 import tempfile
 from dataclasses import dataclass
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +37,7 @@ from elizaos_webshop.types import WebShopTask
 logger = logging.getLogger(__name__)
 
 REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+FETCH_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "fetch_data.py"
 
 
 @dataclass
@@ -72,6 +76,39 @@ def resolve_paths(
     if not items.exists() or not attrs.exists():
         return None
     return WebShopDataPaths(items=items, attributes=attrs, human_instructions=human)
+
+
+def _load_fetch_module() -> Any:
+    namespace = runpy.run_path(str(FETCH_SCRIPT))
+    if "download_profile" not in namespace and "fetch_profile" in namespace:
+        namespace["download_profile"] = namespace["fetch_profile"]
+    return SimpleNamespace(**namespace)
+
+
+def ensure_profile_downloaded(profile: str, data_dir: Path) -> WebShopDataPaths:
+    existing = resolve_paths(data_dir=data_dir, profile=profile)
+    if existing is not None:
+        return existing
+
+    if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
+        raise FileNotFoundError(
+            "WebShop data not found and WEBSHOP_NO_AUTOFETCH is set. "
+            f"Run `python scripts/fetch_data.py --profile {profile}` first, "
+            "or pass --use-sample-tasks for a tiny built-in catalog."
+        )
+
+    fetch_module = _load_fetch_module()
+    download_profile = getattr(fetch_module, "download_profile", None)
+    if not callable(download_profile):
+        raise RuntimeError("scripts/fetch_data.py does not expose download_profile()")
+    download_profile(profile, data_dir)
+
+    paths = resolve_paths(data_dir=data_dir, profile=profile)
+    if paths is None:
+        raise FileNotFoundError(
+            f"WebShop profile {profile!r} did not produce required files in {data_dir}"
+        )
+    return paths
 
 
 class WebShopDataset:
@@ -137,11 +174,7 @@ class WebShopDataset:
 
         paths = resolve_paths(data_dir=self.data_dir, profile=self.profile)
         if paths is None:
-            raise FileNotFoundError(
-                "WebShop data not found. Run "
-                "`python scripts/fetch_data.py --profile small` first, "
-                "or pass --use-sample-tasks for a tiny built-in catalog."
-            )
+            paths = ensure_profile_downloaded(self.profile, self.data_dir)
         self.paths = paths
         self.tasks = self._load_from_upstream(paths)
         logger.info(

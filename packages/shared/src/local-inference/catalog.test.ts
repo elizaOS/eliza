@@ -12,7 +12,6 @@ const LARGE_TIERS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 

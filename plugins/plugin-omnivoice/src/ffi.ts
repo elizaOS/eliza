@@ -259,7 +259,7 @@ function writePointer(view: DataView, offset: number, value: bigint): void {
 export class OmnivoiceContext {
   private constructor(
     private readonly handle: OmnivoiceLibHandle,
-    private readonly ctx: bigint,
+    private ctx: bigint,
     readonly _options: OmnivoiceContextOptions,
     /** Roots holding C-string buffers alive for the ctx lifetime. */
     private readonly retained: ArrayBufferView[],
@@ -324,7 +324,9 @@ export class OmnivoiceContext {
   /** Free the native context. Safe to call multiple times. */
   close(): void {
     if (this.ctx === 0n) return;
-    this.handle.symbols.ov_free(this.ctx);
+    const ctx = this.ctx;
+    this.ctx = 0n;
+    this.handle.symbols.ov_free(ctx);
     // Drop retained buffers to allow GC.
     this.retained.length = 0;
   }

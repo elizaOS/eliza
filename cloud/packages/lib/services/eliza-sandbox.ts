@@ -2286,8 +2286,15 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseTextResponse(text: string): Response {
+    const messageId = crypto.randomUUID();
+    const chunk = {
+      messageId,
+      chunk: text,
+      text,
+      timestamp: Date.now(),
+    };
     return new Response(
-      `data: ${JSON.stringify({ text })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
+      `event: chunk\ndata: ${JSON.stringify(chunk)}\n\nevent: done\ndata: ${JSON.stringify({ messageId, text })}\n\n`,
       {
         status: 200,
         headers: {

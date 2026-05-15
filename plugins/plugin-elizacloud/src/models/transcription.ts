@@ -87,8 +87,11 @@ export async function handleTranscription(
       throw new Error(`Failed to transcribe audio: ${response.status} ${response.statusText}`);
     }
 
-    const data = (await response.json()) as { text: string };
-    return data.text || "";
+    const data = (await response.json()) as {
+      text?: string;
+      transcript?: string;
+    };
+    return data.text ?? data.transcript ?? "";
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`TRANSCRIPTION error: ${message}`);

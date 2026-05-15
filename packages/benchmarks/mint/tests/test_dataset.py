@@ -10,14 +10,18 @@ from benchmarks.mint.dataset import MINTDataset
 
 class TestUpstreamMINTDataset:
     @pytest.fixture
-    def dataset(self) -> MINTDataset:
-        return MINTDataset()
+    def dataset(self, official_format_data_path) -> MINTDataset:
+        return MINTDataset(
+            data_path=official_format_data_path,
+            auto_fetch=False,
+        )
 
     @pytest.mark.asyncio
     async def test_load_upstream(self, dataset: MINTDataset) -> None:
         await dataset.load()
 
-        # We expect samples from each non-alfworld subtask.
+        # The fixture mirrors upstream's processed JSONL shape without
+        # requiring the full upstream data checkout.
         loaded_subtasks = [
             st for st, entries in dataset.tasks.items() if entries
         ]
@@ -38,8 +42,7 @@ class TestUpstreamMINTDataset:
     async def test_limit_per_subtask(self, dataset: MINTDataset) -> None:
         await dataset.load()
         tasks = dataset.get_tasks(limit=2)
-        # 7 non-alfworld subtasks * 2 -> at most 14.
-        assert len(tasks) <= 14
+        assert len(tasks) <= 6
         per_subtask: dict[MINTSubtask, int] = {}
         for t in tasks:
             per_subtask[t.subtask] = per_subtask.get(t.subtask, 0) + 1
@@ -64,6 +67,57 @@ class TestUpstreamMINTDataset:
         await dataset.load()
         second = sum(len(v) for v in dataset.tasks.values())
         assert first == second
+
+    @pytest.mark.asyncio
+    async def test_load_only_requested_subtasks(self, official_format_data_path) -> None:
+        dataset = MINTDataset(
+            data_path=official_format_data_path,
+            auto_fetch=False,
+        )
+        await dataset.load(subtasks=[MINTSubtask.GSM8K])
+        assert dataset.get_tasks(subtasks=[MINTSubtask.GSM8K])
+        assert dataset.get_tasks(subtasks=[MINTSubtask.HUMANEVAL]) == []
+
+
+class TestLazyFetch:
+    @pytest.mark.asyncio
+    async def test_missing_default_path_fetches_to_cache(
+        self,
+        tmp_path,
+        monkeypatch,
+    ) -> None:
+        def fake_fetch_file(self, url, target) -> None:
+            assert url.endswith("/gsm8k/test_prompts.json")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                '{"id": 0, "prompt": "What is 1 + 1?", "reference": "2"}\n',
+                encoding="utf-8",
+            )
+
+        monkeypatch.setattr(MINTDataset, "_fetch_file", fake_fetch_file)
+
+        dataset = MINTDataset(
+            data_path="",
+            cache_dir=tmp_path,
+            auto_fetch=True,
+        )
+        dataset.data_path = tmp_path / "missing-vendored"
+
+        await dataset.load(subtasks=[MINTSubtask.GSM8K])
+
+        tasks = dataset.get_tasks(subtasks=[MINTSubtask.GSM8K])
+        assert len(tasks) == 1
+        assert tasks[0].id == "gsm8k-0"
+
+    @pytest.mark.asyncio
+    async def test_no_auto_fetch_errors_with_cache_guidance(self, tmp_path) -> None:
+        dataset = MINTDataset(
+            data_path=tmp_path / "missing",
+            cache_dir=tmp_path / "cache",
+            auto_fetch=False,
+        )
+        with pytest.raises(RuntimeError, match="use_sample_tasks=True"):
+            await dataset.load(subtasks=[MINTSubtask.GSM8K])
 
 
 class TestSampleSmokeTasks:

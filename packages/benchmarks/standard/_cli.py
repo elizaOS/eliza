@@ -100,9 +100,13 @@ def run_cli(
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    endpoint = resolve_endpoint(
-        model_endpoint=args.model_endpoint,
-        provider=args.provider,
+    endpoint = (
+        "mock://standard-benchmark"
+        if args.mock
+        else resolve_endpoint(
+            model_endpoint=args.model_endpoint,
+            provider=args.provider,
+        )
     )
     api_key = resolve_api_key(args.api_key_env)
 

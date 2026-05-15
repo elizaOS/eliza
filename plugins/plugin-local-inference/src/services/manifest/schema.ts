@@ -47,8 +47,8 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
-// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. Enum stays size-ordered.
+// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). Enum stays size-ordered.
+// G1 (2026-05-15): removed `27b-1m` — capped at `27b-256k` (262k natural context).
 export const ELIZA_1_TIERS = [
 	"0_8b",
 	"2b",
@@ -56,7 +56,6 @@ export const ELIZA_1_TIERS = [
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
@@ -155,7 +154,6 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -168,8 +166,6 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
-	// 1M context only ships verified on CUDA today (GH200-class hosts).
-	"27b-1m": ["cuda"],
 };
 
 // ---------------------------------------------------------------------------
@@ -196,6 +192,7 @@ export const Eliza1LineageSchema = z.object({
 	// entry undefined. The validator enforces lineage-vs-files consistency.
 	asr: lineageEntry.optional(),
 	embedding: lineageEntry.optional(),
+	imagegen: lineageEntry.optional(),
 	vision: lineageEntry.optional(),
 	vad: lineageEntry.optional(),
 	wakeword: lineageEntry.optional(),
@@ -244,6 +241,12 @@ export const Eliza1FilesSchema = z.object({
 	// ship this component"; the validator enforces tier-specific
 	// consistency rules (e.g. 4b-and-up MUST ship `embedding[]`).
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
+	// Optional image-generation artifacts. Most Eliza-1 base bundles do not
+	// carry diffusion weights; those are documented in
+	// docs/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When a
+	// future bundle does ship local image-gen weights inline, list them here
+	// and provide matching `lineage.imagegen`.
+	imagegen: z.array(Eliza1FileEntrySchema).optional(),
 	vad: z.array(Eliza1FileEntrySchema).optional(),
 	wakeword: z.array(Eliza1FileEntrySchema).optional(),
 	// Voice Wave 2 (2026-05-14): bundled semantic turn detector. Optional —
@@ -500,6 +503,7 @@ export const ELIZA_1_PROVENANCE_SLOTS = [
 	"asr",
 	"vad",
 	"embedding",
+	"imagegen",
 	"vision",
 	"drafter",
 ] as const;

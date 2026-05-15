@@ -18,8 +18,22 @@ function unavailable() {
   throw new Error(NOT_AVAILABLE_MSG);
 }
 
+const capabilities = Object.freeze({
+  provider: "llama-cpp-capacitor",
+  available: false,
+  platform: "aosp-bun-mobile-stub",
+  text: false,
+  embeddings: false,
+  vision: false,
+  mmproj: false,
+  imagegen: false,
+  reason: NOT_AVAILABLE_MSG,
+});
+
 module.exports = {
   __mobileStub: true,
+  __mobileCapabilities: capabilities,
+  capabilities,
   LlamaCpp: new Proxy(
     {},
     {

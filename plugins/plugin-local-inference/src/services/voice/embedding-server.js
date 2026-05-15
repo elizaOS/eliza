@@ -36,6 +36,7 @@ import {
 	truncateMatryoshka,
 } from "./embedding";
 import { VoiceStartupError } from "./errors";
+
 const HOST = "127.0.0.1";
 const READY_TIMEOUT_MS = 60_000;
 const EMBED_TIMEOUT_MS = 60_000;

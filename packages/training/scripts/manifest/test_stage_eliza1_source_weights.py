@@ -81,7 +81,7 @@ def test_stage_sources_accepts_large_active_tier(
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
 
 
-@pytest.mark.parametrize("tier", ["27b", "27b-256k", "27b-1m"])
+@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
 def test_27b_class_tiers_use_qwen36_source(
     tmp_path: Path,
     monkeypatch,
@@ -92,19 +92,23 @@ def test_27b_class_tiers_use_qwen36_source(
     report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
-    assert all("Qwen3.5-27B" not in f["repo"] for f in report["files"])
+    assert all(
+        "Qwen3.5-27B" not in f["repo"]
+        for f in report["files"]
+        if f["kind"] == "text"
+    )
 
 
 def test_every_active_tier_has_vision_source() -> None:
     """Every Qwen3.5 release tier must source its own mmproj-F16.gguf.
 
-    The 27b / 27b-256k / 27b-1m text-context variants all reuse the
+    The 27b / 27b-256k text-context variants all reuse the
     `unsloth/Qwen3.5-27B-GGUF` projector by design (the projector arch is
     shared across the 27B family). The 0_8b/2b/4b/9b tiers each have a
     distinct upstream mmproj source. The 0_8b tier ships Q4_K_M; every
     other tier ships Q8_0.
     """
-    for tier in ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"):
+    for tier in ("0_8b", "2b", "4b", "9b", "27b", "27b-256k"):
         assert stage.VISION_SOURCES[tier] is not None, tier
         artifact = stage.VISION_SOURCES[tier]
         assert artifact.kind == "vision"
@@ -126,7 +130,7 @@ def test_large_projector_tiers_carry_ffn_down_override() -> None:
     with "Unsupported tensor size encountered" mid-stream. The 0_8b/2b/4b
     mid+small projectors do not need that override.
     """
-    for tier in ("9b", "27b", "27b-256k", "27b-1m"):
+    for tier in ("9b", "27b", "27b-256k"):
         overrides = stage.MMPROJ_QUANT_TENSOR_OVERRIDES[tier]
         assert "v\\.blk\\.[0-9]+\\.ffn_down\\.weight" in overrides
         assert "v\\.patch_embd\\.weight" in overrides

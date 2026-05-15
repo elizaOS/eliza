@@ -357,7 +357,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 			"eliza-1-9b": { ctx_size: 1048576, max_parallel: 32 },
 			"eliza-1-27b": { ctx_size: 131072, max_parallel: 16 },
 			"eliza-1-27b-256k": { ctx_size: 262144, max_parallel: 6 },
-			"eliza-1-27b-1m": { ctx_size: 1048576, max_parallel: 2 },
 		},
 		expected_metrics: {
 			ttfa_p50_ms: 110,
@@ -368,7 +367,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 		},
 		known_limits: [
 			"FP4 not supported on sm_90 (Blackwell-only)",
-			"27B-1M @ parallel > 2 requires prefix sharing via radix cache",
 			"PCIe spill path defeats the bandwidth advantage; keep KV in HBM",
 		],
 	},

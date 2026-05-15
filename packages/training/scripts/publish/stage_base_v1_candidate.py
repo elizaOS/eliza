@@ -52,7 +52,6 @@ RAM_BUDGET_MB = {
     "9b": (12000, 18000),
     "27b": (32000, 48000),
     "27b-256k": (96000, 128000),
-    "27b-1m": (160000, 220000),
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
@@ -62,7 +61,6 @@ TEXT_BASE_BY_TIER = {
     "9b": "Qwen/Qwen3.5-9B",
     "27b": "Qwen/Qwen3.6-27B",
     "27b-256k": "Qwen/Qwen3.6-27B",
-    "27b-1m": "Qwen/Qwen3.6-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]

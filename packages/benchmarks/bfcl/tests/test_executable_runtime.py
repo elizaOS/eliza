@@ -44,6 +44,24 @@ class TestExecutableRuntime:
         assert len(results) == 1
         assert "Error during execution" in results[0]
 
+    def test_call_qualification_does_not_rewrite_string_arguments(self) -> None:
+        """Bare method qualification must not touch text inside literals."""
+        rt = ExecutableRuntime(involved_classes=["MathAPI"], initial_config={})
+        processed = rt._qualify_method_calls(
+            "mean(numbers=[1, 2, 3], note='mean(numbers=[9])')"
+        )
+
+        assert "MathAPI.mean" in processed
+        assert "note='mean(numbers=[9])'" in processed
+
+    def test_nested_forbidden_attribute_rejected(self) -> None:
+        """Forbidden names are rejected anywhere in the parsed expression."""
+        rt = ExecutableRuntime(involved_classes=["MathAPI"], initial_config={})
+        results = rt.execute_calls(["__import__('os').system('whoami')"])
+
+        assert len(results) == 1
+        assert "Error during execution" in results[0]
+
     def test_decode_python_calls_plain_list(self) -> None:
         assert decode_python_calls("[ls(a=True), MathAPI.mean(numbers=[1,2])]") == [
             "ls(a=True)", "MathAPI.mean(numbers=[1,2])"

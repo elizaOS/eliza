@@ -40,6 +40,7 @@ import {
 	EOT_MID_CLAUSE_THRESHOLD,
 	turnSignalFromProbability,
 } from "./eot-classifier";
+
 const DEFAULT_SPECULATE_PAUSE_MS = 300;
 export class VoiceTurnController {
 	deps;

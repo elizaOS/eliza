@@ -25,11 +25,24 @@ import sys
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from fastmcp import Client
-from fastmcp.client.auth import BearerAuth
-from fastmcp.client.logging import LogMessage
-from fastmcp.client.sampling import RequestContext, SamplingMessage, SamplingParams
-from fastmcp.exceptions import ClientError
+_FASTMCP_IMPORT_ERROR: ModuleNotFoundError | None = None
+try:
+    from fastmcp import Client
+    from fastmcp.client.auth import BearerAuth
+    from fastmcp.client.logging import LogMessage
+    from fastmcp.client.sampling import RequestContext, SamplingMessage, SamplingParams
+    from fastmcp.exceptions import ClientError
+except ModuleNotFoundError as exc:
+    if exc.name != "fastmcp":
+        raise
+    _FASTMCP_IMPORT_ERROR = exc
+    Client = Any  # type: ignore[misc,assignment]
+    BearerAuth = Any  # type: ignore[misc,assignment]
+    LogMessage = Any  # type: ignore[misc,assignment]
+    RequestContext = Any  # type: ignore[misc,assignment]
+    SamplingMessage = Any  # type: ignore[misc,assignment]
+    SamplingParams = Any  # type: ignore[misc,assignment]
+    ClientError = Exception  # type: ignore[assignment]
 
 from gem.tools.base_tool import BaseTool
 
@@ -345,6 +358,10 @@ class MCPTool(BaseTool):
             fix_schema_for_openai: Whether to fix JSON schemas for OpenAI API compatibility
         """
         super().__init__(num_workers)
+        if _FASTMCP_IMPORT_ERROR is not None:
+            raise ModuleNotFoundError(
+                "fastmcp is required to use gem.tools.MCPTool"
+            ) from _FASTMCP_IMPORT_ERROR
 
         # Store original config and normalize it
         self.raw_config = config

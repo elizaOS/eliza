@@ -42,7 +42,6 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
-    "27b-1m",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -143,10 +142,6 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "Qwen/Qwen3.6-27B",
         "unsloth/Qwen3.6-27B-GGUF",
     ),
-    "27b-1m": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
-    ),
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -180,13 +175,6 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
-    "27b-1m": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -204,7 +192,6 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -214,7 +201,6 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
-    "27b-1m": "Q8_0",
 }
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
@@ -230,7 +216,6 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
-    "27b-1m": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -240,7 +225,6 @@ VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
-    "27b-1m": ("omnivoice",),
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (

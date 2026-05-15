@@ -309,7 +309,8 @@ class MINTConfig:
     """Configuration for MINT benchmark runner."""
 
     # Paths
-    data_path: str = ""  # Empty -> use vendored upstream/data/processed.
+    data_path: str = ""  # Empty -> vendored data if present, else cache.
+    cache_dir: str = ""  # Empty -> MINT_DATA_CACHE or ~/.cache/elizaos/mint.
     output_dir: str = "./benchmark_results/mint"
 
     # Execution settings
@@ -328,6 +329,7 @@ class MINTConfig:
     # Mock / sample-task escape hatches (must be opted in explicitly).
     use_mock_executor: bool = False
     use_sample_tasks: bool = False  # If True, use a tiny hand-written smoke set.
+    auto_fetch_upstream: bool = True  # Fetch compact upstream JSONL into cache.
     allow_ground_truth_mock: bool = False
 
     # Reporting

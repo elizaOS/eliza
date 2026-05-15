@@ -19,6 +19,7 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
+import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
 type AgentMetricsSummary = {
   spawned: number;
@@ -490,10 +491,30 @@ function hasCodexSubscriptionAuth(): boolean {
 }
 
 function hasCodexApiKey(runtime?: IAgentRuntime): boolean {
-  return Boolean(
+  const codexKey =
+    process.env.CODEX_API_KEY?.trim() ||
+    safeGetSetting(runtime, "CODEX_API_KEY");
+  if (codexKey) return true;
+  const openaiKey =
     process.env.OPENAI_API_KEY?.trim() ||
-      safeGetSetting(runtime, "OPENAI_API_KEY"),
-  );
+    safeGetSetting(runtime, "OPENAI_API_KEY");
+  if (!openaiKey) return false;
+  const cerebrasKey =
+    process.env.CEREBRAS_API_KEY?.trim() ||
+    safeGetSetting(runtime, "CEREBRAS_API_KEY");
+  const baseUrl =
+    process.env.OPENAI_BASE_URL?.trim() ||
+    process.env.CEREBRAS_BASE_URL?.trim() ||
+    safeGetSetting(runtime, "OPENAI_BASE_URL") ||
+    safeGetSetting(runtime, "CEREBRAS_BASE_URL");
+  const provider =
+    process.env.ELIZA_PROVIDER?.trim().toLowerCase() ||
+    process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
+  const isCerebrasMirror =
+    Boolean(cerebrasKey && openaiKey === cerebrasKey) &&
+    (provider === "cerebras" ||
+      Boolean(baseUrl && /(^|[/.])cerebras\.ai(?:\/|$)/i.test(baseUrl)));
+  return !isCerebrasMirror;
 }
 
 /**
@@ -506,7 +527,7 @@ function hasElizaCloudApiKey(): boolean {
 }
 
 function hasOpencodeBinary(): boolean {
-  return hasBinaryOnPath("opencode");
+  return hasBinaryOnPath("opencode") || Boolean(resolveVendoredOpencodeShim());
 }
 
 function isOpencodeLocalMode(): boolean {
@@ -616,27 +637,18 @@ async function computeTaskAgentFrameworkState(
     Boolean(
       readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
         readConfigEnvKey("ELIZA_OPENCODE_API_KEY"),
-    );
+    ) ||
+    Boolean(readConfigEnvKey("CEREBRAS_API_KEY"));
 
   const providerPrefersClaude =
     configuredSubscriptionProvider === "anthropic-subscription";
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
-  // Prefer opencode when the user has configured an OpenAI-compatible
-  // endpoint (cerebras, openrouter, local Ollama, etc.) AND has no
-  // first-party subscription paired. This is the "BYO API key" path —
-  // claude/codex subs always win when paired since the user is already
-  // paying for them.
+  // OpenCode is the BYO-provider default. Claude/Codex only become the
+  // preferred default when their specific subscription/key path is configured.
   const providerPrefersOpencode =
-    !providerPrefersClaude &&
-    !providerPrefersCodex &&
-    Boolean(
-      readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
-        readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
-        readConfigEnvKey("ELIZA_OPENCODE_API_KEY") ||
-        readConfigEnvKey("ELIZA_OPENCODE_MODEL_POWERFUL"),
-    );
+    !providerPrefersClaude && !providerPrefersCodex;
 
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
@@ -887,20 +899,10 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
-  // Prefer opencode when the user has configured an OpenAI-compatible
-  // endpoint (cerebras, openrouter, local Ollama, etc.) AND has no
-  // first-party subscription paired. This is the "BYO API key" path —
-  // claude/codex subs always win when paired since the user is already
-  // paying for them.
+  // OpenCode is the BYO-provider default. Claude/Codex only become the
+  // preferred default when their specific subscription/key path is configured.
   const providerPrefersOpencode =
-    !providerPrefersClaude &&
-    !providerPrefersCodex &&
-    Boolean(
-      readConfigEnvKey("ELIZA_OPENCODE_BASE_URL") ||
-        readConfigEnvKey("ELIZA_OPENCODE_LOCAL") === "1" ||
-        readConfigEnvKey("ELIZA_OPENCODE_API_KEY") ||
-        readConfigEnvKey("ELIZA_OPENCODE_MODEL_POWERFUL"),
-    );
+    !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();

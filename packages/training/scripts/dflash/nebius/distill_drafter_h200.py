@@ -70,7 +70,6 @@ ACCEPTANCE_GATE: dict[str, float] = {
     "9b": 0.55,
     "27b": 0.55,
     "27b-256k": 0.55,
-    "27b-1m": 0.55,
 }
 
 # Default student base per tier (Qwen3.5 family, tokenizer-compatible).
@@ -81,7 +80,6 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
     "9b": "Qwen/Qwen3.5-2B",
     "27b": "Qwen/Qwen3.5-4B",
     "27b-256k": "Qwen/Qwen3.5-4B",
-    "27b-1m": "Qwen/Qwen3.5-4B",
 }
 
 # Approximate drafter size-B per tier (used for --drafter-size-b default).
@@ -92,7 +90,6 @@ DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
     "9b": 1.5,
     "27b": 3.0,
     "27b-256k": 3.0,
-    "27b-1m": 3.0,
 }
 
 CHECKPOINT_EVERY_STEPS: int = 500

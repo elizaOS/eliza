@@ -4,9 +4,22 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
 import sharp from "sharp";
+import {
+  DEFAULT_MAX_EDGE,
+  DEFAULT_OVERLAP_FRACTION,
+  type ScreenTile as TilerScreenTile,
+  tileScreenshot,
+} from "./screen-tiler";
 import type { ScreenCapture, ScreenTile, VisionConfig } from "./types";
 
 const execAsync = promisify(exec);
+
+// `tileSize` in VisionConfig is the legacy fixed-grid edge. The new tiler
+// treats it as `maxEdge` — the largest dimension a single tile may have. The
+// tiler's defaults are tuned for Qwen3.5-VL; respect the config override only
+// when it stays in the model-sweet-spot range.
+const MIN_TILER_EDGE = 64;
+const SINGLE_DISPLAY_ID = "primary";
 
 export class ScreenCaptureService {
   private config: VisionConfig;

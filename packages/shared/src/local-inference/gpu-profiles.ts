@@ -213,8 +213,7 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best current release fit: Eliza-1 27B-1M. H200 still runs the full kernel
- * verification recipe before defaulting to the maximum-context bundle.
+ * Best current release fit: Eliza-1 27B-256k (262k natural context).
  */
 const H200: GpuProfile = {
   id: "h200",
@@ -224,7 +223,6 @@ const H200: GpuProfile = {
   memoryBandwidthGBs: 4800,
   fp8: true,
   recommendedBundles: [
-    "eliza-1-27b-1m",
     "eliza-1-27b-256k",
     "eliza-1-27b",
     "eliza-1-9b",
@@ -236,7 +234,7 @@ const H200: GpuProfile = {
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
   nGpuLayers: -1,
-  contextSize: 1_048_576,
+  contextSize: 262144,
   parallel: 16,
   batchSize: 4096,
   ubatchSize: 2048,

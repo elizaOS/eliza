@@ -48,6 +48,31 @@ const DEFAULT_TEST_ARGS: CliArgs = {
   help: false,
 };
 
+const COMPACT_TRAJECTORY_EXAMPLE: ChatMessage[] = [
+  {
+    role: "user",
+    content: "My warehouse ZIP code is 94107. Please remember it.",
+  },
+  { role: "assistant", content: "Stored for this thread." },
+  {
+    role: "assistant",
+    content: "Calling fetch_metric for turn 5.",
+    toolCalls: [
+      {
+        id: "tool_5_call",
+        name: "fetch_metric",
+        arguments: { turn: 5 },
+      },
+    ],
+  },
+  {
+    role: "tool",
+    content: "[tool_result:fetch_metric] ABC123-22",
+    toolCallId: "tool_5_call",
+    toolName: "fetch_metric",
+  },
+];
+
 describe("parseArgs", () => {
   it("parses all flags", () => {
     const a = parseArgs([
@@ -468,6 +493,31 @@ describe("applyCompaction", () => {
       true,
     );
   });
+
+  it("keeps compact trajectory tool-call and tool-result tail intact", async () => {
+    const r = await applyCompaction({
+      strategy: "structured-state",
+      inputs: { messages: COMPACT_TRAJECTORY_EXAMPLE, preserveTail: 2 },
+      loadCompactor: async () => ({
+        compact: async () => [
+          {
+            role: "system",
+            content: "[Summary] User asked to remember ZIP code 94107.",
+          },
+        ],
+      }),
+    });
+
+    expect(r.newMessages).toHaveLength(3);
+    expect(r.newMessages[0]?.content).toContain("94107");
+    expect(r.newMessages[1]?.toolCalls?.[0]?.id).toBe("tool_5_call");
+    expect(r.newMessages[2]).toMatchObject({
+      role: "tool",
+      toolCallId: "tool_5_call",
+      toolName: "fetch_metric",
+      content: "[tool_result:fetch_metric] ABC123-22",
+    });
+  });
 });
 
 describe("makeOpenAICompatibleClient retry behavior", () => {
@@ -735,6 +785,14 @@ describe("buildRealisticSystemPrompt", () => {
     expect(prompt).toMatch(/Available Actions/);
     expect(prompt).toMatch(/Loaded Plugins/);
     expect(prompt).toMatch(/USE_SKILL/);
+  });
+
+  it("captures Eliza trajectory learnings for recall probes", () => {
+    const prompt = buildRealisticSystemPrompt();
+    expect(prompt).toMatch(/session-local facts/);
+    expect(prompt).toMatch(/Do not emit Action JSON such as REPLY or RECALL/);
+    expect(prompt).toMatch(/Treat tool results as authoritative/);
+    expect(prompt).toMatch(/quote them verbatim/);
   });
 
   it("is deterministic", () => {

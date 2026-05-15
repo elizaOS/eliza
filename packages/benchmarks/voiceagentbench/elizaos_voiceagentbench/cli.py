@@ -16,8 +16,10 @@ import dataclasses
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from .adapters import (
     build_eliza_agent,
@@ -35,10 +37,42 @@ logger = logging.getLogger("elizaos_voiceagentbench")
 
 
 SUITE_CHOICES = [s.value for s in Suite] + ["all"]
-AGENT_CHOICES = ["eliza", "hermes", "openclaw"]
+AGENT_CHOICES = ["eliza", "hermes", "openclaw", "mock"]
+_TOOL_ANNOTATION_RE = re.compile(r"\[tool:\s*([A-Za-z0-9_.-]+)\s+(\{.*?\})\]")
+
+
+async def _mock_agent(history: list[Any], _tools: list[dict[str, Any]]) -> Any:
+    user_text = ""
+    for turn in reversed(history):
+        if getattr(turn, "role", "") == "user":
+            user_text = getattr(turn, "content", "") or ""
+            break
+    if "[refuse]" in user_text:
+        from .types import MessageTurn
+
+        return MessageTurn(role="assistant", content="I can't help with that.")
+
+    tool_calls: list[dict[str, Any]] = []
+    for idx, match in enumerate(_TOOL_ANNOTATION_RE.finditer(user_text)):
+        try:
+            arguments = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            arguments = {}
+        tool_calls.append(
+            {
+                "id": f"mock_call_{idx}",
+                "name": match.group(1),
+                "arguments": arguments,
+            }
+        )
+    from .types import MessageTurn
+
+    return MessageTurn(role="assistant", content="done", tool_calls=tool_calls or None)
 
 
 def _build_agent(name: str) -> AgentFn:
+    if name == "mock":
+        return _mock_agent
     if name == "eliza":
         return build_eliza_agent()
     if name == "hermes":
@@ -68,6 +102,11 @@ def _report_to_json(report: VoiceBenchmarkReport) -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="elizaos_voiceagentbench")
     parser.add_argument("--agent", choices=AGENT_CHOICES, default="eliza")
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use the bundled fixture dataset and deterministic mock agent.",
+    )
     parser.add_argument(
         "--suite",
         choices=SUITE_CHOICES,
@@ -107,8 +146,12 @@ def main(argv: list[str] | None = None) -> int:
 
     suites = _resolve_suites(args.suite)
     suite_filter = suites[0] if suites and len(suites) == 1 else None
+    effective_agent = "mock" if args.mock else args.agent
+    data_path = args.data_path
+    if args.mock and data_path is None:
+        data_path = Path(__file__).resolve().parents[1] / "fixtures" / "mock_tasks.jsonl"
     tasks = load_tasks(
-        data_path=args.data_path,
+        data_path=data_path,
         suite_filter=suite_filter,
         limit=args.limit if args.limit > 0 else None,
     )
@@ -119,8 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("no tasks matched the requested filter")
         return 2
 
-    agent = _build_agent(args.agent)
-    stt = build_stt()
+    agent = _build_agent(effective_agent)
+    stt = build_stt(mock=args.mock)
     judge: CoherenceJudge | None
     if args.no_judge:
         judge = None
@@ -149,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     timestamp = datetime.now(timezone.utc).isoformat()
     report = compile_report(
         tasks=results,
-        model_name=args.agent,
+        model_name=effective_agent,
         judge_model_name=judge_model_name,
         timestamp=timestamp,
         seeds=max(1, args.seeds),
@@ -158,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = timestamp.replace(":", "-")
-    out_path = output_dir / f"voiceagentbench_{args.agent}_{args.suite}_{stamp}.json"
+    out_path = output_dir / f"voiceagentbench_{effective_agent}_{args.suite}_{stamp}.json"
     out_path.write_text(json.dumps(_report_to_json(report), indent=2, default=str))
 
     summary = {

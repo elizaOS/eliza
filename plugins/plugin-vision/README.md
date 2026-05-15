@@ -36,7 +36,7 @@ objects, and make decisions based on visual input.
 - ✅ Entity tracking with persistent IDs
 - ✅ Multi-display support
 - ✅ Circuit breaker pattern for error resilience
-- ✅ Florence2 model integration for advanced scene understanding
+- ✅ eliza-1 (Qwen3.5-VL) routed through `runtime.useModel(IMAGE_DESCRIPTION)` for scene understanding
 - ✅ Worker-based processing for high-FPS operations
 
 ### Phase 4 (Planned)
@@ -60,14 +60,16 @@ objects, and make decisions based on visual input.
   behind a manual flag until validated on each platform; `face-api.js`
   remains the default.
 - ✅ **Dynamic load/unload** — `VisionServiceLifecycleManager` ties each
-  sub-service (YOLO / OCR / face / pose / Florence2) to the WS1 memory
-  arbiter (when registered) via the `IModelArbiter` contract. Idle watchdog
-  releases sub-services after `idleUnloadMs` (default 60s). On
-  memory-pressure events the coldest holders are released first.
-- ✅ **Eliza-1 vision bridge** — when the runtime exposes an eliza-1
-  `IMAGE_DESCRIPTION` handler (signalled by `ELIZA1_VISION_HANDLER_PRESENT`
-  or an `eliza1-vision` service), `VisionService` routes scene description
-  there first. Local Florence-2 stays as the fallback.
+  sub-service (YOLO / OCR / face / pose) to the WS1 memory arbiter (when
+  registered) via the `IModelArbiter` contract. Idle watchdog releases
+  sub-services after `idleUnloadMs` (default 60s). On memory-pressure
+  events the coldest holders are released first.
+- ✅ **Eliza-1 vision bridge** — `VisionService` routes every scene-describe
+  call through `runtime.useModel(IMAGE_DESCRIPTION)`. Locally, eliza-1
+  (Qwen3.5-VL) registers that slot via plugin-local-inference; otherwise
+  the runtime rotates to whichever cloud/remote provider has registered
+  IMAGE_DESCRIPTION. plugin-vision no longer ships its own VLM — Florence-2
+  has been removed.
 - ✅ **Camera/screen toggle API** — `enableCamera()`, `disableCamera()`,
   `enableScreen(displayIds?)`, `disableScreen()` on the service +
   matching `enable_camera` / `disable_camera` / `enable_screen` /
@@ -302,7 +304,6 @@ plugin-vision/
 │   ├── screen-capture.ts     # Screen capture
 │   ├── ocr-service.ts        # OCR service
 │   ├── face-recognition.ts   # Face recognition
-│   ├── florence2-model.ts    # Florence2 model integration
 │   ├── vision-worker-manager.ts # Worker management
 │   └── tests/                # E2E tests
 ```

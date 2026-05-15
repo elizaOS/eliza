@@ -238,7 +238,6 @@ describe("WS3 imagegen publishing pipeline", () => {
 			"eliza-1-9b",
 			"eliza-1-27b",
 			"eliza-1-27b-256k",
-			"eliza-1-27b-1m",
 		];
 		for (const tierId of expectedTiers) {
 			expect(

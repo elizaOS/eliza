@@ -152,6 +152,7 @@ class TestMINTConfig:
         assert c.feedback_mode == "templated"
         assert c.use_mock_executor is False
         assert c.use_sample_tasks is False
+        assert c.auto_fetch_upstream is True
         assert c.allow_ground_truth_mock is False
 
 

@@ -72,7 +72,6 @@ ACCEPTANCE_GATE: dict[str, float] = {
     "9b": 0.55,
     "27b": 0.55,
     "27b-256k": 0.55,
-    "27b-1m": 0.55,
 }
 
 

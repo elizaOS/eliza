@@ -18,6 +18,7 @@ import os
 import sys
 from pathlib import Path
 
+from elizaos_gaia.harness import resolve_harness
 from elizaos_gaia.providers import (
     PRESETS,
     ModelProvider,
@@ -157,6 +158,12 @@ Examples:
     parser.add_argument("--temperature", type=float, default=0.0, help="Temperature for model (default: 0.0)")
     parser.add_argument("--max-tokens", type=int, default=4096, help="Max tokens for model response (default: 4096)")
     parser.add_argument("--api-base", type=str, default=None, help="Override API base URL (for custom endpoints)")
+    parser.add_argument(
+        "--harness",
+        choices=["eliza", "hermes", "openclaw"],
+        default=None,
+        help="Execution harness. Hermes/OpenClaw route through their adapter clients.",
+    )
 
     # Tool options
     parser.add_argument("--disable-web-search", action="store_true", help="Disable web search tool")
@@ -208,6 +215,7 @@ def build_config(args: argparse.Namespace) -> GAIAConfig:
         include_model_in_output=True,
         model_name=model_name,
         provider=provider,
+        harness=args.harness,
         temperature=args.temperature,
         max_tokens=args.max_tokens,
         api_base=args.api_base,
@@ -253,7 +261,8 @@ async def run_benchmark_async(args: argparse.Namespace) -> int:
 
     hf_token = args.hf_token or os.getenv("HF_TOKEN")
 
-    print("\nProvider: eliza (elizaOS TypeScript benchmark bridge)")
+    route = resolve_harness(config)
+    print(f"\nHarness: {route.harness} ({route.backend})")
 
     server_mgr = None
     spawn_server = not os.environ.get("ELIZA_BENCH_URL")
@@ -277,7 +286,7 @@ async def run_benchmark_async(args: argparse.Namespace) -> int:
             runner = GAIARunner(config)
             results = await runner.run_benchmark(hf_token=hf_token)
 
-        print(f"\n=== Results: eliza/{config.model_name or 'eliza-ts-bridge'} ===")
+        print(f"\n=== Results: {route.harness}/{config.model_name or route.backend} ===")
         print(f"Overall Accuracy: {results.metrics.overall_accuracy:.1%}")
         print(
             f"Correct: {results.metrics.correct_answers}/{results.metrics.total_questions}"

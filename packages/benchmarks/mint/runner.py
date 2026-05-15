@@ -72,6 +72,8 @@ class MINTRunner:
         self.dataset = MINTDataset(
             data_path=config.data_path,
             use_sample_tasks=config.use_sample_tasks,
+            cache_dir=config.cache_dir,
+            auto_fetch=config.auto_fetch_upstream,
         )
 
         if config.use_mock_executor:
@@ -118,7 +120,7 @@ class MINTRunner:
         logger.info("[MINTRunner] Starting MINT benchmark")
         logger.info("[MINTRunner] Config: %s", self.config)
 
-        await self.dataset.load()
+        await self.dataset.load(subtasks=self.config.subtasks)
         tasks = self.dataset.get_tasks(
             subtasks=self.config.subtasks,
             limit=self.config.max_tasks_per_subtask,
@@ -226,6 +228,7 @@ class MINTRunner:
                     "use_docker": self.config.use_docker,
                     "feedback_mode": self.config.feedback_mode,
                     "use_sample_tasks": self.config.use_sample_tasks,
+                    "auto_fetch_upstream": self.config.auto_fetch_upstream,
                     "use_mock_executor": self.config.use_mock_executor,
                 },
             },

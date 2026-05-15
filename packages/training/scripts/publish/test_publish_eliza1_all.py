@@ -71,5 +71,4 @@ def test_bundle_tiers_cover_full_active_matrix():
         "9b",
         "27b",
         "27b-256k",
-        "27b-1m",
     )

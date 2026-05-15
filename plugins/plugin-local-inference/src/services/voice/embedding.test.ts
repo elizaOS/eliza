@@ -2,7 +2,7 @@
  * Local-embedding route resolution + Matryoshka truncation (`embedding.ts`):
  *   - `0_8b` / `2b` → pooled-text source on the text backbone with `--pooling last`
  *     (no separate GGUF)
- *   - `4b` / `9b` / `27b` / `27b-256k` / `27b-1m` → dedicated `embedding/`
+ *   - `4b` / `9b` / `27b` / `27b-256k` → dedicated `embedding/`
  *     region; hard-fails when that region is missing (AGENTS.md §1 — do NOT
  *     collapse to pooled text on the larger tiers; that breaks the 1024-dim
  *     Matryoshka contract)
