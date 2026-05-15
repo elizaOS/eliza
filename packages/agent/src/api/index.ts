@@ -1,37 +1,19 @@
 const computerUseModule = (await import(
   "@elizaos/plugin-computeruse"
 )) as unknown as {
-  handleSandboxRoute: (...args: unknown[]) => unknown;
+  handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
 };
-const signalModule = (await import("@elizaos/plugin-signal")) as unknown as {
-  applySignalQrOverride: (...args: unknown[]) => unknown;
-};
-const whatsAppModule = (await import(
-  "@elizaos/plugin-whatsapp"
-)) as unknown as {
+const signalModule = await import("@elizaos/plugin-signal");
+const whatsAppModule = (await import("@elizaos/plugin-whatsapp")) as {
   applyWhatsAppQrOverride: (...args: unknown[]) => unknown;
   handleWhatsAppRoute: (...args: unknown[]) => unknown;
 };
-const workflowModule = (await import(
-  "@elizaos/plugin-workflow"
-)) as unknown as {
-  handleTriggerRoutes: (...args: unknown[]) => unknown;
-};
-const appManagerModule = (await import(
-  "@elizaos/plugin-app-manager"
-)) as unknown as {
-  handleAppsRoutes: (...args: unknown[]) => unknown;
-};
-const walletModule = (await import("@elizaos/plugin-wallet")) as unknown as {
-  handleWalletRoutes: (...args: unknown[]) => unknown;
-};
+const workflowModule = await import("@elizaos/plugin-workflow");
 
 export const { handleSandboxRoute } = computerUseModule;
 export const { applySignalQrOverride } = signalModule;
 export const { applyWhatsAppQrOverride, handleWhatsAppRoute } = whatsAppModule;
 export const { handleTriggerRoutes } = workflowModule;
-export const { handleAppsRoutes } = appManagerModule;
-export const { handleWalletRoutes } = walletModule;
 
 export type WhatsAppPairingEventLike = Record<string, unknown>;
 export interface WhatsAppPairingSessionLike {
@@ -41,13 +23,28 @@ export type WhatsAppRouteDeps = Record<string, unknown>;
 export type WhatsAppRouteState = Record<string, unknown>;
 export type TriggerRouteContext = Parameters<typeof handleTriggerRoutes>[0];
 export type TriggerRouteHelpers = Record<string, unknown>;
-export type AppManagerLike = Record<string, unknown>;
-export type AppsRouteContext = Parameters<typeof handleAppsRoutes>[0];
-export type FavoriteAppsStore = Record<string, unknown>;
-export type WalletAddressesSnapshot = Record<string, unknown>;
-export type WalletRouteContext = Parameters<typeof handleWalletRoutes>[0];
-export type WalletRouteDependencies = Record<string, unknown>;
-export type WalletRpcReadinessSnapshot = Record<string, unknown>;
+// === Phase 4G: apps routes extracted to @elizaos/plugin-app-manager ===
+// Re-export the public surface so downstream callers that imported from
+// `@elizaos/agent` keep working during the transition. New callers
+// should import from `@elizaos/plugin-app-manager` directly.
+export {
+  type AppManagerLike,
+  type AppsRouteContext,
+  type FavoriteAppsStore,
+  handleAppsRoutes,
+} from "@elizaos/plugin-app-manager";
+// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
+// Re-export `handleWalletRoutes` (and supporting types) from the plugin so
+// downstream callers that imported from `@elizaos/agent` keep working
+// during the transition. New callers should import from
+// `@elizaos/plugin-wallet` directly.
+export {
+  handleWalletRoutes,
+  type WalletAddressesSnapshot,
+  type WalletRouteContext,
+  type WalletRouteDependencies,
+  type WalletRpcReadinessSnapshot,
+} from "@elizaos/plugin-wallet";
 export * from "./accounts-routes.ts";
 export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
@@ -81,7 +78,7 @@ export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";
 export * from "./registry-service.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
-// authors and their tests, e.g. plugins/plugin-vincent/src/vincent-plugin-dispatch.test.ts)
+// authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by
 // agent runtime wiring). Both are part of the public agent surface.
 export {

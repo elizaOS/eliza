@@ -122,13 +122,13 @@ def _model_provider_for_config(harness: str | None = None) -> str:
         or ""
     ).strip().lower()
     if configured:
-        return "openai" if configured == "cerebras" else configured
+        if configured == "cerebras" and harness != "eliza":
+            return "openai"
+        return configured
     return "eliza" if harness == "eliza" else "openai"
 
 
 def _model_api_base_for_config(harness: str | None = None) -> str | None:
-    if harness == "eliza":
-        return None
     configured = (
         os.environ.get("OPENAI_BASE_URL")
         or os.environ.get("OPENAI_API_BASE")
@@ -136,6 +136,16 @@ def _model_api_base_for_config(harness: str | None = None) -> str | None:
     ).strip()
     if configured:
         return configured
+    if harness == "eliza":
+        provider = (
+            os.environ.get("BENCHMARK_MODEL_PROVIDER")
+            or os.environ.get("ELIZA_PROVIDER")
+            or ""
+        ).strip().lower()
+        if provider == "cerebras":
+            cerebras_base = os.environ.get("CEREBRAS_BASE_URL", "").strip()
+            return cerebras_base or _OPENAI_COMPATIBLE_API_BASE
+        return None
     return _OPENAI_COMPATIBLE_API_BASE
 
 
@@ -289,6 +299,8 @@ def _is_timeout_error(error: object) -> bool:
 def _run_validation_error(
     results: object,
     telemetry_summary: Mapping[str, object],
+    *,
+    harness: str,
 ) -> str | None:
     metrics = getattr(results, "metrics", None)
     total_questions = _positive_int(getattr(metrics, "total_questions", 0))
@@ -301,7 +313,7 @@ def _run_validation_error(
 
     metrics_tokens = _positive_int(getattr(metrics, "total_tokens", 0))
     telemetry_tokens = _positive_int(telemetry_summary.get("total_tokens"))
-    if max(metrics_tokens, telemetry_tokens) <= 0:
+    if harness != "eliza" and max(metrics_tokens, telemetry_tokens) <= 0:
         return "zero_tokens"
     return None
 
@@ -358,7 +370,11 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
         latest=True,
     )
     metrics = results.metrics
-    validation_error = _run_validation_error(results, telemetry_summary)
+    validation_error = _run_validation_error(
+        results,
+        telemetry_summary,
+        harness=harness,
+    )
     payload: dict[str, object] = {
         "provider": provider_label,
         "harness": harness,
@@ -406,6 +422,17 @@ async def _main() -> int:
 
     try:
         if _needs_eliza_server(providers) and not os.environ.get("ELIZA_BENCH_URL"):
+            model_provider = _model_provider_for_config("eliza")
+            model_api_base = _model_api_base_for_config("eliza")
+            os.environ.update(
+                _model_env_updates(
+                    args.model,
+                    "eliza",
+                    output_dir / "server-telemetry.jsonl",
+                    model_provider,
+                    model_api_base,
+                )
+            )
             from eliza_adapter.server_manager import ElizaServerManager
 
             server_mgr = ElizaServerManager()

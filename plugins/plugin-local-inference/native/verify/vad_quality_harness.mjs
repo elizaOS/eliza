@@ -8,7 +8,7 @@
  * present, and records an explicit unavailable/needs-data report otherwise.
  *
  * Usage:
- *   node packages/inference/verify/vad_quality_harness.mjs [--bundle PATH] [--report PATH] [--json]
+ *   node packages/inference/verify/vad_quality_harness.mjs [--bundle PATH] [--dylib PATH] [--report PATH] [--json]
  */
 
 import { spawnSync } from "node:child_process";
@@ -36,12 +36,15 @@ function timestamp() {
 }
 
 function parseArgs(argv) {
-  const args = { bundle: null, report: DEFAULT_REPORT, json: false };
+  const args = { bundle: null, dylib: null, report: DEFAULT_REPORT, json: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--bundle") {
       i += 1;
       args.bundle = argv[i] ?? null;
+    } else if (a === "--dylib") {
+      i += 1;
+      args.dylib = argv[i] ?? null;
     } else if (a === "--report") {
       i += 1;
       args.report = argv[i] ?? DEFAULT_REPORT;
@@ -49,7 +52,7 @@ function parseArgs(argv) {
       args.json = true;
     } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node vad_quality_harness.mjs [--bundle PATH] [--report PATH] [--json]",
+        "Usage: node vad_quality_harness.mjs [--bundle PATH] [--dylib PATH] [--report PATH] [--json]",
       );
       process.exit(0);
     }
@@ -70,7 +73,19 @@ function bundleInfo(bundleDir) {
   };
 }
 
-function typescriptRunner() {
+function typescriptRunner(preferBun = false) {
+  const bunCandidates = [
+    "bun",
+    path.join(os.homedir(), ".bun", "bin", "bun"),
+    "/opt/homebrew/bin/bun",
+    "/usr/local/bin/bun",
+  ];
+  if (preferBun) {
+    for (const cmd of bunCandidates) {
+      const direct = spawnSync(cmd, ["--version"], { encoding: "utf8" });
+      if (direct.status === 0) return { cmd, args: [] };
+    }
+  }
   if (fs.existsSync(path.join(REPO_ROOT, "node_modules", ".bin", "tsx"))) {
     for (const cmd of [
       "/opt/homebrew/bin/node",
@@ -82,12 +97,6 @@ function typescriptRunner() {
       }
     }
   }
-  const bunCandidates = [
-    "bun",
-    path.join(os.homedir(), ".bun", "bin", "bun"),
-    "/opt/homebrew/bin/bun",
-    "/usr/local/bin/bun",
-  ];
   for (const cmd of bunCandidates) {
     const direct = spawnSync(cmd, ["--version"], { encoding: "utf8" });
     if (direct.status === 0) return { cmd, args: [] };
@@ -129,7 +138,7 @@ function unavailable(args, reason, extra = {}) {
   });
 }
 
-function makeRunnerSource(bundleRoot) {
+function makeRunnerSource(bundleRoot, dylibPath) {
   const vadUrl = pathToFileURL(
     path.join(
       REPO_ROOT,
@@ -139,6 +148,17 @@ function makeRunnerSource(bundleRoot) {
       "services",
       "voice",
       "vad.ts",
+    ),
+  ).href;
+  const ffiUrl = pathToFileURL(
+    path.join(
+      REPO_ROOT,
+      "plugins",
+      "plugin-local-inference",
+      "src",
+      "services",
+      "voice",
+      "ffi-bindings.ts",
     ),
   ).href;
   const fixtureUrl = pathToFileURL(
@@ -156,18 +176,52 @@ function makeRunnerSource(bundleRoot) {
 
   return `
 import { performance } from "node:perf_hooks";
-import { createSileroVadDetector, resolveSileroVadPath, SileroVad } from ${JSON.stringify(vadUrl)};
+import { createSileroVadDetector, resolveSileroVadPath, GgmlSileroVad } from ${JSON.stringify(vadUrl)};
+import { loadElizaInferenceFfi } from ${JSON.stringify(ffiUrl)};
 import { makeSpeechWithSilenceFixture } from ${JSON.stringify(fixtureUrl)};
 
 const SR = 16000;
 const WINDOW = 512;
 const bundleRoot = ${JSON.stringify(bundleRoot)};
+const dylibPath = ${JSON.stringify(dylibPath)};
 const modelPath = process.env.ELIZA_VAD_MODEL_PATH || undefined;
 const resolved = resolveSileroVadPath({ modelPath, bundleRoot });
 if (!resolved) {
   console.log(JSON.stringify({ available: false, reason: "no Silero VAD model found" }));
   process.exit(0);
 }
+if (!dylibPath) {
+  console.log(JSON.stringify({
+    available: false,
+    modelPath: resolved,
+    reason: "native VAD requires --dylib pointing at a fused libelizainference build",
+  }));
+  process.exit(0);
+}
+
+const ffi = loadElizaInferenceFfi(dylibPath);
+let ctx = null;
+if (!GgmlSileroVad.isSupported(ffi)) {
+  console.log(JSON.stringify({
+    available: false,
+    modelPath: resolved,
+    dylibPath,
+    reason: "fused libelizainference does not support native GGML VAD (vadSupported=false)",
+  }));
+  ffi.close?.();
+  process.exit(0);
+}
+if (!bundleRoot) {
+  console.log(JSON.stringify({
+    available: false,
+    modelPath: resolved,
+    dylibPath,
+    reason: "native VAD requires --bundle so the fused context can resolve VAD assets",
+  }));
+  ffi.close?.();
+  process.exit(0);
+}
+ctx = ffi.create(bundleRoot);
 
 function median(xs) {
   if (!xs.length) return null;
@@ -191,7 +245,7 @@ function makeNoiseFrame(seed) {
   return pcm;
 }
 
-const vad = await SileroVad.load({ modelPath: resolved });
+const vad = await GgmlSileroVad.load({ ffi, ctx, sampleRate: SR });
 const silence = new Float32Array(WINDOW);
 const computeMs = [];
 vad.reset();
@@ -205,6 +259,10 @@ const fixtureRows = [];
 for (const speechSec of [0.35, 0.6, 1.2, 2.4]) {
   const det = await createSileroVadDetector({
     modelPath: resolved,
+    bundleRoot,
+    ffi,
+    ctx,
+    prefer: "silero-ggml",
     config: {
       onsetThreshold: 0.5,
       pauseHangoverMs: 220,
@@ -249,6 +307,10 @@ for (const speechSec of [0.35, 0.6, 1.2, 2.4]) {
 
 const silenceDet = await createSileroVadDetector({
   modelPath: resolved,
+  bundleRoot,
+  ffi,
+  ctx,
+  prefer: "silero-ggml",
   config: {
     onsetThreshold: 0.5,
     pauseHangoverMs: 220,
@@ -276,6 +338,7 @@ const endpointOverhangs = fixtureRows.map((r) => r.endpointOverhangMs).filter((v
 console.log(JSON.stringify({
   available: true,
   modelPath: resolved,
+  dylibPath,
   fixtures: fixtureRows,
   summary: {
     vadLatencyMs: median(computeMs),
@@ -286,12 +349,15 @@ console.log(JSON.stringify({
     samples: fixtureRows.length,
   },
 }));
+vad.close();
+ffi.destroy(ctx);
+ffi.close?.();
 `;
 }
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const runnerRuntime = typescriptRunner();
+  const runnerRuntime = typescriptRunner(Boolean(args.dylib));
   if (!runnerRuntime) {
     unavailable(
       args,
@@ -302,7 +368,7 @@ function main() {
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-vad-quality-"));
   const runner = path.join(tmp, "run.mjs");
-  fs.writeFileSync(runner, makeRunnerSource(args.bundle), "utf8");
+  fs.writeFileSync(runner, makeRunnerSource(args.bundle, args.dylib), "utf8");
 
   const child = spawnSync(runnerRuntime.cmd, [...runnerRuntime.args, runner], {
     cwd: REPO_ROOT,

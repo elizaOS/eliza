@@ -36,7 +36,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
+    "build": "bun run scripts/build.mjs",
     "dev": "tsup --config tsup.config.ts --watch",
     "clean": "rm -rf dist .turbo",
     "typecheck": "tsc --noEmit -p tsconfig.json",

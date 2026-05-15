@@ -2,7 +2,7 @@ name: Local Inference Matrix
 
 # Builds the bun-llama-cpp fork on each runner class, runs the ablation
 # variant suite, and gates regressions against per-(backend, variant) tok/s
-# floors in scripts/local-inference-thresholds.json.
+# floors in packages/scripts/local-inference-thresholds.json.
 #
 # Triggers:
 #   - workflow_dispatch (always; needed for macOS/CUDA cost control)
@@ -38,10 +38,10 @@ on:
     paths:
       - "packages/app-core/src/services/local-inference/**"
       - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
-      - "scripts/local-inference-ablation.mjs"
-      - "scripts/local-inference-ablation.config.json"
-      - "scripts/local-inference-thresholds.json"
-      - "scripts/local-inference-smoke.mjs"
+      - "packages/scripts/local-inference-ablation.mjs"
+      - "packages/scripts/local-inference-ablation.config.json"
+      - "packages/scripts/local-inference-thresholds.json"
+      - "packages/scripts/local-inference-smoke.mjs"
       - ".github/workflows/local-inference-matrix.yml"
 
 concurrency:
@@ -239,7 +239,7 @@ jobs:
 
       - name: Smoke probe binaries
         run: |
-          bun ./scripts/local-inference-smoke.mjs
+          bun ./packages/scripts/local-inference-smoke.mjs
 
       - name: Download smoke GGUF (cached)
         if: ${{ !matrix.build_only }}
@@ -263,11 +263,11 @@ jobs:
         run: |
           set -euo pipefail
           MODEL_PATH="${ELIZA_STATE_DIR}/local-inference/models/${SMOKE_MODEL_FILE}"
-          node ./scripts/local-inference-ablation.mjs \
+          node ./packages/scripts/local-inference-ablation.mjs \
             --backend ${{ matrix.backend }} \
             --model "$MODEL_PATH" \
             --quick \
-            --gate scripts/local-inference-thresholds.json \
+            --gate packages/scripts/local-inference-thresholds.json \
             --out-dir artifacts/local-inference-ablation
 
       - name: Verify CAPABILITIES.json (build-only)

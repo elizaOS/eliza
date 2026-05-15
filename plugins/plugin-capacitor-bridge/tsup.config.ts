@@ -1,7 +1,13 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-	entry: ["src/index.ts"],
+	entry: {
+		index: "src/index.ts",
+		"android/bridge": "src/android/bridge.ts",
+		"ios/bridge": "src/ios/bridge.ts",
+		"mobile-device-bridge-bootstrap": "src/mobile-device-bridge-bootstrap.ts",
+		"shared/fs-shim": "src/shared/fs-shim.ts",
+	},
 	format: ["esm"],
 	dts: true,
 	clean: true,

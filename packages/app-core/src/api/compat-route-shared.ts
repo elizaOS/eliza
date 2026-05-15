@@ -8,7 +8,7 @@ import {
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import { sendJsonError as sendJsonErrorResponse } from "./response";
+import { sendJsonError as sendJsonErrorResponse } from "./response.js";
 
 const MAX_BODY_BYTES = 1_048_576;
 

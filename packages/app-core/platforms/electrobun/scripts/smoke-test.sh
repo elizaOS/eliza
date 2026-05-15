@@ -852,12 +852,12 @@ if [[ "$SKIP_BUILD" == "1" ]]; then
   echo "[1/7] Reusing existing packaged artifact (SKIP_BUILD=1)..."
 else
   echo "[1/7] Building core dist + renderer assets..."
-  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" bunx tsdown && echo '{"type":"module"}' > dist/package.json && env "${COMMON_BUILD_ENV[@]}" node --import tsx scripts/write-build-info.ts)
+  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" bunx tsdown && echo '{"type":"module"}' > dist/package.json && env "${COMMON_BUILD_ENV[@]}" node --import tsx packages/scripts/write-build-info.ts)
   (cd "$APP_DIR" && env "${COMMON_BUILD_ENV[@]}" npx vite build)
   echo ""
 
   echo "[2/7] Bundling runtime node_modules into dist/..."
-  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" node --import tsx scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
+  (cd "$REPO_ROOT" && env "${COMMON_BUILD_ENV[@]}" node --import tsx packages/scripts/copy-runtime-node-modules.ts --scan-dir dist --target-dist dist)
   echo ""
 
   if [[ "$(uname)" == "Darwin" ]]; then

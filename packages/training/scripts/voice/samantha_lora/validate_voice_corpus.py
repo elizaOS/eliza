@@ -24,7 +24,6 @@ import csv
 import json
 import re
 import sys
-import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -68,42 +67,92 @@ def _read_transcripts(csv_path: Path) -> list[tuple[str, str]]:
                 continue
             if len(row) < 2:
                 raise ValueError(
-                    f"transcripts.csv:{line_no}: expected at least 2 pipe-separated columns (id|text), got {len(row)}"
+                    f"{csv_path.name}:{line_no}: expected at least 2 pipe-separated columns (id|text), got {len(row)}"
                 )
             clip_id = row[0].strip()
-            text = row[1].strip()
+            # Legacy staged corpora use metadata.csv as id|raw|normalized.
+            # Prefer the normalized transcript when present; otherwise use
+            # the regular id|text second column used by transcripts.csv.
+            text = (
+                row[2].strip()
+                if csv_path.name == "metadata.csv" and len(row) >= 3 and row[2].strip()
+                else row[1].strip()
+            )
             if not clip_id:
-                raise ValueError(f"transcripts.csv:{line_no}: empty id")
+                raise ValueError(f"{csv_path.name}:{line_no}: empty id")
             if not ID_RE.match(clip_id):
                 raise ValueError(
-                    f"transcripts.csv:{line_no}: id {clip_id!r} not [A-Za-z0-9_]+"
+                    f"{csv_path.name}:{line_no}: id {clip_id!r} not [A-Za-z0-9_]+"
                 )
             if not text:
-                raise ValueError(f"transcripts.csv:{line_no}: empty text for id {clip_id}")
+                raise ValueError(f"{csv_path.name}:{line_no}: empty text for id {clip_id}")
             rows.append((clip_id, text))
     return rows
 
 
+def _u16(data: bytes, offset: int) -> int:
+    return int.from_bytes(data[offset : offset + 2], "little")
+
+
+def _u32(data: bytes, offset: int) -> int:
+    return int.from_bytes(data[offset : offset + 4], "little")
+
+
 def _probe_wav(path: Path) -> tuple[int, float]:
     """Return (sample_rate, duration_seconds). Raises ValueError on bad WAV."""
-    with wave.open(str(path), "rb") as wf:
-        sr = wf.getframerate()
-        n = wf.getnframes()
-        ch = wf.getnchannels()
-        sw = wf.getsampwidth()
-        if ch != 1:
-            raise ValueError(f"{path.name}: must be mono (got {ch} channels)")
-        if sr <= 0 or n <= 0:
-            raise ValueError(f"{path.name}: empty or unreadable WAV")
-        if sw not in (2, 4):
-            raise ValueError(
-                f"{path.name}: unsupported sample width {sw} bytes (need 16-bit PCM or 32-bit float)"
-            )
-        if sr < MIN_SAMPLE_RATE:
-            raise ValueError(
-                f"{path.name}: sample rate {sr} below floor {MIN_SAMPLE_RATE}"
-            )
-        return sr, n / float(sr)
+    data = path.read_bytes()
+    if len(data) < 44 or data[0:4] != b"RIFF" or data[8:12] != b"WAVE":
+        raise ValueError(f"{path.name}: expected RIFF/WAVE file")
+
+    fmt_offset = -1
+    fmt_size = 0
+    data_bytes = 0
+    offset = 12
+    while offset + 8 <= len(data):
+        chunk_id = data[offset : offset + 4]
+        chunk_size = _u32(data, offset + 4)
+        payload = offset + 8
+        if payload + chunk_size > len(data):
+            raise ValueError(f"{path.name}: malformed WAV chunk {chunk_id!r}")
+        if chunk_id == b"fmt ":
+            fmt_offset = payload
+            fmt_size = chunk_size
+        elif chunk_id == b"data":
+            data_bytes = chunk_size
+        offset = payload + chunk_size + (chunk_size % 2)
+
+    if fmt_offset < 0 or fmt_size < 16:
+        raise ValueError(f"{path.name}: missing fmt chunk")
+    if data_bytes <= 0:
+        raise ValueError(f"{path.name}: empty or unreadable WAV")
+
+    audio_format = _u16(data, fmt_offset)
+    channels = _u16(data, fmt_offset + 2)
+    sr = _u32(data, fmt_offset + 4)
+    bits_per_sample = _u16(data, fmt_offset + 14)
+    is_pcm16 = audio_format == 1 and bits_per_sample == 16
+    is_float32 = audio_format == 3 and bits_per_sample == 32
+    is_extensible_supported = audio_format == 0xFFFE and bits_per_sample in (16, 32)
+
+    if channels != 1:
+        raise ValueError(f"{path.name}: must be mono (got {channels} channels)")
+    if sr <= 0:
+        raise ValueError(f"{path.name}: empty or unreadable WAV")
+    if not (is_pcm16 or is_float32 or is_extensible_supported):
+        raise ValueError(
+            f"{path.name}: unsupported WAV format={audio_format} bits={bits_per_sample} "
+            "(need PCM16 or float32)"
+        )
+    if sr < MIN_SAMPLE_RATE:
+        raise ValueError(
+            f"{path.name}: sample rate {sr} below floor {MIN_SAMPLE_RATE}"
+        )
+
+    bytes_per_frame = channels * (bits_per_sample // 8)
+    frames = data_bytes // bytes_per_frame
+    if frames <= 0:
+        raise ValueError(f"{path.name}: empty or unreadable WAV")
+    return sr, frames / float(sr)
 
 
 def validate_corpus(corpus_path: Path) -> CorpusReport:
@@ -141,8 +190,8 @@ def validate_corpus(corpus_path: Path) -> CorpusReport:
         return report
 
     if use_metadata:
-        # legacy metadata.csv has 3 columns id|raw|normalized; we used col 1
-        # in _read_transcripts already (which handles >=2 cols). Nothing to do.
+        # legacy metadata.csv has 3 columns id|raw|normalized; _read_transcripts
+        # prefers normalized text when present.
         pass
 
     if not rows:

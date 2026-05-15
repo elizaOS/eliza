@@ -2,6 +2,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -386,6 +387,9 @@ export function RuntimeView({
   const [maxArrayLength, setMaxArrayLength] = useState(1000);
   const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
   const snapshotRequestIdRef = useRef(0);
+  const depthInputId = useId();
+  const arrayCapInputId = useId();
+  const objectCapInputId = useId();
 
   const sectionData =
     activeSection === "summary"
@@ -497,10 +501,13 @@ export function RuntimeView({
       />
       <SidebarPanel>
         <PagePanel.SummaryCard compact className="mt-2 space-y-2">
-          {/* biome-ignore lint/a11y/noLabelWithoutControl: programmatic control association is preserved */}
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor={depthInputId}
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             <span>{t("runtimeview.depth")}</span>
             <Input
+              id={depthInputId}
               type="number"
               min={1}
               max={24}
@@ -514,10 +521,13 @@ export function RuntimeView({
             />
           </label>
 
-          {/* biome-ignore lint/a11y/noLabelWithoutControl: programmatic control association is preserved */}
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor={arrayCapInputId}
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             <span>{t("runtimeview.arrayCap")}</span>
             <Input
+              id={arrayCapInputId}
               type="number"
               min={1}
               max={5000}
@@ -531,10 +541,13 @@ export function RuntimeView({
             />
           </label>
 
-          {/* biome-ignore lint/a11y/noLabelWithoutControl: programmatic control association is preserved */}
-          <label className="flex flex-col gap-1 text-xs-tight text-muted">
+          <label
+            htmlFor={objectCapInputId}
+            className="flex flex-col gap-1 text-xs-tight text-muted"
+          >
             <span>{t("runtimeview.objectCap")}</span>
             <Input
+              id={objectCapInputId}
               type="number"
               min={1}
               max={5000}

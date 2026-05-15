@@ -2,7 +2,7 @@ import {
   type RouteSpec,
   resolveCloudRoute,
   toRuntimeSettings,
-} from "@elizaos/cloud-routing";
+} from "@elizaos/cloud-shared/routing";
 import {
   type IAgentRuntime,
   Service,
@@ -51,6 +51,8 @@ const CACHE_DEFAULTS = {
   TOKEN_TRADE_DATA_TTL: 30 * 60 * 1000,
   // Token security data cache (30 minutes)
   TOKEN_SECURITY_DATA_TTL: 30 * 60 * 1000,
+  // Token price/liquidity cache (30 seconds)
+  TOKEN_MARKET_DATA_TTL: 30 * 1000,
 };
 
 // 'solana' | 'base' | 'ethereum'
@@ -381,8 +383,10 @@ export class BirdeyeService extends Service {
     }
   }
 
-  // FIXME: add chain param
-  async getTokenMarketData(tokenAddress: string): Promise<
+  async getTokenMarketData(
+    tokenAddress: string,
+    chain = "solana",
+  ): Promise<
     | {
         price: number;
         marketCap: number;
@@ -400,15 +404,15 @@ export class BirdeyeService extends Service {
       const [response, volResponse, priceHistoryResponse] = await Promise.all([
         fetch(
           `${this.birdeyeUrl("defi/v3/token/market-data")}?address=${tokenAddress}`,
-          this.getBirdeyeFetchOptions(),
+          this.getBirdeyeFetchOptions(chain),
         ),
         fetch(
           `${this.birdeyeUrl("defi/price_volume/single")}?address=${tokenAddress}&type=24h`,
-          this.getBirdeyeFetchOptions(),
+          this.getBirdeyeFetchOptions(chain),
         ),
         fetch(
           `${this.birdeyeUrl("defi/history_price")}?address=${tokenAddress}&address_type=token&type=15m`,
-          this.getBirdeyeFetchOptions(),
+          this.getBirdeyeFetchOptions(chain),
         ),
       ]);
 
@@ -555,31 +559,60 @@ export class BirdeyeService extends Service {
   // [Defi] Price - Multiple max 100 (all)
   // https://public-api.birdeye.so/defi/multi_price
   // Batch CU Cost = N^0.8 × 5 (base cost of a single call) (n_max: 100)
-  // FIXME: caching
   async getTokensMarketData(
     chain: string,
     tokenAddresses: string[],
+    options: GetCacheTimedOptions = {},
   ): Promise<Record<string, BirdeyeTokenMarketSnapshot | undefined>> {
     const tokenDb: Record<string, BirdeyeTokenMarketSnapshot | undefined> = {};
+    const notOlderThan =
+      options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_MARKET_DATA_TTL;
+    const tsInMs = options.tsInMs ?? Date.now();
+    const cacheKeyFor = (address: string) =>
+      `birdeye_tokens_${chain}_${address}`;
 
     // Initialize all token addresses as undefined so we know they were checked
     for (const ca of tokenAddresses) {
       tokenDb[ca] = undefined;
     }
 
-    //console.log('beSrv:getTokensMarketData chain', chain, 'tokenAddresses', tokenAddresses)
-
-    // no real cache because pricing
-    // 1-60s cache might have some benefits tho
-    // usually called only once every sell signal (1m atm)
-
     try {
+      const cacheEntries = await Promise.all(
+        tokenAddresses.map(async (address) => {
+          const wrapper = await this.runtime.getCache<
+            CacheWrapper<BirdeyeTokenMarketSnapshot | undefined>
+          >(cacheKeyFor(address));
+          if (!wrapper) {
+            return { address, cached: false, data: undefined };
+          }
+          const isFresh = Date.now() - wrapper.setAt <= notOlderThan;
+          return {
+            address,
+            cached: isFresh,
+            data: isFresh ? wrapper.data : undefined,
+          };
+        }),
+      );
+
+      const uncachedAddresses: string[] = [];
+      for (const entry of cacheEntries) {
+        if (entry.cached) {
+          tokenDb[entry.address] = entry.data;
+        } else {
+          uncachedAddresses.push(entry.address);
+        }
+      }
+
+      if (!uncachedAddresses.length) {
+        return tokenDb;
+      }
+
       const chunkArray = (arr: string[], size: number): string[][] =>
         arr
           .map((_, i) => (i % size === 0 ? arr.slice(i, i + size) : null))
           .filter((chunk): chunk is string[] => chunk !== null);
 
-      const hundos = chunkArray(tokenAddresses, 100);
+      const hundos = chunkArray(uncachedAddresses, 100);
       //console.log('getTokensMarketData hundos', hundos)
 
       // Track batches with their addresses for cache management
@@ -623,12 +656,12 @@ export class BirdeyeService extends Service {
             `birdeye:getTokensMarketData - batch failed (${batchAddresses.length} addresses), caching all as failed`,
           );
 
-          // Cache all addresses in this failed batch
           for (const ca of batchAddresses) {
-            await this.runtime.setCache(`birdeye_tokens_solana_${ca}`, {
+            await this.runtime.setCache<
+              CacheWrapper<BirdeyeTokenMarketSnapshot | undefined>
+            >(cacheKeyFor(ca), {
               data: undefined,
-              setAt: Date.now(),
-              ttl: 5 * 60 * 1000, // 5 minutes for failed batch lookups
+              setAt: tsInMs,
             });
           }
           continue;
@@ -666,20 +699,22 @@ export class BirdeyeService extends Service {
               `birdeye:getTokensMarketData - caching token ${ca}`,
             );
             // Cache successful lookups with full TTL
-            await this.runtime.setCache<BirdeyeTokenMarketSnapshot>(
-              `birdeye_tokens_solana_${ca}`,
-              marketSnapshot,
-            );
+            await this.runtime.setCache<
+              CacheWrapper<BirdeyeTokenMarketSnapshot>
+            >(cacheKeyFor(ca), {
+              data: marketSnapshot,
+              setAt: tsInMs,
+            });
           } else {
             // Token was in batch but has no valid data (or not in response)
             this.runtime.logger.warn(
               `${ca} no valid data in response: ${JSON.stringify(t)}`,
             );
-            // Cache failed lookups with shorter TTL to avoid re-fetching bad addresses
-            await this.runtime.setCache(`birdeye_tokens_solana_${ca}`, {
+            await this.runtime.setCache<
+              CacheWrapper<BirdeyeTokenMarketSnapshot | undefined>
+            >(cacheKeyFor(ca), {
               data: undefined,
-              setAt: Date.now(),
-              ttl: 5 * 60 * 1000, // 5 minutes for failed lookups
+              setAt: tsInMs,
             });
           }
         }

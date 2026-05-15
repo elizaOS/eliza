@@ -17,8 +17,14 @@ describe("desktop tray config", () => {
 		expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_DISABLE_TRAY: "1" })).toBe(
 			false,
 		);
+<<<<<<< HEAD
 		expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_DISABLE_TRAY: "yes" })).toBe(
 			false,
 		);
+=======
+		expect(
+			shouldCreateDesktopTray({ ELIZA_DESKTOP_DISABLE_TRAY: "yes" }),
+		).toBe(false);
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 	});
 });

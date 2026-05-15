@@ -142,5 +142,3 @@ declare module "@react-three/fiber" {
     gradientWaveMaterial: ThreeElement<typeof GradientWaveMaterial>;
   }
 }
-
-export { GradientWaveMaterial };

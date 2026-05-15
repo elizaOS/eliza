@@ -508,8 +508,8 @@ async function handleUploadAsset(
     ...(scheduledTaskId ? { scheduledTaskId } : {}),
   });
 
-  // TODO: route through BROWSER.navigate + BROWSER.upload once approval
-  // flips to `approved`.
+  // Execution is intentionally deferred to the approval/workflow bridge. This
+  // action only creates the DocumentRequest and approval payload.
   logger.info(
     `[OWNER_DOCUMENTS] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
   );

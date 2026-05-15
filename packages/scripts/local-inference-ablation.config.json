@@ -1,0 +1,64 @@
+{
+  "variants": [
+    {
+      "name": "baseline_f16_kv",
+      "label": "target only, f16 KV",
+      "args": []
+    },
+    {
+      "name": "turbo4_polar_kv",
+      "label": "target only, Turbo/Polar KV turbo4",
+      "args": ["--cache-type-k", "turbo4", "--cache-type-v", "turbo4"]
+    },
+    {
+      "name": "turbo3_polar_kv",
+      "label": "target only, Turbo/Polar KV turbo3",
+      "args": ["--cache-type-k", "turbo3", "--cache-type-v", "turbo3"]
+    },
+    {
+      "name": "qjl_tcq_forced",
+      "label": "target only, forced QJL/TCQ turbo3_tcq",
+      "args": ["--cache-type-k", "turbo3_tcq", "--cache-type-v", "turbo3_tcq"]
+    },
+    {
+      "name": "dflash_only",
+      "label": "DFlash, f16 KV",
+      "needsDrafter": true,
+      "args": ["--spec-type", "dflash"]
+    },
+    {
+      "name": "dflash_turbo4_polar",
+      "label": "DFlash + Turbo/Polar KV turbo4",
+      "needsDrafter": true,
+      "args": [
+        "--spec-type",
+        "dflash",
+        "--cache-type-k",
+        "turbo4",
+        "--cache-type-v",
+        "turbo4",
+        "--cache-type-k-draft",
+        "turbo4",
+        "--cache-type-v-draft",
+        "turbo4"
+      ]
+    },
+    {
+      "name": "all_dflash_qjl_tcq",
+      "label": "DFlash + forced QJL/TCQ turbo3_tcq",
+      "needsDrafter": true,
+      "args": [
+        "--spec-type",
+        "dflash",
+        "--cache-type-k",
+        "turbo3_tcq",
+        "--cache-type-v",
+        "turbo3_tcq",
+        "--cache-type-k-draft",
+        "turbo3_tcq",
+        "--cache-type-v-draft",
+        "turbo3_tcq"
+      ]
+    }
+  ]
+}

@@ -16,7 +16,7 @@ import {
   type RegistryRuntimeOverlay,
   type RegistryView,
   registryEntrySchema,
-} from "./schema";
+} from "./schema.js";
 
 export class RegistryValidationError extends Error {
   readonly file: string;

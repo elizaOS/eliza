@@ -620,15 +620,11 @@ class TestElizaExplorerConstruction:
         assert parsed["success"] is True
         assert parsed["serialized_tx"] == "abc"
 
-    def test_zero_message_run_returns_output_dir_path(self, tmp_path):
+    def test_zero_message_run_rejected(self, tmp_path):
         from benchmarks.solana.eliza_explorer import ElizaExplorer
         explorer = ElizaExplorer(max_messages=0, output_dir=str(tmp_path))
-        path = asyncio.run(explorer.run())
-        assert path.parent == tmp_path
-        assert path.exists()
-        data = json.loads(path.read_text(encoding="utf-8"))
-        assert data["harness"] == "eliza"
-        assert data["harness_path"]["class_name"] == "ElizaBridgeSolanaExplorer"
+        with pytest.raises(ValueError, match="zero-message Solana runs"):
+            asyncio.run(explorer.run())
 
     def test_metrics_structure(self):
         from benchmarks.solana.eliza_explorer import ElizaExplorer
@@ -785,9 +781,35 @@ class TestRegistryIntegration:
 
     def test_score_extractor_zero_reward(self):
         from benchmarks.registry import _score_from_solana_json
-        data = {"final_reward": 0, "final_programs": 0, "model": "x", "run_id": "y"}
+        data = {
+            "final_reward": 0,
+            "final_programs": 0,
+            "messages": [{"role": "assistant", "content": "attempted"}],
+            "cumulative_rewards": [0],
+            "model": "x",
+            "run_id": "y",
+        }
         score = _score_from_solana_json(data)
         assert score.score == 0.0
+
+    def test_score_extractor_rejects_empty_rollout(self):
+        from benchmarks.registry import _score_from_solana_json
+        data = {
+            "final_reward": 0,
+            "final_programs": 0,
+            "messages": [],
+            "cumulative_rewards": [],
+            "model": "x",
+            "run_id": "y",
+        }
+        with pytest.raises(ValueError, match="empty rollout"):
+            _score_from_solana_json(data)
+
+    def test_score_extractor_rejects_zero_artifact_without_rollout_telemetry(self):
+        from benchmarks.registry import _score_from_solana_json
+        data = {"final_reward": 0, "final_programs": 0, "model": "x", "run_id": "y"}
+        with pytest.raises(ValueError, match="empty rollout"):
+            _score_from_solana_json(data)
 
 
 # =========================================================================

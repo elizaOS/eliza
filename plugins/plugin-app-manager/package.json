@@ -29,12 +29,15 @@
     "hosted-apps"
   ],
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/shared": "workspace:*"
   },
+  "peerDependencies": {
+    "@elizaos/agent": "workspace:*"
+  },
   "devDependencies": {
+    "@elizaos/agent": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
@@ -43,7 +46,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --rootDir ../..",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "publishConfig": {

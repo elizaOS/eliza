@@ -5,7 +5,7 @@ name: Local Inference Bench
 # --target — so we run it in two layers:
 #
 #   1. PR + nightly: harness route smoke. Boots
-#      `scripts/benchmark/stub-agent-server.mjs` on a free port and checks
+#      `packages/scripts/benchmark/stub-agent-server.mjs` on a free port and checks
 #      only `/api/health`; it does not write benchmark artifacts.
 #   2. Nightly only: real agent profile. Boots `bun run dev`, points the
 #      harness at the dev server, writes the report under
@@ -96,7 +96,7 @@ jobs:
       - name: Boot stub agent server
         run: |
           set -euo pipefail
-          node scripts/benchmark/stub-agent-server.mjs --port "${STUB_PORT}" &
+          node packages/scripts/benchmark/stub-agent-server.mjs --port "${STUB_PORT}" &
           echo $! > /tmp/stub.pid
           # Wait for the stub to bind (health endpoint becomes 200).
           for _ in $(seq 1 50); do
@@ -178,7 +178,7 @@ jobs:
           DATE="$(date -u +%Y-%m-%d)"
           OUT_DIR="reports/porting/${DATE}"
           mkdir -p "$OUT_DIR"
-          node scripts/benchmark/profile-inference.mjs \
+          node packages/scripts/benchmark/profile-inference.mjs \
             --target "http://127.0.0.1:31337" \
             --config scripts/benchmark/configs/host-cpu.json \
             --label "ci-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
@@ -303,7 +303,7 @@ jobs:
           DATE="$(date -u +%Y-%m-%d)"
           OUT_DIR="reports/porting/${DATE}-cuttlefish"
           mkdir -p "$OUT_DIR"
-          node scripts/benchmark/profile-inference.mjs \
+          node packages/scripts/benchmark/profile-inference.mjs \
             --target "http://127.0.0.1:31337" \
             --config scripts/benchmark/configs/aosp-arm64.json \
             --label "cuttlefish-${GITHUB_RUN_ID}" \

@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import discover_adapters
-from .db import connect_database, initialize_database, list_runs
+from .db import (
+    connect_database,
+    initialize_database,
+    list_runs,
+    repair_nonpublishable_success_statuses,
+    repair_nonzero_returncode_statuses,
+)
 from .random_baseline_runner import (
     CALIBRATION_HARNESSES,
     CALIBRATION_SPEC_VERSION,
@@ -39,6 +45,41 @@ def _latest_by_benchmark_agent(conn) -> dict[tuple[str, str], dict[str, Any]]:
         if key not in latest:
             latest[key] = row
     return latest
+
+
+def _snapshot_rows(snapshot_dir: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    rows: dict[tuple[str, str], dict[str, Any]] = {}
+    if not snapshot_dir.exists():
+        return rows
+    for path in sorted(snapshot_dir.glob("*.json")):
+        if path.name == "index.json":
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        benchmark_id = str(payload.get("benchmark_id") or "")
+        agent = str(payload.get("agent") or "").strip().lower()
+        if not benchmark_id or not agent:
+            continue
+        row = dict(payload)
+        row.setdefault("result_json_path", payload.get("result_json_path"))
+        rows.setdefault((benchmark_id, agent), row)
+    return rows
+
+
+def _published_latest_by_benchmark_agent(workspace_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    results_root = workspace_root / "benchmarks" / "benchmark_results"
+    published: dict[tuple[str, str], dict[str, Any]] = {}
+    published.update(_snapshot_rows(results_root / "latest"))
+    published.update(_snapshot_rows(results_root / "baselines"))
+    return published
+
+
+def _quarantine_by_benchmark_agent(workspace_root: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    return _snapshot_rows(workspace_root / "benchmarks" / "benchmark_results" / "quarantine")
 
 
 def _is_close(a: float | None, b: float | None, tolerance: float) -> bool:
@@ -124,12 +165,30 @@ def build_calibration_report(
     tolerance: float = 1e-6,
     benchmark_ids: set[str] | None = None,
     agent_compatibility: dict[str, tuple[str, ...]] | None = None,
+    repair: bool = False,
 ) -> dict[str, Any]:
     db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
     conn = connect_database(db_path)
     initialize_database(conn)
-    latest = _latest_by_benchmark_agent(conn)
+    if repair:
+        repair_nonzero_returncode_statuses(conn)
+        repair_nonpublishable_success_statuses(conn)
+    db_latest = _latest_by_benchmark_agent(conn)
     conn.close()
+    published_latest = _published_latest_by_benchmark_agent(workspace_root)
+    quarantine_latest = _quarantine_by_benchmark_agent(workspace_root)
+
+    # The idempotent latest snapshots are the published source of truth. A
+    # local SQLite database can be partial after a focused rerun; do not let
+    # that hide older successful snapshots or calibration baselines, and do not
+    # let a newer quarantined/failed attempt shadow a known-good latest row.
+    # Quarantine rows only fill gaps so failed attempts remain visible when
+    # there is no publishable source of truth.
+    latest = dict(db_latest)
+    for key, row in published_latest.items():
+        latest[key] = row
+    for key, row in quarantine_latest.items():
+        latest.setdefault(key, row)
 
     compatibility = (
         dict(agent_compatibility)
@@ -209,7 +268,11 @@ def build_calibration_report(
                 math.isfinite(v) and _is_close(v, flat_scores[0], tolerance)
                 for v in flat_scores
             ):
-                calibration_status = "flat"
+                calibration_status = (
+                    "half_right"
+                    if _is_close(flat_scores[0], 0.5, tolerance)
+                    else "flat"
+                )
             else:
                 calibration_status = "mismatch"
         counts[calibration_status] += 1
@@ -349,7 +412,7 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         or row.get("missing_required_real_harnesses")
         or row.get("failed_required_real_harnesses")
         or row.get("real_pattern")
-        in {"all_real_zero", "all_real_one", "all_real_equal", "single_real_zero", "single_real_one"}
+        in {"all_real_zero", "all_real_one", "all_real_equal", "single_real_zero"}
         or str(row.get("real_pattern") or "").endswith("_mixed_config")
         or row.get("non_leaderboard_db_labels")
     ]

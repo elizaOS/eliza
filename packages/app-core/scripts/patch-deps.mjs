@@ -97,7 +97,7 @@ patchPtyManagerCursorPositionCompat(root);
 // @elizaos/agent and @elizaos/ui ship exports maps where glob targets still
 // carry the source extension (e.g. "./packages/agent/src/runtime/*.ts.js").
 // Bun fails to resolve those because the actual emitted dist files are *.js.
-// Rewrite the broken globs until eliza/scripts/prepare-package-dist.mjs is fixed
+// Rewrite the broken globs until eliza/packages/scripts/prepare-package-dist.mjs is fixed
 // upstream and we bump the @elizaos/agent and @elizaos/ui tarballs.
 patchTsTsxJsGlobs(root, "@elizaos/agent");
 patchTsTsxJsGlobs(root, "@elizaos/ui");

@@ -235,7 +235,12 @@ export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
 export * from "./test-support/process-helpers.js";
 export * from "./test-support/test-helpers.js";
-export * from "./themes/index.js";
+// themes/ runtime (presets + apply engine) moved to @elizaos/ui/themes in
+// Phase 5B (shared shrink). The theme TYPE contract stays here because
+// `contracts/content-pack` references `ThemeDefinition`. Consumers should
+// import the runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`,
+// etc.) from `@elizaos/ui`.
+export * from "./contracts/theme.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";
 export * from "./utils/asset-url.js";

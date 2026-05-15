@@ -1941,7 +1941,13 @@ function bundleHasOmniVoiceWeights(bundleRoot: string): boolean {
 	if (!existsSync(ttsDir)) return false;
 	try {
 		return readdirSync(ttsDir, { withFileTypes: true }).some(
+<<<<<<< HEAD
 			(entry) => entry.isFile() && /^omnivoice-.+\.gguf$/i.test(entry.name),
+=======
+			(entry) =>
+				entry.isFile() &&
+				/^omnivoice-.+\.gguf$/i.test(entry.name),
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 		);
 	} catch {
 		return false;
@@ -1950,7 +1956,14 @@ function bundleHasOmniVoiceWeights(bundleRoot: string): boolean {
 
 export function isOmniVoiceBundleAvailable(bundleRoot: string): boolean {
 	if (!bundleRoot || !existsSync(bundleRoot)) return false;
+<<<<<<< HEAD
 	const presetPath = path.join(bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
+=======
+	const presetPath = path.join(
+		bundleRoot,
+		DEFAULT_VOICE_PRESET_REL_PATH,
+	);
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 	return (
 		existsSync(presetPath) &&
 		bundleHasOmniVoiceWeights(bundleRoot) &&

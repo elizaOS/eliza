@@ -6,7 +6,6 @@ import TrajectoryDetail from "./components/TrajectoryDetail";
 import TrajectoryList from "./components/TrajectoryList";
 import "./App.css";
 
-// Type definitions
 export interface RunMetrics {
   run_id: string;
   model: string;
@@ -15,10 +14,10 @@ export interface RunMetrics {
   programs_discovered: Record<string, number>;
   instructions_by_program?: Record<string, number[]>;
   start_time?: string;
-  benchmark?: string; // Added benchmark field
+  benchmark?: string;
 }
 
-export interface MessageData {
+interface MessageData {
   index: number;
   timestamp: string;
   duration: number;
@@ -48,7 +47,6 @@ const App: React.FC = () => {
             `/solana-gym-env/data/${benchmark}/manifest.json`,
           );
           const manifest = await response.json();
-          // Add benchmark field to each run
           const runsWithBenchmark = manifest.runs.map((run: RunMetrics) => ({
             ...run,
             benchmark,

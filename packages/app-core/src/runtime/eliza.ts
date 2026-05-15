@@ -69,6 +69,7 @@ async function _localInference() {
   return _localInferenceRuntime;
 }
 
+import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
@@ -414,7 +415,12 @@ interface RuntimeHookModule {
   registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
 }
 
+<<<<<<< HEAD
 const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
+=======
+const TRAINING_RUNTIME_HOOKS_SPECIFIER =
+  "@elizaos/app-training/register-runtime";
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,
@@ -465,7 +471,12 @@ async function repairRuntimeAfterBoot(
 
   await ensureTextToSpeechHandler(runtime);
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
-  await ensureAutonomyBootstrapContext(runtime);
+  const autonomyEnabled = isRuntimeAutonomyEnabled(process.env);
+  if (autonomyEnabled) {
+    await ensureAutonomyBootstrapContext(runtime);
+  } else {
+    logger.info("[eliza] Autonomy bootstrap skipped — ENABLE_AUTONOMY=false");
+  }
 
   // ── Register app-specific route plugins ─────────────────────────────
   // The registry and explicit registration API own the package bindings; the
@@ -478,7 +489,7 @@ async function repairRuntimeAfterBoot(
   // dispatch registry (no-op when the registry service isn't present).
   registerCoreSensitiveRequestAdapters(runtime);
 
-  if (!runtime.getService("AUTONOMY")) {
+  if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
     try {
       await startAndRegisterAutonomyService(runtime);
       logger.info(
@@ -492,7 +503,7 @@ async function repairRuntimeAfterBoot(
   }
 
   // Enable the autonomy loop so trigger/heartbeat instructions are processed.
-  {
+  if (autonomyEnabled) {
     const autonomySvc = getAutonomyService(runtime);
     if (autonomySvc) {
       try {
@@ -506,6 +517,8 @@ async function repairRuntimeAfterBoot(
         );
       }
     }
+  } else {
+    logger.info("[eliza] AutonomyService disabled — ENABLE_AUTONOMY=false");
   }
 
   if (shouldStartTelegramStandaloneBot()) {

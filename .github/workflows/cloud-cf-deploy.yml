@@ -7,7 +7,7 @@ name: Cloud CF Deploy
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
-#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in cloud/apps/api/wrangler.toml
+#   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud-api/wrangler.toml
 #
 # Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
 
@@ -15,24 +15,18 @@ on:
   push:
     branches: [main, develop, develop-cf]
     paths:
-      - "cloud/apps/api/**"
-      - "cloud/apps/frontend/**"
-      - "cloud/packages/**"
-      - "cloud/services/**"
-      - "cloud/package.json"
-      - "cloud/bun.lock"
-      - "cloud/tsconfig*.json"
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-services/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
     branches: [main, develop, develop-cf]
     paths:
-      - "cloud/apps/api/**"
-      - "cloud/apps/frontend/**"
-      - "cloud/packages/**"
-      - "cloud/services/**"
-      - "cloud/package.json"
-      - "cloud/bun.lock"
-      - "cloud/tsconfig*.json"
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-services/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   workflow_dispatch:
     inputs:
@@ -48,10 +42,6 @@ on:
 concurrency:
   group: cloud-cf-deploy-${{ github.ref }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    working-directory: cloud
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -76,16 +66,16 @@ jobs:
         run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
-        run: bun run build:linked-workspaces
+        run: bun run build:core
 
       - name: Verify Worker
-        run: bun run --cwd apps/api typecheck
+        run: bun run --cwd packages/cloud-api typecheck
 
       - name: Run Worker e2e
-        run: bun run test:e2e:worker
+        run: bun run --cwd packages/cloud-api test:e2e
 
       - name: Build
-        run: bun run build:api
+        run: bun run --cwd packages/cloud-api build
 
       - name: Resolve deploy environment
         id: env
@@ -124,7 +114,7 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true'
-        working-directory: cloud/apps/api
+        working-directory: packages/cloud-api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -151,13 +141,13 @@ jobs:
         run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
-        run: bun run build:linked-core
+        run: bun run build:core
 
       - name: Verify Frontend
-        run: bun run --cwd apps/frontend typecheck
+        run: bun run --cwd packages/cloud-frontend typecheck
 
       - name: Build
-        run: bun run build:web
+        run: bun run --cwd packages/cloud-frontend build
         env:
           # Pages preview/staging/prod all share the same API host today;
           # override per-env if that changes.
@@ -207,7 +197,7 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true'
-        working-directory: cloud/apps/frontend
+        working-directory: packages/cloud-frontend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -28,6 +28,7 @@ import {
 import type { LogEntry, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
+  extractAssistantReplyText,
   normalizeCharacterLanguage,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
@@ -81,6 +82,8 @@ import {
 import type { ChatImageAttachment } from "./server-types.ts";
 
 export type { ChatImageAttachment, LogEntry };
+
+const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
 
 const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
 
@@ -755,7 +758,8 @@ export function normalizeChatResponseText(
   // Both fallback strings can hit this path; either should be re-routed to
   // the insufficient-credits reply when a recent credits log explains why
   // generation produced nothing.
-  const trimmed = text.trim();
+  const visibleText = extractAssistantReplyText(text) ?? text;
+  const trimmed = visibleText.trim();
   if (
     (trimmed === PROVIDER_ISSUE_CHAT_REPLY ||
       trimmed === NO_RESPONSE_FALLBACK_REPLY) &&
@@ -763,7 +767,7 @@ export function normalizeChatResponseText(
   ) {
     return pickInsufficientCreditsChatReply();
   }
-  if (!isClientVisibleNoResponse(text)) return text;
+  if (!isClientVisibleNoResponse(visibleText)) return visibleText;
   return resolveNoResponseFallback(logBuffer, runtime);
 }
 
@@ -1752,9 +1756,13 @@ export async function generateChatResponse(
         () => createChatGenerationTimeoutError(generationTimeoutMs),
         () => {
           generationTimedOut = true;
+<<<<<<< HEAD
           abortGeneration(
             createChatGenerationTimeoutError(generationTimeoutMs),
           );
+=======
+          abortGeneration(createChatGenerationTimeoutError(generationTimeoutMs));
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
         },
       ),
     );
@@ -1992,9 +2000,13 @@ Title:`;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (isAbortLikeError(err)) {
+<<<<<<< HEAD
       logger.info(
         `[eliza] Conversation title generation cancelled: ${message}`,
       );
+=======
+      logger.info(`[eliza] Conversation title generation cancelled: ${message}`);
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
     } else {
       logger.warn(`[eliza] Failed to generate conversation title: ${message}`);
     }

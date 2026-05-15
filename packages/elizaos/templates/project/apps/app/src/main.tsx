@@ -5,6 +5,12 @@ import { StatusBar, Style } from "@capacitor/status-bar";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import {
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
+} from "@elizaos/app-core";
+import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
@@ -19,10 +25,6 @@ import {
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   client,
-  DESKTOP_TRAY_MENU_ITEMS,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
   dispatchAppEvent,
   ErrorBoundary,
   getBootConfig,

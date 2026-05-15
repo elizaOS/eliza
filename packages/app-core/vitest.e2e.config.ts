@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../test/vitest/default.config";
+import baseConfig from "../../packages/test/vitest/default.config";
 
 // E2E tests need the real developer environment (real $HOME so the external
 // scanner finds real LM Studio / Ollama / Jan caches; real network access;

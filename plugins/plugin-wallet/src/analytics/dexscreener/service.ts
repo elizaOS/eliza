@@ -1,7 +1,7 @@
 import {
   cloudServiceApisBaseUrl,
   toRuntimeSettings,
-} from "@elizaos/cloud-routing";
+} from "@elizaos/cloud-shared/routing";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { dexScreenerErrorMessage } from "./errors";
 import type {

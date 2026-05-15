@@ -143,6 +143,7 @@ import type {
   ConversationRouteState,
 } from "../conversation-routes.ts";
 import { handleConversationRoutes } from "../conversation-routes.ts";
+import { readChatRequestPayload } from "../chat-routes.ts";
 
 interface MockResponseRecord {
   writes: string[];

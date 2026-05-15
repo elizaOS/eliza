@@ -10,7 +10,7 @@ Why the release pipeline and desktop bundle work the way they do.
 
 We ship **separate** `Eliza-arm64.dmg` and `Eliza-x64.dmg` because:
 
-- **Native Node addons** (e.g. `onnxruntime-node`, `whisper-node`) ship prebuilt `.node` binaries per OS and arch. There is no single "universal" npm artifact that contains both arm64 and x64; the addon is built for the arch of the machine that ran `npm install` / `bun install`.
+- **Native Node addons** (e.g. `onnxruntime-node`) ship prebuilt `.node` binaries per OS and arch. There is no single "universal" npm artifact that contains both arm64 and x64; the addon is built for the arch of the machine that ran `npm install` / `bun install`.
 - **CI builds both macOS architectures separately.** The Apple Silicon artifact runs on `macos-14`, and the Intel artifact runs on the dedicated `macos-15-intel` runner.
 - **The Intel artifact still uses explicit x64 invocations** through the shared desktop builder (`ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64"`) so native modules and helper binaries are resolved consistently as x64 throughout the packaging path.
 - **Why this still matters on the Intel runner:** our workflow shares the same commands and staging logic across all jobs, and the explicit x64 path avoids accidental host/translation drift in the install and packaging steps.

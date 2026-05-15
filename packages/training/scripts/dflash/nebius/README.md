@@ -15,23 +15,22 @@ compute suitable for large-scale LLM training jobs without Kubernetes overhead.
 DFlash is speculative decoding: a small distilled "drafter" model proposes N
 tokens per step; the full target model verifies them in one forward pass.
 Acceptance rate drives the speed-up. The drafter must be vocab-aligned to the
-target (Qwen3-based, 151936-token vocabulary) and distilled from the exact
-target checkpoint it ships with.
+target (current Qwen3.5 tokenizer family; scripts derive vocab size from the
+loaded tokenizer) and distilled from the exact target checkpoint it ships with.
 
-The drafter is currently **INACTIVE** due to a vocab mismatch (target:
-151936 tokens, old drafter: 248320 tokens). These scripts produce a
-freshly distilled, vocab-aligned drafter for each tier.
+The drafter remains publish-gated on target/drafter tokenizer parity. These
+scripts produce a freshly distilled, vocab-aligned drafter for each tier.
 
 ## Tier mapping
 
 | Target tier | Drafter size | Student base |
 |---|---|---|
-| 0_8b | 0.5B | Qwen/Qwen3.5-0.8B |
-| 2b | 0.5B | Qwen/Qwen3.5-0.8B |
-| 4b | 1.5B | Qwen/Qwen3.5-0.8B |
-| 9b | 1.5B | Qwen/Qwen3.5-2B |
-| 27b | 3B | Qwen/Qwen3.5-4B |
-| 27b-256k | 3B | Qwen/Qwen3.5-4B |
+| 0_8b | 0.5B | Qwen/Qwen3.5-0.8B-Base |
+| 2b | 0.5B | Qwen/Qwen3.5-0.8B-Base |
+| 4b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
+| 9b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
+| 27b | 3B | Qwen/Qwen3.5-0.8B-Base |
+| 27b-256k | 3B | Qwen/Qwen3.5-0.8B-Base |
 
 ## Recommended instance type
 

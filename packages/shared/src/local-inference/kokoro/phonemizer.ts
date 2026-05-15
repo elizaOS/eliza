@@ -263,7 +263,7 @@ export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
   static async tryLoad(): Promise<NpmPhonemizePhonemizer | null> {
     try {
       const spec = "phonemize";
-      const mod = (await import(spec)) as PhonemizeMod;
+      const mod = (await import(/* @vite-ignore */ spec)) as PhonemizeMod;
       const phon = mod.phonemize ?? mod.default?.phonemize;
       if (typeof phon !== "function") return null;
       return new NpmPhonemizePhonemizer(mod);

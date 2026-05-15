@@ -120,12 +120,23 @@ type BrowserWorkspaceTabKind = NonNullable<
   Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
 >;
 
-const { discoverSkills, handleCuratedSkillsRoutes, handleSkillsRoutes } =
-  await import("@elizaos/plugin-agent-skills");
-const { AppManager, handleAppsRoutes } = await import(
-  "@elizaos/plugin-app-manager"
-);
-const { handleWalletRoutes } = await import("@elizaos/plugin-wallet");
+let agentSkillsApiPromise: Promise<any> | undefined;
+function getAgentSkillsApi(): Promise<any> {
+  agentSkillsApiPromise ??= import("@elizaos/plugin-agent-skills");
+  return agentSkillsApiPromise;
+}
+
+let appManagerApiPromise: Promise<any> | undefined;
+function getAppManagerApi(): Promise<any> {
+  appManagerApiPromise ??= import("@elizaos/plugin-app-manager");
+  return appManagerApiPromise;
+}
+
+let walletApiPromise: Promise<any> | undefined;
+function getWalletApi(): Promise<any> {
+  walletApiPromise ??= import("@elizaos/plugin-wallet");
+  return walletApiPromise;
+}
 
 let pluginRegistryApiPromise:
   | Promise<typeof import("@elizaos/plugin-registry")>
@@ -659,7 +670,11 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
+<<<<<<< HEAD
 const TRAINING_CONFIG_MODULE = "@elizaos/plugin-training";
+=======
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -1286,7 +1301,12 @@ type TrainingServiceCtor = new (options: {
   setConfig: (nextConfig: ElizaConfig) => void;
 }) => TrainingServiceWithRuntime;
 
+<<<<<<< HEAD
 const TRAINING_SERVICE_REGISTRY_MODULE: string = "@elizaos/plugin-training";
+=======
+const TRAINING_SERVICE_REGISTRY_MODULE: string =
+  "@elizaos/app-training/services/training-service-registry";
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {
@@ -1296,7 +1316,11 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
 
   const candidates = [
     "../services/training-service",
+<<<<<<< HEAD
     "@elizaos/plugin-training",
+=======
+    "@elizaos/app-training/services/training-service",
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
     "@elizaos/plugin-training",
   ] as const;
 
@@ -2092,6 +2116,7 @@ async function handleRequest(
   // Curated-skills routes must be dispatched before generic skills routes
   // (which reject "/" in skill IDs).
   if (pathname.startsWith("/api/skills/curated")) {
+    const { handleCuratedSkillsRoutes } = await getAgentSkillsApi();
     if (
       await handleCuratedSkillsRoutes({
         req,
@@ -2108,6 +2133,7 @@ async function handleRequest(
     }
   }
   if (pathname.startsWith("/api/skills")) {
+    const { discoverSkills, handleSkillsRoutes } = await getAgentSkillsApi();
     if (
       await handleSkillsRoutes({
         req,
@@ -2235,6 +2261,7 @@ async function handleRequest(
         return;
       }
     }
+    const { handleWalletRoutes } = await getWalletApi();
     if (
       await handleWalletRoutes({
         req,
@@ -2636,7 +2663,8 @@ async function handleRequest(
   }
 
   // ── App routes (/api/apps/*) ──────────────────────────────────────────
-  const appManager = state.appManager as InstanceType<typeof AppManager>;
+  const { handleAppsRoutes } = await getAppManagerApi();
+  const appManager = state.appManager as AppManagerLike;
   if (
     await handleAppsRoutes({
       req,
@@ -3056,6 +3084,7 @@ export async function startApiServer(opts?: {
     : resolveDefaultAgentName(config);
 
   const deletedConversationIds = readDeletedConversationIdsFromState();
+  const { AppManager } = await getAppManagerApi();
 
   const state: ServerState = {
     runtime: opts?.runtime ?? null,
@@ -3139,7 +3168,7 @@ export async function startApiServer(opts?: {
   // the Defense-of-the-Agents game loop — would tick forever after the
   // browser disappeared. The sweeper invokes the same `stopRun` route
   // hook the Stop button uses so plugins have one shutdown path.
-  (state.appManager as InstanceType<typeof AppManager>).startStaleRunSweeper(
+  (state.appManager as AppManagerLike).startStaleRunSweeper(
     () => state.runtime,
   );
 
@@ -3327,18 +3356,23 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  void getOptionalPluginApi<{
-    attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
-  }>("capacitor")
-    .then(({ attachMobileDeviceBridgeToServer }) =>
-      attachMobileDeviceBridgeToServer(server),
-    )
-    .catch((err: unknown) => {
-      logger.warn(
-        "[eliza-api] Failed to attach mobile device bridge:",
-        err instanceof Error ? err.message : String(err),
-      );
-    });
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+  ) {
+    void getOptionalPluginApi<{
+      attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
+    }>("capacitor")
+      .then(({ attachMobileDeviceBridgeToServer }) =>
+        attachMobileDeviceBridgeToServer(server),
+      )
+      .catch((err: unknown) => {
+        logger.warn(
+          "[eliza-api] Failed to attach mobile device bridge:",
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+  }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
   // Node's `http.createServer` defaults are tuned for snappy web traffic:
@@ -3505,6 +3539,7 @@ export async function startApiServer(opts?: {
   const startDeferredStartupWork = () => {
     void (async () => {
       try {
+        const { discoverSkills } = await getAgentSkillsApi();
         const discoveredSkills = await discoverSkills(
           workspaceDir,
           state.config,

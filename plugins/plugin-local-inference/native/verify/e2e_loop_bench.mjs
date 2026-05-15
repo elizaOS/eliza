@@ -293,6 +293,10 @@ function bundleFiles(bundleDir, tier) {
   };
 }
 
+function tierUsesOmniVoice(tier) {
+  return tier === "9b" || tier === "27b" || tier === "27b-256k";
+}
+
 function isRealGguf(p, minBytes = 1_000_000) {
   if (!p || !fs.existsSync(p)) return false;
   try {
@@ -486,6 +490,10 @@ async function loadFfi(libPath, libDir) {
       returns: T.i32,
     },
     eliza_inference_tts_stream_supported: { args: [], returns: T.i32 },
+    eliza_inference_tts_synthesize_stream: {
+      args: [T.ptr, T.ptr, T.usize, T.ptr, T.usize, T.usize, T.ptr],
+      returns: T.i32,
+    },
     eliza_inference_cancel_tts: { args: [T.ptr, T.ptr], returns: T.i32 },
     eliza_inference_free_string: { args: [T.usize], returns: T.void },
   });
@@ -880,21 +888,71 @@ async function runTurn(opts, turnIdx) {
 }
 
 // --------------------------------------------------------------------------
-// Barge-in cancel latency. Two probes:
-//  (a) HTTP: start a long TTS request, abort the fetch, time how fast we
-//      stop consuming (the "PCM ring buffer drains immediately" surrogate
-//      on the client/sink side — what a real mic-detected-speech barge-in
-//      does to the playback path).
-//  (b) FFI: if the build implements streaming TTS, kick a stream and call
-//      eliza_inference_cancel_tts; otherwise record it as unsupported (the
-//      ABI v2 streaming/cancel symbols are stubbed on the batch-only build).
+// Barge-in cancel latency. Three probes:
+//  (a) audio drain: start a TTS HTTP request and abort the client fetch, which
+//      is the playback-side PCM drain surrogate.
+//  (b) native TTS: use eliza_inference_tts_synthesize_stream and have the
+//      chunk callback request cancellation, measuring callback-request ->
+//      ELIZA_ERR_CANCELLED return. This is the gateable TTS cancel evidence.
+//  (c) LLM/DFlash: start a streaming /completion request and abort it, which
+//      is the assembled local server's stream-cancel path.
 // --------------------------------------------------------------------------
 
+const ELIZA_ERR_CANCELLED = -7;
+
 async function measureBargeIn(port, ffiCtx, ffi, s) {
-  // (a) client-side abort latency. Keep the phrase short — the batch-only TTS
-  //     build has no in-flight cancel, so this synthesis runs to completion on
-  //     the server even after the client aborts; a long phrase would just burn
-  //     a >1×-RTF CPU MaskGIT pass for nothing.
+  const audioDrainMs = await measureHttpAudioDrain(port);
+
+  let ttsStreamSupported = false;
+  try {
+    ttsStreamSupported = s.eliza_inference_tts_stream_supported() === 1;
+  } catch {
+    ttsStreamSupported = false;
+  }
+
+  const nativeTts = ttsStreamSupported
+    ? measureNativeTtsStreamCancel(ffiCtx, ffi, s)
+    : {
+        ttsCancelMs: null,
+        nativeTtsStreamRc: null,
+        nativeTtsChunksBeforeCancel: 0,
+        nativeTtsCancelError: "eliza_inference_tts_stream_supported() returned 0",
+      };
+  const llm = await measureLlmAbort(port);
+  const measured = [
+    nativeTts.ttsCancelMs,
+    llm.llmCancelMs,
+    audioDrainMs,
+  ].filter((v) => v != null);
+  const bargeInCancelMs =
+    ttsStreamSupported &&
+    nativeTts.ttsCancelMs != null &&
+    llm.llmCancelMs != null &&
+    measured.length > 0
+      ? Math.max(...measured)
+      : null;
+
+  return {
+    bargeInCancelMs: round2(bargeInCancelMs),
+    ttsCancelMs: round2(nativeTts.ttsCancelMs),
+    llmCancelMs: round2(llm.llmCancelMs),
+    audioDrainMs: round2(audioDrainMs),
+    httpAbortMs: round2(audioDrainMs),
+    nativeTtsStreamRc: nativeTts.nativeTtsStreamRc,
+    nativeTtsChunksBeforeCancel: nativeTts.nativeTtsChunksBeforeCancel,
+    nativeTtsCancelError: nativeTts.nativeTtsCancelError,
+    llmAbortError: llm.llmAbortError,
+    ttsStreamSupported,
+    note:
+      bargeInCancelMs != null
+        ? "native streaming TTS cancel and LLM/DFlash stream abort were both measured; bargeInCancelMs is max(ttsCancelMs, llmCancelMs, audioDrainMs)"
+        : ttsStreamSupported
+          ? "native streaming TTS is advertised, but the harness did not get a complete native TTS + LLM cancel measurement"
+          : "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in gate is not recordable until native streaming TTS cancel is available",
+  };
+}
+
+async function measureHttpAudioDrain(port) {
   const longText = "Here is a short answer that I will keep speaking so we can interrupt it.";
   const ctrl = new AbortController();
   const reqP = fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
@@ -908,35 +966,98 @@ async function measureBargeIn(port, ffiCtx, ffi, s) {
   const cancelT0 = performance.now();
   ctrl.abort();
   await reqP; // resolves immediately on abort
-  const httpAbortMs = performance.now() - cancelT0;
+  return performance.now() - cancelT0;
+}
 
-  // (b) native cancel
-  let ttsStreamSupported = false;
-  let nativeCancelMs = null;
-  let nativeCancelRc = null;
+function measureNativeTtsStreamCancel(ffiCtx, ffi, s) {
+  const T = ffi.FFIType;
+  const text = "Here is a short answer that the native streaming TTS callback will cancel after the first audio chunk.";
+  const textBytes = Buffer.from(text, "utf8");
+  const textBuf = Buffer.alloc(textBytes.byteLength + 1);
+  textBytes.copy(textBuf);
+  const errBuf = Buffer.alloc(8);
+  errBuf.fill(0);
+  let cancelRequestedAtMs = null;
+  let chunks = 0;
+  const cb = new ffi.JSCallback(
+    ((pcmPtr, nSamples, isFinal) => {
+      const n = Number(nSamples);
+      if (isFinal === 0 && n > 0 && pcmPtr !== 0n) {
+        chunks += 1;
+        if (cancelRequestedAtMs === null) {
+          cancelRequestedAtMs = performance.now();
+          return 1;
+        }
+      }
+      return 0;
+    }),
+    {
+      args: [T.ptr, T.usize, T.i32, T.ptr],
+      returns: T.i32,
+    },
+  );
+
+  let rc = null;
+  let ttsCancelMs = null;
+  let err = null;
   try {
-    ttsStreamSupported = s.eliza_inference_tts_stream_supported() === 1;
-  } catch {
-    ttsStreamSupported = false;
-  }
-  // cancel_tts is always safe to call (cancelling nothing is not an error).
-  try {
-    const errBuf = Buffer.alloc(8);
-    errBuf.fill(0);
-    const c0 = performance.now();
-    nativeCancelRc = s.eliza_inference_cancel_tts(ffiCtx, ffi.ptr(errBuf));
-    nativeCancelMs = performance.now() - c0;
-  } catch {
-    nativeCancelRc = null;
+    rc = s.eliza_inference_tts_synthesize_stream(
+      ffiCtx,
+      ffi.ptr(textBuf),
+      BigInt(textBytes.byteLength),
+      0n,
+      BigInt(cb.ptr),
+      0n,
+      ffi.ptr(errBuf),
+    );
+    if (cancelRequestedAtMs != null) {
+      ttsCancelMs = performance.now() - cancelRequestedAtMs;
+    }
+    if (rc !== ELIZA_ERR_CANCELLED) {
+      err = `tts_synthesize_stream returned rc=${rc}, expected ${ELIZA_ERR_CANCELLED}`;
+    }
+  } catch (e) {
+    err = e instanceof Error ? e.message : String(e);
+  } finally {
+    cb.close();
   }
   return {
-    httpAbortMs: round2(httpAbortMs),
-    nativeCancelMs: nativeCancelMs == null ? null : round2(nativeCancelMs),
-    nativeCancelRc,
-    ttsStreamSupported,
-    note: ttsStreamSupported
-      ? "build implements streaming TTS — cancel_tts hard-stops an in-flight forward pass at the next kernel boundary"
-      : "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in measured as the client/sink-side HTTP abort latency (the PCM-ring-drain surrogate). cancel_tts is a no-op here.",
+    ttsCancelMs,
+    nativeTtsStreamRc: rc,
+    nativeTtsChunksBeforeCancel: chunks,
+    nativeTtsCancelError: err,
+  };
+}
+
+async function measureLlmAbort(port) {
+  const ctrl = new AbortController();
+  const reqP = fetch(`http://127.0.0.1:${port}/completion`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      prompt: "Write a long paragraph about local voice cancellation.",
+      n_predict: 256,
+      temperature: 0,
+      stream: true,
+      cache_prompt: false,
+    }),
+    signal: ctrl.signal,
+  })
+    .then(async (res) => {
+      if (res.body) {
+        const reader = res.body.getReader();
+        await reader.read().catch(() => null);
+      }
+    })
+    .catch((e) => ({ aborted: true, err: String(e) }));
+  await new Promise((r) => setTimeout(r, 60));
+  const cancelT0 = performance.now();
+  ctrl.abort();
+  const result = await reqP;
+  return {
+    llmCancelMs: performance.now() - cancelT0,
+    llmAbortError:
+      result && typeof result === "object" && "err" in result ? result.err : null,
   };
 }
 
@@ -1031,6 +1152,24 @@ async function main() {
   }
   if (!engine.lib) {
     const out = { ...baseReport, status: "needs-build", reason: `fused build at ${engine.dir} has no ${libName()} (ASR FFI library missing)`, e2eLoopOk: false };
+    return finish(out, args, logFn);
+  }
+  if (!tierUsesOmniVoice(tier)) {
+    const kokoroModel = path.join(bundleDir, "tts", "kokoro", "model_q4.onnx");
+    const out = {
+      ...baseReport,
+      status: "needs-harness",
+      reason: "this tier is Kokoro-only for TTS; the fused OmniVoice+DFlash e2e harness is not applicable and the app-core Kokoro voice-loop harness must drive the full ASR->text->Kokoro path",
+      bundleArtifacts: {
+        text: !!isRealGguf(files.text),
+        drafter: files.drafter ? !!isRealGguf(files.drafter, 10_000_000) : null,
+        kokoroModel: fs.existsSync(kokoroModel),
+        ttsModel: null,
+        ttsCodec: null,
+        asr: !!isRealGguf(files.asr, 1_000_000),
+      },
+      e2eLoopOk: null,
+    };
     return finish(out, args, logFn);
   }
   if (!isRealGguf(files.text) || !isRealGguf(files.drafter, 10_000_000) || !isRealGguf(files.ttsModel) || !isRealGguf(files.ttsCodec) || !isRealGguf(files.asr, 1_000_000)) {
@@ -1219,7 +1358,7 @@ async function main() {
       ttsRoundTripAsrWerMean: round4(mean(turnReports.map((r) => r.tts.roundTripAsrWerMean))),
       ttsRoundTripAsrWerByTurn: turnReports.map((r) => r.tts.roundTripAsrWerMean),
       totalTurnMsMedian: round1(median(turnReports.map((r) => r.totalTurnMs))),
-      bargeInCancelMs: bargeIn ? bargeIn.httpAbortMs : null,
+      bargeInCancelMs: bargeIn ? bargeIn.bargeInCancelMs : null,
       serverPeakRssMb: peakRss,
       ramBudgetRecommendedMb: ramRec,
       ramWithinBudget,

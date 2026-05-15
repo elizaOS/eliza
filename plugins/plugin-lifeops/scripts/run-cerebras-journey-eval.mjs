@@ -43,7 +43,7 @@ if (!process.env.CEREBRAS_API_KEY) {
 
 const testFile =
   "eliza/plugins/plugin-lifeops/test/journey-cerebras-eval.live.e2e.test.ts";
-const vitestConfig = "eliza/test/vitest/live-e2e.config.ts";
+const vitestConfig = "eliza/packages/test/vitest/live-e2e.config.ts";
 
 console.info(
   `[run-cerebras-journey-eval] launching vitest --config ${vitestConfig} -- ${testFile}`,

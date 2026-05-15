@@ -9,12 +9,8 @@
 		"typeRoots": [
 			"../../node_modules/@types",
 			"../../node_modules/.bun/node_modules/@types",
-			"../../cloud/node_modules/@types",
-			"../../cloud/node_modules/.bun/node_modules/@types",
 			"../../node_modules",
 			"../../node_modules/.bun/node_modules",
-			"../../cloud/node_modules",
-			"../../cloud/node_modules/.bun/node_modules",
 			"../../../node_modules/@types",
 			"../../../node_modules/.bun/node_modules/@types",
 			"../../../node_modules",
@@ -27,6 +23,8 @@
 		"declarationMap": false,
 		"skipLibCheck": true,
 		"paths": {
+			"@elizaos/contracts": ["../contracts/src/index.ts"],
+			"@elizaos/contracts/*": ["../contracts/src/*"],
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
 			"@elizaos/plugin-elizacloud": [

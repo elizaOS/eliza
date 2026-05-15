@@ -237,6 +237,22 @@ def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="tau_bench:root")
+    domain_results = root.get("domain_results")
+    if isinstance(domain_results, dict):
+        errors: list[str] = []
+        for domain, rows in domain_results.items():
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                error = row.get("error")
+                if isinstance(error, str) and error.strip():
+                    task_id = row.get("task_id", "?")
+                    trial = row.get("trial", "?")
+                    errors.append(f"{domain}#{task_id}/trial={trial}: {error.strip()}")
+        if errors:
+            raise ValueError("tau_bench: task errors: " + "; ".join(errors[:3]))
     if "overall_success_rate" in root:
         overall = expect_float(
             get_required(root, "overall_success_rate", ctx="tau_bench:root"),
@@ -246,7 +262,12 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
         pass_k = root.get("pass_k")
         pass_k_dict = expect_dict(pass_k, ctx="tau_bench:pass_k") if isinstance(pass_k, dict) else {}
         raw = pass_k_dict.get("1", pass_k_dict.get("pass@1", root.get("avg_reward")))
+        if isinstance(raw, dict):
+            raw = raw.get("pass_hat_k", raw.get("pass@1", raw.get("score")))
         overall = expect_float(raw, ctx="tau_bench:pass@1")
+    num_tasks = root.get("num_tasks", root.get("total_tasks"))
+    if isinstance(num_tasks, (int, float)) and int(num_tasks) == 0:
+        raise ValueError("tau_bench: zero-task score is not publishable")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
@@ -498,6 +519,22 @@ def _score_from_solana_json(data: JSONValue) -> ScoreExtraction:
     final_programs = root.get("final_programs")
     if final_programs is None and isinstance(root.get("programs_discovered"), dict):
         final_programs = len(root["programs_discovered"])
+    messages = root.get("messages")
+    cumulative_rewards = root.get("cumulative_rewards")
+    if (
+        (
+            (
+                isinstance(messages, list)
+                and not messages
+                and isinstance(cumulative_rewards, list)
+                and not cumulative_rewards
+            )
+            or (messages is None and cumulative_rewards is None)
+        )
+        and (final_programs in (None, 0, 0.0))
+        and final_reward == 0.0
+    ):
+        raise ValueError("solana: empty rollout artifact is not publishable")
     return ScoreExtraction(
         score=final_reward,
         unit="unique_instructions",
@@ -748,22 +785,36 @@ def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from WebShop benchmark results."""
     root = expect_dict(data, ctx="webshop:root")
+    total_tasks = expect_float(
+        get_required(root, "total_tasks", ctx="webshop:root"),
+        ctx="webshop:total_tasks",
+    )
+    total_trials = expect_float(
+        get_required(root, "total_trials", ctx="webshop:root"),
+        ctx="webshop:total_trials",
+    )
+    if total_tasks <= 0 or total_trials <= 0:
+        raise ValueError("webshop: zero-task score is not publishable")
+    average_reward = expect_float(
+        get_required(root, "average_reward", ctx="webshop:root"),
+        ctx="webshop:average_reward",
+    )
     success_rate = expect_float(
         get_required(root, "success_rate", ctx="webshop:root"),
         ctx="webshop:success_rate",
     )
     return ScoreExtraction(
-        score=success_rate,
+        score=average_reward,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "success_rate": success_rate,
-            "average_reward": root.get("average_reward") or 0,
+            "average_reward": average_reward,
             "average_turns": root.get("average_turns") or 0,
             "average_steps": root.get("average_steps") or 0,
             "average_duration_ms": root.get("average_duration_ms") or 0,
-            "total_tasks": root.get("total_tasks") or 0,
-            "total_trials": root.get("total_trials") or 0,
+            "total_tasks": int(total_tasks),
+            "total_trials": int(total_trials),
         },
     )
 
@@ -935,6 +986,9 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
     parameter match, coherence, safety). Higher is better; unit is ratio.
     """
     root = expect_dict(data, ctx="voiceagentbench:root")
+    model_name = get_optional(root, "model_name") or ""
+    if str(model_name).strip().lower() == "mock":
+        raise ValueError("voiceagentbench: mock agent result is not publishable as a real harness score")
     pass_at_1 = expect_float(
         get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
         ctx="voiceagentbench:pass_at_1",

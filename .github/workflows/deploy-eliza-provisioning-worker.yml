@@ -1,7 +1,7 @@
 name: Deploy Eliza Provisioning Worker
 
 # SSHes to the Hetzner provisioning host, fetches the latest develop commit,
-# installs the systemd unit shipped at cloud/packages/scripts/eliza-provisioning-worker.service,
+# installs the systemd unit shipped at packages/scripts/cloud/admin/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
@@ -12,10 +12,10 @@ on:
     branches: [develop]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
-      - 'cloud/packages/scripts/daemons/provisioning-worker.ts'
-      - 'cloud/packages/scripts/daemons/agent-router.ts'
-      - 'cloud/packages/scripts/eliza-provisioning-worker.service'
-      - 'cloud/packages/scripts/eliza-agent-router.service'
+      - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
+      - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
+      - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
+      - 'packages/scripts/cloud/admin/eliza-agent-router.service'
       - 'cloud/packages/lib/services/provisioning-jobs.ts'
       - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
       - 'cloud/packages/lib/services/eliza-sandbox.ts'
@@ -134,10 +134,10 @@ jobs:
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
-              cloud/packages/scripts/eliza-provisioning-worker.service \
+              packages/scripts/cloud/admin/eliza-provisioning-worker.service \
               "/etc/systemd/system/$SYSTEMD_UNIT"
             sudo install -m 0644 \
-              cloud/packages/scripts/eliza-agent-router.service \
+              packages/scripts/cloud/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service

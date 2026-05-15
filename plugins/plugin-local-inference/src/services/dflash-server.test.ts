@@ -422,6 +422,61 @@ describe("DflashLlamaServer runtime load config", () => {
 	});
 });
 
+describe("DflashLlamaServer runtime load config", () => {
+	it("reports the normalized target GPU layers passed to llama-server", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-runtime-config-"));
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(
+			binary,
+			[
+				"#!/bin/sh",
+				'if [ "$1" = "--help" ]; then',
+				'  echo "--n-gpu-layers N"',
+				"  exit 0",
+				"fi",
+				"trap 'exit 0' TERM INT",
+				"while true; do sleep 1; done",
+				"",
+			].join("\n"),
+			"utf8",
+		);
+		fs.chmodSync(binary, 0o755);
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZA_DFLASH_ENABLED = "1";
+		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
+		__setCtxCheckpointsProbeCacheForTests(binary, false);
+		installDflashFetchMock((url) =>
+			url.pathname === "/health" ? new Response("{}", { status: 200 }) : notFoundResponse(),
+		);
+
+		const server = new DflashLlamaServer();
+		try {
+			await server.start({
+				targetModelPath: path.join(root, "target.gguf"),
+				drafterModelPath: path.join(root, "drafter.gguf"),
+				contextSize: 128,
+				draftContextSize: 64,
+				draftMin: 1,
+				draftMax: 4,
+				gpuLayers: "auto",
+				draftGpuLayers: "auto",
+				disableThinking: false,
+				disableDrafter: true,
+			});
+
+			expect(server.currentRuntimeLoadConfig()).toMatchObject({
+				contextSize: 128,
+				cacheTypeK: null,
+				cacheTypeV: null,
+				gpuLayers: 99,
+				binaryPath: binary,
+			});
+		} finally {
+			await server.stop();
+		}
+	});
+});
+
 describe("DFlash draft CLI flag drift", () => {
 	it("prefers --reasoning off over deprecated chat-template kwargs when both are advertised", () => {
 		const bin = "/tmp/reasoning-llama-server";
