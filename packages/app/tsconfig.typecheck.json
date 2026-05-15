@@ -10,8 +10,12 @@
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/dist/index.d.ts"
       ],
-      "@elizaos/plugin-companion": ["../../plugins/plugin-companion/dist/index.d.ts"],
-      "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/dist/index.d.ts"],
+      "@elizaos/plugin-companion": [
+        "../../plugins/plugin-companion/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-lifeops": [
+        "../../plugins/plugin-lifeops/dist/index.d.ts"
+      ],
       "@elizaos/plugin-messages/register": [
         "../../plugins/plugin-messages/src/register.ts"
       ],
@@ -19,14 +23,26 @@
         "../../plugins/plugin-device-settings/src/register.ts"
       ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/dist/index.d.ts"],
-      "@elizaos/plugin-shopify-ui": ["../../plugins/plugin-shopify-ui/dist/index.d.ts"],
-      "@elizaos/plugin-steward-app": ["../../plugins/plugin-steward-app/dist/index.d.ts"],
-      "@elizaos/plugin-training": ["../../plugins/plugin-training/dist/index.d.ts"],
-      "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/dist/index.d.ts"],
-      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/dist/index.d.ts"],
+      "@elizaos/plugin-shopify-ui": [
+        "../../plugins/plugin-shopify-ui/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-steward-app": [
+        "../../plugins/plugin-steward-app/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-training": [
+        "../../plugins/plugin-training/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-vincent": [
+        "../../plugins/plugin-vincent/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-wallet-ui": [
+        "../../plugins/plugin-wallet-ui/dist/index.d.ts"
+      ],
       "@elizaos/plugin-babylon": ["./src/types/side-effect-app-modules.d.ts"],
       "@elizaos/plugin-scape": ["./src/types/side-effect-app-modules.d.ts"],
-      "@elizaos/plugin-hyperscape": ["./src/types/side-effect-app-modules.d.ts"],
+      "@elizaos/plugin-hyperscape": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
       "@elizaos/plugin-2004scape": ["./src/types/side-effect-app-modules.d.ts"],
       "@elizaos/plugin-defense-of-the-agents": [
         "./src/types/side-effect-app-modules.d.ts"
@@ -96,7 +112,9 @@
       ],
       "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
       "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
-      "@elizaos/plugin-clawville": ["../../plugins/plugin-clawville/src/index.ts"]
+      "@elizaos/plugin-clawville": [
+        "../../plugins/plugin-clawville/src/index.ts"
+      ]
     }
   }
 }
