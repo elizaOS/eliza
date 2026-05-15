@@ -26,6 +26,7 @@ export type VoiceModelId =
   | "speaker-encoder"
   | "diarizer"
   | "turn-detector"
+  | "turn-detector-intl"
   | "voice-emotion"
   | "kokoro"
   | "omnivoice"

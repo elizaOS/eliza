@@ -74,6 +74,7 @@ KNOWN_VOICE_MODEL_IDS = (
     "speaker-encoder",
     "diarizer",
     "turn-detector",
+    "turn-detector-intl",
     "voice-emotion",
     "kokoro",
     "omnivoice",
