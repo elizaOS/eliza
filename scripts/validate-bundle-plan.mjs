@@ -116,6 +116,29 @@ function assertPublishingState(where, entry) {
   }
 }
 
+/**
+ * Vision mmproj entries flagged `staged: true` must carry a
+ * `stagedBuild` block documenting how the build pipeline produces the
+ * file. The block ties the staged GGUF back to a concrete source model
+ * + build step so neither agents nor the publish pipeline can land a
+ * silent placeholder.
+ */
+function assertVisionStagedBuild(where, entry) {
+  const sb = entry?.stagedBuild;
+  if (!sb || typeof sb !== "object") {
+    err(where, "vision entry has `staged: true` but no `stagedBuild` block");
+    return;
+  }
+  for (const key of ["script", "step", "sourceModel", "rationale"]) {
+    if (typeof sb[key] !== "string" || !sb[key].trim()) {
+      err(
+        where,
+        `stagedBuild.${key} must be a non-empty string (staged vision entries must document the build step)`,
+      );
+    }
+  }
+}
+
 function readJson(absPath, label) {
   if (!fs.existsSync(absPath)) {
     err(label, `file missing: ${absPath}`);
@@ -299,6 +322,13 @@ if (extras && catalogFacts) {
         "extras.vision",
         `tier "${tierId}" missing estimatedSizeBytes (number)`,
       );
+    }
+    // Staged vision entries must carry a stagedBuild block. Non-staged
+    // entries are mirrored from upstream HF mmproj GGUFs at install time
+    // (the catalog's bundlePath helpers derive those URLs) — no extra
+    // validation needed here for the mirrored path.
+    if (entry?.staged === true) {
+      assertVisionStagedBuild(`extras.vision.${tierId}`, entry);
     }
   }
 

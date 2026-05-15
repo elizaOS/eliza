@@ -1,0 +1,162 @@
+{
+  "canonicalChain": "unsloth/Qwen3.5-<size>-GGUF/mmproj-F16.gguf -> llama-quantize -> mmproj-<tier>-<quant>.gguf",
+  "entries": [
+    {
+      "f16SizeBytes": 204987232,
+      "f16StagedPath": "mmproj-0_8b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-0_8b-Q4_K_M.gguf",
+      "outputSha256": "9e09874ff413043a6f013afe09cdb1916d0d16bf5c1db91cc45165922722b4ff",
+      "outputSizeBytes": 74759008,
+      "quant": "Q4_K_M",
+      "quantOverrides": {
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": false,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-0.8B-GGUF",
+      "tier": "eliza-1-0_8b",
+      "tierSlug": "0_8b"
+    },
+    {
+      "f16SizeBytes": 668227264,
+      "f16StagedPath": "mmproj-2b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-2b-Q8_0.gguf",
+      "outputSha256": "3dc9c77a3323342e6a08b85cf715bf8d8d20704fb50723ba2458487703cb9c24",
+      "outputSizeBytes": 361518784,
+      "quant": "Q8_0",
+      "quantOverrides": {
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": false,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-2B-GGUF",
+      "tier": "eliza-1-2b",
+      "tierSlug": "2b"
+    },
+    {
+      "f16SizeBytes": 672423616,
+      "f16StagedPath": "mmproj-4b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-4b-Q8_0.gguf",
+      "outputSha256": "2c4d7e8bdc2d3492e2b469edf5b6a65dd02337205aadd02229c495515df7522f",
+      "outputSizeBytes": 363749056,
+      "quant": "Q8_0",
+      "quantOverrides": {
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": false,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-4B-GGUF",
+      "tier": "eliza-1-4b",
+      "tierSlug": "4b"
+    },
+    {
+      "f16SizeBytes": 918166080,
+      "f16StagedPath": "mmproj-9b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-9b-Q8_0.gguf",
+      "outputSha256": "0bcd16065560c3f66439a8be42ad6ec356e96ee6aac950a2d49db9302b8607b3",
+      "outputSizeBytes": 620690880,
+      "quant": "Q8_0",
+      "quantOverrides": {
+        "v.blk.[0-9]+.ffn_down.weight": "f16",
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": false,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-9B-GGUF",
+      "tier": "eliza-1-9b",
+      "tierSlug": "9b"
+    },
+    {
+      "f16SizeBytes": 927607040,
+      "f16StagedPath": "mmproj-27b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-27b-Q8_0.gguf",
+      "outputSha256": "c0021f21c4b4bad62b8ed38bff78718a206e9404d747bc71cb5858f165056f29",
+      "outputSizeBytes": 625708160,
+      "quant": "Q8_0",
+      "quantOverrides": {
+        "v.blk.[0-9]+.ffn_down.weight": "f16",
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": false,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-27B-GGUF",
+      "tier": "eliza-1-27b",
+      "tierSlug": "27b"
+    },
+    {
+      "f16SizeBytes": 927607040,
+      "f16StagedPath": "mmproj-27b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-27b-256k-Q8_0.gguf",
+      "outputSha256": "c0021f21c4b4bad62b8ed38bff78718a206e9404d747bc71cb5858f165056f29",
+      "outputSizeBytes": 625708160,
+      "quant": "Q8_0",
+      "quantOverrides": {
+        "v.blk.[0-9]+.ffn_down.weight": "f16",
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": true,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-27B-GGUF",
+      "tier": "eliza-1-27b-256k",
+      "tierSlug": "27b-256k"
+    },
+    {
+      "f16SizeBytes": 927607040,
+      "f16StagedPath": "mmproj-27b-F16.gguf",
+      "license": "apache-2.0",
+      "outputPath": "mmproj-27b-1m-Q8_0.gguf",
+      "outputSha256": "c0021f21c4b4bad62b8ed38bff78718a206e9404d747bc71cb5858f165056f29",
+      "outputSizeBytes": 625708160,
+      "quant": "Q8_0",
+      "quantOverrides": {
+        "v.blk.[0-9]+.ffn_down.weight": "f16",
+        "v.patch_embd.weight": "f16"
+      },
+      "releaseState": "weights-staged",
+      "sharedSourceWith27b": true,
+      "sourceFile": "mmproj-F16.gguf",
+      "sourceRepo": "unsloth/Qwen3.5-27B-GGUF",
+      "tier": "eliza-1-27b-1m",
+      "tierSlug": "27b-1m"
+    }
+  ],
+  "generatedAt": "2026-05-14T10:23:58Z",
+  "generator": "MMPROJ-PHASE-2 swarm; chain F16 -> llama-quantize",
+  "projectorGroupings": {
+    "large": [
+      "9b",
+      "27b",
+      "27b-256k",
+      "27b-1m"
+    ],
+    "mid": [
+      "2b",
+      "4b"
+    ],
+    "small": [
+      "0_8b"
+    ]
+  },
+  "quantizer": "plugins/plugin-local-inference/native/llama.cpp llama-quantize (fork)",
+  "quantizerBinary": "/tmp/w4d-builds/linux-x64-cpu/bin/llama-quantize",
+  "rationale": [
+    "TurboQuant / PolarQuant / QJL are NOT applicable to mmproj: they target text-backbone body weights + KV cache only; the projector has no KV cache. See plan memo at plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md and packages/training/AGENTS.md s3.",
+    "mmproj stays frozen unless the text backbone moves (AGENTS.md s2). No train_mmproj.py in this phase.",
+    "Q4_K_M for the 0_8b tier matches the catalog/EXTRAS contract; all other tiers ship Q8_0.",
+    "v.patch_embd.weight (16x16x3xN) is kept as F16 because Q8_0 requires cols divisible by 32. Q4_K_M has its own fallback for this tensor on the 0_8b tier.",
+    "For the 9b/27b projector arch, v.blk.*.ffn_down.weight uses hidden_dim=4304 which is not divisible by 32; these tensors are kept as F16 in the Q8_0 output."
+  ],
+  "schemaVersion": 1
+}

@@ -31,6 +31,42 @@
  * Until the bundle installer + packaged binary land for Windows NVIDIA,
  * `loadTensorRtImageGenBackend` throws `ImageGenBackendUnavailableError`
  * and the selector falls through to sd-cpp.
+ *
+ * Publishing pipeline (Windows x86_64 NVIDIA only):
+ *
+ *   Build (`imagegen.exe`):
+ *     git clone https://github.com/NVIDIA/TensorRT && cd TensorRT/demo/Diffusion
+ *     # Build against TensorRT 10.x + CUDA 12.x
+ *     pip install -r requirements.txt
+ *     python build.py --hf-token <ci-secret> \
+ *       --version 1.5 --denoising-steps 20 \
+ *       --build-static-batch --output-dir ../../../build/imagegen-sd15
+ *     # Thin wrapper produces imagegen.exe linking against
+ *     # nvinfer_10.dll + cudart64_12.dll; pyinstaller-onefile produces a
+ *     # 35-MB executable next to the static .plan files.
+ *   Build TensorRT plan (per resolution, per model):
+ *     trtexec --onnx=unet.onnx --saveEngine=unet.plan --fp16 \
+ *       --minShapes=sample:1x4x64x64 --optShapes=sample:1x4x64x64 \
+ *       --maxShapes=sample:1x4x64x64
+ *     # Drop plan files under imagegen/trt-plans/<modelKey>/{unet,vae,clip}.plan.
+ *   Sign:
+ *     signtool sign /tr http://timestamp.digicert.com /td sha256 \
+ *       /fd sha256 /sha1 <eliza-labs-cert-thumbprint> imagegen.exe
+ *     # SmartScreen reputation builds over the first ~1000 installs;
+ *     # submit to Microsoft Defender Bytes-for-Bots if a new cert.
+ *   Drop:
+ *     releases.elizaos.ai/imagegen-trt/<version>/windows-x86_64/imagegen.exe
+ *     releases.elizaos.ai/imagegen-trt/<version>/windows-x86_64/plans/
+ *       sd-1.5-512x512/{unet,vae,clip}.plan
+ *       sdxl-turbo-1024x1024/{unet,vae,clip}.plan
+ *   The bundle installer writes the binary to
+ *   `${MODELS_DIR}/bin/imagegen.exe` and the plans under
+ *   `${MODELS_DIR}/imagegen/trt-plans/<modelKey>/`.
+ *
+ * Notarization:
+ *   N/A on Windows; SmartScreen reputation replaces the macOS notarize
+ *   step. Authenticode-signed binaries with a valid EV cert clear without
+ *   warning on first launch.
  */
 
 import { spawn } from "node:child_process";
