@@ -52,6 +52,7 @@ export interface BackendLoadOverrides {
 	mmap?: boolean;
 	mlock?: boolean;
 	useGpu?: boolean;
+	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
 	mmprojPath?: string;
 }
 

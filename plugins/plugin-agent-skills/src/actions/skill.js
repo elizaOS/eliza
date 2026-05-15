@@ -4,6 +4,7 @@ import { searchSkillsAction } from "./search-skills";
 import { syncCatalogAction } from "./sync-catalog";
 import { toggleSkillAction } from "./toggle-skill";
 import { uninstallSkillAction } from "./uninstall-skill";
+
 const ALL_OPS = [
     "search",
     "details",
