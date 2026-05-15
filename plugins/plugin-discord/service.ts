@@ -508,7 +508,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		const existingWhitelist = getConnectorAdminWhitelist(this.runtime);
 		const nextDiscordAdmins = [
-			...new Set([...(existingWhitelist.discord), ...ownerIds]),
+			...new Set([...existingWhitelist.discord, ...ownerIds]),
 		];
 		setConnectorAdminWhitelist(this.runtime, {
 			...existingWhitelist,
@@ -939,7 +939,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		const requested = accountId
 			? normalizeAccountId(accountId)
-			: (this.defaultAccountId);
+			: this.defaultAccountId;
 		const defaultAccountId = this.defaultAccountId;
 		return requested === defaultAccountId ? (this.client ?? null) : null;
 	}
