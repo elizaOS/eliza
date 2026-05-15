@@ -1,0 +1,59 @@
+# Turn detector fine-tune config — eliza-1 drafter target.
+#
+# Trains a LoRA adapter on top of the eliza-1 drafter (the same model
+# DFlash already keeps warm for speculative decoding). The runtime
+# layers the resulting adapter onto a dedicated EOT context at voice
+# session start and reads P(`<|im_end|>`) directly off the live model —
+# see `plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts`.
+#
+# Compared with the LiveKit/Turnsense configs in this directory the
+# differences are:
+#
+#   - `teacher_kind: eliza-1-drafter` — switches the export step from
+#     ONNX to a torch checkpoint that the publish pipeline converts to
+#     a GGUF LoRA via `llama.cpp/convert_lora_to_gguf.py`. The runtime
+#     manifest slot is `files.eotLoraAdapter`, not `files.turn`.
+#   - `teacher_repo: elizaos/eliza-1` — the bundle repo on HF. Per
+#     `packages/training/AGENTS.md` §1 we already publish drafter GGUFs
+#     to this repo under `bundles/<tier>/drafter/`; the training side
+#     loads the matching pre-quant safetensors checkpoint that ships
+#     alongside the GGUF under the same revision.
+#   - `teacher_revision` — pinned to the drafter checkpoint for this
+#     tier; bump when the upstream drafter version moves.
+#
+# Per repo policy (`packages/training/AGENTS.md` §1): APOLLO optimizer
+# only. AdamW / Muon are not accepted.
+
+tier: 2b
+teacher_kind: eliza-1-drafter
+teacher_repo: elizaos/eliza-1
+teacher_revision: bundles/2b/drafter
+
+# LoRA rank — slightly higher than the LiveKit recipe because we are
+# adapting a bigger backbone (drafter ≈ 0.6B params vs SmolLM2-135M).
+# APOLLO-Mini still projects rank-1 tensor-wise inside the optimizer; the
+# rank here is the adapter-module rank, not the optimizer-state rank.
+lora_rank: 16
+optimizer: apollo
+
+# 3 epochs over DailyDialog + TURNS-2K is the demo budget. Production
+# runs typically push to 5-8 epochs once the full multilingual + Fisher
+# corpus is staged under `data/turn/`.
+epochs: 3
+learning_rate: 5.0e-5
+
+# Operators stage these via `build_pretrain_corpus` + `build_sft_corpus`
+# in `finetune_turn_detector.py`. Paths are relative to the training
+# root. The defaults below match the LiveKit recipe so a side-by-side
+# accuracy comparison is straightforward.
+train_data:
+  - packages/training/data/turn/dailydialog.jsonl
+eval_data:
+  - packages/training/data/turn/dailydialog.eval.jsonl
+
+# Eval gates — same thresholds as the LiveKit recipe so the runtime
+# manifest schema validator (`plugins/plugin-local-inference/src/
+# services/manifest/schema.ts`) does not have to special-case the
+# eliza-1-drafter path.
+f1_gate: 0.85
+mean_latency_ms_gate: 30.0
