@@ -1553,6 +1553,26 @@ export class LocalInferenceEngine {
 		turnDetector?: import("./voice/eot-classifier").EotClassifier | false;
 		/** Optional local LiveKit turn-detector directory override. */
 		turnDetectorModelDir?: string;
+		/**
+		 * Use the already-loaded eliza-1 text model (typically the drafter
+		 * the same DFlash keeps warm) as the EOT classifier — see
+		 * `voice/eliza1-eot-scorer.ts`. When set, the runtime skips the
+		 * separate LiveKit/Turnsense ONNX and reads P(`<|im_end|>`) directly
+		 * off the live model.
+		 *
+		 * `"auto"` (default): use eliza-1 EOT when `ELIZA_VOICE_EOT_BACKEND=eliza-1`
+		 * or when no bundled LiveKit ONNX is resolvable; otherwise fall
+		 * through to the existing LiveKit path. `true` forces eliza-1 EOT
+		 * (throws if the active backend is not in-process). `false` forces
+		 * the historical LiveKit path.
+		 */
+		useEliza1Eot?: boolean | "auto";
+		/**
+		 * Optional path to a fine-tuned EOT LoRA adapter to layer on top of
+		 * the drafter at scoring time. The training recipe lives in
+		 * `packages/training/scripts/turn_detector/`.
+		 */
+		eliza1EotLoraPath?: string;
 		/** KV-prefill / response-handler-prefix prewarm. Defaults to `prewarmConversation`. */
 		prewarm?: (roomId: string) => void | Promise<void>;
 		speculatePauseMs?: number;

@@ -1,20 +1,27 @@
 #!/usr/bin/env bun
 /**
- * VAD / wake-word ONNX smoke harness.
+ * VAD / wake-word smoke harness.
  *
  * Feeds a `silence + synthesized-speech + silence` PCM fixture through the
  * real Silero VAD ONNX model (`SileroVad` + `VadDetector`) and asserts it
  * detects exactly one speech segment whose boundaries land inside the
- * voiced region — i.e. the leading/trailing silence is gated out. If the
- * openWakeWord graphs resolve, it also runs ~2 s of silence through the
- * `OpenWakeWordModel` streaming pipeline and asserts P(wake) stays low.
+ * voiced region — i.e. the leading/trailing silence is gated out.
+ *
+ * The wake-word portion of this smoke ran through `OpenWakeWordModel`
+ * (ONNX) until the GGUF port (`packages/plugin-local-inference/native/
+ * libelizainference` ABI v5, `eliza_inference_wakeword_*`). The native
+ * runtime requires a loaded FFI context, which this lightweight script
+ * does not bring up — wake-word smoke now lives in
+ * `packages/inference/voice-bench/` against the fused library and the
+ * bundled `wake/openwakeword.gguf`. This script still resolves the
+ * bundled GGUF to report its presence, then exits the wake-word section.
  *
  * Usage:
  *   # use the bundled model under <state-dir>/local-inference/vad/silero-vad-int8.onnx
  *   bun packages/app-core/scripts/voice-vad-smoke.ts
  *   # or point at an explicit model:
  *   ELIZA_VAD_MODEL_PATH=/path/to/silero-vad-int8.onnx bun packages/app-core/scripts/voice-vad-smoke.ts
- *   # or a staged bundle dir (expects vad/silero-vad-int8.onnx, optionally wake/*.onnx):
+ *   # or a staged bundle dir (expects vad/silero-vad-int8.onnx, optionally wake/openwakeword.gguf):
  *   bun packages/app-core/scripts/voice-vad-smoke.ts --bundle /path/to/eliza-1-9b
  *
  * Exit code: 0 on pass, 1 on any assertion failure or unavailable runtime.
@@ -47,11 +54,7 @@ async function main(): Promise<void> {
   } = await import(
     "../../../plugins/plugin-local-inference/src/services/voice/vad"
   );
-  const {
-    loadBundledWakeWordModel,
-    resolveWakeWordModel,
-    WakeWordUnavailableError,
-  } = await import(
+  const { resolveWakeWordModel } = await import(
     "../../../plugins/plugin-local-inference/src/services/voice/wake-word"
   );
   const bundleRoot = arg("--bundle");

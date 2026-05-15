@@ -19,7 +19,7 @@
  * boots given the same FFI library + bundle.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
 	type ElizaInferenceContextHandle,
@@ -27,10 +27,27 @@ import {
 	loadElizaInferenceFfi,
 } from "./ffi-bindings";
 import {
+	detectSamanthaPlaceholder,
 	SAMANTHA_INSTRUCT,
 	SAMANTHA_REFERENCE_TRANSCRIPT,
 } from "./samantha-preset-placeholder";
 import { writeVoicePresetFileV2 } from "./voice-preset-format";
+
+/** Outcome of `ensureSamanthaPresetReady`. Distinct kinds let the caller
+ *  log the right thing at the right level without re-doing detection. */
+export type EnsureSamanthaPresetOutcome =
+	| { kind: "real-preset" }
+	| { kind: "missing-bundle-preset" }
+	| { kind: "regenerated"; bytes: number; K: number; refT: number }
+	| {
+			kind: "placeholder-no-regen";
+			reason:
+				| "missing-reference-wav"
+				| "missing-ffi-library"
+				| "ffi-no-encode-reference"
+				| "encode-reference-failed";
+			detail: string;
+	  };
 
 export interface RegenerateOptions {
 	bundleRoot: string;
