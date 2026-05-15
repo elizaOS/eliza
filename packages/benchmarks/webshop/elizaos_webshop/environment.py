@@ -16,6 +16,8 @@ function itself is unchanged.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +34,9 @@ logger = logging.getLogger(__name__)
 
 _BENCH_DIR = Path(__file__).resolve().parent.parent
 _UPSTREAM_DIR = _BENCH_DIR / "upstream"
+_SPACY_MODEL = "en_core_web_sm"
+_spacy_nlp_singleton: object | None = None
+_spacy_load_attempted = False
 
 
 def _ensure_upstream_on_path() -> None:
@@ -41,29 +46,121 @@ def _ensure_upstream_on_path() -> None:
         sys.path.insert(0, upstream_str)
 
 
+class _NounToken:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.pos_ = "NOUN"
+
+
+class _SimpleNounNlp:
+    def __call__(self, text: str) -> list[_NounToken]:
+        return [_NounToken(token) for token in str(text).split()]
+
+
+def _nlp_tokens_have_pos(nlp: object) -> bool:
+    try:
+        tokens = list(nlp("webshop product"))  # type: ignore[misc]
+    except Exception:
+        return False
+    return bool(tokens) and all(hasattr(token, "pos_") for token in tokens)
+
+
+def _ensure_spacy_model_available(
+    *,
+    model: str = _SPACY_MODEL,
+    _spacy_module: object | None = None,
+    _subprocess_run: object | None = None,
+) -> object:
+    """Load the spaCy model WebShop needs, installing it once if missing.
+
+    This helper is intentionally explicit for tests and diagnostics. Runtime
+    imports still have a no-network fallback in
+    ``_install_optional_upstream_dependency_stubs`` so benchmark smoke runs do
+    not fail solely because a POS tagger is unavailable.
+    """
+    global _spacy_load_attempted, _spacy_nlp_singleton
+
+    if _spacy_nlp_singleton is not None:
+        return _spacy_nlp_singleton
+
+    validate_pos = _spacy_module is None
+    if _spacy_module is None:
+        import spacy as _spacy_module  # type: ignore[import-not-found,no-redef]
+    run = _subprocess_run or subprocess.run
+
+    def _load() -> object:
+        nlp = _spacy_module.load(model)  # type: ignore[attr-defined]
+        if validate_pos and not _nlp_tokens_have_pos(nlp):
+            raise OSError(
+                f"spaCy model {model!r} loaded but does not provide token.pos_; "
+                "WebShop reward scoring requires POS tags."
+            )
+        return nlp
+
+    _spacy_load_attempted = True
+    try:
+        _spacy_nlp_singleton = _load()
+        return _spacy_nlp_singleton
+    except OSError as exc:
+        if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
+            raise OSError(
+                "spaCy model required for WebShop reward scoring is missing or "
+                "incomplete, and WEBSHOP_NO_AUTOFETCH is set. Install it with "
+                f"`python -m spacy download {model}`."
+            ) from exc
+
+        cmd = [sys.executable, "-m", "spacy", "download", model]
+        completed = run(cmd, check=False)  # type: ignore[misc]
+        return_code = int(getattr(completed, "returncode", 1))
+        if return_code != 0:
+            raise OSError(
+                f"`python -m spacy download {model}` failed with exit code "
+                f"{return_code}; WebShop reward scoring cannot use POS tags."
+            ) from exc
+
+        _spacy_nlp_singleton = _load()
+        return _spacy_nlp_singleton
+
+
 def _install_optional_upstream_dependency_stubs() -> None:
     """Install tiny shims for heavyweight optional upstream dependencies."""
     import types as _types
 
     try:
-        import spacy  # noqa: F401  # type: ignore[import-not-found]
+        import spacy  # type: ignore[import-not-found]
     except Exception:
         spacy_stub = _types.ModuleType("spacy")
 
-        class _Token:
-            def __init__(self, text: str) -> None:
-                self.text = text
-                self.pos_ = "NOUN"
-
-        class _Nlp:
-            def __call__(self, text: str) -> list[_Token]:
-                return [_Token(token) for token in text.split()]
-
-        def _load(_model: str) -> _Nlp:
-            return _Nlp()
+        def _load(_model: str, *_args: object, **_kwargs: object) -> _SimpleNounNlp:
+            return _SimpleNounNlp()
 
         spacy_stub.load = _load  # type: ignore[attr-defined]
         sys.modules["spacy"] = spacy_stub
+    else:
+        if not getattr(spacy, "_elizaos_webshop_safe_load", False):
+            original_load = spacy.load
+
+            def _safe_load(model: str, *args: object, **kwargs: object) -> object:
+                try:
+                    nlp = original_load(model, *args, **kwargs)
+                    if _nlp_tokens_have_pos(nlp):
+                        return nlp
+                    logger.warning(
+                        "[WebShopEnvironment] spaCy model %s lacks token.pos_; "
+                        "using noun-only fallback tokenizer.",
+                        model,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "[WebShopEnvironment] spaCy model %s unavailable (%s); "
+                        "using noun-only fallback tokenizer.",
+                        model,
+                        exc,
+                    )
+                return _SimpleNounNlp()
+
+            spacy.load = _safe_load  # type: ignore[assignment]
+            spacy._elizaos_webshop_safe_load = True  # type: ignore[attr-defined]
 
     try:
         import thefuzz  # noqa: F401  # type: ignore[import-not-found]

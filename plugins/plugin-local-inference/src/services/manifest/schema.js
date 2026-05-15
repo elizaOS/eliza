@@ -42,17 +42,8 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 // Eliza-1 bundle uses. Exported so runtime code can assert it.
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35";
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320;
-// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. Enum stays size-ordered.
-export const ELIZA_1_TIERS = [
-	"0_8b",
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-	"27b-1m",
-];
+// Tiers — capped at the explicit 27b-256k long-context variant.
+export const ELIZA_1_TIERS = ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"];
 // Manifest-level kernel capability names. Per AGENTS.md §3:
 // `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, `dflash` are
 // the named optimizations the bundle declares. `turbo3_tcq` is required
@@ -121,13 +112,12 @@ export const ELIZA_1_BACKENDS = ["metal", "vulkan", "cuda", "rocm", "cpu"];
 // Q4 is the release text quant baseline. TCQ is required for 4b and above
 // because those tiers ship long-context text variants.
 export const REQUIRED_KERNELS_BY_TIER = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant"],
-	"2b": ["turboquant_q4", "qjl", "polarquant"],
+	"0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 // Backends each tier is expected to support on shipped hardware.
 export const SUPPORTED_BACKENDS_BY_TIER = {
@@ -137,7 +127,6 @@ export const SUPPORTED_BACKENDS_BY_TIER = {
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
-	"27b-1m": ["cuda"],
 };
 // ---------------------------------------------------------------------------
 // Zod definitions

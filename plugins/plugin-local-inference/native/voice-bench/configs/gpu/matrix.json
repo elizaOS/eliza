@@ -106,6 +106,20 @@
             4096,
             65536,
             131072,
+            262144,
+            524288,
+            1048576
+          ],
+          "ttfa_target_ms": 400,
+          "rtf_target": 0.25,
+          "notes": "Marquee config: 27B at 1M context."
+        },
+        {
+          "id": "eliza-1-27b-256k",
+          "ctx_sweep": [
+            4096,
+            65536,
+            131072,
             262144
           ],
           "ttfa_target_ms": 350,

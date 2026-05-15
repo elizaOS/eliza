@@ -85,6 +85,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Skip the LLM coherence judge (uses None for that axis).",
     )
     parser.add_argument(
+        "--fixture-stt",
+        action="store_true",
+        help=(
+            "Use fixture transcripts instead of live STT. Intended for local "
+            "smoke tests with checked-in JSONL fixtures."
+        ),
+    )
+    parser.add_argument(
         "--data-path",
         type=Path,
         default=None,
@@ -120,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     agent = _build_agent(args.agent)
-    stt = build_stt()
+    stt = build_stt(fixture=args.fixture_stt)
     judge: CoherenceJudge | None
     if args.no_judge:
         judge = None

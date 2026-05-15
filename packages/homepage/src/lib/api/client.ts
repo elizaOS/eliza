@@ -87,7 +87,7 @@ class UnauthorizedError extends Error {
   }
 }
 
-async function elizacloudAuthFetchStrict<T = unknown>(
+async function _elizacloudAuthFetchStrict<T = unknown>(
   path: string,
   init?: ApiRequestInit,
 ): Promise<T> {

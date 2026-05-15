@@ -104,6 +104,20 @@
             4096,
             65536,
             131072,
+            262144,
+            524288,
+            1048576
+          ],
+          "ttfaTargetMs": 400,
+          "voiceBackend": "kokoro",
+          "notes": "Marquee config: 27B at 1M context. KV at 1M with QJL+Polar is ~80 GiB; rest of the 141 GiB host is activations + drafter + 16 parallel slots."
+        },
+        {
+          "id": "eliza-1-27b-256k",
+          "contextSweep": [
+            4096,
+            65536,
+            131072,
             262144
           ],
           "ttfaTargetMs": 350,

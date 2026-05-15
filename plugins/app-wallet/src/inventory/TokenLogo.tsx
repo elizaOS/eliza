@@ -3,7 +3,7 @@ import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig.ts";
 import { chainIcon } from "./constants.ts";
 import { normalizeInventoryImageUrl } from "./media-url.ts";
 
-export function tokenLogoUrl(
+function tokenLogoUrl(
   chain: string,
   contractAddress: string | null,
 ): string | null {

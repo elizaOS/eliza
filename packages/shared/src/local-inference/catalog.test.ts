@@ -8,11 +8,7 @@ import {
 } from "./catalog.js";
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
-const LARGE_TIERS = [
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-] as const;
+const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
 const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 
 describe("voiceQuantLadderForTier", () => {
@@ -25,13 +21,9 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns a narrow OmniVoice ladder for small tiers", () => {
+  it("returns no OmniVoice ladder for Kokoro-only small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([
-        "Q3_K_M",
-        "Q4_K_M",
-        "Q5_K_M",
-      ]);
+      expect(voiceQuantLadderForTier(id)).toEqual([]);
     }
   });
 

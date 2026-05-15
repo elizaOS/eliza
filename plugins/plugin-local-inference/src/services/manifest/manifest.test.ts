@@ -10,6 +10,21 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
+const DFLASH_TIERS = new Set<Eliza1Tier>([
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+	"27b-1m",
+]);
+const VISION_TIERS = new Set<Eliza1Tier>([
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+	"27b-1m",
+]);
 
 function passingBackends() {
 	return {
@@ -77,12 +92,14 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
 	};
-	if (!REQUIRED_KERNELS_BY_TIER[tier].includes("dflash")) {
+	if (!DFLASH_TIERS.has(tier)) {
 		delete manifest.lineage.drafter;
-		delete manifest.lineage.vision;
-		manifest.files.vision = [];
 		manifest.files.dflash = [];
 		delete manifest.evals.dflash;
+	}
+	if (!VISION_TIERS.has(tier)) {
+		delete manifest.lineage.vision;
+		manifest.files.vision = [];
 	}
 	return manifest;
 }
@@ -101,11 +118,12 @@ describe("Eliza-1 manifest schema constants", () => {
 			"9b",
 			"27b",
 			"27b-256k",
+			"27b-1m",
 		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
 		);
-		expect(REQUIRED_KERNELS_BY_TIER["0_8b"]).toContain("dflash");
+		expect(REQUIRED_KERNELS_BY_TIER["0_8b"]).not.toContain("dflash");
 		expect(REQUIRED_KERNELS_BY_TIER["2b"]).toContain("dflash");
 		expect(REQUIRED_KERNELS_BY_TIER["4b"]).toContain("dflash");
 	});
@@ -165,31 +183,36 @@ describe("validateManifest — valid input", () => {
 		}
 	});
 
-	it("accepts 0_8b and 2b without vision while keeping DFlash mandatory", () => {
+	it("accepts 0_8b and 2b without vision with tier-specific DFlash policy", () => {
 		for (const tier of ["0_8b", "2b"] as const) {
 			const m = baseManifest(tier);
-			delete m.lineage.vision;
-			m.files.vision = [];
 			expect(m.files.vision).toEqual([]);
 			expect(m.lineage.vision).toBeUndefined();
-			expect(m.files.dflash.length).toBeGreaterThan(0);
-			expect(m.lineage.drafter).toBeDefined();
-			expect(m.kernels.required).toContain("dflash");
+			if (tier === "0_8b") {
+				expect(m.files.dflash).toEqual([]);
+				expect(m.lineage.drafter).toBeUndefined();
+				expect(m.kernels.required).not.toContain("dflash");
+			} else {
+				expect(m.files.dflash.length).toBeGreaterThan(0);
+				expect(m.lineage.drafter).toBeDefined();
+				expect(m.kernels.required).toContain("dflash");
+			}
 			expect(validateManifest(m).ok).toBe(true);
 		}
 	});
 
-	it("accepts optional 0_8b/2b vision when artifacts exist", () => {
+	it("rejects 0_8b/2b vision artifacts until those tiers have a real image mmproj", () => {
 		for (const tier of ["0_8b", "2b"] as const) {
 			const m = baseManifest(tier);
 			m.lineage.vision = { base: "eliza-1-vision", license: "apache-2.0" };
 			m.files.vision = [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }];
 			const result = validateManifest(m);
-			const detail = result.ok ? "" : ` errors=${result.errors.join(", ")}`;
-			expect(
-				result.ok,
-				`${tier} optional artifacts should validate.${detail}`,
-			).toBe(true);
+			expect(result.ok, `${tier} vision should reject`).toBe(false);
+			if (!result.ok) {
+				expect(result.errors.some((e) => e.includes("files.vision"))).toBe(
+					true,
+				);
+			}
 		}
 	});
 });
@@ -258,7 +281,7 @@ describe("validateManifest — contract rejections", () => {
 	});
 
 	it("requires vision and DFlash artifacts for 4b and larger tiers", () => {
-		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
+		for (const tier of ["4b", "9b", "27b", "27b-256k", "27b-1m"] as const) {
 			const m = baseManifest(tier);
 			delete m.lineage.vision;
 			delete m.lineage.drafter;

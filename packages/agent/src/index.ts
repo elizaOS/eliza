@@ -208,6 +208,22 @@ export {
 export * from "./runtime/plugin-types.ts";
 export * from "./runtime/release-plugin-policy.ts";
 export * from "./runtime/restart.ts";
+// === Phase 3C: barrel-promoted from ./runtime/tool-call-cache/index ===
+export {
+  buildCacheKey,
+  CACHEABLE_TOOL_REGISTRY,
+  type CacheableToolDescriptor,
+  canonicalizeJson,
+  defaultPrivacyRedactor,
+  isCacheable,
+  type PrivacyRedactor,
+  resolveToolDescriptor,
+  type ToolArgs,
+  type ToolCacheEntry,
+  ToolCallCache,
+  type ToolCallCacheOptions,
+  type ToolOutput,
+} from "./runtime/tool-call-cache/index.ts";
 export * from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
@@ -228,6 +244,13 @@ export {
   registerJsRuntimeFactory,
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
+// === Phase 3C: barrel-promoted from ./services/permissions/probers/index ===
+export {
+  ALL_PROBERS,
+  PROBERS_BY_ID,
+} from "./services/permissions/probers/index.ts";
+// === Phase 3C: barrel-promoted from ./services/permissions/register-probers ===
+export { registerAllProbers } from "./services/permissions/register-probers.ts";
 export * from "./services/plugin-installer";
 export {
   type ClusterMemoriesQuery,

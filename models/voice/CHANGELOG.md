@@ -29,7 +29,7 @@ Stable model ids:
 
 G4 pushed all voice sub-model repos to HuggingFace. Each repo at
 `elizaos/eliza-1-voice-<id>` now has a README.md + manifest.json committed.
-The `elizaos/eliza-1` main bundle `bundles/` deleted (54 files) per
+The `elizaos/eliza-1` main bundle `bundles/27b-256k/` deleted (54 files) per
 G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 (text + vision + asr + vad + manifest all reachable, HEAD check ≤500ms each).
 
@@ -45,6 +45,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 | elizaos/eliza-1-voice-kokoro | da4b5d73d4c1f8e37e86a4e0d51d7e4141e8f855 |
 | elizaos/eliza-1-voice-omnivoice | cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c |
 | elizaos/eliza-1-voice-embedding | eb96371b6d4b87eee6f84303408fd1603fa6cde2 |
+| elizaos/eliza-1 (27b-256k delete) | 824d6f2cc353feccf421dd71bf0c4ac0d12d7a87 |
 
 ---
 
@@ -201,6 +202,14 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ## omnivoice
 
+
+### 0.2.0 — 2026-05-15
+
+- OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)
+- **Parent:** 0.1.0.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice-same-v01` @ rev `fd0d04439d48826abc89dcfc03d9d1f31d29bf20`.
+- **Eval deltas:** (none recorded)
+- **Net improvement:** yes.
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging)
 
 - **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-sam.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.

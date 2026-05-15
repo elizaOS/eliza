@@ -74,7 +74,7 @@ def test_stage_sources_accepts_large_active_tier(
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
 
-@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
+@pytest.mark.parametrize("tier", ["27b", "27b-256k", "27b-1m"])
 def test_27b_class_tiers_use_qwen36_source(
     tmp_path: Path,
     monkeypatch,
@@ -90,19 +90,19 @@ def test_27b_class_tiers_use_qwen36_source(
 def test_every_active_tier_has_vision_source() -> None:
     """Every Qwen3.5 release tier must source its own mmproj-F16.gguf.
 
-    The 27b / 27b-256k text-context variants all reuse the
-    `unsloth/Qwen3.5-27B-GGUF` projector by design (the projector arch is
+    The 27b / 27b-256k / 27b-1m text-context variants all reuse the
+    `unsloth/Qwen3.6-27B-GGUF` projector by design (the projector arch is
     shared across the 27B family). The 0_8b/2b/4b/9b tiers each have a
     distinct upstream mmproj source. The 0_8b tier ships Q4_K_M; every
     other tier ships Q8_0.
     """
-    for tier in ("0_8b", "2b", "4b", "9b", "27b", "27b-256k"):
+    for tier in ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"):
         assert stage.VISION_SOURCES[tier] is not None, tier
         artifact = stage.VISION_SOURCES[tier]
         assert artifact.kind == "vision"
         assert artifact.filename == "mmproj-F16.gguf"
         if tier.startswith("27b"):
-            assert artifact.repo == "unsloth/Qwen3.5-27B-GGUF"
+            assert artifact.repo == "unsloth/Qwen3.6-27B-GGUF"
         assert tier in stage.MMPROJ_QUANT_BY_TIER
         assert tier in stage.MMPROJ_QUANT_TENSOR_OVERRIDES
         assert stage.MMPROJ_QUANT_BY_TIER["0_8b"] == "Q4_K_M"
@@ -117,7 +117,7 @@ def test_large_projector_tiers_carry_ffn_down_override() -> None:
     with "Unsupported tensor size encountered" mid-stream. The 0_8b/2b/4b
     mid+small projectors do not need that override.
     """
-    for tier in ("9b", "27b", "27b-256k"):
+    for tier in ("9b", "27b", "27b-256k", "27b-1m"):
         overrides = stage.MMPROJ_QUANT_TENSOR_OVERRIDES[tier]
         assert "v\\.blk\\.[0-9]+\\.ffn_down\\.weight" in overrides
         assert "v\\.patch_embd\\.weight" in overrides
@@ -187,3 +187,16 @@ def test_quantize_mmproj_raises_when_binary_missing(tmp_path: Path) -> None:
         assert "llama-quantize binary not found" in str(exc)
     else:  # pragma: no cover - protective
         raise AssertionError("expected SystemExit")
+
+
+def test_source_staging_accepts_27b_1m_extension_tier(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, "27b-1m"))
+
+    assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+    assert any(f["destination"].endswith("qwen3.6-27b-1m-q8_0.gguf") for f in report["files"])
+    assert "27b-1m" in stage.SOURCE_WEIGHT_TIERS

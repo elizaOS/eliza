@@ -69,6 +69,20 @@ def _message_to_action(message: dict[str, Any]) -> Action:
     )
 
 
+def _message_to_dict(message: Any) -> dict[str, Any]:
+    model_dump = getattr(message, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else {}
+    if isinstance(message, dict):
+        return dict(message)
+    return {
+        "role": getattr(message, "role", "assistant"),
+        "content": getattr(message, "content", None),
+        "tool_calls": getattr(message, "tool_calls", None),
+    }
+
+
 class LiteLLMToolCallingAgent(BaseTauAgent):
     """Real LLM agent. Calls a chat-completions model with the env's tools."""
 
@@ -83,7 +97,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
         self.temperature = temperature
 
     def solve(self, env: Env, task_index: int, max_num_steps: int = 30) -> AgentRunResult:
-        from litellm import completion
+        from elizaos_tau_bench.model_client import completion
 
         reset = env.reset(task_index=task_index)
         obs = reset.observation
@@ -107,7 +121,7 @@ class LiteLLMToolCallingAgent(BaseTauAgent):
                     tools=env.tools_info,
                     temperature=self.temperature,
                 )
-                next_message = res.choices[0].message.model_dump()
+                next_message = _message_to_dict(res.choices[0].message)
                 step_cost = (
                     res._hidden_params.get("response_cost") if hasattr(res, "_hidden_params") else None
                 )

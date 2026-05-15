@@ -205,6 +205,12 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 	if (tierRequiresDflash && dflashFiles.length === 0) {
 		errors.push(`files.dflash: required for tier ${m.tier}`);
 	}
+	if (!tierRequiresDflash && dflashFiles.length > 0) {
+		errors.push(`files.dflash: not supported for tier ${m.tier}`);
+	}
+	if (!tierRequiresDflash && declaredRequired.has("dflash")) {
+		errors.push(`kernels.required: dflash is not supported for tier ${m.tier}`);
+	}
 
 	// Long-context tiers MUST require turbo3_tcq once any text variant has
 	// ctx > 64k. AGENTS.md §3 Required for desktop/pro/server (#6).
@@ -312,6 +318,9 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		(m.files.vision ?? []).length === 0
 	) {
 		errors.push(`files.vision: required for tier ${m.tier}`);
+	}
+	if (!VISION_REQUIRED_TIERS.has(m.tier) && (m.files.vision ?? []).length > 0) {
+		errors.push(`files.vision: not supported for tier ${m.tier}`);
 	}
 	if (dflashFiles.length > 0 && !m.lineage.drafter) {
 		errors.push("lineage.drafter: required when files.dflash is non-empty");

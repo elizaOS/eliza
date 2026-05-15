@@ -142,7 +142,6 @@ const VISION_REQUIRED_TIERS = new Set([
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 function collectContractErrors(m) {
 	const errors = [];

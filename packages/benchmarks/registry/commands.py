@@ -220,17 +220,22 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
-        categories = extra.get("categories")
-        if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
-            args.extend(["--categories", *cast(list[str], categories)])
+        subtasks = extra.get("subtasks", extra.get("categories"))
+        if isinstance(subtasks, list) and all(isinstance(x, str) for x in subtasks):
+            args.extend(["--subtasks", *cast(list[str], subtasks)])
         # Route LLM calls through the elizaOS TS benchmark server when the caller
         # asks for the eliza agent; otherwise forward real provider/model labels
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"hermes", "openclaw"}:
-            raise ValueError(f"mint: native {agent} harness adapter is not implemented")
-        if agent == "eliza" or provider_name == "eliza":
+        if agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--provider", agent])
+            if model.model:
+                args.extend(["--model", model.model])
+            base_url = extra.get("base_url")
+            if isinstance(base_url, str) and base_url.strip():
+                args.extend(["--base-url", base_url.strip()])
+        elif provider_name == "eliza":
             args.extend(["--provider", "eliza"])
         elif provider_name in {
             "cerebras",

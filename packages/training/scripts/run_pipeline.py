@@ -66,6 +66,16 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("pipeline")
 
+GGUF_KQUANT_LADDER: tuple[str, ...] = (
+    "gguf-q3_k_m",
+    "gguf-q4_k_m",
+    "gguf-q5_k_m",
+    "gguf-q6_k",
+)
+DEFAULT_QUANTIZERS = ",".join(
+    ("polarquant", "turboquant", "fused_turboquant", "qjl", *GGUF_KQUANT_LADDER)
+)
+
 
 def run(cmd: list[str], *, env: dict | None = None, cwd: Path | None = None) -> int:
     log.info("$ %s", " ".join(cmd))
@@ -348,15 +358,15 @@ def main() -> int:
     )
     ap.add_argument(
         "--quantizers",
-        default=(
-            "polarquant,turboquant,fused_turboquant,qjl,"
-            "gguf-q3_k_m,gguf-q4_k_m,gguf-q5_k_m,gguf-q6_k,gguf-q8_0"
-        ),
+        default=DEFAULT_QUANTIZERS,
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = full stack: polarquant (4-bit weights) + "
              "turboquant/fused_turboquant V-cache sidecars + qjl "
-             "(1-bit K cache) + the complete GGUF K-quant ladder "
-             "(Q3_K_M/Q4_K_M/Q5_K_M/Q6_K/Q8_0).",
+             "(1-bit K cache) + the checked-in GGUF K-quant ladder "
+             "(Q3_K_M/Q4_K_M/Q5_K_M/Q6_K). Q8_0 is tracked as a "
+             "source seed/extension point in "
+             "config/eliza1_gguf_pipeline_manifest.json until a checked-in "
+             "Q8_0 apply hook is present.",
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",

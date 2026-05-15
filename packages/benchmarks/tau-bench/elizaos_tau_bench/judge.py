@@ -104,7 +104,7 @@ def judge_outputs_satisfied(
         return _fallback_substring_check(outputs, agent_messages)
 
     try:
-        from litellm import completion
+        from elizaos_tau_bench.model_client import completion
 
         res = completion(
             model=model,

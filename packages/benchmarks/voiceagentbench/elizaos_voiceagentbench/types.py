@@ -19,6 +19,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
+import sys
+from pathlib import Path
 from typing import Any, Literal
 
 # Base chat-turn from LifeOpsBench. We subclass it here (instead of
@@ -27,7 +29,13 @@ from typing import Any, Literal
 # fields it needs. Adapters targeting LifeOpsBench / tau-bench
 # MessageTurn keep working because every VoiceAgentBench MessageTurn
 # is-a LifeOpsBench MessageTurn at the type level.
-from eliza_lifeops_bench.types import MessageTurn as _BaseMessageTurn
+try:
+    from eliza_lifeops_bench.types import MessageTurn as _BaseMessageTurn
+except ModuleNotFoundError:
+    sibling = Path(__file__).resolve().parents[2] / "lifeops-bench"
+    if sibling.exists() and str(sibling) not in sys.path:
+        sys.path.insert(0, str(sibling))
+    from eliza_lifeops_bench.types import MessageTurn as _BaseMessageTurn
 
 
 @dataclass

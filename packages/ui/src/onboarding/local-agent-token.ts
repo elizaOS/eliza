@@ -16,6 +16,13 @@ type AgentWithLocalToken = {
 const agentPluginName = "Agent";
 const agentPluginId = "@elizaos/capacitor-agent";
 
+function normalizeLocalAgentHost(hostname: string): string {
+  return hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+}
+
 export function isMobileLocalAgentUrl(value: string): boolean {
   let parsed: URL;
   try {
@@ -29,7 +36,7 @@ export function isMobileLocalAgentUrl(value: string): boolean {
   return (
     parsed.protocol === "http:" &&
     parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(parsed.hostname)
+    LOCAL_AGENT_HOSTS.has(normalizeLocalAgentHost(parsed.hostname))
   );
 }
 

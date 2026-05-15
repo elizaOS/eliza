@@ -42,6 +42,7 @@
 #                                    9b        → qwen3.5-9b
 #                                    27b       → qwen3.6-27b
 #                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
+#                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
 #                                  Use a smaller list to test a subset:
 #                                    TIERS="0_8b 2b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
@@ -164,7 +165,7 @@ _remote() {
 
 _tier_run_name() {
   # Tier-stable, tag-scoped run name. Eliza public name comes from the registry
-  # lookup so 27b/27b-256k don't collide (both map to qwen3.6-27b).
+  # lookup so 27b/27b-256k don't collide (all map to qwen3.6-27b).
   local tier="$1" pub="$2"
   echo "${pub}-${ELIZA_SMOKE_RUN_TAG}-${tier}"
 }

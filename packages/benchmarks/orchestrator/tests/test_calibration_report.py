@@ -20,7 +20,8 @@ def _seed_run(
     agent: str,
     run_id: str,
     started_at: str,
-    score: float,
+    score: float | None,
+    status: str = "succeeded",
     extra_config: dict[str, Any] | None = None,
     metrics: dict[str, Any] | None = None,
 ) -> None:
@@ -49,12 +50,12 @@ def _seed_run(
     update_run_result(
         conn,
         run_id=run_id,
-        status="succeeded",
+        status=status,
         ended_at=started_at,
         duration_seconds=1.0,
         score=score,
-        unit="ratio",
-        higher_is_better=True,
+        unit="ratio" if score is not None else None,
+        higher_is_better=True if score is not None else None,
         metrics=metrics or {"score": score},
         result_json_path=None,
         artifacts=[],
@@ -182,6 +183,56 @@ def test_calibration_report_labels_scorer_payload_calibration_as_valid(tmp_path:
     assert report["rows"][0]["calibration_status"] == "valid"
 
 
+def test_calibration_report_detects_all_right_all_wrong_and_half_right(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["all_right", "all_wrong", "half_right"],
+        repo_meta={},
+    )
+    cases = {
+        "all_right": 1.0,
+        "all_wrong": 0.0,
+        "half_right": 0.5,
+    }
+    for benchmark_id, score in cases.items():
+        for idx, agent in enumerate(("perfect_v1", "wrong_v1", "half_v1"), start=1):
+            _seed_run(
+                conn,
+                benchmark_id=benchmark_id,
+                agent=agent,
+                run_id=f"run_{benchmark_id}_{agent}",
+                started_at=f"2026-05-12T00:0{idx}:00+00:00",
+                score=score,
+                metrics={"calibration_depth": "scorer_payload"},
+            )
+    conn.close()
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids=set(cases),
+    )
+    statuses = {
+        row["benchmark_id"]: row["calibration_status"]
+        for row in report["rows"]
+    }
+
+    assert statuses == {
+        "all_right": "all_right",
+        "all_wrong": "all_wrong",
+        "half_right": "half_right",
+    }
+    assert report["summary"]["all_right"] == 1
+    assert report["summary"]["all_wrong"] == 1
+    assert report["summary"]["half_right"] == 1
+
+
 def test_calibration_report_treats_static_incompatibility_as_unsupported(
     tmp_path: Path,
 ) -> None:
@@ -227,3 +278,95 @@ def test_calibration_report_treats_static_incompatibility_as_unsupported(
     assert report["matrix_summary"]["required_real_cells"] == 2
     assert report["matrix_summary"]["unsupported_real_cells"] == 1
     assert report["matrix_summary"]["complete_benchmarks"] == 1
+
+
+def test_calibration_report_ignores_stale_now_supported_incompatible_rows(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["demo_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="demo_bench",
+        agent="eliza",
+        run_id="run_eliza_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="demo_bench",
+        agent="eliza",
+        run_id="run_eliza_stale_incompatible",
+        started_at="2026-05-12T00:01:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={"reason": "harness_not_in_compatibility"},
+    )
+    conn.close()
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"demo_bench"},
+        agent_compatibility={"demo_bench": ("eliza",)},
+    )
+    row = report["rows"][0]
+
+    assert row["real_cells"]["eliza"]["state"] == "succeeded"
+    assert row["real_scores"]["eliza"] == 0.75
+    assert row["failed_required_real_harnesses"] == []
+    assert report["matrix_summary"]["failed_required_real_cells"] == 0
+
+
+def test_calibration_report_keeps_latest_success_when_newer_attempt_failed(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["demo_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="demo_bench",
+        agent="eliza",
+        run_id="run_eliza_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="demo_bench",
+        agent="eliza",
+        run_id="run_eliza_failed",
+        started_at="2026-05-12T00:01:00+00:00",
+        status="failed",
+        score=None,
+        metrics={"reason": "subprocess_failed"},
+    )
+    conn.close()
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"demo_bench"},
+        agent_compatibility={"demo_bench": ("eliza",)},
+    )
+    row = report["rows"][0]
+
+    assert row["real_cells"]["eliza"]["state"] == "succeeded"
+    assert row["real_cells"]["eliza"]["run_id"] == "run_eliza_success"
+    assert row["failed_required_real_harnesses"] == []
+    assert report["matrix_summary"]["failed_required_real_cells"] == 0

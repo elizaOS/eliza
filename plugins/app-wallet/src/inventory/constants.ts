@@ -42,7 +42,7 @@ export function chainIcon(chain: string): { code: string; cls: string } {
   return { code: chain.charAt(0).toUpperCase(), cls: "bg-bg-muted" };
 }
 
-export function normalizeChainName(chain: string): string {
+function normalizeChainName(chain: string): string {
   return chain.trim().toLowerCase();
 }
 

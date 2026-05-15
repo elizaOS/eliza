@@ -1,0 +1,520 @@
+{
+  "platformTargets": {
+    "android-adreno-vulkan": {
+      "backend": "vulkan",
+      "command": "cd packages/inference/verify && make android-vulkan-smoke",
+      "id": "android-adreno-vulkan",
+      "notes": "Physical Qualcomm Adreno device.",
+      "recordable": true,
+      "runner": "packages/inference/verify/android_vulkan_smoke.sh"
+    },
+    "android-mali-vulkan": {
+      "backend": "vulkan",
+      "command": "cd packages/inference/verify && make android-vulkan-smoke",
+      "id": "android-mali-vulkan",
+      "notes": "Physical Arm Mali device.",
+      "recordable": true,
+      "runner": "packages/inference/verify/android_vulkan_smoke.sh"
+    },
+    "darwin-arm64-metal": {
+      "backend": "metal",
+      "command": "make -C packages/inference/verify dispatch-smoke",
+      "id": "darwin-arm64-metal",
+      "notes": "Apple Silicon desktop/laptop Metal graph dispatch.",
+      "recordable": true,
+      "runner": "packages/inference/verify/metal-runtime-dispatch-evidence.json"
+    },
+    "ios-arm64-metal": {
+      "backend": "metal",
+      "command": "node packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs",
+      "id": "ios-arm64-metal",
+      "notes": "Physical iPhone/iPad only; simulator is diagnostic.",
+      "recordable": true,
+      "runner": "packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs"
+    },
+    "linux-aarch64-cuda": {
+      "backend": "cuda",
+      "command": "cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./gh200_runner.sh --report hardware-results/gh200.json",
+      "id": "linux-aarch64-cuda",
+      "notes": "GH200/H100/H200-class aarch64 Linux.",
+      "recordable": true,
+      "runner": "packages/inference/verify/gh200_runner.sh"
+    },
+    "linux-x64-cpu": {
+      "backend": "cpu",
+      "command": "cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./runtime_graph_smoke.sh --target linux-x64-cpu --backend-pattern 'AVX|AVX2|CPU|ggml_backend_cpu|llama'",
+      "id": "linux-x64-cpu",
+      "notes": "Native Linux CPU fallback.",
+      "recordable": true,
+      "runner": "packages/inference/verify/runtime_graph_smoke.sh"
+    },
+    "linux-x64-cuda": {
+      "backend": "cuda",
+      "command": "cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh --report hardware-results/cuda.json",
+      "id": "linux-x64-cuda",
+      "notes": "Linux x64 NVIDIA CUDA.",
+      "recordable": true,
+      "runner": "packages/inference/verify/cuda_runner.sh"
+    },
+    "linux-x64-rocm": {
+      "backend": "rocm",
+      "command": "cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./rocm_runner.sh --report hardware-results/rocm.json",
+      "id": "linux-x64-rocm",
+      "notes": "Linux x64 AMD ROCm/HIP.",
+      "recordable": true,
+      "runner": "packages/inference/verify/rocm_runner.sh"
+    },
+    "linux-x64-vulkan": {
+      "backend": "vulkan",
+      "command": "cd packages/inference/verify && ./linux_vulkan_smoke.sh",
+      "id": "linux-x64-vulkan",
+      "notes": "Native Linux Intel/AMD/NVIDIA Vulkan; software ICDs are diagnostic.",
+      "recordable": true,
+      "runner": "packages/inference/verify/linux_vulkan_smoke.sh"
+    },
+    "windows-arm64-cpu": {
+      "backend": "cpu",
+      "command": "pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cpu -Model C:\\models\\eliza-1-smoke.gguf -Report C:\\temp\\eliza-arm64-cpu.json",
+      "id": "windows-arm64-cpu",
+      "notes": "Native Windows arm64 CPU.",
+      "recordable": true,
+      "runner": "packages/inference/verify/windows_runner.ps1"
+    },
+    "windows-arm64-vulkan": {
+      "backend": "vulkan",
+      "command": "pwsh -File packages/inference/verify/windows_runner.ps1 -Backend vulkan -Model C:\\models\\eliza-1-smoke.gguf -Report C:\\temp\\eliza-arm64-vulkan.json",
+      "id": "windows-arm64-vulkan",
+      "notes": "Native Windows arm64 Vulkan, e.g. Snapdragon X.",
+      "recordable": true,
+      "runner": "packages/inference/verify/windows_runner.ps1"
+    },
+    "windows-x64-cpu": {
+      "backend": "cpu",
+      "command": "pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cpu -Model C:\\models\\eliza-1-smoke.gguf -Report C:\\temp\\eliza-cpu.json",
+      "id": "windows-x64-cpu",
+      "notes": "Native Windows x64 CPU.",
+      "recordable": true,
+      "runner": "packages/inference/verify/windows_runner.ps1"
+    },
+    "windows-x64-cuda": {
+      "backend": "cuda",
+      "command": "pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\models\\eliza-1-smoke.gguf -Report C:\\temp\\eliza-cuda.json",
+      "id": "windows-x64-cuda",
+      "notes": "Native Windows x64 NVIDIA CUDA.",
+      "recordable": true,
+      "runner": "packages/inference/verify/windows_runner.ps1"
+    },
+    "windows-x64-vulkan": {
+      "backend": "vulkan",
+      "command": "pwsh -File packages/inference/verify/windows_runner.ps1 -Backend vulkan -Model C:\\models\\eliza-1-smoke.gguf -Report C:\\temp\\eliza-vulkan.json",
+      "id": "windows-x64-vulkan",
+      "notes": "Native Windows x64 Vulkan on NVIDIA/AMD/Intel.",
+      "recordable": true,
+      "runner": "packages/inference/verify/windows_runner.ps1"
+    }
+  },
+  "schemaVersion": 1,
+  "sourceOfTruth": "packages/training/scripts/manifest/eliza1_platform_plan.py",
+  "tiers": {
+    "0_6b": {
+      "contexts": [
+        32768
+      ],
+      "required_files": {
+        "asr": [
+          "asr/eliza-1-asr.gguf"
+        ],
+        "cache": [
+          "cache/voice-preset-default.bin"
+        ],
+        "checksums": [
+          "checksums/SHA256SUMS"
+        ],
+        "dflash": [
+          "dflash/drafter-0_6b.gguf",
+          "dflash/target-meta.json"
+        ],
+        "evals": [
+          "evals/aggregate.json"
+        ],
+        "evidence": [
+          "evidence/release.json"
+        ],
+        "licenses": [
+          "licenses/LICENSE.text",
+          "licenses/LICENSE.voice",
+          "licenses/LICENSE.dflash",
+          "licenses/LICENSE.eliza-1"
+        ],
+        "text": [
+          "text/eliza-1-0_6b-32k.gguf"
+        ],
+        "vad": [
+          "vad/eliza-1-vad.onnx"
+        ],
+        "voice": [
+          "tts/omnivoice-base-Q4_K_M.gguf",
+          "tts/omnivoice-tokenizer-Q4_K_M.gguf"
+        ]
+      },
+      "required_kernels": [
+        "turboquant_q3",
+        "qjl",
+        "polarquant",
+        "dflash"
+      ],
+      "required_platform_evidence": [
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-x64-vulkan",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan"
+      ],
+      "required_sidecars": [
+        "text/turboquant.json",
+        "text/qjl_config.json",
+        "text/polarquant_config.json",
+        "dflash/fused_turboquant.json"
+      ],
+      "supported_backends": [
+        "metal",
+        "vulkan",
+        "cpu"
+      ],
+      "text_quant": "Q3_K_M",
+      "tier": "0_6b",
+      "voice_quant": "Q4_K_M"
+    },
+    "1_7b": {
+      "contexts": [
+        32768,
+        65536
+      ],
+      "required_files": {
+        "asr": [
+          "asr/eliza-1-asr.gguf"
+        ],
+        "cache": [
+          "cache/voice-preset-default.bin"
+        ],
+        "checksums": [
+          "checksums/SHA256SUMS"
+        ],
+        "dflash": [
+          "dflash/drafter-1_7b.gguf",
+          "dflash/target-meta.json"
+        ],
+        "embedding": [
+          "embedding/eliza-1-embedding-0_6b.gguf"
+        ],
+        "evals": [
+          "evals/aggregate.json"
+        ],
+        "evidence": [
+          "evidence/release.json"
+        ],
+        "licenses": [
+          "licenses/LICENSE.text",
+          "licenses/LICENSE.voice",
+          "licenses/LICENSE.dflash",
+          "licenses/LICENSE.eliza-1"
+        ],
+        "text": [
+          "text/eliza-1-1_7b-32k.gguf",
+          "text/eliza-1-1_7b-64k.gguf"
+        ],
+        "vad": [
+          "vad/eliza-1-vad.onnx"
+        ],
+        "voice": [
+          "tts/omnivoice-base-Q4_K_M.gguf",
+          "tts/omnivoice-tokenizer-Q4_K_M.gguf"
+        ]
+      },
+      "required_kernels": [
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash"
+      ],
+      "required_platform_evidence": [
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-x64-vulkan",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan"
+      ],
+      "required_sidecars": [
+        "text/turboquant.json",
+        "text/qjl_config.json",
+        "text/polarquant_config.json",
+        "dflash/fused_turboquant.json"
+      ],
+      "supported_backends": [
+        "metal",
+        "vulkan",
+        "cpu"
+      ],
+      "text_quant": "Q4_K_M",
+      "tier": "1_7b",
+      "voice_quant": "Q4_K_M"
+    },
+    "27b": {
+      "contexts": [
+        131072,
+        262144
+      ],
+      "required_files": {
+        "asr": [
+          "asr/eliza-1-asr.gguf"
+        ],
+        "cache": [
+          "cache/voice-preset-default.bin"
+        ],
+        "checksums": [
+          "checksums/SHA256SUMS"
+        ],
+        "dflash": [
+          "dflash/drafter-27b.gguf",
+          "dflash/target-meta.json"
+        ],
+        "embedding": [
+          "embedding/eliza-1-embedding-0_6b.gguf"
+        ],
+        "evals": [
+          "evals/aggregate.json"
+        ],
+        "evidence": [
+          "evidence/release.json"
+        ],
+        "licenses": [
+          "licenses/LICENSE.text",
+          "licenses/LICENSE.voice",
+          "licenses/LICENSE.dflash",
+          "licenses/LICENSE.eliza-1"
+        ],
+        "text": [
+          "text/eliza-1-27b-128k.gguf",
+          "text/eliza-1-27b-256k.gguf"
+        ],
+        "vad": [
+          "vad/eliza-1-vad.onnx"
+        ],
+        "vision": [
+          "vision/mmproj-27b.gguf"
+        ],
+        "voice": [
+          "tts/omnivoice-base-Q8_0.gguf",
+          "tts/omnivoice-tokenizer-Q8_0.gguf"
+        ]
+      },
+      "required_kernels": [
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq"
+      ],
+      "required_platform_evidence": [
+        "darwin-arm64-metal",
+        "linux-x64-vulkan",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu"
+      ],
+      "required_sidecars": [
+        "text/turboquant.json",
+        "text/qjl_config.json",
+        "text/polarquant_config.json",
+        "dflash/fused_turboquant.json"
+      ],
+      "supported_backends": [
+        "metal",
+        "vulkan",
+        "cuda",
+        "rocm",
+        "cpu"
+      ],
+      "text_quant": "Q4_K_M",
+      "tier": "27b",
+      "voice_quant": "Q8_0"
+    },
+    "27b-256k": {
+      "contexts": [
+        262144
+      ],
+      "required_files": {
+        "asr": [
+          "asr/eliza-1-asr.gguf"
+        ],
+        "cache": [
+          "cache/voice-preset-default.bin"
+        ],
+        "checksums": [
+          "checksums/SHA256SUMS"
+        ],
+        "dflash": [
+          "dflash/drafter-27b-256k.gguf",
+          "dflash/target-meta.json"
+        ],
+        "embedding": [
+          "embedding/eliza-1-embedding-0_6b.gguf"
+        ],
+        "evals": [
+          "evals/aggregate.json"
+        ],
+        "evidence": [
+          "evidence/release.json"
+        ],
+        "licenses": [
+          "licenses/LICENSE.text",
+          "licenses/LICENSE.voice",
+          "licenses/LICENSE.dflash",
+          "licenses/LICENSE.eliza-1"
+        ],
+        "text": [
+          "text/eliza-1-27b-256k.gguf"
+        ],
+        "vad": [
+          "vad/eliza-1-vad.onnx"
+        ],
+        "vision": [
+          "vision/mmproj-27b-256k.gguf"
+        ],
+        "voice": [
+          "tts/omnivoice-base-Q8_0.gguf",
+          "tts/omnivoice-tokenizer-Q8_0.gguf"
+        ]
+      },
+      "required_kernels": [
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq"
+      ],
+      "required_platform_evidence": [
+        "darwin-arm64-metal",
+        "linux-aarch64-cuda",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "linux-x64-vulkan",
+        "linux-x64-cpu"
+      ],
+      "required_sidecars": [
+        "text/turboquant.json",
+        "text/qjl_config.json",
+        "text/polarquant_config.json",
+        "dflash/fused_turboquant.json"
+      ],
+      "supported_backends": [
+        "metal",
+        "vulkan",
+        "cuda",
+        "rocm",
+        "cpu"
+      ],
+      "text_quant": "Q4_K_M",
+      "tier": "27b-256k",
+      "voice_quant": "Q8_0"
+    },
+    "9b": {
+      "contexts": [
+        65536,
+        131072
+      ],
+      "required_files": {
+        "asr": [
+          "asr/eliza-1-asr.gguf"
+        ],
+        "cache": [
+          "cache/voice-preset-default.bin"
+        ],
+        "checksums": [
+          "checksums/SHA256SUMS"
+        ],
+        "dflash": [
+          "dflash/drafter-9b.gguf",
+          "dflash/target-meta.json"
+        ],
+        "embedding": [
+          "embedding/eliza-1-embedding-0_6b.gguf"
+        ],
+        "evals": [
+          "evals/aggregate.json"
+        ],
+        "evidence": [
+          "evidence/release.json"
+        ],
+        "licenses": [
+          "licenses/LICENSE.text",
+          "licenses/LICENSE.voice",
+          "licenses/LICENSE.dflash",
+          "licenses/LICENSE.eliza-1"
+        ],
+        "text": [
+          "text/eliza-1-9b-64k.gguf",
+          "text/eliza-1-9b-128k.gguf"
+        ],
+        "vad": [
+          "vad/eliza-1-vad.onnx"
+        ],
+        "vision": [
+          "vision/mmproj-9b.gguf"
+        ],
+        "voice": [
+          "tts/omnivoice-base-Q8_0.gguf",
+          "tts/omnivoice-tokenizer-Q8_0.gguf"
+        ]
+      },
+      "required_kernels": [
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq"
+      ],
+      "required_platform_evidence": [
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu"
+      ],
+      "required_sidecars": [
+        "text/turboquant.json",
+        "text/qjl_config.json",
+        "text/polarquant_config.json",
+        "dflash/fused_turboquant.json"
+      ],
+      "supported_backends": [
+        "metal",
+        "vulkan",
+        "cuda",
+        "rocm",
+        "cpu"
+      ],
+      "text_quant": "Q4_K_M",
+      "tier": "9b",
+      "voice_quant": "Q8_0"
+    }
+  }
+}

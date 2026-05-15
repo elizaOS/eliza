@@ -23,6 +23,7 @@ ELIZA_1_LONG_CONTEXT_VARIANTS: dict[str, int] = {
     "eliza-1-27b-256k": 262_144,
 }
 
+
 def main() -> int:
     out: dict[str, dict[str, object]] = {}
     for entry in model_registry.REGISTRY.values():
@@ -48,6 +49,7 @@ def main() -> int:
     json.dump(out, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
