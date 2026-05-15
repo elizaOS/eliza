@@ -281,7 +281,7 @@ what to do with the remaining headroom):
 | 24 GB GPU                                        | **27B**       | qjl+polarq4 (f16 only fits ~77k — keep compressed) | 131072 (catalog); stretch toward ~200k if verify ok | 9B-distilled drafter, ngl=max | 8 | armed past ~200k |
 | 24 GB GPU, small model on purpose (latency)     | 0.8B / 2B   | **f16** (accuracy — 3.5 GiB at 32k, trivial) | 40960 native cap; or run **multiple parallel sessions** (8× contexts × ~0.9 GiB compressed each) | **bigger drafter** (use the 2B as drafter for the 0.8B if vocab matches) | 8 | n/a |
 | 48 GB+ Apple Silicon (unified)                  | 27B           | qjl+polarq4          | 131072 → 262144 (`27b-256k` if RAM ≥ 96 GB) | 9B drafter                        | 8                                       | unified-mem spill cheap |
-| 96 GB+ / GH200                                  | 27B-256k / 27B-1m | qjl+polarq4 / TCQ trellis (`turbo3_tcq` for the K-cache at 1M) | 262144 / 1048576                | 9B drafter, mlock on                    | 8                                       | host RAM at 1M |
+| 96 GB+ / GH200                                  | 27B-256k | qjl+polarq4 / TCQ trellis (`turbo3_tcq` for the K-cache at 256k) | 262144                | 9B drafter, mlock on                    | 8                                       | host RAM headroom |
 
 The levers, in priority order, when there's spare memory:
 
