@@ -5,7 +5,11 @@
  */
 
 import type { AdAccountStatus, AdPlatform } from "../../../db/schemas/ad-accounts";
-import type { BudgetType, CampaignObjective, CampaignStatus } from "../../../db/schemas/ad-campaigns";
+import type {
+  BudgetType,
+  CampaignObjective,
+  CampaignStatus,
+} from "../../../db/schemas/ad-campaigns";
 import type { CallToAction, CreativeStatus, CreativeType } from "../../../db/schemas/ad-creatives";
 
 export type {

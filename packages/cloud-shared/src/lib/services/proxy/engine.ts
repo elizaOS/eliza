@@ -8,9 +8,9 @@ import {
 } from "../../auth";
 import { cache } from "../../cache/client";
 import { withRateLimit } from "../../middleware/rate-limit";
+import { logger } from "../../utils/logger";
 import { creditsService, InsufficientCreditsError } from "../credits";
 import { usageService } from "../usage";
-import { logger } from "../../utils/logger";
 import { PricingNotFoundError } from "./pricing";
 import type {
   AuthLevel,

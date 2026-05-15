@@ -227,7 +227,6 @@ if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
 export ELIZA_SKIP_LOCAL_UPSTREAMS=1
-export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
 if [[ -f "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh" ]]; then
@@ -249,6 +248,12 @@ node packages/scripts/patch-tsup-dts.mjs || true
 
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
+  if [[ -f "$PACKAGES_DIR/contracts/package.json" ]] && jq -e '.scripts.build' "$PACKAGES_DIR/contracts/package.json" >/dev/null; then
+    log "Building @elizaos/contracts source artifacts"
+    pushd "$PACKAGES_DIR/contracts" >/dev/null
+    "$BUN_BIN" run build
+    popd >/dev/null
+  fi
   pushd "$TYPESCRIPT_DIR" >/dev/null
   "$BUN_BIN" run build:node
   popd >/dev/null
@@ -263,7 +268,7 @@ else
 fi
 
 log "Building shared/cloud package artifacts"
-for package_dir in packages/shared cloud/packages/sdk packages/cloud-routing; do
+for package_dir in packages/shared packages/cloud-sdk packages/cloud-routing; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
     pushd "$package_dir" >/dev/null
@@ -274,7 +279,7 @@ done
 mkdir -p node_modules/@elizaos
 rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
 ln -s ../../packages/shared node_modules/@elizaos/shared
-ln -s ../../cloud/packages/sdk node_modules/@elizaos/cloud-sdk
+ln -s ../../packages/cloud-sdk node_modules/@elizaos/cloud-sdk
 ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
 
 log "Building Capacitor plugins"

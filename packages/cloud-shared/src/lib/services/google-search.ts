@@ -1,13 +1,9 @@
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
-import { apiKeysService } from "./api-keys";
-import {
-  type CreditReservation,
-  creditsService,
-  InsufficientCreditsError,
-} from "./credits";
-import { usageService } from "./usage";
 import { logger } from "../utils/logger";
+import { apiKeysService } from "./api-keys";
+import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
+import { usageService } from "./usage";
 
 export interface HostedSearchOptions {
   query: string;

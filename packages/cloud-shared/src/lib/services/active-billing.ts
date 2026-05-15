@@ -5,8 +5,8 @@ import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { calculateDailyContainerCost } from "../constants/pricing";
-import { elizaSandboxService } from "./eliza-sandbox";
 import { logger } from "../utils/logger";
+import { elizaSandboxService } from "./eliza-sandbox";
 
 export type BillableResourceType = "container" | "agent_sandbox";
 export type BillableInterval = "day" | "hour";

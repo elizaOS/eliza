@@ -3,7 +3,10 @@ import Decimal from "decimal.js";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/helpers";
 import { type App, appsRepository } from "../../db/repositories/apps";
-import { type CryptoPayment, cryptoPaymentsRepository } from "../../db/repositories/crypto-payments";
+import {
+  type CryptoPayment,
+  cryptoPaymentsRepository,
+} from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import {
   assertAllowedAbsoluteRedirectUrl,

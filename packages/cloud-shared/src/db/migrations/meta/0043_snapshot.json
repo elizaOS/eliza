@@ -22907,15 +22907,7 @@
     "public.redemption_status": {
       "name": "redemption_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "approved",
-        "processing",
-        "completed",
-        "failed",
-        "rejected",
-        "expired"
-      ]
+      "values": ["pending", "approved", "processing", "completed", "failed", "rejected", "expired"]
     },
     "public.earnings_source": {
       "name": "earnings_source",
@@ -22997,27 +22989,12 @@
     "public.reply_confirmation_status": {
       "name": "reply_confirmation_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "confirmed",
-        "rejected",
-        "expired",
-        "sent",
-        "failed"
-      ]
+      "values": ["pending", "confirmed", "rejected", "expired", "sent", "failed"]
     },
     "public.social_engagement_type": {
       "name": "social_engagement_type",
       "schema": "public",
-      "values": [
-        "mention",
-        "reply",
-        "quote_tweet",
-        "repost",
-        "like",
-        "comment",
-        "follow"
-      ]
+      "values": ["mention", "reply", "quote_tweet", "repost", "like", "comment", "follow"]
     },
     "public.domain_moderation_status": {
       "name": "domain_moderation_status",
@@ -23047,13 +23024,7 @@
     "public.domain_event_detected_by": {
       "name": "domain_event_detected_by",
       "schema": "public",
-      "values": [
-        "system",
-        "admin",
-        "user_report",
-        "automated_scan",
-        "health_monitor"
-      ]
+      "values": ["system", "admin", "user_report", "automated_scan", "health_monitor"]
     },
     "public.domain_event_severity": {
       "name": "domain_event_severity",
@@ -23136,13 +23107,7 @@
     "public.org_checkin_type": {
       "name": "org_checkin_type",
       "schema": "public",
-      "values": [
-        "standup",
-        "sprint",
-        "mental_health",
-        "project_status",
-        "retrospective"
-      ]
+      "values": ["standup", "sprint", "mental_health", "project_status", "retrospective"]
     },
     "public.org_platform_status": {
       "name": "org_platform_status",

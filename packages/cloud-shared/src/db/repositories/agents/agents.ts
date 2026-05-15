@@ -10,9 +10,9 @@
 
 import type { Agent } from "@elizaos/core";
 import { eq, inArray } from "drizzle-orm";
+import { logger } from "../../../lib/utils/logger";
 import { dbRead, dbWrite } from "../../helpers";
 import { agentTable } from "../../schemas/eliza";
-import { logger } from "../../../lib/utils/logger";
 
 const toDate = (value: Date | string | number | bigint | null | undefined): Date => {
   if (value instanceof Date) {

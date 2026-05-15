@@ -1,8 +1,8 @@
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
+import { logger } from "../../utils/logger";
 import { elizaSandboxService } from "../eliza-sandbox";
 import { provisioningJobService } from "../provisioning-jobs";
-import { logger } from "../../utils/logger";
 
 const DEFAULT_AGENT_NAME = "Eliza";
 const DEFAULT_DOCKER_IMAGE = "elizaos/eliza:latest";

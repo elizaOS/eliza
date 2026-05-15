@@ -6,12 +6,12 @@ import type {
   WalletMarketPriceSnapshot,
 } from "@elizaos/shared";
 import { getCookieValueFromRequest } from "../http/cookie-header";
+import { logger } from "../utils/logger";
 import { isValidAddress, isValidChain } from "./proxy/services/address-validation";
 import {
   executeMarketDataProviderRequest,
   type MarketDataMethod,
 } from "./proxy/services/market-data";
-import { logger } from "../utils/logger";
 
 const PREVIEW_FETCH_TIMEOUT_MS = 8_000;
 const WALLET_OVERVIEW_CACHE_TTL_MS = 120_000;

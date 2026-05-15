@@ -24,9 +24,7 @@ export const appAuthCodes = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    issued_at: timestamp("issued_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    issued_at: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (table) => ({

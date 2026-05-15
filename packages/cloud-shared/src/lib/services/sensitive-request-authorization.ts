@@ -4,10 +4,7 @@ import { dbRead } from "../../db/client";
 import { identityLinksRepository } from "../../db/repositories/identity-links";
 import { usersRepository } from "../../db/repositories/users";
 import { platformCredentials } from "../../db/schemas/platform-credentials";
-import {
-  createIdentityLinkStore,
-  type IdentityLinkStore,
-} from "./identity-link-store";
+import { createIdentityLinkStore, type IdentityLinkStore } from "./identity-link-store";
 
 export type SensitiveRequestActor =
   | {

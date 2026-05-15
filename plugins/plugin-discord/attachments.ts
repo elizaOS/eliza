@@ -281,9 +281,7 @@ export class AttachmentManager {
 				id: attachment.id,
 				url: attachment.url,
 				title: title || "Audio/Video Attachment",
-				source: attachment.contentType.startsWith("audio/")
-					? "Audio"
-					: "Video",
+				source: attachment.contentType.startsWith("audio/") ? "Audio" : "Video",
 				contentType: attachment.contentType.startsWith("audio/")
 					? ContentType.AUDIO
 					: ContentType.VIDEO,

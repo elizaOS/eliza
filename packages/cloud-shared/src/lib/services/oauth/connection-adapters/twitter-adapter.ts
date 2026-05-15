@@ -5,8 +5,8 @@
  * Connection ID format: twitter:{organizationId}:{owner|agent|team}
  */
 
-import { secretsService } from "../../secrets";
 import { logger } from "../../../utils/logger";
+import { secretsService } from "../../secrets";
 import { Errors } from "../errors";
 import { OAUTH_PROVIDERS } from "../provider-registry";
 import type { OAuthConnection, OAuthStandardConnectionRole, TokenResult } from "../types";

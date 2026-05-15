@@ -6,21 +6,15 @@ import { discordGuildsRepository } from "../../../db/repositories/discord-guilds
 import type { App } from "../../../db/schemas/apps";
 import { DISCORD_POST_COST } from "../../promotion-pricing";
 import {
-  DISCORD_AUTOMATION_DEFAULTS,
-  getDiscordConfigWithDefaults,
-} from "../automation-constants";
-import {
-  buildCharacterSystemPrompt,
-  getCharacterPromptContext,
-} from "../character-prompt-helper";
-import { creditsService } from "../credits";
-import {
   createActionRow,
   createEmbed,
   DISCORD_BLURPLE,
   truncate,
 } from "../../utils/discord-helpers";
 import { logger } from "../../utils/logger";
+import { DISCORD_AUTOMATION_DEFAULTS, getDiscordConfigWithDefaults } from "../automation-constants";
+import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
+import { creditsService } from "../credits";
 import { discordAutomationService } from "./index";
 import type { DiscordAutomationConfig, DiscordAutomationStatus, PostResult } from "./types";
 

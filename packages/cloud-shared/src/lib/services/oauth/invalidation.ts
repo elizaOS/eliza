@@ -8,8 +8,8 @@
 
 import { edgeRuntimeCache } from "../../cache/edge-runtime-cache";
 import { invalidateOrganizationRuntimesFromRegistry } from "../../eliza/runtime-cache-registry";
-import { entitySettingsCache } from "../entity-settings/cache";
 import { logger } from "../../utils/logger";
+import { entitySettingsCache } from "../entity-settings/cache";
 import { incrementOAuthVersion } from "./cache-version";
 
 export async function invalidateOAuthState(

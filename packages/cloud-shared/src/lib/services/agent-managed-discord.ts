@@ -1,5 +1,4 @@
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
-import { elizaSandboxService } from "./eliza-sandbox";
 import { logger } from "../utils/logger";
 import {
   type ManagedAgentDiscordBinding,
@@ -9,6 +8,7 @@ import {
   withManagedAgentDiscordGateway,
   withoutManagedAgentDiscordBinding,
 } from "./eliza-agent-config";
+import { elizaSandboxService } from "./eliza-sandbox";
 
 const DISCORD_OWNER_USER_IDS_ENV_KEY = "AGENT_DISCORD_OWNER_USER_IDS_JSON";
 export const DISCORD_DEVELOPER_PORTAL_URL = "https://discord.com/developers/applications";

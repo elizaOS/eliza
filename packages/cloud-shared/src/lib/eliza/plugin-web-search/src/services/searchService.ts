@@ -1,5 +1,8 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { executeHostedGoogleSearch, type HostedSearchResult } from "../../../../services/google-search";
+import {
+  executeHostedGoogleSearch,
+  type HostedSearchResult,
+} from "../../../../services/google-search";
 import type { IWebSearchService, SearchOptions, SearchResponse } from "../types";
 
 function getGoogleSearchApiKey(runtime: IAgentRuntime): string | null {

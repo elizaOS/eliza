@@ -1,11 +1,11 @@
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
 import {
   getStewardApiUrl,
   getStewardPlatformKey,
   isStewardPlatformConfigured,
 } from "./steward-platform-users";
-import { logger } from "../utils/logger";
 
 export const DEFAULT_STEWARD_TENANT_ID = "elizacloud";
 

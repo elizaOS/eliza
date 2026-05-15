@@ -5,8 +5,8 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { cache } from "./client";
 import { logger } from "../utils/logger";
+import { cache } from "./client";
 
 /**
  * Lock object with release and extend methods.

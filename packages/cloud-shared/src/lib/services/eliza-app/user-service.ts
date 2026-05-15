@@ -14,12 +14,12 @@ import { organizationsRepository } from "../../../db/repositories/organizations"
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { NewUser, User } from "../../../db/schemas/users";
-import { apiKeysService } from "../api-keys";
-import { creditsService } from "../credits";
-import { redeemSignupCode } from "../signup-code";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
+import { apiKeysService } from "../api-keys";
+import { creditsService } from "../credits";
+import { redeemSignupCode } from "../signup-code";
 import type { TelegramAuthData } from "./telegram-auth";
 
 const ELIZA_APP_INITIAL_CREDITS = 5.0;

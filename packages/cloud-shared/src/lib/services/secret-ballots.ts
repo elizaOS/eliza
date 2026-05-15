@@ -16,7 +16,10 @@ import type {
   SecretBallotRow,
   SecretBallotsRepository,
 } from "../../db/repositories/secret-ballots";
-import type { SecretBallotParticipant, SecretBallotTallyResult } from "../../db/schemas/secret-ballots";
+import type {
+  SecretBallotParticipant,
+  SecretBallotTallyResult,
+} from "../../db/schemas/secret-ballots";
 import { logger } from "../utils/logger";
 
 export type {

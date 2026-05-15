@@ -3,9 +3,9 @@
  */
 
 import type { Memory, UUID } from "@elizaos/core";
+import { logger } from "../utils/logger";
 import { cache } from "./client";
 import { CacheKeys, CacheTTL } from "./keys";
-import { logger } from "../utils/logger";
 
 /**
  * Cached room context with messages and participants.
