@@ -16,7 +16,7 @@
  *   ELIZA_KOKORO_MODEL_DIR        — directory root
  *   ELIZA_KOKORO_MODEL_FILE       — exact filename inside the root
  *                                   (ONNX or GGUF; the loader auto-detects)
- *   ELIZA_KOKORO_DEFAULT_VOICE_ID — default voice id (e.g. `af_bella`)
+ *   ELIZA_KOKORO_DEFAULT_VOICE_ID — default voice id (e.g. `af_same`, `af_bella`)
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -25,6 +25,7 @@ import { elizaModelsDir } from "../paths.js";
 import type { KokoroModelLayout, KokoroVoicePack } from "./types.js";
 import {
   KOKORO_DEFAULT_VOICE_ID,
+  KOKORO_FALLBACK_VOICE_ID,
   KOKORO_VOICE_PACKS,
 } from "./voice-presets.js";
 
@@ -59,9 +60,15 @@ export function isKokoroGgufFile(filename: string): boolean {
 export interface KokoroEngineDiscoveryResult {
   layout: KokoroModelLayout;
   /**
-   * Resolved default voice id. Falls back to `KOKORO_DEFAULT_VOICE_ID`
-   * when the env override is unset and `af_bella.bin` is on disk; otherwise
-   * picks the first voice pack whose `.bin` is actually staged.
+   * Resolved default voice id. Resolution order:
+   *   1. `ELIZA_KOKORO_DEFAULT_VOICE_ID` env override (if its `.bin` is staged)
+   *   2. `KOKORO_DEFAULT_VOICE_ID` (Samantha / `af_same`) when its preset is
+   *      on disk — the canonical Eliza-1 voice
+   *   3. Loud fallback to `KOKORO_FALLBACK_VOICE_ID` (`af_bella`) with a
+   *      console warning so operators see the degradation; this fires while
+   *      the samantha LoRA pipeline has not yet produced a real `af_same.bin`
+   *   4. First voice pack whose `.bin` is actually staged (last resort —
+   *      lets a single arbitrary voice work for unusual install layouts)
    */
   defaultVoiceId: string;
   /**
@@ -131,13 +138,26 @@ function resolveDefaultVoiceId(voicesDir: string): string | null {
     if (pack && existsSync(path.join(voicesDir, pack.file))) return pack.id;
     return null;
   }
-  // Prefer the catalog default when its file is staged.
+  // Prefer the canonical Eliza-1 default (Samantha) when its file is staged.
   const defaultPack = findVoicePack(KOKORO_DEFAULT_VOICE_ID);
   if (defaultPack && existsSync(path.join(voicesDir, defaultPack.file))) {
     return defaultPack.id;
   }
-  // Otherwise pick the first catalog voice whose file is on disk. This
-  // lets operators stage a single voice (any voice) and have it just work.
+  // Loud fallback to the bundled upstream voice (af_bella). This MUST be
+  // visible because the canonical default is Samantha; we only land here
+  // when the LoRA pipeline has not produced a real `af_same.bin`. Operators
+  // should see this and run the samantha LoRA RUNBOOK or the
+  // regenerate-samantha-preset.mjs script.
+  const fallbackPack = findVoicePack(KOKORO_FALLBACK_VOICE_ID);
+  if (fallbackPack && existsSync(path.join(voicesDir, fallbackPack.file))) {
+    console.warn(
+      `[kokoro] default voice ${KOKORO_DEFAULT_VOICE_ID} preset not staged at ${path.join(voicesDir, defaultPack?.file ?? `${KOKORO_DEFAULT_VOICE_ID}.bin`)} — falling back to ${KOKORO_FALLBACK_VOICE_ID}. Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md to produce a real Samantha preset, or regenerate via plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs.`,
+    );
+    return fallbackPack.id;
+  }
+  // Last resort: pick the first catalog voice whose file is on disk. This
+  // covers unusual install layouts where neither samantha nor af_bella is
+  // present but some other voice is.
   const staged = listStagedVoiceIds(voicesDir);
   return staged[0] ?? null;
 }

@@ -84,13 +84,17 @@ export function isDefaultEligibleId(id: string): boolean {
  *   - `eliza-1-2b`: text + Kokoro + DFlash phone default. Vision starts
  *     at 4B to keep the small-device bundle compact.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
- *     not yet present in per-tier manifests. They are designed to live in
- *     separate repos (elizalabs/eliza-1-voice-*) per voice-models.ts; those
- *     repos are not yet created. Next step: run publish pipeline per
- *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
- *   - Kokoro same voice preset: `af_same.bin` absent from all
- *     bundles; I7 eval showed regression. Current bundles ship af_bella
- *     and standard voices only.
+ *     not yet present in per-tier manifests. They live in separate repos
+ *     (elizaos/eliza-1-voice-*) per voice-models.ts; the repo shells exist
+ *     on HF but real weights still need publishing. Next step: run publish
+ *     pipeline per models/voice/CHANGELOG.md entries once sub-model weights
+ *     are finalized.
+ *   - Kokoro same voice preset: `af_same.bin` is the canonical default
+ *     (KOKORO_DEFAULT_VOICE_ID = "af_same"). Bundle shipping is gated on
+ *     the operator-run samantha LoRA pipeline at
+ *     packages/training/scripts/voice/samantha_lora/RUNBOOK.md. Until the
+ *     real preset is staged, the runtime falls back loudly to af_bella
+ *     (KOKORO_FALLBACK_VOICE_ID).
  */
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
