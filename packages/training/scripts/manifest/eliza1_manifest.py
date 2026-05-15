@@ -556,8 +556,12 @@ def validate_manifest(
     if not _is_object(lineage):
         errors.append("lineage: must be an object")
     else:
-        # Required lineage entries.
-        for slot in ("text", "voice", "drafter"):
+        # Required lineage entries. DFlash/drafter is tier-gated: 0_8b keeps
+        # the slot absent because it intentionally ships without a drafter.
+        required_lineage_slots = ["text", "voice"]
+        if tier in ELIZA_1_DFLASH_TIERS:
+            required_lineage_slots.append("drafter")
+        for slot in required_lineage_slots:
             entry = lineage.get(slot)
             if not _is_object(entry):
                 errors.append(f"lineage.{slot}: must be an object")
@@ -567,7 +571,7 @@ def validate_manifest(
             if not entry.get("license"):
                 errors.append(f"lineage.{slot}.license: required")
         # Wave-6 optional lineage entries — must validate when present.
-        for slot in ("asr", "embedding", "vision", "vad", "wakeword"):
+        for slot in ("asr", "embedding", "vision", "vad", "wakeword", "drafter"):
             entry = lineage.get(slot)
             if entry is None:
                 continue
@@ -584,8 +588,8 @@ def validate_manifest(
     if not _is_object(files):
         errors.append("files: must be an object")
     else:
-        kinds_min1 = ("text", "voice", "dflash", "cache")
-        kinds_optional = ("asr", "vision")
+        kinds_min1 = ("text", "voice", "cache")
+        kinds_optional = ("asr", "vision", "dflash")
         # Wave-6 fully-optional file slots: missing key = "this bundle
         # does not ship this component". The validator does not require
         # an empty array for absence (TS schema makes the array itself
