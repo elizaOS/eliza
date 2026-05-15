@@ -11,12 +11,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { appsRepository } from "@/db/repositories/apps";
-import {
-  ApiError,
-  failureResponse,
-  NotFoundError,
-  ValidationError,
-} from "@/lib/api/cloud-worker-errors";
+import { failureResponse, NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
@@ -70,19 +65,13 @@ app.post("/", async (c) => {
     if (connectionAction === "updated") {
       logger.info("Updated app user connection", { userId: user.id, appId });
     } else {
-      logger.info("Created new app user connection", { userId: user.id, appId });
+      logger.info("Created new app user connection", {
+        userId: user.id,
+        appId,
+      });
     }
 
-    let authCode: Awaited<ReturnType<typeof issueAppAuthCode>>;
-    try {
-      authCode = await issueAppAuthCode({ appId, userId: user.id });
-    } catch {
-      throw new ApiError(
-        503,
-        "session_not_ready",
-        "Authorization code store is unavailable. Please try again.",
-      );
-    }
+    const authCode = await issueAppAuthCode({ appId, userId: user.id });
 
     return c.json({
       success: true,
