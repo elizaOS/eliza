@@ -136,36 +136,21 @@ async function main(): Promise<void> {
     `[voice-vad-smoke] PASS: one speech segment, onset at ${start.timestampMs.toFixed(0)} ms (voiced region ${speechStartMs.toFixed(0)}-${speechEndMs.toFixed(0)} ms)`,
   );
 
-  // Optional wake-word smoke.
-  const wwPaths = resolveWakeWordModel({ bundleRoot });
+  // Wake-word: report bundled GGUF presence only. Runtime inference is
+  // covered by the fused-library smoke under packages/inference/voice-bench/
+  // — this script doesn't bring up a libelizainference FFI context.
+  const wwPaths = bundleRoot
+    ? resolveWakeWordModel({ bundleRoot })
+    : resolveWakeWordModel({});
   if (!wwPaths) {
     console.log(
-      "[voice-vad-smoke] wake-word: no bundled openWakeWord graphs (optional asset) — skipping.",
+      "[voice-vad-smoke] wake-word: no bundled openwakeword.gguf (optional asset) — skipping.",
     );
     return;
   }
   console.log(
-    `[voice-vad-smoke] wake-word graphs: ${wwPaths.melspectrogram} / ${wwPaths.embedding} / ${wwPaths.head}`,
+    `[voice-vad-smoke] wake-word GGUF present: ${wwPaths.gguf} (head=${wwPaths.head}). Runtime inference smoke lives in packages/inference/voice-bench/.`,
   );
-  let maxWake = 0;
-  try {
-    const model = await loadBundledWakeWordModel({ bundleRoot });
-    if (!model) fail("resolveWakeWordModel succeeded but load returned null");
-    for (let i = 0; i < Math.floor((2 * SR) / model.frameSamples); i++) {
-      const p = await model.scoreFrame(new Float32Array(model.frameSamples));
-      maxWake = Math.max(maxWake, p);
-    }
-  } catch (err) {
-    if (err instanceof WakeWordUnavailableError) {
-      fail(`wake-word unavailable (${err.code}): ${err.message}`);
-    }
-    throw err;
-  }
-  console.log(
-    `[voice-vad-smoke] max P(wake | silence) = ${maxWake.toFixed(4)}`,
-  );
-  if (maxWake >= 0.3) fail(`wake-word read too high on silence (${maxWake})`);
-  console.log("[voice-vad-smoke] PASS: wake-word stayed quiet on silence.");
 }
 
 main().catch((err) => {

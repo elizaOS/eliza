@@ -288,3 +288,93 @@ export async function regenerateSamanthaPresetFromBundle(
 		}
 	}
 }
+
+/**
+ * Pre-flight: detect a placeholder preset at the bundle's canonical path
+ * and regenerate it via OmniVoice when possible. Called by
+ * `EngineVoiceBridge.start()` (via `ensureActiveBundleVoiceReady`) before
+ * the synchronous preset load.
+ *
+ * Outcomes:
+ *
+ *   - `real-preset`            — nothing to do; the file is a real preset.
+ *   - `missing-bundle-preset`  — file does not exist; the bridge's existing
+ *                                error path runs (loud failure).
+ *   - `regenerated`            — preset bytes were generated and written.
+ *   - `placeholder-no-regen`   — placeholder detected but regen could not
+ *                                run (FFI missing, reference clip missing,
+ *                                etc.). Returned for the caller to log; the
+ *                                bridge then falls through to af_bella via
+ *                                discovery's fallback chain.
+ */
+export async function ensureSamanthaPresetReady(
+	bundleRoot: string,
+): Promise<EnsureSamanthaPresetOutcome> {
+	const presetPath = path.join(
+		bundleRoot,
+		"cache",
+		"voice-preset-default.bin",
+	);
+	const state = detectSamanthaPlaceholder(presetPath);
+
+	if (state.kind === "missing") {
+		return { kind: "missing-bundle-preset" };
+	}
+	if (state.kind === "real-preset") {
+		return { kind: "real-preset" };
+	}
+	if (state.kind === "unreadable") {
+		return {
+			kind: "placeholder-no-regen",
+			reason: "missing-ffi-library", // closest match — file is unreadable
+			detail: state.reason,
+		};
+	}
+
+	// Placeholder detected. Try to regenerate.
+	const refWav = path.join(bundleRoot, "tts", "omnivoice", "samantha-ref.wav");
+	if (!existsSync(refWav)) {
+		return {
+			kind: "placeholder-no-regen",
+			reason: "missing-reference-wav",
+			detail: refWav,
+		};
+	}
+	const libPath = locateBundleLibrary(bundleRoot);
+	if (!existsSync(libPath)) {
+		return {
+			kind: "placeholder-no-regen",
+			reason: "missing-ffi-library",
+			detail: libPath,
+		};
+	}
+
+	let result: RegenerateResult;
+	try {
+		result = await regenerateSamanthaPresetFromBundle({
+			bundleRoot,
+			presetPath,
+			referenceWav: refWav,
+			referenceText: SAMANTHA_REFERENCE_TRANSCRIPT,
+		});
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		// Distinguish the FFI-symbol-missing path from a real synth failure
+		// — both are placeholder-no-regen but the operator-facing reason
+		// differs.
+		const reason: "ffi-no-encode-reference" | "encode-reference-failed" =
+			/encode_reference|encodeReferenceSupported|ABI v4/.test(message)
+				? "ffi-no-encode-reference"
+				: "encode-reference-failed";
+		return { kind: "placeholder-no-regen", reason, detail: message };
+	}
+
+	mkdirSync(path.dirname(presetPath), { recursive: true });
+	writeFileSync(presetPath, result.bytes);
+	return {
+		kind: "regenerated",
+		bytes: result.bytes.byteLength,
+		K: result.K,
+		refT: result.refT,
+	};
+}
