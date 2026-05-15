@@ -2209,9 +2209,12 @@ function sourceContainsDflashDraft(root) {
   const archPath = path.join(root, "src", "llama-arch.cpp");
   const specPath = path.join(root, "common", "speculative.cpp");
   const argPath = path.join(root, "common", "arg.cpp");
-  const dflashModelPath = path.join(root, "src", "models", "dflash_draft.cpp");
+  const dflashModelPaths = [
+    path.join(root, "src", "models", "dflash-draft.cpp"),
+    path.join(root, "src", "models", "dflash_draft.cpp"),
+  ];
   if (
-    !fs.existsSync(dflashModelPath) ||
+    !dflashModelPaths.some((candidate) => fs.existsSync(candidate)) ||
     !fs.existsSync(archPath) ||
     !fs.existsSync(specPath) ||
     !fs.existsSync(argPath)
