@@ -9,6 +9,7 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { formEvaluator } from "./evaluators/extractor";
+import { FormService } from "./service";
 
 export { formAction, formRestoreAction } from "./actions/form";
 export { C, ControlBuilder, Form, FormBuilder } from "./builder";
@@ -111,6 +112,10 @@ export const formPlugin = {
 
   actions: [],
   evaluators: [formEvaluator],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<FormService>(FormService.serviceType);
+    await svc?.stop();
+  },
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;

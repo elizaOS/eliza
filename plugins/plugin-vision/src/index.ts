@@ -36,6 +36,10 @@ export const visionPlugin: Plugin = {
     },
   },
   init: async (_config, _runtime) => {},
+  async dispose(runtime) {
+    const svc = runtime.getService<VisionService>(VisionService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default visionPlugin;

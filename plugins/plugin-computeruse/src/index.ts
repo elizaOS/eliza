@@ -71,6 +71,11 @@ export const computerUsePlugin: Plugin = {
 
   services: [ComputerUseService],
 
+  async dispose(runtime) {
+    const svc = runtime.getService<ComputerUseService>(ComputerUseService.serviceType);
+    await svc?.stop();
+  },
+
   // COMPUTER_USE (canonical desktop interaction: screenshot/click/key/etc.)
   // and WINDOW (window management: list/focus/switch/arrange/move/...) stay
   // registered as distinct top-level actions — they cover different surfaces.

@@ -42,6 +42,12 @@ export const codingToolsPlugin: Plugin = {
   ],
   providers: [availableToolsProvider],
   actions: [fileAction, shellAction, worktreeAction],
+  async dispose(runtime) {
+    await runtime.getService<SandboxService>(SandboxService.serviceType)?.stop();
+    await runtime.getService<FileStateService>(FileStateService.serviceType)?.stop();
+    await runtime.getService<SessionCwdService>(SessionCwdService.serviceType)?.stop();
+    await runtime.getService<RipgrepService>(RipgrepService.serviceType)?.stop();
+  },
   // Self-declared auto-enable: activate when features.codingTools is enabled,
   // or via the legacy "coding-agent" feature key (the plugin was renamed).
   autoEnable: {
