@@ -3,8 +3,9 @@
 W3-5 shipped a SUPERB-proxy roundtrip (Kokoro TTS → SUPERB proxy) that only
 hit 50% top-1 because Kokoro is a neutral TTS model and SUPERB is biased
 toward `ang` on TTS audio. The H4 audit confirmed
-`elizaos/eliza-1-voice-emotion` ships the real cls7 ONNX (504 KB, RAVDESS-
-trained, macro-F1 0.355 / accuracy 48.4% per the published `eval.json`).
+`elizaos/eliza-1` ships the real cls7 ONNX at
+`voice/emotion/wav2small-cls7-int8.onnx` (504 KB, RAVDESS-trained, macro-F1
+0.355 / accuracy 48.4% per the published `voice/emotion/eval.json`).
 
 This suite swaps the bench classifier from SUPERB proxy to the production
 cls7 ONNX and validates it against held-out RAVDESS audio (the model's
@@ -212,7 +213,7 @@ class TestRealClassifierOnRavdess:
     ) -> None:
         """The three high-confidence classes hit ≥70% individually.
 
-        Per the published cls7 eval (`elizaos/eliza-1-voice-emotion/eval.json`),
+        Per the published cls7 eval (`elizaos/eliza-1` at `voice/emotion/eval.json`),
         `angry`, `calm`, and `excited` are the model's reliably-recognised
         classes on RAVDESS audio. The H2.a brief's "≥70% match" target is
         validated against these three labels.

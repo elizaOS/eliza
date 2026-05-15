@@ -1012,6 +1012,56 @@ export default defineConfig({
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
+      // Side-effect app modules are loaded by the renderer only to register
+      // UI surfaces/pages. Route handlers and runtime services stay server-side.
+      ...[
+        ["@elizaos/plugin-babylon", "plugins/plugin-babylon/src/ui/index.ts"],
+        ["@elizaos/plugin-scape", "plugins/plugin-scape/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-hyperscape",
+          "plugins/plugin-hyperscape/src/ui/index.ts",
+        ],
+        ["@elizaos/plugin-2004scape", "plugins/plugin-2004scape/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-defense-of-the-agents",
+          "plugins/plugin-defense-of-the-agents/src/ui/index.ts",
+        ],
+        ["@elizaos/plugin-clawville", "plugins/plugin-clawville/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-trajectory-logger",
+          "plugins/plugin-trajectory-logger/src/register.ts",
+        ],
+        ["@elizaos/plugin-shopify-ui", "plugins/plugin-shopify-ui/src/register.ts"],
+        [
+          "@elizaos/plugin-hyperliquid-app",
+          "plugins/plugin-hyperliquid-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-polymarket-app",
+          "plugins/plugin-polymarket-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-wallet-ui",
+          "plugins/plugin-wallet-ui/src/index.ts",
+        ],
+        [
+          "@elizaos/plugin-contacts/register",
+          "plugins/plugin-contacts/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-device-settings/register",
+          "plugins/plugin-device-settings/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-messages/register",
+          "plugins/plugin-messages/src/register.ts",
+        ],
+        ["@elizaos/plugin-phone/register", "plugins/plugin-phone/src/register.ts"],
+        ["@elizaos/plugin-wifi/register", "plugins/plugin-wifi/src/register.ts"],
+      ].map(([pkgName, relativeEntry]) => ({
+        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+        replacement: path.resolve(elizaRoot, relativeEntry),
+      })),
       // Node built-in subpaths that browser polyfills don't provide.
       // Server-only code imports these but they're never executed in-browser.
       ...["util/types", "stream/promises", "stream/web"].flatMap((sub) => [
@@ -1045,6 +1095,33 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
+      },
+      // The LifeOps package root also exports server/service internals.
+      // The renderer only needs the UI facade; keep it off Discord/native deps.
+      {
+        find: /^@elizaos\/plugin-lifeops$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-lifeops/src/ui.ts",
+        ),
+      },
+      // The Steward app package root includes wallet route handlers and
+      // server-side signing services. The renderer imports only these views.
+      {
+        find: /^@elizaos\/plugin-steward-app$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-steward-app/src/ui.ts",
+        ),
+      },
+      // The training package root exports runtime routes and native backends.
+      // The renderer only needs the fine-tuning UI facade.
+      {
+        find: /^@elizaos\/plugin-training$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-training/src/ui/index.ts",
+        ),
       },
       // Browser-safe aliases for local app plugin package roots.
       ...createAppPluginBrowserAliases(),
