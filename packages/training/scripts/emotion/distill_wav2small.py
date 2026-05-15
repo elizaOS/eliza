@@ -186,22 +186,39 @@ def stage_audio(audio_dir: pathlib.Path) -> list[pathlib.Path]:
     return clips
 
 
+_KNOWN_NC_TEACHERS: "dict[str, str]" = {
+    # repo → declared license (from upstream README front-matter, May 2026).
+    "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim": "cc-by-nc-sa-4.0",
+}
+
+
 def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
     """Load the audeering teacher. Requires `transformers` + `torch` on the
     training box. Returns the model in eval mode on CPU; the caller moves to
     the requested device.
 
-    Defensive note: the audeering checkpoint is CC-BY-NC-SA-4.0; this
-    function asserts the loaded model card includes "non-commercial" in the
-    license string before returning, so a misconfigured registry can't ship
-    a commercial-licensed teacher into the student weights by accident.
+    The audeering checkpoint exposes a **custom** `EmotionModel` head (see
+    the upstream model card) that emits `(hidden_states, logits)` where
+    `logits` is a `[B, 3]` regression for arousal/dominance/valence in
+    [0, 1]. We define that class locally — it is not exported from
+    transformers.
+
+    Defensive note: the audeering checkpoint is CC-BY-NC-SA-4.0. The
+    license is declared in the model card's README front-matter rather
+    than the structural HF config, so we maintain an explicit allowlist
+    of known non-commercial teacher repos here. Any teacher not in the
+    allowlist is refused — this prevents a misconfigured registry from
+    silently using a commercial-licensed teacher.
     """
     try:
         # Imports are lazy so the script's smoke test can run without GPU /
         # transformers installed; the real run needs them.
-        from transformers import (
-            Wav2Vec2ForSequenceClassification,
-            Wav2Vec2Processor,
+        import torch
+        from torch import nn
+        from transformers import Wav2Vec2Processor
+        from transformers.models.wav2vec2.modeling_wav2vec2 import (
+            Wav2Vec2Model,
+            Wav2Vec2PreTrainedModel,
         )
     except ImportError as exc:
         raise RuntimeError(
@@ -209,26 +226,63 @@ def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
             "via `uv pip install transformers[torch]`",
         ) from exc
 
-    processor = Wav2Vec2Processor.from_pretrained(repo, cache_dir=cache_dir)
-    model = Wav2Vec2ForSequenceClassification.from_pretrained(
-        repo,
-        cache_dir=cache_dir,
-    )
-    # Best-effort license check — model card may not always carry it
-    # structurally, but if it does we enforce. We bail out hard on the
-    # commercial path here.
-    config = getattr(model, "config", None)
-    license_str = ""
-    if config is not None:
-        license_str = str(getattr(config, "license", "")).lower()
-    if license_str and "non-commercial" not in license_str and "nc" not in license_str:
+    if repo not in _KNOWN_NC_TEACHERS:
         raise RuntimeError(
-            f"teacher {repo!r} did not declare non-commercial license "
-            "(expected CC-BY-NC-SA-4.0); refusing to use — adjust the "
-            "license assertion if the upstream card structure changed",
+            f"teacher {repo!r} is not in the non-commercial teacher allowlist "
+            f"(known: {sorted(_KNOWN_NC_TEACHERS)}). Add the repo and its "
+            "declared license here only after verifying the upstream model "
+            "card is CC-BY-NC-SA-4.0 (or stricter NC license) and that we "
+            "are not redistributing the teacher weights in any shipped "
+            "artifact.",
         )
+
+    class RegressionHead(nn.Module):
+        """Mirror of the audeering `RegressionHead` (see upstream README)."""
+
+        def __init__(self, config: Any) -> None:
+            super().__init__()
+            self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+            self.dropout = nn.Dropout(config.final_dropout)
+            self.out_proj = nn.Linear(config.hidden_size, config.num_labels)
+
+        def forward(self, features: "torch.Tensor", **_kwargs: Any) -> "torch.Tensor":
+            x = features
+            x = self.dropout(x)
+            x = self.dense(x)
+            x = torch.tanh(x)
+            x = self.dropout(x)
+            x = self.out_proj(x)
+            return x
+
+    class EmotionModel(Wav2Vec2PreTrainedModel):
+        """Mirror of the audeering `EmotionModel` (see upstream README).
+
+        Forward returns `(hidden_states_mean, logits)` where `logits` is
+        `[B, 3]` for arousal/dominance/valence in [0, 1].
+        """
+
+        def __init__(self, config: Any) -> None:
+            super().__init__(config)
+            self.config = config
+            self.wav2vec2 = Wav2Vec2Model(config)
+            self.classifier = RegressionHead(config)
+            self.init_weights()
+
+        def forward(self, input_values: "torch.Tensor") -> "tuple[torch.Tensor, torch.Tensor]":
+            outputs = self.wav2vec2(input_values)
+            hidden_states = outputs[0]
+            hidden_states = torch.mean(hidden_states, dim=1)
+            logits = self.classifier(hidden_states)
+            return hidden_states, logits
+
+    processor = Wav2Vec2Processor.from_pretrained(repo, cache_dir=cache_dir)
+    model = EmotionModel.from_pretrained(repo, cache_dir=cache_dir)
     model.eval()
-    return {"model": model, "processor": processor}
+    return {
+        "model": model,
+        "processor": processor,
+        "license": _KNOWN_NC_TEACHERS[repo],
+    }
 
 
 def build_student() -> Any:
@@ -529,14 +583,25 @@ def teacher_pseudo_labels(
             input_values = inputs["input_values"].to(device)
             with torch.no_grad():
                 outputs = model(input_values)
-            # audeering teacher returns `Wav2Vec2OutputForSpeechClassification`
-            # with `.logits` of shape [1, 3] for the V-A-D regression head.
-            # Some forks expose [1, 9] for the categorical head; we accept
-            # both and route by shape.
-            logits = outputs.logits if hasattr(outputs, "logits") else outputs[0]
-            logits = logits.detach().cpu().float().numpy().reshape(-1)
+            # The custom audeering `EmotionModel` returns
+            # `(hidden_states_mean, logits)` where logits is `[1, 3]` —
+            # the audeering README documents the order as
+            # `(arousal, dominance, valence)`. We re-order to V-A-D so the
+            # downstream student head matches our shipped ONNX contract
+            # (V, A, D in that order).
+            #
+            # Some HF auto-class forks expose `.logits`; keep the legacy
+            # path for forks that pre-date the custom-class README.
+            if hasattr(outputs, "logits"):
+                logits_t = outputs.logits
+            elif isinstance(outputs, (tuple, list)) and len(outputs) >= 2:
+                logits_t = outputs[1]
+            else:
+                logits_t = outputs[0]
+            logits = logits_t.detach().cpu().float().numpy().reshape(-1)
             if logits.shape[0] == 3:
-                v, a, d = float(logits[0]), float(logits[1]), float(logits[2])
+                # Re-order audeering A-D-V → our V-A-D contract.
+                a, d, v = float(logits[0]), float(logits[1]), float(logits[2])
                 softmax = [0.0] * len(EXPRESSIVE_EMOTION_TAGS)
             elif logits.shape[0] >= len(EXPRESSIVE_EMOTION_TAGS):
                 # Truncate to first 7 classes (Ekman 7 in EXPRESSIVE_EMOTION_TAGS
