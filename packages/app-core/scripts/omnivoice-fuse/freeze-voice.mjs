@@ -84,7 +84,7 @@ function usage(code = 0) {
       "Usage: bun packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs [flags]",
       "",
       "Flags:",
-      "  --voice <id>           Voice id (default: sam)",
+      "  --voice <id>           Voice id (default: same)",
       "  --corpus <dir>         Corpus root (with manifest.jsonl or audio/*.txt)",
       "  --ai-voices-dir <dir>  Alias for the audio/ sub-directory",
       "  --out <path>           Output file (default <bundle>/cache/voice-preset-<voice>.bin)",
