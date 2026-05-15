@@ -160,9 +160,9 @@ Examples:
     parser.add_argument("--api-base", type=str, default=None, help="Override API base URL (for custom endpoints)")
     parser.add_argument(
         "--harness",
-        choices=["eliza", "hermes", "openclaw"],
+        choices=["eliza"],
         default=None,
-        help="Execution harness. Hermes/OpenClaw route through their adapter clients.",
+        help="Execution harness. GAIA currently supports the Eliza bridge only.",
     )
 
     # Tool options
