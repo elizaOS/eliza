@@ -106,14 +106,19 @@ def test_eliza1_tier_ids_are_canonical():
         "9b",
         "27b",
         "27b-256k",
+        "27b-1m",
     )
     assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
+    )
+    assert REQUIRED_KERNELS_BY_TIER["2b"] == (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
         "dflash",
     )
-    assert REQUIRED_KERNELS_BY_TIER["2b"] == REQUIRED_KERNELS_BY_TIER["0_8b"]
     assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
         "qjl",
@@ -124,8 +129,9 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
     assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
+    assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
 
 
 def test_build_manifest_happy_path():
