@@ -1,5 +1,13 @@
 # Swarm collaboration notes — Voice Waves 2+3
 
+## W3-5 — Emotion roundtrip validation phase=impl-done
+
+2026-05-15 W3-5 phase=impl-done. 21/21 tests green on real audio (Kokoro + SUPERB proxy).
+- VAD projection: 7/7 corners correct. EMOTION_MAP.md committed. bench:voice-emotion-roundtrip wired.
+- Roundtrip results: happy→happy ✓, angry→angry ✓, 2/4=50% (meets ≥50% baseline).
+- W3-4: emotion instruct keyword confirmed intact in synth.ts:30-33. Do not remove.
+- W3-11: re-run bench after kokoro per-emotion style vectors land (expect >70%).
+
 > Note: the original collab.md was removed by `a320fa29c5 chore: second-pass
 > orphaned markdown removal`. This file is recreated locally so re-spawned
 > agents can coordinate. It is intentionally **untracked** — write to it and
@@ -486,3 +494,5 @@ Each writes `.swarm/impl/F<N>-<slug>.md`. Each posts `phase=impl-done` here when
   NULL for the default speaker preset") is left alone — it tests
   `ffiSpeakerPresetId` behaviour from a Wave 2 change and predates this
   work. Not caused by F1.
+
+- 2026-05-14 W3-6 phase=impl-done: 33/33 tests green. benchmark at packages/benchmarks/voice-speaker-validation/. 5 fixtures (1 solo control + 2 two-speaker + 1 three-speaker + 1 Jill scenario). DER<=0.14 on all fixtures. Owner LRU < 0.001ms median. Jill scenario: 2 distinct entities + partner_of relationship edge. Report at .swarm/impl/W3-6-multi-speaker.md.
