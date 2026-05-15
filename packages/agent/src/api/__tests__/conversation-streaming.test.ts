@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   generateChatResponse,
   generateConversationTitle,
+  normalizeChatResponseText,
 } from "../chat-routes.js";
 
 type RuntimeOverrides = Partial<AgentRuntime> & {
@@ -199,13 +200,35 @@ describe("generateChatResponse token streaming", () => {
     });
 
     await expect(
-      generateChatResponse(runtime, createChatMessage("timeout"), "Streaming Agent", {
-        timeoutDuration: 10,
-      }),
+      generateChatResponse(
+        runtime,
+        createChatMessage("timeout"),
+        "Streaming Agent",
+        {
+          timeoutDuration: 10,
+        },
+      ),
     ).rejects.toThrow("Chat generation timed out after 10ms");
 
     await abortObserved;
     expect(signalFromOptions?.aborted).toBe(true);
+  });
+});
+
+describe("normalizeChatResponseText", () => {
+  it("persists only replyText when response-handler payload text leaks through", () => {
+    const leakedPayload =
+      '"RESPOND", "contexts": ["simple"], "intents": ["hello"], "replyText": "Hello! How can I help you today?", "threadOps": [], "candidateActionNames": []';
+
+    expect(normalizeChatResponseText(leakedPayload, [])).toBe(
+      "Hello! How can I help you today?",
+    );
+  });
+
+  it("leaves normal assistant text unchanged", () => {
+    expect(normalizeChatResponseText("Plain chat reply.", [])).toBe(
+      "Plain chat reply.",
+    );
   });
 });
 

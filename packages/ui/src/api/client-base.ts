@@ -5,7 +5,10 @@
  * without circular dependency issues.
  */
 
-import { stripAssistantStageDirections } from "@elizaos/shared";
+import {
+  extractAssistantReplyText,
+  stripAssistantStageDirections,
+} from "@elizaos/shared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -823,7 +826,9 @@ export class ElizaClient {
   // --- Text normalization helpers (used by chat domain methods) ---
 
   protected normalizeAssistantText(text: string): string {
-    const stripped = stripAssistantStageDirections(text);
+    const stripped = stripAssistantStageDirections(
+      extractAssistantReplyText(text) ?? text,
+    );
     const trimmed = stripped.trim();
     if (trimmed.length === 0) {
       if (
@@ -841,7 +846,9 @@ export class ElizaClient {
   }
 
   protected normalizeGreetingText(text: string): string {
-    const stripped = stripAssistantStageDirections(text);
+    const stripped = stripAssistantStageDirections(
+      extractAssistantReplyText(text) ?? text,
+    );
     const trimmed = stripped.trim();
     if (trimmed.length === 0 || /^\(?no response\)?$/i.test(trimmed)) {
       return "";

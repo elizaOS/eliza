@@ -28,6 +28,7 @@ import {
 import type { LogEntry, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
+  extractAssistantReplyText,
   normalizeCharacterLanguage,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
@@ -755,7 +756,8 @@ export function normalizeChatResponseText(
   // Both fallback strings can hit this path; either should be re-routed to
   // the insufficient-credits reply when a recent credits log explains why
   // generation produced nothing.
-  const trimmed = text.trim();
+  const visibleText = extractAssistantReplyText(text) ?? text;
+  const trimmed = visibleText.trim();
   if (
     (trimmed === PROVIDER_ISSUE_CHAT_REPLY ||
       trimmed === NO_RESPONSE_FALLBACK_REPLY) &&
@@ -763,7 +765,7 @@ export function normalizeChatResponseText(
   ) {
     return pickInsufficientCreditsChatReply();
   }
-  if (!isClientVisibleNoResponse(text)) return text;
+  if (!isClientVisibleNoResponse(visibleText)) return visibleText;
   return resolveNoResponseFallback(logBuffer, runtime);
 }
 
@@ -1754,7 +1756,9 @@ export async function generateChatResponse(
         () => createChatGenerationTimeoutError(generationTimeoutMs),
         () => {
           generationTimedOut = true;
-          abortGeneration(createChatGenerationTimeoutError(generationTimeoutMs));
+          abortGeneration(
+            createChatGenerationTimeoutError(generationTimeoutMs),
+          );
         },
       ),
     );
@@ -1992,7 +1996,9 @@ Title:`;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (isAbortLikeError(err)) {
-      logger.info(`[eliza] Conversation title generation cancelled: ${message}`);
+      logger.info(
+        `[eliza] Conversation title generation cancelled: ${message}`,
+      );
     } else {
       logger.warn(`[eliza] Failed to generate conversation title: ${message}`);
     }
@@ -2440,7 +2446,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,
@@ -2886,7 +2893,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,
