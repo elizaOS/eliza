@@ -30,7 +30,9 @@ export type ViewsMode =
 	| "search"
 	| "manager"
 	| "broadcast"
-	| "interact";
+	| "interact"
+	| "pin"
+	| "window";
 
 const MODES: readonly ViewsMode[] = [
 	"list",
@@ -40,6 +42,8 @@ const MODES: readonly ViewsMode[] = [
 	"manager",
 	"broadcast",
 	"interact",
+	"pin",
+	"window",
 ] as const;
 
 // Intent regexes — order matters: more specific first.
@@ -370,7 +374,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						readStringOption(options, "name");
 					if (!pinViewId) {
 						const reply =
-							'Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.';
+							"Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -392,7 +396,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						readStringOption(options, "name");
 					if (!windowViewId) {
 						const reply =
-							'Specify which view to open in a new window, e.g. action=window view=wallet.';
+							"Specify which view to open in a new window, e.g. action=window view=wallet.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -564,7 +568,7 @@ async function navigateToPath(path: string, label: string): Promise<string> {
  * POST /api/views/:id/interact — invoke a capability on a mounted view and
  * return the result.  Waits up to timeoutMs for the frontend to respond.
  */
-async function interactWithView(
+async function _interactWithView(
 	viewId: string,
 	capability: string,
 	params: Record<string, unknown> | undefined,
@@ -623,9 +627,7 @@ async function interactWithView(
 	}
 
 	const resultStr =
-		result !== null && result !== undefined
-			? JSON.stringify(result)
-			: "null";
+		result !== null && result !== undefined ? JSON.stringify(result) : "null";
 	return `Interacted with view "${viewId}" — capability "${capability}": ${resultStr}.`;
 }
 
@@ -657,6 +659,70 @@ async function broadcastViewEvent(
 	}
 
 	return `Attempted to broadcast view event "${eventType}".`;
+}
+
+/**
+ * POST /api/views/:viewId/pin-tab — ask the shell to pin the view as a
+ * persistent desktop tab.
+ */
+async function pinViewAsTab(viewId: string): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "pin-tab" }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Pinned view "${viewId}" as a desktop tab.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/pin returned ${resp.status} for ${viewId}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Requested to pin view "${viewId}" as a tab.`;
+}
+
+/**
+ * POST /api/views/:viewId/open-window — ask the shell to open the view in a
+ * separate window.
+ */
+async function openViewInWindow(viewId: string): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "open-window" }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Opened view "${viewId}" in a new window.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/window returned ${resp.status} for ${viewId}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Requested to open view "${viewId}" in a new window.`;
 }
 
 /**
