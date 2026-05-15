@@ -16,7 +16,7 @@ Stable model ids:
 - `diarizer` — Pyannote-segmentation-3.0 ONNX (R2/I2).
 - `turn-detector` — LiveKit turn-detector + turnsense fallback (R1/I1).
 - `voice-emotion` — Wav2Small acoustic emotion classifier (R3/I3).
-- `kokoro` — Kokoro sam fine-tuned TTS (R7/I7).
+- `kokoro` — Kokoro same fine-tuned TTS (R7/I7).
 - `omnivoice` — OmniVoice frozen-conditioning TTS (R6/I6).
 - `vad` — Silero VAD endpoint detector.
 - `wakeword` — `hey-eliza` wake-word head.
@@ -35,16 +35,16 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 | Repo | Commit |
 |------|--------|
-| elizaos/eliza-1-voice-asr | 0c1305f0618eb0a752f517a7cfd9ed65e42b760c |
-| elizaos/eliza-1-voice-turn | 69cec917d74dc5ddc27f34f3ab69cef3fc6fe732 |
+| elizaos/eliza-1-voice-asr | c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f |
+| elizaos/eliza-1-voice-turn | 6fb5a2ef8942c857904d78ca10ab91a22dba1e06 |
 | elizaos/eliza-1-voice-emotion | edfeb4e5704c8ca13eccf01cc78324d9422824d0 |
-| elizaos/eliza-1-voice-speaker | b73284e0cdb6ac439cac1885b8c14477e80ff96c |
-| elizaos/eliza-1-voice-diarizer | d09b316ddf46297e1cda8079fa621ff39d101631 |
-| elizaos/eliza-1-voice-vad | feb778c5d13802f428f8846dcaea60318547e88d |
+| elizaos/eliza-1-voice-speaker | f6a2c964e0f36091e995e69b506bd36e1e645289 |
+| elizaos/eliza-1-voice-diarizer | d3c4974d391d45ac9261221a96f2eeb4750aa2cf |
+| elizaos/eliza-1-voice-vad | 9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7 |
 | elizaos/eliza-1-voice-wakeword | d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721 |
-| elizaos/eliza-1-voice-kokoro | da4b5d73d4c1f8e37e86a4e0d51d7e4141e8f855 |
-| elizaos/eliza-1-voice-omnivoice | cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c |
-| elizaos/eliza-1-voice-embedding | eb96371b6d4b87eee6f84303408fd1603fa6cde2 |
+| elizaos/eliza-1-voice-kokoro | 04d3d497fec65a8d31f1d48d4fd69e971ea83a9b |
+| elizaos/eliza-1-voice-omnivoice | aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28 |
+| elizaos/eliza-1-voice-embedding | acddce031d74deebe1027382feb143df7dd1500e |
 | elizaos/eliza-1 (27b-1m delete) | 824d6f2cc353feccf421dd71bf0c4ac0d12d7a87 |
 
 ---
@@ -86,7 +86,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Ships with the I2 voice-profile system.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-speaker` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-speaker` @ rev `f6a2c964e0f36091e995e69b506bd36e1e645289`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (EER 0.72% on VoxCeleb1-O).
 - **Net improvement:** n/a (initial).
@@ -104,7 +104,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Ships with the I2 voice-profile system.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-diarizer` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-diarizer` @ rev `d3c4974d391d45ac9261221a96f2eeb4750aa2cf`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (DER 12.4% on AMI-headset).
 - **Net improvement:** n/a (initial).
@@ -124,7 +124,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Ships with the I1 turn-detection bundling.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-turn` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-turn` @ rev `6fb5a2ef8942c857904d78ca10ab91a22dba1e06`.
 - **GGUF assets:** populated by the publish pipeline (65.7 MB ONNX for
   mobile; 396 MB ONNX for desktop, INT8).
 - **Eval deltas:** baseline (LiveKit eval F1: 0.84 EN, 0.79 multilingual).
@@ -144,7 +144,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Ships with the I3 emotion pipeline.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-emotion` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-emotion` @ rev `edfeb4e5704c8ca13eccf01cc78324d9422824d0`.
 - **GGUF assets:** populated by the publish pipeline (~120 KB ONNX,
   Wav2Small int8).
 - **Eval deltas:** baseline (CCC: V 0.65 / A 0.71 / D 0.43 on MSP-Podcast).
@@ -158,17 +158,17 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
 
 - **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-kokoro`
-  (was `elizaos/eliza-1-voice-kokoro-sam`). Staging dir at
-  `artifacts/voice-sub-model-staging/kokoro/`. Files: `kokoro-v1.0-q4.onnx`, `voices/af_bella.bin`, `voices/af_sam.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`. Coordination point: F2 publishes retrained sam weights here when quality gates pass.
+  (was `elizaos/eliza-1-voice-kokoro-same`). Staging dir at
+  `artifacts/voice-sub-model-staging/kokoro/`. Files: `kokoro-v1.0-q4.onnx`, `voices/af_bella.bin`, `voices/af_same.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`. Coordination point: F2 publishes retrained same weights here when quality gates pass.
 - **Net improvement:** slug fix (no weight change).
 
-### 0.1.1 — 2026-05-14 (W3-11 post-mortem — sam HF push BLOCKED)
+### 0.1.1 — 2026-05-14 (W3-11 post-mortem — same HF push BLOCKED)
 
-- **Status:** BLOCKED. Sam fine-tune (mel-fit voice clone + full-FT
+- **Status:** BLOCKED. Same fine-tune (mel-fit voice clone + full-FT
   pivot) regresses on all quality metrics vs baseline af_bella.
-- **Decision:** Shipped sam TTS path is switched to OmniVoice
+- **Decision:** Shipped same TTS path is switched to OmniVoice
   frozen-conditioning preset (see `omnivoice` 0.1.1 entry + I6). Kokoro
-  sam fine-tune is retained as a developer option (not the default)
+  same fine-tune is retained as a developer option (not the default)
   pending corpus expansion (≥ 3h target) and proper StyleTTS-2 training
   harness.
 - **Regression summary:**
@@ -186,19 +186,20 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ### 0.1.0 — 2026-05-14
 
-- **Initial release.** Ships with the I7 kokoro sam voice-clone
+- **Initial release.** Ships with the I7 kokoro same voice-clone
   infrastructure (plumbing, no quality-passing weights).
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-kokoro` @ rev `TBD` (pending quality).
+- **HF repo:** `elizaos/eliza-1-voice-kokoro` @ rev `04d3d497fec65a8d31f1d48d4fd69e971ea83a9b` (pending quality).
 - **GGUF assets:** populated by the publish pipeline (kokoro 82M F16, plus
-  per-voice sam style embedding — BLOCKED on quality gate).
+  per-voice same style embedding — BLOCKED on quality gate).
 - **Eval deltas:** baseline (MOS expressive: 4.21 internal; RTF 0.42 M1 Air).
 - **Net improvement:** n/a (initial).
 - **What changed:** Infrastructure publish. Voice-clone plumbing from the
-  `ai_voices/sam` corpus (58 paired clips, 3.51 min, 44.1 kHz). Apache-2.0.
-  Fine-tune configs (`kokoro_sam.yaml`, `kokoro_sam_full.yaml`),
+  `ai_voices/samantha` upstream subset (58 paired clips, 3.51 min, 44.1 kHz),
+  landed locally as `same`. Apache-2.0.
+  Fine-tune configs (`kokoro_same.yaml`, `kokoro_same_full.yaml`),
   push script (`push_voice_to_hf.py`), eval comparison baseline, voice-presets.ts
-  sam entry. No quality-passing weights shipped this release.
+  same entry. No quality-passing weights shipped this release.
 
 ## omnivoice
 
@@ -207,20 +208,20 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)
 - **Parent:** 0.1.0.
-- **HF repo:** `elizaos/eliza-1-voice-omnivoice-same-v01` @ rev `fd0d04439d48826abc89dcfc03d9d1f31d29bf20`.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28`.
 - **Eval deltas:** (none recorded)
 - **Net improvement:** yes.
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging)
 
-- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-sam.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-same.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
 - **Net improvement:** staging only (no weight change).
 
-### 0.1.1 — 2026-05-14 (sam preset + FFI wiring)
+### 0.1.1 — 2026-05-14 (same preset + FFI wiring)
 
 - **What changed:**
-  - `voice-preset-sam.bin` lands as a per-bundle preset alongside
+  - `voice-preset-same.bin` lands as a per-bundle preset alongside
     the existing `voice-preset-default.bin`; the default preset is now
-    the sam freeze itself (no more 1052-byte zero-fp32 placeholder).
+    the same freeze itself (no more 1052-byte zero-fp32 placeholder).
   - FFI bridge (ABI v4) now exports `eliza_inference_encode_reference` /
     `eliza_inference_free_tokens`. `prepare.mjs` wires the synth +
     streaming paths to resolve `speaker_preset_id` through the bundle's
@@ -240,19 +241,19 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
   QJL-K is conditional and deferred to I8. K-quants Q4–Q8 already work
   via `omnivoice/tools/quantize.cpp`.
 - **Net improvement:** wiring-only release; quality unchanged vs 0.1.0
-  but voice routing now actually selects the bundled sam preset.
+  but voice routing now actually selects the bundled same preset.
 
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Ships with the I6 OmniVoice freeze pipeline.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28`.
 - **GGUF assets:** populated by the publish pipeline (omnivoice-frozen
   Q5_K_M and Q4_K_M variants).
 - **Eval deltas:** baseline.
 - **Net improvement:** n/a (initial).
 - **What changed:** First publish. Conditioning-frozen OmniVoice on the
-  sam embedding. ELZ2 preset format v2 (`refAudioTokens` + `refText` +
+  same embedding. ELZ2 preset format v2 (`refAudioTokens` + `refText` +
   `instruct`). Apache-2.0.
 
 ## vad
@@ -268,7 +269,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Mirrors the in-tree Silero VAD v5.1.2 weights.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-vad` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-vad` @ rev `9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline.
 - **Net improvement:** n/a (initial).
@@ -285,7 +286,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** `hey-eliza` head (the renamed `hey_jarvis` ONNX).
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-wakeword` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-wakeword` @ rev `d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (FAR ≤ 0.5/h on quiet office).
 - **Net improvement:** n/a (initial).
@@ -305,7 +306,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **Initial release.** Eliza-1 BPE-vocab embedding tier (used by the
   voice-profile + speaker LRU cache for query-text features).
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-embedding` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-embedding` @ rev `acddce031d74deebe1027382feb143df7dd1500e`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline.
 - **Net improvement:** n/a (initial).
@@ -317,14 +318,14 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **What changed:** `elizaos/eliza-1-voice-asr` created on HuggingFace and
   staging contents uploaded. Repo now publicly reachable.
-  Commit: `0c1305f0618eb0a752f517a7cfd9ed65e42b760c`.
+  Commit: `c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f`.
 - **Net improvement:** n/a (infra, no weight change).
 
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
 
 - **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-asr`
   (was `elizaos/eliza-1-asr`). Staging dir at
-  `artifacts/voice-sub-model-staging/asr/`. Files: `eliza-1-asr-q4_k_m.gguf`, `eliza-1-asr-mmproj.gguf`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+  `artifacts/voice-sub-model-staging/asr/`. Files: `eliza-1-asr-q8_0.gguf`, `eliza-1-asr-mmproj.gguf`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
 - **Net improvement:** slug fix (no weight change).
 
 ### 0.1.1 — 2026-05-14 (W3-11 — fine-tune scaffold landed)
@@ -333,9 +334,9 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
   `packages/training/scripts/asr/`. Includes:
   - `finetune_asr.py` — end-to-end pipeline (real + synthetic-smoke CI path).
   - `eval_asr.py` — WER + RTF evaluation + baseline comparison + HF push gate.
-  - `configs/base.yaml`, `configs/asr_sam.yaml` — YAML configs.
+  - `configs/base.yaml`, `configs/asr_same.yaml` — YAML configs.
   - `__tests__/test_asr_pipeline.py` — 15 tests, all passing.
-  - Artifact receipt under `artifacts/voice-fine-tune/sam/<run-id>/`.
+  - Artifact receipt under `artifacts/voice-fine-tune/same/<run-id>/`.
 - **Real training:** gated behind `--real-train` flag; requires GPU + torch +
   transformers + apollo-torch. Compute budget per W3-11 scope: real ASR
   training is out of scope for Wave 3.
@@ -345,9 +346,9 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ### 0.1.0 — 2026-05-14
 
-- **Initial release.** Qwen3-ASR streaming transcriber, GGUF Q4_K_M.
+- **Initial release.** Qwen3-ASR streaming transcriber, GGUF Q8_0.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-asr` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-asr` @ rev `c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (WER 6.8% on LibriSpeech test-clean).
 - **Net improvement:** n/a (initial).
@@ -361,16 +362,16 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
   `packages/training/scripts/omnivoice/`. Includes:
   - `finetune_omnivoice.py` — pipeline with synthetic-smoke + real-train modes.
   - `eval_omnivoice.py` — WER + RTF + speaker similarity eval.
-  - `configs/base.yaml`, `configs/omnivoice_sam.yaml` — YAML configs.
+  - `configs/base.yaml`, `configs/omnivoice_same.yaml` — YAML configs.
   - `__tests__/test_omnivoice_pipeline.py` — 9 tests, all passing.
-- **Path A (shipped):** OmniVoice frozen-conditioning sam preset (I6).
-  ELZ2 v2 preset at `<bundle>/cache/voice-preset-sam.bin`. This IS the
-  shipped sam TTS path for Wave 3 (Kokoro fine-tune regressed).
+- **Path A (shipped):** OmniVoice frozen-conditioning same preset (I6).
+  ELZ2 v2 preset at `<bundle>/cache/voice-preset-same.bin`. This IS the
+  shipped same TTS path for Wave 3 (Kokoro fine-tune regressed).
 - **Path B (scaffold only):** LM weight fine-tune requires GGUF→HF conversion
   tooling not yet available. Architecture documented; deferred post-Wave-3.
 - **HF push:** Path A preset ships as part of the bundle (no separate HF push
   needed for the preset — it's a side-car file). Path B HF push pending.
-- **Net improvement:** Path A is the default sam voice; RTF ~3.5–5×
+- **Net improvement:** Path A is the default same voice; RTF ~3.5–5×
   realtime (slight slowdown vs auto-voice from reference token overhead).
 
 ---

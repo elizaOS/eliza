@@ -68,7 +68,7 @@ export function isDefaultEligibleId(id: string): boolean {
  *     separate repos (elizaos/eliza-1-voice-*) per voice-models.ts; those
  *     repos are not yet created. Next step: run publish pipeline per
  *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
- *   - Kokoro sam voice preset: `af_sam.bin` absent from all
+ *   - Kokoro same voice preset: `af_same.bin` absent from all
  *     bundles; I7 eval showed regression. Current bundles ship af_bella
  *     and standard voices only.
  */

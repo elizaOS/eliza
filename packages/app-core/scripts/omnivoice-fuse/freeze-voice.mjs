@@ -5,7 +5,7 @@
  *
  * R6 §3.3 freeze procedure end-to-end:
  *   1. Read the source corpus directory of WAV+TXT pairs (defaults to
- *      `packages/training/data/voice/sam/`).
+ *      `packages/training/data/voice/same/`).
  *   2. Pick one or more reference clips, decode them to 24 kHz mono fp32,
  *      and concatenate up to a maximum reference duration (default ≤15 s,
  *      OmniVoice accepts up to ~30 s).
@@ -20,13 +20,13 @@
  * Per the brief (§1Q3-Q4), the entry path is:
  *
  *   bun packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs \
- *     --voice sam \
- *     --ai-voices-dir packages/training/data/voice/sam/audio/ \
- *     --out <bundle>/cache/voice-preset-sam.bin \
+ *     --voice same \
+ *     --ai-voices-dir packages/training/data/voice/same/audio/ \
+ *     --out <bundle>/cache/voice-preset-same.bin \
  *     --instruct "young adult female, warm, soft, neutral us-american"
  *
  * Flags:
- *   --voice <id>           Voice identifier (default: `sam`).
+ *   --voice <id>           Voice identifier (default: `same`).
  *                          Used as the output filename suffix.
  *   --corpus <dir>         Corpus directory containing audio/*.wav +
  *                          manifest.jsonl (or audio/*.txt transcripts).
@@ -102,7 +102,7 @@ function usage(code = 0) {
 
 function parseArgs(argv) {
   const args = {
-    voice: "sam",
+    voice: "same",
     corpus: null,
     audioDir: null,
     out: null,
@@ -186,7 +186,7 @@ function parseArgs(argv) {
 }
 
 /** Minimal RIFF/WAVE reader for the standard 16-bit PCM mono case the
- *  sam corpus ships (verified via `audit_sam.sh` per R12). */
+ *  same corpus ships (verified via `audit_same.sh` per R12). */
 function readWavMonoFloat(filePath) {
   const buf = readFileSync(filePath);
   if (buf.length < 44) {

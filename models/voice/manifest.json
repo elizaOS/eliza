@@ -4,17 +4,17 @@
   "generatedAt": "2026-05-14T00:00:00Z",
   "assetAudit": {
     "auditedAt": "2026-05-15T00:00:00Z",
-    "status": "missing-binaries",
+    "status": "partial-binaries-hydrated",
     "notes": [
-      "No binary voice sub-model assets were present under models/voice or artifacts/voice-sub-model-staging at audit time.",
-      "The public Hugging Face repos exposed only .gitattributes, README.md, and manifest.json; no LFS files were available for sha256/size verification.",
-      "sha256 and sizeBytes are null for missing assets; approxSizeBytes is the planned size from staging manifests and is not a verified file size."
+      "Public upstream payloads were downloaded into artifacts/voice-sub-model-staging and verified by sha256.",
+      "Binary-bearing voice repos were published to Hugging Face and hfRevision pins point at the publish commits.",
+      "Custom Eliza-only assets remain missing until their training/build pipelines produce binaries."
     ]
   },
   "models": [
     {
       "id": "speaker-encoder",
-      "displayName": "WeSpeaker ECAPA-TDNN distilled",
+      "displayName": "WeSpeaker ResNet34-LM",
       "purpose": "voice-embedding (256-dim) for speaker identification",
       "runtime": "onnxruntime-node",
       "currentVersion": "0.1.0",
@@ -23,32 +23,29 @@
       "introducedIn": "R2/I2",
       "variants": [
         {
-          "variantId": "wespeaker-ecapa-tdnn-256-int8",
-          "filename": "wespeaker-ecapa-tdnn-256-int8.onnx",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 7340032,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo",
-          "embedding": { "dim": 256, "sampleRate": 16000, "channelCount": 1, "normalize": "l2" },
-          "evalMetrics": { "voxceleb1OEer": 0.0072 }
-        },
-        {
-          "variantId": "wespeaker-ecapa-tdnn-256-fp32",
-          "filename": "wespeaker-ecapa-tdnn-256-fp32.onnx",
+          "variantId": "wespeaker-resnet34-lm",
+          "filename": "wespeaker-resnet34-lm.onnx",
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 26214400,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo",
-          "embedding": { "dim": 256, "sampleRate": 16000, "channelCount": 1, "normalize": "l2" },
-          "evalMetrics": { "voxceleb1OEer": 0.0072 }
+          "embedding": {
+            "dim": 256,
+            "sampleRate": 16000,
+            "channelCount": 1,
+            "normalize": "l2"
+          },
+          "evalMetrics": {
+            "voxceleb1OEer": 0.0072
+          },
+          "sizeBytes": 26530309,
+          "sha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/speaker/wespeaker-resnet34-lm.onnx",
+          "sourceRepo": "Wespeaker/wespeaker-voxceleb-resnet34-LM",
+          "sourcePath": "voxceleb_resnet34_LM.onnx"
         }
-      ]
+      ],
+      "hfRevision": "f6a2c964e0f36091e995e69b506bd36e1e645289"
     },
     {
       "id": "diarizer",
@@ -66,11 +63,12 @@
           "format": "onnx",
           "precision": "int8",
           "approxSizeBytes": 1614807,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo",
-          "diarizer": { "windowSeconds": 5, "framesPerWindow": 293, "classCount": 7, "maxLocalSpeakers": 3, "sampleRate": 16000, "channelCount": 1 }
+          "sizeBytes": 1542304,
+          "sha256": "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/diarizer/pyannote-segmentation-3.0-int8.onnx",
+          "sourceRepo": "onnx-community/pyannote-segmentation-3.0",
+          "sourcePath": "onnx/model_int8.onnx"
         },
         {
           "variantId": "pyannote-segmentation-3.0-fp32",
@@ -78,13 +76,15 @@
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 6291456,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo",
-          "diarizer": { "windowSeconds": 5, "framesPerWindow": 293, "classCount": 7, "maxLocalSpeakers": 3, "sampleRate": 16000, "channelCount": 1 }
+          "sizeBytes": 5986908,
+          "sha256": "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/diarizer/pyannote-segmentation-3.0-fp32.onnx",
+          "sourceRepo": "onnx-community/pyannote-segmentation-3.0",
+          "sourcePath": "onnx/model.onnx"
         }
-      ]
+      ],
+      "hfRevision": "d3c4974d391d45ac9261221a96f2eeb4750aa2cf"
     },
     {
       "id": "turn-detector",
@@ -96,10 +96,49 @@
       "attribution": "Based on livekit/turn-detector v1.2.2-en and v0.4.1-intl",
       "introducedIn": "R1/I1",
       "variants": [
-        { "variantId": "turn-detector-en-int8", "filename": "turn-detector-en-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 65700000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "turn-detector-intl-int8", "filename": "turn-detector-intl-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 396000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "turnsense-fallback-int8", "filename": "turnsense-fallback-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 8000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
-      ]
+        {
+          "variantId": "turn-detector-en-int8",
+          "filename": "turn-detector-en-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 65700000,
+          "sizeBytes": 65712276,
+          "sha256": "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/turn/turn-detector-en-int8.onnx",
+          "sourceRepo": "livekit/turn-detector",
+          "sourcePath": "onnx/model_q8.onnx",
+          "sourceRevision": "v1.2.2-en"
+        },
+        {
+          "variantId": "turn-detector-intl-int8",
+          "filename": "turn-detector-intl-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 396000000,
+          "sizeBytes": 396316457,
+          "sha256": "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/turn/turn-detector-intl-int8.onnx",
+          "sourceRepo": "livekit/turn-detector",
+          "sourcePath": "onnx/model_q8.onnx",
+          "sourceRevision": "v0.4.1-intl"
+        },
+        {
+          "variantId": "turnsense-fallback-int8",
+          "filename": "turnsense-fallback-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 8000000,
+          "sizeBytes": 176072860,
+          "sha256": "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/turn/turnsense-fallback-int8.onnx",
+          "sourceRepo": "latishab/turnsense",
+          "sourcePath": "model_quantized.onnx"
+        }
+      ],
+      "hfRevision": "6fb5a2ef8942c857904d78ca10ab91a22dba1e06"
     },
     {
       "id": "voice-emotion",
@@ -111,9 +150,30 @@
       "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim; teacher weights are not bundled.",
       "introducedIn": "R3/I3",
       "variants": [
-        { "variantId": "wav2small-msp-dim-int8", "filename": "wav2small-msp-dim-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 122880, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo", "emotion": { "sampleRate": 16000, "channelCount": 1, "minSeconds": 1.0, "maxSeconds": 12.0, "outputDims": 3, "outputLabels": ["valence", "arousal", "dominance"], "paramCount": 72256 } },
-        { "variantId": "wav2small-msp-dim-fp32", "filename": "wav2small-msp-dim-fp32.onnx", "format": "onnx", "precision": "fp32", "approxSizeBytes": 491520, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo", "emotion": { "sampleRate": 16000, "channelCount": 1, "minSeconds": 1.0, "maxSeconds": 12.0, "outputDims": 3, "outputLabels": ["valence", "arousal", "dominance"], "paramCount": 72256 } }
-      ]
+        {
+          "variantId": "wav2small-msp-dim-int8",
+          "filename": "wav2small-msp-dim-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 122880,
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo"
+        },
+        {
+          "variantId": "wav2small-msp-dim-fp32",
+          "filename": "wav2small-msp-dim-fp32.onnx",
+          "format": "onnx",
+          "precision": "fp32",
+          "approxSizeBytes": 491520,
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo"
+        }
+      ],
+      "hfRevision": "edfeb4e5704c8ca13eccf01cc78324d9422824d0"
     },
     {
       "id": "kokoro",
@@ -125,10 +185,45 @@
       "attribution": "https://huggingface.co/hexgrad/Kokoro-82M",
       "introducedIn": "R7/I7",
       "variants": [
-        { "variantId": "kokoro-v1.0-q4", "filename": "kokoro-v1.0-q4.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 326144000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "kokoro-af-bella", "filename": "voices/af_bella.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 524288, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "kokoro-af-sam", "filename": "voices/af_sam.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 524288, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
-      ]
+        {
+          "variantId": "kokoro-v1.0-q4",
+          "filename": "kokoro-v1.0-q4.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 326144000,
+          "sizeBytes": 305215966,
+          "sha256": "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/kokoro-v1.0-q4.onnx",
+          "sourceRepo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+          "sourcePath": "onnx/model_q4.onnx"
+        },
+        {
+          "variantId": "kokoro-af-bella",
+          "filename": "voices/af_bella.bin",
+          "format": "bin",
+          "precision": "fp16",
+          "approxSizeBytes": 524288,
+          "sizeBytes": 522240,
+          "sha256": "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/voices/af_bella.bin",
+          "sourceRepo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+          "sourcePath": "voices/af_bella.bin"
+        },
+        {
+          "variantId": "kokoro-af-same",
+          "filename": "voices/af_same.bin",
+          "format": "bin",
+          "precision": "fp16",
+          "approxSizeBytes": 524288,
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo"
+        }
+      ],
+      "hfRevision": "04d3d497fec65a8d31f1d48d4fd69e971ea83a9b"
     },
     {
       "id": "omnivoice",
@@ -140,12 +235,58 @@
       "attribution": "OmniVoice architecture; elizaOS llama.cpp fork integration",
       "introducedIn": "R6/I6",
       "variants": [
-        { "variantId": "omnivoice-base-q4_k_m", "filename": "omnivoice-base-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 388000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "omnivoice-tokenizer-q4_k_m", "filename": "omnivoice-tokenizer-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 51200000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "omnivoice-base-q8_0", "filename": "omnivoice-base-q8_0.gguf", "format": "gguf", "precision": "q8_0", "approxSizeBytes": 620000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "omnivoice-same-preset", "filename": "voice-preset.elz2", "installAs": "cache/voice-preset-same.bin", "format": "elz2", "presetFormatVersion": 2, "precision": "fp16", "approxSizeBytes": 716, "sizeBytes": 716, "sha256": "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6", "assetStatus": "available", "sourceRepo": "elizaos/eliza-1-voice-omnivoice-same-v01", "sourcePath": "voice-preset.elz2", "sourceRevision": "fd0d04439d48826abc89dcfc03d9d1f31d29bf20", "license": "research-only (Her-derivative; non-commercial use only)" },
-        { "variantId": "omnivoice-sam-preset", "filename": "presets/voice-preset-sam.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 8192, "sizeBytes": null, "sha256": null, "assetStatus": "superseded", "missingReason": "superseded by omnivoice-same-preset (voice-preset.elz2 in elizaos/eliza-1-voice-omnivoice-same-v01)" }
-      ]
+        {
+          "variantId": "omnivoice-base-q4_k_m",
+          "filename": "omnivoice-base-q4_k_m.gguf",
+          "format": "gguf",
+          "precision": "q4_k_m",
+          "approxSizeBytes": 388000000,
+          "sizeBytes": 407485216,
+          "sha256": "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/omnivoice-base-q4_k_m.gguf",
+          "sourceRepo": "Serveurperso/OmniVoice-GGUF",
+          "sourcePath": "omnivoice-base-Q4_K_M.gguf"
+        },
+        {
+          "variantId": "omnivoice-tokenizer-q4_k_m",
+          "filename": "omnivoice-tokenizer-q4_k_m.gguf",
+          "format": "gguf",
+          "precision": "q4_k_m",
+          "approxSizeBytes": 51200000,
+          "sizeBytes": 252474112,
+          "sha256": "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/omnivoice-tokenizer-q4_k_m.gguf",
+          "sourceRepo": "Serveurperso/OmniVoice-GGUF",
+          "sourcePath": "omnivoice-tokenizer-Q4_K_M.gguf"
+        },
+        {
+          "variantId": "omnivoice-base-q8_0",
+          "filename": "omnivoice-base-q8_0.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 620000000,
+          "sizeBytes": 656395008,
+          "sha256": "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/omnivoice-base-q8_0.gguf",
+          "sourceRepo": "Serveurperso/OmniVoice-GGUF",
+          "sourcePath": "omnivoice-base-Q8_0.gguf"
+        },
+        {
+          "variantId": "omnivoice-same-preset",
+          "filename": "presets/voice-preset-same.bin",
+          "format": "bin",
+          "precision": "fp16",
+          "approxSizeBytes": 8192,
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo"
+        }
+      ],
+      "hfRevision": "aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28"
     },
     {
       "id": "vad",
@@ -157,9 +298,34 @@
       "attribution": "https://github.com/snakers4/silero-vad",
       "introducedIn": "R2/I2",
       "variants": [
-        { "variantId": "silero-vad-int8", "filename": "silero-vad-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 1056768, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "silero-vad-v5.1.2-ggml", "filename": "silero-vad-v5.1.2.ggml.bin", "format": "ggml", "precision": "fp16", "approxSizeBytes": 2093056, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
-      ]
+        {
+          "variantId": "silero-vad-int8",
+          "filename": "silero-vad-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 1056768,
+          "sizeBytes": 639383,
+          "sha256": "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/vad/silero-vad-int8.onnx",
+          "sourceRepo": "onnx-community/silero-vad",
+          "sourcePath": "onnx/model_int8.onnx"
+        },
+        {
+          "variantId": "silero-vad-v5.1.2-ggml",
+          "filename": "silero-vad-v5.1.2.ggml.bin",
+          "format": "ggml",
+          "precision": "fp16",
+          "approxSizeBytes": 2093056,
+          "sizeBytes": 885098,
+          "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/vad/silero-vad-v5.1.2.ggml.bin",
+          "sourceRepo": "ggml-org/whisper-vad",
+          "sourcePath": "ggml-silero-v5.1.2.bin"
+        }
+      ],
+      "hfRevision": "9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7"
     },
     {
       "id": "wakeword",
@@ -171,21 +337,45 @@
       "attribution": "hey-eliza wake-word head",
       "introducedIn": "R2/I2",
       "variants": [
-        { "variantId": "hey-eliza-int8", "filename": "hey-eliza-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 1048576, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
-      ]
+        {
+          "variantId": "hey-eliza-int8",
+          "filename": "hey-eliza-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 1048576,
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo"
+        }
+      ],
+      "hfRevision": "d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721"
     },
     {
       "id": "embedding",
-      "displayName": "Qwen3-Embedding GGUF",
+      "displayName": "Qwen3-Embedding 0.6B GGUF",
       "purpose": "text embedding for voice profile matching",
       "runtime": "llama.cpp",
       "currentVersion": "0.1.0",
       "license": "Apache-2.0",
-      "attribution": "Derived from Qwen/Qwen3-Embedding",
+      "attribution": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
       "introducedIn": "R2/I2",
       "variants": [
-        { "variantId": "eliza-1-embedding-q4_k_m", "filename": "eliza-1-embedding-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 524288000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
-      ]
+        {
+          "variantId": "eliza-1-embedding-q8_0",
+          "filename": "eliza-1-embedding-q8_0.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 650000000,
+          "sizeBytes": 639150592,
+          "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/embedding/eliza-1-embedding-q8_0.gguf",
+          "sourceRepo": "Qwen/Qwen3-Embedding-0.6B-GGUF",
+          "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf"
+        }
+      ],
+      "hfRevision": "acddce031d74deebe1027382feb143df7dd1500e"
     },
     {
       "id": "asr",
@@ -197,9 +387,34 @@
       "attribution": "Derived from Qwen/Qwen3-ASR",
       "introducedIn": "R2/I2",
       "variants": [
-        { "variantId": "eliza-1-asr-q4_k_m", "filename": "eliza-1-asr-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 918748160, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
-        { "variantId": "eliza-1-asr-mmproj", "filename": "eliza-1-asr-mmproj.gguf", "format": "gguf", "precision": "fp16", "approxSizeBytes": 52428800, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
-      ]
+        {
+          "variantId": "eliza-1-asr-q8_0",
+          "filename": "eliza-1-asr-q8_0.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 2165034944,
+          "sizeBytes": 2165034944,
+          "sha256": "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/asr/eliza-1-asr-q8_0.gguf",
+          "sourceRepo": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+          "sourcePath": "Qwen3-ASR-1.7B-Q8_0.gguf"
+        },
+        {
+          "variantId": "eliza-1-asr-mmproj",
+          "filename": "eliza-1-asr-mmproj.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 355709344,
+          "sizeBytes": 355709344,
+          "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/asr/eliza-1-asr-mmproj.gguf",
+          "sourceRepo": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+          "sourcePath": "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf"
+        }
+      ],
+      "hfRevision": "c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f"
     }
   ],
   "notes": [
