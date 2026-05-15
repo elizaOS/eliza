@@ -216,6 +216,31 @@ export class VoiceCancellationCoordinator {
 	}
 
 	/**
+	 * Wire a `BargeInController.onSignal` listener into this coordinator.
+	 * The controller emits `hard-stop` when ASR confirms barge-in words;
+	 * this glue translates it into `coordinator.bargeIn(roomId)` so the
+	 * canonical token (and every downstream consumer) sees the abort.
+	 *
+	 * Returns the unsubscribe function from `onSignal`. Production callers
+	 * (the engine bridge) call this once per `BargeInController` per
+	 * room and keep the handle until session teardown.
+	 */
+	bindBargeInController(
+		roomId: string,
+		controller: {
+			onSignal(
+				listener: (signal: { type: string }) => void,
+			): () => void;
+		},
+	): () => void {
+		return controller.onSignal((signal) => {
+			if (signal.type === "hard-stop") {
+				this.bargeIn(roomId);
+			}
+		});
+	}
+
+	/**
 	 * Tear down. Cancels every armed turn and unsubscribes from the
 	 * runtime. Safe to call multiple times.
 	 */
