@@ -1,16 +1,15 @@
 /**
- * `@elizaos/app-core/services/plugin-installer` — thin forwarder to the
- * runtime implementation in `@elizaos/agent/services/plugin-installer`.
+ * `@elizaos/plugin-registry/services/plugin-installer` — thin forwarder to
+ * the runtime implementation in `@elizaos/agent/services/plugin-installer`.
  *
- * Why the forwarder + lazy load: `@elizaos/agent` already depends on
- * `@elizaos/app-core`. Re-exporting the agent module statically here would
- * create a hard module-graph cycle (`app-core ↔ agent`) that breaks the
- * moment `app-core` is consumed in a context where `@elizaos/agent` is
- * not installed (e.g. a downstream package that only adds `app-core`).
- * Types re-export statically because TypeScript erases them at compile
- * time and never participates in the runtime cycle. The implementations
- * forward through `import()` so the cycle only resolves on first call,
- * when the consumer's bundler has finished walking the static graph.
+ * Moved here in Phase 4F as part of the plugin-registry consolidation. The
+ * canonical agent install/uninstall implementation still lives in agent
+ * because it relies on agent-internal config + restart wiring. The forwarder
+ * lazy-loads agent at first call to keep the static `.d.ts` graph from
+ * picking up a registry → agent edge.
+ *
+ * Types are re-exported statically because TypeScript erases them at compile
+ * time and never participates in the runtime cycle.
  */
 
 import type {
