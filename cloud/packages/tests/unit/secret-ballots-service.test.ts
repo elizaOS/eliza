@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type {
+  ListSecretBallotsFilter,
+  NewSecretBallot,
   RecordVoteInput,
   RecordVoteOutcome,
   SecretBallotEventRow,
@@ -19,6 +21,9 @@ import {
 } from "../../lib/services/secret-ballots";
 
 const ORG_ID = "org-1";
+
+type UpdateBallotPatch = Parameters<SecretBallotsRepository["updateBallot"]>[1];
+type RecordEventInput = Parameters<SecretBallotsRepository["recordEvent"]>[0];
 
 interface RecordedEvent {
   ballotId: string;
@@ -61,7 +66,7 @@ function makeFakeRepository(seed?: SecretBallotRow): FakeRepoState {
   let eventCounter = 0;
 
   const repo: SecretBallotsRepository = {
-    async createBallot(input): Promise<SecretBallotRow> {
+    async createBallot(input: NewSecretBallot): Promise<SecretBallotRow> {
       const id = `ballot_${++ballotCounter}`;
       const now = new Date();
       const row: SecretBallotRow = makeRow({
@@ -81,17 +86,17 @@ function makeFakeRepository(seed?: SecretBallotRow): FakeRepoState {
       store.set(id, row);
       return row;
     },
-    async getBallot(id): Promise<SecretBallotRow | null> {
+    async getBallot(id: string): Promise<SecretBallotRow | null> {
       return store.get(id) ?? null;
     },
-    async listBallots(filter): Promise<SecretBallotRow[]> {
+    async listBallots(filter: ListSecretBallotsFilter): Promise<SecretBallotRow[]> {
       return Array.from(store.values()).filter(
         (row) =>
           row.organizationId === filter.organizationId &&
           (!filter.status || row.status === filter.status),
       );
     },
-    async updateBallot(id, patch): Promise<SecretBallotRow | null> {
+    async updateBallot(id: string, patch: UpdateBallotPatch): Promise<SecretBallotRow | null> {
       const existing = store.get(id);
       if (!existing) return null;
       const next: SecretBallotRow = {
@@ -126,18 +131,21 @@ function makeFakeRepository(seed?: SecretBallotRow): FakeRepoState {
       votes.push(row);
       return { outcome: "recorded", vote: row };
     },
-    async findVoteByIdentity(ballotId, identityId): Promise<SecretBallotVoteRow | null> {
+    async findVoteByIdentity(
+      ballotId: string,
+      identityId: string,
+    ): Promise<SecretBallotVoteRow | null> {
       return (
         votes.find((v) => v.ballotId === ballotId && v.participantIdentityId === identityId) ?? null
       );
     },
-    async listVotes(ballotId): Promise<SecretBallotVoteRow[]> {
+    async listVotes(ballotId: string): Promise<SecretBallotVoteRow[]> {
       return votes.filter((v) => v.ballotId === ballotId);
     },
-    async countVotes(ballotId): Promise<number> {
+    async countVotes(ballotId: string): Promise<number> {
       return votes.filter((v) => v.ballotId === ballotId).length;
     },
-    async recordEvent(input): Promise<SecretBallotEventRow> {
+    async recordEvent(input: RecordEventInput): Promise<SecretBallotEventRow> {
       events.push(input);
       return {
         id: `event_${++eventCounter}`,
@@ -147,7 +155,7 @@ function makeFakeRepository(seed?: SecretBallotRow): FakeRepoState {
         occurredAt: new Date(),
       };
     },
-    async expirePastBallots(now): Promise<string[]> {
+    async expirePastBallots(now: Date): Promise<string[]> {
       const expired: string[] = [];
       for (const [id, row] of store) {
         if (row.expiresAt.getTime() <= now.getTime() && row.status === "open") {
