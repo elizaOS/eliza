@@ -119,6 +119,7 @@
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
