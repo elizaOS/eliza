@@ -1,6 +1,6 @@
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { join } from "node:path";
-import { resolveNativeLibraryCandidate } from "@elizaos/app-core/platform/native-library-policy";
+import { resolveNativeLibraryCandidate } from "@elizaos/app-core";
 import { assertDlopenPathAllowed } from "@elizaos/core";
 
 /**
