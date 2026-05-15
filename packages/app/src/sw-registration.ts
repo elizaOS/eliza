@@ -14,7 +14,9 @@ function isCapacitorNative(): boolean {
         Capacitor?: { isNativePlatform?: () => boolean };
       }
     ).Capacitor;
-    return typeof cap?.isNativePlatform === "function" && cap.isNativePlatform();
+    return (
+      typeof cap?.isNativePlatform === "function" && cap.isNativePlatform()
+    );
   } catch {
     return false;
   }
