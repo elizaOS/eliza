@@ -16,7 +16,7 @@ Stable model ids:
 - `diarizer` — Pyannote-segmentation-3.0 ONNX (R2/I2).
 - `turn-detector` — LiveKit turn-detector + turnsense fallback (R1/I1).
 - `voice-emotion` — Wav2Small acoustic emotion classifier (R3/I3).
-- `kokoro` — Kokoro samantha fine-tuned TTS (R7/I7).
+- `kokoro` — Kokoro sam fine-tuned TTS (R7/I7).
 - `omnivoice` — OmniVoice frozen-conditioning TTS (R6/I6).
 - `vad` — Silero VAD endpoint detector.
 - `wakeword` — `hey-eliza` wake-word head.
@@ -25,7 +25,54 @@ Stable model ids:
 
 ---
 
+## G4 — 2026-05-15 — HF publish complete (all 10 voice repos live)
+
+G4 pushed all voice sub-model repos to HuggingFace. Each repo at
+`elizaos/eliza-1-voice-<id>` now has a README.md + manifest.json committed.
+The `elizaos/eliza-1` main bundle `bundles/27b-1m/` deleted (54 files) per
+G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
+(text + vision + asr + vad + manifest all reachable, HEAD check ≤500ms each).
+
+| Repo | Commit |
+|------|--------|
+| elizaos/eliza-1-voice-asr | 0c1305f0618eb0a752f517a7cfd9ed65e42b760c |
+| elizaos/eliza-1-voice-turn | 69cec917d74dc5ddc27f34f3ab69cef3fc6fe732 |
+| elizaos/eliza-1-voice-emotion | edfeb4e5704c8ca13eccf01cc78324d9422824d0 |
+| elizaos/eliza-1-voice-speaker | b73284e0cdb6ac439cac1885b8c14477e80ff96c |
+| elizaos/eliza-1-voice-diarizer | d09b316ddf46297e1cda8079fa621ff39d101631 |
+| elizaos/eliza-1-voice-vad | feb778c5d13802f428f8846dcaea60318547e88d |
+| elizaos/eliza-1-voice-wakeword | d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721 |
+| elizaos/eliza-1-voice-kokoro | da4b5d73d4c1f8e37e86a4e0d51d7e4141e8f855 |
+| elizaos/eliza-1-voice-omnivoice | cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c |
+| elizaos/eliza-1-voice-embedding | eb96371b6d4b87eee6f84303408fd1603fa6cde2 |
+| elizaos/eliza-1 (27b-1m delete) | 824d6f2cc353feccf421dd71bf0c4ac0d12d7a87 |
+
+---
+
+## asset-audit
+
+### 2026-05-15 — voice sub-model binary availability audit
+
+- **What changed:** `models/voice/manifest.json` and
+  `packages/shared/src/local-inference/voice-models.ts` no longer contain
+  placeholder asset hashes. Expected binaries are listed as missing until an
+  actual local file or HF LFS object is available for sha256/size verification.
+- **Verification:** Local staging dirs under
+  `artifacts/voice-sub-model-staging/` contained only `README.md` and
+  `manifest.json`. Public HF repos for the voice sub-models contained only
+  `.gitattributes`, `README.md`, and `manifest.json`. `HF_TOKEN` was not set
+  in this environment, so private HF metadata could not be inspected.
+- **Net improvement:** registry correctness only; no weight change.
+
 ## speaker-encoder
+
+### 0.1.2 — 2026-05-15 (G4 — HF repos live, repos created + staging uploaded)
+
+- **What changed:** All 10 voice sub-model HF repos now exist and are public.
+  `elizaos/eliza-1-voice-speaker` created + manifest.json + README.md uploaded.
+  Repos were previously absent (F3 had only staged locally; actual HF push blocked on credentials).
+- **HF repo:** `elizaos/eliza-1-voice-speaker` @ `b73284e0cdb6ac439cac1885b8c14477e80ff96c`
+- **Net improvement:** n/a (infra, no weight change).
 
 ### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
 
@@ -111,17 +158,17 @@ Stable model ids:
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
 
 - **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-kokoro`
-  (was `elizaos/eliza-1-voice-kokoro-samantha`). Staging dir at
-  `artifacts/voice-sub-model-staging/kokoro/`. Files: `kokoro-v1.0-q4.onnx`, `voices/af_bella.bin`, `voices/af_samantha.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`. Coordination point: F2 publishes retrained samantha weights here when quality gates pass.
+  (was `elizaos/eliza-1-voice-kokoro-sam`). Staging dir at
+  `artifacts/voice-sub-model-staging/kokoro/`. Files: `kokoro-v1.0-q4.onnx`, `voices/af_bella.bin`, `voices/af_sam.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`. Coordination point: F2 publishes retrained sam weights here when quality gates pass.
 - **Net improvement:** slug fix (no weight change).
 
-### 0.1.1 — 2026-05-14 (W3-11 post-mortem — samantha HF push BLOCKED)
+### 0.1.1 — 2026-05-14 (W3-11 post-mortem — sam HF push BLOCKED)
 
-- **Status:** BLOCKED. Samantha fine-tune (mel-fit voice clone + full-FT
+- **Status:** BLOCKED. Sam fine-tune (mel-fit voice clone + full-FT
   pivot) regresses on all quality metrics vs baseline af_bella.
-- **Decision:** Shipped samantha TTS path is switched to OmniVoice
+- **Decision:** Shipped sam TTS path is switched to OmniVoice
   frozen-conditioning preset (see `omnivoice` 0.1.1 entry + I6). Kokoro
-  samantha fine-tune is retained as a developer option (not the default)
+  sam fine-tune is retained as a developer option (not the default)
   pending corpus expansion (≥ 3h target) and proper StyleTTS-2 training
   harness.
 - **Regression summary:**
@@ -139,33 +186,33 @@ Stable model ids:
 
 ### 0.1.0 — 2026-05-14
 
-- **Initial release.** Ships with the I7 kokoro samantha voice-clone
+- **Initial release.** Ships with the I7 kokoro sam voice-clone
   infrastructure (plumbing, no quality-passing weights).
 - **Parent:** none.
 - **HF repo:** `elizaos/eliza-1-voice-kokoro` @ rev `TBD` (pending quality).
 - **GGUF assets:** populated by the publish pipeline (kokoro 82M F16, plus
-  per-voice samantha style embedding — BLOCKED on quality gate).
+  per-voice sam style embedding — BLOCKED on quality gate).
 - **Eval deltas:** baseline (MOS expressive: 4.21 internal; RTF 0.42 M1 Air).
 - **Net improvement:** n/a (initial).
 - **What changed:** Infrastructure publish. Voice-clone plumbing from the
-  `ai_voices/samantha` corpus (58 paired clips, 3.51 min, 44.1 kHz). Apache-2.0.
-  Fine-tune configs (`kokoro_samantha.yaml`, `kokoro_samantha_full.yaml`),
+  `ai_voices/sam` corpus (58 paired clips, 3.51 min, 44.1 kHz). Apache-2.0.
+  Fine-tune configs (`kokoro_sam.yaml`, `kokoro_sam_full.yaml`),
   push script (`push_voice_to_hf.py`), eval comparison baseline, voice-presets.ts
-  samantha entry. No quality-passing weights shipped this release.
+  sam entry. No quality-passing weights shipped this release.
 
 ## omnivoice
 
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging)
 
-- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-samantha.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-sam.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
 - **Net improvement:** staging only (no weight change).
 
-### 0.1.1 — 2026-05-14 (samantha preset + FFI wiring)
+### 0.1.1 — 2026-05-14 (sam preset + FFI wiring)
 
 - **What changed:**
-  - `voice-preset-samantha.bin` lands as a per-bundle preset alongside
+  - `voice-preset-sam.bin` lands as a per-bundle preset alongside
     the existing `voice-preset-default.bin`; the default preset is now
-    the samantha freeze itself (no more 1052-byte zero-fp32 placeholder).
+    the sam freeze itself (no more 1052-byte zero-fp32 placeholder).
   - FFI bridge (ABI v4) now exports `eliza_inference_encode_reference` /
     `eliza_inference_free_tokens`. `prepare.mjs` wires the synth +
     streaming paths to resolve `speaker_preset_id` through the bundle's
@@ -185,7 +232,7 @@ Stable model ids:
   QJL-K is conditional and deferred to I8. K-quants Q4–Q8 already work
   via `omnivoice/tools/quantize.cpp`.
 - **Net improvement:** wiring-only release; quality unchanged vs 0.1.0
-  but voice routing now actually selects the bundled samantha preset.
+  but voice routing now actually selects the bundled sam preset.
 
 ### 0.1.0 — 2026-05-14
 
@@ -197,7 +244,7 @@ Stable model ids:
 - **Eval deltas:** baseline.
 - **Net improvement:** n/a (initial).
 - **What changed:** First publish. Conditioning-frozen OmniVoice on the
-  samantha embedding. ELZ2 preset format v2 (`refAudioTokens` + `refText` +
+  sam embedding. ELZ2 preset format v2 (`refAudioTokens` + `refText` +
   `instruct`). Apache-2.0.
 
 ## vad
@@ -258,6 +305,13 @@ Stable model ids:
 
 ## asr
 
+### 0.1.3 — 2026-05-15 (G4 — HF repo live)
+
+- **What changed:** `elizaos/eliza-1-voice-asr` created on HuggingFace and
+  staging contents uploaded. Repo now publicly reachable.
+  Commit: `0c1305f0618eb0a752f517a7cfd9ed65e42b760c`.
+- **Net improvement:** n/a (infra, no weight change).
+
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
 
 - **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-asr`
@@ -271,9 +325,9 @@ Stable model ids:
   `packages/training/scripts/asr/`. Includes:
   - `finetune_asr.py` — end-to-end pipeline (real + synthetic-smoke CI path).
   - `eval_asr.py` — WER + RTF evaluation + baseline comparison + HF push gate.
-  - `configs/base.yaml`, `configs/asr_samantha.yaml` — YAML configs.
+  - `configs/base.yaml`, `configs/asr_sam.yaml` — YAML configs.
   - `__tests__/test_asr_pipeline.py` — 15 tests, all passing.
-  - Artifact receipt under `artifacts/voice-fine-tune/samantha/<run-id>/`.
+  - Artifact receipt under `artifacts/voice-fine-tune/sam/<run-id>/`.
 - **Real training:** gated behind `--real-train` flag; requires GPU + torch +
   transformers + apollo-torch. Compute budget per W3-11 scope: real ASR
   training is out of scope for Wave 3.
@@ -299,16 +353,16 @@ Stable model ids:
   `packages/training/scripts/omnivoice/`. Includes:
   - `finetune_omnivoice.py` — pipeline with synthetic-smoke + real-train modes.
   - `eval_omnivoice.py` — WER + RTF + speaker similarity eval.
-  - `configs/base.yaml`, `configs/omnivoice_samantha.yaml` — YAML configs.
+  - `configs/base.yaml`, `configs/omnivoice_sam.yaml` — YAML configs.
   - `__tests__/test_omnivoice_pipeline.py` — 9 tests, all passing.
-- **Path A (shipped):** OmniVoice frozen-conditioning samantha preset (I6).
-  ELZ2 v2 preset at `<bundle>/cache/voice-preset-samantha.bin`. This IS the
-  shipped samantha TTS path for Wave 3 (Kokoro fine-tune regressed).
+- **Path A (shipped):** OmniVoice frozen-conditioning sam preset (I6).
+  ELZ2 v2 preset at `<bundle>/cache/voice-preset-sam.bin`. This IS the
+  shipped sam TTS path for Wave 3 (Kokoro fine-tune regressed).
 - **Path B (scaffold only):** LM weight fine-tune requires GGUF→HF conversion
   tooling not yet available. Architecture documented; deferred post-Wave-3.
 - **HF push:** Path A preset ships as part of the bundle (no separate HF push
   needed for the preset — it's a side-car file). Path B HF push pending.
-- **Net improvement:** Path A is the default samantha voice; RTF ~3.5–5×
+- **Net improvement:** Path A is the default sam voice; RTF ~3.5–5×
   realtime (slight slowdown vs auto-voice from reference token overhead).
 
 ---
