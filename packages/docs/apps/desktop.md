@@ -223,7 +223,7 @@ Discovered gateways include metadata from TXT records: stable ID, TLS configurat
 Full conversation mode via the `TalkModeManager` class, integrating speech-to-text (STT) and text-to-speech (TTS).
 
 **STT Engines:**
-- **Whisper** (default) -- Offline speech recognition using `whisper-node` with configurable model sizes: `tiny`, `base`, `small`, `medium`, `large`. Supports word-level timing and streaming transcription.
+- **Whisper** (default) -- Offline speech recognition routed through `@elizaos/plugin-local-inference` (Qwen3-ASR via libelizainference / llama.cpp). Supports streaming transcription.
 - **Web Speech API** -- Falls back to the browser's built-in speech recognition when Whisper is unavailable.
 
 **TTS Engines:**

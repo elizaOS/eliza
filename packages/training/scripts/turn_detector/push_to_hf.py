@@ -107,8 +107,10 @@ upstream LiveKit ONNX, drop-in compatible.
 - `onnx/turn-detector-en-q8.gguf` — Q8_0 GGUF (when staged).
 - `onnx/tokenizer.json`, `onnx/tokenizer_config.json`, `onnx/config.json`,
   `onnx/special_tokens_map.json`, `onnx/vocab.json`, `onnx/merges.txt` —
-  inherited from the LiveKit base, required by the runtime
-  (`@huggingface/transformers` tokenizer loads `local_files_only=true`).
+  inherited from the LiveKit base. These files describe the tokenizer
+  expected by upstream LiveKit consumers; the Eliza runtime no longer
+  loads them directly (the legacy @huggingface/transformers tokenizer
+  path was removed; a ggml/llama.cpp-backed tokenizer will replace it).
 - `onnx/eval.json` — held-out F1 + mean inference latency in
   `eval_turn_detector.gate_report` shape.
 
