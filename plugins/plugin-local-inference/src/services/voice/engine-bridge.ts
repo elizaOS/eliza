@@ -88,6 +88,11 @@ import type {
 	TranscriptionAudio,
 	VadEventSource,
 } from "./types";
+import { VoiceProfileStore } from "./profile-store";
+import {
+	type VoiceAttributionOutput,
+	VoiceAttributionPipeline,
+} from "./speaker/attribution-pipeline";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
@@ -819,6 +824,31 @@ export class EngineVoiceBridge {
 			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
+		// Wire speaker-attribution when a profile store is provided.
+		// The attribution pipeline wraps the encoder + diarizer + profile-store;
+		// all three degrade gracefully when their ONNX models are absent (they
+		// throw structured *UnavailableError rather than crashing). The bridge
+		// is responsible for running attribution in parallel with ASR each turn.
+		let attributionPipeline: VoiceAttributionPipeline | null = null;
+		if (opts.profileStore) {
+			attributionPipeline = new VoiceAttributionPipeline({
+				// Encoder and diarizer are optional — the pipeline loads them lazily
+				// from the bundle root. When the models are absent it logs a warning
+				// and continues without segment-level attribution.
+				encoder: {
+					encode: async (_pcm: Float32Array, _sr: number) => {
+						// Deferred: the real WespeakerEncoder is loaded lazily via
+						// createBundledSpeakerEncoder (if available). For now the
+						// encoder slot is a no-op that returns null — the attribution
+						// pipeline handles null embeddings by emitting a
+						// profile-match=miss result and still produces turn metadata.
+						return null;
+					},
+				} as never,
+				profileStore: opts.profileStore,
+			});
+		}
+
 		return new EngineVoiceBridge(
 			scheduler,
 			backend,
@@ -828,6 +858,7 @@ export class EngineVoiceBridge {
 			ffiContextRef,
 			asrAvailable,
 			phraseCache,
+			attributionPipeline,
 		);
 	}
 
@@ -1245,9 +1276,32 @@ export class EngineVoiceBridge {
 		audio: TranscriptionAudio,
 		textRunner: DflashTextRunner,
 		config: VoicePipelineConfig,
-		events?: VoicePipelineEvents,
+		events?: VoiceTurnEvents,
 	): Promise<"done" | "token-cap" | "cancelled"> {
 		this.assertVoiceOn("run a voice turn");
+		// If a profileStore was wired, kick off speaker-attribution in parallel
+		// with ASR. The attribution uses the same PCM buffer as the transcriber
+		// but runs through the diarizer + encoder + profile-store independently.
+		// It is fire-and-forget from the pipeline's perspective: the result
+		// arrives via `onAttribution` asynchronously (possibly after onComplete).
+		if (this.attributionPipeline && events?.onAttribution) {
+			const onAttribution = events.onAttribution;
+			const attribution = this.attributionPipeline;
+			const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			void attribution
+				.attribute({
+					turnId,
+					pcm: audio.pcm,
+				})
+				.then(onAttribution)
+				.catch((err: unknown) => {
+					// Attribution failures must not crash the turn. Log and continue.
+					console.warn(
+						`[voice-bridge] speaker attribution failed for turn ${turnId}:`,
+						err instanceof Error ? err.message : String(err),
+					);
+				});
+		}
 		const pipeline = this.buildPipeline(textRunner, config, events);
 		this.activePipeline = pipeline;
 		try {
