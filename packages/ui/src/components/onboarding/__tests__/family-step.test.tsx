@@ -6,10 +6,14 @@
  *   - Empty list → skip path (no capture needed, Continue works)
  *   - One member → entity created + profile bound (captureFamilyMember called)
  *   - Two members → two distinct entities with different profileIds / entityIds
- *   - Client-side graceful fallback: 404 → stub entityId always returned
+ *   - Client-side graceful fallback: 404 → stub result with family_of tag
  *
- * MediaRecorder is mocked. `recordAudioBlob` uses `setTimeout(stop, DURATION_MS)` so we
- * advance fake timers past 5 000 ms to trigger stop + onstop → blob resolution.
+ * MediaRecorder is mocked with an auto-stop implementation: the recorder
+ * fires ondataavailable + onstop immediately so recordAudioBlob resolves
+ * without waiting for the real 5 s DURATION_MS timeout.  We do NOT use
+ * fake timers here — they conflict with @testing-library/react's internal
+ * timing utilities (waitFor, findBy*).  Instead the FakeMediaRecorder
+ * auto-completes the recording on the next Promise microtask tick.
  */
 
 import {
@@ -30,8 +34,14 @@ import {
 import { VoicePrefixSteps } from "../VoicePrefixSteps";
 
 // ---------------------------------------------------------------------------
-// FakeMediaRecorder — stop() fires onstop synchronously so advancing
-// fake timers by DURATION_MS is enough to unblock recordAudioBlob.
+// FakeMediaRecorder
+//
+// Calling start() schedules an immediate microtask that:
+//   1. fires ondataavailable with a tiny audio blob
+//   2. calls stop() which fires onstop synchronously
+//
+// This makes recordAudioBlob's Promise resolve on the next microtask
+// drain without advancing any real timers.
 // ---------------------------------------------------------------------------
 
 class FakeMediaRecorder {
@@ -46,17 +56,19 @@ class FakeMediaRecorder {
 
   start() {
     this.state = "recording";
-    // Deliver audio chunk immediately (via fake-timer-aware setTimeout(fn,0)).
-    setTimeout(() => {
+    // Schedule auto-completion via microtask so the caller's stack has settled.
+    Promise.resolve().then(() => {
       this.ondataavailable?.({
         data: new Blob(["fake-audio"], { type: "audio/webm" }),
       });
-    }, 0);
+      this.stop();
+    });
   }
 
   stop() {
+    if (this.state === "inactive") return;
     this.state = "inactive";
-    // Fire onstop synchronously so callers waiting on the Promise resolve.
+    // Fire onstop synchronously — recordAudioBlob resolves immediately.
     this.onstop?.();
   }
 }
@@ -112,7 +124,10 @@ function renderFamilyStep(
   return { client };
 }
 
-/** Fill name, optionally relationship, then click Record and flush timers. */
+/**
+ * Fill in the name (and optional relationship), click Record, then wait for
+ * the upload phase to finish (form resets to idle phase).
+ */
 async function recordMember(name: string, relationship?: string) {
   fireEvent.change(screen.getByTestId("voice-prefix-family-name-input"), {
     target: { value: name },
@@ -124,19 +139,14 @@ async function recordMember(name: string, relationship?: string) {
     );
   }
 
-  // Click Record — this calls startCapture which calls recordAudioBlob.
-  // recordAudioBlob wraps MediaRecorder in a Promise resolved by onstop,
-  // and schedules `setTimeout(recorder.stop, DURATION_MS)`.
-  // We need to:
-  //  1. Let the click handler run (async) — use act(async).
-  //  2. Advance fake timers past 5 000 ms so the timeout fires.
-  //  3. Drain the micro-task queue for blobToBase64 + captureFamilyMember.
   await act(async () => {
     fireEvent.click(screen.getByTestId("voice-prefix-family-record"));
-  });
-  // Advance past DURATION_MS (5 000 ms) and the zero-delay data chunk.
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(5100);
+    // Give the FakeMediaRecorder microtask + blobToBase64 + captureFamilyMember
+    // time to resolve before we assert.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
   });
 }
 
@@ -145,25 +155,20 @@ async function recordMember(name: string, relationship?: string) {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  vi.useFakeTimers();
-
-  // Install MediaRecorder mock.
   vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
 
-  // Mock getUserMedia.
   vi.stubGlobal("navigator", {
     mediaDevices: {
       getUserMedia: vi.fn().mockResolvedValue(fakeMicStream),
     },
   });
 
-  // FileReader mock: returns a deterministic base64 data-URL.
+  // FileReader: resolves readAsDataURL via a microtask.
   const FakeFileReader = class {
     result = "data:audio/webm;base64,ZmFrZS1hdWRpbw=="; // "fake-audio"
     onload: (() => void) | null = null;
     onerror: ((e: unknown) => void) | null = null;
     readAsDataURL() {
-      // Fire onload in a microtask so awaiting works naturally.
       Promise.resolve().then(() => this.onload?.());
     }
   };
@@ -172,7 +177,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -211,7 +215,7 @@ describe("FamilyStep", () => {
     expect(onAdvance.mock.calls[0]?.[0]).toBeNull();
   });
 
-  it("captures one member: captureFamilyMember called once, list shows 'captured'", async () => {
+  it("captures one member: captureFamilyMember called once, entity bound, 'captured' badge shown", async () => {
     let callCount = 0;
     const captureFamilyMember = vi.fn(
       async (
@@ -225,8 +229,7 @@ describe("FamilyStep", () => {
 
     await recordMember("Alex");
 
-    // captureFamilyMember should have been invoked exactly once.
-    expect(captureFamilyMember).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(captureFamilyMember).toHaveBeenCalledTimes(1));
 
     const payload = captureFamilyMember.mock.calls[0]?.[0];
     expect(payload?.displayName).toBe("Alex");
@@ -235,19 +238,19 @@ describe("FamilyStep", () => {
     expect(payload?.audioBase64.length).toBeGreaterThan(0);
     expect(payload?.durationMs).toBeGreaterThan(0);
 
-    // The list should show the captured member.
+    // List visible.
     await waitFor(() =>
       expect(screen.getByTestId("voice-prefix-family-list")).toBeTruthy(),
     );
 
-    // "captured" badge: entityId is non-null → real entity created.
+    // "captured" badge: entityId returned → real entity exists.
     const capturedBadge = await screen.findByTestId(
       "voice-prefix-family-captured",
     );
     expect(capturedBadge.textContent).toContain("captured");
   });
 
-  it("captures two members: two distinct calls, two entries, two 'captured' badges", async () => {
+  it("captures two members: two distinct calls, two list entries, two 'captured' badges", async () => {
     let callCount = 0;
     const captureFamilyMember = vi.fn(
       async (
@@ -263,7 +266,7 @@ describe("FamilyStep", () => {
     await recordMember("Alex");
     await waitFor(() => expect(captureFamilyMember).toHaveBeenCalledTimes(1));
 
-    // Second member — form has reset to idle by now.
+    // Second member — form has reset to idle after first capture.
     await recordMember("Jordan", "colleague");
     await waitFor(() => expect(captureFamilyMember).toHaveBeenCalledTimes(2));
 
@@ -280,12 +283,12 @@ describe("FamilyStep", () => {
     expect(call2?.displayName).toBe("Jordan");
     expect(call2?.relationship).toBe("colleague");
 
-    // Both badges show "captured" (non-null entityIds).
+    // Both entries have "captured" badges (non-null entityIds).
     const captured = screen.getAllByTestId("voice-prefix-family-captured");
     expect(captured.length).toBe(2);
   });
 
-  it("client-side fallback: 404 response yields stub result with family_of tag", async () => {
+  it("client-side 404 fallback yields stub result with family_of tag and non-null entityId", async () => {
     const result = await new VoiceProfilesClient({
       fetch: async () => {
         const err = Object.assign(new Error("not found"), { status: 404 });
@@ -298,7 +301,6 @@ describe("FamilyStep", () => {
       relationship: "family",
     });
 
-    // Stub always returns a non-null entityId so the UI can show "captured".
     expect(typeof result.entityId).toBe("string");
     expect(result.entityId.startsWith("family-entity-stub-")).toBe(true);
     expect(result.profileId.startsWith("family-stub-")).toBe(true);
