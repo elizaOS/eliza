@@ -61,7 +61,7 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 
 import * as nodeFs from "node:fs";
 import nodePath from "node:path";
-import { installMobileFsShim } from "./mobile-fs-shim.ts";
+import { installMobileFsShim } from "../shared/fs-shim.ts";
 
 // ── Resolve canonical paths and install mobile fs sandbox ─────────────────
 //
@@ -179,7 +179,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
   });
 
   _logToFile("[android-bridge] importing startEliza...");
-  const { startEliza } = await import("../runtime/index.ts");
+  const { startEliza } = await import("@elizaos/agent");
   _logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
 
   // Heartbeat: log every 10s during startEliza so we can see where it stalls.
@@ -213,7 +213,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
   if (runtime && process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     _logToFile("[android-bridge] importing mobile-device-bridge-bootstrap…");
     const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-      "@elizaos/plugin-capacitor-bridge"
+      "../mobile-device-bridge-bootstrap.ts"
     );
     await ensureMobileDeviceBridgeInferenceHandlers(runtime);
   }
