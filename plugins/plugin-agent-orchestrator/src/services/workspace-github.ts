@@ -7,15 +7,19 @@
  * @module services/workspace-github
  */
 
+import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type CreateIssueOptions,
-  GitHubPatClient,
-  type IssueComment,
-  type IssueInfo,
-  type IssueState,
-  OAuthDeviceFlow,
+import type {
+  CreateIssueOptions,
+  GitHubPatClient as GitHubPatClientInstance,
+  IssueComment,
+  IssueInfo,
+  IssueState,
 } from "git-workspace-service";
+
+const { GitHubPatClient, OAuthDeviceFlow } = createRequire(import.meta.url)(
+  "git-workspace-service",
+) as typeof import("git-workspace-service");
 
 /**
  * Callback for surfacing auth prompts to the user.
@@ -35,10 +39,10 @@ export type AuthPromptCallback = (prompt: {
  */
 export interface GitHubContext {
   runtime: IAgentRuntime;
-  githubClient: GitHubPatClient | null;
-  setGithubClient: (client: GitHubPatClient) => void;
-  githubAuthInProgress: Promise<GitHubPatClient> | null;
-  setGithubAuthInProgress: (p: Promise<GitHubPatClient> | null) => void;
+  githubClient: GitHubPatClientInstance | null;
+  setGithubClient: (client: GitHubPatClientInstance) => void;
+  githubAuthInProgress: Promise<GitHubPatClientInstance> | null;
+  setGithubAuthInProgress: (p: Promise<GitHubPatClientInstance> | null) => void;
   authPromptCallback: AuthPromptCallback | null;
   log: (msg: string) => void;
 }
@@ -61,7 +65,7 @@ export function parseOwnerRepo(repo: string): {
 
 export async function ensureGitHubClient(
   ctx: GitHubContext,
-): Promise<GitHubPatClient> {
+): Promise<GitHubPatClientInstance> {
   // Already have a client
   if (ctx.githubClient) return ctx.githubClient;
 
@@ -104,7 +108,7 @@ export async function ensureGitHubClient(
 export async function performOAuthFlow(
   ctx: GitHubContext,
   clientId: string,
-): Promise<GitHubPatClient> {
+): Promise<GitHubPatClientInstance> {
   // Read directly from process.env — this is a server-side secret that
   // should not be exposed through the plugin getSetting() allowlist.
   const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;

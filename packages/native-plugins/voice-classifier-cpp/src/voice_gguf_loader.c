@@ -1,38 +1,21 @@
 /*
- * voice-classifier-cpp — minimal GGUF metadata + tensor loader.
+ * voice-classifier-cpp — minimal GGUF metadata loader.
  *
  * The four model heads (emotion, speaker, EOT-audio, diarizer) all
  * ship as GGUF files produced by the per-head conversion scripts in
- * `scripts/`. Before running the forward graph (J1.a / J1.b / J1.c)
- * we validate the metadata block matches the locked C-side contract.
+ * `scripts/`. Before running the forward graph we validate the
+ * metadata block matches the locked C-side contract.
  *
- * The K2 wave extends the loader so the WeSpeaker forward graph can
- * actually read its 75 fp32 tensors out of the GGUF without linking
- * the fork's libllama / libggml — the dependency would force the
- * whole voice-classifier-cpp tree to link against the fork tree.
+ * We deliberately do NOT depend on the fork's libllama / libggml in
+ * this TU — the dependency would force voice-classifier-cpp to link
+ * the entire fork tree just to read a few KV pairs.
  *
- * GGUF wire format (matches
- * `plugins/plugin-local-inference/native/llama.cpp/ggml/include/gguf.h`):
- *   1.  Magic "GGUF" (4 bytes)
- *   2.  Version (uint32)
- *   3.  Tensor count (int64)
- *   4.  KV count (int64)
- *   5.  For each KV:
- *       - key as length-prefixed string (uint64 len + bytes)
- *       - value type (uint32 from gguf_type enum)
- *       - value (variable per type)
- *   6.  For each tensor:
- *       - name (uint64 len + bytes)
- *       - n_dims (uint32)
- *       - dims (uint64[n_dims])
- *       - type (uint32 from ggml_type enum)
- *       - offset (uint64) — relative to start of tensor-data region
- *   7.  Padding to alignment (default 32)
- *   8.  Tensor data, in the order written by the writer
+ * For weight-tensor reads, see voice_gguf_tensors.{c,h}.
  *
- * The "general.alignment" KV controls the padding (default 32 if unset).
- *
- * On failure we return one of the documented errno-style negatives.
+ * On failure we return one of the documented errno-style negatives:
+ *   -ENOENT : file doesn't exist / can't open
+ *   -EINVAL : bad magic, wrong version, malformed KV
+ *   -ENOMEM : allocation failure during string parsing
  */
 
 #include "voice_gguf_loader.h"
@@ -43,15 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* GGUF wire-format constants. */
 #define VC_GGUF_MAGIC "GGUF"
 #define VC_GGUF_VERSION_MIN 2
 #define VC_GGUF_VERSION_MAX 3
-#define VC_GGUF_DEFAULT_ALIGN 32
-
-/* ggml_type values we care about. */
-#define VC_GGML_TYPE_F32 0
-#define VC_GGML_TYPE_F16 1
 
 enum vc_gguf_type {
     VC_GGUF_TYPE_UINT8   = 0,
@@ -68,8 +45,6 @@ enum vc_gguf_type {
     VC_GGUF_TYPE_INT64   = 11,
     VC_GGUF_TYPE_FLOAT64 = 12,
 };
-
-/* ---------------- low-level I/O ---------------- */
 
 static int vc_gguf_read(FILE *f, void *buf, size_t n) {
     return fread(buf, 1, n, f) == n ? 0 : -1;
@@ -175,13 +150,9 @@ static int vc_gguf_walk(FILE *f,
     return 0;
 }
 
-/* ---------------- metadata callback ---------------- */
-
 struct vc_gguf_load_state {
     const char *want_prefix;
     voice_gguf_metadata_t *out;
-    /* General-level keys also picked up. */
-    int alignment;
 };
 
 static int vc_gguf_key_eq(const char *key,
@@ -201,16 +172,6 @@ static int vc_gguf_load_state_cb(const char *key,
                                   FILE *f,
                                   void *user) {
     struct vc_gguf_load_state *s = (struct vc_gguf_load_state *)user;
-
-    /* "general.alignment" — uint32 padding for the tensor data block.
-     * We pick it up regardless of prefix because tensor decoding needs it. */
-    if (strcmp(key, "general.alignment") == 0) {
-        if (type != VC_GGUF_TYPE_UINT32) return -1;
-        uint32_t v = 0;
-        if (vc_gguf_read_u32(f, &v) != 0) return -1;
-        s->alignment = (int)v;
-        return 1;
-    }
 
     if (vc_gguf_key_eq(key, s->want_prefix, "sample_rate")) {
         if (type != VC_GGUF_TYPE_UINT32) return -1;
@@ -265,6 +226,29 @@ static int vc_gguf_load_state_cb(const char *key,
         free(str);
         return 1;
     }
+    /* Wav2Small-specific uint32 keys: read into the matching field
+     * and let the per-head opener validate against its expectation. */
+    struct {
+        const char *suffix;
+        int *target;
+    } u32_extras[] = {
+        { "stft_bins",  &s->out->stft_bins  },
+        { "conv1_out",  &s->out->conv1_out  },
+        { "conv2_out",  &s->out->conv2_out  },
+        { "d_model",    &s->out->d_model    },
+        { "ffn_dim",    &s->out->ffn_dim    },
+        { "num_layers", &s->out->num_layers },
+        { "num_heads",  &s->out->num_heads  },
+    };
+    for (size_t i = 0; i < sizeof(u32_extras) / sizeof(u32_extras[0]); ++i) {
+        if (vc_gguf_key_eq(key, s->want_prefix, u32_extras[i].suffix)) {
+            if (type != VC_GGUF_TYPE_UINT32) return -1;
+            uint32_t v = 0;
+            if (vc_gguf_read_u32(f, &v) != 0) return -1;
+            *u32_extras[i].target = (int)v;
+            return 1;
+        }
+    }
     return 0;
 }
 
@@ -305,230 +289,11 @@ int voice_gguf_load_metadata(const char *path,
     struct vc_gguf_load_state state = {
         .want_prefix = prefix,
         .out = out,
-        .alignment = 0,
     };
     const int rc = vc_gguf_walk(f, (uint64_t)kv_count,
                                  vc_gguf_load_state_cb, &state);
     fclose(f);
-    return rc;
-}
+    if (rc != 0) return rc;
 
-/* ---------------- tensor enumeration + load (K2) ---------------- */
-
-struct voice_gguf_bundle {
-    FILE *f;
-    int alignment;
-    int64_t tensor_data_base; /* absolute file offset of tensor data */
-    int n_tensors;
-    voice_gguf_tensor_desc_t *tensors; /* heap-allocated array */
-};
-
-static int64_t vc_gguf_align(int64_t off, int align) {
-    if (align <= 0) align = VC_GGUF_DEFAULT_ALIGN;
-    const int64_t rem = off % align;
-    return rem == 0 ? off : off + (align - rem);
-}
-
-/* element size in bytes for the supported ggml types. Returns 0 for
- * unsupported. */
-static size_t vc_ggml_type_size(int type) {
-    switch (type) {
-        case VC_GGML_TYPE_F32: return 4;
-        case VC_GGML_TYPE_F16: return 2;
-        default: return 0;
-    }
-}
-
-int voice_gguf_open_tensors(const char *path,
-                            const char *prefix,
-                            voice_gguf_metadata_t *meta_out,
-                            voice_gguf_bundle_t **out) {
-    if (out) *out = NULL;
-    if (!path || !prefix || !meta_out || !out) return -EINVAL;
-
-    memset(meta_out, 0, sizeof(*meta_out));
-
-    FILE *f = fopen(path, "rb");
-    if (!f) return -ENOENT;
-
-    char magic[4] = {0};
-    if (vc_gguf_read(f, magic, 4) != 0 ||
-        memcmp(magic, VC_GGUF_MAGIC, 4) != 0) {
-        fclose(f);
-        return -EINVAL;
-    }
-    uint32_t version = 0;
-    if (vc_gguf_read_u32(f, &version) != 0 ||
-        version < VC_GGUF_VERSION_MIN ||
-        version > VC_GGUF_VERSION_MAX) {
-        fclose(f);
-        return -EINVAL;
-    }
-    meta_out->gguf_version = (int)version;
-
-    int64_t tensor_count = 0;
-    int64_t kv_count = 0;
-    if (vc_gguf_read_i64(f, &tensor_count) != 0 ||
-        vc_gguf_read_i64(f, &kv_count) != 0 ||
-        tensor_count < 0 || kv_count < 0 || tensor_count > 1000000) {
-        fclose(f);
-        return -EINVAL;
-    }
-    meta_out->tensor_count = (int)tensor_count;
-
-    struct vc_gguf_load_state state = {
-        .want_prefix = prefix,
-        .out = meta_out,
-        .alignment = 0,
-    };
-    const int rc_kv = vc_gguf_walk(f, (uint64_t)kv_count,
-                                    vc_gguf_load_state_cb, &state);
-    if (rc_kv != 0) {
-        fclose(f);
-        return rc_kv;
-    }
-
-    const int alignment = state.alignment > 0
-        ? state.alignment : VC_GGUF_DEFAULT_ALIGN;
-
-    /* Parse the tensor info block. For each tensor we read:
-     *   name (str), n_dims (u32), dims (u64[n_dims]),
-     *   type (u32), offset (u64).
-     */
-    voice_gguf_tensor_desc_t *tensors = (voice_gguf_tensor_desc_t *)calloc(
-        (size_t)tensor_count, sizeof(*tensors));
-    if (!tensors) {
-        fclose(f);
-        return -ENOMEM;
-    }
-
-    for (int64_t i = 0; i < tensor_count; ++i) {
-        voice_gguf_tensor_desc_t *t = &tensors[i];
-        char *name = NULL;
-        int rc = vc_gguf_read_string(f, &name);
-        if (rc != 0 || !name) {
-            free(tensors);
-            fclose(f);
-            return rc != 0 ? rc : -EINVAL;
-        }
-        const size_t nlen = strlen(name);
-        if (nlen >= VOICE_GGUF_MAX_TENSOR_NAME) {
-            free(name);
-            free(tensors);
-            fclose(f);
-            return -EINVAL;
-        }
-        memcpy(t->name, name, nlen);
-        t->name[nlen] = '\0';
-        free(name);
-
-        uint32_t n_dims = 0;
-        if (vc_gguf_read_u32(f, &n_dims) != 0 || n_dims == 0 || n_dims > 4) {
-            free(tensors);
-            fclose(f);
-            return -EINVAL;
-        }
-        t->ndim = (int)n_dims;
-        t->n_elements = 1;
-        for (int d = 0; d < (int)n_dims; ++d) {
-            uint64_t dim = 0;
-            if (vc_gguf_read_u64(f, &dim) != 0 ||
-                dim == 0 || dim > (1ULL << 40)) {
-                free(tensors);
-                fclose(f);
-                return -EINVAL;
-            }
-            t->dims[d] = (int64_t)dim;
-            t->n_elements *= (int64_t)dim;
-        }
-        for (int d = (int)n_dims; d < 4; ++d) t->dims[d] = 1;
-
-        uint32_t tt = 0;
-        if (vc_gguf_read_u32(f, &tt) != 0) {
-            free(tensors);
-            fclose(f);
-            return -EINVAL;
-        }
-        t->ggml_type = (int)tt;
-
-        uint64_t off = 0;
-        if (vc_gguf_read_u64(f, &off) != 0) {
-            free(tensors);
-            fclose(f);
-            return -EINVAL;
-        }
-        /* Provisional offset relative to tensor_data_base. */
-        t->data_offset = (int64_t)off;
-
-        const size_t elsz = vc_ggml_type_size(t->ggml_type);
-        t->n_bytes = elsz > 0 ? (int64_t)(elsz * (size_t)t->n_elements) : 0;
-    }
-
-    /* The tensor data region starts at the next aligned position after
-     * the tensor info block. */
-    const long pos = ftell(f);
-    if (pos < 0) {
-        free(tensors);
-        fclose(f);
-        return -EINVAL;
-    }
-    const int64_t base = vc_gguf_align((int64_t)pos, alignment);
-    for (int64_t i = 0; i < tensor_count; ++i) {
-        tensors[i].data_offset += base;
-    }
-
-    voice_gguf_bundle_t *b = (voice_gguf_bundle_t *)calloc(1, sizeof(*b));
-    if (!b) {
-        free(tensors);
-        fclose(f);
-        return -ENOMEM;
-    }
-    b->f = f;
-    b->alignment = alignment;
-    b->tensor_data_base = base;
-    b->n_tensors = (int)tensor_count;
-    b->tensors = tensors;
-    *out = b;
     return 0;
-}
-
-int voice_gguf_tensor_count(const voice_gguf_bundle_t *b) {
-    return b ? b->n_tensors : 0;
-}
-
-const voice_gguf_tensor_desc_t *voice_gguf_tensor_at(
-    const voice_gguf_bundle_t *b, int idx) {
-    if (!b || idx < 0 || idx >= b->n_tensors) return NULL;
-    return &b->tensors[idx];
-}
-
-const voice_gguf_tensor_desc_t *voice_gguf_tensor_find(
-    const voice_gguf_bundle_t *b, const char *name) {
-    if (!b || !name) return NULL;
-    for (int i = 0; i < b->n_tensors; ++i) {
-        if (strcmp(b->tensors[i].name, name) == 0) return &b->tensors[i];
-    }
-    return NULL;
-}
-
-int voice_gguf_read_tensor_f32(const voice_gguf_bundle_t *b,
-                               const char *name,
-                               float *dst,
-                               size_t dst_capacity) {
-    if (!b || !name || !dst) return -EINVAL;
-    const voice_gguf_tensor_desc_t *t = voice_gguf_tensor_find(b, name);
-    if (!t) return -EINVAL;
-    if (t->ggml_type != VC_GGML_TYPE_F32) return -EINVAL;
-    if ((size_t)t->n_elements > dst_capacity) return -ENOSPC;
-    if (fseek(b->f, (long)t->data_offset, SEEK_SET) != 0) return -EIO;
-    if (fread(dst, sizeof(float), (size_t)t->n_elements, b->f)
-        != (size_t)t->n_elements) return -EIO;
-    return 0;
-}
-
-void voice_gguf_close_tensors(voice_gguf_bundle_t *b) {
-    if (!b) return;
-    if (b->f) fclose(b->f);
-    if (b->tensors) free(b->tensors);
-    free(b);
 }

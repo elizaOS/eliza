@@ -111,3 +111,20 @@ add_test(NAME voice_diarizer_parity_test COMMAND voice_diarizer_parity_test)
 set_tests_properties(voice_diarizer_parity_test PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
 )
+
+# K2 — WeSpeaker speaker-encoder ONNX parity gate. Loads the GGUF
+# emitted by scripts/voice_speaker_to_gguf.py and 10 PCM/ONNX
+# embedding fixtures from /tmp/k2-parity (or
+# $VOICE_SPEAKER_FIXTURE_DIR). Asserts cos(c-side, onnx) ≥ 0.99 plus
+# same/different-speaker discriminative gates. Returns 77 (skip) when
+# GGUF or fixtures are missing so the unit suite still runs on dev
+# machines without the upstream model staged.
+add_executable(voice_speaker_parity_test test/voice_speaker_parity_test.c)
+target_link_libraries(voice_speaker_parity_test PRIVATE voice_classifier)
+target_compile_options(voice_speaker_parity_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_speaker_parity_test
+         COMMAND voice_speaker_parity_test
+                 ${CMAKE_SOURCE_DIR}/../../../models/voice/speaker/wespeaker-resnet34-lm-fp32.gguf)
+set_tests_properties(voice_speaker_parity_test PROPERTIES
+    SKIP_RETURN_CODE 77
+)

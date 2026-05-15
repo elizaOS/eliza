@@ -1,6 +1,6 @@
 """Publish the Qwen3-ASR K-quant ladder + Q8_0 mmproj to HuggingFace.
 
-Target: ``elizaos/eliza-1-voice-asr`` (Apache-2.0, public).
+Target: ``elizaos/eliza-1`` (Apache-2.0, public) under ``voice/asr/``.
 
 Inputs:
 
@@ -9,7 +9,8 @@ Inputs:
   ``gguf_asr.json`` sidecars (the output of ``gguf_asr_apply.py``
   followed by ``eval_asr_wer.py``).
 - ``--readme`` rendered Markdown README to push verbatim.
-- ``--repo`` HF repo id (default ``elizaos/eliza-1-voice-asr``).
+- ``--repo`` HF repo id (default ``elizaos/eliza-1``).
+- ``--path-prefix`` remote path prefix inside the repo (default ``voice/asr``).
 
 The wrapper:
 
@@ -17,7 +18,7 @@ The wrapper:
 2. Creates the repo (idempotent) and sets ``license=apache-2.0``.
 3. Uploads each GGUF + the eval.json + sidecar + README via
    ``upload_file`` with explicit ``path_in_repo`` so the published
-   layout is flat.
+   layout matches ``voice/asr/<filename>`` under the consolidated repo.
 """
 
 from __future__ import annotations
@@ -36,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("--quant-dir", required=True, type=Path)
     ap.add_argument("--readme", required=True, type=Path)
-    ap.add_argument("--repo", default="elizaos/eliza-1-voice-asr")
+    ap.add_argument("--repo", default="elizaos/eliza-1")
+    ap.add_argument("--path-prefix", default="voice/asr")
     ap.add_argument("--quants", default="Q3_K_M,Q4_K_M,Q5_K_M,Q6_K,Q8_0")
     ap.add_argument("--mmproj-quant", default="Q8_0")
     ap.add_argument("--dry-run", action="store_true")
@@ -50,20 +52,21 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     quant_dir: Path = args.quant_dir
+    prefix = args.path_prefix.strip("/")
+    rp = (lambda name: f"{prefix}/{name}" if prefix else name)
     expected: list[tuple[Path, str]] = []
     for level in [q.strip() for q in args.quants.split(",") if q.strip()]:
         local = quant_dir / f"eliza-1-asr-{level}.gguf"
-        repo_path = f"qwen3-asr-{level.lower()}.gguf"
-        expected.append((local, repo_path))
+        expected.append((local, rp(f"eliza-1-asr-{level.lower()}.gguf")))
     expected.append(
         (
             quant_dir / f"eliza-1-asr-mmproj-{args.mmproj_quant}.gguf",
-            f"qwen3-asr-audio-mmproj-{args.mmproj_quant.lower()}.gguf",
+            rp(f"eliza-1-asr-mmproj.gguf"),
         )
     )
-    expected.append((quant_dir / "eval.json", "eval.json"))
-    expected.append((quant_dir / "gguf_asr.json", "gguf_asr.json"))
-    expected.append((args.readme, "README.md"))
+    expected.append((quant_dir / "eval.json", rp("eval.json")))
+    expected.append((quant_dir / "gguf_asr.json", rp("gguf_asr.json")))
+    expected.append((args.readme, rp("README.md")))
 
     missing = [str(p) for p, _ in expected if not p.exists()]
     if missing:

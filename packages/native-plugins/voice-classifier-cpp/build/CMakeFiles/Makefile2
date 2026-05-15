@@ -71,6 +71,7 @@ all: CMakeFiles/voice_speaker_distance_test.dir/all
 all: CMakeFiles/voice_mel_features_test.dir/all
 all: CMakeFiles/voice_gguf_loader_test.dir/all
 all: CMakeFiles/voice_diarizer_parity_test.dir/all
+all: CMakeFiles/voice_speaker_parity_test.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -86,6 +87,7 @@ clean: CMakeFiles/voice_speaker_distance_test.dir/clean
 clean: CMakeFiles/voice_mel_features_test.dir/clean
 clean: CMakeFiles/voice_gguf_loader_test.dir/clean
 clean: CMakeFiles/voice_diarizer_parity_test.dir/clean
+clean: CMakeFiles/voice_speaker_parity_test.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -295,6 +297,32 @@ voice_diarizer_parity_test: CMakeFiles/voice_diarizer_parity_test.dir/rule
 CMakeFiles/voice_diarizer_parity_test.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_diarizer_parity_test.dir/build.make CMakeFiles/voice_diarizer_parity_test.dir/clean
 .PHONY : CMakeFiles/voice_diarizer_parity_test.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/voice_speaker_parity_test.dir
+
+# All Build rule for target.
+CMakeFiles/voice_speaker_parity_test.dir/all: CMakeFiles/voice_classifier.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=35,36 "Built target voice_speaker_parity_test"
+.PHONY : CMakeFiles/voice_speaker_parity_test.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/voice_speaker_parity_test.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles 13
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/voice_speaker_parity_test.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles 0
+.PHONY : CMakeFiles/voice_speaker_parity_test.dir/rule
+
+# Convenience name for target.
+voice_speaker_parity_test: CMakeFiles/voice_speaker_parity_test.dir/rule
+.PHONY : voice_speaker_parity_test
+
+# clean rule for target.
+CMakeFiles/voice_speaker_parity_test.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_speaker_parity_test.dir/build.make CMakeFiles/voice_speaker_parity_test.dir/clean
+.PHONY : CMakeFiles/voice_speaker_parity_test.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

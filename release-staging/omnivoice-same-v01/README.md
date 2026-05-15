@@ -1,7 +1,7 @@
 ---
 language: en
 library_name: omnivoice
-base_model: elizaos/eliza-1-voice-omnivoice
+base_model: elizaos/eliza-1
 license: other
 license_name: research-only-her-derivative
 tags:
@@ -12,14 +12,15 @@ tags:
 - research-only
 ---
 
-# elizaos/eliza-1-voice-omnivoice-same-v01
+# elizaos/eliza-1 — voice/omnivoice/presets/voice-preset-same.bin
 
 OmniVoice frozen-conditioning **voice preset** for the `same` voice.
 
-This repo carries a single ELZ2 v2 preset file. The OmniVoice base LM
-(`omnivoice-base-*.gguf`) and tokenizer live in the umbrella
-[`elizaos/eliza-1-voice-omnivoice`](https://huggingface.co/elizaos/eliza-1-voice-omnivoice)
-repo; this preset binds that base to the `same` reference clips +
+This artifact is a single ELZ2 v2 preset file published under the
+consolidated [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)
+repo at `voice/omnivoice/presets/voice-preset-same.bin`. The OmniVoice
+base LM (`omnivoice-base-*.gguf`) and tokenizer live alongside it under
+`voice/omnivoice/`; this preset binds that base to the `same` reference clips +
 VoiceDesign instruct string. At runtime the
 `plugin-local-inference` FFI path loads the preset, encodes its reference
 clips on demand (`eliza_inference_encode_reference`), and streams TTS
@@ -44,7 +45,7 @@ conditioned on the resulting `[K=8, ref_T]` token tensor.
 - **Reference clips:** 2 clips (`sam_001`, `sam_003`), total ~13.48 s
 - **Reference seconds:** 13.48
 - **Instruct string:** `young adult female, warm, soft, neutral us-american; conversational pacing`
-- **Engine:** [`elizaos/eliza-1-voice-omnivoice`](https://huggingface.co/elizaos/eliza-1-voice-omnivoice) (Qwen3-0.6B bidir + RVQ codec)
+- **Engine:** [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1/tree/main/voice/omnivoice) `voice/omnivoice/` (Qwen3-0.6B bidir + RVQ codec)
 - **Preset size:** 716 bytes
 
 ## License & data provenance
@@ -62,9 +63,9 @@ and personal use only**. Do not redistribute the raw audio. The preset
 published here as a derivative work with attribution; commercial use
 requires explicit rights clearance from the upstream rights holders.
 
-The OmniVoice base LM in
-[`elizaos/eliza-1-voice-omnivoice`](https://huggingface.co/elizaos/eliza-1-voice-omnivoice)
-is Apache-2.0; the research-only constraint here is on the **preset
+The OmniVoice base LM under
+[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1/tree/main/voice/omnivoice)
+`voice/omnivoice/` is Apache-2.0; the research-only constraint here is on the **preset
 binding**, not the upstream base.
 
 ## Runtime integration

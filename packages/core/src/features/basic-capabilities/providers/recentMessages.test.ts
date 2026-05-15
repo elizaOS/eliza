@@ -16,6 +16,7 @@ function makeMemory(
 	text: string,
 	source: string,
 	createdAt: number,
+	metadata?: Record<string, unknown>,
 ): Memory {
 	return {
 		id,
@@ -23,7 +24,7 @@ function makeMemory(
 		roomId: ROOM_ID,
 		entityId,
 		createdAt,
-		content: { text, source },
+		content: { text, source, ...(metadata ? { metadata } : {}) },
 	} as Memory;
 }
 
@@ -73,6 +74,137 @@ describe("recentMessagesProvider", () => {
 		expect(result.data?.recentMessages).toHaveLength(2);
 		expect(result.text).toContain("Agent: done");
 		expect(result.text?.match(/Agent: done/g)).toHaveLength(1);
+	});
+
+	it("omits prior sub-agent router transcripts from dialogue history", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "build the app", "discord", 1000),
+			makeMemory(
+				"msg-2",
+				"00000000-0000-0000-0000-000000000004",
+				"[sub-agent: app build (opencode) — task_complete]\n[tool output: list files]\nnoisy transcript",
+				"acpx:sub-agent-router",
+				2000,
+				{ subAgent: true },
+			),
+			makeMemory("msg-3", AGENT_ID, "https://example.com/app", "discord", 3000),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "next task", "discord", 4000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(2);
+		expect(result.text).toContain("User: build the app");
+		expect(result.text).toContain("Agent: https://example.com/app");
+		expect(result.text).not.toContain("[sub-agent:");
+		expect(result.text).not.toContain("noisy transcript");
+	});
+
+	it("omits leaked assistant tool transcripts from dialogue history", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "build the app", "discord", 1000),
+			makeMemory(
+				"msg-2",
+				AGENT_ID,
+				"[tool output: list files]\nsecretly long transcript\n[/tool output]",
+				"discord",
+				2000,
+			),
+			makeMemory(
+				"msg-3",
+				USER_ID,
+				"why did [tool output:] show up?",
+				"discord",
+				3000,
+			),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "next task", "discord", 4000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(2);
+		expect(result.text).toContain("User: build the app");
+		expect(result.text).toContain("why did [tool output:] show up?");
+		expect(result.text).not.toContain("secretly long transcript");
+	});
+
+	it("omits leaked assistant local path dumps from dialogue history", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "build the app", "discord", 1000),
+			makeMemory(
+				"msg-2",
+				AGENT_ID,
+				[
+					"/workspace/app/.next/static/chunks/a.js",
+					"/workspace/app/.next/static/chunks/b.js",
+					"/workspace/app/.git/index",
+					"/workspace/app/data/apps/demo/index.html",
+					"/workspace/app/data/apps/demo/app.js",
+				].join("\n"),
+				"discord",
+				2000,
+			),
+			makeMemory(
+				"msg-3",
+				USER_ID,
+				"the app path is /workspace/app",
+				"discord",
+				3000,
+			),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "next task", "discord", 4000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(2);
+		expect(result.text).toContain("User: build the app");
+		expect(result.text).toContain("the app path is /workspace/app");
+		expect(result.text).not.toContain(".next/static/chunks");
+	});
+
+	it("dedupes repeated assistant messages within one assistant run", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "build app one", "discord", 1000),
+			makeMemory("msg-2", AGENT_ID, "On it", "discord", 2000),
+			makeMemory(
+				"msg-3",
+				AGENT_ID,
+				"https://example.com/app-one",
+				"discord",
+				3000,
+			),
+			makeMemory("msg-4", AGENT_ID, "On it", "discord", 4000),
+			makeMemory(
+				"msg-5",
+				AGENT_ID,
+				"https://example.com/app-one",
+				"discord",
+				5000,
+			),
+			makeMemory("msg-6", USER_ID, "build app two", "discord", 6000),
+			makeMemory("msg-7", AGENT_ID, "On it", "discord", 7000),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "status", "discord", 8000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text?.match(/Agent: On it/g)).toHaveLength(2);
+		expect(result.text?.match(/https:\/\/example\.com\/app-one/g)).toHaveLength(
+			1,
+		);
+		expect(result.text).toContain("User: build app two");
 	});
 
 	it("omits consecutive duplicate dialogue rows from the same sender", async () => {

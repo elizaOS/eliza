@@ -113,8 +113,8 @@
           "sha256": "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
           "assetStatus": "available",
           "stagedPath": "models/voice/turn-detector-en/model_q8.onnx",
-          "sourceRepo": "elizaos/eliza-1-voice-turn",
-          "sourcePath": "onnx/model_q8.onnx",
+          "sourceRepo": "elizaos/eliza-1",
+          "sourcePath": "voice/turn-detector/onnx/model_q8.onnx",
           "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
         },
         {
@@ -127,8 +127,8 @@
           "sha256": "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
           "assetStatus": "available",
           "stagedPath": "models/voice/turn-detector-en-q8.gguf",
-          "sourceRepo": "elizaos/eliza-1-voice-turn",
-          "sourcePath": "onnx/turn-detector-en-q8.gguf",
+          "sourceRepo": "elizaos/eliza-1",
+          "sourcePath": "voice/turn-detector/onnx/turn-detector-en-q8.gguf",
           "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
         }
       ],
@@ -254,7 +254,7 @@
           "stagedPath": "artifacts/i2-kokoro-ship/20260515T112744Z/af_sam.bin",
           "sourceRepo": "local-kokoro-same-sweep",
           "sourcePath": "packages/training/out/kokoro-same-sweep/anchor-0.2/af_same-anchor-0.2.bin",
-          "hfPath": "elizaos/eliza-1-voice-kokoro:voices/af_sam.bin",
+          "hfPath": "elizaos/eliza-1:voice/kokoro/voices/af_sam.bin",
           "hfRevision": "4b8809b197aa90ae486f83c1e0a5dc7effb6b285"
         }
       ],

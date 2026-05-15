@@ -5,13 +5,18 @@
  */
 
 import crypto from "crypto";
-import { type ApiKey, apiKeysRepository, type NewApiKey } from "@/db/repositories";
+import {
+  type ApiKey,
+  apiKeysRepository,
+  type NewApiKey,
+} from "@/db/repositories";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "@/lib/pricing";
 import { logger } from "@/lib/utils/logger";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
@@ -46,7 +51,10 @@ const API_KEY_NEGATIVE_TTL_SECONDS = 60;
 function isNegativeApiKeySentinel(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const marker = Object.getOwnPropertyDescriptor(value, "__none");
-  return marker !== undefined && Object.is(marker.value, API_KEY_NEGATIVE_SENTINEL.__none);
+  return (
+    marker !== undefined &&
+    Object.is(marker.value, API_KEY_NEGATIVE_SENTINEL.__none)
+  );
 }
 
 /**
@@ -122,7 +130,11 @@ export class ApiKeysService {
     // Negative cache: prevent a flood of bad keys from hammering the DB.
     // Short TTL so a freshly-created key isn't blocked by a stale negative entry
     // from a recent typo'd attempt.
-    await cache.set(cacheKey, API_KEY_NEGATIVE_SENTINEL, API_KEY_NEGATIVE_TTL_SECONDS);
+    await cache.set(
+      cacheKey,
+      API_KEY_NEGATIVE_SENTINEL,
+      API_KEY_NEGATIVE_TTL_SECONDS,
+    );
     return null;
   }
 
@@ -169,7 +181,9 @@ export class ApiKeysService {
     return await apiKeysRepository.listByOrganization(organizationId);
   }
 
-  async create(data: Omit<NewApiKey, "key" | "key_hash" | "key_prefix">): Promise<{
+  async create(
+    data: Omit<NewApiKey, "key" | "key_hash" | "key_prefix">,
+  ): Promise<{
     apiKey: ApiKey;
     plainKey: string;
   }> {
@@ -188,7 +202,10 @@ export class ApiKeysService {
     };
   }
 
-  async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
+  async update(
+    id: string,
+    data: Partial<NewApiKey>,
+  ): Promise<ApiKey | undefined> {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);
     if (existing) {
@@ -213,7 +230,10 @@ export class ApiKeysService {
   }
 
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {
-    const existingKeys = await apiKeysRepository.findByUserAndName(userId, name);
+    const existingKeys = await apiKeysRepository.findByUserAndName(
+      userId,
+      name,
+    );
 
     for (const key of existingKeys) {
       await this.invalidateCache(key.key_hash);
@@ -224,8 +244,22 @@ export class ApiKeysService {
 
   // Sandbox-scoped keys are named "agent-sandbox:<id>". Listing/revoking by that
   // canonical name is enough — no need for a separate metadata column today.
+  static readonly AGENT_KEY_NAME_PREFIX = "agent-sandbox:";
+
   private static agentApiKeyName(agentSandboxId: string): string {
-    return `agent-sandbox:${agentSandboxId}`;
+    return `${ApiKeysService.AGENT_KEY_NAME_PREFIX}${agentSandboxId}`;
+  }
+
+  /**
+   * Returns true when `name` identifies a sandbox-scoped key. These keys are
+   * lifecycle-managed by the provisioner (`createForAgent` /
+   * `revokeForAgent`) and must never appear in the user-facing API key list
+   * nor be mutable from the user dashboard — otherwise a user could delete a
+   * key their own running agent depends on and break inference until the
+   * sandbox is re-provisioned.
+   */
+  static isAgentSandboxKey(key: Pick<ApiKey, "name">): boolean {
+    return key.name.startsWith(ApiKeysService.AGENT_KEY_NAME_PREFIX);
   }
 
   async createForAgent(params: {

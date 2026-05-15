@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Consolidate split Eliza-1 voice payload repos into ``elizaos/eliza-1``.
 
+DEPRECATED (2026-05-15): the migration described below is complete. The
+legacy ``elizaos/eliza-1-voice-*`` repos have been removed and every voice
+asset now lives under ``elizaos/eliza-1`` at ``voice/<model-id>/...``. The
+``LEGACY_REPOS`` map is retained as a historical record of the migration
+source. This script will fail loudly if invoked because the source repos
+no longer exist; do not run it on a fresh checkout.
+
 This script is intentionally conservative:
 
 * Read-only audit is the default.
