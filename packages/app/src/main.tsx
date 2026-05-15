@@ -27,7 +27,8 @@ import {
   runIosFullBunSmokeIfRequested,
 } from "@elizaos/app-core";
 import { Desktop } from "@elizaos/capacitor-desktop";
-import { ELIZA_DEFAULT_THEME, getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared";
+import { ELIZA_DEFAULT_THEME } from "@elizaos/ui";
 import type { BrandingConfig } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,

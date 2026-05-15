@@ -38,7 +38,11 @@ export * from "./api";
 export * from "./api/ios-local-agent-transport";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
+export * from "./avatar-runtime";
+export * from "./backgrounds";
 export * from "./bridge";
+export * from "./companion";
+export * from "./components/onboarding/states";
 export * from "./character-catalog";
 export * from "./chat";
 export type {
