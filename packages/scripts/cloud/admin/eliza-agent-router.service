@@ -12,7 +12,7 @@ WorkingDirectory=/opt/eliza/cloud
 EnvironmentFile=/opt/eliza/cloud/.env.local
 # Use the installed workspace binary directly to avoid `npx` startup overhead.
 Environment=NODE_OPTIONS=--max-old-space-size=512
-ExecStart=/opt/eliza/cloud/node_modules/.bin/tsx packages/scripts/cloud/admin/daemons/agent-router.ts
+ExecStart=/opt/eliza/cloud/node_modules/.bin/tsx /opt/eliza/packages/scripts/cloud/admin/daemons/agent-router.ts
 
 Restart=always
 RestartSec=5
