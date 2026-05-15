@@ -11,24 +11,14 @@ _DATA: dict[str, Any] = {
             "dob": "1990-04-05",
             "payment_methods": {
                 "certificate_7504069": {"source": "certificate", "amount": 250},
-                "credit_card_4421486": {
-                    "source": "credit_card",
-                    "brand": "visa",
-                    "last_four": "7447",
-                },
+                "credit_card_4421486": {"source": "credit_card", "brand": "visa", "last_four": "7447"},
             },
             "reservations": [],
         },
         "olivia_gonzalez_2305": {
             "name": {"first_name": "Olivia", "last_name": "Gonzalez"},
             "dob": "1988-02-14",
-            "payment_methods": {
-                "credit_card_8712001": {
-                    "source": "credit_card",
-                    "brand": "visa",
-                    "last_four": "8712",
-                }
-            },
+            "payment_methods": {"credit_card_8712001": {"source": "credit_card", "brand": "visa", "last_four": "8712"}},
             "reservations": ["Z7GOZK"],
         },
     },
@@ -59,21 +49,7 @@ _DATA: dict[str, Any] = {
             "destination": "ORD",
             "scheduled_departure_time_est": "2024-05-20 12:00:00",
             "scheduled_arrival_time_est": "2024-05-20 14:00:00",
-            "dates": {
-                "2024-05-20": {
-                    "status": "available",
-                    "available_seats": {
-                        "basic_economy": 5,
-                        "economy": 5,
-                        "business": 2,
-                    },
-                    "prices": {
-                        "basic_economy": 100,
-                        "economy": 125,
-                        "business": 300,
-                    },
-                }
-            },
+            "dates": {"2024-05-20": {"status": "available", "available_seats": {"basic_economy": 5, "economy": 5, "business": 2}, "prices": {"basic_economy": 100, "economy": 125, "business": 300}}},
         },
         "HAT039": {
             "flight_number": "HAT039",
@@ -81,21 +57,7 @@ _DATA: dict[str, Any] = {
             "destination": "SEA",
             "scheduled_departure_time_est": "2024-05-20 15:00:00",
             "scheduled_arrival_time_est": "2024-05-20 18:00:00",
-            "dates": {
-                "2024-05-20": {
-                    "status": "available",
-                    "available_seats": {
-                        "basic_economy": 5,
-                        "economy": 5,
-                        "business": 2,
-                    },
-                    "prices": {
-                        "basic_economy": 110,
-                        "economy": 130,
-                        "business": 320,
-                    },
-                }
-            },
+            "dates": {"2024-05-20": {"status": "available", "available_seats": {"basic_economy": 5, "economy": 5, "business": 2}, "prices": {"basic_economy": 110, "economy": 130, "business": 320}}},
         },
     },
 }

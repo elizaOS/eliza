@@ -4,24 +4,6 @@ vi.mock("./registry", () => ({
 	listInstalledModels: vi.fn(async () => []),
 }));
 
-vi.mock("./dflash-server", () => ({
-	dflashLlamaServer: {
-		hasLoadedModel: vi.fn(() => false),
-		getMetrics: vi.fn(async () => null),
-	},
-	getDflashRuntimeStatus: vi.fn(() => ({
-		enabled: false,
-		required: false,
-		binaryPath: null,
-		reason: "mocked in dflash-doctor.test",
-		capabilities: null,
-	})),
-	validateDflashDrafterCompatibility: vi.fn(() => ({
-		compatible: true,
-		reason: "mocked in dflash-doctor.test",
-	})),
-}));
-
 afterEach(() => {
 	vi.restoreAllMocks();
 });

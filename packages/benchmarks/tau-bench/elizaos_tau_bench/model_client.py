@@ -5,53 +5,39 @@ from __future__ import annotations
 from typing import Any
 
 
-_PROVIDER_ONLY_MESSAGE_FIELDS = {
-    "provider_specific_fields",
-    "reasoning_content",
-}
+def completion(*args: Any, **kwargs: Any) -> Any:
+    if "messages" in kwargs and isinstance(kwargs["messages"], list):
+        kwargs = {
+            **kwargs,
+            "messages": [
+                {
+                    k: v
+                    for k, v in message.items()
+                    if k not in {"provider_specific_fields", "reasoning_content"}
+                }
+                if isinstance(message, dict)
+                else message
+                for message in kwargs["messages"]
+            ],
+        }
+    from litellm import completion as litellm_completion
 
-
-def _portable_message(message: Any) -> Any:
-    if not isinstance(message, dict):
-        return message
-    portable = dict(message)
-    for field in _PROVIDER_ONLY_MESSAGE_FIELDS:
-        portable.pop(field, None)
-    return portable
-
-
-def _portable_messages(messages: Any) -> Any:
-    if not isinstance(messages, list):
-        return messages
-    return [_portable_message(message) for message in messages]
-
-
-def _patch_response_message_dump(response: Any) -> Any:
+    response = litellm_completion(*args, **kwargs)
     try:
         message = response.choices[0].message
+        model_dump = message.model_dump
     except Exception:
         return response
 
-    model_dump = getattr(message, "model_dump", None)
-    if not callable(model_dump):
-        return response
-
-    def portable_model_dump(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        return _portable_message(model_dump(*args, **kwargs))
+    def portable_model_dump(*dump_args: Any, **dump_kwargs: Any) -> dict[str, Any]:
+        dumped = model_dump(*dump_args, **dump_kwargs)
+        if isinstance(dumped, dict):
+            dumped.pop("provider_specific_fields", None)
+            dumped.pop("reasoning_content", None)
+        return dumped
 
     try:
-        setattr(message, "model_dump", portable_model_dump)
+        message.model_dump = portable_model_dump
     except Exception:
         pass
     return response
-
-
-def completion(*args: Any, **kwargs: Any) -> Any:
-    if "messages" in kwargs:
-        kwargs = {**kwargs, "messages": _portable_messages(kwargs["messages"])}
-    from litellm import completion as litellm_completion
-
-    return _patch_response_message_dump(litellm_completion(*args, **kwargs))
-
-
-__all__ = ["completion"]

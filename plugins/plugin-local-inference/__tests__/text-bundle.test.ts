@@ -134,7 +134,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 			it("declares a kvCache profile (TurboQuant / QJL / PolarQuant types) — these are wired into llama-server args at boot", () => {
 				expect(model?.runtime?.kvCache).toBeTruthy();
 				expect(model?.runtime?.kvCache?.typeK).toBe("qjl1_256");
-				expect(model?.runtime?.kvCache?.typeV).toBe("tbq3_0");
+				expect(model?.runtime?.kvCache?.typeV).toBe("q4_polar");
 				expect(model?.runtime?.kvCache?.requiresFork).toBe("buun-llama-cpp");
 			});
 		});
