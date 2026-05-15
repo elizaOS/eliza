@@ -144,8 +144,7 @@ export class PhraseChunkedTts {
   constructor(tts: TtsHandler, opts: PhraseChunkedTtsOptions = {}) {
     this.tts = tts;
     this.opts = opts;
-    this.clock =
-      opts.clock ?? (() => globalThis.performance?.now?.());
+    this.clock = opts.clock ?? (() => globalThis.performance?.now?.());
     const Chunker = requirePhraseChunker();
     this.chunker = new Chunker(
       opts.chunker ?? { chunkOn: "punctuation" },

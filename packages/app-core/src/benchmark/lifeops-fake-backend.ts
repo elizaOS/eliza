@@ -1341,8 +1341,7 @@ export class LifeOpsFakeBackend {
       throw new Error("MESSAGE/draft_reply requires messageId");
     }
     const parent = this.stores.email[parentId];
-    const threadId =
-      parent?.thread_id;
+    const threadId = parent?.thread_id;
     const body = pickString(kw, ["body"], "");
     const subject = parent
       ? `Re: ${parent.subject}`
