@@ -146,7 +146,6 @@ function nowMs(): number {
 // ---------------------------------------------------------------------------
 
 type GroqPluginModule = { groqPlugin?: Plugin; default?: Plugin };
-type LocalEmbeddingPluginModule = { localEmbeddingPlugin?: Plugin; default?: Plugin };
 
 async function resolveGroqPlugin(): Promise<Plugin> {
   let mod: GroqPluginModule;
@@ -163,12 +162,11 @@ async function resolveGroqPlugin(): Promise<Plugin> {
 }
 
 async function resolveLocalEmbeddingPlugin(): Promise<Plugin | null> {
-  try {
-    const mod = (await import("@elizaos/plugin-local-inference")) as LocalEmbeddingPluginModule;
-    return mod?.localEmbeddingPlugin ?? mod?.default ?? null;
-  } catch {
-    return null;
-  }
+  // Intentionally do not load plugin-local-inference here — it requires a
+  // running Eliza-1 backend (model server) which isn't needed for the
+  // three-agent dialogue harness (Groq handles TTS + ASR).
+  // We return null so the runtime skips embedding setup entirely.
+  return null;
 }
 
 // ---------------------------------------------------------------------------
