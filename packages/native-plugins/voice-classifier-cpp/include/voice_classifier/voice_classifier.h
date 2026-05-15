@@ -221,7 +221,7 @@ VOICE_CLASSIFIER_API int voice_speaker_embed(voice_speaker_handle h,
 VOICE_CLASSIFIER_API int voice_speaker_close(voice_speaker_handle h);
 
 /*
- * Cosine distance between two 192-dim speaker embeddings. Defined as
+ * Cosine distance between two 256-dim speaker embeddings. Defined as
  * `1 - cos_similarity(a, b)`, range `[0, 2]`:
  *
  *   identical / parallel       → 0
