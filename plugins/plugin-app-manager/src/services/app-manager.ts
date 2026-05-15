@@ -247,14 +247,14 @@ function flattenAppInfo<T extends RegistryPluginInfo>(appInfo: T): T {
   if (!meta) return appInfo;
   return {
     ...appInfo,
-    displayName: meta.displayName ?? appInfo.displayName,
-    launchType: meta.launchType ?? appInfo.launchType,
+    displayName: meta.displayName,
+    launchType: meta.launchType,
     launchUrl:
       substituteTemplateVars(meta.launchUrl ?? appInfo.launchUrl ?? "") || null,
     icon: meta.icon ?? appInfo.icon,
     heroImage: resolveAppHeroImage(appInfo.name, meta.heroImage ?? null),
-    category: meta.category ?? appInfo.category,
-    capabilities: meta.capabilities ?? appInfo.capabilities,
+    category: meta.category,
+    capabilities: meta.capabilities,
     uiExtension: meta.uiExtension ?? appInfo.uiExtension,
     viewer: resolveDisplayViewerInfo(meta.viewer ?? appInfo.viewer),
     session: meta.session ?? appInfo.session,
@@ -481,10 +481,10 @@ function mergeAppMeta(
   if (!meta) return;
   appInfo.viewer = meta.viewer ?? appInfo.viewer;
   appInfo.launchUrl = meta.launchUrl ?? appInfo.launchUrl;
-  appInfo.launchType = meta.launchType ?? appInfo.launchType;
-  appInfo.displayName = meta.displayName ?? appInfo.displayName;
-  appInfo.category = meta.category ?? appInfo.category;
-  appInfo.capabilities = meta.capabilities ?? appInfo.capabilities;
+  appInfo.launchType = meta.launchType;
+  appInfo.displayName = meta.displayName;
+  appInfo.category = meta.category;
+  appInfo.capabilities = meta.capabilities;
   appInfo.icon = meta.icon ?? appInfo.icon;
   appInfo.runtimePlugin = meta.runtimePlugin ?? appInfo.runtimePlugin;
   appInfo.session = meta.session ?? appInfo.session;
@@ -578,7 +578,7 @@ function isLocalPlugin(appInfo: RegistryPluginInfo): boolean {
   }
 
   // Check for directory names that match the app
-  // E.g., @elizaos/app-babylon -> app-babylon
+  // E.g., @elizaos/plugin-babylon -> app-babylon
   const bareName = appInfo.name.replace(/^@[^/]+\//, "");
   const possibleDirs = [bareName, appInfo.name.replace("/", "-")];
 
@@ -688,7 +688,7 @@ function buildViewerUrl(
   });
   const [beforeHash, hashPartRaw] = resolvedBaseUrl.split("#", 2);
   const [pathPart, queryPartRaw] = beforeHash.split("?", 2);
-  const queryParams = new URLSearchParams(queryPartRaw ?? "");
+  const queryParams = new URLSearchParams(queryPartRaw);
   for (const [key, rawValue] of Object.entries(embedParams)) {
     const nextValue = substituteTemplateVars(rawValue, {
       preserveUnknown: false,
@@ -1020,7 +1020,7 @@ function isRuntimePluginActive(
   ]);
   return runtime.plugins.some(
     (plugin) =>
-      typeof plugin?.name === "string" && pluginNames.has(plugin.name),
+      typeof plugin.name === "string" && pluginNames.has(plugin.name),
   );
 }
 

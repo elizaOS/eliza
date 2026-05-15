@@ -332,7 +332,7 @@ function formatPersonSummary(person: RelationshipsPersonSummary): string {
   if (person.categories.length > 0)
     parts.push(`Categories: ${person.categories.join(", ")}`);
   if (person.tags.length > 0) parts.push(`Tags: ${person.tags.join(", ")}`);
-  if (person.profiles?.length > 0) {
+  if (person.profiles.length > 0) {
     parts.push(
       `Profiles: ${person.profiles
         .map((profile) => {
@@ -870,7 +870,7 @@ async function handleUpdate(
   if (explicitName) {
     updated.names = [
       explicitName,
-      ...(existing.names ?? []).filter((n) => n !== explicitName),
+      ...existing.names.filter((n) => n !== explicitName),
     ];
   }
 
@@ -1008,10 +1008,7 @@ async function handleUpdateContactInfo(
       ? readRecord(params.customFields)
       : (params.customFields as Record<string, string> | undefined);
   if (newCustom) {
-    const existingCustom = (contact.customFields ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const existingCustom = contact.customFields as Record<string, unknown>;
     if (operation === "add_to") {
       updateData.customFields = { ...existingCustom, ...newCustom };
     } else if (operation === "remove_from") {
@@ -1146,7 +1143,7 @@ async function handleUpdateComponent(
         entityName,
         componentType,
         componentData: componentData as ProviderValue,
-        existingComponentId: existing.id ?? null,
+        existingComponentId: existing.id,
       },
     };
   }
@@ -1655,7 +1652,7 @@ async function handleActivity(
     });
     for (const fact of recentFacts) {
       const text =
-        typeof fact.content?.text === "string" ? fact.content.text.trim() : "";
+        typeof fact.content.text === "string" ? fact.content.text.trim() : "";
       if (!text) continue;
 
       const person = fact.entityId
@@ -1682,7 +1679,7 @@ async function handleActivity(
       activity.push({
         type: "fact",
         personName: person?.personName ?? "Unknown person",
-        personId: person?.personId ?? fact.entityId ?? "unknown",
+        personId: person?.personId ?? fact.entityId,
         summary: person?.personName
           ? `Fact for ${person.personName}`
           : "Fact extracted",

@@ -132,7 +132,7 @@ try {
 
 function isBunRuntime(): boolean {
   return (
-    typeof process !== "undefined" && typeof process.versions?.bun === "string"
+    typeof process !== "undefined" && typeof process.versions.bun === "string"
   );
 }
 

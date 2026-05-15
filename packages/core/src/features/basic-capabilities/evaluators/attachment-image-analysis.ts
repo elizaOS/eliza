@@ -52,7 +52,7 @@ const SCHEMA: JSONSchema = {
 };
 
 function hasImageAttachment(message: Memory): boolean {
-	const attachments = message.content?.attachments;
+	const attachments = message.content.attachments;
 	if (!Array.isArray(attachments) || attachments.length === 0) {
 		return false;
 	}
@@ -63,7 +63,7 @@ function isImageAttachment(attachment: Media): boolean {
 	if (attachment.contentType === ContentType.IMAGE) {
 		return true;
 	}
-	const url = attachment.url ?? "";
+	const url = attachment.url;
 	return /\.(png|jpe?g|gif|webp|bmp|heic|heif)(?:$|\?)/i.test(url);
 }
 
@@ -108,7 +108,7 @@ async function analyzeImageAttachment(
 	runtime: IAgentRuntime,
 	attachment: Media,
 ): Promise<AnalysisRecord | null> {
-	const imageUrl = attachment.url?.trim();
+	const imageUrl = attachment.url.trim();
 	if (!imageUrl) {
 		return null;
 	}
@@ -181,7 +181,7 @@ export const attachmentImageAnalysisEvaluator: Evaluator<
 	},
 
 	async prepare({ runtime, message }) {
-		const attachments = (message.content?.attachments ?? []) as Media[];
+		const attachments = (message.content.attachments ?? []) as Media[];
 		const imageAttachments = attachments.filter(isImageAttachment);
 		const analyses: AnalysisRecord[] = [];
 
@@ -194,7 +194,7 @@ export const attachmentImageAnalysisEvaluator: Evaluator<
 				analyses.push(analysis);
 				await persistAnalysis(runtime, message, analysis);
 			} catch (error) {
-				runtime.logger?.warn?.(
+				runtime.logger.warn(
 					{
 						src: "evaluator:attachment-image-analysis",
 						agentId: runtime.agentId,

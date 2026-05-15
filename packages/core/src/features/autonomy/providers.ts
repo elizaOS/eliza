@@ -51,7 +51,7 @@ export const adminChatProvider: Provider = {
 				};
 			}
 
-			const autonomousRoomId = autonomyService.getAutonomousRoomId?.();
+			const autonomousRoomId = autonomyService.getAutonomousRoomId();
 			if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
 				return {
 					text: "",
@@ -202,7 +202,7 @@ export const autonomyStatusProvider: Provider = {
 				};
 			}
 
-			const autonomousRoomId = autonomyService.getAutonomousRoomId?.();
+			const autonomousRoomId = autonomyService.getAutonomousRoomId();
 			if (autonomousRoomId && message.roomId === autonomousRoomId) {
 				return {
 					text: "",
@@ -211,9 +211,9 @@ export const autonomyStatusProvider: Provider = {
 			}
 
 			const autonomyEnabled = runtime.enableAutonomy;
-			const serviceRunning = autonomyService.isLoopRunning?.() || false;
+			const serviceRunning = autonomyService.isLoopRunning() || false;
 			const interval = Math.min(
-				autonomyService.getLoopInterval?.() || 30000,
+				autonomyService.getLoopInterval() || 30000,
 				MAX_AUTONOMY_INTERVAL_MS,
 			);
 

@@ -18,9 +18,11 @@ const ignoredDirs = new Set([
   ".git",
   ".next",
   ".turbo",
+  ".venv",
   "build",
   "dist",
   "node_modules",
+  "venv",
 ]);
 
 function collectPackageJsons(dir, out = []) {

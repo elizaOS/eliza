@@ -51,7 +51,6 @@ export function useElizaAppProvisioningChat(active: boolean) {
 
   const isReady = containerStatus === "running" && bridgeUrl !== null;
 
-  // Kick off provisioning once when the hook becomes active.
   useEffect(() => {
     if (!active || provisionedRef.current) return;
     provisionedRef.current = true;
@@ -70,12 +69,11 @@ export function useElizaAppProvisioningChat(active: boolean) {
           if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
         }
       } catch {
-        // Provisioning call failure is non-fatal; polling will pick up the status.
+        return;
       }
     })();
   }, [active]);
 
-  // Poll container status every 5 seconds.
   useEffect(() => {
     if (!active || isReady) return;
     stoppedRef.current = false;
@@ -108,7 +106,7 @@ export function useElizaAppProvisioningChat(active: boolean) {
           }
         }
       } catch {
-        // Best-effort; network failures are transient.
+        return;
       }
     };
 
@@ -118,7 +116,6 @@ export function useElizaAppProvisioningChat(active: boolean) {
       stoppedRef.current = true;
       clearInterval(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, isReady, containerStatus, agentId]);
 
   const sendMessage = useCallback(

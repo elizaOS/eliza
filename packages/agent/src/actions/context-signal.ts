@@ -112,7 +112,7 @@ export function collectKeywordTermMatchesForKey(
 // ── Public API ───────────────────────────────────────────────────────────
 
 export function messageText(message: Memory): string {
-  const content = message?.content;
+  const content = message.content;
   if (!content) return "";
   if (typeof content === "string") return content;
   return typeof content.text === "string" ? content.text : "";

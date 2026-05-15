@@ -80,7 +80,7 @@ function pruneMainChatTail(
   now: number,
 ): Memory[] {
   const ordered = [...memories]
-    .filter((entry) => (entry.content?.text ?? "").trim().length > 0)
+    .filter((entry) => (entry.content.text ?? "").trim().length > 0)
     .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
 
   // Trim trailing assistant-only run (an assistant message that the user never replied to).
@@ -136,7 +136,7 @@ async function fetchSourceTail(
   }
   return pruned.map((mem) => ({
     speaker: formatSpeakerLabel(runtime, mem),
-    text: (mem.content?.text ?? "").slice(0, 280),
+    text: (mem.content.text ?? "").slice(0, 280),
     ageLabel: formatRelativeTimestamp(mem.createdAt),
     role: inferRole(mem, runtime.agentId),
   }));
@@ -279,7 +279,7 @@ function dedupeApps(
   for (const group of groups) {
     if (!group) continue;
     for (const app of group) {
-      if (!app?.name || apps.has(app.name)) continue;
+      if (!app.name || apps.has(app.name)) continue;
       apps.set(app.name, app);
     }
   }
@@ -307,7 +307,7 @@ async function renderAppsLiveState(): Promise<string | null> {
   if (activeRuns.length > 0) {
     lines.push("Running apps:");
     for (const run of activeRuns.slice(0, 8)) {
-      const health = run.health?.state ? ` health=${run.health.state}` : "";
+      const health = run.health.state ? ` health=${run.health.state}` : "";
       const viewer = run.viewerAttachment
         ? ` viewer=${run.viewerAttachment}`
         : "";
@@ -640,7 +640,7 @@ async function renderAutomationsLiveState(
       `Live automations state: ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
     ];
     for (const task of tasks.slice(0, 8)) {
-      const name = task.name ?? "(unnamed task)";
+      const name = task.name;
       const tagList =
         Array.isArray(task.tags) && task.tags.length > 0
           ? ` [${task.tags.join(", ")}]`

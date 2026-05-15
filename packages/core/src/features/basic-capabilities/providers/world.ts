@@ -168,12 +168,12 @@ export const worldProvider: Provider = {
 
 		// Categorize rooms by type
 		for (const room of worldRooms) {
-			if (!room?.id || !room.name) {
+			if (!room.id || !room.name) {
 				logger.warn(
 					{
 						src: "plugin:basic-capabilities:provider:world",
 						agentId: runtime.agentId,
-						roomId: room?.id,
+						roomId: room.id,
 					},
 					"Room ID or name is missing",
 				);

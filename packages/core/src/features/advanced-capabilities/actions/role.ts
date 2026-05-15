@@ -277,7 +277,7 @@ async function getRecentRoomActivity(
 		limit: RECENT_ROOM_MESSAGE_LIMIT,
 	});
 	for (const memory of memories) {
-		if (!memory?.entityId || typeof memory.createdAt !== "number") continue;
+		if (!memory.entityId || typeof memory.createdAt !== "number") continue;
 		const id = memory.entityId as UUID;
 		const previous = activity.get(id) ?? 0;
 		if (memory.createdAt > previous) activity.set(id, memory.createdAt);
@@ -296,7 +296,7 @@ async function resolveTargetEntityIdByName(args: {
 
 	const roomEntities = await runtime.getEntitiesForRoom(roomId);
 	for (const entity of roomEntities) {
-		if (!entity?.id) continue;
+		if (!entity.id) continue;
 		const id = entity.id as UUID;
 		const ids = collectCandidateNames({
 			names: entity.names as string[] | undefined,
@@ -563,7 +563,7 @@ async function applyAssignments(args: {
 			op,
 			successCount: successes.length,
 			failureCount: failures.length,
-			worldId: world.id ?? "",
+			worldId: world.id,
 		},
 	};
 }

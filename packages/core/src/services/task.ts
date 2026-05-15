@@ -395,7 +395,7 @@ export class TaskService extends Service {
 	}
 
 	private async executeTaskInternal(task: Task) {
-		if (!task?.id) {
+		if (!task.id) {
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:task",
@@ -553,7 +553,7 @@ export class TaskService extends Service {
 			tags: ["queue"],
 			agentIds: [this.runtime.agentId],
 		});
-		if (allTasks?.length) {
+		if (allTasks.length) {
 			await this.runTick(allTasks);
 		}
 	}

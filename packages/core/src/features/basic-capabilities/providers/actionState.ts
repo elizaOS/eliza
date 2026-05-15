@@ -176,7 +176,7 @@ export const actionStateProvider: Provider = {
 				const groupedByRun = new Map<string, Memory[]>();
 
 				for (const mem of recentActionMemories) {
-					const runId: string = String(mem.content?.runId || "unknown");
+					const runId: string = String(mem.content.runId || "unknown");
 					if (!groupedByRun.has(runId)) {
 						groupedByRun.set(runId, []);
 					}
@@ -197,11 +197,11 @@ export const actionStateProvider: Provider = {
 							const content = memory.content;
 							return (
 								sum +
-								String(content?.actionName || "").length +
-								String(content?.actionStatus || "").length +
-								String(content?.planStep || "").length +
+								String(content.actionName || "").length +
+								String(content.actionStatus || "").length +
+								String(content.planStep || "").length +
 								Math.min(
-									String(content?.text || "").length,
+									String(content.text || "").length,
 									MAX_ACTION_RESULT_TEXT_CHARS,
 								)
 							);
@@ -221,10 +221,10 @@ export const actionStateProvider: Provider = {
 						const runText = sortedMemories
 							.map((mem: Memory) => {
 								const memContent = mem.content;
-								const actionName = memContent?.actionName || "Unknown";
-								const status = memContent?.actionStatus || "unknown";
-								const planStep = memContent?.planStep || "";
-								const rawText = memContent?.text || "";
+								const actionName = memContent.actionName || "Unknown";
+								const status = memContent.actionStatus || "unknown";
+								const planStep = memContent.planStep || "";
+								const rawText = memContent.text || "";
 								const text = truncateMiddle(
 									rawText,
 									MAX_ACTION_RESULT_TEXT_CHARS,
@@ -243,7 +243,7 @@ export const actionStateProvider: Provider = {
 							.join("\n");
 
 						const firstMemory = sortedMemories[0];
-						const rawThought = String(firstMemory?.content?.planThought || "");
+						const rawThought = String(firstMemory?.content.planThought || "");
 						const thought =
 							rawThought.length > MAX_THOUGHT_CHARS
 								? `${rawThought.slice(0, MAX_THOUGHT_CHARS)}…`

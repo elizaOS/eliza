@@ -1,31 +1,19 @@
-/**
- * Android-only overlay-app runtime plugin registration.
- *
- * This file is only a mobile bundle escape hatch: it imports the runtime
- * owning app package barrels, applies the agent-side hosted app session gate,
- * and pins those modules into STATIC_ELIZA_PLUGINS for the custom AOSP bundle.
- * The action/provider implementations live in `plugins/app-{wifi,contacts,phone}`
- * so desktop/server builds do not carry duplicate Android stubs here.
- */
-
-import {
-  contactsProvider,
-  appContactsPlugin as rawContactsPlugin,
-} from "@elizaos/app-contacts";
-import {
-  phoneCallLogProvider,
-  appPhonePlugin as rawPhonePlugin,
-} from "@elizaos/app-phone";
-import {
-  appWifiPlugin as rawWifiPlugin,
-  wifiNetworksProvider,
-} from "@elizaos/app-wifi";
 import { gatePluginSessionForHostedApp } from "../services/app-session-gate.ts";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.ts";
 
 const WIFI_APP_NAME = "@elizaos/app-wifi";
 const CONTACTS_APP_NAME = "@elizaos/app-contacts";
 const PHONE_APP_NAME = "@elizaos/app-phone";
+
+const [
+  { contactsProvider, appContactsPlugin: rawContactsPlugin },
+  { phoneCallLogProvider, appPhonePlugin: rawPhonePlugin },
+  { appWifiPlugin: rawWifiPlugin, wifiNetworksProvider },
+] = await Promise.all([
+  import("@elizaos/app-contacts"),
+  import("@elizaos/app-phone"),
+  import("@elizaos/app-wifi"),
+]);
 
 export const appWifiPlugin = gatePluginSessionForHostedApp(
   rawWifiPlugin,

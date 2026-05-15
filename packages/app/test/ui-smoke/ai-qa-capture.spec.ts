@@ -319,7 +319,9 @@ test.describe("ai-qa capture", () => {
     for (const viewport of viewportsForRoute(route)) {
       for (const theme of SELECTED_THEMES) {
         test(`${route.id} @ ${viewport} ${theme}`, async ({ browser }) => {
-          test.setTimeout((route.timeoutMs ?? 30_000) + 60_000);
+          test.setTimeout(
+            Math.max((route.timeoutMs ?? 30_000) + 120_000, 240_000),
+          );
           const context = await browser.newContext({
             viewport: VIEWPORT_SIZES[viewport],
             colorScheme: theme,

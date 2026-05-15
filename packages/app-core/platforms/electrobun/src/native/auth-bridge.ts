@@ -352,7 +352,7 @@ export async function bootstrapDesktopSession(
 		const onAbort = () =>
 			reject(new Error("socket consume timed out before backend connected"));
 		consumeSignal.addEventListener("abort", onAbort, { once: true });
-		socketHandle?.consumed
+		socketHandle.consumed
 			.then(() => resolve())
 			.catch((err: unknown) =>
 				reject(err instanceof Error ? err : new Error(String(err))),

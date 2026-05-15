@@ -83,7 +83,7 @@ export async function handleRegistryRoutes(
           latestVersion:
             installed.find((entry) => entry.name === plugin.name)
               ?.latestVersion ??
-            plugin.npm?.v2Version ??
+            plugin.npm.v2Version ??
             null,
           loaded:
             loadedNames.has(plugin.name) ||

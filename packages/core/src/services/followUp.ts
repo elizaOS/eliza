@@ -145,7 +145,7 @@ export class FollowUpService extends Service {
 		for (const task of tasks) {
 			if (task.metadata?.status !== "pending") continue;
 
-			const scheduledAt = task.metadata?.scheduledAt
+			const scheduledAt = task.metadata.scheduledAt
 				? new Date(task.metadata.scheduledAt as string).getTime()
 				: 0;
 
@@ -159,7 +159,7 @@ export class FollowUpService extends Service {
 			}
 
 			// Get contact info
-			const targetEntityId = task.metadata?.targetEntityId as UUID;
+			const targetEntityId = task.metadata.targetEntityId as UUID;
 			if (targetEntityId) {
 				const contact =
 					await this.relationshipsService.getContact(targetEntityId);
@@ -407,9 +407,9 @@ export class FollowUpService extends Service {
 						}
 					).emitEvent("follow_up:due", {
 						taskId: task.id ?? "",
-						taskName: task.name ?? "",
+						taskName: task.name,
 						entityId: entity.id ?? "",
-						message: message ?? "",
+						message: message,
 					});
 
 					logger.info(

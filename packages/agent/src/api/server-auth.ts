@@ -291,7 +291,7 @@ function isTrustedLocalOrigin(raw: string): boolean {
 
 export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
   if (isCloudProvisionedContainer()) return false;
-  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+  if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
   if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 
   const host = firstHeaderValue(req.headers.host);

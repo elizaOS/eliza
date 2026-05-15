@@ -4,7 +4,7 @@ When `LIFEOPS_USE_MOCKOON=1` (the default in `bun run lifeops:full` once
 W1-5 wires it through), the 18 Mockoon environments below auto-start via
 `scripts/lifeops-mockoon-bootstrap.mjs` and connector base URLs are rewritten
 to `http://127.0.0.1:<port>` by
-`plugins/app-lifeops/src/lifeops/connectors/mockoon-redirect.ts:applyMockoonEnvOverrides()`.
+`plugins/plugin-lifeops/src/lifeops/connectors/mockoon-redirect.ts:applyMockoonEnvOverrides()`.
 
 This file maps environments to the scenarios that exercise them today, and
 calls out gaps where a scenario *should* hit Mockoon but currently uses an
@@ -456,7 +456,7 @@ npm i -g @mockoon/cli@latest
    → 429, `auth_expired` → 401, `server_error` → 500). The other envs in this
    directory are the templates.
 3. Add an entry to `applyMockoonEnvOverrides()` in
-   `plugins/app-lifeops/src/lifeops/connectors/mockoon-redirect.ts` for the
+   `plugins/plugin-lifeops/src/lifeops/connectors/mockoon-redirect.ts` for the
    relevant env var or expose a `getMockoonBaseUrl(<connector>)` lookup.
 4. Append a row to the table above and to `INVENTORY.md`.
 5. Extend `scripts/lifeops-mockoon-smoke.mjs` if the new env covers a path

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -45,6 +46,9 @@ def _terminal_types():
 
 logger = logging.getLogger(__name__)
 
+_COMMAND_RE = re.compile(r"<command>(.*?)</command>", re.DOTALL | re.IGNORECASE)
+_BASH_FENCE_RE = re.compile(r"```(?:bash|sh)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+
 
 # Hermes tool names that carry shell commands.
 _SHELL_TOOL_NAMES = {
@@ -55,6 +59,18 @@ _SHELL_TOOL_NAMES = {
     "execute_shell",
     "exec",
 }
+
+
+def _extract_command_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+    match = _COMMAND_RE.search(text)
+    if match:
+        return match.group(1).strip()
+    match = _BASH_FENCE_RE.search(text)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def _extract_command_from_tool_calls(params: dict) -> Optional[str]:
@@ -153,9 +169,10 @@ class HermesTerminalAgent:
     def _reset_history(self, instruction: str) -> None:
         system = (
             "You are an AI agent solving a Terminal-Bench task in a Docker "
-            "container. Use the `bash` tool to execute shell commands. "
-            "When you believe the task is complete, respond with "
-            "TASK_COMPLETE."
+            "container. Prefer the `bash` tool to execute shell commands. "
+            "If native tool calls are unavailable, respond with the next shell "
+            "command wrapped in <command>...</command> tags. When you believe "
+            "the task is complete, respond with TASK_COMPLETE."
         )
         self._history = [
             {"role": "system", "content": system},
@@ -272,12 +289,15 @@ class HermesTerminalAgent:
                     continue
 
                 command = _extract_command_from_tool_calls(response.params)
+                if not command:
+                    command = _extract_command_from_text(text)
 
                 if not command:
                     self._record_assistant(text, None)
                     self._record_user_followup(
-                        "No native tool call was provided. Use the `bash` tool "
-                        "with a JSON `command` argument for the next shell command."
+                        "No command was provided. Use the `bash` tool with a JSON "
+                        "`command` argument, or wrap the next shell command in "
+                        "<command>...</command>."
                     )
                     continue
 

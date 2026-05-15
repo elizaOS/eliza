@@ -1,8 +1,3 @@
-/**
- * Login page - redirects to /get-started
- * Kept for backwards compatibility with any existing links.
- */
-
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/context/auth-context";

@@ -224,7 +224,7 @@ export async function handleConnectorRoutes(
     }
     json(res, {
       connectors: redactConfigSecrets(
-        (state.config.connectors ?? {}) as Record<string, unknown>,
+        state.config.connectors as Record<string, unknown>,
       ),
     });
     return true;

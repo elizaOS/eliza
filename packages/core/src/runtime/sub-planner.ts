@@ -203,7 +203,7 @@ export async function runSubPlanner(
 		childActions,
 	);
 	await emitAppendedContextEvents(
-		context.events.slice(params.context.events?.length ?? 0),
+		context.events.slice(params.context.events.length),
 	);
 
 	const subPlannerCtx: ExecutePlannedToolCallContext = {

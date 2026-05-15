@@ -206,6 +206,11 @@ export const plugin: Plugin = {
       "Database adapter created and registered"
     );
   },
+  async dispose(runtime) {
+    await runtime
+      .getService<AdvancedMemoryStorageService>(AdvancedMemoryStorageService.serviceType)
+      ?.stop();
+  },
 };
 
 export default plugin;

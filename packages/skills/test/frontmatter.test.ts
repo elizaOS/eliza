@@ -154,6 +154,14 @@ describe("resolveSkillMetadata", () => {
     assert.deepStrictEqual(metadata.requiredOs, ["macos", "linux"]);
   });
 
+  it("filters empty strings from arrays", () => {
+    const rawFrontmatter: Record<string, unknown> = {
+      "required-bins": [" git ", " ", "node"],
+    };
+    const metadata = resolveSkillMetadata(rawFrontmatter);
+    assert.deepStrictEqual(metadata.requiredBins, ["git", "node"]);
+  });
+
   it("trims whitespace from string values", () => {
     const metadata = resolveSkillMetadata({ "primary-env": "  node  " });
     assert.strictEqual(metadata.primaryEnv, "node");

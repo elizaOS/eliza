@@ -51,8 +51,8 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 
 function mergeStates(base: State | undefined, providerState: State): State {
 	if (!base) return providerState;
-	const providerData = providerState.data?.providers;
-	const baseProviderData = base.data?.providers;
+	const providerData = providerState.data.providers;
+	const baseProviderData = base.data.providers;
 	const mergedProviders =
 		isRecord(baseProviderData) || isRecord(providerData)
 			? {
@@ -63,12 +63,12 @@ function mergeStates(base: State | undefined, providerState: State): State {
 
 	return {
 		values: {
-			...(base.values ?? {}),
-			...(providerState.values ?? {}),
+			...(base.values),
+			...(providerState.values),
 		},
 		data: {
-			...(base.data ?? {}),
-			...(providerState.data ?? {}),
+			...(base.data),
+			...(providerState.data),
 			...(mergedProviders ? { providers: mergedProviders } : {}),
 		},
 		text: [base.text, providerState.text].filter(Boolean).join("\n"),
@@ -95,9 +95,9 @@ function buildPrompt(params: {
 }): string {
 	const { runtime, message, state, active, options } = params;
 	const agentName = runtime.character.name ?? "Agent";
-	const latestMessage = message.content?.text ?? "";
+	const latestMessage = message.content.text ?? "";
 	const responseTexts = (options.responses ?? [])
-		.map((response) => response.content?.text)
+		.map((response) => response.content.text)
 		.filter(
 			(text): text is string => typeof text === "string" && text.length > 0,
 		)
@@ -105,7 +105,7 @@ function buildPrompt(params: {
 	const actionResults = isRecord(state.data)
 		? state.data.actionResults
 		: undefined;
-	const providerContext = state.text?.trim() || "(none)";
+	const providerContext = state.text.trim() || "(none)";
 
 	const evaluatorSections = active
 		.map(({ evaluator, prepared }) => {
@@ -139,8 +139,8 @@ One top-level property per active evaluator. Use only provided context. Nothing 
 Agent ID: ${runtime.agentId}
 Agent name: ${agentName}
 Message ID: ${message.id ?? "(none)"}
-Room ID: ${message.roomId ?? "(none)"}
-Sender entity ID: ${message.entityId ?? "(none)"}
+Room ID: ${message.roomId}
+Sender entity ID: ${message.entityId}
 Did respond: ${options.didRespond === true ? "true" : "false"}
 
 Latest message:

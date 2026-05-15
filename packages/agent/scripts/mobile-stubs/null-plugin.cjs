@@ -10,8 +10,7 @@
 //      helper (used to wrap CJS for ESM `import * as X`) calls
 //      `__getOwnPropNames(mod)` which throws on null.
 //
-//   2. ESM `import * as pluginX` and `import { foo } from "@elizaos/app-X"`.
-//      Some named imports are *invoked* (e.g.
+//   2. ESM namespace and named imports. Some named imports are *invoked* (e.g.
 //      `wireCoordinatorBridgesWhenReady(state, ...)` in api/server.ts).
 //      A bare `module.exports = {}` would leave those bindings as
 //      `undefined` and crash the call.

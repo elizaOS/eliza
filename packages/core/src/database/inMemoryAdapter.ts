@@ -141,7 +141,7 @@ function redactConnectorAuditMetadata(
 }
 
 async function sha256Hex(value: string): Promise<string> {
-	const subtle = globalThis.crypto?.subtle;
+	const subtle = globalThis.crypto.subtle;
 	if (!subtle) {
 		return Array.from(new TextEncoder().encode(value))
 			.map((byte) => byte.toString(16).padStart(2, "0"))
@@ -599,7 +599,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const entity of this.entities.values()) {
 			if (entity.agentId !== params.agentId) continue;
 
-			const hasMatch = entity.names?.some((name) =>
+			const hasMatch = entity.names.some((name) =>
 				name.toLowerCase().includes(lowerQuery),
 			);
 
@@ -624,7 +624,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const entity of this.entities.values()) {
 			if (entity.agentId !== params.agentId) continue;
 
-			const hasMatch = entity.names?.some((name) => nameSet.has(name));
+			const hasMatch = entity.names.some((name) => nameSet.has(name));
 			if (hasMatch) {
 				matches.push(entity);
 			}
@@ -776,7 +776,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
 		const roomId = params.roomId ?? DEFAULT_UUID;
-		const tableName = params.tableName ?? "messages";
+		const tableName = params.tableName;
 		let all = this.memoriesByRoom.get(roomTableKey(tableName, roomId)) ?? [];
 
 		// Filter by timestamp range (start/end are timestamps in milliseconds)
@@ -965,7 +965,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				id: asUuid(id),
 			};
 			this.memoriesById.set(id, stored);
-			const roomId = memory.roomId ?? DEFAULT_UUID;
+			const roomId = memory.roomId;
 			const key = roomTableKey(tableName, roomId);
 			const list = this.memoriesByRoom.get(key) ?? [];
 			list.push(stored);
@@ -989,8 +989,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const merged: Memory = { ...existing, ...memory };
 			this.memoriesById.set(String(memory.id), merged);
 			// Update reference in memoriesByRoom to keep consistency
-			const oldRoomId = existing.roomId ?? DEFAULT_UUID;
-			const newRoomId = merged.roomId ?? DEFAULT_UUID;
+			const oldRoomId = existing.roomId;
+			const newRoomId = merged.roomId;
 			for (const [key, list] of this.memoriesByRoom) {
 				const idx = list.findIndex((m) => String(m.id) === String(memory.id));
 				if (idx !== -1) {

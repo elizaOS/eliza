@@ -1,3 +1,4 @@
+import type { IAgentRuntime } from "../../types/index.ts";
 import type { Plugin } from "../../types/plugin.ts";
 import { pluginAction } from "./actions/plugin.ts";
 import { pluginConfigurationStatusProvider } from "./providers/pluginConfigurationStatus.ts";
@@ -5,6 +6,7 @@ import { pluginStateProvider } from "./providers/pluginStateProvider.ts";
 import { registryPluginsProvider } from "./providers/registryPluginsProvider.ts";
 import { CoreManagerService } from "./services/coreManagerService.ts";
 import { PluginManagerService } from "./services/pluginManagerService.ts";
+import { PluginManagerServiceType } from "./types.ts";
 import * as pluginRegistry from "./services/pluginRegistryService.ts";
 import * as types from "./types.ts";
 
@@ -117,6 +119,16 @@ export const pluginManagerPlugin: Plugin = {
 		registryPluginsProvider,
 	],
 	services: [PluginManagerService, CoreManagerService],
+	async dispose(runtime: IAgentRuntime) {
+		const pm = runtime.getService<PluginManagerService>(
+			PluginManagerServiceType.PLUGIN_MANAGER,
+		);
+		await pm?.stop();
+		const cm = runtime.getService<CoreManagerService>(
+			PluginManagerServiceType.CORE_MANAGER,
+		);
+		await cm?.stop();
+	},
 };
 
 export default pluginManagerPlugin;

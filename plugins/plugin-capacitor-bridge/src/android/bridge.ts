@@ -75,66 +75,75 @@ import { installMobileFsShim } from "../shared/fs-shim.ts";
 //   2. Update ELIZA_STATE_DIR / MILADY_STATE_DIR / HOME to use the canonical
 //      prefix so any downstream path construction produces matching strings.
 //   3. Set sandbox root = canonical HOME → covers .eliza/, agent/ assets, etc.
-const _rawHome =
-	process.env.HOME ||
-	nodePath.dirname(
-		process.env.ELIZA_STATE_DIR ||
-			process.env.MILADY_STATE_DIR ||
-			"/data/local/tmp/.eliza",
-	);
+let _logPath = "";
 
-let _canonicalHome: string;
-try {
-	_canonicalHome = nodeFs.realpathSync(_rawHome);
-} catch {
-	_canonicalHome = _rawHome;
-}
+function setupAndroidBridgeEnvironment(): string {
+	const rawHome =
+		process.env.HOME ||
+		nodePath.dirname(
+			process.env.ELIZA_STATE_DIR ||
+				process.env.MILADY_STATE_DIR ||
+				"/data/local/tmp/.eliza",
+		);
 
-// Remap any env var that starts with the old (symlink) prefix to the
-// canonical (real) prefix so downstream code resolves paths consistently.
-if (_canonicalHome !== _rawHome) {
-	if (process.env.HOME) process.env.HOME = _canonicalHome;
-	for (const key of [
-		"ELIZA_STATE_DIR",
-		"MILADY_STATE_DIR",
-		"ELIZA_WORKSPACE_DIR",
-		"MILADY_WORKSPACE_DIR",
-		"TMPDIR",
-	] as const) {
-		const val = process.env[key];
-		if (val?.startsWith(_rawHome)) {
-			process.env[key] = _canonicalHome + val.slice(_rawHome.length);
+	let canonicalHome: string;
+	try {
+		canonicalHome = nodeFs.realpathSync(rawHome);
+	} catch {
+		canonicalHome = rawHome;
+	}
+
+	// Remap any env var that starts with the old (symlink) prefix to the
+	// canonical (real) prefix so downstream code resolves paths consistently.
+	if (canonicalHome !== rawHome) {
+		if (process.env.HOME) process.env.HOME = canonicalHome;
+		for (const key of [
+			"ELIZA_STATE_DIR",
+			"MILADY_STATE_DIR",
+			"ELIZA_WORKSPACE_DIR",
+			"MILADY_WORKSPACE_DIR",
+			"TMPDIR",
+		] as const) {
+			const val = process.env[key];
+			if (val?.startsWith(rawHome)) {
+				process.env[key] = canonicalHome + val.slice(rawHome.length);
+			}
 		}
 	}
+
+	const stateDir =
+		process.env.ELIZA_STATE_DIR ||
+		process.env.MILADY_STATE_DIR ||
+		`${canonicalHome}/.eliza`;
+
+	installMobileFsShim(canonicalHome);
+
+	// Debug file logger (bypasses stdio to avoid TIOCGWINSZ/SELinux issues).
+	// Writes to $ELIZA_STATE_DIR/android-bridge.log so we can read via adb run-as.
+	_logPath = `${stateDir}/android-bridge.log`;
+	try {
+		nodeFs.mkdirSync(stateDir, { recursive: true });
+	} catch {
+		/* ignore */
+	}
+	_logToFile(`[android-bridge] process started, stateDir=${stateDir}`);
+	return stateDir;
 }
 
-const stateDir =
-	process.env.ELIZA_STATE_DIR ||
-	process.env.MILADY_STATE_DIR ||
-	`${_canonicalHome}/.eliza`;
-
-installMobileFsShim(_canonicalHome);
-
-// ── Debug file logger (bypasses stdio to avoid TIOCGWINSZ/SELinux issues) ───
-// Writes to $ELIZA_STATE_DIR/android-bridge.log so we can read via adb run-as.
-const _logPath = `${stateDir}/android-bridge.log`;
-try {
-	nodeFs.mkdirSync(stateDir, { recursive: true });
-} catch {
-	/* ignore */
-}
 function _logToFile(line: string): void {
+	if (!_logPath) return;
 	try {
 		nodeFs.appendFileSync(_logPath, `${new Date().toISOString()} ${line}\n`);
 	} catch {
 		/* ignore */
 	}
 }
-_logToFile(`[android-bridge] process started, stateDir=${stateDir}`);
 
 // ── Step 3: boot the runtime ──────────────────────────────────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
+	setupAndroidBridgeEnvironment();
+
 	// Log the process exit code for every exit (including process.exit(N) calls
 	// from deep inside the runtime that bypass our try/catch).
 	process.on("exit", (code) => {

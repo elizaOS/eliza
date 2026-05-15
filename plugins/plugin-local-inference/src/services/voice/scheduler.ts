@@ -103,7 +103,7 @@ interface NativeCancelableTtsBackend {
 const DEFAULT_MAX_IN_FLIGHT_PHRASES = 4;
 
 function nowMs(): number {
-	return globalThis.performance?.now?.() ?? Date.now();
+	return globalThis.performance.now();
 }
 
 function phraseTelemetry(phrase: Phrase): VoiceSchedulerPhraseTelemetry {

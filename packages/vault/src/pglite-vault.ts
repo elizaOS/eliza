@@ -235,9 +235,14 @@ export class PgliteVaultImpl implements Vault {
         lastModified,
       };
     }
+    if (row.ref_source !== "1password" && row.ref_source !== "protonpass") {
+      throw new Error(
+        `vault: corrupt reference entry ${key}: invalid source ${JSON.stringify(row.ref_source)}`,
+      );
+    }
     return {
       key,
-      source: (row.ref_source ?? "1password") as "1password" | "protonpass",
+      source: row.ref_source,
       sensitive: true,
       lastModified,
     };
@@ -305,13 +310,16 @@ export class PgliteVaultImpl implements Vault {
       const masterKey = await this.loadMasterKey();
       return decrypt(masterKey, row.ciphertext, key);
     }
-    if (row.ref_source == null || row.ref_path == null) {
+    if (
+      (row.ref_source !== "1password" && row.ref_source !== "protonpass") ||
+      row.ref_path == null
+    ) {
       throw new Error(
         `vault: corrupt reference entry ${key}: missing source or path`,
       );
     }
     return resolveReference({
-      source: row.ref_source as PasswordManagerReference["source"],
+      source: row.ref_source,
       path: row.ref_path,
     });
   }

@@ -166,7 +166,10 @@ function assertChargePayable(request: AppChargeRequest): void {
 }
 
 function defaultRedirectUrl(path: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!baseUrl) {
+    throw new Error("NEXT_PUBLIC_APP_URL is required to build app charge redirect URLs");
+  }
   return new URL(path, baseUrl).toString();
 }
 

@@ -269,9 +269,7 @@ export async function readPngDimensions(
   const width = view.getUint32(16, false);
   const height = view.getUint32(20, false);
   if (width <= 0 || height <= 0) {
-    throw new Error(
-      `readPngDimensions: invalid dimensions ${width}x${height}`,
-    );
+    throw new Error(`readPngDimensions: invalid dimensions ${width}x${height}`);
   }
   return { width, height };
 }

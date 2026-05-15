@@ -49,8 +49,8 @@ stage the on-device Bun agent, `/system/bin/sh`, shell plugin, coding-tools
 plugin, agent orchestrator, and optional AVF/Microdroid boundary when the
 device image exposes those APIs. The Android template includes a reflection-only
 AVF probe, but the Microdroid payload/RPC lifecycle is still AOSP-only follow-up
-work. Claims about AOSP terminal behavior remain tracked as TODO-AOSP-PTY and
-TODO-AOSP-TOOLCHAIN in this page's runtime policy.
+work. AOSP terminal and toolchain behavior is outside the app-store mobile
+target and remains limited to privileged system builds.
 
 Use `bun run build:android:cloud` from the repository root for a Play-store
 style release AAB thin client; `android-cloud-debug` is only for debug APK
@@ -72,7 +72,6 @@ source tree and artifact.
 
 **App ID:** `com.elizaai.eliza`
 **Package name:** `@elizaai/app`
-**Current version:** `2.0.0-alpha.87`
 
 ## Prerequisites
 

@@ -144,10 +144,9 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
 
     let bunFFI: BunFFIModule | null = null;
     try {
-      const dynImport = new Function(
-        "spec",
-        "return import(spec)",
-      ) as (s: string) => Promise<BunFFIModule>;
+      const dynImport = new Function("spec", "return import(spec)") as (
+        s: string,
+      ) => Promise<BunFFIModule>;
       bunFFI = await dynImport("bun:ffi");
     } catch {
       logger.warn(

@@ -268,7 +268,7 @@ function runCommand(
     });
 
     let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
       process.stderr.write(chunk);
     });

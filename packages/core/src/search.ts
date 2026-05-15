@@ -1150,8 +1150,8 @@ export class BM25 {
 		options: BM25Options = {},
 	) {
 		const opts = { ...DEFAULT_OPTIONS, ...options };
-		this.termFrequencySaturation = opts.k1 ?? 1.2;
-		this.lengthNormalizationFactor = opts.b ?? 0.75;
+		this.termFrequencySaturation = opts.k1;
+		this.lengthNormalizationFactor = opts.b;
 		this.tokenizer = new Tokenizer(opts);
 		this.fieldBoosts = opts.fieldBoosts || {};
 

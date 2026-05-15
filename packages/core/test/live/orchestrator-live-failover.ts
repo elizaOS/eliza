@@ -3,11 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import type {
-	PTYService,
-	SwarmCoordinator,
-} from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
+
+const { PTYService } = await import("@elizaos/plugin-agent-orchestrator");
+
+type PTYServiceInstance = Awaited<ReturnType<typeof PTYService.start>>;
+type SwarmCoordinator = NonNullable<PTYServiceInstance["coordinator"]>;
 
 async function waitFor(
 	predicate: () => Promise<boolean>,
@@ -60,7 +61,7 @@ function loadCloudApiKey(): string {
 
 let runtime: AgentRuntime | undefined;
 let cleanupRuntime: (() => Promise<void>) | undefined;
-let service: PTYService | undefined;
+let service: PTYServiceInstance | undefined;
 const sessionsToStop = new Set<string>();
 let workdir: string | undefined;
 
@@ -96,7 +97,6 @@ async function cleanup(): Promise<void> {
 async function main(): Promise<void> {
 	process.env.ELIZAOS_CLOUD_API_KEY = loadCloudApiKey();
 	const { elizaOSCloudPlugin } = await import("@elizaos/plugin-elizacloud");
-	const { PTYService } = await import("@elizaos/plugin-agent-orchestrator");
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime({
 		plugins: [elizaOSCloudPlugin],
 	}));

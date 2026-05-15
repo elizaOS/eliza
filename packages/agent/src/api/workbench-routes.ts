@@ -128,9 +128,7 @@ export async function handleWorkbenchRoutes(
     }
 
     todos.sort((a, b) => a.name.localeCompare(b.name));
-    triggers.sort((a, b) =>
-      (a.displayName ?? "").localeCompare(b.displayName ?? ""),
-    );
+    triggers.sort((a, b) => a.displayName.localeCompare(b.displayName));
     summary.totalTriggers = triggers.length;
     summary.activeTriggers = triggers.filter(
       (trigger) => trigger.enabled,

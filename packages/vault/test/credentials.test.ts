@@ -93,6 +93,21 @@ describe("credentials — round-trip", () => {
     expect(got?.username).toBe("user.name+tag@site.co.uk");
   });
 
+  it("lists usernames containing dots without confusing them for domain segments", async () => {
+    await setSavedLogin(test.vault, {
+      domain: "x.com",
+      username: "user.name+tag@site.co.uk",
+      password: "p",
+    });
+
+    await expect(listSavedLogins(test.vault, "x.com")).resolves.toEqual([
+      expect.objectContaining({
+        domain: "x.com",
+        username: "user.name+tag@site.co.uk",
+      }),
+    ]);
+  });
+
   it("rejects empty fields", async () => {
     await expect(
       setSavedLogin(test.vault, { domain: "", username: "u", password: "p" }),

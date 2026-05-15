@@ -1,9 +1,3 @@
-/**
- * Base client for elizacloud API.
- * Default: https://www.elizacloud.ai — override via VITE_ELIZACLOUD_API_URL.
- * Calls the backend directly; no local proxy.
- */
-
 const ELIZACLOUD_DEFAULT_URL = "https://www.elizacloud.ai";
 
 function getBaseUrl(): string {
@@ -78,46 +72,4 @@ export async function elizacloudAuthFetch<T = unknown>(
       ...init?.headers,
     },
   });
-}
-
-export class UnauthorizedError extends Error {
-  constructor(message = "Unauthorized") {
-    super(message);
-    this.name = "UnauthorizedError";
-  }
-}
-
-export async function elizacloudAuthFetchStrict<T = unknown>(
-  path: string,
-  init?: ApiRequestInit,
-): Promise<T> {
-  const token = getAuthToken();
-  if (!token) {
-    throw new UnauthorizedError("No auth token");
-  }
-
-  const { params, ...reqInit } = init ?? {};
-  const url = buildUrl(path, params);
-  const res = await fetch(url, {
-    ...reqInit,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...reqInit.headers,
-    },
-  });
-
-  if (res.status === 401) {
-    throw new UnauthorizedError("Session expired");
-  }
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`elizacloud API error ${res.status}: ${text}`);
-  }
-
-  const contentType = res.headers.get("content-type");
-  if (contentType?.includes("application/json")) {
-    return res.json() as Promise<T>;
-  }
-  return res.text() as Promise<T>;
 }

@@ -26,6 +26,10 @@ export const orcaPlugin: Plugin = {
       })
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<OrcaService>(OrcaService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export * from "./types.ts";

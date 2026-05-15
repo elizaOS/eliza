@@ -50,7 +50,7 @@ function escapeSlackMrkdwnContent(text: string): string {
     match;
     match = SLACK_ANGLE_TOKEN_RE.exec(text)
   ) {
-    const matchIndex = match.index ?? 0;
+    const matchIndex = match.index;
     out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex, matchIndex)));
     const token = match[0] ?? "";
     out.push(

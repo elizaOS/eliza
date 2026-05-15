@@ -14,6 +14,10 @@ export const todosPlugin: Plugin = {
   providers: [currentTodosProvider],
   services: [TodosService],
   schema: dbSchema,
+  async dispose(runtime) {
+    const svc = runtime.getService<TodosService>(TodosService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default todosPlugin;

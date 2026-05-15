@@ -1,33 +1,3 @@
-/**
- * PLUGIN — consolidated plugin + connector lifecycle action.
- *
- * Single polymorphic action dispatching across:
- *   install | uninstall | update | sync | eject | reinject |
- *   configure | read_config | toggle | list | disconnect
- *
- * `type` (`plugin` | `connector`) disambiguates plugin vs connector lifecycle
- * for the planner. Connectors are plugins with `category === "connector"` and
- * reuse the same /api/plugins compat routes. The `disconnect` op routes to a
- * connector-specific disconnect endpoint when one exists (telegram, signal,
- * whatsapp, discord-local) and falls back to disabling the plugin otherwise.
- *
- * Internal services > HTTP. install / uninstall / update / sync / eject /
- * reinject all delegate to PluginManagerService via runtime.getService().
- * The configure / read_config / toggle / list / disconnect ops fall through
- * to the existing /api/plugins compat routes because their orchestration
- * (vault mirror, runtime mutation, drift reconciliation) lives in
- * `@elizaos/app-core`, which is an outer layer the agent package cannot
- * import from.
- *
- * NOTE: `MANAGE_PLUGINS` in `@elizaos/core/features/plugin-manager` and
- * `CONNECTOR` in `@elizaos/app-lifeops` remain as separate actions for now.
- * Folding them in requires absorbing core multi-turn create state and
- * LifeOps-specific dispatch (Google OAuth, Telegram pairing, etc.).
- * Tracked in ACTION_CONSOLIDATION_PLAN.md §3d.
- *
- * @module actions/plugin
- */
-
 import type {
   Action,
   ActionExample,
@@ -78,13 +48,11 @@ interface PluginParams {
   op?: PluginOp;
   type?: PluginType;
   pluginId?: string;
-  /** Alias for pluginId so connector-style callers keep working. */
   connectorId?: string;
   config?: Record<string, unknown>;
   enabled?: boolean;
   stream?: ReleaseStream;
   filter?: ListFilter;
-  /** When type=connector or filter is omitted, top-level filter fields work too. */
   status?: ListStatus;
   configured?: boolean;
   search?: string;
@@ -460,7 +428,7 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
   }
 
   const listData = (await resp.json()) as PluginsListResponse;
-  const plugins = listData.plugins ?? [];
+  const plugins = listData.plugins;
   const lower = pluginId.toLowerCase();
   const plugin =
     plugins.find((p) => p.id === pluginId) ??
@@ -520,7 +488,7 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
         configured: plugin.configured,
         version: plugin.version ?? null,
         loadError: plugin.loadError ?? null,
-        parameters: (plugin.parameters ?? []).map((p) => ({
+        parameters: plugin.parameters.map((p) => ({
           key: p.key,
           required: p.required ?? false,
           sensitive: p.sensitive ?? false,
@@ -599,7 +567,7 @@ function applyListFilter(
   return entries.filter((entry) => {
     if (search) {
       const haystack =
-        `${entry.id} ${entry.name} ${entry.description ?? ""}`.toLowerCase();
+        `${entry.id} ${entry.name} ${entry.description}`.toLowerCase();
       if (!haystack.includes(search)) return false;
     }
     if (typeof filter.configured === "boolean") {

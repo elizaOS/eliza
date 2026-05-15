@@ -9,10 +9,9 @@
  *   creds.<domain>.__autoallow         → "1" / "0", non-sensitive (whitelist toggle)
  *
  * `<domain>` is the registrable hostname (e.g. `github.com`, no port).
- * `<account>` is the URL-encoded username (so `@`, `/`, `.` are safe in
- * the segment). Vault prefix matching uses dot segments, so listing
- * `creds.github.com` returns every account under that domain plus the
- * autoallow flag.
+ * `<account>` is the URL-encoded username with dots escaped too. Vault
+ * prefix matching uses dot segments, so listing `creds.github.com`
+ * returns every account under that domain plus the autoallow flag.
  *
  * Sensitive values are AES-GCM encrypted by the vault. Listing returns
  * metadata only — passwords are never copied into the listing payload.
@@ -47,9 +46,8 @@ export interface SavedLoginSummary {
   readonly lastModified: number;
 }
 
-/** Encode an account segment so vault key parsing stays unambiguous. */
 function encodeAccount(username: string): string {
-  return encodeURIComponent(username);
+  return encodeURIComponent(username).replace(/\./g, "%2E");
 }
 
 function decodeAccount(segment: string): string {
@@ -122,11 +120,12 @@ export async function listSavedLogins(
   vault: Vault,
   domain?: string,
 ): Promise<readonly SavedLoginSummary[]> {
-  const prefix = domain ? `${PREFIX}.${normalizeDomain(domain)}` : PREFIX;
+  const normalizedDomain = domain ? normalizeDomain(domain) : undefined;
+  const prefix = normalizedDomain ? `${PREFIX}.${normalizedDomain}` : PREFIX;
   const keys = await vault.list(prefix);
   const summaries: SavedLoginSummary[] = [];
   for (const key of keys) {
-    const parsed = parseLoginKey(key);
+    const parsed = parseLoginKey(key, normalizedDomain);
     if (!parsed) continue;
     if (parsed.account === AUTOALLOW_SEGMENT) continue;
     const descriptor = await vault.describe(key);
@@ -178,14 +177,19 @@ interface ParsedLoginKey {
   readonly account: string;
 }
 
-function parseLoginKey(key: string): ParsedLoginKey | null {
-  // creds.<domain>.<account-or-flag>
-  // We split on the first two dots: the first separates the prefix,
-  // the second separates the domain from the account segment.
+function parseLoginKey(
+  key: string,
+  knownDomain?: string,
+): ParsedLoginKey | null {
   if (!key.startsWith(`${PREFIX}.`)) return null;
+  if (knownDomain) {
+    const domainPrefix = `${PREFIX}.${knownDomain}.`;
+    if (!key.startsWith(domainPrefix)) return null;
+    const account = key.slice(domainPrefix.length);
+    if (!account) return null;
+    return { domain: knownDomain, account };
+  }
   const rest = key.slice(PREFIX.length + 1);
-  // The domain part itself contains dots (e.g. github.com), so the
-  // account segment is everything after the LAST dot.
   const lastDot = rest.lastIndexOf(".");
   if (lastDot <= 0) return null;
   const domain = rest.slice(0, lastDot);

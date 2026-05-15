@@ -162,6 +162,15 @@ For more information, visit: https://tbench.ai
         default=300,
         help="Timeout per task in seconds (default: 300)",
     )
+    parser.add_argument(
+        "--network-mode",
+        type=str,
+        default=os.environ.get("TERMINAL_BENCH_NETWORK_MODE", "none"),
+        help=(
+            "Docker network mode for tasks that do not explicitly request "
+            "network access (default: TERMINAL_BENCH_NETWORK_MODE or none)."
+        ),
+    )
 
     # Model options
     parser.add_argument(
@@ -384,6 +393,7 @@ async def run_cli(args: argparse.Namespace) -> int:
         max_tasks=args.max_tasks,
         max_iterations=args.max_iterations,
         timeout_per_task_seconds=args.timeout,
+        network_mode=args.network_mode,
         model_name=model_name,
         model_provider=args.model_provider,
         temperature=args.temperature,

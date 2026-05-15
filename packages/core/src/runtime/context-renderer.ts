@@ -134,7 +134,7 @@ function textFromUnknown(value: unknown): string {
 	) {
 		return value.text;
 	}
-	return JSON.stringify(value) ?? "";
+	return JSON.stringify(value);
 }
 
 function renderProviderContent(event: ContextProviderEvent): string {
@@ -446,7 +446,7 @@ export function renderContextObject(
 		renderPrefixTool(rendered, tool);
 	}
 
-	for (const event of context.events ?? []) {
+	for (const event of context.events) {
 		renderEvent(rendered, event);
 	}
 

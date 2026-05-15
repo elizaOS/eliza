@@ -417,7 +417,7 @@ export const actionsProvider: Provider = {
 			expandGroupedActionsForActiveContext(
 				collapsedActions,
 				visibleActions,
-				runtime.providers ?? [],
+				runtime.providers,
 				activeContexts,
 			);
 		const actionSeed = buildDeterministicSeed(

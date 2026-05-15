@@ -16,7 +16,7 @@ import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   seedCanonicalIdentityFixture,
-} from "../../../plugins/app-lifeops/test/helpers/lifeops-identity-merge-fixtures.ts";
+} from "../../../plugins/plugin-lifeops/test/helpers/lifeops-identity-merge-fixtures.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const PERSON_NAME = "Priya Rao";

@@ -617,7 +617,7 @@ When asked to review a PR:
 User: "Review PR #42"
 Agent: Fetches diff, analyzes changes, posts review comment
 
-User: "Review the latest PR on eliza-ai/eliza"
+User: "Review the latest PR on elizaOS/eliza"
 Agent: Finds latest PR, reviews it
 ```
 
@@ -689,26 +689,24 @@ For a complete comparison of all extension points, see the [Decision Guide](/plu
 
 Skill content is injected into the agent's context window. Be thorough but not verbose:
 
-```markdown
-<!-- Concise and actionable -->
+````markdown
 ## Listing Files
 
 ```bash
 ls -la           # All files, long format
 ls -lh *.txt     # Text files with human-readable sizes
 ```
-```
+````
 
 ### Provide Runnable Examples
 
 Show actual commands, not just descriptions:
 
-```markdown
-<!-- Good: runnable example -->
+````markdown
 ```bash
 gh issue list --repo owner/repo --search "bug" --state open
 ```
-```
+````
 
 ### Declare Requirements in Frontmatter
 

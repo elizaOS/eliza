@@ -25,6 +25,34 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$SCRIPT_DIR"
+SRC_DIR="$ROOT_DIR/src"
+SHIM_DIR="$ROOT_DIR/shim"
+DIST_DIR="$ROOT_DIR/dist"
+BUILD_ROOT="$ROOT_DIR/build"
+
+cmd="${1:-all}"
+
+log() { printf '\033[34m[build-ios]\033[0m %s\n' "$*"; }
+err() { printf '\033[31m[build-ios:err]\033[0m %s\n' "$*" >&2; }
+die() { err "$*"; exit 1; }
+
+case "$cmd" in
+  all|device|simulator|clean) ;;
+  *) die "unknown command: $cmd (use: all | device | simulator | clean)" ;;
+esac
+
+clean_all() {
+  log "Cleaning $DIST_DIR and $BUILD_ROOT"
+  rm -rf "$DIST_DIR" "$BUILD_ROOT"
+}
+
+if [[ "$cmd" == "clean" ]]; then
+  clean_all
+  exit 0
+fi
+
 # iOS cross-builds require a macOS host with Xcode (xcodebuild + xcrun).
 # When invoked on a non-Darwin host (Linux CI, Linux dev box) this build is
 # physically impossible — there's no iOS SDK to link against. Skip cleanly
@@ -41,24 +69,14 @@ if ! xcodebuild -version >/dev/null 2>&1 || ! xcrun --sdk iphoneos --show-sdk-pa
   exit 0
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$SCRIPT_DIR"
-SRC_DIR="$ROOT_DIR/src"
-SHIM_DIR="$ROOT_DIR/shim"
-DIST_DIR="$ROOT_DIR/dist"
-BUILD_ROOT="$ROOT_DIR/build"
-
 LLAMA_CPP_VERSION_FILE="$ROOT_DIR/../VERSIONS"
 
-# Read pinned ref (line starting with `llama.cpp=`). May be a tag,
-# branch name, or commit SHA — anything `git fetch` accepts.
-PINNED_REF=""
+# Read pinned ref (tag, branch name, or commit SHA).
 if [[ -f "$LLAMA_CPP_VERSION_FILE" ]]; then
-  PINNED_REF="$(grep -E '^llama\.cpp=' "$LLAMA_CPP_VERSION_FILE" | head -1 | cut -d= -f2 || true)"
+  PINNED_REF="$(awk -F= '$1 == "llama.cpp" { print $2; exit }' "$LLAMA_CPP_VERSION_FILE")"
 fi
-if [[ -z "$PINNED_REF" || "$PINNED_REF" == PLACEHOLDER* ]]; then
-  PINNED_REF="main"   # fallback: track elizaOS fork tip; override in VERSIONS
-fi
+[[ -n "${PINNED_REF:-}" && "$PINNED_REF" != PLACEHOLDER* ]] \
+  || die "missing llama.cpp pin in $LLAMA_CPP_VERSION_FILE"
 
 # Source repo. Defaults to the milady-controlled fork (carries the
 # elizaOS kernels + DFlash); override with LLAMA_CPP_REPO env var if you
@@ -66,12 +84,6 @@ fi
 LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/elizaOS/llama.cpp}"
 
 iOS_DEPLOYMENT_TARGET="${MILADY_IOS_MIN_VERSION:-15.0}"
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-log() { printf '\033[34m[build-ios]\033[0m %s\n' "$*"; }
-err() { printf '\033[31m[build-ios:err]\033[0m %s\n' "$*" >&2; }
-die() { err "$*"; exit 1; }
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing command: $1"
@@ -100,11 +112,6 @@ ensure_source_checkout() {
         && git fetch --depth 1 origin "$matched_ref"; }) \
     && git checkout --quiet FETCH_HEAD ) \
     || die "fetch/checkout failed; verify '$PINNED_REF' exists at $LLAMA_CPP_REPO"
-}
-
-clean_all() {
-  log "Cleaning $DIST_DIR and $BUILD_ROOT"
-  rm -rf "$DIST_DIR" "$BUILD_ROOT"
 }
 
 # ─── Per-slice build ──────────────────────────────────────────────────────────
@@ -136,7 +143,7 @@ build_slice() {
 
   local metal_flag="ON"
   if [[ "$slice" == "ios-arm64-simulator" ]]; then
-    # Metal in the iOS simulator on Apple Silicon Macs is supported but flakey
+    # Metal in the iOS simulator on Apple Silicon Macs is supported but flaky
     # across SDK versions. Default to CPU-only in the simulator slice; users
     # who specifically want Metal-on-simulator can flip this back on.
     metal_flag="${MILADY_LLAMA_SIM_METAL:-OFF}"
@@ -258,17 +265,12 @@ build_xcframework() {
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
-  local cmd="${1:-all}"
-
   require_cmd cmake
   require_cmd xcodebuild
   require_cmd xcrun
   require_cmd git
 
   case "$cmd" in
-    clean)
-      clean_all
-      ;;
     device)
       ensure_source_checkout
       build_slice "ios-arm64" "iOS" "iphoneos" "arm64"
@@ -277,15 +279,12 @@ main() {
       ensure_source_checkout
       build_slice "ios-arm64-simulator" "iOS" "iphonesimulator" "arm64"
       ;;
-    all|"")
+    all)
       ensure_source_checkout
       build_slice "ios-arm64" "iOS" "iphoneos" "arm64"
       build_slice "ios-arm64-simulator" "iOS" "iphonesimulator" "arm64"
       build_xcframework
       log "All done. Point a podspec at $DIST_DIR/LlamaCpp.xcframework via :vendored_frameworks."
-      ;;
-    *)
-      die "unknown command: $cmd (use: all | device | simulator | clean)"
       ;;
   esac
 }

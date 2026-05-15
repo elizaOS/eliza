@@ -158,7 +158,7 @@ function pinDiscriminatorForVirtual(
 			required: false,
 			schema: {
 				...baseSchema,
-				type: baseSchema.type ?? "string",
+				type: baseSchema.type,
 				enum: [subaction],
 				default: subaction,
 			},

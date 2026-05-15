@@ -9,31 +9,25 @@
 #include "llama.h"
 
 #include <stddef.h>
-#include <stdio.h>
 
 void milady_llama_model_params_set_n_gpu_layers(void* params, int32_t n) {
-    if (!params) return;
     struct llama_model_params* p = (struct llama_model_params*)params;
     p->n_gpu_layers = n;
 }
 
 void milady_llama_context_params_set_n_ctx(void* params, uint32_t n) {
-    if (!params) return;
     struct llama_context_params* p = (struct llama_context_params*)params;
     p->n_ctx = n;
 }
 
 void milady_llama_context_params_set_n_threads(void* params, int32_t n_threads, int32_t n_batch) {
-    if (!params) return;
     struct llama_context_params* p = (struct llama_context_params*)params;
     p->n_threads = n_threads;
     p->n_threads_batch = n_batch;
 }
 
 void milady_llama_batch_set_single(void* batch, int32_t token, int32_t pos, bool logits_out) {
-    if (!batch) return;
     struct llama_batch* b = (struct llama_batch*)batch;
-    // Single-token batch: index 0, n_tokens = 1.
     b->token[0] = token;
     b->pos[0] = pos;
     b->n_seq_id[0] = 1;
@@ -43,7 +37,6 @@ void milady_llama_batch_set_single(void* batch, int32_t token, int32_t pos, bool
 }
 
 void milady_llama_batch_append(void* batch, int32_t token, int32_t pos, bool logits_out) {
-    if (!batch) return;
     struct llama_batch* b = (struct llama_batch*)batch;
     int32_t idx = b->n_tokens;
     b->token[idx] = token;
@@ -55,7 +48,6 @@ void milady_llama_batch_append(void* batch, int32_t token, int32_t pos, bool log
 }
 
 void milady_llama_batch_reset(void* batch) {
-    if (!batch) return;
     struct llama_batch* b = (struct llama_batch*)batch;
     b->n_tokens = 0;
 }

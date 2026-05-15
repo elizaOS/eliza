@@ -32,6 +32,11 @@ const mcpPlugin: Plugin = {
     logger.info("Initializing MCP plugin...");
   },
 
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<McpService>(McpService.serviceType);
+    await svc?.stop();
+  },
+
   services: [McpService],
   actions: [...promoteSubactionsToActions(withMcpContext(mcpAction))],
   providers: [provider],

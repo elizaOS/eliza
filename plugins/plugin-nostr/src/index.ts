@@ -79,6 +79,10 @@ const nostrPlugin: Plugin = {
 
     logger.info("Nostr plugin initialized");
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<NostrService>(NostrService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default nostrPlugin;

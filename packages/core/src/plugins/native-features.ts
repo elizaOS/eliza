@@ -57,6 +57,10 @@ export const relationshipsPlugin: Plugin = {
 		relationshipsProvider,
 	],
 	services: [RelationshipsService, FollowUpService],
+	async dispose(runtime) {
+		await runtime.getService(FollowUpService.serviceType)?.stop();
+		await runtime.getService(RelationshipsService.serviceType)?.stop();
+	},
 };
 
 export const nativeRuntimeFeaturePlugins: Record<NativeRuntimeFeature, Plugin> =

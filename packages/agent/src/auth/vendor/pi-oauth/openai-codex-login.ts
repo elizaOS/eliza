@@ -7,7 +7,7 @@ let _randomBytes: typeof import("node:crypto").randomBytes | null = null;
 let _http: typeof import("node:http") | null = null;
 if (
   typeof process !== "undefined" &&
-  (process.versions?.node || process.versions?.bun)
+  (process.versions.node || process.versions.bun)
 ) {
   void import("node:crypto").then((m) => {
     _randomBytes = m.randomBytes;

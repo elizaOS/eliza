@@ -101,25 +101,6 @@ TIER_REPOS=(
   "eliza-1-27b-256k"
 )
 
-# --- voice sub-model repos to create (elizaos/eliza-1-voice-<component>) --------
-# These match `packages/shared/src/local-inference/voice-models.ts`
-# (F3 Wave 3 follow-up: each voice sub-model ships as a separate HF repo so
-# weights can be versioned, audited, and downloaded independently from the
-# main eliza-1 tier bundle). Actual weight pushes happen via
-# packages/training/scripts/publish/ when evals pass.
-VOICE_REPOS=(
-  "eliza-1-voice-asr"
-  "eliza-1-voice-turn"
-  "eliza-1-voice-emotion"
-  "eliza-1-voice-speaker"
-  "eliza-1-voice-diarizer"
-  "eliza-1-voice-vad"
-  "eliza-1-voice-wakeword"
-  "eliza-1-voice-kokoro"
-  "eliza-1-voice-omnivoice"
-  "eliza-1-voice-embedding"
-)
-
 run() {
   # Echo the command; run it only in --execute mode.
   echo "  + $*"
@@ -188,13 +169,9 @@ if [[ "$SKIP_CREATES" -eq 0 ]]; then
   done
   echo
 
-  echo "--- 2b. Create voice sub-model repos under ${DST_ORG} (empty; weights pushed after eval) ---"
-  echo "    Each voice component ships as a separate HF model repo (F3 Wave 3 follow-up)."
-  echo "    Repos match elizaos/eliza-1-voice-* in packages/shared/src/local-inference/voice-models.ts."
-  for name in "${VOICE_REPOS[@]}"; do
-    echo "  create ${DST_ORG}/${name}"
-    run ${HF_CLI} repo create "${DST_ORG}/${name}" --repo-type model --exist-ok
-  done
+  echo "--- 2b. Voice payloads ---"
+  echo "    Voice components now ship inside ${DST_ORG}/eliza-1 under voice/<model-id>/..."
+  echo "    No eliza-1-voice-* split repos are created."
   echo
 fi
 

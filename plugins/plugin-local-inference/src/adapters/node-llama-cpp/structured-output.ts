@@ -63,7 +63,7 @@ export function buildLlamaFunctions(
 ): ChatSessionModelFunctions {
 	const out: Record<string, LlamaFunctionDefinition> = {};
 	for (const tool of tools) {
-		if (!tool?.name) continue;
+		if (!tool.name) continue;
 		const params = toGbnfJsonSchema(tool.parameters);
 		out[tool.name] = defineDeferredChatSessionFunction({
 			description: tool.description,

@@ -14,13 +14,13 @@
  * accurately reflects upstream behaviour.
  */
 
+import type { RealRuntimeAdapter } from "./real-runtime.ts";
 import type {
   GroundingRequest,
   GroundingResult,
   VlmDescribeRequest,
   VlmDescribeResult,
 } from "./types.ts";
-import type { RealRuntimeAdapter } from "./real-runtime.ts";
 
 export interface RealVlmGroundingExtra {
   readonly tileWidth: number;
@@ -36,7 +36,11 @@ const DESCRIBE_PROMPT_TEMPLATE = (taskJson: string): string =>
     `Task context: ${taskJson}`,
   ].join("\n");
 
-const GROUND_PROMPT_TEMPLATE = (target: string, tileW: number, tileH: number): string =>
+const GROUND_PROMPT_TEMPLATE = (
+  target: string,
+  tileW: number,
+  tileH: number,
+): string =>
   [
     "You are a UI-grounding model. Look at the image (a screenshot tile of",
     `dimensions ${tileW}x${tileH} pixels) and locate this element:`,

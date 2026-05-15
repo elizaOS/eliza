@@ -582,8 +582,7 @@ function extractDiscordReactionEvent(
       action: structuredAction,
       emoji: structuredEmoji,
       targetMessageId,
-      userKey:
-        memory.entityId ?? memory.id ?? `${targetMessageId}:${structuredEmoji}`,
+      userKey: memory.entityId,
       userLabel: extractFrom(memory) ?? extractFromUserName(memory),
     };
   }
@@ -603,8 +602,7 @@ function extractDiscordReactionEvent(
     action: legacyMatch[1].toLowerCase() === "added" ? "add" : "remove",
     emoji: legacyMatch[2].trim(),
     targetMessageId,
-    userKey:
-      memory.entityId ?? memory.id ?? `${targetMessageId}:${legacyMatch[2]}`,
+    userKey: memory.entityId,
     userLabel: extractFrom(memory) ?? extractFromUserName(memory),
   };
 }
@@ -736,7 +734,7 @@ function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
   const runtimeWithServices = runtime as AgentRuntime & {
     getService?: (name: string) => unknown;
   };
-  const service = runtimeWithServices.getService?.("discord") as
+  const service = runtimeWithServices.getService("discord") as
     | { client?: DiscordClientLike | null }
     | undefined;
   return service?.client ?? null;
@@ -878,7 +876,7 @@ async function cacheInboxDiscordAvatar(
 ): Promise<string | undefined> {
   const { cacheDiscordAvatarUrl } = await getDiscordModule();
   return cacheDiscordAvatarUrl(avatarUrl, {
-    fetchImpl: runtime.fetch ?? globalThis.fetch,
+    fetchImpl: runtime.fetch,
     userId,
   });
 }
@@ -1377,11 +1375,11 @@ async function loadInboxMessages(
       continue;
     }
 
-    const room = roomById.get(memory.roomId ?? "");
+    const room = roomById.get(memory.roomId);
     const explicitSource = extractSource(memory);
     const source =
       explicitSource ??
-      roomSourceById.get(memory.roomId ?? "") ??
+      roomSourceById.get(memory.roomId) ??
       (roomId
         ? (readRoomSource(room) ?? roomSourceHint ?? undefined)
         : undefined);
@@ -1400,7 +1398,7 @@ async function loadInboxMessages(
         extractDiscordChannelId(memory) ?? readRoomChannelId(room),
       rawDiscordMessageId: extractDiscordMessageId(memory),
       responseId: extractResponseId(memory),
-      roomId: memory.roomId ?? "",
+      roomId: memory.roomId,
       hasExternalUrl: extractContentUrl(memory) !== undefined,
       hasExplicitSource: explicitSource !== null,
       reactions: memory.id ? reactionsByMessageId.get(memory.id) : undefined,
@@ -2089,10 +2087,10 @@ export async function handleInboxRoute(
     const parsed = PostInboxMessageRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path.join(".");
       helpers.error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;

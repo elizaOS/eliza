@@ -278,6 +278,7 @@ class TestTerminalBenchRunner:
         assert captured["client_kwargs"] == {
             "provider": "cerebras",
             "model": "gpt-oss-120b",
+            "direct_openai_compatible": True,
         }
         factory_kwargs = captured["factory_kwargs"]
         assert factory_kwargs["client"].__class__ is FakeOpenClawClient
@@ -335,6 +336,7 @@ class TestTerminalBenchRunner:
         assert captured["client_kwargs"] == {
             "provider": "cerebras",
             "model": "gpt-oss-120b",
+            "mode": "in_process",
         }
         factory_kwargs = captured["factory_kwargs"]
         assert factory_kwargs["client"].__class__ is FakeHermesClient

@@ -31,6 +31,7 @@ import { installDefaultAppRoutes, openAppPath } from "./helpers";
 const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
 const ONBOARDING_STEP_STORAGE_KEY = "eliza:onboarding:step";
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
+const VOICE_PREFIX_DONE_STORAGE_KEY = "eliza:voice:prefix-done";
 
 /**
  * The translated heading is "Welcome to Eliza" (i18n key
@@ -57,14 +58,15 @@ async function fulfillJson(
  * in the serial run starts from a clean slate where it expects to.
  */
 async function clearStorageBeforeNavigation(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((voicePrefixDoneKey) => {
     try {
       localStorage.clear();
       sessionStorage.clear();
+      localStorage.setItem(voicePrefixDoneKey, "1");
     } catch {
       // Storage failures surface as later assertion failures.
     }
-  });
+  }, VOICE_PREFIX_DONE_STORAGE_KEY);
 }
 
 /**
@@ -102,10 +104,8 @@ async function installOnboardingMocks(page: Page): Promise<void> {
     });
   });
 
-  // POST /api/provider/switch is the canonical write path for the
-  // local-runtime sub-view. Mocked in case any future change surfaces
-  // that path during this spec — present today as a precautionary
-  // route so the suite does not silently hit the real backend.
+  // Mock the local-runtime write path so future UI changes in this flow do
+  // not silently hit the real backend.
   await page.route("**/api/provider/switch", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -170,7 +170,7 @@ test.describe
       await expectRuntimeGateMounted(page);
 
       const disclosureToggle = page.getByRole("button", {
-        name: /i want to run it myself/i,
+        name: /(?:i want to )?run it myself/i,
       });
       await disclosureToggle.click();
       await expect(disclosureToggle).toHaveAttribute("aria-expanded", "true");
@@ -239,11 +239,8 @@ test.describe
       page,
       baseURL,
     }) => {
-      // Drive the only end-to-end finish path the production web build
-      // exposes without a real cloud backend: "Connect remote". This
-      // mirrors the canonical contract verified end-to-end by the cloud
-      // path in cloud-provisioning-startup.spec.ts; using the remote
-      // sub-view here keeps the spec self-contained.
+      // Drive the production web finish path that does not need a real cloud
+      // backend: "Connect remote".
       expect(baseURL).toBeTruthy();
       const apiBase = (baseURL ?? "").replace(/\/$/, "");
 
@@ -254,10 +251,12 @@ test.describe
       await expectRuntimeGateMounted(page);
 
       await page
-        .getByRole("button", { name: /i want to run it myself/i })
+        .getByRole("button", { name: /(?:i want to )?run it myself/i })
         .click();
       await page
-        .getByRole("button", { name: /already running an agent\?/i })
+        .getByRole("button", {
+          name: /already running an agent\?|connect remote/i,
+        })
         .click();
 
       const remoteUrlInput = page.getByPlaceholder(/https?:\/\/your-agent/i);
@@ -290,11 +289,12 @@ test.describe
       // contract: a present `eliza:onboarding-complete=1` flag + a valid
       // active server entry must NOT re-render the RuntimeGate landing.
       await page.addInitScript(
-        ({ completeKey, activeServerKey }) => {
+        ({ completeKey, activeServerKey, voicePrefixDoneKey }) => {
           try {
             localStorage.clear();
             sessionStorage.clear();
             localStorage.setItem(completeKey, "1");
+            localStorage.setItem(voicePrefixDoneKey, "1");
             localStorage.setItem(
               activeServerKey,
               JSON.stringify({
@@ -310,6 +310,7 @@ test.describe
         {
           completeKey: ONBOARDING_COMPLETE_STORAGE_KEY,
           activeServerKey: ACTIVE_SERVER_STORAGE_KEY,
+          voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
         },
       );
       await installOnboardingMocks(page);
@@ -330,11 +331,12 @@ test.describe
       // which `applyForceFreshOnboardingReset` consumes during boot to
       // clear active-server / step / complete keys and strip the param.
       await page.addInitScript(
-        ({ completeKey, activeServerKey }) => {
+        ({ completeKey, activeServerKey, voicePrefixDoneKey }) => {
           try {
             localStorage.clear();
             sessionStorage.clear();
             localStorage.setItem(completeKey, "1");
+            localStorage.setItem(voicePrefixDoneKey, "1");
             localStorage.setItem(
               activeServerKey,
               JSON.stringify({
@@ -350,6 +352,7 @@ test.describe
         {
           completeKey: ONBOARDING_COMPLETE_STORAGE_KEY,
           activeServerKey: ACTIVE_SERVER_STORAGE_KEY,
+          voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
         },
       );
       await installOnboardingMocks(page);
@@ -380,16 +383,20 @@ test.describe
       // onboarding surface, a mid-flow resume manifests as the gate
       // re-rendering rather than a deep-link to a specific page.
       await page.addInitScript(
-        ({ stepKey }) => {
+        ({ stepKey, voicePrefixDoneKey }) => {
           try {
             localStorage.clear();
             sessionStorage.clear();
+            localStorage.setItem(voicePrefixDoneKey, "1");
             localStorage.setItem(stepKey, "providers");
           } catch {
             // ignored
           }
         },
-        { stepKey: ONBOARDING_STEP_STORAGE_KEY },
+        {
+          stepKey: ONBOARDING_STEP_STORAGE_KEY,
+          voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
+        },
       );
       await installOnboardingMocks(page);
 

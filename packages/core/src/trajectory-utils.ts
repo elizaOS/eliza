@@ -294,7 +294,7 @@ export function buildContextObjectTrajectoryExport(
 		extractContextEventsFromTrajectory(trajectory) ??
 		[];
 	const metadata = sanitizeJsonObject({
-		...(isPlainRecord(trajectory?.metadata) ? trajectory?.metadata : {}),
+		...(isPlainRecord(trajectory?.metadata) ? trajectory.metadata : {}),
 		...(input.metadata ?? {}),
 	});
 	const metrics = sanitizeJsonObject(input.metrics ?? trajectory?.metrics);

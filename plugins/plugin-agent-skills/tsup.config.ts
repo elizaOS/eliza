@@ -17,6 +17,7 @@ export default defineConfig({
 		// The agent loads us at runtime; we must not bundle it.
 		"@elizaos/agent",
 		"@elizaos/shared",
+		"@elizaos/skills",
 		"fflate",
 	],
 });

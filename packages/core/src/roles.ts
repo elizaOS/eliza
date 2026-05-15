@@ -143,7 +143,7 @@ function getMemoryMetadata(
 }
 
 function getMessageSource(message: Memory): string | undefined {
-	return typeof message.content?.source === "string"
+	return typeof message.content.source === "string"
 		? message.content.source
 		: undefined;
 }

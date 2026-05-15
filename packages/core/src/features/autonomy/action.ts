@@ -76,7 +76,7 @@ async function escalateToAdmin(
 		};
 	}
 
-	const autonomousRoomId = autonomyService.getAutonomousRoomId?.();
+	const autonomousRoomId = autonomyService.getAutonomousRoomId();
 	if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
 		return {
 			success: false,
@@ -105,7 +105,7 @@ async function escalateToAdmin(
 	let targetRoomId: UUID;
 	if (adminMessages && adminMessages.length > 0) {
 		const lastMessage = adminMessages[adminMessages.length - 1];
-		targetRoomId = lastMessage.roomId ?? runtime.agentId;
+		targetRoomId = lastMessage.roomId;
 	} else {
 		targetRoomId = runtime.agentId;
 	}
@@ -260,7 +260,7 @@ export const escalateAction: Action = {
 			return false;
 		}
 
-		const autonomousRoomId = autonomyService.getAutonomousRoomId?.();
+		const autonomousRoomId = autonomyService.getAutonomousRoomId();
 		if (!autonomousRoomId || message.roomId !== autonomousRoomId) {
 			return false;
 		}

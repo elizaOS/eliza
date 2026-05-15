@@ -159,7 +159,7 @@ export function pushApiBaseToRenderer(
 	const trimmedToken = apiToken?.trim();
 	const payload = { base, token: trimmedToken || undefined };
 	try {
-		const rpcSend = (win.webview?.rpc as ApiBaseUpdateRpc | undefined)?.send;
+		const rpcSend = (win.webview.rpc as ApiBaseUpdateRpc | undefined)?.send;
 		rpcSend?.apiBaseUpdate?.(payload);
 	} catch (err) {
 		logger.warn(

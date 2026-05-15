@@ -41,7 +41,7 @@ export function trackInflight(
   }
   set.add(controller);
   return () => {
-    set?.delete(controller);
+    set.delete(controller);
   };
 }
 

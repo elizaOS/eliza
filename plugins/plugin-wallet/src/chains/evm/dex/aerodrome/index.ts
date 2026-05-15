@@ -25,6 +25,12 @@ export const aerodromePlugin: Plugin = {
       }),
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<AerodromeLpService>(
+      AerodromeLpService.serviceType,
+    );
+    await svc?.stop();
+  },
 };
 
 export * from "./types.ts";

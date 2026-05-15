@@ -41,6 +41,11 @@ const googleChatPlugin: Plugin = {
     connectorKeys: ["googlechat"],
   },
 
+  async dispose(runtime: IAgentRuntime) {
+    await runtime.getService<GoogleChatService>(GoogleChatService.serviceType)?.stop();
+    await runtime.getService<GoogleChatWorkflowCredentialProvider>(GoogleChatWorkflowCredentialProvider.serviceType)?.stop();
+  },
+
   /**
    * Plugin initialization hook
    */

@@ -1,7 +1,3 @@
-/**
- * Gradient and noise background for the landing page.
- */
-
 export function LandingBackground() {
   return (
     <div

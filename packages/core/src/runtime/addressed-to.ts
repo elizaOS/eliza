@@ -84,7 +84,7 @@ export async function applyAddressedTo(
 			await runtime.updateRelationship({
 				...existing,
 				tags: dedupeTags([
-					...(existing.tags ?? []),
+					...(existing.tags),
 					...ADDRESSED_RELATIONSHIP_TAGS,
 				]),
 				metadata: {
@@ -148,7 +148,7 @@ async function resolveAddressedTargets(
 		const participants = await runtime.getEntitiesForRoom(message.roomId);
 		const normalize = (value: string) => value.trim().toLowerCase();
 		const byName = new Map<string, UUID>();
-		const agentName = runtime.character?.name;
+		const agentName = runtime.character.name;
 		if (agentName) {
 			byName.set(normalize(agentName), runtime.agentId);
 		}

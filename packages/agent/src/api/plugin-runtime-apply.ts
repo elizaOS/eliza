@@ -226,7 +226,7 @@ export async function applyPluginRuntimeMutation(
       if (
         runtimePluginName &&
         supportsRuntimePluginLifecycle(runtime) &&
-        (await runtime.applyPluginConfig?.(runtimePluginName, config))
+        (await runtime.applyPluginConfig(runtimePluginName, config))
       ) {
         appliedConfig = true;
       }
@@ -295,7 +295,7 @@ export async function applyPluginRuntimeMutation(
       const runtimePluginName =
         previousResolvedMap.get(packageName)?.plugin.name;
       if (!runtimePluginName) continue;
-      await runtime.unloadPlugin?.(runtimePluginName);
+      await runtime.unloadPlugin(runtimePluginName);
       unloadedPackages.push(packageName);
     }
 

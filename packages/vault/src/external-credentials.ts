@@ -185,7 +185,7 @@ function pickOnePasswordUsername(
   item: OnePasswordEnrichedItem | undefined,
 ): string | null {
   if (!item?.fields) return null;
-  // `purpose: "USERNAME"` is the canonical marker for the Login.username slot.
+  // `purpose: "USERNAME"` is the stable marker for the Login.username slot.
   const byPurpose = item.fields.find(
     (f) => f.purpose === "USERNAME" && typeof f.value === "string",
   );

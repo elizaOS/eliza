@@ -124,10 +124,10 @@ export async function handleAuthRoutes(
     const parsed = PostAuthPairRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".") ?? "<root>";
+      const issuePath = issue?.path.join(".");
       error(
         res,
-        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        `Invalid request body at ${issuePath}: ${issue?.message}`,
         400,
       );
       return true;

@@ -88,10 +88,9 @@ export function isDefaultEligibleId(id: string): boolean {
  *   - `eliza-1-2b`: published but vision mmproj missing from bundle.
  *     Same fix path as 0_8b.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
- *     not yet present in per-tier manifests. They are designed to live in
- *     separate repos (elizaos/eliza-1-voice-*) per voice-models.ts; those
- *     repos are not yet created. Next step: run publish pipeline per
- *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
+ *     published under the unified elizaos/eliza-1 `voice/<model-id>/...`
+ *     layout. Per-tier manifests still need to consume these paths directly
+ *     where a bundle wants eager voice downloads.
  *   - Kokoro same voice preset: `af_same.bin` absent from all
  *     bundles; I7 eval showed regression. Current bundles ship af_bella
  *     and standard voices only.

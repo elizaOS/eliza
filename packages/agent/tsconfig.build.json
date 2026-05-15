@@ -9,13 +9,14 @@
     "noEmit": false,
     "outDir": "./dist",
     "resolveJsonModule": true,
-    "rootDir": "../..",
+    "rootDir": "./src",
     "rewriteRelativeImportExtensions": true,
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/skills": ["../skills/dist/index.d.ts"],
       "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/plugin-coding-tools": [

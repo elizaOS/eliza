@@ -169,7 +169,7 @@ export async function updateRoleHandler(
 
 	const serverMembers = entities
 		.map((entity) => {
-			const names = entity.names?.filter(Boolean).join(", ") || "Unknown";
+			const names = entity.names.filter(Boolean).join(", ") || "Unknown";
 			return `- entityId: ${entity.id}\n  names: ${names}`;
 		})
 		.join("\n");
@@ -242,7 +242,7 @@ export async function updateRoleHandler(
 		? explicitAssignments
 		: extractRoleAssignments(parsed);
 
-	if (!result?.length) {
+	if (!result.length) {
 		await callback?.({
 			text: "No valid role assignments found in the request.",
 			actions: ["TRUST"],
@@ -277,7 +277,7 @@ export async function updateRoleHandler(
 
 		if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
 			await callback?.({
-				text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+				text: `You don't have permission to change ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
 				actions: ["TRUST"],
 				source: "discord",
 			});
@@ -294,7 +294,7 @@ export async function updateRoleHandler(
 		});
 
 		await callback?.({
-			text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+			text: `Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
 			actions: ["TRUST"],
 			source: "discord",
 		});

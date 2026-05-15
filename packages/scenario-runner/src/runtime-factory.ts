@@ -205,7 +205,8 @@ export async function createScenarioRuntime(
     enableAutonomy: false,
   });
 
-  const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
+  const sqlPluginSpecifier = "@elizaos/plugin-sql" as string;
+  const { default: pluginSql } = (await import(sqlPluginSpecifier)) as {
     default: Plugin;
   };
   await runtime.registerPlugin(pluginSql);
@@ -254,9 +255,11 @@ export async function createScenarioRuntime(
     );
   } else {
     try {
-      const localEmbedding = (await import(
-        "@elizaos/plugin-local-inference"
-      )) as { default: Plugin };
+      const localInferenceSpecifier =
+        "@elizaos/plugin-local-inference" as string;
+      const localEmbedding = (await import(localInferenceSpecifier)) as {
+        default: Plugin;
+      };
       await runtime.registerPlugin(localEmbedding.default);
     } catch (err) {
       logger.warn(
@@ -287,9 +290,11 @@ export async function createScenarioRuntime(
   // `requires.plugins` resolve without ad-hoc wiring. Graceful-degrade when the
   // package cannot be resolved (fresh checkout, not yet installed).
   try {
-    const agentSkillsModule = (await import(
-      "@elizaos/plugin-agent-skills"
-    )) as Record<string, unknown>;
+    const agentSkillsSpecifier = "@elizaos/plugin-agent-skills" as string;
+    const agentSkillsModule = (await import(agentSkillsSpecifier)) as Record<
+      string,
+      unknown
+    >;
     const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
       "default",
       "agentSkillsPlugin",
@@ -314,7 +319,7 @@ export async function createScenarioRuntime(
   // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
   // plugin to load — they only gate individual action execution at call time.
   try {
-    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops";
+    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops" as string;
     const lifeOpsModule = (await import(lifeOpsPluginSpecifier)) as Record<
       string,
       unknown
@@ -416,8 +421,8 @@ export async function createScenarioRuntime(
     if (removePgliteDirOnCleanup) {
       try {
         fs.rmSync(pgliteDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
+      } catch (err) {
+        logger.debug(`[scenario-runner] PGLite cleanup error: ${err}`);
       }
     } else {
       logger.info(
@@ -427,8 +432,8 @@ export async function createScenarioRuntime(
     if (scenarioHostsRoot) {
       try {
         fs.rmSync(scenarioHostsRoot, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
+      } catch (err) {
+        logger.debug(`[scenario-runner] hosts cleanup error: ${err}`);
       }
     }
   };

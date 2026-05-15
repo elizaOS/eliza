@@ -68,6 +68,13 @@
 
 ## Active agents
 
+- 2026-05-15 H4 phase=impl-done: All 10 elizaos/eliza-1-voice-* repos confirmed live
+  on HuggingFace with real ONNX/GGUF weights. SHA256 verified against HF LFS metadata
+  for all binaries. models/voice/manifest.json: turn-detector promoted to v0.2.0
+  (hfRevision=9eaff4947ebd87b1d811e27dec939e29362a9e42). CHANGELOG updated with H4
+  section. Install smoke: 10/10 PASS (artifact: artifacts/eliza-1-install-smoke/h4-1778829296/).
+  Report: .swarm/impl/H4-hf-weights.md. No blockers — every repo has real weights.
+
 - 2026-05-15 response-streaming-review phase=impl: reviewed local llama text
   streaming + cloud bridge fallback SSE. Fixed two scoped issues: local
   `streamLlamaPrompt` now filters `<think>...</think>` spans before chunks
@@ -617,6 +624,9 @@ Same hard rules: no worktrees, no stash, no branch hops, commit dirty
 code, coordinate here, don't kill peer processes. **HF token handling:**
 read from `HF_TOKEN` env. Never commit it.
 
+### H-wave cycle log (H5 watcher, newest at top)
+
+- 2026-05-15 H5 cycle=1 verify: RED on @elizaos/app-core#lint — 6 biome format errors (automations-compat-routes.ts, lifeops-fake-backend.ts, benchmark/plugin.ts, cli/profile.ts, mobile-safe-runtime.ts, phrase-chunked-tts.ts). Auto-fixed via biome. Committed db2950803b + pushed. H1/H2/H3 PIDs all DEAD; H4 phase=impl-done. green_streak=0.
 
 ---
 
@@ -624,3 +634,52 @@ read from `HF_TOKEN` env. Never commit it.
 
 - 2026-05-15 V-verify-final phase=start: PID=1041120. Watching for L-kokoro-distill / M-emotion-final / O-turn-intl / S-static-models / T-asr commits. Will write `.swarm/voice-finish/WAVE_2_GRIND_FINAL.md` when wave closes (or 2h cap).
 
+
+## H1 — G3 retry: Kokoro sam FT with OmniVoice teacher (2026-05-15)
+
+- 2026-05-15 00:10 H1 phase=impl: PID=1072910. G3 retry with OmniVoice sam teacher.
+  Corpus audit: sam-distill/ has 1090 clips / 95.06 min synthesized by G3 with
+  sam-melfit-ref_s teacher (NOT af_bella). ≥80% distilled / ≤20% real target met.
+  982 train + 108 val clips. Phonemes.jsonl generated. Full-FT launched against
+  kokoro_same_g3.yaml (lr=3e-5, anchor=0.0005, 8000 max_steps, APOLLO-mini, bf16,
+  RTX 5080 16GB). Training PID=1092352. Log: /tmp/kokoro-g3/train.log.
+  GPU VRAM: 14.9 GB / 16.3 GB allocated during training — eval must wait until
+  training pause or completion. Loss trajectory: step=0:0.0899 → step=500:0.6016
+  (convergent, warmup spike then decreasing).
+
+
+## M-emotion-final — re-dispatch close (2026-05-15)
+
+- 2026-05-15 03:32 M-emotion-final phase=done:
+  Path B (G-emotion best.pt re-export, cls7 aux-head ONNX) clears the gate.
+  Final test macro-F1 = 0.3550 ≥ 0.35 (RAVDESS, 126 clip test split).
+  HF: pushed `elizaos/eliza-1-voice-emotion` (public, NEW repo —
+  was deleted in H5 consolidation, re-created here). Revision
+  `384e896725da9358b2f3bb9b31e30a3565998ecd`. Also already in the
+  consolidated `elizaos/eliza-1` repo from earlier rounds.
+  Artifacts: wav2small-cls7-int8.onnx (524,750 bytes, sha256
+  cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953).
+  Runtime adapter contract change (cls7 auto-detect) already on
+  develop (commit `36149ac834`) — 17 tests green.
+  CHANGELOG.md updated. Impl report at .swarm/impl/M-emotion-final.md.
+  Commits this round: 20e14e449b, 769e359aea, 0ce44167df. Pushed to develop.
+
+
+## L-kokoro-distill — re-dispatch close (2026-05-15)
+
+- 2026-05-15 L-kokoro-distill phase=done (L5 failure outcome):
+  All three independent Kokoro `same` FT attempts collapse —
+  F-kokoro 4-anchor sweep (real 3.5-min corpus), L-kokoro-distill
+  4-anchor sweep (95-min OmniVoice-synthesized corpus,
+  `packages/training/data/voice/sam-distill/`, 1090 clips), and
+  H1's G3-retry 8000-step run (lr=3e-5, anchor=5e-4, APOLLO-Mini,
+  bf16) all hit WER=1.0 / UTMOS ≈2.3 / SpkSim ≈0.10–0.15 against
+  real `same/`. Baseline `af_same.bin` itself only scores SpkSim
+  -0.075 — the 0.55 gate is structurally unreachable on this corpus
+  (ECAPA self-cosine ceiling 0.56) on Kokoro's thin embedding-
+  adaptation architecture. **No HF push** —
+  `elizaos/eliza-1-voice-kokoro-same-v01` confirmed nonexistent.
+  Shipping path remains OmniVoice ELZ2 v2 'same' preset
+  (`elizaos/eliza-1-voice-omnivoice-same-v01@fd0d04439d`,
+  `voice-models.ts` `omnivoice` 0.2.0). Impl report:
+  `.swarm/impl/L-kokoro-distill.md`. Commit: `3f505127c1`.

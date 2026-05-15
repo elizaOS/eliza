@@ -42,6 +42,13 @@
       "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
       "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/app-wifi": ["../../plugins/app-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],

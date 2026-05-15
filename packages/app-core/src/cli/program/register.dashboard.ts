@@ -134,7 +134,7 @@ export function registerDashboardCommand(program: Command) {
         openInBrowser(devUrl);
       };
 
-      child.stdout?.on("data", (chunk: Buffer) => {
+      child.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         process.stdout.write(text);
         if (!opened && text.includes("Local:")) {
@@ -142,7 +142,7 @@ export function registerDashboardCommand(program: Command) {
         }
       });
 
-      child.stderr?.on("data", (chunk: Buffer) => {
+      child.stderr.on("data", (chunk: Buffer) => {
         process.stderr.write(chunk.toString());
       });
 

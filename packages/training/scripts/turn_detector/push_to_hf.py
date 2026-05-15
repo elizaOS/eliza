@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Push fine-tuned turn-detector artifacts to ``elizaos/eliza-1-voice-turn``.
+"""Push fine-tuned turn-detector artifacts to ``elizaos/eliza-1``.
 
 Uploads (per locale):
 
@@ -10,26 +10,27 @@ Uploads (per locale):
     + the rest of the LiveKit sidecar set (via
     ``export_tokenizer_artifacts``).
   - ``<bundle>/eval.json`` — gate report from ``eval_turn_detector.py``.
-  - ``README.md`` — model card, written at the repo root.
+  - ``README.md`` — model card, written under ``voice/turn-detector``.
   - ``manifest.json`` — updates the existing manifest with real
     ``files[]`` SHA + size for the uploaded locale variant. Other
     variants are left untouched.
 
 The repo-relative layout written here:
 
-    /                                  ← README.md, manifest.json
-    /onnx/model_q8.onnx                ← EN bundle (drop-in for LiveKit users)
-    /onnx/turn-detector-en-q8.gguf     ← GGUF for native loader (when staged)
-    /onnx/tokenizer.json + sidecars
-    /onnx/eval.json
-    /intl/...                          ← optional INTL bundle (same layout)
+    /voice/turn-detector/README.md
+    /voice/turn-detector/manifest.json
+    /voice/turn-detector/onnx/model_q8.onnx
+    /voice/turn-detector/onnx/turn-detector-en-q8.gguf
+    /voice/turn-detector/onnx/tokenizer.json + sidecars
+    /voice/turn-detector/onnx/eval.json
+    /voice/turn-detector/intl/...      ← optional INTL bundle (same layout)
 
 CLI::
 
     python3 push_to_hf.py \
         --bundle packages/training/out/turn-detector-en-v1/onnx \
         --locale en \
-        --repo elizaos/eliza-1-voice-turn \
+        --repo elizaos/eliza-1 \
         --version 0.2.0 \
         --base-model livekit/turn-detector \
         --base-revision v1.2.2-en \
@@ -208,7 +209,7 @@ commercial use is permitted under Apache-2.0.
   title = {{Eliza-1 Voice Turn Detector v{version}}},
   author = {{Eliza Labs}},
   year = {{2026}},
-  howpublished = {{\\url{{https://huggingface.co/elizaos/eliza-1-voice-turn}}}}
+  howpublished = {{\\url{{https://huggingface.co/elizaos/eliza-1/tree/main/voice/turn-detector}}}}
 }}
 ```
 """
@@ -316,7 +317,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     ap.add_argument("--locale", choices=("en", "intl"), required=True)
-    ap.add_argument("--repo", default="elizaos/eliza-1-voice-turn")
+    ap.add_argument("--repo", default="elizaos/eliza-1")
+    ap.add_argument("--path-in-repo", default="voice/turn-detector")
     ap.add_argument("--version", required=True)
     ap.add_argument("--base-model", default="livekit/turn-detector")
     ap.add_argument("--base-revision", default="v1.2.2-en")
@@ -377,7 +379,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Pull the existing manifest from HF, merge, write locally.
     try:
-        manifest_local = hf_hub_download(args.repo, "manifest.json", token=token)
+        manifest_local = hf_hub_download(
+            args.repo,
+            f"{args.path_in_repo}/manifest.json",
+            token=token,
+        )
         existing = json.loads(Path(manifest_local).read_text(encoding="utf-8"))
     except Exception:
         existing = {
@@ -441,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
         base_revision=args.base_revision,
         eval_en=eval_en,
         eval_intl=eval_intl,
+        locale=args.locale,
     )
     (stage_root / "README.md").write_text(card, encoding="utf-8")
 
@@ -458,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
     commit_info = upload_folder(
         repo_id=args.repo,
         folder_path=str(stage_root),
+        path_in_repo=args.path_in_repo,
         commit_message=args.commit_message,
         token=token,
     )

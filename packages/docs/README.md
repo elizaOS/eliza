@@ -1,16 +1,6 @@
 # elizaOS Documentation
 
-Welcome to the official documentation repository for [elizaOS](https://github.com/elizaos/eliza) - a powerful framework for building AI agents with memory, planning, and tool use capabilities.
-
-## 📚 About This Documentation
-
-This repository contains the comprehensive documentation for elizaOS, including:
-
-- **Getting Started** - Quick setup guides and tutorials
-- **Core Concepts** - Understanding agents, plugins, and the architecture
-- **Deep Dive** - Advanced topics like memory systems, services, and event handling
-- **API Reference** - Maintained HTTP and runtime API documentation
-- **Examples** - Real-world implementations and patterns
+Documentation for [elizaOS](https://github.com/elizaOS/eliza): an agent framework with memory, planning, and tool use.
 
 ## Development
 
@@ -21,7 +11,7 @@ This repository contains the comprehensive documentation for elizaOS, including:
 
 ### Local Development Setup
 
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview the documentation changes locally:
+Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview documentation changes locally:
 
 ```bash
 bun install -g mint
@@ -29,29 +19,27 @@ bun install -g mint
 
 ### Running Locally
 
-This package is the canonical doc root. From the repository root:
+From the repository root:
 
 ```bash
 cd packages/docs && mint dev
 ```
 
-This starts a local preview (default `http://localhost:3000`). The repository root also has a `docs` symlink → `packages/docs` so existing `docs/...` paths keep resolving.
+This starts a local preview, usually at `http://localhost:3000`. The repository root also has a `docs` symlink to `packages/docs` so existing `docs/...` paths keep resolving.
 
 ### Project structure
 
 ```
 packages/docs/
 ├── docs.json              # Mintlify configuration
-├── rest/                  # Product REST API reference (markdown)
-├── guides/, plugins/, …   # Guides and reference content
+├── rest/                  # REST API reference
+├── guides/, plugins/      # Guides and reference content
 ├── images/, logo/
 ├── index.mdx
 └── quickstart.mdx
 ```
 
-## 📝 Contributing to Documentation
-
-We welcome contributions to improve the elizaOS documentation! Here's how you can help:
+## Contributing
 
 1. **Fork** this repository
 2. **Create** a new branch for your changes
@@ -69,9 +57,7 @@ We welcome contributions to improve the elizaOS documentation! Here's how you ca
 
 ## Publishing Changes
 
-Changes are automatically deployed when merged to the main branch. The documentation is hosted using Mintlify's infrastructure.
-
-### Deployment Process
+Changes are automatically deployed when merged to the main branch. The documentation is hosted on Mintlify.
 
 1. Install the Mintlify GitHub App on your repository
 2. Push changes to your default branch
@@ -79,7 +65,7 @@ Changes are automatically deployed when merged to the main branch. The documenta
 
 Find the installation link in your [Mintlify dashboard](https://dashboard.mintlify.com).
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -96,16 +82,12 @@ Find the installation link in your [Mintlify dashboard](https://dashboard.mintli
   - Restart the development server
   - Check for syntax errors in your MDX files
 
-## 📖 Learn More
+## Learn More
 
-- [elizaOS GitHub Repository](https://github.com/elizaos/elizaos)
+- [elizaOS GitHub Repository](https://github.com/elizaOS/eliza)
 - [Mintlify Documentation](https://mintlify.com/docs)
 - [MDX Documentation](https://mdxjs.com/)
 
-## 📄 License
+## License
 
 This documentation is part of the elizaOS project. Please refer to the main repository for license information.
-
----
-
-Built with ❤️ using [Mintlify](https://mintlify.com)

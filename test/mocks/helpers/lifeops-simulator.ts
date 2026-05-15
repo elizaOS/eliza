@@ -19,13 +19,13 @@ import {
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,
-} from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
-import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
+} from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
+import { LifeOpsService } from "../../../plugins/plugin-lifeops/src/lifeops/service.ts";
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
-} from "../../../plugins/app-lifeops/src/lifeops/signal-local-client.ts";
-import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../plugins/app-lifeops/src/lifeops/telegram-local-client.ts";
+} from "../../../plugins/plugin-lifeops/src/lifeops/signal-local-client.ts";
+import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../plugins/plugin-lifeops/src/lifeops/telegram-local-client.ts";
 import {
   assertLifeOpsSimulatorFixtureIntegrity,
   getLifeOpsSimulatorPerson,

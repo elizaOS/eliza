@@ -274,7 +274,7 @@ function renderCompressedDescription(item: {
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {
-	if (!actions?.length) return "";
+	if (!actions.length) return "";
 
 	return shuffleActions(actions, buildDeterministicSeed(seed, "names"))
 		.map((action) => action.name)
@@ -282,7 +282,7 @@ export function formatActionNames(actions: Action[], seed = "actions"): string {
 }
 
 export function formatActions(actions: Action[], seed = "actions"): string {
-	if (!actions?.length) return "";
+	if (!actions.length) return "";
 
 	const actionRows = shuffleActions(
 		actions,
@@ -304,7 +304,7 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 }
 
 export function formatActionParameters(parameters: ActionParameter[]): string {
-	if (!parameters?.length) return "";
+	if (!parameters.length) return "";
 
 	return parameters
 		.map((param) => {

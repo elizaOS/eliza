@@ -225,7 +225,11 @@ mod tests {
         std::fs::write(dir.join("b.txt"), "").unwrap();
         std::fs::write(dir.join("a.txt"), "").unwrap();
         std::fs::write(dir.join(".secret"), "").unwrap();
-        let resp = handle(&dir, serde_json::json!(1), Some(serde_json::json!({ "op": "list" })));
+        let resp = handle(
+            &dir,
+            serde_json::json!(1),
+            Some(serde_json::json!({ "op": "list" })),
+        );
         let keys = resp.result.unwrap()["keys"].clone();
         assert_eq!(keys, serde_json::json!(["a.txt", "b.txt"]));
         let _ = std::fs::remove_dir_all(dir);
@@ -234,7 +238,11 @@ mod tests {
     #[test]
     fn list_on_missing_dir_returns_empty_not_error() {
         let dir = temp_dir("missingdir").join("nope");
-        let resp = handle(&dir, serde_json::json!(1), Some(serde_json::json!({ "op": "list" })));
+        let resp = handle(
+            &dir,
+            serde_json::json!(1),
+            Some(serde_json::json!({ "op": "list" })),
+        );
         assert!(resp.error.is_none());
         assert_eq!(resp.result.unwrap()["keys"], serde_json::json!([]));
     }
@@ -281,9 +289,6 @@ mod tests {
     fn missing_params_returns_invalid_params() {
         let dir = temp_dir("noparams");
         let resp = handle(&dir, serde_json::json!(1), None);
-        assert_eq!(
-            resp.error.expect("error").code,
-            error_code::INVALID_PARAMS,
-        );
+        assert_eq!(resp.error.expect("error").code, error_code::INVALID_PARAMS,);
     }
 }

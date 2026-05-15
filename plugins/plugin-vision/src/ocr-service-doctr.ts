@@ -145,12 +145,11 @@ export class DoctrOCRService {
       .toBuffer({ resolveWithObject: true });
 
     const detInput = this.toCHWFloat32(rgb, inSize, inSize);
-    const { probMap, h: probH, w: probW } = await bindings.detect(
-      this.cfg.detPath!,
-      detInput,
-      inSize,
-      inSize,
-    );
+    const {
+      probMap,
+      h: probH,
+      w: probW,
+    } = await bindings.detect(this.cfg.detPath!, detInput, inSize, inSize);
 
     const xScale = origW / inSize;
     const yScale = origH / inSize;
@@ -174,11 +173,7 @@ export class DoctrOCRService {
     return { text: fullText, blocks, fullText };
   }
 
-  private toCHWFloat32(
-    rgb: Buffer,
-    w: number,
-    h: number,
-  ): Float32Array {
+  private toCHWFloat32(rgb: Buffer, w: number, h: number): Float32Array {
     const float = new Float32Array(3 * w * h);
     const stride = w * h;
     for (let i = 0; i < stride; i++) {

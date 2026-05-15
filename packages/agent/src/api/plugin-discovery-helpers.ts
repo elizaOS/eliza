@@ -67,9 +67,7 @@ export type { PluginEntry, PluginParamDef } from "./server-types.ts";
 import type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
 export function getReleaseBundledPluginIds(): Set<string> {
-  const packageRoot = findOwnPackageRoot(
-    import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url)),
-  );
+  const packageRoot = findOwnPackageRoot(import.meta.dirname);
   const packageJsonPath = path.join(packageRoot, "package.json");
 
   try {
@@ -988,8 +986,7 @@ export function discoverInstalledPlugins(
  * Falls back to filesystem scanning for monorepo development.
  */
 export function discoverPluginsFromManifest(): PluginEntry[] {
-  const thisDir =
-    import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
+  const thisDir = import.meta.dirname;
   const packageRoot = findOwnPackageRoot(thisDir);
   const manifestRoot = findPluginsManifestRoot(thisDir);
   const manifestPath = path.join(manifestRoot, "plugins.json");
@@ -1007,9 +1004,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
           .map((p) => {
             const inferredCategory = categorizePlugin(p.id);
             const category =
-              inferredCategory === "feature"
-                ? (p.category ?? inferredCategory)
-                : inferredCategory;
+              inferredCategory === "feature" ? p.category : inferredCategory;
             const bundledMeta = readBundledPluginPackageMetadata(
               packageRoot,
               p.dirName,

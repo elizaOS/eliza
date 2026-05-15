@@ -9,8 +9,6 @@ import { join } from "node:path";
 import type { BuildConfig, BunPlugin } from "bun";
 
 export interface ElizaBuildOptions {
-	/** Package root directory */
-	root?: string;
 	/** Entry points - defaults to ['src/index.ts'] */
 	entrypoints?: string[];
 	/** Output directory - defaults to 'dist' */
@@ -29,8 +27,6 @@ export interface ElizaBuildOptions {
 	format?: "esm" | "cjs";
 	/** Copy assets configuration */
 	assets?: Array<{ from: string; to: string }>;
-	/** Whether this is a CLI tool */
-	isCli?: boolean;
 	/** Whether to generate TypeScript declarations (using tsc separately) */
 	generateDts?: boolean;
 	/**
@@ -64,7 +60,6 @@ export async function createElizaBuildConfig(
 	options: ElizaBuildOptions,
 ): Promise<BuildConfig> {
 	const {
-		root: _root = process.cwd(),
 		entrypoints = ["src/index.ts"],
 		outdir = "dist",
 		target = "node",
@@ -73,16 +68,13 @@ export async function createElizaBuildConfig(
 		minify = false,
 		plugins = [],
 		format = "esm",
-		assets: _assets = [],
 		selfPackageName,
 	} = options;
 
-	// Resolve paths relative to root
 	const resolvedEntrypoints = entrypoints
-		.filter((entry) => entry && entry.trim() !== "") // Filter out empty strings
+		.filter((entry) => entry && entry.trim() !== "")
 		.map((entry) => (entry.startsWith("./") ? entry : `./${entry}`));
 
-	// Common external packages for Node.js targets
 	const nodeExternals =
 		target === "node" || target === "bun"
 			? [
@@ -120,15 +112,12 @@ export async function createElizaBuildConfig(
 				]
 			: [];
 
-	// elizaOS workspace packages that should typically be external
-	// Filter out the package being built to avoid self-referential imports
 	const elizaExternals = [
 		"@elizaos/core",
 		"@elizaos/shared",
 		"@elizaos/plugin-*",
 	].filter((pkg) => pkg !== selfPackageName);
 
-	// Filter out empty strings and clean up the external array
 	const cleanExternals = [...external].filter(
 		(ext) => ext && !ext.startsWith("//") && ext.trim() !== "",
 	);
@@ -138,8 +127,6 @@ export async function createElizaBuildConfig(
 		outdir,
 		target: target === "node" ? "node" : target,
 		format,
-		// 'splitting' option removed - not part of Bun's BuildConfig type
-		// splitting: format === 'esm' && entrypoints.length > 1,
 		sourcemap,
 		minify,
 		external: [...nodeExternals, ...elizaExternals, ...cleanExternals],
@@ -919,7 +906,7 @@ async function fixDtsExtensions(rootDir: string): Promise<void> {
 		// `rewriteSpecifier` is async.
 		for (const m of src.matchAll(specifierRegex)) {
 			const [, prefix, spec, suffix] = m;
-			const matchStart = m.index ?? 0;
+			const matchStart = m.index;
 			const newSpec = await rewriteSpecifier(fileDir, spec);
 			if (newSpec === spec) continue;
 			matches.push({

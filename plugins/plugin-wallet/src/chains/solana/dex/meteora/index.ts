@@ -3,6 +3,7 @@ import {
   createSolanaLpProtocolProvider,
   registerLpProtocolProvider,
 } from "../../../../lp/services/LpManagementService.ts";
+import type { MeteoraLpService } from "./services/MeteoraLpService.ts";
 
 export const meteoraPlugin: Plugin = {
   name: "@elizaos/plugin-meteora",
@@ -16,24 +17,25 @@ export const meteoraPlugin: Plugin = {
       const { MeteoraLpService } = await import(serviceModulePath);
       console.info("Meteora Plugin Initialized");
       const service =
-        runtime.getService(MeteoraLpService.serviceType) ??
-        (await MeteoraLpService.start(runtime));
+        runtime.getService(MeteoraLpService.serviceType) ?? (await MeteoraLpService.start(runtime));
       await registerLpProtocolProvider(
         runtime,
         createSolanaLpProtocolProvider({
           dex: "meteora",
           label: "Meteora",
-          service: service as Parameters<
-            typeof createSolanaLpProtocolProvider
-          >[0]["service"],
-        }),
+          service: service as Parameters<typeof createSolanaLpProtocolProvider>[0]["service"],
+        })
       );
     } catch (error) {
       console.warn(
         "[Meteora] Optional DLMM dependency failed to load; Meteora LP support is disabled.",
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.message : String(error)
       );
     }
+  },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<MeteoraLpService>("meteora-lp");
+    await svc?.stop();
   },
 };
 

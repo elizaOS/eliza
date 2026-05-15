@@ -1346,7 +1346,7 @@ export interface LifeOpsActivitySignal {
 // ---------------------------------------------------------------------------
 // Telemetry event families (canonical store).
 //
-// See `eliza/plugins/app-lifeops/docs/telemetry-event-families.md` for the full
+// See `eliza/plugins/plugin-lifeops/docs/telemetry-event-families.md` for the full
 // spec. Every telemetry payload is a fully-typed discriminated-union variant
 // per the no-`unknown`/no-`any` rule.
 // ---------------------------------------------------------------------------
@@ -4201,8 +4201,8 @@ export interface SendLifeOpsIMessageRequest {
 }
 // ── Knowledge-graph: Entity + Relationship (W1-E) ──────────────────────────
 //
-// Frozen shapes per `eliza/plugins/app-lifeops/docs/audit/wave1-interfaces.md
-// §2`. The runtime stores live in `@elizaos/app-lifeops`. These contracts
+// Frozen shapes per `eliza/plugins/plugin-lifeops/docs/audit/wave1-interfaces.md
+// §2`. The runtime stores live in `@elizaos/plugin-lifeops`. These contracts
 // expose the wire shape so other packages (UI, Cloud relay, tests) can work
 // against typed data without depending on the lifeops package.
 

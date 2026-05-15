@@ -125,7 +125,7 @@ function renderQuestions(questions: readonly ReplyQuestion[]): string {
 
 function getPlannerReplyFallback(responses?: Memory[]): string {
 	for (const response of responses ?? []) {
-		const text = response.content?.text;
+		const text = response.content.text;
 		if (typeof text === "string" && text.trim().length > 0) {
 			return text.trim();
 		}
@@ -151,7 +151,7 @@ function readTextParam(
 	return typeof value === "string" ? value : undefined;
 }
 
-const baseDescription = spec.description ?? "";
+const baseDescription = spec.description;
 const extendedDescription = baseDescription.includes("questions[]")
 	? baseDescription
 	: `${baseDescription} Reply text or ask structured questions[] (1-4 items, optional multi-choice options).`.trim();
@@ -325,7 +325,7 @@ export const replyAction = {
 		const allProviders: string[] = [];
 		if (responses) {
 			for (const res of responses) {
-				const providers = res.content?.providers;
+				const providers = res.content.providers;
 				if (providers && providers.length > 0) {
 					allProviders.push(...providers);
 				}
@@ -333,7 +333,7 @@ export const replyAction = {
 		}
 
 		state = await runtime.composeState(message, [
-			...(allProviders ?? []),
+			...(allProviders),
 			"RECENT_MESSAGES",
 			"ACTION_STATE",
 		]);

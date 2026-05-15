@@ -20,6 +20,10 @@ export const linearPlugin: Plugin = {
     linearProjectsProvider,
     linearActivityProvider,
   ],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<LinearService>(LinearService.serviceType);
+    await svc?.stop();
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerLinearSearchCategory(runtime);
     try {

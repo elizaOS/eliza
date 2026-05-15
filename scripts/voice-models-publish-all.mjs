@@ -2,7 +2,7 @@
 /**
  * voice-models-publish-all.mjs
  *
- * Publishes all 10 eliza-1 voice sub-model repos to HuggingFace.
+ * Publishes all 10 eliza-1 voice sub-model payloads to HuggingFace.
  *
  * Usage:
  *   bun run voice-models:publish-all              # publish all
@@ -14,14 +14,13 @@
  *   - hf CLI must be installed: pip install huggingface_hub[cli]
  *   - staging dirs must exist under artifacts/voice-sub-model-staging/<id>/
  *
- * Each repo is created if absent, then the staging dir is uploaded.
+ * The single canonical repo is created if absent, then each staging dir is
+ * uploaded under voice/<id>/.
  * Re-runs are idempotent: upload overwrites files with the same path.
  *
  * Coordination:
- *   - F2 (kokoro): publishes retrained weights to elizaos/eliza-1-voice-kokoro
- *     when quality gates pass. This script uploads the base/preset files.
- *   - F5 (mmproj): publishes mmproj files to elizaos/eliza-1 (main bundle repo),
- *     not to any sub-model repo here.
+ *   - Split repos (`elizaos/eliza-1-voice-*`) are legacy mirrors only.
+ *     Do not delete them until the unified repo has been verified.
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -32,60 +31,61 @@ import { fileURLToPath } from "node:url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const STAGING_BASE = join(REPO_ROOT, "artifacts", "voice-sub-model-staging");
+const TARGET_REPO = process.env.ELIZA_1_HF_REPO ?? "elizaos/eliza-1";
 
-// Canonical sub-model repo manifest per F3 brief (W3-12 namespace correction).
+// Canonical voice payload manifest.
 // id: local staging dir name
-// repo: HF repo slug
+// path: path prefix inside TARGET_REPO
 // description: human summary for logging
 const VOICE_MODELS = [
   {
     id: "asr",
-    repo: "elizaos/eliza-1-voice-asr",
+    path: "voice/asr",
     description: "Qwen3-ASR GGUF + mmproj",
   },
   {
     id: "turn",
-    repo: "elizaos/eliza-1-voice-turn",
+    path: "voice/turn-detector",
     description: "LiveKit turn-detector (EN + INTL) + turnsense fallback",
   },
   {
     id: "emotion",
-    repo: "elizaos/eliza-1-voice-emotion",
+    path: "voice/voice-emotion",
     description: "Wav2Small V-A-D emotion classifier (distilled)",
   },
   {
     id: "speaker",
-    repo: "elizaos/eliza-1-voice-speaker",
+    path: "voice/speaker-encoder",
     description: "WeSpeaker ECAPA-TDNN 256-dim speaker encoder",
   },
   {
     id: "diarizer",
-    repo: "elizaos/eliza-1-voice-diarizer",
+    path: "voice/diarizer",
     description: "Pyannote-segmentation-3.0 ONNX diarizer",
   },
   {
     id: "vad",
-    repo: "elizaos/eliza-1-voice-vad",
+    path: "voice/vad",
     description: "Silero VAD v5.1.2",
   },
   {
     id: "wakeword",
-    repo: "elizaos/eliza-1-voice-wakeword",
+    path: "voice/wakeword",
     description: "hey-eliza wake-word head",
   },
   {
     id: "kokoro",
-    repo: "elizaos/eliza-1-voice-kokoro",
+    path: "voice/kokoro",
     description: "Kokoro-82M base + same-voice preset (F2 coordination)",
   },
   {
     id: "omnivoice",
-    repo: "elizaos/eliza-1-voice-omnivoice",
+    path: "voice/omnivoice",
     description: "OmniVoice frozen conditioning + same-voice ELZ2 v2 preset",
   },
   {
     id: "embedding",
-    repo: "elizaos/eliza-1-voice-embedding",
+    path: "voice/embedding",
     description: "Qwen3-Embedding GGUF for voice profile text features",
   },
 ];
@@ -140,7 +140,7 @@ function checkPrerequisites() {
 }
 
 /**
- * Publish one voice sub-model repo.
+ * Publish one voice sub-model path.
  * Returns { success: boolean, skipped: boolean, reason?: string }
  */
 function publishModel(model) {
@@ -154,7 +154,7 @@ function publishModel(model) {
     };
   }
 
-  console.log(`\n--- ${model.repo} ---`);
+  console.log(`\n--- ${TARGET_REPO}/${model.path} ---`);
   console.log(`    ${model.description}`);
   console.log(`    Staging: ${stagingDir}`);
 
@@ -169,7 +169,7 @@ function publishModel(model) {
   // Step 1: Create the repo (idempotent — fails silently if exists)
   console.log("\n  [1/2] Create HF repo (idempotent)");
   const createResult = run(
-    `hf repos create ${model.repo} --type model --exist-ok`,
+    `hf repos create ${TARGET_REPO} --type model --exist-ok`,
   );
   if (!isDryRun && createResult.status !== 0) {
     // Repo may already exist — not fatal. Log and continue.
@@ -181,7 +181,8 @@ function publishModel(model) {
   // Step 2: Upload staging dir contents
   console.log("\n  [2/2] Upload staging dir");
   const uploadResult = run(
-    `hf upload ${model.repo} ${stagingDir} . --type model --commit-message "Hydrate Eliza-1 voice binary payloads"`,
+    `hf upload ${TARGET_REPO} ${stagingDir} ${model.path} --type model ` +
+      `--commit-message "Hydrate Eliza-1 voice binary payloads"`,
   );
 
   if (!isDryRun && uploadResult.status !== 0) {
@@ -257,16 +258,18 @@ async function main() {
           : "OK  "
         : "FAIL";
     const note = r.reason ? ` — ${r.reason}` : "";
-    console.log(`  [${status}] ${r.model.repo}${note}`);
+    console.log(`  [${status}] ${TARGET_REPO}/${r.model.path}${note}`);
     if (!r.success && !r.skipped) allOk = false;
   }
 
   if (!allOk) {
-    console.error("\nSome repos failed to publish. See output above.");
+    console.error("\nSome payloads failed to publish. See output above.");
     process.exit(1);
   } else {
     console.log(
-      isDryRun ? "\nDry run complete." : "\nAll repos published successfully.",
+      isDryRun
+        ? "\nDry run complete."
+        : "\nAll payloads published successfully.",
     );
   }
 }

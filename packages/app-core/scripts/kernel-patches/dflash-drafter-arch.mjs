@@ -482,13 +482,13 @@ function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
     [modelRel, "llm_build_dflash_draft::llm_build_dflash_draft"],
   ];
   const missing = [];
-  const cmake = fs.readFileSync(
-    path.join(llamaCppRoot, "src", "CMakeLists.txt"),
-    "utf8",
-  );
+  const cmakePath = path.join(llamaCppRoot, "src", "CMakeLists.txt");
+  const cmakeSource = fs.existsSync(cmakePath)
+    ? fs.readFileSync(cmakePath, "utf8")
+    : "";
   if (
-    !cmake.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') &&
-    !cmake.includes(modelRel.slice("src/".length))
+    !cmakeSource.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') &&
+    !cmakeSource.includes(modelRel.slice("src/".length))
   ) {
     missing.push(
       `src/CMakeLists.txt (missing ${modelRel.slice("src/".length)})`,
@@ -503,6 +503,21 @@ function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
     if (!fs.readFileSync(file, "utf8").includes(marker)) {
       missing.push(`${rel} (missing ${marker})`);
     }
+  }
+  const modelSources = [
+    path.join(llamaCppRoot, "src/models/dflash_draft.cpp"),
+    path.join(llamaCppRoot, "src/models/dflash-draft.cpp"),
+  ];
+  if (
+    !modelSources.some(
+      (file) =>
+        fs.existsSync(file) &&
+        fs
+          .readFileSync(file, "utf8")
+          .includes("llm_build_dflash_draft::llm_build_dflash_draft"),
+    )
+  ) {
+    missing.push("src/models/dflash[-_]draft.cpp (missing dflash graph builder)");
   }
   if (missing.length > 0) {
     throw new Error(

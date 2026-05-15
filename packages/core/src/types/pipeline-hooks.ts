@@ -281,7 +281,7 @@ export function pipelineHookMetricRoomId(ctx: PipelineHookContext): UUID {
 		case "post_model":
 			return ctx.roomId ?? DEFAULT_UUID;
 		case "after_memory_persisted":
-			return ctx.memory.roomId ?? DEFAULT_UUID;
+			return ctx.memory.roomId;
 		case "model_stream_chunk":
 		case "model_stream_end":
 			return ctx.roomId;

@@ -8,6 +8,10 @@ const videoPlugin: Plugin = {
   actions: [],
   providers: [],
   routes: [],
+  async dispose(runtime) {
+    const svc = runtime.getService<VideoService>(VideoService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default videoPlugin;

@@ -3,8 +3,8 @@
  *
  * These are defined locally because the published @elizaos/plugin-sql npm
  * package (beta dist-tag) does not yet export them. Once the plugin-sql
- * submodule ships a release that includes pglite/errors.ts, we can remove
- * this file and import directly from "@elizaos/plugin-sql".
+ * submodule ships a release that includes pglite/errors.ts, this local copy can
+ * be removed.
  */
 
 export const PGLITE_ERROR_CODES = {

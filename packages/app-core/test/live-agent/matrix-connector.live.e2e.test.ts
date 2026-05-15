@@ -1,48 +1,15 @@
-/**
- * Matrix Connector Validation Tests
- *
- * Comprehensive E2E tests for validating the Matrix connector (@elizaos/plugin-matrix).
- *
- * Test Categories:
- *   1. Setup & Authentication
- *   2. Message Handling
- *   3. Matrix-Specific Features
- *   4. Rooms & Spaces
- *   5. Error Handling
- *   6. Integration
- *   7. Configuration
- *
- * Requirements for live tests:
- *   MATRIX_ACCESS_TOKEN   — Matrix access token
- *   MATRIX_HOMESERVER     — Matrix homeserver URL (e.g., https://matrix.org)
- *   MATRIX_USER_ID        — Matrix user ID (e.g., @agent:example.com)
- *   ELIZA_LIVE_TEST=1    — Enable live tests
- *
- * Additional env vars for write tests:
- *   MATRIX_ROOMS          — Comma-separated room IDs to test in
- *
- * Or configure in ~/.eliza/eliza.json:
- *   { "connectors": { "matrix": { "token": "...", "homeserver": "...", "userId": "..." } } }
- *
- * NO MOCKS for live tests — all tests use real Matrix Client-Server API.
- */
-
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractPlugin,
-  resolveMatrixPluginImportSpecifier,
-} from "@elizaos/app-core";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { sleep } from "../helpers/test-utils";
 
-// ---------------------------------------------------------------------------
-// Environment Setup
-// ---------------------------------------------------------------------------
+const { extractPlugin, resolveMatrixPluginImportSpecifier } = await import(
+  "../../src/test-support/test-helpers.ts"
+);
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

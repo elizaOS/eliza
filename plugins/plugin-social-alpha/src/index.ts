@@ -58,6 +58,9 @@ export const socialAlphaPlugin: Plugin = {
 	routes: communityInvestorRoutes,
 	events: events as unknown as Plugin["events"],
 	tests: [],
+	async dispose(runtime) {
+		await runtime.getService<CommunityInvestorService>(CommunityInvestorService.serviceType)?.stop();
+	},
 };
 
 export const panels: AgentPanel[] = [

@@ -41,9 +41,9 @@ Tips:
 - Today only: `?1` · Current only: `?0`
 - PNG: `curl -s "wttr.in/Berlin.png" -o /tmp/weather.png`
 
-## Open-Meteo (fallback, JSON)
+## Open-Meteo JSON
 
-Free, no key, good for programmatic use:
+Free, no key, useful for programmatic weather data:
 
 ```bash
 curl -s "https://api.open-meteo.com/v1/forecast?latitude=51.5&longitude=-0.12&current_weather=true"

@@ -47,7 +47,7 @@ export function getPluginInfoFromRegistry(
 
     const aliases = new Set<string>();
     for (const candidate of [value.name, value.npm.package]) {
-      const trimmed = candidate?.trim();
+      const trimmed = candidate.trim();
       if (!trimmed) continue;
       aliases.add(trimmed.replace(/^@[^/]+\//, "").toLowerCase());
 
@@ -172,7 +172,7 @@ export function toAppInfo(
       }
     : meta?.launchType === "connect" || meta?.launchType === "local"
       ? {
-          url: meta?.launchUrl ?? "",
+          url: meta.launchUrl ?? "",
           sandbox: defaultSandbox,
         }
       : undefined;

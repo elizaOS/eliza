@@ -1,4 +1,4 @@
-import type { Action, Plugin, ServiceClass } from "@elizaos/core";
+import type { Action, IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { walletRouterAction } from "../wallet-action";
 import { tokenBalanceProvider } from "./providers/get-balance";
@@ -26,6 +26,10 @@ export const evmPlugin: Plugin = {
   services: [EVMService] as ServiceClass[],
   actions: promoteSubactionsToActions(walletRouterAction as Action) as Action[],
   routes: evmSignRoutes,
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<EVMService>(EVMService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default evmPlugin;

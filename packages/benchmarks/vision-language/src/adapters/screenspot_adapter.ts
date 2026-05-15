@@ -19,7 +19,7 @@
  * standard ScreenSpot metric), else 0. Predictions that include a bbox
  * (region grounders) fall back to IoU > 0.5.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clickHit, iouHit } from "../scorers/index.ts";
@@ -156,7 +156,9 @@ export function groundingPrompt(instruction: string): string {
 
 const COORD_RE = /(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)/;
 
-export function parseClickFromText(text: string): { x: number; y: number } | null {
+export function parseClickFromText(
+  text: string,
+): { x: number; y: number } | null {
   if (!text) return null;
   const trimmed = text.trim();
   // Try JSON first.
@@ -195,7 +197,10 @@ function loadOfficial(n: number): Sample<ScreenSpotPayload>[] {
         "`screenspot_imgs/`, or pass --smoke.",
     );
   }
-  const splits: Array<{ file: string; platform: ScreenSpotPayload["platform"] }> = [
+  const splits: Array<{
+    file: string;
+    platform: ScreenSpotPayload["platform"];
+  }> = [
     { file: "screenspot_desktop.json", platform: "desktop" },
     { file: "screenspot_mobile.json", platform: "mobile" },
     { file: "screenspot_web.json", platform: "web" },
@@ -204,7 +209,9 @@ function loadOfficial(n: number): Sample<ScreenSpotPayload>[] {
   for (const split of splits) {
     const annPath = path.join(dir, split.file);
     if (!existsSync(annPath)) continue;
-    const raw = JSON.parse(readFileSync(annPath, "utf8")) as OfficialAnnotation[];
+    const raw = JSON.parse(
+      readFileSync(annPath, "utf8"),
+    ) as OfficialAnnotation[];
     for (const entry of raw) {
       const imgPath = path.join(dir, "screenspot_imgs", entry.img_filename);
       const dims = upstreamImageDims(dir, entry.img_filename);

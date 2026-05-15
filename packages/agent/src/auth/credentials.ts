@@ -506,7 +506,7 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
           expires_at?: number;
         };
       };
-      const oauth = parsed?.claudeAiOauth;
+      const oauth = parsed.claudeAiOauth;
       if (!oauth) return null;
       const accessToken = oauth.accessToken ?? oauth.access_token;
       if (typeof accessToken !== "string" || !accessToken.trim()) return null;

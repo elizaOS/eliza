@@ -13,6 +13,10 @@ import type {
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
+import {
+  registerPluginViews,
+  unregisterPluginViews,
+} from "../api/views-registry.ts";
 import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
@@ -698,7 +702,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         (existingAction) => existingAction.name === actionName,
       )
     ) {
-      runtime.logger.debug?.(
+      runtime.logger.debug(
         {
           src: "plugin-lifecycle",
           agentId: runtime.agentId,
@@ -881,7 +885,10 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
           capture.ownership,
         );
       }
+      // Register any views declared by this plugin into the view registry.
+      await registerPluginViews(plugin);
     } catch (error) {
+      unregisterPluginViews(plugin.name);
       trackRoutesAndPluginRef(
         runtimeWithLifecycle,
         capture.ownership,
@@ -903,6 +910,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     if (!ownership) {
       return null;
     }
+    unregisterPluginViews(pluginName);
     await teardownPluginOwnership(runtimeWithLifecycle, ownership, {
       removeOwnership: true,
     });
@@ -914,6 +922,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       plugin.name,
     );
     if (existingOwnership) {
+      unregisterPluginViews(plugin.name);
       await teardownPluginOwnership(runtimeWithLifecycle, existingOwnership, {
         removeOwnership: true,
       });

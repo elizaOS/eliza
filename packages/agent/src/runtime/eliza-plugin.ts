@@ -7,7 +7,12 @@
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import { AgentEventService, promoteSubactionsToActions } from "@elizaos/core";
+import {
+  AgentEventService,
+  logger,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
+import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -110,13 +115,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
       setCustomActionsRuntime(runtime);
-      // Proactive agent (activity-profile) is now initialized by @elizaos/app-lifeops plugin init.
-
-      // ── Auto-register skills as slash commands ───────────────────────
-      // Runs after plugin-agent-skills init so getLoadedSkills() is populated.
-      // Uses a deferred check because skill loading is async and may complete
-      // after this init() returns.
-      const registerSkillsAsCommands = () => {
+      const registerSkillsAsCommands = async () => {
         try {
           const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
           if (!isAgentSkillsService(skillsService)) return false;
@@ -124,18 +123,16 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;
 
-          // Dynamically import plugin-commands registry (may not be loaded)
           let registerCommand: (cmd: Record<string, unknown>) => void;
           let initForRuntime: (agentId: string) => void;
           try {
-            const cmds = require("@elizaos/plugin-commands");
+            const cmds = await import("@elizaos/plugin-commands");
             registerCommand = cmds.registerCommand;
             initForRuntime = cmds.initForRuntime;
           } catch {
-            return false; // plugin-commands not available
+            return false;
           }
 
-          // Ensure the command store is scoped to this runtime
           initForRuntime(runtime.agentId);
 
           let registered = 0;
@@ -159,12 +156,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
               });
               registered++;
             } catch {
-              // Command may already be registered (e.g. /stop conflicts)
+              // Command may already be registered by another source.
             }
           }
 
           if (registered > 0) {
-            const { logger } = require("@elizaos/core");
             logger.info(
               `[eliza] Registered ${registered} skills as slash commands`,
             );
@@ -175,10 +171,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
         }
       };
 
-      // Try immediately, then retry after a delay for async skill loading
-      if (!registerSkillsAsCommands()) {
-        setTimeout(registerSkillsAsCommands, 5000);
-      }
+      void registerSkillsAsCommands().then((registered) => {
+        if (!registered) {
+          setTimeout(() => void registerSkillsAsCommands(), 5000);
+        }
+      });
     },
 
     providers: [
@@ -213,6 +210,25 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
       // CODE umbrella).
     ],
+
+    async dispose(runtime) {
+      await runtime
+        .getService<PermissionRegistry>(PermissionRegistry.serviceType)
+        ?.stop();
+      await runtime
+        .getService<AgentMediaGenerationService>(
+          AgentMediaGenerationService.serviceType,
+        )
+        ?.stop();
+      await runtime
+        .getService<ElizaCharacterPersistenceService>(
+          ElizaCharacterPersistenceService.serviceType,
+        )
+        ?.stop();
+      await runtime
+        .getService<AgentEventService>(AgentEventService.serviceType)
+        ?.stop();
+    },
   };
 
   return plugin;

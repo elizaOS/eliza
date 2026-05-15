@@ -128,9 +128,9 @@
         "@capacitor/haptics",
         "@capacitor/keyboard",
         "@capacitor/push-notifications",
-        "@elizaos/app-lifeops",
-        "@elizaos/app-shopify",
-        "@elizaos/app-vincent",
+        "@elizaos/plugin-lifeops",
+        "@elizaos/plugin-shopify-ui",
+        "@elizaos/plugin-vincent",
         "@elizaos/plugin-browser",
         "@elizaos/plugin-discord",
         "@elizaos/plugin-local-inference",
@@ -215,7 +215,7 @@
     "packages/native-plugins/activity-tracker": {
       "ignoreBinaries": ["swiftc"]
     },
-    "plugins/app-companion": {
+    "plugins/plugin-companion": {
       "ignore": [".storybook-smoke/**", "public/vrm-decoders/draco/*.js"]
     },
     "packages/elizaos": {
@@ -453,7 +453,7 @@
       ],
       "ignoreBinaries": ["make"]
     },
-    "plugins/app-lifeops": {
+    "plugins/plugin-lifeops": {
       "entry": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
@@ -468,7 +468,7 @@
       ],
       "ignoreBinaries": [
         "tsc",
-        "plugins/app-lifeops/scripts/work-thread-benchmark.ts"
+        "plugins/plugin-lifeops/scripts/work-thread-benchmark.ts"
       ]
     }
   }

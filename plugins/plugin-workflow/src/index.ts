@@ -55,6 +55,12 @@ export const workflowPlugin: Plugin = {
 
   services: [EmbeddedWorkflowService, WorkflowService, WorkflowCredentialStore],
 
+  async dispose(runtime: IAgentRuntime) {
+    await runtime.getService<WorkflowService>(WorkflowService.serviceType)?.stop();
+    await runtime.getService<EmbeddedWorkflowService>(EmbeddedWorkflowService.serviceType)?.stop();
+    await runtime.getService<WorkflowCredentialStore>(WorkflowCredentialStore.serviceType)?.stop();
+  },
+
   schema: dbSchema,
 
   actions: [workflowAction],

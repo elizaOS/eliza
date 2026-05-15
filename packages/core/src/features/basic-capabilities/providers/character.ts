@@ -196,8 +196,8 @@ export const characterProvider: Provider = {
 							return group.examples
 								.map((message) => {
 									const messageContent = message.content;
-									const actionsText = messageContent?.actions?.join(", ");
-									const text = messageContent?.text ?? "";
+									const actionsText = messageContent.actions?.join(", ");
+									const text = messageContent.text ?? "";
 									const exampleText = resolveCharacterPlaceholders(
 										text,
 										agentName,

@@ -21,10 +21,6 @@ import {
 import { isElizaCloudServiceSelectedInConfig } from "../contracts/cloud-topology.js";
 import { getCloudSecret } from "./cloud-secrets.js";
 
-// Re-import retained here (no module-level side-effects) so the tts-debug helpers
-// shipped in `utils/tts-debug` remain the single source of truth.
-// Consumers that want to log should import them via the package barrel.
-
 type ConfigLike = Record<string, unknown> & {
   cloud?: {
     apiKey?: unknown;
@@ -93,7 +89,7 @@ function resolveCloudApiKey(
       return configKey;
     }
   } catch {
-    // ignore config load errors and continue with secret store fallback
+    // Config is optional; sealed secrets are checked next.
   }
 
   const sealedKey = normalizeSecretEnvValue(
@@ -220,7 +216,7 @@ export function resolveCloudTtsCandidateUrls(
         candidates.add(`${u.origin}/api/elevenlabs/tts`);
       }
     } catch {
-      /* ignore */
+      // Custom base URL may be a path-like value; the base endpoint is already queued.
     }
   };
 
@@ -235,7 +231,7 @@ export function resolveCloudTtsCandidateUrls(
       addEndpointsForApiV1Base(parsed.toString().replace(/\/$/, ""));
     }
   } catch {
-    // no-op
+    // The base resolver already validated the default path.
   }
 
   return [...candidates];

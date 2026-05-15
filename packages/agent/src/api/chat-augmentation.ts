@@ -83,7 +83,7 @@ export async function maybeAugmentChatMessageWithDocuments(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<ReturnType<typeof createMessageMemory>> {
-  const userPrompt = extractCompatTextContent(message.content)?.trim();
+  const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt || !runtime.agentId) return message;
 
   // Hosts that run with a no-op embedding handler — e.g. Capacitor mobile
@@ -146,7 +146,7 @@ export async function maybeAugmentChatMessageWithDocuments(
 
   const selectRelevantMatches = (matches: DocumentMatches): DocumentMatches =>
     matches.filter((match) => {
-      const text = match.content?.text?.trim();
+      const text = match.content.text?.trim();
       return (
         typeof text === "string" &&
         text.length > 0 &&
@@ -199,7 +199,7 @@ export async function maybeAugmentChatMessageWithDocuments(
         ),
       ];
     } catch (error) {
-      runtime.logger?.warn?.(
+      runtime.logger.warn(
         {
           src: "api:chat-augmentation",
           error: error instanceof Error ? error.message : String(error),
@@ -235,7 +235,7 @@ export async function maybeAugmentChatMessageWithDocuments(
       }
     }
   } catch (error) {
-    runtime.logger?.warn?.(
+    runtime.logger.warn(
       {
         src: "api:chat-augmentation",
         agentId,
@@ -260,7 +260,7 @@ export async function maybeAugmentChatMessageWithDocuments(
               metadata.title.trim().length > 0
             ? metadata.title.trim()
             : `source-${index + 1}`;
-      const text = (match.content?.text ?? "").trim();
+      const text = (match.content.text ?? "").trim();
       const snippet =
         text.length > CHAT_DOCUMENTS_SNIPPET_MAX_CHARS
           ? `${text.slice(0, CHAT_DOCUMENTS_SNIPPET_MAX_CHARS)}...`

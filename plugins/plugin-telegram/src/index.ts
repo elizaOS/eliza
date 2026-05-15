@@ -50,6 +50,9 @@ const telegramPlugin: Plugin = {
       );
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    await TelegramService.stop(runtime);
+  },
 };
 
 export * from "./account-auth-service";

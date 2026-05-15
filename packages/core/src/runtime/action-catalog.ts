@@ -118,7 +118,7 @@ export type BuildActionCatalogOptions = {
 const EMPTY_TEXT_FIELDS = new Set(["undefined", "null", "[object Object]"]);
 
 export function normalizeActionName(name: string): string {
-	return String(name ?? "")
+	return String(name)
 		.trim()
 		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
 		.replace(/[^A-Za-z0-9]+/g, "_")
@@ -135,7 +135,7 @@ export function buildActionCatalog(
 	const actionByName = new Map<string, RuntimeActionLike>();
 	const referencedChildNames = new Set<string>();
 
-	for (const action of actions ?? []) {
+	for (const action of actions) {
 		if (!isRuntimeActionLike(action)) {
 			warnings.push({
 				code: "INVALID_ACTION",

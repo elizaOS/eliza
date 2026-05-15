@@ -188,7 +188,11 @@ pub fn build(manifest: &Manifest, ctx: &LaunchContext) -> Result<BwrapInvocation
     // correctly (panels docked top/bottom/left/right, widgets floating,
     // dock draggable, webview fullscreen). The class flag sets the
     // `app_id` for Ozone/Wayland.
-    let app_id = format!("usbeliza.{}.{}", runtime_app_id_suffix(&manifest.runtime), manifest.slug);
+    let app_id = format!(
+        "usbeliza.{}.{}",
+        runtime_app_id_suffix(&manifest.runtime),
+        manifest.slug
+    );
     let class_arg = format!("--class={app_id}");
     push(&mut argv, &class_arg);
 

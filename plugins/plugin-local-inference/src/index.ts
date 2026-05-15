@@ -11,14 +11,6 @@ export {
 	generateMediaAction,
 	type MediaKind,
 } from "./actions/generate-media.js";
-// === Phase 4A: embedding-presets extracted from packages/agent ===
-export {
-	detectEmbeddingPreset,
-	detectEmbeddingTier,
-	EMBEDDING_PRESETS,
-	type EmbeddingPreset,
-	type EmbeddingTier,
-} from "./runtime/embedding-presets.js";
 export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
@@ -41,3 +33,11 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
+// === Phase 4A: embedding-presets extracted from packages/agent ===
+export {
+	detectEmbeddingPreset,
+	detectEmbeddingTier,
+	EMBEDDING_PRESETS,
+	type EmbeddingPreset,
+	type EmbeddingTier,
+} from "./runtime/embedding-presets.js";

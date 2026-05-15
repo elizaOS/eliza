@@ -380,9 +380,7 @@ interface LlamaModel {
 		 * EOT scorer uses this to layer a fine-tuned EOT head onto the base
 		 * weights without shipping a separate model.
 		 */
-		lora?:
-			| string
-			| { adapters: Array<{ filePath: string; scale?: number }> };
+		lora?: string | { adapters: Array<{ filePath: string; scale?: number }> };
 	}): Promise<LlamaContext>;
 	/**
 	 * Tokenize text using the model's vocab. `specialTokens=true` resolves
@@ -2476,7 +2474,7 @@ export class LocalInferenceEngine {
 			return null;
 		}
 
-		const kvCache = catalog?.runtime?.kvCache;
+		const kvCache = catalog.runtime?.kvCache;
 		return {
 			targetModelPath: target.path,
 			drafterModelPath: drafter.path,
@@ -2539,7 +2537,11 @@ function resolveEliza1EotSelection(
 	if (optsValue === false) return "off";
 	const envValue = process.env.ELIZA_VOICE_EOT_BACKEND?.trim().toLowerCase();
 	if (envValue === "eliza-1" || envValue === "eliza1") return "force";
-	if (envValue === "livekit" || envValue === "turnsense" || envValue === "heuristic")
+	if (
+		envValue === "livekit" ||
+		envValue === "turnsense" ||
+		envValue === "heuristic"
+	)
 		return "off";
 	return "prefer";
 }

@@ -4,8 +4,9 @@
  */
 
 import type { Action, Plugin, Provider } from "@elizaos/core";
-import { readAppRunStore } from "@elizaos/plugin-app-manager";
 import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
+
+const { readAppRunStore } = await import("@elizaos/plugin-app-manager");
 
 const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);
 

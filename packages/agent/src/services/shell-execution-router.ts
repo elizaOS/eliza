@@ -173,12 +173,12 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
-    child.stdout?.on("data", (chunk: Buffer) => {
+    child.stdout.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       stdout += text;
       req.onStdout?.(text);
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       stderr += text;
       req.onStderr?.(text);

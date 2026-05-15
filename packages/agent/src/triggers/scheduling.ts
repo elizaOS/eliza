@@ -459,8 +459,7 @@ export function normalizeTriggerDraft(params: {
     return { error: "instructions is required" };
   }
 
-  const triggerType =
-    params.input.triggerType ?? params.fallback.triggerType ?? "interval";
+  const triggerType = params.input.triggerType ?? params.fallback.triggerType;
   const wakeMode = params.input.wakeMode ?? params.fallback.wakeMode;
   const enabled = params.input.enabled ?? params.fallback.enabled;
   const createdBy = params.input.createdBy ?? params.fallback.createdBy;
