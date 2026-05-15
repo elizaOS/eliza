@@ -1675,10 +1675,25 @@ export class LocalInferenceEngine {
 		const tierRevision = activeTier
 			? eotMod.turnDetectorRevisionForTier(activeTier)
 			: undefined;
+		const eliza1EotSelected = resolveEliza1EotSelection(
+			opts.useEliza1Eot,
+			opts.eliza1EotLoraPath,
+		);
+		const eliza1EotClassifier =
+			eliza1EotSelected !== "off" && opts.turnDetector !== false
+				? this.tryBuildEliza1EotClassifier(eliza1EotSelected, opts.eliza1EotLoraPath)
+				: null;
+		if (eliza1EotSelected === "force" && !eliza1EotClassifier) {
+			throw new VoiceStartupError(
+				"missing-turn-detector",
+				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
+			);
+		}
 		const turnDetector =
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
+					eliza1EotClassifier ??
 					(await eotMod.createBundledLiveKitTurnDetector({
 						...(opts.turnDetectorModelDir
 							? { modelDir: opts.turnDetectorModelDir }
