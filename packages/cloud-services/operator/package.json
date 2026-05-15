@@ -49,6 +49,6 @@
     "esbuild": "0.25.10",
     "prettier": "3.6.2",
     "typescript": "5.8.3",
-    "uuid": "13.0.0"
+    "uuid": "14.0.0"
   }
 }
