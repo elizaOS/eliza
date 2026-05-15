@@ -8,6 +8,8 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const appCoreSrc = resolve(monorepoRoot, "packages/app-core/src");
+const vaultSrc = resolve(monorepoRoot, "packages/vault/src");
 const bunRuntimeSrc = resolve(
   monorepoRoot,
   "packages/native-plugins/bun-runtime/src/index.ts",
@@ -45,6 +47,22 @@ export default defineConfig({
         replacement: resolve(coreSrc, "$1"),
       },
       {
+        find: /^@elizaos\/app-core$/,
+        replacement: resolve(appCoreSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/app-core\/(.+)$/,
+        replacement: resolve(appCoreSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/vault$/,
+        replacement: resolve(vaultSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/vault\/(.+)$/,
+        replacement: resolve(vaultSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/capacitor-bun-runtime$/,
         replacement: bunRuntimeSrc,
       },
@@ -80,6 +98,10 @@ export default defineConfig({
         find: /^node-llama-cpp$/,
         replacement: resolve(packageRoot, "test/stubs/node-llama-cpp.ts"),
       },
+      {
+        find: /^esbuild$/,
+        replacement: resolve(packageRoot, "test/stubs/esbuild.ts"),
+      },
       // `@capacitor/app` is an optional native bridge the host app supplies — not
       // a declared dep of `@elizaos/ui`. Tests `vi.mock` it; alias to a resolvable
       // stub so vite's transform doesn't fail in CI where it isn't installed.
@@ -107,6 +129,24 @@ export default defineConfig({
       {
         find: /^@elizaos\/app-wallet$/,
         replacement: resolve(packageRoot, "test/stubs/elizaos-app-wallet.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-wallet-ui$/,
+        replacement: resolve(packageRoot, "test/stubs/elizaos-app-wallet.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-(agent-skills|browser|capacitor-bridge|computeruse|discord|elizacloud|imessage|local-inference|mcp|registry|signal|streaming|whatsapp|workflow|app-manager|wallet|x402)$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-agent-route-plugins.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-.+$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-agent-route-plugins.ts",
+        ),
       },
     ],
   },

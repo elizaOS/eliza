@@ -663,7 +663,7 @@ export class MatrixService extends Service implements IMatrixService {
 
   isConnected(): boolean {
     const legacy = this as { connected?: boolean; syncing?: boolean };
-    const states = this.states;
+    const states = this.states ?? new Map<string, MatrixAccountState>();
     if (states.size === 0 && typeof legacy.connected === "boolean") {
       return legacy.connected && (legacy.syncing ?? true);
     }
@@ -672,7 +672,7 @@ export class MatrixService extends Service implements IMatrixService {
 
   getAccountId(runtime?: IAgentRuntime): string {
     const legacy = this as { settings?: MatrixSettings };
-    const states = this.states;
+    const states = this.states ?? new Map<string, MatrixAccountState>();
     if (states.size === 0 && legacy.settings?.accountId) {
       return normalizeMatrixAccountId(legacy.settings.accountId);
     }
@@ -925,7 +925,7 @@ export class MatrixService extends Service implements IMatrixService {
 
   private getState(accountId = this.defaultAccountId): MatrixAccountState {
     const normalized = normalizeMatrixAccountId(accountId);
-    const states = this.states;
+    const states = this.states ?? new Map<string, MatrixAccountState>();
     const state = states.get(normalized);
     if (state) {
       return state;

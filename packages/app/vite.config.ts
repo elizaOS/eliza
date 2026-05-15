@@ -37,6 +37,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
+const vaultSrcRoot = path.join(elizaRoot, "packages/vault/src");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
   "plugins/plugin-browser/src",
@@ -1005,6 +1006,14 @@ export default defineConfig({
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
       { find: /^@capacitor\/core$/, replacement: capacitorCoreEntry },
+      {
+        find: /^@elizaos\/vault$/,
+        replacement: path.join(vaultSrcRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/vault\/(.+)$/,
+        replacement: path.join(vaultSrcRoot, "$1"),
+      },
       // Aliases for Capacitor packages that may not be hoisted to root node_modules
       // by bun workspaces. Apps/app resolves them; eliza submodule sources cannot.
       ...(capacitorKeyboardEntry

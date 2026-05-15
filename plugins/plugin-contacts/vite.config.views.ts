@@ -8,6 +8,7 @@ export default {
     entry: "./src/components/ContactsAppView.tsx",
     outDir: "dist/views",
     componentExport: "ContactsAppView",
+    additionalExternals: ["@elizaos/capacitor-contacts"],
   }),
   resolve: {
     alias: {
