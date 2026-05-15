@@ -30,8 +30,10 @@
 			],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
-			"@elizaos/ui/*": ["../../packages/ui/src/*"]
+			"@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+			"@elizaos/ui/*": ["../../packages/ui/dist/*"],
+			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
+			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"]
 		}
 	},
 	"include": ["src/**/*"],

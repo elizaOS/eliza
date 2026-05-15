@@ -7,3 +7,4 @@ C_DEFINES = -Dsilero_vad_shared_EXPORTS
 C_INCLUDES = -I/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/include -I/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src
 
 C_FLAGS = -O3 -DNDEBUG -std=c11 -fPIC -O3 -Wall -Wextra -Wno-unused-parameter
+

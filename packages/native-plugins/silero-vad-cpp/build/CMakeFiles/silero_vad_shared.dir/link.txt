@@ -1,1 +1,1 @@
-/usr/bin/cc -fPIC -O3 -DNDEBUG -shared -Wl,-soname,libsilero_vad.so -o libsilero_vad.so CMakeFiles/silero_vad_shared.dir/src/silero_vad_runtime.c.o CMakeFiles/silero_vad_shared.dir/src/silero_vad_state.c.o CMakeFiles/silero_vad_shared.dir/src/silero_vad_resample.c.o  -lm
+/usr/bin/cc -fPIC -O3 -DNDEBUG -shared -Wl,-soname,libsilero_vad.so -o libsilero_vad.so CMakeFiles/silero_vad_shared.dir/src/silero_vad_runtime.c.o CMakeFiles/silero_vad_shared.dir/src/silero_vad_state.c.o CMakeFiles/silero_vad_shared.dir/src/silero_vad_resample.c.o  -lm 

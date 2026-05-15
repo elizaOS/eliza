@@ -1,5 +1,6 @@
-wakeword_stub_smoke 2 0.000846212
-wakeword_melspec_test 2 0.202812
-wakeword_window_test 2 0.000718025
-wakeword_runtime_test 1 4.01971
+wakeword_stub_smoke 4 0.000342366
+wakeword_melspec_test 4 0.0943266
+wakeword_window_test 4 0.000382428
+wakeword_runtime_test 2 2.25379
+wakeword_parity_test 2 5.21968
 ---

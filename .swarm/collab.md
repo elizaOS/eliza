@@ -1,5 +1,41 @@
 # Swarm collaboration notes — Voice Waves 2+3
 
+## J1 — Native ports phase=impl-done (J1.d real; J1.a/b/c infrastructure landed)
+
+2026-05-15 J1 phase=impl-done.
+- **J1.d (turn-detector): END-TO-END REAL.** New
+  `LiveKitGgmlTurnDetector` in `eot-classifier-ggml.ts` loads the
+  published GGUF (`elizaos/eliza-1:voice/turn-detector/onnx/turn-detector-en-q8.gguf`)
+  via the canonical fork wrapper `node-llama-cpp`. Reads
+  `P(<|im_end|>)` via `LlamaContext.controlledEvaluate`. The
+  `@huggingface/transformers` lazy-import is gone from this path.
+  Resolver in `engine.ts` prefers GGUF before ONNX.
+- **J1.a/b/c infrastructure landed.** `voice-classifier-cpp` library
+  refactor: STATIC-only → SHARED + STATIC so `bun:ffi` can dlopen it
+  (17 public symbols exported). Single stub TU split into per-head
+  TUs (`voice_emotion.c`, `voice_speaker.c`, `voice_eot.c`,
+  `voice_diarizer.c`). Real GGUF metadata reader (`voice_gguf_loader.{c,h}`,
+  no libllama dep) parses header + KV block. New `voice_diarizer_*`
+  C ABI (7-class powerset). TS GGML surfaces (voice-emotion-classifier-ggml,
+  speaker/encoder-ggml, NEW speaker/diarizer-ggml) all switched from
+  `throw native-stub` to real `bun:ffi` dlopen with five-way structured
+  error split. 5/5 ctests green (incl. new voice_gguf_loader_test).
+  19/19 plugin typecheck green.
+- **Forward graphs compute-gated.** Wav2Small, ResNet34+stats-pool,
+  SincNet+LSTM+powerset to ggml are per-head follow-ups (~5/6/7d
+  realistic estimates). Infrastructure is in; the forward TU
+  replacement is the only remaining step per head.
+- **SincNet "custom op" concern resolved**: precompute the sinc
+  filterbank at GGUF-conversion time, no fork-side custom op needed.
+- **No fork changes this session.** Submodule pin unchanged
+  (`5da0f068a`); J1 didn't require fork edits (J1.d uses the existing
+  LLM_ARCH_QWEN2; J1.a/b/c's forward graphs deferred).
+- Impl report: `.swarm/impl/J1-native-ports.md`.
+- Commits: `62dae12c88` (J1.c new files + impl report).
+  J1.d + J1.a/b/c infrastructure landed across peer chore commits
+  (`256592be32`, `136840b9b8`, `0693bb735a`) as the verify watcher
+  swept up dirty working-tree state.
+
 ## J3 — Single-runtime finalizer phase=impl-done
 
 2026-05-15 J3 phase=impl-done (partial — 3 ONNX paths remain compute-gated; Kokoro C++ done).

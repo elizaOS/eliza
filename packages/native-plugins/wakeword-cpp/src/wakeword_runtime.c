@@ -589,10 +589,23 @@ static void maxpool2d_ref(
     }
 }
 
-/* LeakyReLU(0.2) followed by max(0, ·) — i.e. a plain ReLU. The
- * ONNX has both ops in sequence; max(0) dominates because the leaky
- * branch produces only negative values. We therefore fold them into a
- * single ReLU. */
+/* The openWakeWord embedding model's per-layer activation is:
+ *   y = max(LeakyReLU(x, alpha=0.2), -0.4)
+ * which is *not* a plain ReLU — it leaks negative values up until
+ * 0.2*x = -0.4 (i.e. x = -2), then clamps. The ONNX graph stores it
+ * as `LeakyRelu(0.2)` followed by `Max(·, const(-0.4))`. We fold both
+ * ops into one inline call to keep the runtime tight.
+ */
+static void leaky_clamped_relu_inplace(float *x, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        const float v = x[i];
+        if (v >= 0.0f) continue;
+        const float leaky = 0.2f * v;
+        x[i] = leaky > -0.4f ? leaky : -0.4f;
+    }
+}
+
+/* Plain ReLU — used by the classifier head. */
 static void relu_inplace(float *x, size_t n) {
     for (size_t i = 0; i < n; ++i) if (x[i] < 0.0f) x[i] = 0.0f;
 }
@@ -637,9 +650,9 @@ static int embedding_forward(
         /* The final layer (idx 19) has no bias and is followed by no
          * activation in the ONNX (it directly feeds the output Reshape).
          * Skip the activation there. Every other layer applies
-         * LeakyReLU(0.2) → max(0) which we fold into a plain ReLU. */
+         * LeakyReLU(0.2) followed by max(·, -0.4). */
         if (li < WW_EMB_NLAYERS - 1) {
-            relu_inplace(cur, (size_t)C * (size_t)H * (size_t)W);
+            leaky_clamped_relu_inplace(cur, (size_t)C * (size_t)H * (size_t)W);
         }
         if (L->pool_kh > 0) {
             const int pH_out = (H - L->pool_kh) / L->pool_sh + 1;
