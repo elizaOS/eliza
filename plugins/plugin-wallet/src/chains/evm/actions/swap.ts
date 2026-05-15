@@ -40,6 +40,7 @@ import {
   EVMError,
   EVMErrorCode,
   type KyberSwapRouteData,
+  type KyberSwapRouteSummary,
   parseSwapParams,
   type SupportedChain,
   type SwapParams,
@@ -421,10 +422,13 @@ export class SwapAction {
       if (!res.ok) throw new Error(`KyberSwap API error: ${res.status}`);
 
       const data = await res.json();
-      const routeSummary = data?.data?.routeSummary;
+      const routeSummary = data?.data?.routeSummary as KyberSwapRouteSummary | undefined;
       if (!routeSummary?.amountOut) throw new Error("No route found from KyberSwap");
 
       const slippageBps = Math.round(slippage * 10000);
+      // KyberSwap's quote endpoint returns the expected gross output; the
+      // guaranteed minimum is computed client-side by applying the slippage
+      // tolerance (same math the build endpoint uses internally).
       const minOut = (BigInt(routeSummary.amountOut) * BigInt(10000 - slippageBps)) / 10000n;
 
       return {
