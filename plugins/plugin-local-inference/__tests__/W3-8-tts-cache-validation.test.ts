@@ -593,13 +593,11 @@ describe("4. Per-provider wiring", () => {
 			const result3rd = await wrapped(stubRuntime, text);
 			expect(new Uint8Array(result3rd as ArrayBuffer)[0]).toBe(0x55);
 
-			if (ctx.codec === "wav") {
-				// wav always falls through — inner IS called.
-				expect(innerCallCount).toBeGreaterThan(innerBefore3rd);
-			} else {
-				// For cacheable codecs: hit → inner NOT called again.
-				expect(innerCallCount).toBe(innerBefore3rd);
-			}
+			// For cacheable codecs and for wav when snip == whole input:
+			// cache HIT → inner NOT called again.
+			// (wav only falls through when there is a remainder beyond the snip;
+			//  our test phrases are all ≤10 words so snip == whole input.)
+			expect(innerCallCount).toBe(innerBefore3rd);
 		});
 
 		it(`[${label}] empty voiceRevision → bypass cache`, async () => {

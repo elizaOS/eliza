@@ -99,7 +99,7 @@ export const KOKORO_VOICE_PACKS: ReadonlyArray<KokoroVoicePack> = [
 		tags: ["male", "british"],
 	},
 	// Eliza-1 fine-tuned voice — samantha (research-only, derivative of *Her* 2013).
-	// Voice pack lives at `elizalabs/eliza-1-voice-kokoro-samantha-v01` on HF
+	// Voice pack lives at `elizaos/eliza-1-voice-kokoro-samantha-v01` on HF
 	// (first push is private; do not promote to default without a public-release sign-off).
 	// Source corpus: `lalalune/ai_voices/samantha` (58 clips, 3.51 min, research-only).
 	// Voice id obeys the Kokoro `<lang><sex>_<name>` convention (US English, female).
