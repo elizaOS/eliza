@@ -1,9 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	type GenerateArgs,
 	isAppleSilicon,
 	looksLikeMlxModelDir,
 	MLX_BACKEND_ID,
@@ -30,66 +29,7 @@ function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
 	}
 }
 
-type FetchInput = Parameters<typeof fetch>[0];
-type FetchInit = Parameters<typeof fetch>[1];
-
-function attachMlxTestState(
-	server: MlxLocalServer,
-	state: {
-		baseUrl: string;
-		servedModelName: string;
-		modelDir: string;
-	},
-): void {
-	Object.assign(server, {
-		baseUrl: state.baseUrl,
-		servedModelName: state.servedModelName,
-		child: { killed: false, pid: 1 },
-		modelDir: state.modelDir,
-	});
-}
-
-function readFetchBody(init: FetchInit): string {
-	const body = init?.body;
-	if (typeof body === "string") return body;
-	if (body instanceof Uint8Array) return new TextDecoder().decode(body);
-	throw new Error("Expected string request body");
-}
-
-function sseResponse(chunks: string[]): Response {
-	const encoder = new TextEncoder();
-	return new Response(
-		new ReadableStream<Uint8Array>({
-			start(controller) {
-				for (const chunk of chunks) {
-					controller.enqueue(
-						encoder.encode(
-							`data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`,
-						),
-					);
-				}
-				controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-				controller.close();
-			},
-		}),
-		{ status: 200, headers: { "content-type": "text/event-stream" } },
-	);
-}
-
-function installMlxFetchMock(
-	handler: (url: URL, init: FetchInit) => Response | Promise<Response>,
-): void {
-	vi.stubGlobal(
-		"fetch",
-		vi.fn((input: FetchInput, init?: FetchInit) => {
-			const rawUrl =
-				typeof input === "string" || input instanceof URL ? input : input.url;
-			return handler(new URL(rawUrl), init);
-		}),
-	);
-}
-
-describe("mlx-server: opt-in + eligibility (convenience path)", () => {
+describe("mlx-server: opt-in + eligibility (in-process-only)", () => {
 	it("MLX_BACKEND_ID is mlx-server", () => {
 		expect(MLX_BACKEND_ID).toBe("mlx-server");
 	});
@@ -112,7 +52,7 @@ describe("mlx-server: opt-in + eligibility (convenience path)", () => {
 		);
 	});
 
-	it("eligibility is never true without the explicit opt-in", () => {
+	it("eligibility is false without the explicit opt-in", () => {
 		withEnv(
 			{ ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: undefined },
 			() => {
@@ -124,15 +64,20 @@ describe("mlx-server: opt-in + eligibility (convenience path)", () => {
 	});
 
 	it("eligibility refuses on non-Apple-Silicon hosts even when opted in", () => {
-		if (isAppleSilicon()) {
-			// On a real Apple-Silicon CI box this branch can't be exercised; the
-			// assertion below ('not Apple Silicon') only fires off-arch.
-			return;
-		}
+		if (isAppleSilicon()) return;
 		withEnv({ ELIZA_LOCAL_MLX: "1" }, () => {
 			const d = mlxBackendEligible();
 			expect(d.eligible).toBe(false);
 			expect(d.reason).toMatch(/Apple Silicon/i);
+		});
+	});
+
+	it("eligibility is false on Apple Silicon too — no in-process runtime exists yet", () => {
+		if (!isAppleSilicon()) return;
+		withEnv({ ELIZA_LOCAL_MLX: "1" }, () => {
+			const d = mlxBackendEligible();
+			expect(d.eligible).toBe(false);
+			expect(d.reason).toMatch(/in-process/i);
 		});
 	});
 
@@ -160,7 +105,6 @@ describe("mlx-server: opt-in + eligibility (convenience path)", () => {
 				expect(resolveMlxModelDir()).toBe(tmp);
 			});
 			withEnv({ ELIZA_MLX_MODEL_DIR: path.join(tmp, "nope") }, () => {
-				// invalid -> falls through (and the state-dir lookup won't find one)
 				const r = resolveMlxModelDir();
 				expect(r === null || r === tmp).toBe(true);
 			});
@@ -170,70 +114,35 @@ describe("mlx-server: opt-in + eligibility (convenience path)", () => {
 	});
 });
 
-describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
-	let svc: MlxLocalServer | null = null;
-
-	afterEach(async () => {
-		if (svc) {
-			await svc.unload();
-			svc = null;
-		}
-		vi.unstubAllGlobals();
+describe("MlxLocalServer: in-process stub (no subprocess, no HTTP)", () => {
+	it("hasLoadedModel is permanently false", () => {
+		const t = new MlxLocalServer();
+		expect(t.hasLoadedModel()).toBe(false);
+		expect(t.currentModelPath()).toBeNull();
+		expect(t.status()).toEqual({
+			running: false,
+			baseUrl: null,
+			modelDir: null,
+			pid: null,
+		});
 	});
 
-	it("health-checks /v1/models and routes /v1/chat/completions (non-streaming)", async () => {
-		installMlxFetchMock((url, init) => {
-			if (url.pathname === "/v1/models") {
-				return Response.json({ data: [{ id: "eliza-1-0_8b-mlx" }] });
-			}
-			if (url.pathname === "/v1/chat/completions") {
-				const parsed = JSON.parse(readFetchBody(init));
-				expect(parsed.model).toBe("eliza-1-0_8b-mlx");
-				expect(parsed.messages?.[0]?.content).toBe("hello");
-				return Response.json({
-					choices: [{ message: { content: "world" } }],
-				});
-			}
-			return new Response(null, { status: 404 });
-		});
-
-		// Drive the adapter against the mock HTTP server directly (no spawn): the
-		// class exposes the route/health logic, so the test installs the private
-		// runtime state that a successful load would normally populate.
+	it("load() throws and names the unblock-plan doc", async () => {
 		const t = new MlxLocalServer();
-		svc = t;
-		attachMlxTestState(t, {
-			baseUrl: "http://mlx.test",
-			servedModelName: "eliza-1-0_8b-mlx",
-			modelDir: "/fake/mlx/model",
-		});
-		expect(t.hasLoadedModel()).toBe(true);
-		const out = await t.generate({ prompt: "hello" } satisfies GenerateArgs);
-		expect(out).toBe("world");
+		await expect(t.load({ modelDir: "/fake/mlx/model" })).rejects.toThrow(
+			/in-process MLX runtime is not implemented/i,
+		);
 	});
 
-	it("streams SSE deltas through onTextChunk", async () => {
-		installMlxFetchMock((url) => {
-			if (url.pathname === "/v1/chat/completions") {
-				return sseResponse(["foo", " bar"]);
-			}
-			return new Response(null, { status: 404 });
-		});
+	it("generate() throws when there is no runtime", async () => {
 		const t = new MlxLocalServer();
-		svc = t;
-		attachMlxTestState(t, {
-			baseUrl: "http://mlx.test",
-			servedModelName: "m",
-			modelDir: "/fake",
-		});
-		const chunks: string[] = [];
-		const out = await t.generate({
-			prompt: "x",
-			onTextChunk: (c: string) => {
-				chunks.push(c);
-			},
-		} satisfies GenerateArgs);
-		expect(chunks).toEqual(["foo", " bar"]);
-		expect(out).toBe("foo bar");
+		await expect(t.generate({ prompt: "hi" })).rejects.toThrow(
+			/no in-process MLX runtime/i,
+		);
+	});
+
+	it("unload() is a no-op and resolves", async () => {
+		const t = new MlxLocalServer();
+		await expect(t.unload()).resolves.toBeUndefined();
 	});
 });
