@@ -7,12 +7,12 @@
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import type { CommandDefinition } from "@elizaos/plugin-commands";
 import {
   AgentEventService,
   logger,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -212,10 +212,22 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     ],
 
     async dispose(runtime) {
-      await runtime.getService<PermissionRegistry>(PermissionRegistry.serviceType)?.stop();
-      await runtime.getService<AgentMediaGenerationService>(AgentMediaGenerationService.serviceType)?.stop();
-      await runtime.getService<ElizaCharacterPersistenceService>(ElizaCharacterPersistenceService.serviceType)?.stop();
-      await runtime.getService<AgentEventService>(AgentEventService.serviceType)?.stop();
+      await runtime
+        .getService<PermissionRegistry>(PermissionRegistry.serviceType)
+        ?.stop();
+      await runtime
+        .getService<AgentMediaGenerationService>(
+          AgentMediaGenerationService.serviceType,
+        )
+        ?.stop();
+      await runtime
+        .getService<ElizaCharacterPersistenceService>(
+          ElizaCharacterPersistenceService.serviceType,
+        )
+        ?.stop();
+      await runtime
+        .getService<AgentEventService>(AgentEventService.serviceType)
+        ?.stop();
     },
   };
 

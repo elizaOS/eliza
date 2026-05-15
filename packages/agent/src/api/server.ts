@@ -253,8 +253,8 @@ import {
 } from "./server-route-dispatch.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
-import { handleViewsRoutes } from "./views-routes.ts";
 import { registerBuiltinViews } from "./views-registry.ts";
+import { handleViewsRoutes } from "./views-routes.ts";
 import {
   deriveSolanaAddress,
   fetchEvmBalances,
@@ -3885,7 +3885,7 @@ export async function startApiServer(opts?: {
       activateAuthenticatedConnection();
     }
 
-    ws.on("message", (data: unknown) => {
+    ws.on("message", async (data: unknown) => {
       try {
         const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
@@ -4018,15 +4018,20 @@ export async function startApiServer(opts?: {
           msg.type === "view:interact:result" &&
           typeof msg.requestId === "string"
         ) {
-          const { resolveViewInteractResult } = await import(
-            "./views-routes.ts"
-          );
-          resolveViewInteractResult({
-            requestId: msg.requestId,
-            success: msg.success === true,
-            result: msg.result,
-            error: typeof msg.error === "string" ? msg.error : undefined,
-          });
+          void import("./views-routes.ts")
+            .then(({ resolveViewInteractResult }) => {
+              resolveViewInteractResult({
+                requestId: msg.requestId,
+                success: msg.success === true,
+                result: msg.result,
+                error: typeof msg.error === "string" ? msg.error : undefined,
+              });
+            })
+            .catch((err) => {
+              logger.error(
+                `[eliza-api] view interaction result error: ${err instanceof Error ? err.message : err}`,
+              );
+            });
         }
       } catch (err) {
         logger.error(

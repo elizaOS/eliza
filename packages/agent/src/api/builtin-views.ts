@@ -26,8 +26,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   {
     id: "character",
     label: "Character",
-    description:
-      "Agent identity, personality, style, and knowledge documents",
+    description: "Agent identity, personality, style, and knowledge documents",
     icon: "UserRound",
     path: "/character",
     order: 50,

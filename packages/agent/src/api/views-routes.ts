@@ -19,9 +19,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 
-import { logger, type IAgentRuntime, type RouteRequestMeta } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type RouteRequestMeta,
+} from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
-import { viewSearchIndex } from "./views-search-index.ts";
 import {
   PendingRequestMap,
   type ViewInteractResult,
@@ -37,6 +40,7 @@ import {
   getView,
   listViews,
 } from "./views-registry.ts";
+import { viewSearchIndex } from "./views-search-index.ts";
 
 /** Standard capabilities every view supports even without an `interact` export. */
 const STANDARD_CAPABILITY_IDS = new Set([
@@ -122,7 +126,11 @@ export async function handleViewsRoutes(
     const semanticMap = new Map<string, number>();
     if (ctx.runtime) {
       try {
-        const semResults = await viewSearchIndex.search(query, ctx.runtime, topK * 2);
+        const semResults = await viewSearchIndex.search(
+          query,
+          ctx.runtime,
+          topK * 2,
+        );
         for (const { viewId, score } of semResults) {
           // Cosine similarity in [−1, 1]; normalise to [0, 100].
           semanticMap.set(viewId, ((score + 1) / 2) * 100);
