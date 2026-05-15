@@ -106,16 +106,19 @@ export async function runEvaluator(
 	);
 	const endedAt = Date.now();
 	const output = sanitizeOutputMessage(
-		repairMissingEvaluatorMessage(
-			repairMissingEvaluatorSuccess(
-				recoverEvaluatorTextOutput(
-					parseEvaluatorOutput(raw),
-					raw,
+		repairFinishedToolTurnWithoutUserMessage(
+			repairMissingEvaluatorMessage(
+				repairMissingEvaluatorSuccess(
+					recoverEvaluatorTextOutput(
+						parseEvaluatorOutput(raw),
+						raw,
+						params.trajectory,
+					),
 					params.trajectory,
 				),
+				params.context,
 				params.trajectory,
 			),
-			params.context,
 			params.trajectory,
 		),
 	);
@@ -440,10 +443,11 @@ function repairMissingEvaluatorMessage(
 ): EvaluatorOutput {
 	if (typeof output.messageToUser === "string") return output;
 	if (output.success !== true || output.decision !== "FINISH") return output;
+	const command = latestSafeCommandForUser(context, trajectory);
+	if (hasSuccessfulToolResult(trajectory) && !command) return output;
 	const thought = output.thought.trim();
 	if (!looksLikeUserFacingAnswer(thought)) return output;
 
-	const command = latestSafeCommandForUser(context, trajectory);
 	const messageToUser =
 		command && !thought.includes(command)
 			? `Command run: \`${command}\`\n\n${thought}`
@@ -451,6 +455,26 @@ function repairMissingEvaluatorMessage(
 	return {
 		...output,
 		messageToUser,
+	};
+}
+
+function repairFinishedToolTurnWithoutUserMessage(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (typeof output.messageToUser === "string") return output;
+	if (output.success !== true || output.decision !== "FINISH") return output;
+	const latestStep = [...trajectory.steps]
+		.reverse()
+		.find((step) => step.toolCall && step.result);
+	if (!latestStep?.result || latestStep.result.success !== true) return output;
+	if (latestStep.result.userFacingText?.trim()) return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		thought:
+			"Evaluator finished without a user-facing message; replanning from recorded tool results.",
 	};
 }
 

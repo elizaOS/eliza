@@ -243,8 +243,7 @@ export async function runPlannerLoop(
 							finalMessage: userSafeFinalMessage(
 								evaluator.messageToUser ??
 									plannerOutput.messageToUser ??
-									latestToolResultText(trajectory) ??
-									evaluator.thought,
+									latestToolResultText(trajectory),
 								trajectory,
 							),
 						};
@@ -465,9 +464,7 @@ export async function runPlannerLoop(
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					evaluator.messageToUser ??
-						latestToolResultText(trajectory) ??
-						evaluator.thought,
+					evaluator.messageToUser ?? latestToolResultText(trajectory),
 					trajectory,
 				),
 			};
