@@ -198,21 +198,28 @@ describe("local inference catalog", () => {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
 			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
-				"q3_k_m",
 				"q4_k_m",
-				"q5_k_m",
 				"q6_k",
 				"q8_0",
 			]);
 		}
 
-		// 0_8b/2b/4b default to Kokoro for small-device latency/memory.
-		// 9B keeps OmniVoice plus Kokoro;
+		// 0_8b/2b/4b/9b default to OmniVoice with Kokoro as the bundled
+		// low-latency fallback;
 		// large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
-		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
-		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
-		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
+		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
+		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
 			"omnivoice",
 			"kokoro",

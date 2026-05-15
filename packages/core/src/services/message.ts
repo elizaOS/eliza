@@ -2631,12 +2631,13 @@ function extractHandleResponseToolArguments(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
+		const record = entry as unknown as Record<string, unknown>;
 		const rawFunction =
-			entry.function && typeof entry.function === "object"
-				? (entry.function as Record<string, unknown>)
+			record.function && typeof record.function === "object"
+				? (record.function as Record<string, unknown>)
 				: null;
 		const name = String(
-			entry.name ?? entry.toolName ?? rawFunction?.name,
+			record.name ?? record.toolName ?? rawFunction?.name,
 		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
