@@ -24,8 +24,8 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.js";
-import { handleViewsRoutes } from "../api/views-routes.js";
 import type { ViewsRouteContext } from "../api/views-routes.js";
+import { handleViewsRoutes } from "../api/views-routes.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -289,7 +289,8 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     const entry = getView("smoke.main");
     expect(entry).toBeDefined();
     // Without a pluginDir, getBundleDiskPath returns null.
-    expect(getBundleDiskPath(entry!)).toBeNull();
+    if (!entry) throw new Error("Expected smoke.main to be registered");
+    expect(getBundleDiskPath(entry)).toBeNull();
   });
 
   it("getBundleDiskPath resolves correctly given a pluginDir", async () => {
@@ -305,7 +306,8 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
 
     const entry = getView("smoke.main");
     expect(entry).toBeDefined();
-    const diskPath = getBundleDiskPath(entry!);
+    if (!entry) throw new Error("Expected smoke.main to be registered");
+    const diskPath = getBundleDiskPath(entry);
     expect(diskPath).toBe("/some/plugin/dir/dist/views/bundle.js");
   });
 });

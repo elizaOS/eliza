@@ -103,6 +103,7 @@ import {
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
 import { SIDE_EFFECT_APP_MODULE_LOADERS } from "./plugin-registrations";
+import { registerViewServiceWorker } from "./sw-registration";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 
@@ -2093,6 +2094,7 @@ function applyStoredDetachedShellTheme(): void {
 }
 
 async function main(): Promise<void> {
+  registerViewServiceWorker();
   await initializeAppModules();
   setupPlatformStyles();
   applyBuildTimeIosConnection();

@@ -119,6 +119,7 @@ import {
 // load. Going all-static makes the load path honest. If you want true
 // route-level splitting back, lift `lazy()` to a single owning call site.
 import { CharacterEditor } from "./components/character/CharacterEditor";
+import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { DatabasePageView } from "./components/pages/DatabasePageView";
 import { LogsView } from "./components/pages/LogsView";
 import { MemoryViewerView } from "./components/pages/MemoryViewerView";
@@ -131,6 +132,7 @@ import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { useAvailableViews } from "./hooks/useAvailableViews";
+import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useIsDeveloperMode } from "./state/useDeveloperMode";
 
 const ViewManagerPage = lazyNamedView(
@@ -771,6 +773,17 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<
     string | null
   >(null);
+
+  // Desktop tab bar — persisted pinned tabs for the Electrobun shell.
+  const {
+    tabs: desktopTabs,
+    openTab: openDesktopTab,
+    closeTab: closeDesktopTab,
+  } = useDesktopTabs();
+  const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
+    null,
+  );
+  const { views: availableViewsForDesktopTabs } = useAvailableViews();
   const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -903,11 +916,17 @@ export function App() {
   // the user to a specific view by path or view ID.
   // When the target is "/views" or "/apps" (the ViewManagerPage), we also
   // directly set the tab so the nav bar becomes visible.
+  // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleNavigateView = (event: Event) => {
       const detail = (
-        event as CustomEvent<{ viewId?: string; viewPath?: string }>
+        event as CustomEvent<{
+          viewId?: string;
+          viewPath?: string;
+          viewLabel?: string;
+          action?: string;
+        }>
       ).detail;
       if (!detail) return;
       const path =
@@ -923,6 +942,25 @@ export function App() {
         setTab("apps");
         return;
       }
+      // Auto-open as a desktop tab when the target view has desktopTabEnabled.
+      if (
+        detail.viewId &&
+        (detail.action === "pin-tab" ||
+          (() => {
+            const entry = availableViewsForDesktopTabs.find(
+              (v) => v.id === detail.viewId,
+            );
+            return entry?.desktopTabEnabled === true;
+          })())
+      ) {
+        const entry = availableViewsForDesktopTabs.find(
+          (v) => v.id === detail.viewId,
+        );
+        if (entry) {
+          openDesktopTab(entry);
+          setActiveDesktopTabId(entry.id);
+        }
+      }
       try {
         if (window.location.protocol === "file:") {
           window.location.hash = path;
@@ -937,7 +975,7 @@ export function App() {
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
-  }, [setTab]);
+  }, [setTab, availableViewsForDesktopTabs, openDesktopTab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1350,9 +1388,10 @@ export function App() {
       )}
 
       {/* Persistent game overlay — stays visible across all tabs */}
-      {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && tab !== "views" && (
-        <GameViewOverlay />
-      )}
+      {activeGameViewerUrl &&
+        gameOverlayEnabled &&
+        tab !== "apps" &&
+        tab !== "views" && <GameViewOverlay />}
       <ShellOverlays actionNotice={actionNotice} />
       <SaveCommandModal
         open={contextMenu.saveCommandModalOpen}

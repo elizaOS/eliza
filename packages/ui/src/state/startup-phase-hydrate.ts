@@ -25,6 +25,7 @@ import {
   tabFromPath,
 } from "../navigation";
 import { isTransientOptionalFetchFailure, resolveApiUrl } from "../utils";
+import { emitViewEvent } from "../views/view-event-bus";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -400,6 +401,22 @@ export function bindReadyPhase(
     },
   );
 
+  const unbindViewEvent = client.onWsEvent(
+    "view:event",
+    (data: Record<string, unknown>) => {
+      const viewEventType =
+        typeof data.viewEventType === "string" ? data.viewEventType : null;
+      if (!viewEventType) return;
+      const payload =
+        data.payload !== null &&
+        typeof data.payload === "object" &&
+        !Array.isArray(data.payload)
+          ? (data.payload as Record<string, unknown>)
+          : {};
+      emitViewEvent(viewEventType, payload, "agent");
+    },
+  );
+
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
@@ -655,6 +672,7 @@ export function bindReadyPhase(
     unbindSysWarn();
     unbindRestart();
     unbindShellNavigateView();
+    unbindViewEvent();
     unbindConvUp();
     unbindPty();
     if (ptyPollInterval) clearInterval(ptyPollInterval);

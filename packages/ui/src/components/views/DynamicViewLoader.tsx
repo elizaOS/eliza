@@ -127,10 +127,14 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
     let cancelled = false;
     let loadedBundle: ViewBundleModule | null = null;
+    const importUrl =
+      reloadKey === 0
+        ? bundleUrl
+        : `${bundleUrl}${bundleUrl.includes("?") ? "&" : "?"}reload=${reloadKey}`;
 
     setBundle(null);
     setLoadError(null);
-    void loadBundleModule(bundleUrl, componentExport)
+    void loadBundleModule(importUrl, componentExport)
       .then((nextBundle) => {
         loadedBundle = nextBundle;
         if (!cancelled) {

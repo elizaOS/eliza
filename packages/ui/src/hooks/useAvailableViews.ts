@@ -52,6 +52,8 @@ export interface ViewRegistryEntry {
    * rather than a dynamically loaded plugin view.
    */
   builtin?: boolean;
+  /** When true, the view can be pinned as a native desktop tab in the Electrobun shell. */
+  desktopTabEnabled?: boolean;
 }
 
 interface UseAvailableViewsResult {

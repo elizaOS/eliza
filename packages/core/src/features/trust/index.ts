@@ -162,6 +162,13 @@ export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
 				"[Trust] Initializing trust capability. Services will be started by the runtime.",
 			);
 		},
+
+		async dispose(runtime) {
+			await runtime.getService(ContextualPermissionSystemServiceWrapper.serviceType)?.stop();
+			await runtime.getService(CredentialProtectorServiceWrapper.serviceType)?.stop();
+			await runtime.getService(SecurityModuleServiceWrapper.serviceType)?.stop();
+			await runtime.getService(TrustEngineServiceWrapper.serviceType)?.stop();
+		},
 	};
 }
 

@@ -11,15 +11,20 @@
  *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
  *   GET  /api/views/:id/hero           — hero image (image/*)
  *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
- *   POST /api/views/:id/interact       — reserved for agent-view interaction
+ *   POST /api/views/:id/interact       — agent-view interaction (capability dispatch)
+ *   POST /api/views/interact-result    — frontend result callback (resolves pending interact)
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 
 import { logger, type RouteRequestMeta } from "@elizaos/core";
-import type { RouteHelpers } from "@elizaos/shared";
+import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
+import {
+  PendingRequestMap,
+  type ViewInteractResult,
+} from "./pending-request-map.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
@@ -31,6 +36,17 @@ import {
   getView,
   listViews,
 } from "./views-registry.ts";
+
+/** Standard capabilities every view supports even without an `interact` export. */
+const STANDARD_CAPABILITY_IDS = new Set([
+  "get-state",
+  "refresh",
+  "focus-element",
+  "get-text",
+]);
+
+/** Module-level map of pending interact requests awaiting a frontend result. */
+const pendingInteractRequests = new PendingRequestMap();
 
 export interface ViewsRouteContext
   extends RouteRequestMeta,
@@ -80,6 +96,33 @@ export async function handleViewsRoutes(
       builtin: v.pluginName === "@elizaos/builtin",
     }));
     json(res, { views });
+    return true;
+  }
+
+  // ── POST /api/views/events/broadcast ─────────────────────────────────────
+  // Pushes a view event to all connected frontend tabs via WebSocket.
+  if (method === "POST" && pathname === `${PREFIX}/events/broadcast`) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    const type = typeof body?.type === "string" ? body.type : null;
+    if (!type) {
+      error(res, 'Missing required field "type"', 400);
+      return true;
+    }
+    const payload =
+      body?.payload !== null &&
+      typeof body?.payload === "object" &&
+      !Array.isArray(body?.payload)
+        ? (body.payload as Record<string, unknown>)
+        : {};
+
+    ctx.broadcastWs?.({ type: "view:event", viewEventType: type, payload });
+
+    logger.info(
+      { src: "ViewsRoutes", viewEventType: type },
+      `[ViewsRoutes] Broadcast view event "${type}"`,
+    );
+
+    json(res, { ok: true, type, payload });
     return true;
   }
 
@@ -194,8 +237,7 @@ export async function handleViewsRoutes(
     // hash, the URL is fully versioned — serve with a year-long immutable cache.
     // Otherwise always revalidate via ETag so clients pick up updates promptly.
     const vParam = url.searchParams.get("v");
-    const contentHashMatch =
-      entry.bundleHash && vParam === entry.bundleHash;
+    const contentHashMatch = entry.bundleHash && vParam === entry.bundleHash;
     const cacheControl = contentHashMatch
       ? "public, max-age=31536000, immutable"
       : "no-cache";
@@ -287,6 +329,33 @@ export async function handleViewsRoutes(
     return true;
   }
 
+  // ── POST /api/views/interact-result ──────────────────────────────────────
+  // Called by the frontend over HTTP (or proxied from WS) when a view has
+  // finished handling an interact request.  Resolves the pending promise so
+  // the agent's interact handler can return the result.
+  if (method === "POST" && id === "interact-result" && subResource === "") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true; // readJsonBody already sent the error response
+
+    const requestId =
+      typeof body.requestId === "string" ? body.requestId : null;
+    if (!requestId) {
+      error(res, "Missing requestId in interact-result body", 400);
+      return true;
+    }
+
+    const result: ViewInteractResult = {
+      requestId,
+      success: body.success === true,
+      result: body.result,
+      error: typeof body.error === "string" ? body.error : undefined,
+    };
+
+    pendingInteractRequests.resolve(requestId, result);
+    json(res, { ok: true });
+    return true;
+  }
+
   // ── POST /api/views/:id/interact ──────────────────────────────────────────
   if (method === "POST" && subResource === "interact") {
     const entry = getView(id);
@@ -294,8 +363,80 @@ export async function handleViewsRoutes(
       error(res, `View "${id}" not found`, 404);
       return true;
     }
-    // Agent-view interaction is reserved for a future capability layer.
-    error(res, `View interaction is not yet implemented for "${id}"`, 501);
+
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+
+    const capability =
+      typeof body.capability === "string" ? body.capability : null;
+    if (!capability) {
+      error(res, "Missing capability in interact body", 400);
+      return true;
+    }
+
+    // Validate capability against the view's declared capabilities.
+    // Standard capabilities are always accepted.
+    if (
+      entry.capabilities?.length &&
+      !STANDARD_CAPABILITY_IDS.has(capability)
+    ) {
+      const declared = entry.capabilities.some((c) => c.id === capability);
+      if (!declared) {
+        error(
+          res,
+          `Capability "${capability}" is not declared for view "${id}"`,
+          400,
+        );
+        return true;
+      }
+    }
+
+    const params =
+      body.params !== undefined &&
+      body.params !== null &&
+      typeof body.params === "object" &&
+      !Array.isArray(body.params)
+        ? (body.params as Record<string, unknown>)
+        : undefined;
+
+    const timeoutMs =
+      typeof body.timeoutMs === "number" && body.timeoutMs > 0
+        ? body.timeoutMs
+        : 5_000;
+
+    const requestId = randomUUID();
+
+    logger.info(
+      { src: "ViewsRoutes", viewId: id, capability, requestId },
+      `[ViewsRoutes] Interact with view "${id}" capability="${capability}"`,
+    );
+
+    // Register the pending slot before broadcasting — avoids a race where the
+    // frontend responds before we start waiting.
+    const resultPromise = pendingInteractRequests.waitFor(requestId, timeoutMs);
+
+    ctx.broadcastWs?.({
+      type: "view:interact",
+      viewId: id,
+      capability,
+      params,
+      requestId,
+    });
+
+    try {
+      const result = await resultPromise;
+      json(res, result);
+    } catch (err) {
+      logger.warn(
+        { src: "ViewsRoutes", viewId: id, requestId, err },
+        `[ViewsRoutes] Interact timed out for view "${id}"`,
+      );
+      error(
+        res,
+        `View "${id}" did not respond to capability "${capability}" within ${timeoutMs}ms`,
+        504,
+      );
+    }
     return true;
   }
 
@@ -343,7 +484,7 @@ function streamHeroImage(
     "Content-Length": data.byteLength,
     "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
   };
-  if (etag) headers["ETag"] = etag;
+  if (etag) headers.ETag = etag;
 
   if (typeof raw.writeHead === "function") {
     raw.writeHead(200, headers);
