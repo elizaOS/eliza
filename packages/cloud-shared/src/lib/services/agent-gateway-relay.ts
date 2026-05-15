@@ -97,10 +97,10 @@ function getRedisClient(): CompatibleRedis | null {
 
   redisClient = buildRedisClient();
   if (redisClient) {
-    logger.info?.("[agent-gateway-relay] Redis relay store initialized");
+    logger.info("[agent-gateway-relay] Redis relay store initialized");
   } else {
     assertPersistentCloudStateConfigured("agent-gateway-relay", false);
-    logger.warn?.("[agent-gateway-relay] Redis unavailable, using in-memory relay store");
+    logger.warn("[agent-gateway-relay] Redis unavailable, using in-memory relay store");
   }
 
   redisInitialized = true;
@@ -299,7 +299,7 @@ class AgentGatewayRelayService {
     await store.setSession(session);
     await store.addOwnerSession(buildOwnerKey(params.organizationId, params.userId), session.id);
 
-    logger.info?.("[agent-gateway-relay] Registered local runtime session", {
+    logger.info("[agent-gateway-relay] Registered local runtime session", {
       sessionId: session.id,
       organizationId: params.organizationId,
       userId: params.userId,

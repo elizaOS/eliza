@@ -375,7 +375,7 @@ async function triggerChannelCallback(
   const agentId = stringValue(channel, "agentId") ?? stringValue(channel, "agent_id");
   if (!roomId || !agentId) return;
 
-  const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add ?? 0);
+  const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add);
   const source = stringValue(channel, "source") ?? "payment";
   const text =
     status === "paid"
@@ -789,7 +789,7 @@ class X402PaymentRequestsService {
       id: payment.id,
       status: payment.status,
       paid: payment.status === "confirmed",
-      amountUsd: Number(metadata.amountUsd ?? payment.credits_to_add ?? 0),
+      amountUsd: Number(metadata.amountUsd ?? payment.credits_to_add),
       platformFeeUsd: Number(metadata.platformFeeUsd ?? 0),
       serviceFeeUsd: Number(metadata.serviceFeeUsd ?? 0),
       totalChargedUsd: Number(metadata.totalChargedUsd ?? 0),

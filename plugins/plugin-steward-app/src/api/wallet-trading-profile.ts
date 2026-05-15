@@ -346,7 +346,7 @@ export function recordWalletTradeLedgerEntry(
     side: normalizeSide(input.side),
     tokenAddress: normalizeAddress(input.tokenAddress),
     slippageBps: Math.max(0, Math.round(toFiniteNumber(input.slippageBps))),
-    route: (input.route ?? [])
+    route: (input.route)
       .map((item) => item.trim())
       .filter((item) => item.length > 0),
     quoteIn: {

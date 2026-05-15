@@ -501,7 +501,7 @@ export function AppsView() {
           ipcChannel: "desktop:openAppWindow",
           params: {
             slug,
-            title: app.displayName ?? app.name,
+            title: app.displayName,
             path: internalWindowPath,
             alwaysOnTop: appWindowAlwaysOnTop,
           },
@@ -513,7 +513,7 @@ export function AppsView() {
             kind: "managed",
             runId: "",
             appName: app.name,
-            displayName: app.displayName ?? app.name,
+            displayName: app.displayName,
             alwaysOnTop: created.alwaysOnTop,
           },
           ...current.filter((item) => item.id !== created.id),
@@ -523,8 +523,8 @@ export function AppsView() {
         pushAppsUrl(slug);
         setActionNotice(
           t("appsview.OpenedInDesktopWindow", {
-            defaultValue: `${app.displayName ?? app.name} opened in a desktop window.`,
-            name: app.displayName ?? app.name,
+            defaultValue: `${app.displayName} opened in a desktop window.`,
+            name: app.displayName,
           }),
           "success",
           2600,
@@ -541,7 +541,7 @@ export function AppsView() {
         ipcChannel: "desktop:openAppWindow",
         params: {
           slug,
-          title: app.displayName ?? app.name,
+          title: app.displayName,
           path: `/apps/${encodeURIComponent(slug)}`,
           alwaysOnTop: appWindowAlwaysOnTop,
         },
@@ -553,7 +553,7 @@ export function AppsView() {
           kind: "managed",
           runId: "",
           appName: app.name,
-          displayName: app.displayName ?? app.name,
+          displayName: app.displayName,
           alwaysOnTop: created.alwaysOnTop,
         },
         ...current.filter((item) => item.id !== created.id),
@@ -563,8 +563,8 @@ export function AppsView() {
       pushAppsUrl(getAppSlug(app.name));
       setActionNotice(
         t("appsview.OpenedInDesktopWindow", {
-          defaultValue: `${app.displayName ?? app.name} opened in a desktop window.`,
-          name: app.displayName ?? app.name,
+          defaultValue: `${app.displayName} opened in a desktop window.`,
+          name: app.displayName,
         }),
         "success",
         2600,
@@ -720,7 +720,7 @@ export function AppsView() {
           ) {
             setActionNotice(
               t("appsview.IframeAuthMissing", {
-                name: app.displayName ?? app.name,
+                name: app.displayName,
               }),
               "error",
               4800,
@@ -757,7 +757,7 @@ export function AppsView() {
             await openExternalUrl(targetUrl);
             setActionNotice(
               t("appsview.OpenedInNewTab", {
-                name: app.displayName ?? app.name,
+                name: app.displayName,
               }),
               "success",
               2600,
@@ -765,7 +765,7 @@ export function AppsView() {
           } catch {
             setActionNotice(
               t("appsview.PopupBlockedOpen", {
-                name: app.displayName ?? app.name,
+                name: app.displayName,
               }),
               "error",
               4200,
@@ -775,7 +775,7 @@ export function AppsView() {
         }
         setActionNotice(
           t("appsview.LaunchedNoViewer", {
-            name: app.displayName ?? app.name,
+            name: app.displayName,
           }),
           "error",
           4000,
@@ -783,7 +783,7 @@ export function AppsView() {
       } catch (err) {
         setActionNotice(
           t("appsview.LaunchFailed", {
-            name: app.displayName ?? app.name,
+            name: app.displayName,
             message: err instanceof Error ? err.message : t("common.error"),
           }),
           "error",

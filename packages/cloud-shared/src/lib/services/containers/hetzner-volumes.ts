@@ -132,7 +132,7 @@ export class HetznerVolumeService {
     node: DockerNode,
     key: ProjectVolumeKey,
   ): Promise<AttachedVolume> {
-    const meta = (node.metadata ?? {}) as Record<string, unknown>;
+    const meta = node.metadata as Record<string, unknown>;
     const hcloudServerId =
       typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
     if (!hcloudServerId) {
@@ -185,9 +185,9 @@ export class HetznerVolumeService {
   async detachFromNode(volumeId: number, node: DockerNode, mountPath: string): Promise<void> {
     const ssh = DockerSSHClient.getClient(
       node.hostname,
-      node.ssh_port ?? 22,
+      node.ssh_port,
       node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? "root",
+      node.ssh_user,
     );
     // Best-effort unmount. If the path isn't mounted, umount returns
     // non-zero and we proceed anyway.
@@ -230,9 +230,9 @@ export class HetznerVolumeService {
   ): Promise<void> {
     const ssh = DockerSSHClient.getClient(
       node.hostname,
-      node.ssh_port ?? 22,
+      node.ssh_port,
       node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? "root",
+      node.ssh_user,
     );
 
     // Wait briefly for the device node to appear after attach. udev

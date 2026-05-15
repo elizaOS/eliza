@@ -185,7 +185,7 @@ export function ConnectorsSection() {
     if (typeof document === "undefined") return;
     const handleFocusConnector = (event: Event) => {
       const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
-      if (!detail?.connectorId) return;
+      if (!detail.connectorId) return;
       focusConnector(detail.connectorId);
     };
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);

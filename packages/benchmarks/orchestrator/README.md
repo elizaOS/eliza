@@ -168,6 +168,67 @@ Replay scoring example (from normalized Eliza capture artifacts):
 
 `capture_path` is required and must point to a file or directory of normalized `*.replay.json` artifacts.
 
+## Coding-Agent Grind Matrix
+
+Use `code_agent_matrix.py` when comparing the default elizaOS coding worker
+against OpenCode, and later against the swarm adapter, on SWE-bench and
+Terminal-Bench with the same provider/model settings.
+
+Dry-run command construction without credentials, Docker, or external services:
+
+```bash
+PYTHONPATH=packages /opt/miniconda3/bin/python -m benchmarks.orchestrator.code_agent_matrix \
+  --dry-run \
+  --smoke \
+  --no-docker \
+  --max-tasks 1
+```
+
+Run a small Cerebras `gpt-oss-120b` comparison. Keep the key in the shell
+environment only:
+
+```bash
+CEREBRAS_API_KEY=... \
+PYTHONPATH=packages /opt/miniconda3/bin/python -m benchmarks.orchestrator.code_agent_matrix \
+  --adapters elizaos,opencode \
+  --benchmarks swe_bench,terminal_bench \
+  --provider cerebras \
+  --model gpt-oss-120b \
+  --max-tasks 3
+```
+
+Artifacts are written under
+`benchmark_results/code-agent-matrix/<run-id>/<benchmark>/<adapter>/`:
+
+- `command.json` - exact command, cwd, non-secret env overrides, and sensitive
+  env var names
+- `stdout.log` / `stderr.log` - raw harness output
+- benchmark result JSON - whatever the wrapped benchmark produced
+- `trajectories/` - trace output path passed to benchmark runners that support it
+
+Top-level `summary.json` and `summary.md` classify failures as `pass`,
+`auth_or_provider`, `timeout`, `patch_apply_failed`, `no_patch`,
+`tests_failed`, `harness_error`, `stopped_early`, `no_trajectory`, or
+`unknown_failure`.
+
+Summarize an existing artifact tree without rerunning:
+
+```bash
+PYTHONPATH=packages /opt/miniconda3/bin/python -m benchmarks.orchestrator.code_agent_matrix \
+  --summarize benchmark_results/code-agent-matrix/<run-id>
+```
+
+Command-template overrides are available for experiments without editing the
+harness:
+
+- `CODE_AGENT_BENCH_ELIZAOS_SWE_BENCH_CMD`
+- `CODE_AGENT_BENCH_OPENCODE_SWE_BENCH_CMD`
+- `CODE_AGENT_BENCH_ELIZAOS_TERMINAL_BENCH_CMD`
+- `CODE_AGENT_BENCH_OPENCODE_TERMINAL_BENCH_CMD`
+
+Templates may use `{adapter}`, `{benchmark}`, `{provider}`, `{model}`,
+`{outputDir}`, `{trajectoryDir}`, and `{workspaceRoot}`.
+
 ## Viewer
 
 Serve live viewer API + UI:

@@ -68,7 +68,7 @@ export function connectorAccountDisplayName(
   >,
 ): string {
   return (
-    account.label?.trim() ||
+    account.label.trim() ||
     account.handle?.trim() ||
     account.externalId?.trim() ||
     account.id

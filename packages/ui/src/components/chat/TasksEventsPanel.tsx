@@ -145,7 +145,7 @@ export function TasksEventsPanel({
 
   // Build the candidate list for the edit panel from the live registry.
   const editCandidates = useMemo<readonly WidgetVisibilityCandidate[]>(() => {
-    const resolved = resolveWidgetsForSlot("chat-sidebar", plugins ?? []);
+    const resolved = resolveWidgetsForSlot("chat-sidebar", plugins);
     const widgetCandidates: WidgetVisibilityCandidate[] = resolved.map(
       ({ declaration }) => ({
         pluginId: declaration.pluginId,

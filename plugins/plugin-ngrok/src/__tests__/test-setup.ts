@@ -76,7 +76,7 @@ async function checkIfPayAsYouGo(): Promise<boolean> {
 
     let isPayAsYouGo = false;
 
-    checkProcess.stderr?.on('data', (data: Buffer) => {
+    checkProcess.stderr.on('data', (data: Buffer) => {
       const message = data.toString();
       if (message.includes('ERR_NGROK_15002') || message.includes('Pay-as-you-go')) {
         isPayAsYouGo = true;

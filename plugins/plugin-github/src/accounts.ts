@@ -147,7 +147,7 @@ export function readGitHubAccounts(
   runtime: IAgentRuntime,
 ): GitHubAccountConfig[] {
   const accounts = new Map<string, GitHubAccountConfig>();
-  const characterConfig = runtime.character?.settings?.github as
+  const characterConfig = runtime.character.settings?.github as
     | { accounts?: unknown }
     | undefined;
   const characterAccounts = characterConfig?.accounts;

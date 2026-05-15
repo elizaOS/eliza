@@ -122,7 +122,7 @@ export function toDocumentRecord(memory: Memory) {
   return {
     id: memory.id ?? "",
     content: {
-      text: memory.content?.text ?? "",
+      text: memory.content.text ?? "",
     },
     createdAt: timestamp(memory.createdAt),
     metadata,

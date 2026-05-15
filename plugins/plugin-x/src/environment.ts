@@ -89,7 +89,7 @@ export function shouldTargetUser(
   username: string,
   targetUsersConfig: string,
 ): boolean {
-  if (!targetUsersConfig?.trim()) {
+  if (!targetUsersConfig.trim()) {
     return true; // Empty = interact with everyone
   }
 

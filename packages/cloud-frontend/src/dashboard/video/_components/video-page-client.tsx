@@ -188,7 +188,7 @@ export function VideoPageClient({
   }, []);
 
   const handlePreviewDownload = useCallback((video: GeneratedVideo) => {
-    if (!video?.videoUrl) {
+    if (!video.videoUrl) {
       setCopyFeedback("Video will be available after rendering completes.");
       setTimeout(() => setCopyFeedback(null), 2600);
       return;
@@ -197,7 +197,7 @@ export function VideoPageClient({
   }, []);
 
   const handlePreviewCopyLink = useCallback(async (video: GeneratedVideo) => {
-    if (!video?.videoUrl) {
+    if (!video.videoUrl) {
       setCopyFeedback("No video link yet.");
       setTimeout(() => setCopyFeedback(null), 2600);
       return;
@@ -306,7 +306,7 @@ export function VideoPageClient({
         createdAt: now.toISOString(),
         status: "processing",
         durationSeconds: undefined,
-        resolution: selectedPreset?.dimensions ?? currentVideo?.resolution,
+        resolution: selectedPreset?.dimensions,
         referenceUrl: reference?.trim() || undefined,
       };
 
@@ -390,7 +390,6 @@ export function VideoPageClient({
       setIsGenerating(false);
     },
     [
-      currentVideo?.resolution,
       modelPresets,
       replaceVideoEntry,
       selectedPreset,

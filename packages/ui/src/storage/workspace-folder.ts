@@ -36,7 +36,7 @@ interface JsonStorageLike {
 function getStorage(): JsonStorageLike | null {
   if (typeof window === "undefined") return null;
   const w = window as typeof window & { localStorage?: JsonStorageLike };
-  return w.localStorage ?? null;
+  return w.localStorage;
 }
 
 function isStoredWorkspaceFolder(

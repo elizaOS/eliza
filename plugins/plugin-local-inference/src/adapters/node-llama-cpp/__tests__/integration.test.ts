@@ -68,13 +68,13 @@ describeIfModel("plugin-local-ai integration (real model)", () => {
 		});
 		cleanup.push(() => context.dispose());
 
-		const before = sequence.contextTokens?.length ?? 0;
+		const before = sequence.contextTokens.length;
 		await session.prompt("Say hi.", { maxTokens: 16, temperature: 0 });
-		const afterFirst = sequence.contextTokens?.length ?? 0;
+		const afterFirst = sequence.contextTokens.length;
 		expect(afterFirst).toBeGreaterThan(before);
 
 		await session.prompt("Now say bye.", { maxTokens: 16, temperature: 0 });
-		const afterSecond = sequence.contextTokens?.length ?? 0;
+		const afterSecond = sequence.contextTokens.length;
 		// Second turn extends the existing cache; tokens grow but the session
 		// is the same instance (KV cache preserved).
 		expect(afterSecond).toBeGreaterThan(afterFirst);

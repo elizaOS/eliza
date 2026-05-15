@@ -88,7 +88,7 @@ export class TwitterDiscoveryClient {
     // Check dry run mode. Runtime settings may pass booleans, so widen the
     // narrowed string from `TwitterClientState` back to `unknown`.
     const dryRunSetting: unknown =
-      state?.TWITTER_DRY_RUN ??
+      state.TWITTER_DRY_RUN ??
       getSetting(this.runtime, "TWITTER_DRY_RUN") ??
       process.env.TWITTER_DRY_RUN;
     this.isDryRun =
@@ -132,7 +132,7 @@ export class TwitterDiscoveryClient {
   }
 
   private buildDiscoveryConfig(): DiscoveryConfig {
-    const character = this.runtime?.character;
+    const character = this.runtime.character;
 
     // Default topics if character is not available
     const defaultTopics = [
@@ -853,10 +853,10 @@ export class TwitterDiscoveryClient {
 
   private async generateReply(tweet: DiscoveryTweet): Promise<string> {
     // Handle case where runtime.character might be undefined
-    const characterName = this.runtime?.character?.name || "AI Assistant";
+    const characterName = this.runtime.character.name || "AI Assistant";
     let characterBio = "";
 
-    if (this.runtime?.character?.bio) {
+    if (this.runtime.character.bio) {
       if (Array.isArray(this.runtime.character.bio)) {
         characterBio = this.runtime.character.bio.join(" ");
       } else {
@@ -891,10 +891,10 @@ Reply:`;
 
   private async generateQuote(tweet: DiscoveryTweet): Promise<string> {
     // Handle case where runtime.character might be undefined
-    const characterName = this.runtime?.character?.name || "AI Assistant";
+    const characterName = this.runtime.character.name || "AI Assistant";
     let characterBio = "";
 
-    if (this.runtime?.character?.bio) {
+    if (this.runtime.character.bio) {
       if (Array.isArray(this.runtime.character.bio)) {
         characterBio = this.runtime.character.bio.join(" ");
       } else {

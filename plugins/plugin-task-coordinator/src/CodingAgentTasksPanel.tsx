@@ -267,16 +267,16 @@ function ThreadDetailContent({
   t: typeof fallbackTranslate;
   locale?: string;
 }) {
-  const latestTranscripts = (detail.transcripts ?? [])
+  const latestTranscripts = detail.transcripts
     .filter(
       (entry) => entry.direction === "stdin" || entry.direction === "system",
     )
     .slice(-8)
     .reverse();
-  const latestEvents = (detail.events ?? []).slice(-6).reverse();
-  const latestDecisions = (detail.decisions ?? []).slice(-6).reverse();
-  const latestArtifacts = (detail.artifacts ?? []).slice(-6).reverse();
-  const pendingDecisions = (detail.pendingDecisions ?? []).slice(-4).reverse();
+  const latestEvents = detail.events.slice(-6).reverse();
+  const latestDecisions = detail.decisions.slice(-6).reverse();
+  const latestArtifacts = detail.artifacts.slice(-6).reverse();
+  const pendingDecisions = detail.pendingDecisions.slice(-4).reverse();
 
   return (
     <div className="flex flex-col gap-2">
@@ -284,19 +284,19 @@ function ThreadDetailContent({
         <span>
           {t("codingagenttaskspanel.sessionsCount", {
             defaultValue: "{{count}} sessions",
-            count: (detail.sessions ?? []).length,
+            count: detail.sessions.length,
           })}
         </span>
         <span>
           {t("codingagenttaskspanel.artifactsCount", {
             defaultValue: "{{count}} artifacts",
-            count: (detail.artifacts ?? []).length,
+            count: detail.artifacts.length,
           })}
         </span>
         <span>
           {t("codingagenttaskspanel.transcriptEntriesCount", {
             defaultValue: "{{count}} transcript entries",
-            count: (detail.transcripts ?? []).length,
+            count: detail.transcripts.length,
           })}
         </span>
       </div>
@@ -326,7 +326,7 @@ function ThreadDetailContent({
           defaultValue: "Sessions",
         })}
       >
-        {(detail.sessions ?? []).length === 0 ? (
+        {detail.sessions.length === 0 ? (
           <div className="text-xs-tight text-muted">
             {t("codingagenttaskspanel.noSessionsRecorded", {
               defaultValue: "No sessions recorded.",
@@ -334,7 +334,7 @@ function ThreadDetailContent({
           </div>
         ) : (
           <div className="space-y-1.5">
-            {(detail.sessions ?? [])
+            {detail.sessions
               .slice(-4)
               .reverse()
               .map((session) => (

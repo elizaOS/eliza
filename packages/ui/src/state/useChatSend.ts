@@ -472,7 +472,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
           appendLocalCommandTurn(
             rawText,
-            result.output?.trim() || `(no output from ${customAction.name})`,
+            result.output.trim() || `(no output from ${customAction.name})`,
           );
           return { handled: true };
         }
@@ -820,7 +820,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       } catch (err) {
         const abortError = err as Error;
-        if (abortError.name === "AbortError" || controller?.signal.aborted) {
+        if (abortError.name === "AbortError" || controller.signal.aborted) {
           setConversationMessages((prev) =>
             prev.filter(
               (message) =>
@@ -895,7 +895,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (chatAbortRef.current === controller) {
           chatAbortRef.current = null;
         }
-        if (activeChatTurnRef.current?.controller === controller) {
+        if (activeChatTurnRef.current.controller === controller) {
           activeChatTurnRef.current = null;
         }
       }
@@ -1185,7 +1185,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         } catch (err) {
           const abortError = err as Error;
-          if (abortError.name === "AbortError" || controller?.signal.aborted) {
+          if (abortError.name === "AbortError" || controller.signal.aborted) {
             setConversationMessages((prev) =>
               prev.filter(
                 (message) =>
@@ -1199,7 +1199,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           if (chatAbortRef.current === controller) {
             chatAbortRef.current = null;
           }
-          if (activeChatTurnRef.current?.controller === controller) {
+          if (activeChatTurnRef.current.controller === controller) {
             activeChatTurnRef.current = null;
           }
           if (chatSendNonceRef.current === sendNonce) {

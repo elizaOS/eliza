@@ -646,7 +646,7 @@ export function PageScopedChatPane({
     onTranscript: (text, event) => {
       const transcript = text.trim();
       if (!transcript) return;
-      const speaker = event?.speaker ?? event?.turn.speaker ?? null;
+      const speaker = event.speaker ?? event.turn.speaker ?? null;
       if (speaker) setVoiceSpeaker(speaker);
       setVoicePreview("");
       void handleSend({
@@ -656,7 +656,7 @@ export function PageScopedChatPane({
       });
     },
     onTranscriptPreview: (text, event) => {
-      const speaker = event?.speaker ?? null;
+      const speaker = event.speaker ?? null;
       if (speaker) setVoiceSpeaker(speaker);
       setVoicePreview(text);
     },

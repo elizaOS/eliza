@@ -354,12 +354,12 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
               <DashboardStatCard
                 label="Total Requests"
-                value={totalStats.totalRequests?.toLocaleString() || "0"}
+                value={totalStats.totalRequests.toLocaleString() || "0"}
                 icon={<Activity className="h-5 w-5 text-purple-400" />}
               />
               <DashboardStatCard
                 label="Total Users"
-                value={totalStats.totalUsers?.toLocaleString() || "0"}
+                value={totalStats.totalUsers.toLocaleString() || "0"}
                 icon={<Users className="h-5 w-5 text-blue-400" />}
               />
               <DashboardStatCard
@@ -468,14 +468,14 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-5">
                 <MiniStatCard
                   label="Page Views"
-                  value={(requestStats.byType?.pageview || 0).toLocaleString()}
+                  value={(requestStats.byType.pageview || 0).toLocaleString()}
                   color="text-emerald-400"
                 />
                 <MiniStatCard
                   label="API Requests"
                   value={(
                     requestStats.totalRequests -
-                    (requestStats.byType?.pageview || 0)
+                    (requestStats.byType.pageview || 0)
                   ).toLocaleString()}
                   color="text-[#FF5800]"
                 />

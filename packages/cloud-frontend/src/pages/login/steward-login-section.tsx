@@ -41,7 +41,7 @@ const STEWARD_TENANT_ID =
 const PLAYWRIGHT_TEST_AUTH_ENABLED =
   import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   (typeof process !== "undefined" &&
-    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+    process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
 type AuthStep = "idle" | "loading" | "email-sent" | "success";
 type Provider =

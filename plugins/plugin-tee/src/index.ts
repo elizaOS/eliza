@@ -29,6 +29,10 @@ export {
 
 const defaultVendor = getVendor(TeeVendorNames.PHALA);
 
+function readStringSetting(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
 export const teePlugin: Plugin = {
   name: "tee",
   description:
@@ -45,19 +49,20 @@ export const teePlugin: Plugin = {
     runtime: IAgentRuntime,
   ): Promise<void> {
     const vendorName =
-      config.TEE_VENDOR ??
-      runtime.getSetting("TEE_VENDOR") ??
+      readStringSetting(config.TEE_VENDOR) ??
+      readStringSetting(runtime.getSetting("TEE_VENDOR")) ??
       TeeVendorNames.PHALA;
     const teeModeRaw =
-      config.TEE_MODE ?? runtime.getSetting("TEE_MODE") ?? "LOCAL";
-    const teeMode =
-      typeof teeModeRaw === "string" ? teeModeRaw : String(teeModeRaw);
+      readStringSetting(config.TEE_MODE) ??
+      readStringSetting(runtime.getSetting("TEE_MODE")) ??
+      "LOCAL";
+    const teeMode = teeModeRaw.toUpperCase();
 
     logger.info(
       `Initializing TEE plugin with vendor: ${vendorName}, mode: ${teeMode}`,
     );
 
-    if (!["LOCAL", "DOCKER", "PRODUCTION"].includes(teeMode.toUpperCase())) {
+    if (!["LOCAL", "DOCKER", "PRODUCTION"].includes(teeMode)) {
       throw new Error(
         `Invalid TEE_MODE: ${teeMode}. Must be one of: LOCAL, DOCKER, PRODUCTION`,
       );

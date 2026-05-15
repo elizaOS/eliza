@@ -453,7 +453,7 @@ export function CharacterExamplesPanel({
                     {msg.name === "{{user1}}" ? "user" : "agent"}
                   </span>
                   <Textarea
-                    value={msg.content?.text ?? ""}
+                    value={msg.content.text ?? ""}
                     rows={2}
                     aria-label={`${msg.name === "{{user1}}" ? "User" : "Agent"} message, conversation ${ci + 1}, turn ${mi + 1}`}
                     onChange={(e) => {

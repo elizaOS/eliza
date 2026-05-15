@@ -88,9 +88,9 @@ IMPORTANT: Your response must ONLY contain the JSON object above. No preamble or
     const parsed = parseJsonObject(raw);
 
     expect(parsed).not.toBeNull();
-    expect(String(parsed?.found)).toBe("true");
-    expect(String(parsed?.value)).toContain("john@example.com");
-    const confidence = Number(parsed?.confidence);
+    expect(String(parsed.found)).toBe("true");
+    expect(String(parsed.value)).toContain("john@example.com");
+    const confidence = Number(parsed.confidence);
     expect(confidence).toBeGreaterThanOrEqual(0);
     expect(confidence).toBeLessThanOrEqual(1);
   }, 30_000);

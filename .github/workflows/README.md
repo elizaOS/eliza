@@ -6,7 +6,8 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yaml` | Push/PR to main | Main CI - tests, lint, build |
+| `ci.yaml` | Push/PR to main | Fast first gate - lint, typecheck, build |
+| `test.yml` | Push/PR to main/develop, Manual | Post-gate fan-out: package tests, plugin tests, e2e, cloud, Linux elizaOS, AOSP |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Push to main, Release | NPM beta/production package releases |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
@@ -39,14 +40,44 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ## Test Workflows
 
-### Main CI (`ci.yaml`)
+### First Gate (`ci.yaml`)
 
 Runs on PRs and pushes to main:
 
-- TypeScript tests with coverage
 - Linting and formatting checks
+- Workspace typecheck
 - Build verification
-- Interop TypeScript tests (`packages/interop`)
+
+### Post-Gate Fan-Out (`test.yml`)
+
+`test.yml` owns the broad CI/CD build process. It starts with the same first
+release gate (`lint`, `typecheck`, `build`) and only then fans out the expensive
+jobs in parallel:
+
+- server/client/package tests
+- plugin tests
+- e2e tests
+- cloud verification, unit, integration, e2e, and Playwright tests
+- Electrobun desktop contract tests
+- Linux elizaOS Rust/Bun build and test checks
+- Android system UI tests and privileged AOSP APK/static brand validation
+- full AOSP Cuttlefish image build and boot validation when the repository
+  variable `AOSP_ROOT` points at an AOSP checkout on a self-hosted
+  `linux/x64/kvm` runner
+
+### Workflow Cleanup Notes
+
+These workflows are candidates to remove or fold into the main fan-out once
+branch protection and release automation no longer reference them:
+
+- `cloud-tests.yml` duplicates the cloud lanes now covered by `test.yml`.
+- `quality.yml` duplicates homepage/format checks that are covered by the
+  first gate or narrower deploy workflows.
+- `build-android.yml` overlaps with `android-release.yml`; keep one release
+  Android publisher after confirming external release docs and branch
+  protection.
+- `build-llama-ffi-linux.yml` is still scaffold-guarded with `if: false`; delete
+  it or wire it into `local-inference-matrix.yml` once the artifact is real.
 
 ## Code Review Workflows
 

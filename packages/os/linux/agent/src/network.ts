@@ -188,7 +188,10 @@ export async function networkStatus(): Promise<NetworkStatus> {
   let activeSsid: string | null = null;
   if (wifi !== undefined) {
     const [name] = wifi.split(":");
-    activeSsid = name ?? null;
+    if (name === undefined) {
+      throw new Error(`invalid nmcli connection row: ${wifi}`);
+    }
+    activeSsid = name;
   }
   let ipv4: string | null = null;
   try {

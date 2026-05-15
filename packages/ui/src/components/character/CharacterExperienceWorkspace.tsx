@@ -220,7 +220,7 @@ function buildGraphPositions(
       const total = Math.max(domains.length, 1);
       const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
       return [
-        domain ?? "general",
+        domain,
         {
           x: 50 + Math.cos(angle) * 24,
           y: 50 + Math.sin(angle) * 22,

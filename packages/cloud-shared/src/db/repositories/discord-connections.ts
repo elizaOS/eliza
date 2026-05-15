@@ -61,7 +61,7 @@ export const discordConnectionsRepository = {
       .from(discordConnections)
       .where(eq(discordConnections.id, id))
       .limit(1);
-    return connection ?? null;
+    return connection;
   },
 
   async findByOrganizationId(organizationId: string): Promise<DiscordConnection[]> {
@@ -85,7 +85,7 @@ export const discordConnectionsRepository = {
         ),
       )
       .limit(1);
-    return connection ?? null;
+    return connection;
   },
 
   async findActiveUnassigned(): Promise<DiscordConnection[]> {
@@ -177,7 +177,7 @@ export const discordConnectionsRepository = {
       .set(updates)
       .where(eq(discordConnections.id, connectionId))
       .returning();
-    return connection ?? null;
+    return connection;
   },
 
   async updateHeartbeat(connectionId: string): Promise<void> {
@@ -340,7 +340,7 @@ export const discordConnectionsRepository = {
       })
       .where(eq(discordConnections.id, id))
       .returning();
-    return connection ?? null;
+    return connection;
   },
 
   /**
@@ -440,6 +440,6 @@ export const discordConnectionsRepository = {
       .where(eq(discordConnections.id, connectionId))
       .returning();
 
-    return connection ?? null;
+    return connection;
   },
 };

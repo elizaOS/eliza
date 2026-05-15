@@ -247,7 +247,7 @@ async function runLabel(
     issue_number: number,
     labels,
   });
-  const applied = (resp.data ?? [])
+  const applied = (resp.data)
     .map((label) => (typeof label === "string" ? label : (label?.name ?? null)))
     .filter((x): x is string => typeof x === "string");
   await callback?.({

@@ -105,7 +105,7 @@ function selectRoute(
     if (route) return route;
   }
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   return ROUTES.find((route) => route.match.test(text)) ?? null;
 }
 
@@ -188,7 +188,7 @@ export const shopifyAction: Action = {
     if (!route) {
       const ops = ALL_OPS.join(", ");
       const text = `SHOPIFY could not determine the operation. Specify one of: ${ops}.`;
-      await callback?.({ text, source: message.content?.source });
+      await callback?.({ text, source: message.content.source });
       return {
         success: false,
         text,

@@ -416,7 +416,7 @@ class UserMcpsService {
     if (params.userId) {
       try {
         const { affiliatesService } = await import("./affiliates");
-        const referrer = await affiliatesService.getReferrer(params.userId!);
+        const referrer = await affiliatesService.getReferrer(params.userId);
         if (referrer) {
           affiliateOwnerId = referrer.user_id;
           affiliateCodeId = referrer.id;
@@ -793,7 +793,7 @@ class UserMcpsService {
       toolCount: mcp.tools.length,
       features: mcp.tools.map((t) => t.name),
       pricing: {
-        type: mcp.pricing_type ?? "free",
+        type: mcp.pricing_type,
         description: pricingDescription,
         pricePerRequest:
           mcp.pricing_type === "credits"

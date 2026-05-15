@@ -36,15 +36,15 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
     const agentRuntime = runtime as IAgentRuntime;
     const url = new URL(
       httpReq.url ?? "/",
-      `http://${httpReq.headers?.host ?? "localhost"}`,
+      `http://${httpReq.headers.host ?? "localhost"}`,
     );
     const pathname = url.pathname;
     if (
       !getAcpService(agentRuntime) &&
-      agentRuntime.hasService?.("ACP_SUBPROCESS_SERVICE")
+      agentRuntime.hasService("ACP_SUBPROCESS_SERVICE")
     ) {
       try {
-        await agentRuntime.getServiceLoadPromise?.("ACP_SUBPROCESS_SERVICE");
+        await agentRuntime.getServiceLoadPromise("ACP_SUBPROCESS_SERVICE");
       } catch {
         // Service start failed — downstream handlers will surface 503.
       }

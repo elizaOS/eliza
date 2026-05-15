@@ -332,7 +332,7 @@ function hasBrowserBridgeIntent(
   state: State | undefined,
 ): boolean {
   const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof message.content.text === "string" ? message.content.text : "",
     typeof state?.values?.recentMessages === "string"
       ? state.values.recentMessages
       : "",
@@ -588,7 +588,7 @@ export const manageBrowserBridgeAction: Action = {
       normalizeSubaction(params?.action) ??
       normalizeSubaction(params?.subaction) ??
       inferSubactionFromMessage(
-        typeof message.content?.text === "string" ? message.content.text : "",
+        typeof message.content.text === "string" ? message.content.text : "",
       );
     try {
       switch (subaction) {

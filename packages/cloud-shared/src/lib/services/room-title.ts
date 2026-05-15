@@ -31,7 +31,7 @@ export async function generateRoomTitle(roomId: string): Promise<string | null> 
 
   const userMessage = messages.reverse().find((msg) => {
     const content = msg.content;
-    const source = typeof content === "object" ? content?.source : undefined;
+    const source = typeof content === "object" ? content.source : undefined;
     return source === "user";
   });
 
@@ -40,7 +40,7 @@ export async function generateRoomTitle(roomId: string): Promise<string | null> 
   }
 
   const content = userMessage.content;
-  const text = typeof content === "string" ? content : content?.text || "";
+  const text = typeof content === "string" ? content : content.text || "";
 
   if (!text || text.length < 3) {
     return null;

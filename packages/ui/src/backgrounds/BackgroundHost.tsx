@@ -56,31 +56,32 @@ export function BackgroundHost(props: BackgroundHostProps): JSX.Element {
       handle.update({ reducedMotion: prefersReducedMotion() });
     } catch (error) {
       logger.warn(
-        "[BackgroundHost] Failed to mount background module; falling back to solid sky",
         { error: error instanceof Error ? error.message : String(error) },
+        "[BackgroundHost] Failed to mount background module; falling back to solid sky",
       );
       setFailed(true);
       handleRef.current = null;
       return;
     }
 
-    const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onChange = (event: MediaQueryListEvent): void => {
       handleRef.current?.update({ reducedMotion: event.matches });
     };
-    media?.addEventListener?.("change", onChange);
+    media.addEventListener("change", onChange);
 
     return () => {
-      media?.removeEventListener?.("change", onChange);
+      media.removeEventListener("change", onChange);
       const current = handleRef.current;
       handleRef.current = null;
       if (current) {
         try {
           current.unmount();
         } catch (error) {
-          logger.warn("[BackgroundHost] Unmount threw", {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logger.warn(
+            { error: error instanceof Error ? error.message : String(error) },
+            "[BackgroundHost] Unmount threw",
+          );
         }
       }
     };

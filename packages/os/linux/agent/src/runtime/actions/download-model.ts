@@ -381,7 +381,7 @@ export const DOWNLOAD_MODEL_ACTION: Action = {
 
   handler: async (runtime, message, _state, options, callback) => {
     const userText =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     const opts = readDownloadOptions(options);
 
     let target: {

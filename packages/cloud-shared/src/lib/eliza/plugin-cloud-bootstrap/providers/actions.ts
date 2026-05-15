@@ -106,7 +106,7 @@ function numberSetting(runtime: IAgentRuntime, key: string, fallback: number): n
     typeof globalThis === "object" && "process" in globalThis
       ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
       : undefined;
-  const raw = runtime.getSetting?.(key) ?? env?.[key];
+  const raw = runtime.getSetting(key) ?? env?.[key];
   const value = typeof raw === "string" ? Number(raw) : raw;
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
@@ -126,7 +126,7 @@ let lastGoodValidation: LastGoodValidation | null = null;
 function getMessageText(message: Memory): string {
   const content = message.content;
   if (typeof content === "string") return content;
-  return typeof content?.text === "string" ? content.text : "";
+  return typeof content.text === "string" ? content.text : "";
 }
 
 function isImageGenerationRequest(message: Memory): boolean {
@@ -269,7 +269,7 @@ export const actionsProvider: Provider = {
           const mcpSvc = runtime.getService("mcp");
           if (hasTier2IndexService(mcpSvc) && typeof mcpSvc.getTier2Index === "function") {
             const index = mcpSvc.getTier2Index();
-            const count = index?.getToolCount?.();
+            const count = index.getToolCount();
             if (typeof count === "number") discoverableToolCount = count;
           }
         } catch {

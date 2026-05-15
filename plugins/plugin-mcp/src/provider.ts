@@ -14,8 +14,8 @@ function formatMcpServersForPrompt(mcp: McpProviderData): string {
   return [
     `mcpServers[${Object.keys(mcp).length}, showing ${entries.length}]:`,
     ...entries.flatMap(([serverName, server]) => {
-      const tools = Object.keys(server.tools ?? {}).slice(0, MAX_MCP_TOOLS_PER_SERVER);
-      const resources = Object.keys(server.resources ?? {}).slice(0, MAX_MCP_RESOURCES_PER_SERVER);
+      const tools = Object.keys(server.tools).slice(0, MAX_MCP_TOOLS_PER_SERVER);
+      const resources = Object.keys(server.resources).slice(0, MAX_MCP_RESOURCES_PER_SERVER);
       return [
         `  - name: ${serverName}`,
         `    status: ${server.status}`,

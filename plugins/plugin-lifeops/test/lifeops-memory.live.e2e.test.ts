@@ -373,7 +373,7 @@ describeIf(LIVE_SUITE_ENABLED)(
         }
       }
 
-      envBackup?.restore();
+      envBackup.restore();
       for (const key of Object.keys(process.env)) {
         if (LIVE_CLOUD_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
           delete process.env[key];
@@ -575,7 +575,7 @@ describeIf(LIVE_SUITE_ENABLED)(
           })) as Memory[],
         (facts) =>
           facts.some((fact) =>
-            /text|phone|invisalign/i.test(String(fact.content?.text ?? "")),
+            /text|phone|invisalign/i.test(String(fact.content.text ?? "")),
           ),
         120_000,
       );

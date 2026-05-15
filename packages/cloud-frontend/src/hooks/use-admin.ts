@@ -105,8 +105,8 @@ async function fetchAdminStatus(
         return { isAdmin: false, role: null } as const;
       }
 
-      const isAdmin = res?.headers.get("X-Is-Admin") === "true";
-      const roleHeader = res?.headers.get("X-Admin-Role");
+      const isAdmin = res.headers.get("X-Is-Admin") === "true";
+      const roleHeader = res.headers.get("X-Admin-Role");
       const role =
         roleHeader &&
         ["super_admin", "moderator", "viewer"].includes(roleHeader)

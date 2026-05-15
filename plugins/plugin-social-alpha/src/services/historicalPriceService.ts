@@ -76,7 +76,7 @@ export class HistoricalPriceService {
 				{ chain: "solana" },
 			);
 
-			if (!ohlcvData?.items || ohlcvData.items.length === 0) {
+			if (!ohlcvData.items || ohlcvData.items.length === 0) {
 				// Fallback to current price only
 				const currentPrice = await this.birdeyeClient.fetchPrice(address);
 				if (currentPrice) {
@@ -168,7 +168,7 @@ export class HistoricalPriceService {
 		try {
 			// Search for the token
 			const searchResults = await this.dexscreenerClient.search(address);
-			if (!searchResults?.pairs || searchResults.pairs.length === 0) {
+			if (!searchResults.pairs || searchResults.pairs.length === 0) {
 				return null;
 			}
 
@@ -194,7 +194,7 @@ export class HistoricalPriceService {
 			priceHistory.push({
 				timestamp: now,
 				price: currentPrice,
-				volume: pair.volume?.h24,
+				volume: pair.volume.h24,
 				liquidity: pair.liquidity?.usd,
 			});
 
@@ -349,7 +349,7 @@ export class HistoricalPriceService {
 			// Search on Dexscreener first (better for finding tokens by symbol)
 			const searchResults = await this.dexscreenerClient.search(symbol);
 
-			if (!searchResults?.pairs || searchResults.pairs.length === 0) {
+			if (!searchResults.pairs || searchResults.pairs.length === 0) {
 				return null;
 			}
 
@@ -370,8 +370,8 @@ export class HistoricalPriceService {
 						return liquidityB - liquidityA;
 					}
 
-					const volumeA = a.volume?.h24 || 0;
-					const volumeB = b.volume?.h24 || 0;
+					const volumeA = a.volume.h24 || 0;
+					const volumeB = b.volume.h24 || 0;
 
 					if (volumeA !== volumeB) {
 						return volumeB - volumeA;
@@ -404,7 +404,7 @@ export class HistoricalPriceService {
 				name: bestMatch.baseToken.name,
 				chain,
 				liquidity: liquidityUsd,
-				volume24h: bestMatch.volume?.h24,
+				volume24h: bestMatch.volume.h24,
 				marketCap: bestMatch.fdv,
 				createdAt: bestMatch.pairCreatedAt,
 			};

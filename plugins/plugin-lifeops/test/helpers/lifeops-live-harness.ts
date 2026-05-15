@@ -339,7 +339,7 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
       resolveLiveProviderModelEnv(candidate.name as LiveProviderName),
     );
     if (candidate.name === "cerebras") {
-      const apiKey = env.CEREBRAS_API_KEY ?? env.ELIZA_E2E_CEREBRAS_API_KEY;
+      const apiKey = env.CEREBRAS_API_KEY;
       env.CEREBRAS_API_KEY = apiKey;
       env.OPENAI_API_KEY = apiKey;
       env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";

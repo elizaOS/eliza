@@ -59,9 +59,7 @@ export function buildBrandEnvAliases(prefix: string) {
   );
 }
 
-export const APP_ENV_PREFIX = normalizeEnvPrefix(
-  APP_CONFIG.envPrefix ?? APP_CONFIG.cliName,
-);
+export const APP_ENV_PREFIX = normalizeEnvPrefix(APP_CONFIG.envPrefix);
 
 /** Convenience export consumed by main.tsx boot config. */
 export const APP_ENV_ALIASES = buildBrandEnvAliases(APP_ENV_PREFIX);

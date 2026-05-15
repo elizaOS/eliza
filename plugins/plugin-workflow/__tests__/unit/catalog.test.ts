@@ -103,7 +103,7 @@ describe('simplifyNodeForLLM', () => {
     if (!setNode) throw new Error('expected set node');
 
     const simplified = simplifyNodeForLLM(setNode);
-    expect(simplified.name).toBe(setNode?.name);
+    expect(simplified.name).toBe(setNode.name);
     expect(simplified.properties.length).toBeGreaterThan(0);
     expect(simplified.properties.every((p) => p.name && p.displayName && p.type)).toBe(true);
   });

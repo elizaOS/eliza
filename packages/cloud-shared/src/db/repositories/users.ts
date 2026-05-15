@@ -425,7 +425,7 @@ export class UsersRepository {
       .where(eq(userIdentities.steward_user_id, stewardUserId))
       .limit(1);
 
-    return identity?.user_id;
+    return identity.user_id;
   }
 
   private async findIdentityByProvider(

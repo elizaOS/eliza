@@ -96,14 +96,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / opencode / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; adapter/multi-step",
+                "delegate ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex; adapter/multi-step",
             },
           },
         }),

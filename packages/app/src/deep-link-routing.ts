@@ -18,10 +18,7 @@ function withDefaultSearchParam(
 }
 
 function defaultLaunchId(): string {
-  return (
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-  );
+  return globalThis.crypto.randomUUID();
 }
 
 function ensureAssistantLaunchId(

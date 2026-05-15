@@ -219,15 +219,14 @@ function createAppPluginBrowserAliases() {
 
 function resolveAppShellMetadata() {
   const branding = resolveAppBranding(appConfig);
-  const themeColor = appConfig.web?.themeColor?.trim() || "#08080a";
-  const backgroundColor = appConfig.web?.backgroundColor?.trim() || "#0a0a0a";
-  const shareImagePath =
-    appConfig.web?.shareImagePath?.trim() || "/og-image.png";
+  const themeColor = appConfig.web.themeColor.trim() || "#08080a";
+  const backgroundColor = appConfig.web.backgroundColor.trim() || "#0a0a0a";
+  const shareImagePath = appConfig.web.shareImagePath.trim() || "/og-image.png";
   const appUrl = ensureTrailingSlash(branding.appUrl.trim());
 
   return {
     appName: appConfig.appName.trim(),
-    shortName: appConfig.web?.shortName?.trim() || appConfig.appName.trim(),
+    shortName: appConfig.web.shortName.trim() || appConfig.appName.trim(),
     description: appConfig.description.trim(),
     appUrl,
     themeColor,
@@ -239,9 +238,9 @@ function resolveAppShellMetadata() {
 
 const APP_SHELL_METADATA = resolveAppShellMetadata();
 const APP_ENV_PREFIX = normalizeEnvPrefix(
-  appConfig.envPrefix?.trim() || appConfig.cliName.trim(),
+  appConfig.envPrefix.trim() || appConfig.cliName.trim(),
 );
-const APP_NAMESPACE = appConfig.namespace?.trim() || appConfig.cliName.trim();
+const APP_NAMESPACE = appConfig.namespace.trim() || appConfig.cliName.trim();
 const BRANDED_ENV = {
   apiPort: `${APP_ENV_PREFIX}_API_PORT`,
   appSourcemap: `${APP_ENV_PREFIX}_APP_SOURCEMAP`,

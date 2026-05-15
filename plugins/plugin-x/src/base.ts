@@ -819,7 +819,7 @@ export class ClientBase {
         let characterName = defaultName;
         let characterBio = defaultBio;
 
-        if (this.runtime?.character) {
+        if (this.runtime.character) {
           characterName = this.runtime.character.name || defaultName;
 
           if (typeof this.runtime.character.bio === "string") {
@@ -880,7 +880,7 @@ export class ClientBase {
   }
 
   formatTweetToInteraction(tweet: Tweet): TwitterInteractionPayload | null {
-    if (!tweet?.id || !tweet.userId || !tweet.username) return null;
+    if (!tweet.id || !tweet.userId || !tweet.username) return null;
 
     const isQuote = tweet.isQuoted;
     const isRetweet = !!tweet.retweetedStatus;

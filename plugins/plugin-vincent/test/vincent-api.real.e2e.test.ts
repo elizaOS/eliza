@@ -38,7 +38,7 @@ describeIf(LIVE)("Vincent API live route coverage", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.close();
+    await runtime.close();
   });
 
   it("serves /api/vincent/status through the real API server", async () => {

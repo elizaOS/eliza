@@ -107,16 +107,16 @@ export async function ollamaChat(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (cause) {
-    const err = cause as { name?: string };
-    if (err?.name === "TimeoutError") {
+    if (cause instanceof Error && cause.name === "TimeoutError") {
       throw new OllamaError(
         `Ollama did not respond within ${timeoutMs}ms`,
         "timeout",
         cause,
       );
     }
+    const message = cause instanceof Error ? cause.message : String(cause);
     throw new OllamaError(
-      `Ollama at ${baseUrl} is unreachable: ${(cause as Error).message}`,
+      `Ollama at ${baseUrl} is unreachable: ${message}`,
       "unreachable",
       cause,
     );

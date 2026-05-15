@@ -89,7 +89,7 @@ export async function manageCustomersHandler(
   }
 
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const intent =
     readCustomerIntent(options) ?? (await classifyIntent(runtime, text));
 

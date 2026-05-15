@@ -482,7 +482,7 @@ describe("BOOK_TRAVEL approval execution", () => {
       undefined,
     );
 
-    expect(queued?.success).toBe(true);
+    expect(queued.success).toBe(true);
 
     const pending = await queue.list({
       subjectUserId: String(runtime.agentId),
@@ -496,8 +496,8 @@ describe("BOOK_TRAVEL approval execution", () => {
       throw new Error("Expected one pending travel approval request");
     }
     expect(pendingRequest.payload.action).toBe("book_travel");
-    expect(String(queued?.text ?? "")).toContain("Queued travel approval for");
-    expect(String(queued?.text ?? "")).not.toContain(pendingRequest.id);
+    expect(String(queued.text ?? "")).toContain("Queued travel approval for");
+    expect(String(queued.text ?? "")).not.toContain(pendingRequest.id);
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).includes("/air/offer_requests"),
@@ -516,7 +516,7 @@ describe("BOOK_TRAVEL approval execution", () => {
 
     let approved: ActionResult | undefined;
     try {
-      approved = await approveRequestAction.handler?.(
+      approved = await approveRequestAction.handler(
         runtime,
         ownerMessage("yes, approve that booking"),
         {} as never,
@@ -578,7 +578,7 @@ describe("BOOK_TRAVEL approval execution", () => {
       undefined,
     );
 
-    expect(queued?.success).toBe(true);
+    expect(queued.success).toBe(true);
     const pending = await queue.list({
       subjectUserId: String(runtime.agentId),
       state: "pending",
@@ -598,7 +598,7 @@ describe("BOOK_TRAVEL approval execution", () => {
     );
     let rejected: ActionResult | undefined;
     try {
-      rejected = await rejectRequestAction.handler?.(
+      rejected = await rejectRequestAction.handler(
         runtime,
         ownerMessage("reject that travel booking"),
         {} as never,

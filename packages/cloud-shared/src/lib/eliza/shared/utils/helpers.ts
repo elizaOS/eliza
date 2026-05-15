@@ -277,7 +277,7 @@ export function extractAttachments(actionResults: AttachmentActionResult[]): Att
   return actionResults
     .flatMap((result) => result.data?.attachments ?? [])
     .filter((att): att is Attachment => {
-      if (!att?.url) return false;
+      if (!att.url) return false;
       if (isBase64DataUrl(att.url)) return false;
       if (att.url.startsWith("[") || att.url === "" || !att.url.startsWith("http")) return false;
       return true;
@@ -371,12 +371,12 @@ export async function executeActions(
 
 function resolveActiveContexts(state: State): AgentContext[] {
   const values = [
-    state.data?.selectedContexts,
-    state.data?.activeContexts,
-    state.data?.contexts,
-    state.values?.selectedContexts,
-    state.values?.activeContexts,
-    state.values?.contexts,
+    state.data.selectedContexts,
+    state.data.activeContexts,
+    state.data.contexts,
+    state.values.selectedContexts,
+    state.values.activeContexts,
+    state.values.contexts,
   ];
   const contexts = new Set<AgentContext>(["general"]);
   for (const value of values) {
@@ -497,7 +497,7 @@ export async function generatePlanningWithStreaming(
       streamFilter && {
         stream: true,
         onStreamChunk: async (chunk: string) => {
-          await streamFilter!.processChunk(chunk);
+          await streamFilter.processChunk(chunk);
         },
       }),
   });
@@ -646,7 +646,7 @@ export async function generateResponseWithRetry(
           streamFilter && {
             stream: true,
             onStreamChunk: async (chunk: string) => {
-              await streamFilter!.processChunk(chunk);
+              await streamFilter.processChunk(chunk);
             },
           }),
       });
@@ -724,8 +724,8 @@ export async function runEvaluatorsWithTimeout(
       { ...state },
       true,
       async (content: Content) => {
-        const result = await callback?.(content);
-        return result ?? [];
+        const result = await callback(content);
+        return result;
       },
       [responseMemory],
     ),

@@ -1117,8 +1117,8 @@ ElizaClient.prototype.updateConversation = async function (
   return this.fetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify({
-      ...(typeof data?.title === "string" ? { title: data.title } : {}),
-      ...(typeof data?.generate === "boolean"
+      ...(typeof data.title === "string" ? { title: data.title } : {}),
+      ...(typeof data.generate === "boolean"
         ? { generate: data.generate }
         : {}),
       ...(data && "metadata" in data ? { metadata: data.metadata } : {}),

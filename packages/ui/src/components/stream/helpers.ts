@@ -14,7 +14,7 @@ export const FULL_SIZE = { width: 1280, height: 720 };
 export const IS_POPOUT = (() => {
   if (typeof window === "undefined" || !window.location) return false;
   const params = new URLSearchParams(
-    window.location.search || window.location.hash?.split("?")[1] || "",
+    window.location.search || window.location.hash.split("?")[1] || "",
   );
   return params.has("popout");
 })();

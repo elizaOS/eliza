@@ -598,7 +598,7 @@ function maskInspectForDisplay(data: DockerInspectData): DockerInspectData {
   if (copy.Config?.Env) {
     copy.Config.Env = copy.Config.Env.map((env: string) => {
       const [key] = env.split("=");
-      const isSensitive = /key|secret|password|token|api/i.test(key ?? "");
+      const isSensitive = /key|secret|password|token|api/i.test(key);
       return isSensitive ? `${key}=****` : env;
     });
   }
@@ -2949,7 +2949,7 @@ export function InfrastructureDashboard() {
                       {detailsData.Config.Env.map((env: string) => {
                         const [key] = env.split("=");
                         const isSensitive =
-                          /key|secret|password|token|api/i.test(key ?? "");
+                          /key|secret|password|token|api/i.test(key);
                         return isSensitive ? `${key}=****` : env;
                       }).join("\n")}
                     </pre>

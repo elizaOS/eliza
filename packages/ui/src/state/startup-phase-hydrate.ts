@@ -187,7 +187,7 @@ export async function runHydrating(
   let resolvedIdx = loadAvatarIndex();
   try {
     const cfg = await client.getConfig();
-    const cfgUi = cfg?.ui as Record<string, unknown> | undefined;
+    const cfgUi = cfg.ui as Record<string, unknown> | undefined;
     const cfgAvatarIdx = cfgUi?.avatarIndex;
     if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
       const normalized = normalizeAvatarIndex(cfgAvatarIdx);
@@ -202,7 +202,7 @@ export async function runHydrating(
   try {
     if (typeof client.getStreamSettings === "function") {
       const stream = await client.getStreamSettings();
-      const si = stream.settings?.avatarIndex;
+      const si = stream.settings.avatarIndex;
       if (typeof si === "number" && Number.isFinite(si)) {
         resolvedIdx = normalizeAvatarIndex(si);
         deps.setSelectedVrmIndex(resolvedIdx);
@@ -519,14 +519,14 @@ export function bindReadyPhase(
     "conversation-updated",
     (data: Record<string, unknown>) => {
       const conv = data.conversation as Conversation;
-      if (conv?.id)
+      if (conv.id)
         depsRef.current?.setConversations((prev: Conversation[]) => {
           const u = prev.map((c) => {
             if (c.id !== conv.id) return c;
             // Don't let a WS update overwrite a meaningful title with a
             // generic/default one (e.g. "default", "New Chat", empty).
-            const incomingTitle = conv.title?.trim();
-            const existingTitle = c.title?.trim();
+            const incomingTitle = conv.title.trim();
+            const existingTitle = c.title.trim();
             const isGenericTitle =
               !incomingTitle ||
               incomingTitle === "default" ||

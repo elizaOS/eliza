@@ -41,9 +41,9 @@ export function CloudInstancePanel() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const isActive = relayStatus?.available && relayStatus?.status === "polling";
+  const isActive = relayStatus?.available && relayStatus.status === "polling";
   const isRegistered =
-    relayStatus?.available && relayStatus?.status === "registered";
+    relayStatus?.available && relayStatus.status === "registered";
 
   return (
     <PagePanel.Notice
@@ -87,12 +87,12 @@ export function CloudInstancePanel() {
                   "This instance is registered and receiving messages via Eliza Cloud gateway relay.",
               })}
             </div>
-            {relayStatus?.agentName && (
+            {relayStatus.agentName && (
               <div className="text-muted">
                 Agent: <span className="text-txt">{relayStatus.agentName}</span>
               </div>
             )}
-            {relayStatus?.lastSeenAt && (
+            {relayStatus.lastSeenAt && (
               <div className="text-muted">
                 Last heartbeat:{" "}
                 <span className="text-txt">

@@ -206,9 +206,9 @@ export async function handleWalletBscRoutes(
         if (tx) nonce = tx.nonce;
       } else {
         txStatus = receipt.status === 1 ? "success" : "reverted";
-        blockNumber = receipt.blockNumber ?? null;
-        gasUsed = receipt.gasUsed?.toString() ?? null;
-        effectiveGasPriceWei = receipt.gasPrice?.toString() ?? null;
+        blockNumber = receipt.blockNumber;
+        gasUsed = receipt.gasUsed.toString();
+        effectiveGasPriceWei = receipt.gasPrice.toString();
         const currentBlock = await provider.getBlockNumber();
         confirmations =
           blockNumber !== null ? Math.max(0, currentBlock - blockNumber) : 0;
@@ -364,7 +364,7 @@ export async function handleWalletBscRoutes(
             ]);
             return iface.encodeFunctionData("transfer", [
               toAddress,
-              ethers.parseUnits(body.amount?.trim(), decimals),
+              ethers.parseUnits(body.amount.trim(), decimals),
             ]);
           })(),
       valueWei: isBnb ? ethers.parseEther(body.amount.trim()).toString() : "0",
@@ -432,7 +432,7 @@ export async function handleWalletBscRoutes(
         execution: {
           hash: txResponse.hash,
           nonce,
-          gasLimit: txResponse.gasLimit?.toString() ?? "0",
+          gasLimit: txResponse.gasLimit.toString(),
           valueWei: unsignedTx.valueWei,
           explorerUrl: `https://bscscan.com/tx/${txResponse.hash}`,
           blockNumber: null,

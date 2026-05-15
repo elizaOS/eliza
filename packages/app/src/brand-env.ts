@@ -37,8 +37,6 @@ export function buildBrandEnvAliases(prefix: string) {
   );
 }
 
-export const APP_ENV_PREFIX = normalizeEnvPrefix(
-  APP_CONFIG.envPrefix ?? APP_CONFIG.cliName,
-);
+export const APP_ENV_PREFIX = normalizeEnvPrefix(APP_CONFIG.envPrefix);
 
 export const APP_ENV_ALIASES = buildBrandEnvAliases(APP_ENV_PREFIX);

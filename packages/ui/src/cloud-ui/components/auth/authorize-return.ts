@@ -2,7 +2,7 @@ export const APP_AUTHORIZE_PATH = "/app-auth/authorize";
 export const APP_AUTH_RETURN_TO_KEY = "eliza_app_auth_return_to";
 
 export function buildAppAuthorizeReturnTo(search: string): string {
-  const normalizedSearch = search?.startsWith("?")
+  const normalizedSearch = search.startsWith("?")
     ? search
     : search
       ? `?${search}`

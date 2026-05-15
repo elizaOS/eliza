@@ -235,7 +235,7 @@ export const recentMessagesProvider: Provider = {
       const senderEntity = entitiesData.find((entity: Entity) => entity.id === message.entityId);
       const senderName = senderEntity
         ? getEntityDisplayName(senderEntity)
-        : metaData?.entityName || "Unknown User";
+        : metaData.entityName || "Unknown User";
       const receivedMessageContent = message.content.text;
       const hasReceivedMessage = !!receivedMessageContent?.trim();
 

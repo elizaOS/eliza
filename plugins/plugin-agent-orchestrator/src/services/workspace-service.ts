@@ -615,7 +615,7 @@ export class CodingWorkspaceService {
       (this.runtime.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
       this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
       process.env.ELIZA_CODING_DIRECTORY;
-    const codingDir = rawCodingDir?.trim()
+    const codingDir = rawCodingDir.trim()
       ? rawCodingDir.trim().startsWith("~")
         ? path.join(os.homedir(), rawCodingDir.trim().slice(1))
         : path.resolve(rawCodingDir.trim())
@@ -788,7 +788,7 @@ export class CodingWorkspaceService {
         (this.runtime.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
         this.readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
         process.env.ELIZA_CODING_DIRECTORY;
-      if (codingDir?.trim()) return "persistent";
+      if (codingDir.trim()) return "persistent";
     }
     return "pending_decision";
   }

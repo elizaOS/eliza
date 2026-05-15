@@ -70,7 +70,7 @@ function buildTree(dir: string, basePath: string): NavItem[] {
     const title =
       typeof value === "string"
         ? value
-        : (typeof value === "object" && value?.title) || key;
+        : (typeof value === "object" && value.title) || key;
     if (hasMetaForSubdir(dir, key)) {
       const childPath = `${basePath}/${key}`;
       const childDir = dir ? `${dir}/${key}` : key;

@@ -625,7 +625,7 @@ export async function syncUserFromSteward(
  * Ensures a user has a default API key for programmatic access.
  */
 async function ensureUserHasApiKey(userId: string, organizationId: string): Promise<void> {
-  if (!userId?.trim() || !organizationId?.trim()) {
+  if (!userId.trim() || !organizationId.trim()) {
     logger.warn("[StewardSync] Invalid userId or organizationId, skipping API key creation");
     return;
   }
@@ -654,7 +654,7 @@ async function ensureUserHasApiKey(userId: string, organizationId: string): Prom
  * Ensures a new account starts with a default Eliza character.
  */
 async function ensureDefaultCharacter(userId: string, organizationId: string): Promise<void> {
-  if (!userId?.trim() || !organizationId?.trim()) {
+  if (!userId.trim() || !organizationId.trim()) {
     logger.warn("[StewardSync] Invalid userId or organizationId, skipping default character");
     return;
   }

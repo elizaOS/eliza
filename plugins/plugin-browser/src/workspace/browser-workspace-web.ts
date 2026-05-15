@@ -94,8 +94,8 @@ export function getCurrentWebBrowserWorkspaceTabState(): WebBrowserWorkspaceTabS
   return (
     webWorkspaceState.tabs.find((tab) => tab.visible) ??
     [...webWorkspaceState.tabs].sort((left, right) => {
-      const leftTime = left.lastFocusedAt ?? left.updatedAt ?? "";
-      const rightTime = right.lastFocusedAt ?? right.updatedAt ?? "";
+      const leftTime = left.lastFocusedAt ?? left.updatedAt;
+      const rightTime = right.lastFocusedAt ?? right.updatedAt;
       return (
         rightTime.localeCompare(leftTime) || left.id.localeCompare(right.id)
       );
@@ -296,7 +296,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
             target && "value" in (target as HTMLInputElement)
               ? String((target as HTMLInputElement).value ?? "")
               : normalizeBrowserWorkspaceText(
-                  target?.textContent ?? document.body?.textContent,
+                  target?.textContent ?? document.body.textContent,
                 ),
           );
           return {
@@ -318,7 +318,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           );
           setBrowserWorkspaceControlValue(
             control,
-            `${control.value ?? ""}${browserWorkspaceClipboardText}`,
+            `${control.value}${browserWorkspaceClipboardText}`,
           );
           return {
             mode: "web",
@@ -939,7 +939,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
         }
         const pdf = createBrowserWorkspacePdfBuffer(
           tab.title,
-          normalizeBrowserWorkspaceText(document.body?.textContent),
+          normalizeBrowserWorkspaceText(document.body.textContent),
         );
         const resolved = await writeBrowserWorkspaceFile(filePath, pdf);
         return {
@@ -1182,7 +1182,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
             );
             setBrowserWorkspaceControlValue(
               control,
-              `${control.value ?? ""}${command.value ?? ""}`,
+              `${control.value}${command.value ?? ""}`,
             );
             return {
               mode: "web",
@@ -1252,7 +1252,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         );
         const nextValue =
           command.subaction === "type"
-            ? `${control.value ?? ""}${command.value ?? ""}`
+            ? `${control.value}${command.value ?? ""}`
             : (command.value ?? "");
         setBrowserWorkspaceControlValue(control, nextValue);
         return {
@@ -1317,7 +1317,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
         );
         const nextValue =
           command.subaction === "keyboardtype"
-            ? `${control.value ?? ""}${command.value ?? ""}`
+            ? `${control.value}${command.value ?? ""}`
             : (command.value ?? "");
         setBrowserWorkspaceControlValue(control, nextValue);
         return {
@@ -1421,7 +1421,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
           (entry) =>
             entry.value === (command.value ?? "") ||
             browserWorkspaceTextMatches(
-              entry.textContent ?? "",
+              entry.textContent,
               command.value ?? "",
               true,
             ),
@@ -1509,7 +1509,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
             : false;
           const matchesText = command.text?.trim()
             ? normalizeBrowserWorkspaceText(
-                currentDocument.body?.textContent,
+                currentDocument.body.textContent,
               ).includes(command.text.trim())
             : false;
           const matchesUrl = command.url?.trim()

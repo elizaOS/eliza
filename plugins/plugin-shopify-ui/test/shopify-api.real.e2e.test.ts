@@ -42,7 +42,7 @@ describeIf(LIVE)("Shopify API live route coverage", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.close();
+    await runtime.close();
   });
 
   it("serves /api/shopify/status through the real API server", async () => {

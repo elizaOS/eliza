@@ -39,7 +39,7 @@ function formatSharePayload(payload: ShareTargetPayload): string {
     .filter((part) => part.length > 0);
   if (parts.length > 0) return parts.join("\n");
   const fileNames = (payload.files ?? [])
-    .map((file) => file?.name?.trim())
+    .map((file) => file.name.trim())
     .filter((name): name is string => !!name && name.length > 0);
   return fileNames.length > 0 ? fileNames.join(", ") : "";
 }

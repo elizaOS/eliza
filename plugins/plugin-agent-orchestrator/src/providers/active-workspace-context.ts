@@ -38,7 +38,7 @@ const FALLBACK_FRAMEWORK_STATE: FrameworkState = {
   configuredSubscriptionProvider: undefined,
   frameworks: [],
   preferred: {
-    id: "codex",
+    id: "elizaos",
     reason: "Task-agent framework state unavailable.",
   },
 };
@@ -139,7 +139,7 @@ export const activeWorkspaceContextProvider: Provider = {
                   .join(", ")
               : "no task agents";
           lines.push(
-            `  ${workspace.label ?? workspace.id.slice(0, 8)},${workspace.repo ?? "scratch"},${workspace.branch ?? "no branch"},${agentSummary}`,
+            `  ${workspace.label ?? workspace.id.slice(0, 8)},${workspace.repo},${workspace.branch},${agentSummary}`,
           );
         }
       }

@@ -146,7 +146,7 @@ export class UserCharactersRepository {
       .from(userCharacters)
       .where(eq(userCharacters.id, id))
       .limit(1);
-    return character?.organizationId;
+    return character.organizationId;
   }
 
   /**

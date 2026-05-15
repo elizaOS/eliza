@@ -96,7 +96,7 @@ describe('Webhook Integration Scenarios', () => {
     receivedWebhooks = [];
 
     // Ensure clean state before each test
-    if (service?.isActive()) {
+    if (service.isActive()) {
       await service.stopTunnel();
       await testDelay(testConfig.ngrok.stopWaitTime);
     }
@@ -108,7 +108,7 @@ describe('Webhook Integration Scenarios', () => {
     }
 
     // Clean up after each test
-    if (service?.isActive()) {
+    if (service.isActive()) {
       await service.stopTunnel();
       await testDelay(testConfig.ngrok.stopWaitTime);
     }
@@ -120,7 +120,7 @@ describe('Webhook Integration Scenarios', () => {
     }
 
     // Stop any active tunnel
-    if (service?.isActive()) {
+    if (service.isActive()) {
       await service.stopTunnel();
     }
 

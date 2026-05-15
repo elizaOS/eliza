@@ -23,10 +23,10 @@ export function createUseModelMock(schemaResult?: Record<string, unknown>) {
     // Structured-output calls (intent classification, keyword extraction).
     // Accept both the new `responseSchema` field and the legacy `schema` field
     // to keep tests that haven't been updated working through the transition.
-    if (opts?.responseSchema || opts?.schema) return Promise.resolve(schemaResult || {});
+    if (opts.responseSchema || opts.schema) return Promise.resolve(schemaResult || {});
 
     // Text calls (response formatting) — extract and return the data section
-    const prompt = (opts?.prompt || '') as string;
+    const prompt = (opts.prompt || '') as string;
     const dataSection = '\n\nData:\n';
     const dataIdx = prompt.lastIndexOf(dataSection);
     if (dataIdx !== -1) {

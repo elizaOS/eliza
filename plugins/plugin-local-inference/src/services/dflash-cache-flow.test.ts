@@ -142,9 +142,7 @@ function handleMockChatCompletion(
 		messages: Array<{ content: string }>;
 	};
 	const slotId = typeof payload.slot_id === "number" ? payload.slot_id : -1;
-	const promptText = payload.messages
-		.map((m) => String(m.content ?? ""))
-		.join("\n");
+	const promptText = payload.messages.map((m) => String(m.content)).join("\n");
 	const promptTokens = promptText.split(/\s+/).filter(Boolean).length;
 	const cachedPrefix = state.prefixCachedTokensBySlot.get(slotId) ?? 0;
 	const freshTokens = Math.max(0, promptTokens - cachedPrefix);

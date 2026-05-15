@@ -91,7 +91,7 @@ export function createBrowserWorkspaceSnapshotRecord(
 export function buildBrowserWorkspaceDocumentSnapshotText(
   document: Document,
 ): string {
-  const bodyText = normalizeBrowserWorkspaceText(document.body?.textContent);
+  const bodyText = normalizeBrowserWorkspaceText(document.body.textContent);
   const controlText = Array.from(
     document.querySelectorAll("input, textarea, select, option:checked"),
   )
@@ -105,7 +105,7 @@ export function buildBrowserWorkspaceDocumentSnapshotText(
           ? (element as HTMLSelectElement).value
           : "value" in (element as HTMLInputElement | HTMLTextAreaElement)
             ? (element as HTMLInputElement | HTMLTextAreaElement).value
-            : (element.textContent ?? "");
+            : (element.textContent);
       return `${name}:${normalizeBrowserWorkspaceText(value)}`;
     })
     .filter(Boolean)
@@ -154,7 +154,7 @@ export function readBrowserWorkspaceCookies(
       .split(/;\s*/)
       .map((entry) => {
         const [name, ...rest] = entry.split("=");
-        return [name ?? "", rest.join("=")] as const;
+        return [name, rest.join("=")] as const;
       })
       .filter((entry) => entry[0].trim().length > 0),
   );

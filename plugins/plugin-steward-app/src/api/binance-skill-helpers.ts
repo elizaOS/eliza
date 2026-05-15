@@ -51,7 +51,7 @@ async function resolveBuiltInFallbackAction(
 
   if (!ownerBlockFallbackPromise) {
     ownerBlockFallbackPromise = import("@elizaos/plugin-lifeops")
-      .then((mod) => mod.websiteBlockAction ?? null)
+      .then((mod) => mod.websiteBlockAction)
       .catch(() => null);
   }
 
@@ -837,12 +837,12 @@ async function summarizeDirectBinanceSkillResult(
       maxTokens: 700,
       temperature: 0.2,
     });
-    const clean = summary?.trim()
+    const clean = summary.trim()
       ? normalizeDirectBinanceSummaryText(summary.trim())
       : "";
     return clean || rawText;
   } catch (err) {
-    runtime.logger?.warn(
+    runtime.logger.warn(
       {
         src: "eliza-api",
         skillSlug,
@@ -860,7 +860,7 @@ export async function maybeHandleDirectBinanceSkillRequest(
   appendIncomingText: (incoming: string) => void,
   replaceText?: (text: string) => void,
 ): Promise<string | null> {
-  const userText = extractCompatTextContent(message.content)?.trim();
+  const userText = extractCompatTextContent(message.content).trim();
   if (!userText) return null;
 
   const skillSlug = extractDirectBinanceSkillSlug(userText);
@@ -923,7 +923,7 @@ export async function maybeHandleDirectBinanceSkillRequest(
     appendIncomingText(loadingHints[skillSlug] ?? "Fetching Binance data...");
 
     let directRunText = "";
-    runtime.logger?.info(
+    runtime.logger.info(
       {
         src: "eliza-api",
         action: "USE_SKILL",

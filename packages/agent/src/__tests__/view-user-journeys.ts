@@ -127,7 +127,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "switch-between-views",
     description: "User asks to switch from one view to another",
     userMessage: "switch to the wallet view",
-    expectedBehavior: "Agent navigates to the wallet view from whatever is currently open",
+    expectedBehavior:
+      "Agent navigates to the wallet view from whatever is currently open",
     verificationCriteria: [
       "response confirms switch or navigation",
       "response mentions wallet",
@@ -152,9 +153,11 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "show-views-grid",
-    description: "User asks for a grid or gallery of views using alternate phrasing",
+    description:
+      "User asks for a grid or gallery of views using alternate phrasing",
     userMessage: "show me all my panels in a grid",
-    expectedBehavior: "Agent opens the view manager or lists views in a structured format",
+    expectedBehavior:
+      "Agent opens the view manager or lists views in a structured format",
     verificationCriteria: [
       "response lists or displays available views",
       "response is structured and scannable",
@@ -181,7 +184,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "search-views-by-topic",
     description: "User asks for views related to communication",
     userMessage: "what views are there for messaging or chatting?",
-    expectedBehavior: "Agent surfaces the chat view or other communication-related views",
+    expectedBehavior:
+      "Agent surfaces the chat view or other communication-related views",
     verificationCriteria: [
       "response mentions chat or messaging view",
       "response is relevant to communication",
@@ -193,7 +197,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "find-configuration-views",
     description: "User asks how to configure or set up something",
     userMessage: "where can I configure my account?",
-    expectedBehavior: "Agent points the user toward settings or configuration views",
+    expectedBehavior:
+      "Agent points the user toward settings or configuration views",
     verificationCriteria: [
       "response mentions settings or configuration view",
       "response gives a clear path to configuration",
@@ -207,7 +212,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "close-current-view",
     description: "User asks to close the current view",
     userMessage: "close the current view",
-    expectedBehavior: "Agent closes the active view or confirms it has been dismissed",
+    expectedBehavior:
+      "Agent closes the active view or confirms it has been dismissed",
     verificationCriteria: [
       "response confirms closure or dismissal",
       "response does not open a different view instead",
@@ -272,7 +278,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "view-with-agent-capability",
-    description: "User asks the agent to interact with a view that declares capabilities",
+    description:
+      "User asks the agent to interact with a view that declares capabilities",
     userMessage: "check my wallet balance",
     expectedBehavior:
       "Agent opens or focuses the wallet view and uses the check-balance capability, then reports the result",
@@ -329,7 +336,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "voice-show-settings",
-    description: "User speaks a single-word voice command to navigate to settings",
+    description:
+      "User speaks a single-word voice command to navigate to settings",
     userMessage: "settings",
     expectedBehavior:
       "Agent interprets the single-word utterance as a navigation request and opens the settings view",
@@ -344,7 +352,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "voice-search-views",
-    description: "User speaks a natural-language voice query to find a trading view",
+    description:
+      "User speaks a natural-language voice query to find a trading view",
     userMessage: "find me something for trading",
     expectedBehavior:
       "Agent surfaces the trading dashboard or a relevant finance view matching the spoken intent",
@@ -359,7 +368,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "voice-ambiguous-navigation",
-    description: "User says 'go home', which could map to chat or the main view",
+    description:
+      "User says 'go home', which could map to chat or the main view",
     userMessage: "go home",
     expectedBehavior:
       "Agent navigates to the primary home or chat view, or disambiguates between home and chat with a brief clarification",
@@ -374,7 +384,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "voice-view-manager",
-    description: "User says 'show apps', a legacy voice phrase that should open the view manager",
+    description:
+      "User says 'show apps', a legacy voice phrase that should open the view manager",
     userMessage: "show apps",
     expectedBehavior:
       "Agent maps the legacy 'show apps' phrasing to the view manager and opens it",
@@ -406,7 +417,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "agent-reads-view-state",
-    description: "User asks the agent to read live state from the open wallet view",
+    description:
+      "User asks the agent to read live state from the open wallet view",
     userMessage: "what's my balance in the wallet view?",
     expectedBehavior:
       "Agent reads the current balance from the wallet view's state and reports it to the user",
@@ -436,8 +448,10 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "agent-fills-form-in-view",
-    description: "User asks the agent to fill in a recipient address in the wallet send form",
-    userMessage: "fill in the recipient address with 0xAbCd1234 in the wallet send form",
+    description:
+      "User asks the agent to fill in a recipient address in the wallet send form",
+    userMessage:
+      "fill in the recipient address with 0xAbCd1234 in the wallet send form",
     expectedBehavior:
       "Agent locates the recipient address field in the wallet send form and populates it with the provided address",
     verificationCriteria: [
@@ -454,7 +468,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "open-then-interact",
-    description: "User first opens wallet, then in a follow-up asks to send funds",
+    description:
+      "User first opens wallet, then in a follow-up asks to send funds",
     userMessage: "send some funds",
     expectedBehavior:
       "Agent retains context that the wallet is open and initiates the send flow without requiring the user to restate the view",
@@ -469,7 +484,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "switch-views-mid-task",
-    description: "User switches from wallet to settings mid-task and then returns",
+    description:
+      "User switches from wallet to settings mid-task and then returns",
     userMessage: "actually, take me back to the wallet",
     expectedBehavior:
       "Agent navigates back to the wallet view, restoring the previous context",
@@ -522,12 +538,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 /**
  * Returns all scenarios matching any of the given tags.
  */
-export function getScenariosByTag(
-  ...tags: string[]
-): ViewJourneyScenario[] {
-  return VIEW_USER_JOURNEYS.filter((s) =>
-    s.tags.some((t) => tags.includes(t)),
-  );
+export function getScenariosByTag(...tags: string[]): ViewJourneyScenario[] {
+  return VIEW_USER_JOURNEYS.filter((s) => s.tags.some((t) => tags.includes(t)));
 }
 
 /**

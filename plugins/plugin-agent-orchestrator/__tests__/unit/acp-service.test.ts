@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../src/services/acp-service.js";
+import { writeConfigEnvKeys } from "../../src/services/config-env.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -18,6 +22,15 @@ type MockProc = EventEmitter & {
 };
 
 const spawnMock = vi.mocked(spawn);
+const ENV_KEYS = [
+  "ELIZA_STATE_DIR",
+  "ELIZA_NAMESPACE",
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
+] as const;
+let savedEnv: Record<string, string | undefined>;
+let tempStateDir = "";
 
 function runtime(settings: Record<string, string | undefined> = {}) {
   return {
@@ -124,10 +137,23 @@ async function waitForSessionStatus(
 
 beforeEach(() => {
   spawnMock.mockReset();
+  savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+  tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-service-state-"));
+  process.env.ELIZA_STATE_DIR = tempStateDir;
+  process.env.ELIZA_NAMESPACE = "eliza";
+  delete process.env.CEREBRAS_API_KEY;
+  delete process.env.CEREBRAS_BASE_URL;
+  delete process.env.CEREBRAS_MODEL;
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  for (const key of ENV_KEYS) {
+    const value = savedEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  fs.rmSync(tempStateDir, { recursive: true, force: true });
 });
 
 describe("AcpService", () => {
@@ -332,6 +358,65 @@ describe("AcpService", () => {
     expect(promptArgs).not.toContain("opencode");
   });
 
+  it("rereads config-backed default agent and adapter command overrides without restart", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_DEFAULT_AGENT: "opencode",
+        ELIZA_PI_AGENT_ACP_COMMAND: "/stale/pi acp",
+      }),
+    );
+    await service.start();
+    writeConfigEnvKeys({
+      ELIZA_ACP_DEFAULT_AGENT: "pi-agent",
+      ELIZA_DEFAULT_AGENT_TYPE: "pi-agent",
+      ELIZA_PI_AGENT_ACP_COMMAND: "/opt/pi-agent/bin/pi-agent acp",
+      ELIZA_AGENT_SELECTION_STRATEGY: "fixed",
+    });
+
+    const reg = nextProc();
+    const spawned = service.spawnSession({
+      name: "dynamic-default",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    const result = await spawned;
+
+    expect(result.agentType).toBe("pi-agent");
+    expect(await service.resolveAgentType()).toBe("pi-agent");
+    expect(service.agentSelectionStrategy).toBe("fixed");
+
+    const args = spawnMock.mock.calls.at(-1)?.[1] as string[] | undefined;
+    const agentArgIndex = args?.indexOf("--agent") ?? -1;
+    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
+    expect(args?.[agentArgIndex + 1]).toBe("/opt/pi-agent/bin/pi-agent acp");
+    expect(args).not.toContain("pi-agent");
+  });
+
+  it("seeds elizaOS Cerebras sessions with gpt-oss-120b model env by default", async () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
+    const reg = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "eliza-cerebras",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    await spawned;
+
+    const env = spawnMock.mock.calls[0]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(env?.OPENAI_MODEL).toBe("gpt-oss-120b");
+    expect(env?.ELIZAOS_MODEL).toBe("gpt-oss-120b");
+    expect(env?.CEREBRAS_MODEL).toBe("gpt-oss-120b");
+  });
+
   it("sendPrompt emits message, tool_running, task_complete, stopped and resolves PromptResult", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
@@ -403,7 +488,7 @@ describe("AcpService", () => {
     expect(result.response).toContain("[tool output: Read home usage]");
     expect(result.response).toContain("/home            387G");
     expect(result.response).not.toContain('"metadata"');
-    expect(taskCompletePayloads[0]?.response).toBe("done");
+    expect(taskCompletePayloads[0]?.response).toBe(result.response);
     expect(result.stopReason).toBe("end_turn");
     expect(events).toEqual(
       expect.arrayContaining([

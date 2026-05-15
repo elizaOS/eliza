@@ -167,7 +167,7 @@ function inferBrowserSubaction(
   // path for speed.
   const watchMode = params?.watchMode === true;
 
-  if (params?.selector && params?.text) {
+  if (params?.selector && params.text) {
     return watchMode ? "realistic-fill" : "type";
   }
 

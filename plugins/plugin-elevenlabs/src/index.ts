@@ -162,7 +162,7 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
     ),
     style: getSetting(runtime, "ELEVENLABS_VOICE_STYLE", "0"),
     speakerBoost: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true") ?? "true"}`,
+      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true")}`,
     ),
   };
 }
@@ -183,11 +183,11 @@ function getTranscriptionSettings(
       "word",
     ),
     diarize: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false") ?? "false"}`,
+      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false")}`,
     ),
     numSpeakers: numSpeakersStr ? Number(numSpeakersStr) : undefined,
     tagAudioEvents: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false") ?? "false"}`,
+      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false")}`,
     ),
   };
 }

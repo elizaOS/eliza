@@ -114,7 +114,7 @@ async function checkUpstash(
 
 export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const env = (c.env ?? {}) as Bindings;
+    const env = c.env as Bindings;
 
     // Outside Cloudflare Workers (e.g. unit tests) c.env is undefined — skip rate limiting.
     if (!env) {

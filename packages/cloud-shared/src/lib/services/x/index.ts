@@ -551,7 +551,7 @@ async function listDirectMessages(args: {
 function mapFeedItem(tweet: TweetV2, author: UserV2 | undefined): XFeedItem {
   return {
     id: tweet.id,
-    text: tweet.text ?? "",
+    text: tweet.text,
     createdAt: tweet.created_at ?? null,
     authorId: tweet.author_id ?? "",
     authorHandle: author?.username ?? "",

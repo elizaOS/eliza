@@ -212,7 +212,7 @@ export const edgeTTSPlugin: Plugin = {
   autoEnable: {
     shouldEnable: (env, config) => {
       if (env.ELIZA_CLOUD_PROVISIONED === "1") return true;
-      const f = (config?.features as Record<string, unknown> | undefined)?.tts;
+      const f = (config.features as Record<string, unknown> | undefined)?.tts;
       return (
         f === true ||
         (typeof f === "object" && f !== null && (f as { enabled?: unknown }).enabled !== false)

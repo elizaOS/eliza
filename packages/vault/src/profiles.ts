@@ -193,7 +193,7 @@ function parseRoutingConfig(raw: string): RoutingConfig {
 
 function normalizeRoutingConfig(config: RoutingConfig): RoutingConfig {
   const rules: RoutingRule[] = [];
-  for (const r of config.rules ?? []) {
+  for (const r of config.rules) {
     const normalized = normalizeRule(r);
     if (normalized) rules.push(normalized);
   }

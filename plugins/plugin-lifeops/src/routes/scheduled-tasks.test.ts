@@ -139,13 +139,13 @@ function buildCtx(args: {
     state: { runtime: null, adminEntityId: null },
     json(r, data, status = 200) {
       r.statusCode = status;
-      r.setHeader?.("content-type", "application/json");
-      r.end?.(JSON.stringify(data));
+      r.setHeader("content-type", "application/json");
+      r.end(JSON.stringify(data));
     },
     error(r, message, status = 400) {
       r.statusCode = status;
-      r.setHeader?.("content-type", "application/json");
-      r.end?.(JSON.stringify({ error: message }));
+      r.setHeader("content-type", "application/json");
+      r.end(JSON.stringify({ error: message }));
     },
     async readJsonBody<T extends object>(): Promise<T | null> {
       return (args.body as T | undefined) ?? null;

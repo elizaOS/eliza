@@ -4,5 +4,5 @@
 # the PR #26763 (Cerebras reasoning fix) vendored source without needing a
 # compiled binary.
 SHIM_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-OC_DIR="$SHIM_DIR/../../../vendor/opencode/packages/opencode"
+OC_DIR="$SHIM_DIR/../vendor/opencode/packages/opencode"
 exec bun run --cwd "$OC_DIR" --conditions=browser src/index.ts "$@"

@@ -917,7 +917,7 @@ export function DocumentsView({
     return documents.filter(
       (doc) =>
         doc.filename.toLowerCase().includes(query) ||
-        doc.contentType?.toLowerCase().includes(query),
+        doc.contentType.toLowerCase().includes(query),
     );
   }, [documents, isShowingSearchResults, searchQuery]);
 

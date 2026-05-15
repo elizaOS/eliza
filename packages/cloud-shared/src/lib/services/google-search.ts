@@ -212,13 +212,13 @@ function buildSearchResults(
   }
 
   for (const chunk of chunks) {
-    const url = chunk?.web?.uri?.trim();
+    const url = chunk.web?.uri?.trim();
     if (!url || byUrl.has(url)) {
       continue;
     }
 
     byUrl.set(url, {
-      title: chunk?.web?.title?.trim() || url,
+      title: chunk.web?.title?.trim() || url,
       content: [],
       scores: [],
     });
@@ -273,7 +273,7 @@ export async function executeHostedGoogleSearch(
     );
   }
 
-  const query = options.query?.trim();
+  const query = options.query.trim();
   if (!query) {
     throw new Error("Search query is required");
   }

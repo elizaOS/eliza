@@ -1615,8 +1615,8 @@ export function resolveBrowserWorkspaceCurrentTab(
   return (
     tabs.find((tab) => tab.visible) ??
     [...tabs].sort((left, right) => {
-      const leftTime = left.lastFocusedAt ?? left.updatedAt ?? "";
-      const rightTime = right.lastFocusedAt ?? right.updatedAt ?? "";
+      const leftTime = left.lastFocusedAt ?? left.updatedAt;
+      const rightTime = right.lastFocusedAt ?? right.updatedAt;
       return (
         rightTime.localeCompare(leftTime) || left.id.localeCompare(right.id)
       );

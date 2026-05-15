@@ -43,10 +43,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
   async function getOrCreateDeviceBridgeId(): Promise<string> {
     const existing = await Preferences.get({ key: ctx.deviceBridgeIdKey });
     if (existing.value?.trim()) return existing.value.trim();
-    const prefix = ctx.isAndroid ? "android" : ctx.isIOS ? "ios" : "mobile";
-    const generated =
-      globalThis.crypto?.randomUUID?.() ??
-      `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const generated = globalThis.crypto.randomUUID();
     await Preferences.set({ key: ctx.deviceBridgeIdKey, value: generated });
     return generated;
   }

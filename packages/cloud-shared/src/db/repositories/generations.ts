@@ -114,7 +114,7 @@ async function prepareGenerationPayload(
     return data;
   }
 
-  const createdAt = data.created_at ?? context.created_at ?? new Date();
+  const createdAt = data.created_at ?? context.created_at;
   const [prompt, negativePrompt, result, content] = await Promise.all([
     data.prompt === undefined
       ? Promise.resolve(null)
@@ -417,11 +417,11 @@ export class GenerationsRepository {
       .groupBy(generations.type);
 
     return {
-      totalGenerations: Number(totalResult?.total || 0),
-      completedGenerations: Number(totalResult?.completed || 0),
-      failedGenerations: Number(totalResult?.failed || 0),
-      pendingGenerations: Number(totalResult?.pending || 0),
-      totalCredits: Number(totalResult?.totalCredits || 0),
+      totalGenerations: Number(totalResult.total || 0),
+      completedGenerations: Number(totalResult.completed || 0),
+      failedGenerations: Number(totalResult.failed || 0),
+      pendingGenerations: Number(totalResult.pending || 0),
+      totalCredits: Number(totalResult.totalCredits || 0),
       byType: byTypeResult.map((r) => ({
         type: r.type,
         count: Number(r.count),

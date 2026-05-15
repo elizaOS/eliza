@@ -213,7 +213,7 @@ export function AppsManagementSection() {
       try {
         const result: AppStopResult = await client.stopApp(app.name);
         setActionNotice(
-          result.message ?? `${app.displayName} stopped.`,
+          result.message,
           result.success ? "success" : "error",
           3500,
         );

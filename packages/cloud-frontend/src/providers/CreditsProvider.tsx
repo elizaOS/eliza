@@ -17,9 +17,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { logger } from "@/lib/utils/logger";
-import { usePathname } from "../../../ui/src/cloud-ui/runtime/navigation";
 
 interface CreditsContextValue {
   creditBalance: number | null;
@@ -65,7 +65,7 @@ async function readBalance(response: Response): Promise<number> {
 
 export function CreditsProvider({ children }: { children: ReactNode }) {
   const { authenticated, ready } = useSessionAuth();
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

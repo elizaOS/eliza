@@ -76,7 +76,7 @@ export function loadAgentProfileRegistry(): AgentProfileRegistry {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as AgentProfileRegistry;
-      if (parsed?.version === 1 && Array.isArray(parsed.profiles)) {
+      if (parsed.version === 1 && Array.isArray(parsed.profiles)) {
         return parsed;
       }
     }

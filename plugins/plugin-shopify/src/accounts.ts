@@ -139,7 +139,7 @@ export function readShopifyAccounts(
   runtime: IAgentRuntime,
 ): ShopifyAccountConfig[] {
   const accounts = new Map<string, ShopifyAccountConfig>();
-  const characterConfig = runtime.character?.settings?.shopify as
+  const characterConfig = runtime.character.settings?.shopify as
     | { accounts?: unknown }
     | undefined;
   const characterAccounts = characterConfig?.accounts;

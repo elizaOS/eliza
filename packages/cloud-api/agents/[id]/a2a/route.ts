@@ -250,7 +250,7 @@ async function handleChat(
     messages: Array<{ role: string; content: string }>;
   };
 
-  if (!messages?.length) {
+  if (!messages.length) {
     return c.json({
       jsonrpc: "2.0",
       error: { code: -32602, message: "messages required" },
@@ -338,8 +338,8 @@ async function handleChat(
     const { totalCost: actualBaseCost } = await calculateCost(
       model,
       provider,
-      usage?.inputTokens || 0,
-      usage?.outputTokens || 0,
+      usage.inputTokens || 0,
+      usage.outputTokens || 0,
     );
     const actualCreatorMarkup = character.monetization_enabled
       ? actualBaseCost * (markupPct / 100)
@@ -354,7 +354,7 @@ async function handleChat(
         earnings: actualCreatorMarkup,
         consumerOrgId: authUser.organization_id,
         model,
-        tokens: usage?.totalTokens,
+        tokens: usage.totalTokens,
         protocol: "a2a",
       });
       logger.info(
@@ -375,9 +375,9 @@ async function handleChat(
         content: fullText,
         model,
         usage: {
-          prompt_tokens: usage?.inputTokens || 0,
-          completion_tokens: usage?.outputTokens || 0,
-          total_tokens: usage?.totalTokens || 0,
+          prompt_tokens: usage.inputTokens || 0,
+          completion_tokens: usage.outputTokens || 0,
+          total_tokens: usage.totalTokens || 0,
         },
         cost: {
           base: actualBaseCost,

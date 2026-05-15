@@ -291,7 +291,7 @@ function findPageScopedConversation(
   const matching = conversations.filter(
     (conversation) =>
       conversation.metadata?.scope === scope &&
-      (conversation.metadata?.pageId ?? undefined) === (pageId ?? undefined),
+      (conversation.metadata.pageId ?? undefined) === (pageId ?? undefined),
   );
   if (matching.length === 0) return null;
   return matching.sort(
@@ -309,7 +309,7 @@ function findPageScopedConversations(
     .filter(
       (conversation) =>
         conversation.metadata?.scope === scope &&
-        (conversation.metadata?.pageId ?? undefined) === (pageId ?? undefined),
+        (conversation.metadata.pageId ?? undefined) === (pageId ?? undefined),
     )
     .sort(
       (left, right) =>
@@ -336,7 +336,7 @@ export async function resolvePageScopedConversation(params: {
     const titleMatches = existing.title === title;
     const metadataMatches =
       existing.metadata?.scope === scope &&
-      (existing.metadata?.pageId ?? undefined) === (pageId ?? undefined);
+      (existing.metadata.pageId ?? undefined) === (pageId ?? undefined);
     if (titleMatches && metadataMatches) {
       return existing;
     }

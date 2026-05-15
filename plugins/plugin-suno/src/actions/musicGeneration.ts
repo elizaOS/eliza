@@ -56,7 +56,7 @@ function normalizeSubaction(value: unknown): SunoMusicSubaction | null {
 function inferSubaction(message: Memory, params: SunoMusicGenerationParams): SunoMusicSubaction {
     const explicit = normalizeSubaction(params.action ?? params.subaction ?? params.operation);
     if (explicit) return explicit;
-    const text = (message.content?.text ?? '').toLowerCase();
+    const text = (message.content.text ?? '').toLowerCase();
     if (params.audio_id || /\b(extend|lengthen|longer|add \d+.*seconds?)\b/.test(text)) {
         return 'extend';
     }
@@ -76,7 +76,7 @@ function inferSubaction(message: Memory, params: SunoMusicGenerationParams): Sun
 function promptFromParams(message: Memory, params: SunoMusicGenerationParams): string {
     const prompt = typeof params.prompt === 'string' ? params.prompt.trim() : '';
     if (prompt) return prompt;
-    return (message.content?.text ?? '').trim();
+    return (message.content.text ?? '').trim();
 }
 
 function numberOrDefault(value: unknown, fallback: number): number {

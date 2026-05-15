@@ -141,7 +141,7 @@ export const TELEGRAM_ALLOW_ALL_HIDDEN = new Set(["TELEGRAM_ALLOWED_CHATS"]);
 /** Detect advanced / debug parameters that should be collapsed by default. */
 export function isAdvancedParam(param: PluginParamDef): boolean {
   const k = param.key.toUpperCase();
-  const d = (param.description ?? "").toLowerCase();
+  const d = param.description.toLowerCase();
   return (
     k.includes("EXPERIMENTAL") ||
     k.includes("DEBUG") ||
@@ -334,7 +334,7 @@ export function paramsToSchema(
     // Build UI hint
     const hint: ConfigUiHint = {
       label: autoLabel(p.key, pluginId),
-      sensitive: p.sensitive ?? false,
+      sensitive: p.sensitive,
       advanced: isAdvancedParam(p),
     };
 
@@ -445,7 +445,7 @@ export function paramsToSchema(
       !p.sensitive &&
       (keyUpper.endsWith("_MODE") || keyUpper.endsWith("_STRATEGY"))
     ) {
-      const desc = p.description ?? "";
+      const desc = p.description;
       // Match "auto | local | mcp" or "filesystem|in-context|sqlite"
       const pipeMatch =
         desc.match(/:\s*([a-z0-9_-]+(?:\s*[|/]\s*[a-z0-9_-]+)+)/i) ??
@@ -607,7 +607,7 @@ function resolvePluginParamValue(
     return draftValue;
   }
 
-  const param = plugin.parameters?.find((candidate) => candidate.key === key);
+  const param = plugin.parameters.find((candidate) => candidate.key === key);
   if (!param || param.sensitive || !param.isSet) {
     return null;
   }
@@ -770,10 +770,9 @@ export type SubgroupTag = { id: string; label: string; count: number };
 
 export function isPluginReady(plugin: PluginInfo): boolean {
   if (!plugin.enabled) return false;
-  const needsConfig =
-    plugin.parameters?.some(
-      (param: PluginParamDef) => param.required && !param.isSet,
-    ) ?? false;
+  const needsConfig = plugin.parameters.some(
+    (param: PluginParamDef) => param.required && !param.isSet,
+  );
   return !needsConfig;
 }
 
@@ -784,7 +783,7 @@ export function comparePlugins(left: PluginInfo, right: PluginInfo): number {
   if (leftReady !== rightReady) return leftReady ? -1 : 1;
   // Then enabled-but-needs-config
   if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
-  return (left.name ?? "").localeCompare(right.name ?? "");
+  return left.name.localeCompare(right.name);
 }
 
 export function matchesPluginFilters(
@@ -798,10 +797,10 @@ export function matchesPluginFilters(
     (statusFilter === "disabled" && !plugin.enabled);
   const matchesSearch =
     !searchLower ||
-    (plugin.name ?? "").toLowerCase().includes(searchLower) ||
-    (plugin.description ?? "").toLowerCase().includes(searchLower) ||
+    plugin.name.toLowerCase().includes(searchLower) ||
+    plugin.description.toLowerCase().includes(searchLower) ||
     (plugin.tags ?? []).some((tag) =>
-      (tag ?? "").toLowerCase().includes(searchLower),
+      tag.toLowerCase().includes(searchLower),
     ) ||
     plugin.id.toLowerCase().includes(searchLower);
   return matchesStatus && matchesSearch;

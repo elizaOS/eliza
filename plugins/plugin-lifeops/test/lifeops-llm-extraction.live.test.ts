@@ -173,20 +173,20 @@ describeIfLive("LLM plan extraction (live)", () => {
             state: makeState(),
             message: makeMessage(runtime, testCase.intent),
           });
-          expect(plan?.mode).toBe(testCase.expectedMode);
-          expect(plan?.cadenceKind).toBe(testCase.expectedCadenceKind);
+          expect(plan.mode).toBe(testCase.expectedMode);
+          expect(plan.cadenceKind).toBe(testCase.expectedCadenceKind);
           if ("expectedWindows" in testCase && testCase.expectedWindows) {
-            expect(plan?.windows).toEqual(
+            expect(plan.windows).toEqual(
               expect.arrayContaining(testCase.expectedWindows),
             );
           }
           if ("expectedTimeOfDay" in testCase && testCase.expectedTimeOfDay) {
-            expect(plan?.timeOfDay).toBe(testCase.expectedTimeOfDay);
+            expect(plan.timeOfDay).toBe(testCase.expectedTimeOfDay);
           }
           if ("expectedTimeZone" in testCase && testCase.expectedTimeZone) {
-            expect(plan?.timeZone).toBe(testCase.expectedTimeZone);
+            expect(plan.timeZone).toBe(testCase.expectedTimeZone);
           }
-          expect(String(plan?.title ?? "").trim().length).toBeGreaterThan(0);
+          expect(String(plan.title ?? "").trim().length).toBeGreaterThan(0);
         },
         { perRunTimeoutMs: TEST_TIMEOUT },
       );

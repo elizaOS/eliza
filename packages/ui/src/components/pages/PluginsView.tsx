@@ -1249,8 +1249,7 @@ function PluginListView({
   const pluginSectionTitle =
     selectedSubgroupTag?.id === "all"
       ? t("pluginsview.PluginCatalog", { defaultValue: "Plugin Catalog" })
-      : (selectedSubgroupTag?.label ??
-        t("pluginsview.PluginCatalog", { defaultValue: "Plugin Catalog" }));
+      : selectedSubgroupTag?.label;
 
   return (
     <PagePanel.Frame data-testid="plugins-view-page">

@@ -745,7 +745,7 @@ export function App() {
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
-    if (backendConnection?.state !== "connected") return;
+    if (backendConnection.state !== "connected") return;
 
     const report = () => {
       void fetchWithCsrf("/api/apps/overlay-presence", {
@@ -769,7 +769,7 @@ export function App() {
         /* ignore */
       });
     };
-  }, [activeOverlayApp, backendConnection?.state, startupCoordinator.phase]);
+  }, [activeOverlayApp, backendConnection.state, startupCoordinator.phase]);
 
   const [customActionsPanelOpen, setCustomActionsPanelOpen] = useState(false);
   const [customActionsEditorOpen, setCustomActionsEditorOpen] = useState(false);
@@ -906,7 +906,7 @@ export function App() {
     if (typeof document === "undefined") return;
     const handleFocusConnector = (event: Event) => {
       const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
-      if (!detail?.connectorId) return;
+      if (!detail.connectorId) return;
       setSettingsInitialSection("connectors");
       setTab("settings");
     };

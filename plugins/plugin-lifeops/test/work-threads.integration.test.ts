@@ -113,7 +113,7 @@ async function runThreadAction(
   msg: Memory,
   operations: unknown[],
 ): Promise<ActionResult> {
-  const result = await workThreadAction.handler?.(
+  const result = await workThreadAction.handler(
     runtime,
     msg,
     { values: {}, data: {}, text: "" } as State,
@@ -182,7 +182,7 @@ describe("LifeOps work threads", () => {
   it("routes, guards, follows up, and caps active thread work", async () => {
     const runtime = await createRuntime();
     const idleRoom = message(runtime, "room-idle", "hello there");
-    expect(await workThreadAction.validate?.(runtime, idleRoom)).toBe(false);
+    expect(await workThreadAction.validate(runtime, idleRoom)).toBe(false);
     expect(
       await threadOpsFieldEvaluator.shouldRun?.(
         fieldContext(runtime, idleRoom),
@@ -197,7 +197,7 @@ describe("LifeOps work threads", () => {
 
     const roomA = message(runtime, "room-a", "start a thread for this work");
     const roomB = message(runtime, "room-b", "continue this thread over here");
-    expect(await workThreadAction.validate?.(runtime, roomA)).toBe(true);
+    expect(await workThreadAction.validate(runtime, roomA)).toBe(true);
 
     const created = await runThreadAction(runtime, roomA, [
       {
@@ -291,7 +291,7 @@ describe("LifeOps work threads", () => {
       expect(noisy.success).toBe(true);
       noisyThreadIds.push(operationResults(noisy)[0].workThreadId as string);
     }
-    expect(await workThreadAction.validate?.(runtime, roomA)).toBe(true);
+    expect(await workThreadAction.validate(runtime, roomA)).toBe(true);
     expect(
       await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, roomA)),
     ).toBe(true);
@@ -627,7 +627,7 @@ describe("LifeOps work threads", () => {
     expect(ownerBProvider.text).not.toContain(privateAId);
 
     const userMessage = sharedMessageUser("continue this thread");
-    expect(await workThreadAction.validate?.(runtime, userMessage)).toBe(false);
+    expect(await workThreadAction.validate(runtime, userMessage)).toBe(false);
     expect(
       await threadOpsFieldEvaluator.shouldRun?.(
         fieldContext(runtime, userMessage),

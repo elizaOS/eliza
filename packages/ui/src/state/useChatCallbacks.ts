@@ -792,7 +792,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
               conversation.id,
               uiLanguage,
             );
-            greetingText = resp.text?.trim() || "";
+            greetingText = resp.text.trim() || "";
             greetingLocalInference = resp.localInference;
           } catch {
             // Greeting generation failed — continue without greeting
@@ -1162,7 +1162,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             existing.id === id ? conversation : existing,
           ),
         );
-        const next = conversation.title?.trim();
+        const next = conversation.title.trim();
         return next && next.length > 0 ? next : null;
       } catch (err) {
         const status = (err as { status?: number }).status;

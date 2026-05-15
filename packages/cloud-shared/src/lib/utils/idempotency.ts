@@ -116,7 +116,7 @@ export async function getProcessedMessagesCount(): Promise<number> {
       .select({ count: count() })
       .from(idempotencyKeys)
       .where(gt(idempotencyKeys.expires_at, new Date()));
-    return result?.count ?? 0;
+    return result.count;
   } catch (error) {
     logger.error("[Idempotency] Error getting count", {
       error: getErrorMessage(error),

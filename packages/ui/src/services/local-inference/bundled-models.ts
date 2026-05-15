@@ -59,7 +59,7 @@ async function readManifest(): Promise<BundledModelManifest | null> {
   try {
     const raw = await fs.readFile(manifestPath(), "utf8");
     const parsed = JSON.parse(raw) as BundledModelManifest;
-    if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
+    if (parsed.version !== 1 || !Array.isArray(parsed.models)) {
       return null;
     }
     return parsed;

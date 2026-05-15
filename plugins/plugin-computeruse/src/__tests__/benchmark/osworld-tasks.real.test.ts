@@ -41,7 +41,7 @@ function mockRuntime(overrides: Record<string, string> = {}): IAgentRuntime {
     character: {},
     getSetting: (key: string) => {
       if (key === "COMPUTER_USE_APPROVAL_MODE")
-        return overrides.COMPUTER_USE_APPROVAL_MODE ?? "full_control";
+        return overrides.COMPUTER_USE_APPROVAL_MODE;
       if (key === "COMPUTER_USE_SCREENSHOT_AFTER_ACTION") return "false";
       return overrides[key] ?? undefined;
     },

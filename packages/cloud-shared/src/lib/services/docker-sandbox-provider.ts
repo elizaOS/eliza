@@ -385,8 +385,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (dbNode) {
       nodeId = dbNode.node_id;
       hostname = dbNode.hostname;
-      sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;
-      sshUser = dbNode.ssh_user ?? DEFAULT_SSH_USERNAME;
+      sshPort = dbNode.ssh_port;
+      sshUser = dbNode.ssh_user;
       hostKeyFingerprint = dbNode.host_key_fingerprint ?? undefined;
       // Increment allocated_count in DB
       await dockerNodesRepository.incrementAllocated(nodeId);
@@ -990,8 +990,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         const dbNode = await dockerNodesRepository.findByNodeId(sandbox.node_id);
         if (dbNode) {
           hostname = dbNode.hostname;
-          sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;
-          sshUser = dbNode.ssh_user ?? DEFAULT_SSH_USERNAME;
+          sshPort = dbNode.ssh_port;
+          sshUser = dbNode.ssh_user;
           hostKeyFingerprint = dbNode.host_key_fingerprint ?? undefined;
         } else {
           throw new Error(

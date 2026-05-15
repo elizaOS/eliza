@@ -91,7 +91,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
       if (
         query &&
         !skill.name.toLowerCase().includes(query) &&
-        !skill.description?.toLowerCase().includes(query)
+        !skill.description.toLowerCase().includes(query)
       ) {
         return false;
       }

@@ -190,14 +190,14 @@ app.post("/", async (c) => {
         values: request.input,
       });
       embeddings = result.embeddings;
-      actualTokens = result.usage?.tokens || estimatedInputTokens;
+      actualTokens = result.usage.tokens || estimatedInputTokens;
     } else {
       const result = await embed({
         model: getTextEmbeddingModel(model),
         value: request.input,
       });
       embeddings = [result.embedding];
-      actualTokens = result.usage?.tokens || estimatedInputTokens;
+      actualTokens = result.usage.tokens || estimatedInputTokens;
     }
 
     const billing = await billUsage(

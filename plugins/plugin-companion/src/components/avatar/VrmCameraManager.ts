@@ -172,8 +172,9 @@ export class VrmCameraManager {
   }
 
   private getAvatarFeetAnchor(vrm: VRM, bounds: THREE.Box3): THREE.Vector3 {
-    const leftFoot = vrm.humanoid.getNormalizedBoneNode("leftFoot");
-    const rightFoot = vrm.humanoid.getNormalizedBoneNode("rightFoot");
+    const humanoid = vrm.humanoid;
+    const leftFoot = humanoid?.getNormalizedBoneNode("leftFoot");
+    const rightFoot = humanoid?.getNormalizedBoneNode("rightFoot");
     if (leftFoot && rightFoot) {
       leftFoot.getWorldPosition(this.tempWorldPosition);
       rightFoot.getWorldPosition(this.tempSecondaryWorldPosition);
@@ -188,7 +189,8 @@ export class VrmCameraManager {
   }
 
   private getAvatarNeckHeight(vrm: VRM, bounds: THREE.Box3): number {
-    const neckNode = vrm.humanoid.getNormalizedBoneNode("neck");
+    const humanoid = vrm.humanoid;
+    const neckNode = humanoid?.getNormalizedBoneNode("neck");
     if (neckNode) {
       neckNode.getWorldPosition(this.tempWorldPosition);
       if (Number.isFinite(this.tempWorldPosition.y)) {
@@ -196,11 +198,11 @@ export class VrmCameraManager {
       }
     }
 
-    const headNode = vrm.humanoid.getNormalizedBoneNode("head");
+    const headNode = humanoid?.getNormalizedBoneNode("head");
     const chestNode =
-      vrm.humanoid.getNormalizedBoneNode("upperChest") ??
-      vrm.humanoid.getNormalizedBoneNode("chest") ??
-      vrm.humanoid.getNormalizedBoneNode("spine");
+      humanoid?.getNormalizedBoneNode("upperChest") ??
+      humanoid?.getNormalizedBoneNode("chest") ??
+      humanoid?.getNormalizedBoneNode("spine");
     if (headNode && chestNode) {
       headNode.getWorldPosition(this.tempWorldPosition);
       chestNode.getWorldPosition(this.tempSecondaryWorldPosition);
@@ -335,8 +337,9 @@ export class VrmCameraManager {
     vrm.scene.updateMatrixWorld(true);
 
     const forward = new THREE.Vector3();
-    const leftEye = vrm.humanoid.getNormalizedBoneNode("leftEye");
-    const rightEye = vrm.humanoid.getNormalizedBoneNode("rightEye");
+    const humanoid = vrm.humanoid;
+    const leftEye = humanoid?.getNormalizedBoneNode("leftEye");
+    const rightEye = humanoid?.getNormalizedBoneNode("rightEye");
 
     if (leftEye && rightEye) {
       const left = new THREE.Vector3();
@@ -360,8 +363,8 @@ export class VrmCameraManager {
     }
 
     const anchor =
-      vrm.humanoid.getNormalizedBoneNode("head") ??
-      vrm.humanoid.getNormalizedBoneNode("hips") ??
+      humanoid?.getNormalizedBoneNode("head") ??
+      humanoid?.getNormalizedBoneNode("hips") ??
       vrm.scene;
     const anchorPos = new THREE.Vector3();
     anchor.getWorldPosition(anchorPos);

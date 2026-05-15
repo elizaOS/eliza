@@ -171,9 +171,9 @@ export class DockerNodeManager {
       try {
         const ssh = DockerSSHClient.getClient(
           node.hostname,
-          node.ssh_port ?? undefined,
+          node.ssh_port,
           node.host_key_fingerprint ?? undefined,
-          node.ssh_user ?? undefined,
+          node.ssh_user,
         );
         await ssh.connect();
         const dockerId = await ssh.exec("docker info --format '{{.ID}}'", 10_000);
@@ -229,9 +229,9 @@ export class DockerNodeManager {
     try {
       const ssh = DockerSSHClient.getClient(
         node.hostname,
-        node.ssh_port ?? undefined,
+        node.ssh_port,
         node.host_key_fingerprint ?? undefined,
-        node.ssh_user ?? undefined,
+        node.ssh_user,
       );
       await ssh.connect();
       const dockerInfo = await ssh.exec("docker info --format '{{.ID}}|{{.Architecture}}'", 10_000);
@@ -414,9 +414,9 @@ export class DockerNodeManager {
         try {
           const ssh = DockerSSHClient.getClient(
             node.hostname,
-            node.ssh_port ?? undefined,
+            node.ssh_port,
             node.host_key_fingerprint ?? undefined,
-            node.ssh_user ?? undefined,
+            node.ssh_user,
           );
           await ssh.connect();
           await ssh.exec(
@@ -460,9 +460,9 @@ export class DockerNodeManager {
     try {
       const ssh = DockerSSHClient.getClient(
         node.hostname,
-        node.ssh_port ?? undefined,
+        node.ssh_port,
         node.host_key_fingerprint ?? undefined,
-        node.ssh_user ?? undefined,
+        node.ssh_user,
       );
       await ssh.connect();
 

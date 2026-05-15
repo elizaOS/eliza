@@ -15,7 +15,7 @@ function isFeatureEnabled(
   config: PluginAutoEnableContext["config"],
   key: string,
 ): boolean {
-  const f = (config?.features as Record<string, unknown> | undefined)?.[key];
+  const f = (config.features as Record<string, unknown> | undefined)?.[key];
   if (f === true) return true;
   if (f && typeof f === "object" && f !== null) {
     return (f as Record<string, unknown>).enabled !== false;
@@ -42,8 +42,7 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     return true;
   }
   if (isFeatureEnabled(ctx.config, "localTts")) return true;
-  const tts = (ctx.config?.features as Record<string, unknown> | undefined)
-    ?.tts;
+  const tts = (ctx.config.features as Record<string, unknown> | undefined)?.tts;
   if (tts && typeof tts === "object" && tts !== null) {
     const provider = (tts as Record<string, unknown>).provider;
     if (

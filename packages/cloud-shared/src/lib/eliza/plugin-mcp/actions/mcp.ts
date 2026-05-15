@@ -259,7 +259,7 @@ async function handleReadResource(
         uri,
         reasoning,
         resourceMeta,
-        contentLength: resourceContent?.length || 0,
+        contentLength: resourceContent.length || 0,
       },
       success: true,
     };
@@ -458,7 +458,7 @@ function hasSelectedContext(state: State | undefined): boolean {
 }
 
 function collectText(message: Memory, state?: State): string {
-  return [message.content?.text, state?.values?.conversationLog, state?.values?.recentMessages]
+  return [message.content.text, state?.values?.conversationLog, state?.values?.recentMessages]
     .filter((value): value is string => typeof value === "string")
     .join("\n")
     .toLowerCase();
@@ -581,7 +581,7 @@ export const mcpAction: ActionWithParams = {
   ): Promise<ActionResult> => {
     const params = readParams(message, state);
     const requested = normalizeOp(params.op ?? params.operation);
-    const text = typeof message.content?.text === "string" ? message.content.text : "";
+    const text = typeof message.content.text === "string" ? message.content.text : "";
     const op = requested ?? inferOpFromText(text) ?? "search_actions";
 
     if (op === "read_resource") {

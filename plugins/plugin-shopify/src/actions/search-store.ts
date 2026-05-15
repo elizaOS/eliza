@@ -117,7 +117,7 @@ export async function searchStoreHandler(
   }
 
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const structured = readSearchStoreParams(_options);
   const intent = structured.intent ?? (await classifyIntent(runtime, text));
 

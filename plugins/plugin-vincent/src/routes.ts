@@ -489,11 +489,11 @@ export async function handleVincentRoute(
     const payload: VincentStrategyResponse = {
       connected: true,
       strategy: {
-        name: tradingConfig?.strategy ?? "manual",
+        name: tradingConfig.strategy ?? "manual",
         venues: VINCENT_TRADING_VENUES,
-        params: tradingConfig?.params ?? {},
-        intervalSeconds: tradingConfig?.intervalSeconds ?? 60,
-        dryRun: tradingConfig?.dryRun ?? false,
+        params: tradingConfig.params ?? {},
+        intervalSeconds: tradingConfig.intervalSeconds ?? 60,
+        dryRun: tradingConfig.dryRun ?? false,
         running: false,
       },
     };

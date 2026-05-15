@@ -17,6 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { writeConfigEnvKeys } from "../services/config-env.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import type { AgentType, ApprovalPreset } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
@@ -25,6 +26,19 @@ import { parseBody, sendError, sendJson } from "./route-utils.js";
 const execFileAsync = promisify(execFile);
 const PREFLIGHT_DONE = new Set<string>();
 const PREFLIGHT_INFLIGHT = new Map<string, Promise<void>>();
+const CONFIGURABLE_DEFAULT_AGENT_TYPES = new Set([
+  "opencode",
+  "pi-agent",
+  "elizaos",
+]);
+
+function normalizeConfigurableDefaultAgentType(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "pi" || normalized === "pi agent") return "pi-agent";
+  if (normalized === "eliza" || normalized === "eliza os") return "elizaos";
+  return CONFIGURABLE_DEFAULT_AGENT_TYPES.has(normalized) ? normalized : null;
+}
 
 function shouldAutoPreflight(): boolean {
   if (process.env.ELIZA_BENCHMARK_PREFLIGHT_AUTO === "1") return true;
@@ -83,7 +97,7 @@ async function resolveSafeVenvPath(
     }
   } catch (err) {
     const maybeErr = err as NodeJS.ErrnoException;
-    if (maybeErr?.code !== "ENOENT") throw err;
+    if (maybeErr.code !== "ENOENT") throw err;
     const parentReal = await realpath(path.dirname(resolved));
     if (!isPathInside(workdirReal, parentReal)) {
       throw new Error(
@@ -408,6 +422,45 @@ export async function handleAgentRoutes(
         frameworkState.configuredSubscriptionProvider,
       frameworks: frameworkState.frameworks,
     });
+    return true;
+  }
+
+  // POST /api/coding-agents/settings
+  if (method === "POST" && pathname === "/api/coding-agents/settings") {
+    if (!ctx.acpService) {
+      sendError(res, "ACP service not available", 503);
+      return true;
+    }
+    try {
+      const body = await parseBody(req);
+      const defaultAgentType = normalizeConfigurableDefaultAgentType(
+        body.defaultAgentType ?? body.agentType,
+      );
+      if (!defaultAgentType) {
+        sendError(
+          res,
+          "defaultAgentType must be one of: elizaos, pi-agent, opencode",
+          400,
+        );
+        return true;
+      }
+      writeConfigEnvKeys({
+        ELIZA_DEFAULT_AGENT_TYPE: defaultAgentType,
+        ELIZA_ACP_DEFAULT_AGENT: defaultAgentType,
+        ELIZA_AGENT_SELECTION_STRATEGY: "fixed",
+      });
+      sendJson(res, {
+        defaultAgentType,
+        agentSelectionStrategy: "fixed",
+        allowedDefaultAgentTypes: [...CONFIGURABLE_DEFAULT_AGENT_TYPES],
+      });
+    } catch (error) {
+      sendError(
+        res,
+        error instanceof Error ? error.message : "Failed to update settings",
+        500,
+      );
+    }
     return true;
   }
 

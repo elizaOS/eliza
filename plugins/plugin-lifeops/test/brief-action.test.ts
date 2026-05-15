@@ -94,7 +94,7 @@ describe("BRIEF umbrella action — Daily Operations", () => {
     });
 
     it("validates as accessible for an owner-attached message", async () => {
-      const ok = await briefAction.validate?.(
+      const ok = await briefAction.validate(
         makeRuntime(),
         makeMessage(),
         undefined,

@@ -223,7 +223,7 @@ export function buildStandardPaymentRequiredAccept(params: {
   );
   const extra: Record<string, unknown> = {
     name:
-      cfg.symbol?.toUpperCase() === "USDC" ? "USD Coin" : cfg.symbol || "Token",
+      cfg.symbol.toUpperCase() === "USDC" ? "USD Coin" : cfg.symbol || "Token",
     version: "2",
     paymentConfig: params.configName,
   };
@@ -285,7 +285,7 @@ export function buildFacilitatorPaymentRequirements(params: {
     maxTimeoutSeconds: 300,
     extra: {
       name:
-        cfg.symbol?.toUpperCase() === "USDC"
+        cfg.symbol.toUpperCase() === "USDC"
           ? "USD Coin"
           : cfg.symbol || "Token",
       version: "2",

@@ -50,7 +50,7 @@ export function ensureRuntimeLogger(runtime: AgentRuntime): void {
     runtimeWithPatch[requestContextGetSettingPatched] = true;
   }
 
-  if (!runtime.logger?.log) {
+  if (!runtime.logger.log) {
     runtime.logger = {
       log: logger.info.bind(console),
       info: console.info.bind(console),

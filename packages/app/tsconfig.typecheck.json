@@ -78,6 +78,9 @@
         "../../plugins/plugin-whatsapp/dist/src/index.d.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/src/index.ts"
+      ],
       "@elizaos/plugin-google": ["../../plugins/plugin-google/dist/index.d.ts"],
       "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/dist/index"],
       "@elizaos/plugin-local-inference": [

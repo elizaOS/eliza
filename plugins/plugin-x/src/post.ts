@@ -88,8 +88,7 @@ export class TwitterPostClient {
     this.state = state;
     this.runtime = runtime;
     const dryRunSetting =
-      this.state?.TWITTER_DRY_RUN ??
-      getSetting(this.runtime, "TWITTER_DRY_RUN");
+      this.state.TWITTER_DRY_RUN ?? getSetting(this.runtime, "TWITTER_DRY_RUN");
     this.isDryRun = parseBooleanFromText(dryRunSetting);
 
     // Log configuration on initialization
@@ -97,13 +96,13 @@ export class TwitterPostClient {
     logger.log(`- Dry Run Mode: ${this.isDryRun ? "Enabled" : "Disabled"}`);
 
     const postIntervalMin = parseInt(
-      this.state?.TWITTER_POST_INTERVAL_MIN ||
+      this.state.TWITTER_POST_INTERVAL_MIN ||
         (getSetting(this.runtime, "TWITTER_POST_INTERVAL_MIN") as string) ||
         "90",
       10,
     );
     const postIntervalMax = parseInt(
-      this.state?.TWITTER_POST_INTERVAL_MAX ||
+      this.state.TWITTER_POST_INTERVAL_MAX ||
         (getSetting(this.runtime, "TWITTER_POST_INTERVAL_MAX") as string) ||
         "150",
       10,

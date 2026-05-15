@@ -106,7 +106,7 @@ function normalizeMessageReactions(
   }
   return reactions.filter(
     (reaction) =>
-      typeof reaction?.emoji === "string" &&
+      typeof reaction.emoji === "string" &&
       reaction.emoji.trim().length > 0 &&
       typeof reaction.count === "number" &&
       Number.isFinite(reaction.count) &&

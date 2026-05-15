@@ -61,7 +61,7 @@ describe("localized prompt registry — default pack", () => {
   it("uses the <actionName>.example.<index> exampleKey shape", () => {
     for (const entry of generated) {
       const [actionName, suffix] = entry.exampleKey.split(".example.");
-      expect(actionName ?? "").toMatch(ACTION_NAME_PATTERN);
+      expect(actionName).toMatch(ACTION_NAME_PATTERN);
       expect(suffix).toMatch(/^\d+$/);
     }
   });
@@ -92,8 +92,8 @@ describe("localized prompt registry — default pack", () => {
       "Assistant",
     ]);
     for (const entry of generated) {
-      expect(acceptedNames.has(entry.user.name ?? "")).toBe(true);
-      expect(acceptedNames.has(entry.agent.name ?? "")).toBe(true);
+      expect(acceptedNames.has(entry.user.name)).toBe(true);
+      expect(acceptedNames.has(entry.agent.name)).toBe(true);
     }
   });
 
@@ -109,9 +109,9 @@ describe("localized prompt registry — default pack", () => {
     // optional dotted verb suffix (e.g. `MESSAGE.handoff`).
     const tokenShape = /^[A-Z][A-Z0-9_]*(\.[a-z][a-zA-Z0-9_]*)?$/;
     for (const entry of generated) {
-      const text = entry.agent.content?.text ?? "";
+      const text = entry.agent.content.text ?? "";
       expect(text.length).toBeGreaterThan(0);
-      const actions = entry.agent.content?.actions;
+      const actions = entry.agent.content.actions;
       const action = (entry.agent.content as { action?: string } | undefined)
         ?.action;
       if (Array.isArray(actions)) {
@@ -131,7 +131,7 @@ describe("localized prompt registry — default pack", () => {
     // is checked separately).
     const placeholderInText = /\{\{(name1|agentName|user1|agent)\}\}/;
     for (const entry of generated) {
-      const text = `${entry.user.content?.text ?? ""} ${entry.agent.content?.text ?? ""}`;
+      const text = `${entry.user.content.text ?? ""} ${entry.agent.content.text ?? ""}`;
       const matches = text.match(/\{\{[^}]+\}\}/g) ?? [];
       for (const match of matches) {
         expect(match).toMatch(placeholderInText);
@@ -141,8 +141,8 @@ describe("localized prompt registry — default pack", () => {
 
   it("translated text is non-empty for every entry", () => {
     for (const entry of generated) {
-      const userText = entry.user.content?.text ?? "";
-      const agentText = entry.agent.content?.text ?? "";
+      const userText = entry.user.content.text ?? "";
+      const agentText = entry.agent.content.text ?? "";
       expect(userText.length).toBeGreaterThan(0);
       expect(agentText.length).toBeGreaterThan(0);
     }

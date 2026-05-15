@@ -209,7 +209,7 @@ function toAuthedUser(user: UserWithOrganization): AuthedUser {
       : null,
     is_active: user.is_active,
     role: user.role,
-    steward_id: user.steward_user_id ?? null,
+    steward_id: user.steward_user_id,
     wallet_address: user.wallet_address ?? null,
     is_anonymous: user.is_anonymous,
   };
@@ -223,7 +223,7 @@ function trackApiKeyUsage(c: AppContext, id: string, increment: () => Promise<vo
     });
   });
 
-  if (typeof c.executionCtx?.waitUntil === "function") {
+  if (typeof c.executionCtx.waitUntil === "function") {
     c.executionCtx.waitUntil(update);
   }
 }

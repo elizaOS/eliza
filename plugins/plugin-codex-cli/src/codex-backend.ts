@@ -217,7 +217,7 @@ export function translateMessagesToCodexInput(messages: ChatMessage[] | undefine
           type: "function_call",
           call_id: toolCall.id,
           name: toolCall.name,
-          arguments: typeof toolCall.arguments === "string" ? toolCall.arguments : JSON.stringify(toolCall.arguments ?? {}),
+          arguments: typeof toolCall.arguments === "string" ? toolCall.arguments : JSON.stringify(toolCall.arguments),
         });
       }
       continue;
@@ -402,7 +402,7 @@ async function consumeResponseStream(
     }
   } finally {
     if (abortSignal && onAbort) abortSignal.removeEventListener("abort", onAbort);
-    void iter.return?.(undefined).catch(() => {});
+    void iter.return(undefined).catch(() => {});
     if (!body.locked) void body.cancel().catch(() => {});
   }
   logger.warn(
@@ -435,7 +435,7 @@ function numOrZero(value: unknown): number {
 }
 
 function isJsonResponse(responseFormat: CodexGenerateParams["responseFormat"]): boolean {
-  return responseFormat === "json_object" || (typeof responseFormat === "object" && responseFormat?.type === "json_object");
+  return responseFormat === "json_object" || (typeof responseFormat === "object" && responseFormat.type === "json_object");
 }
 
 function toCodexToolChoice(

@@ -215,7 +215,7 @@ export async function getStewardWalletInfo(
       id: sdkAgent.id,
       name: sdkAgent.name,
       walletAddress: sdkAgent.walletAddress || null,
-      createdAt: sdkAgent.createdAt?.toISOString?.() ?? "",
+      createdAt: sdkAgent.createdAt.toISOString(),
     };
   } catch {
     // SDK call failed, try lightweight fetch as fallback
@@ -230,8 +230,8 @@ export async function getStewardWalletInfo(
   if (agent.walletAddress) {
     try {
       const balanceResult = await client.getBalance(agentId);
-      balance = balanceResult.balances?.nativeFormatted ?? null;
-      chain = balanceResult.balances?.chainId ? `eip155:${balanceResult.balances.chainId}` : null;
+      balance = balanceResult.balances.nativeFormatted;
+      chain = balanceResult.balances.chainId ? `eip155:${balanceResult.balances.chainId}` : null;
     } catch {
       // Balance fetch is best-effort
     }

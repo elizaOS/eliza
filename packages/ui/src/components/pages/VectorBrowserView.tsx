@@ -488,7 +488,7 @@ export function VectorGraph3D({
       container.appendChild(renderer.domElement);
       rendererRef.current = renderer;
       if (cancelled) {
-        cleanupRef.current?.();
+        cleanupRef.current();
         cleanupRef.current = null;
         return;
       }
@@ -690,7 +690,7 @@ export function VectorGraph3D({
       });
       renderer.domElement.addEventListener("mouseleave", onMouseLeave);
       if (cancelled) {
-        cleanupRef.current?.();
+        cleanupRef.current();
         cleanupRef.current = null;
         return;
       }
@@ -1123,7 +1123,7 @@ export function VectorBrowserView({
   }, [memories, selectedMemory, viewMode]);
 
   // Show connection error state prominently
-  const isConnectionError = error?.includes("agent is running");
+  const isConnectionError = error.includes("agent is running");
 
   const vectorSidebar = (
     <AppPageSidebar

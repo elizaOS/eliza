@@ -35,7 +35,7 @@ export function createApp(): Hono<AppEnv> {
   app.use("*", corsMiddleware);
   app.use("*", honoLogger());
   app.use("*", async (c, next) => {
-    c.set("requestId", c.get("requestId") ?? crypto.randomUUID());
+    c.set("requestId", c.get("requestId"));
     c.set("user", undefined);
     await next();
   });

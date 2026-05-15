@@ -116,7 +116,7 @@ async function sendLocalWalletTransaction(
     return {
       hash: txResponse.hash,
       nonce: txResponse.nonce,
-      gasLimit: txResponse.gasLimit?.toString() ?? "0",
+      gasLimit: txResponse.gasLimit.toString(),
     };
   } finally {
     provider.destroy();

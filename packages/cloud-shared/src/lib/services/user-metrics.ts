@@ -205,7 +205,7 @@ class UserMetricsService {
       .from(users)
       .leftJoin(userIdentities, eq(users.id, userIdentities.user_id))
       .where(sql`COALESCE(${userIdentities.is_anonymous}, false) = false`);
-    const total_users = Number(totalRow?.cnt ?? 0);
+    const total_users = Number(totalRow.cnt);
 
     // Single query: get distinct (user_id, platform) pairs, then derive both
     // per-service counts and total connected users in application code.
@@ -467,7 +467,7 @@ class UserMetricsService {
       .from(users)
       .leftJoin(userIdentities, eq(users.id, userIdentities.user_id))
       .where(cohortConditions);
-    const cohortSize = Number(sizeRow?.cnt ?? 0);
+    const cohortSize = Number(sizeRow.cnt);
 
     let retainedCount = 0;
     if (cohortSize > 0) {
@@ -574,8 +574,8 @@ class UserMetricsService {
       );
 
     return {
-      dau: Number(userRow?.users ?? 0),
-      totalMessages: Number(msgRow?.msgs ?? 0),
+      dau: Number(userRow.users),
+      totalMessages: Number(msgRow.msgs),
     };
   }
 
@@ -611,7 +611,7 @@ class UserMetricsService {
       .leftJoin(userIdentities, eq(users.id, userIdentities.user_id))
       .where(and(...conditions));
 
-    return Number(r?.cnt ?? 0);
+    return Number(r.cnt);
   }
 
   /**
@@ -640,7 +640,7 @@ class UserMetricsService {
         ),
       );
 
-    return Number(row?.cnt ?? 0);
+    return Number(row.cnt);
   }
 }
 

@@ -324,7 +324,7 @@ export function ConversationsSidebar({
     setMenuConversation(conversation);
     if ("touches" in event) {
       const touch = event.touches[0] ?? event.changedTouches[0];
-      setMenuPosition({ x: touch?.clientX ?? 0, y: touch?.clientY ?? 0 });
+      setMenuPosition({ x: touch?.clientX, y: touch?.clientY });
       return;
     }
     setMenuPosition({ x: event.clientX, y: event.clientY });

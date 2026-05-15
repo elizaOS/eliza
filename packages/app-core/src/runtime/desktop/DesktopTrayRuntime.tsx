@@ -214,7 +214,7 @@ export function DesktopTrayRuntime() {
 
     const handleTrayAction = (event: Event) => {
       const detail = (event as CustomEvent<TrayActionDetail>).detail;
-      const itemId = detail?.itemId ?? "";
+      const itemId = detail.itemId ?? "";
 
       const showAndFocusWindow = async () => {
         await invokeDesktopBridgeRequest<void>({

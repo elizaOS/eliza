@@ -107,7 +107,7 @@ export class RoomsService {
 
     visibleMessages.forEach((msg, index) => {
       const content = parseMessageContent(msg.content);
-      const text = content?.text?.trim();
+      const text = content.text?.trim();
       if (!text) return;
 
       // Create a key based on text and approximate timestamp (within 5 seconds)
@@ -118,10 +118,10 @@ export class RoomsService {
       const existing = seenTexts.get(key);
       if (existing) {
         const currentHasAttachments =
-          Array.isArray(content?.attachments) && content.attachments.length > 0;
-        const isAgentBySource = content?.source === "agent";
+          Array.isArray(content.attachments) && content.attachments.length > 0;
+        const isAgentBySource = content.source === "agent";
         const isAgentByEntityId = msg.entityId === msg.agentId;
-        const isAgent = content?.source ? isAgentBySource : isAgentByEntityId;
+        const isAgent = content.source ? isAgentBySource : isAgentByEntityId;
 
         if (currentHasAttachments && !existing.hasAttachments) {
           // Current has attachments, existing doesn't - keep current
@@ -146,11 +146,10 @@ export class RoomsService {
           indicesToRemove.add(index);
         }
       } else {
-        const hasAttachments =
-          Array.isArray(content?.attachments) && content.attachments.length > 0;
-        const isAgentBySource = content?.source === "agent";
+        const hasAttachments = Array.isArray(content.attachments) && content.attachments.length > 0;
+        const isAgentBySource = content.source === "agent";
         const isAgentByEntityId = msg.entityId === msg.agentId;
-        const isAgent = content?.source ? isAgentBySource : isAgentByEntityId;
+        const isAgent = content.source ? isAgentBySource : isAgentByEntityId;
         seenTexts.set(key, { index, hasAttachments, isAgent, message: msg });
       }
     });
@@ -199,7 +198,7 @@ export class RoomsService {
           characterId: room.characterId || undefined,
           characterName: room.characterName || undefined,
           characterAvatarUrl: room.characterAvatarUrl || undefined,
-          lastTime: room.lastMessageTime?.getTime() || room.createdAt?.getTime(),
+          lastTime: room.lastMessageTime?.getTime() || room.createdAt.getTime(),
           lastText: room.lastMessageText?.substring(0, 100) || undefined,
           isLocked,
           isBuildRoom,
@@ -351,7 +350,7 @@ export class RoomsService {
       lastMessage: lastMessage
         ? {
             time: lastMessage.createdAt || Date.now(),
-            text: ((lastMessage.content?.text as string) || "").substring(0, 100),
+            text: ((lastMessage.content.text as string) || "").substring(0, 100),
           }
         : undefined,
     };

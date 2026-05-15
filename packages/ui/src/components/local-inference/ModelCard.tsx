@@ -98,7 +98,7 @@ export function ModelCard({
       )}
 
       {download && downloading && <DownloadProgress job={download} />}
-      {failed && download?.error && (
+      {failed && download.error && (
         <div className="text-xs text-rose-500">
           Download failed: {download.error}
         </div>

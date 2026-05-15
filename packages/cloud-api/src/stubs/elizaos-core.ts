@@ -645,15 +645,15 @@ export function renderChatMessagesForPrompt(
   const omitDuplicateSystem = options.omitDuplicateSystem?.trim();
   return messages
     .filter((message, index) => {
-      if (index !== 0 || !omitDuplicateSystem || message?.role !== "system")
+      if (index !== 0 || !omitDuplicateSystem || message.role !== "system")
         return true;
       return (
         textFromChatMessageContent(message.content) !== omitDuplicateSystem
       );
     })
     .map((message) => {
-      const role = typeof message?.role === "string" ? message.role : "user";
-      const content = textFromChatMessageContent(message?.content);
+      const role = typeof message.role === "string" ? message.role : "user";
+      const content = textFromChatMessageContent(message.content);
       return content ? `${role}: ${content}` : "";
     })
     .filter(Boolean)

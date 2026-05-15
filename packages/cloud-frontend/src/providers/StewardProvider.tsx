@@ -36,7 +36,7 @@ function hasViteEnv(meta: ImportMeta): meta is ImportMeta & ImportMetaEnvLike {
 }
 
 function getViteEnvValue(name: string): string | undefined {
-  return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
+  return hasViteEnv(import.meta) ? import.meta.env[name] : undefined;
 }
 
 function trimTrailingSlash(value: string): string {
@@ -47,7 +47,7 @@ function isPlaywrightTestAuthEnabled(): boolean {
   return (
     getViteEnvValue("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
     (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
+      process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
   );
 }
 

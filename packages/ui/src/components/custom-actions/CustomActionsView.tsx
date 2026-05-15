@@ -156,7 +156,7 @@ export function CustomActionsView() {
     const searchLower = search.toLowerCase();
     return (
       action.name.toLowerCase().includes(searchLower) ||
-      action.description?.toLowerCase().includes(searchLower)
+      action.description.toLowerCase().includes(searchLower)
     );
   });
 
@@ -338,10 +338,10 @@ export function CustomActionsView() {
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                     <span className="rounded-full border border-border/45 bg-bg/30 px-2.5 py-1">
                       {t(
-                        (action.parameters?.length || 0) === 1
+                        (action.parameters.length || 0) === 1
                           ? "customactionsview.ParameterCountOne"
                           : "customactionsview.ParameterCountOther",
-                        { count: action.parameters?.length || 0 },
+                        { count: action.parameters.length || 0 },
                       )}
                     </span>
                     <span className="rounded-full border border-border/45 bg-bg/30 px-2.5 py-1">

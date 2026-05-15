@@ -122,7 +122,7 @@ async function formatCommentResult(
       const user = await c.user;
       const name = user?.name ?? "unknown";
       const created = c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "?";
-      const body = (c.body ?? "").slice(0, 200);
+      const body = c.body.slice(0, 200);
       return `- [${c.id}] ${name} (${created}): ${body}`;
     })
   );

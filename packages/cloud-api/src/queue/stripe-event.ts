@@ -422,7 +422,7 @@ async function handlePaymentIntentSucceeded(
   // session). Referral splits run only for checkout.session.completed —
   // affiliate markup is applied when the PaymentIntent is created, so
   // the only payout here is the auto-top-up affiliate fee.
-  const purchaseType = paymentIntent.metadata?.type;
+  const purchaseType = paymentIntent.metadata.type;
 
   if (!purchaseType || purchaseType === "credit_pack") {
     logger.debug(
@@ -431,8 +431,8 @@ async function handlePaymentIntentSucceeded(
     return;
   }
 
-  const organizationId = paymentIntent.metadata?.organization_id;
-  const creditsStr = paymentIntent.metadata?.credits;
+  const organizationId = paymentIntent.metadata.organization_id;
+  const creditsStr = paymentIntent.metadata.credits;
   const credits = creditsStr ? parseAndValidateCredits(creditsStr) : null;
 
   if (!organizationId || !credits) {
@@ -443,12 +443,12 @@ async function handlePaymentIntentSucceeded(
     return;
   }
 
-  const affiliateFeeStr = paymentIntent.metadata?.affiliate_fee_amount;
+  const affiliateFeeStr = paymentIntent.metadata.affiliate_fee_amount;
   const affiliateFeeAmount = affiliateFeeStr
     ? Number.parseFloat(affiliateFeeStr)
     : 0;
-  const affiliateOwnerId = paymentIntent.metadata?.affiliate_owner_id;
-  const affiliateCodeId = paymentIntent.metadata?.affiliate_code_id;
+  const affiliateOwnerId = paymentIntent.metadata.affiliate_owner_id;
+  const affiliateCodeId = paymentIntent.metadata.affiliate_code_id;
 
   if (
     affiliateFeeStr &&
@@ -535,10 +535,10 @@ async function handlePaymentIntentSucceeded(
       dedupeBySourceId: true,
       description: `Auto top-up affiliate fee for $${credits.toFixed(2)} purchase`,
       metadata: {
-        buyer_user_id: paymentIntent.metadata?.user_id,
+        buyer_user_id: paymentIntent.metadata.user_id,
         buyer_org_id: organizationId,
         payment_intent_id: paymentIntent.id,
-        total_charged: paymentIntent.metadata?.total_charged,
+        total_charged: paymentIntent.metadata.total_charged,
       },
     });
 
@@ -651,14 +651,14 @@ async function handlePaymentIntentSucceeded(
 
 async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  const orgId = paymentIntent.metadata?.organization_id;
-  const userId = paymentIntent.metadata?.user_id;
-  const appId = paymentIntent.metadata?.app_id;
-  const chargeRequestId = paymentIntent.metadata?.charge_request_id;
-  const purchaseSource = paymentIntent.metadata?.source;
+  const orgId = paymentIntent.metadata.organization_id;
+  const userId = paymentIntent.metadata.user_id;
+  const appId = paymentIntent.metadata.app_id;
+  const chargeRequestId = paymentIntent.metadata.charge_request_id;
+  const purchaseSource = paymentIntent.metadata.source;
   const amountUsd =
     parseAndValidateCredits(
-      paymentIntent.metadata?.credits || paymentIntent.metadata?.amount || "",
+      paymentIntent.metadata.credits || paymentIntent.metadata.amount || "",
     ) ??
     (paymentIntent.amount
       ? Math.round((paymentIntent.amount / 100) * 100) / 100

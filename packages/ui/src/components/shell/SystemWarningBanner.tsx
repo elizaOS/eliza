@@ -16,7 +16,7 @@ export function SystemWarningBanner() {
   );
 
   useEffect(() => {
-    if (!systemWarnings?.length) return;
+    if (!systemWarnings.length) return;
     const timers = timersRef.current;
     for (const message of systemWarnings) {
       if (!timers.has(message)) {
@@ -43,7 +43,7 @@ export function SystemWarningBanner() {
     };
   }, []);
 
-  if (!systemWarnings?.length) return null;
+  if (!systemWarnings.length) return null;
 
   return (
     <>

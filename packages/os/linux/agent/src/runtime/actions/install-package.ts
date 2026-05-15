@@ -306,13 +306,13 @@ export const INSTALL_PACKAGE_ACTION: Action = {
 
   validate: async (_runtime, message) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     return hasInstallIntent(text);
   },
 
   handler: async (_runtime, message, _state, options, callback) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     const opts = readOptions(options);
     const aptCache = opts.aptCacheFn ?? DEFAULT_APT_CACHE;
 

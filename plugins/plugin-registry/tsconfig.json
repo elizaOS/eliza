@@ -44,6 +44,12 @@
       "@elizaos/plugin-wallet/*": [
         "../plugin-wallet/src/*"
       ],
+      "@elizaos/plugin-streaming": [
+        "../plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": [
+        "../plugin-streaming/src/*"
+      ],
       "@elizaos/plugin-registry": [
         "./src/index.ts"
       ],

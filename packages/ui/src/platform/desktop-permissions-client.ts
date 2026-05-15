@@ -76,7 +76,7 @@ async function queryRendererPermission(
     return status ? buildRendererPermissionState(id, status) : null;
   }
 
-  if (!navigator.permissions?.query) {
+  if (!navigator.permissions.query) {
     return null;
   }
 
@@ -102,11 +102,11 @@ async function requestRendererPermission(
   const lastRequested = Date.now();
   if (id === "camera" || id === "microphone") {
     try {
-      const stream = await navigator.mediaDevices?.getUserMedia?.({
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: id === "camera",
         audio: id === "microphone",
       });
-      for (const track of stream?.getTracks?.() ?? []) {
+      for (const track of stream.getTracks()) {
         track.stop();
       }
     } catch {

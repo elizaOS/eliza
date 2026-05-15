@@ -109,7 +109,7 @@ export function ComputerUseApprovalOverlay() {
     () =>
       visibleApprovals.map((approval) => ({
         ...approval,
-        parametersText: JSON.stringify(approval.parameters ?? {}, null, 2),
+        parametersText: JSON.stringify(approval.parameters, null, 2),
       })),
     [visibleApprovals],
   );

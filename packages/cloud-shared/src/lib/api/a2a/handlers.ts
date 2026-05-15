@@ -102,7 +102,7 @@ export async function handleMessageSend(
 ): Promise<Task | Message> {
   const { message, configuration, metadata } = params;
 
-  if (!message?.parts?.length) {
+  if (!message.parts.length) {
     throw new Error("Message must contain at least one part");
   }
 

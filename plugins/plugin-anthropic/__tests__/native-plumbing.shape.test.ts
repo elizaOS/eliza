@@ -504,10 +504,10 @@ describe("Anthropic model defaults", () => {
     // user content is sent in `messages` without cache_control. Putting the
     // same stable text in both `system` and `messages` would duplicate tokens.
     const system = call.system as { content?: string; providerOptions?: Record<string, unknown> };
-    expect(system?.providerOptions).toMatchObject({
+    expect(system.providerOptions).toMatchObject({
       anthropic: { cacheControl: { type: "ephemeral" } },
     });
-    expect(typeof system?.content === "string" && system.content.includes("planner_stage")).toBe(
+    expect(typeof system.content === "string" && system.content.includes("planner_stage")).toBe(
       true
     );
 

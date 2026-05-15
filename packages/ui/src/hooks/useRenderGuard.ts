@@ -34,7 +34,7 @@ let renderTelemetrySink: RenderTelemetrySink | null = null;
 
 function readEnvValue(key: string): boolean | string | undefined {
   const meta = import.meta as ImportMetaWithEnv;
-  const viteValue = meta.env?.[key];
+  const viteValue = meta.env[key];
   if (viteValue !== undefined) return viteValue;
   if (typeof process !== "undefined") {
     return process.env[key];
@@ -54,10 +54,10 @@ function isRenderTelemetryEnabled(): boolean {
   const nodeEnv =
     typeof process !== "undefined" ? process.env.NODE_ENV : undefined;
   const meta = import.meta as ImportMetaWithEnv;
-  const mode = meta.env?.MODE;
+  const mode = meta.env.MODE;
 
   return (
-    meta.env?.DEV === true ||
+    meta.env.DEV === true ||
     mode === "development" ||
     mode === "test" ||
     nodeEnv === "development" ||

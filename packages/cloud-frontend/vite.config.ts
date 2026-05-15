@@ -121,7 +121,7 @@ export default defineConfig(({ mode }) => {
         enforce: "pre",
         transform(source, id) {
           const [filePath, query] = id.split("?");
-          if (query?.split("&").includes("raw")) {
+          if (query.split("&").includes("raw")) {
             return null;
           }
           if (

@@ -8,16 +8,19 @@
  * @module services/config-env
  */
 
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { getElizaNamespace, resolveStateDir } from "@elizaos/core";
 
+function configPath(): string {
+  const namespace = getElizaNamespace();
+  const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
+  return path.join(resolveStateDir(), filename);
+}
+
 function readConfig(): Record<string, unknown> | undefined {
   try {
-    const namespace = getElizaNamespace();
-    const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
-    const configPath = path.join(resolveStateDir(), filename);
-    const raw = readFileSync(configPath, "utf-8");
+    const raw = readFileSync(configPath(), "utf-8");
     return JSON.parse(raw);
   } catch {
     return undefined;
@@ -37,6 +40,24 @@ export function readConfigEnvKey(key: string): string | undefined {
   return typeof fromProcessEnv === "string" && fromProcessEnv.length > 0
     ? fromProcessEnv
     : undefined;
+}
+
+export function writeConfigEnvKeys(values: Record<string, string>): void {
+  const filePath = configPath();
+  const config = readConfig() ?? {};
+  const env =
+    config.env && typeof config.env === "object" && !Array.isArray(config.env)
+      ? { ...(config.env as Record<string, unknown>) }
+      : {};
+  for (const [key, value] of Object.entries(values)) {
+    env[key] = value;
+  }
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(
+    filePath,
+    `${JSON.stringify({ ...config, env }, null, 2)}\n`,
+    "utf-8",
+  );
 }
 
 /** Read a key from the cloud section of the config (e.g. "apiKey"). */

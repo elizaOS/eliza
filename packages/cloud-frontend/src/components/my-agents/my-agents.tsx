@@ -160,7 +160,7 @@ export function MyAgentsClient() {
       adjectives?: string[];
     };
     return (
-      agent.name?.toLowerCase().includes(query) ||
+      agent.name.toLowerCase().includes(query) ||
       (typeof agent.bio === "string" &&
         agent.bio.toLowerCase().includes(query)) ||
       (Array.isArray(agent.bio) &&

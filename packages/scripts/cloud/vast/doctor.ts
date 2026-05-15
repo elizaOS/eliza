@@ -77,7 +77,7 @@ function validateManifest(file: string): void {
     );
     assert(
       manifest.vast_template_env?.LLAMA_CACHE_TYPE_K &&
-        manifest.vast_template_env?.LLAMA_CACHE_TYPE_V,
+        manifest.vast_template_env.LLAMA_CACHE_TYPE_V,
       `${prefix} llama profile must set compressed KV cache types`,
     );
   }

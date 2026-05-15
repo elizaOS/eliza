@@ -71,7 +71,7 @@ export async function handleHyperliquidRoute(
   if (!pathname.startsWith("/api/hyperliquid")) return false;
 
   const env = state.env ?? process.env;
-  const fetchImpl = state.fetchImpl ?? globalThis.fetch?.bind(globalThis);
+  const fetchImpl = state.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const now = state.now ?? (() => new Date());
   const config = resolveHyperliquidConfig(env);
 

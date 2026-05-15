@@ -131,7 +131,7 @@ export async function manageProductsHandler(
   }
 
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const intent =
     readProductIntent(options) ?? (await classifyIntent(runtime, text));
 

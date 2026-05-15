@@ -33,6 +33,10 @@ Spawn surface. TASKS op=create records origin context in
   userId:    message.entityId,
   label,
   source:    content.source,
+  taskRoomKey,
+  taskRoomId,
+  worktreeRoomKey,
+  worktreeRoomId,
 }
 ```
 
@@ -60,8 +64,36 @@ Subscribes to `AcpService.onSessionEvent`. On `task_complete`, `error`, or
 4. Delivers via `runtime.messageService.handleMessage(runtime, memory)`.
 
 The runtime's connector hooks (`outgoing_before_deliver`) handle delivery to
-Telegram/Discord/UI — same path a real user message would follow. There is
-no callback held by the router.
+Telegram/Discord/UI — same path a real user message would follow. For
+connector-originated messages, the router builds a fresh origin-scoped callback
+from `runtime.sendMessageToTarget` instead of retaining a callback from spawn
+time.
+
+### Swarm signals
+
+Sub-agents can emit two explicit line prefixes in their terminal-complete or
+blocked output:
+
+- `QUESTION_FOR_TASK_CREATOR: ...`
+- `AGENT_COORDINATION: ...`
+
+The router detects these markers structurally, not by interpreting free-form
+prose. Routing is bounded to the first eight unique signals of each kind per
+event.
+
+`QUESTION_FOR_TASK_CREATOR` keeps the main agent in the loop. The synthetic
+origin-room memory is rewritten with a short question header and carries
+`metadata.subAgentQuestionForTaskCreator` plus `subAgentQuestions`. It still
+goes through `messageService.handleMessage` with the origin callback, so the
+main agent decides how to ping/reply in the user's original channel.
+
+`AGENT_COORDINATION` is also reflected on the origin-room memory metadata, and
+is separately persisted as `source: "sub_agent_coordination"` into the task
+and worktree rooms recorded on the session. If those room IDs are identical,
+the router posts once. The coordination memory is emitted as
+`MESSAGE_RECEIVED` so local group-chat surfaces/providers can observe it; if a
+runtime lacks room/memory/event support, the normal origin-room route still
+works.
 
 #### Why only boundary events
 
@@ -181,7 +213,8 @@ selection over the synthetic Memory emitted by `SubAgentRouter`.
 
 - `__tests__/unit/sub-agent-router.test.ts` — origin tracking, dedup,
   streaming-event filtering, disable switch, error narration, fallback
-  emit, unsubscribe.
+  emit, unsubscribe, task-creator question markers, and task/worktree
+  coordination room fan-out.
 - `__tests__/unit/active-sub-agents.test.ts` — origin filtering, terminal
   exclusion, deterministic sort, no volatile fields, action-hint text.
 

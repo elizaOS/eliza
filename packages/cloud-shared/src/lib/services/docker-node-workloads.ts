@@ -5,7 +5,7 @@ import { containers } from "../../db/schemas/containers";
 
 async function countRows(query: Promise<Array<{ count: number }>>): Promise<number> {
   const [row] = await query;
-  return row?.count ?? 0;
+  return row.count;
 }
 
 /**

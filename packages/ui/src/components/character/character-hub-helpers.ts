@@ -157,7 +157,7 @@ export function buildCharacterOverviewItems(options: {
       title: experience.learning || experience.result || experience.type,
       description:
         experience.context || experience.action || "Experience recorded.",
-      timestamp: toIsoString(experience.updatedAt ?? experience.createdAt),
+      timestamp: toIsoString(experience.updatedAt),
     }),
   );
 

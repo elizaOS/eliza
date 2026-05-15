@@ -129,7 +129,7 @@ const ROUTES: LinearRoute[] = [
 ];
 
 function textOf(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function readOptions(options?: HandlerOptions | Record<string, unknown>): Record<string, unknown> {
@@ -229,7 +229,7 @@ export const linearAction: Action = {
     if (!route) {
       const ops = ALL_OPS.join(", ");
       const text = `LINEAR could not determine the operation. Specify one of: ${ops}.`;
-      await callback?.({ text, source: message.content?.source });
+      await callback?.({ text, source: message.content.source });
       return {
         success: false,
         text,

@@ -119,10 +119,10 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
   const nodes: Node[] = rawNodes.map((n) => {
     const pos = posOverrides.get(n.name) ??
       autoPos.get(n.name) ?? { x: 0, y: 0 };
-    const colors = resolveNodeColor(n.type ?? "");
-    const typeLabel = (n.type ?? "node").split(".").pop() ?? "node";
+    const colors = resolveNodeColor(n.type);
+    const typeLabel = n.type.split(".").pop() ?? "node";
     return {
-      id: n.id ?? n.name,
+      id: n.id,
       position: pos,
       data: {
         label: n.name,
@@ -146,7 +146,7 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
   // Build a name -> id map for connection edge lookups
   const nameToId = new Map<string, string>();
   for (const n of rawNodes) {
-    nameToId.set(n.name, n.id ?? n.name);
+    nameToId.set(n.name, n.id);
   }
 
   const edges: Edge[] = [];
@@ -156,7 +156,7 @@ function workflowToReactFlow(workflow: WorkflowDefinition | null): {
     if (!sourceId) continue;
     const mainOutputs = outputMap.main ?? [];
     mainOutputs.forEach((outputIndex, oi) => {
-      (outputIndex ?? []).forEach((conn, ci) => {
+      outputIndex.forEach((conn, ci) => {
         const targetId = nameToId.get(conn.node);
         if (!targetId) return;
         edges.push({

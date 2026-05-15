@@ -49,7 +49,7 @@ export const MCP_SERVER_CONFIGS: Record<string, { url: string; type: string }> =
 export function transformMcpSettings(
   mcpSettings: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (!mcpSettings?.servers) return mcpSettings;
+  if (!mcpSettings.servers) return mcpSettings;
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const transformedServers: Record<string, unknown> = {};

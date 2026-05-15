@@ -49,7 +49,7 @@ describeIf(LIVE)("App-Training: API e2e", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.close();
+    await runtime.close();
   }, 30_000);
 
   it("training routes are registered and respond", async () => {

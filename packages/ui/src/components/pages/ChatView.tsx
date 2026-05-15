@@ -975,8 +975,8 @@ function InboxChatPanel({
     if (!el) return;
 
     const lastMessage = messages[messages.length - 1];
-    const nextKey = `${messages.length}:${lastMessage?.id ?? ""}:${
-      lastMessage?.timestamp ?? 0
+    const nextKey = `${messages.length}:${lastMessage?.id}:${
+      lastMessage?.timestamp
     }`;
 
     if (lastRenderedMessageKeyRef.current === nextKey) {

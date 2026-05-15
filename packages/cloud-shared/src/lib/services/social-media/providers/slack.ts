@@ -161,9 +161,9 @@ export const slackProvider: SocialMediaProvider = {
 
       return {
         valid: true,
-        accountId: response.user?.id ?? ((response as Record<string, unknown>).user_id as string),
-        username: response.user?.name ?? ((response as Record<string, unknown>).user as string),
-        displayName: response.user?.real_name,
+        accountId: response.user.id,
+        username: response.user.name,
+        displayName: response.user.real_name,
       };
     } catch (error) {
       return {
@@ -237,8 +237,8 @@ export const slackProvider: SocialMediaProvider = {
       return {
         platform: "slack",
         success: true,
-        postId: response.message?.ts ?? (response.ts as string),
-        postUrl: `https://slack.com/archives/${response.channel}/p${(response.message?.ts ?? (response.ts as string)).replace(".", "")}`,
+        postId: response.message.ts,
+        postUrl: `https://slack.com/archives/${response.channel}/p${(response.message.ts).replace(".", "")}`,
         metadata: { channel: response.channel },
       };
     } catch (error) {

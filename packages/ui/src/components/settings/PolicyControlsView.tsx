@@ -195,8 +195,7 @@ export function PolicyControlsView() {
   );
 
   const normalizedAddresses = useMemo(
-    () =>
-      (addressConfig.addresses ?? []).map((addr) => approvedAddressValue(addr)),
+    () => addressConfig.addresses.map((addr) => approvedAddressValue(addr)),
     [addressConfig.addresses],
   );
 
@@ -235,7 +234,7 @@ export function PolicyControlsView() {
         title="Auto-Approve"
         desc={
           autoApprovePolicy?.enabled
-            ? `Under $${autoApproveConfig.threshold ?? "5"}`
+            ? `Under $${autoApproveConfig.threshold}`
             : "Off"
         }
         enabled={autoApprovePolicy?.enabled ?? false}
@@ -252,7 +251,7 @@ export function PolicyControlsView() {
             Threshold
           </Label>
           <UsdField
-            value={autoApproveConfig.threshold ?? "5"}
+            value={autoApproveConfig.threshold}
             onChange={(v) =>
               updatePolicy("auto-approve-threshold", {
                 config: asRecord({ threshold: v }),
@@ -376,7 +375,7 @@ export function PolicyControlsView() {
         title="Time Restrictions"
         desc={
           timeWindowPolicy?.enabled
-            ? `${timeWindowConfig.allowedDays?.length ?? 0} days`
+            ? `${timeWindowConfig.allowedDays.length} days`
             : "Off"
         }
         enabled={timeWindowPolicy?.enabled ?? false}
@@ -674,8 +673,8 @@ function TimeSection({
   config: TimeWindowConfig;
   onUpdate: (cfg: TimeWindowConfig) => void;
 }) {
-  const hours = config.allowedHours?.[0] ?? { start: 9, end: 17 };
-  const days = config.allowedDays ?? [1, 2, 3, 4, 5];
+  const hours = config.allowedHours[0] ?? { start: 9, end: 17 };
+  const days = config.allowedDays;
 
   return (
     <div className="space-y-3">

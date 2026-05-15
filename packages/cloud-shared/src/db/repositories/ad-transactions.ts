@@ -94,8 +94,8 @@ export class AdTransactionsRepository {
       .where(and(...conditions));
 
     return {
-      totalAmount: Number(result?.totalAmount ?? 0),
-      totalCredits: Number(result?.totalCredits ?? 0),
+      totalAmount: Number(result.totalAmount ?? 0),
+      totalCredits: Number(result.totalCredits ?? 0),
     };
   }
 
@@ -112,8 +112,8 @@ export class AdTransactionsRepository {
       .where(and(eq(adTransactions.campaign_id, campaignId), eq(adTransactions.type, "spend")));
 
     return {
-      totalAmount: Number(result?.totalAmount ?? 0),
-      totalCredits: Number(result?.totalCredits ?? 0),
+      totalAmount: Number(result.totalAmount ?? 0),
+      totalCredits: Number(result.totalCredits ?? 0),
     };
   }
 }

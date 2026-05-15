@@ -32,7 +32,7 @@ function channelLabel(channel: DiscordLocalChannel): string {
       .map(
         (recipient) =>
           recipient.global_name?.trim() ||
-          recipient.username?.trim() ||
+          recipient.username.trim() ||
           recipient.id,
       )
       .join(", ");
@@ -45,9 +45,7 @@ function currentUserLabel(status: DiscordLocalStatus | null): string | null {
   if (!currentUser) {
     return null;
   }
-  return (
-    currentUser.global_name?.trim() || currentUser.username?.trim() || null
-  );
+  return currentUser.global_name?.trim() || currentUser.username.trim() || null;
 }
 
 function selectedChannelIdsFromStatus(status: DiscordLocalStatus): string[] {

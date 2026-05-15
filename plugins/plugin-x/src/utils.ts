@@ -109,7 +109,7 @@ async function _handleNoteTweet(
   );
 
   // Check if the result was successful
-  if (!result?.ok) {
+  if (!result.ok) {
     // Tweet failed. Falling back to truncated Tweet.
     const truncateContent = truncateToCompleteSentence(
       content,

@@ -52,7 +52,7 @@ export function isDesktopPlatform(): boolean {
 export function isElizaOS(): boolean {
   if (!isAndroid) return false;
   if (typeof navigator === "undefined") return false;
-  return userAgentHasElizaOSMarker(navigator.userAgent ?? "");
+  return userAgentHasElizaOSMarker(navigator.userAgent);
 }
 
 /** True when the runtime can spin up a local agent — desktop or dev server. */

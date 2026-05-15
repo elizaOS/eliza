@@ -243,7 +243,7 @@ class AdvertisingService {
 
     const audit = {
       actorType: "system" as const,
-      actorId: account.connected_by_user_id ?? "advertising-service",
+      actorId: account.connected_by_user_id,
       source: "advertising-service",
     };
     // Delete secrets - log but don't fail if already deleted
@@ -944,7 +944,7 @@ class AdvertisingService {
           await adCreativesRepository.update(creative.id, {
             status: "rejected",
             metadata: {
-              ...(creative.metadata ?? {}),
+              ...creative.metadata,
               rejection_reason: result.error || "Failed to create creative on platform",
             },
           });
@@ -999,7 +999,7 @@ class AdvertisingService {
       destination_url: input.destinationUrl,
       media: input.media,
       metadata: {
-        ...(creative.metadata ?? {}),
+        ...creative.metadata,
         content_safety: this.contentSafetyMetadata(safetyReview),
       },
     });

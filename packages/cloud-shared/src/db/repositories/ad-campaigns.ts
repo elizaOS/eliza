@@ -157,12 +157,12 @@ export class AdCampaignsRepository {
       .where(and(...conditions));
 
     return {
-      totalCampaigns: result?.total ?? 0,
-      activeCampaigns: result?.active ?? 0,
-      totalSpend: Number(result?.totalSpend ?? 0),
-      totalImpressions: Number(result?.totalImpressions ?? 0),
-      totalClicks: Number(result?.totalClicks ?? 0),
-      totalConversions: Number(result?.totalConversions ?? 0),
+      totalCampaigns: result.total,
+      activeCampaigns: result.active,
+      totalSpend: Number(result.totalSpend ?? 0),
+      totalImpressions: Number(result.totalImpressions ?? 0),
+      totalClicks: Number(result.totalClicks ?? 0),
+      totalConversions: Number(result.totalConversions ?? 0),
     };
   }
 }

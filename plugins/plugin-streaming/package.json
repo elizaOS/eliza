@@ -5,14 +5,14 @@
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/plugins/plugin-streaming/src/index.d.ts",
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/plugins/plugin-streaming/src/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
@@ -20,7 +20,7 @@
     "./*": {
       "import": "./dist/*.js",
       "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "types": "./dist/plugins/plugin-streaming/src/*.d.ts"
     }
   },
   "files": [

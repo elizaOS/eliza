@@ -116,7 +116,7 @@ async function queryRendererPermission(
     return mapRendererMediaPermissionState(Notification.permission);
   }
 
-  if (typeof navigator === "undefined" || !navigator.permissions?.query) {
+  if (typeof navigator === "undefined" || !navigator.permissions.query) {
     return null;
   }
 
@@ -124,7 +124,7 @@ async function queryRendererPermission(
     const result = await navigator.permissions.query({
       name: (id === "location" ? "geolocation" : id) as PermissionName,
     });
-    return mapRendererMediaPermissionState(result?.state);
+    return mapRendererMediaPermissionState(result.state);
   } catch {
     return null;
   }
@@ -135,7 +135,7 @@ async function inferRendererMediaPermissionFromDevices(
 ): Promise<PermissionStatus | null> {
   if (
     typeof navigator === "undefined" ||
-    !navigator.mediaDevices?.enumerateDevices
+    !navigator.mediaDevices.enumerateDevices
   ) {
     return null;
   }
@@ -148,7 +148,7 @@ async function inferRendererMediaPermissionFromDevices(
 
     const kind = id === "camera" ? "videoinput" : "audioinput";
     return devices.some(
-      (device) => device.kind === kind && Boolean(device.label?.trim()),
+      (device) => device.kind === kind && Boolean(device.label.trim()),
     )
       ? "granted"
       : null;
@@ -186,11 +186,11 @@ async function requestRendererPermission(
 
   if (id === "camera" || id === "microphone") {
     try {
-      const stream = await navigator.mediaDevices?.getUserMedia?.({
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: id === "camera",
         audio: id === "microphone",
       });
-      for (const track of stream?.getTracks?.() ?? []) {
+      for (const track of stream.getTracks()) {
         track.stop();
       }
     } catch {

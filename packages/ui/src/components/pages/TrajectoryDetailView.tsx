@@ -502,7 +502,7 @@ export function TrajectoryDetailView({
     0,
   );
 
-  const orchestrator = trajectory.metadata?.orchestrator;
+  const orchestrator = trajectory.metadata.orchestrator;
   const orchestratorData =
     orchestrator && typeof orchestrator === "object"
       ? (orchestrator as Record<string, unknown>)
@@ -764,7 +764,7 @@ export function TrajectoryDetailView({
                 systemPrompt={call.systemPrompt}
                 systemPromptButtonLabel={t("trajectorydetailview.SystemPrompt")}
                 systemLabel={t("trajectorydetailview.System")}
-                systemLinesLabel={`${call.systemPrompt?.split("\n").length ?? 0} ${t(
+                systemLinesLabel={`${call.systemPrompt.split("\n").length} ${t(
                   "trajectorydetailview.lines",
                 )}`}
                 systemCollapseLabel={t("common.collapse", {

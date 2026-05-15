@@ -92,7 +92,7 @@ async function callDataForSeoKeywords(
 
   const auth = Buffer.from(`${login}:${password}`).toString("base64");
   const taskPayload = {
-    language_code: locale?.split("-")[0] || "en",
+    language_code: locale.split("-")[0] || "en",
     location_code: locationCode ?? 2840,
     keywords,
   };
@@ -127,7 +127,7 @@ async function callDataForSeoKeywords(
     }>;
   };
 
-  const task = json.tasks?.[0]?.result?.[0];
+  const task = json.tasks[0]?.result?.[0];
   if (!task) {
     return [];
   }

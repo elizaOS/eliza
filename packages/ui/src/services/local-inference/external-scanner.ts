@@ -240,8 +240,8 @@ async function scanOllama(root: string): Promise<InstalledModel[]> {
       } catch {
         continue;
       }
-      const modelLayer = manifest.layers?.find((l) =>
-        l.mediaType?.includes("model"),
+      const modelLayer = manifest.layers.find((l) =>
+        l.mediaType.includes("model"),
       );
       if (!modelLayer?.digest) continue;
       const digest = modelLayer.digest.replace("sha256:", "sha256-");

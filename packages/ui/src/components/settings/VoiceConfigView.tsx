@@ -661,7 +661,7 @@ function AsrAdvancedSection({
       try {
         const snapshot = await client.getLocalInferenceHub();
         if (cancelled) return;
-        const hasActiveDownloads = Array.isArray(snapshot?.downloads)
+        const hasActiveDownloads = Array.isArray(snapshot.downloads)
           ? snapshot.downloads.length > 0
           : false;
         setLocalStatusBusy(hasActiveDownloads);

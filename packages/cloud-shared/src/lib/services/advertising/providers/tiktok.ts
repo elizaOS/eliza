@@ -539,7 +539,7 @@ export const tiktokAdsProvider: AdProvider = {
       },
     });
 
-    const result = data.list?.[0];
+    const result = data.list[0];
     if (!result) {
       return {
         success: true,

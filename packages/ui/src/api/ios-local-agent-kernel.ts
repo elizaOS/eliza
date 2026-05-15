@@ -306,9 +306,7 @@ function nowIso(): string {
 }
 
 function randomId(prefix: string): string {
-  const random =
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const random = globalThis.crypto.randomUUID();
   return `${prefix}-${random}`;
 }
 
@@ -1312,7 +1310,7 @@ function collectIosBundleFiles(
     manifest.files.dflash,
     manifest.files.cache,
     manifest.files.embedding ?? [],
-    manifest.files.vad ?? [],
+    manifest.files.vad,
     manifest.files.wakeword ?? [],
   ]) {
     for (const entry of entries) files.set(entry.path, entry);
@@ -1450,7 +1448,7 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
 async function hardwareProbe(): Promise<HardwareProbe> {
   const llama = await loadCapacitorLlama();
   const hardware = await llama?.getHardwareInfo?.().catch(() => null);
-  const cpuCores = hardware?.cpuCores ?? navigator.hardwareConcurrency ?? 0;
+  const cpuCores = hardware?.cpuCores ?? navigator.hardwareConcurrency;
   const platform = normalizeMobilePlatform(hardware?.platform);
   const totalRamGb =
     positiveFiniteNumber(hardware?.totalRamGb) ??
@@ -1898,8 +1896,11 @@ const fetchIosKernelRoute = Object.assign(
     return handleIosLocalAgentRequest(request);
   },
   {
-    preconnect: (...args: unknown[]) =>
-      fetchWithOptionalPreconnect.preconnect?.(...args),
+    preconnect: (...args: unknown[]) => {
+      const { preconnect } = fetchWithOptionalPreconnect;
+      if (typeof preconnect !== "function") return undefined;
+      return preconnect(...args);
+    },
   },
 ) as typeof fetch;
 

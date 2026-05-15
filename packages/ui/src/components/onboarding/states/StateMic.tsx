@@ -17,7 +17,7 @@ function isMediaDevicesAvailable(): boolean {
   if (typeof navigator === "undefined") return false;
   const md = (navigator as Navigator & { mediaDevices?: MediaDevices })
     .mediaDevices;
-  return Boolean(md?.enumerateDevices);
+  return Boolean(md.enumerateDevices);
 }
 
 export function StateMic(props: StateMicProps): JSX.Element {

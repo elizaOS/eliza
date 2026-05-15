@@ -24,7 +24,7 @@ type RuntimeImportMeta = ImportMeta & {
 const viteEnv = (import.meta as RuntimeImportMeta).env;
 
 function viteEnvFlagEnabled(name: string, defaultValue: boolean): boolean {
-  const value = viteEnv?.[name];
+  const value = viteEnv[name];
   if (value == null) return defaultValue;
   return String(value).toLowerCase() !== "false";
 }

@@ -935,7 +935,7 @@ export function AutomationEditSheet({
                       ) : (
                         <div className="h-10 w-10 rounded-full bg-gradient-to-br from-[#FF5800] to-[#FF8C00] flex items-center justify-center">
                           <span className="text-white font-medium text-sm">
-                            {character.name?.charAt(0)?.toUpperCase() || "?"}
+                            {character.name.charAt(0).toUpperCase() || "?"}
                           </span>
                         </div>
                       )}

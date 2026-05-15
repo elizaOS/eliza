@@ -178,8 +178,8 @@ class LocalRecorder {
 		const m = this.trajectory.metrics;
 		m.totalLatencyMs += stage.latencyMs;
 		if (stage.model?.usage) {
-			m.totalPromptTokens += stage.model.usage.promptTokens ?? 0;
-			m.totalCompletionTokens += stage.model.usage.completionTokens ?? 0;
+			m.totalPromptTokens += stage.model.usage.promptTokens;
+			m.totalCompletionTokens += stage.model.usage.completionTokens;
 			m.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
 			m.totalCacheCreationTokens +=
 				stage.model.usage.cacheCreationInputTokens ?? 0;
@@ -345,7 +345,7 @@ async function cerebrasChat(args: {
 	}
 
 	const json = (await res.json()) as CerebrasResponse;
-	const choice = json.choices?.[0];
+	const choice = json.choices[0];
 	if (!choice) throw new Error("Cerebras response had no choices");
 
 	const rawResponseText = choice.message.content ?? "";

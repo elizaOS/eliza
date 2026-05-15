@@ -4022,7 +4022,7 @@
     },
     {
       "name": "TASKS",
-      "description": "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). ",
+      "description": "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",
       "parameters": [
         {
           "name": "action",
@@ -4058,7 +4058,7 @@
         },
         {
           "name": "agentType",
-          "description": "Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
+          "description": "Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume.",
           "required": false,
           "schema": {
             "type": "string"
@@ -4431,7 +4431,7 @@
           }
         }
       ],
-      "descriptionCompressed": "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
+      "descriptionCompressed": "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
       "similes": [
         "CREATE_AGENT_TASK",
         "CREATE_TASK",

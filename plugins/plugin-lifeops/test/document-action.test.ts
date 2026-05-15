@@ -145,7 +145,7 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
     });
 
     it("validates as accessible for an owner-attached message", async () => {
-      const ok = await ownerDocumentsAction.validate?.(
+      const ok = await ownerDocumentsAction.validate(
         makeRuntime(),
         makeMessage(),
         undefined,

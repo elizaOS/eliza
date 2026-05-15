@@ -359,7 +359,7 @@ async function handleDirectWalletRequest(
       Number.MAX_SAFE_INTEGER,
     );
     const dashboard = await client.getAgentDashboard(agentId);
-    const records = (dashboard.recentTransactions ?? [])
+    const records = dashboard.recentTransactions
       .filter((tx) => !status || tx.status === status)
       .map((tx) => ({
         id: tx.id,

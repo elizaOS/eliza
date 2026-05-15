@@ -222,7 +222,7 @@ function useControllableState({
   const value = isControlled
     ? controlled
     : hasBrowserSync
-      ? (syncedValue ?? fallbackValue)
+      ? syncedValue
       : uncontrolled;
 
   React.useEffect(() => {

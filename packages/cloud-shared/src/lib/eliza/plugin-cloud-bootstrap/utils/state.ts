@@ -17,7 +17,7 @@ export async function refreshStateAfterAction(
 
   refreshedState.data.actionResults = actionResults as ActionResult[];
 
-  if (currentState.data?.workingMemory) {
+  if (currentState.data.workingMemory) {
     refreshedState.data.workingMemory = currentState.data.workingMemory;
   }
 
@@ -48,7 +48,7 @@ export function getActionResultsFromCache(runtime: IAgentRuntime, messageId: str
     return [];
   }
 
-  const results = cachedState.values?.actionResults;
+  const results = cachedState.values.actionResults;
   if (!results) {
     logger.debug(
       `[getActionResultsFromCache] Cached state exists but no actionResults for: ${cacheKey}`,

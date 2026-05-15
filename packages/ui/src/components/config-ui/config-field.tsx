@@ -642,7 +642,7 @@ function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
     const el = textareaRef.current;
     if (!el) return;
     // Check if field-sizing is supported — if so, CSS handles it
-    if (globalThis.CSS?.supports?.("field-sizing", "content")) return;
+    if (globalThis.CSS.supports("field-sizing", "content")) return;
     el.style.height = "auto";
     el.style.height = `${Math.max(72, el.scrollHeight)}px`;
   }, []);
@@ -1906,10 +1906,7 @@ export function ConfigField({
   const hasError = errors.length > 0;
   const isRequiredEmpty = renderProps.required && !renderProps.isSet;
 
-  const renderFn =
-    renderer ??
-    defaultRenderers[renderProps.fieldType] ??
-    defaultRenderers.text;
+  const renderFn = renderer;
 
   return (
     <div

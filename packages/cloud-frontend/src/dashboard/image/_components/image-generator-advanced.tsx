@@ -320,7 +320,7 @@ export function ImageGeneratorAdvanced({
           .map((img: { image?: string; url?: string }, index: number) => {
             const base64OrData = img.image?.startsWith("data:")
               ? img.image
-              : img?.image
+              : img.image
                 ? `data:image/png;base64,${img.image}`
                 : "";
             const finalUrl = img.url ?? base64OrData;

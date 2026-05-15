@@ -135,7 +135,7 @@ async function validateToken(
   }
 
   const body = (await response.json()) as GitHubUserResponse;
-  if (typeof body?.login !== "string" || body.login.length === 0) {
+  if (typeof body.login !== "string" || body.login.length === 0) {
     throw new Error("GitHub /user response was missing the login field.");
   }
 

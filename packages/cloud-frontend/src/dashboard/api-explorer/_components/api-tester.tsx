@@ -377,7 +377,7 @@ export function ApiTester({
       const errorData = responseData as ErrorResponse;
       const errorMessage = fetchResponse.ok
         ? undefined
-        : errorData?.error?.message || errorData?.message || "Request failed";
+        : errorData.error?.message || errorData.message || "Request failed";
 
       setResponse({
         success: fetchResponse.ok,
@@ -1055,7 +1055,7 @@ export function ApiTester({
                   <CardContent>
                     {(() => {
                       const audioData = response.data as AudioResponseData;
-                      return audioData?._type === "audio" ? (
+                      return audioData._type === "audio" ? (
                         <div className="space-y-4">
                           <div className="rounded-none border border-border/60 bg-muted/30 p-4">
                             <div className="space-y-2">
@@ -1064,17 +1064,17 @@ export function ApiTester({
                                   Audio Response
                                 </Badge>
                                 <Badge variant="secondary" className="text-xs">
-                                  {((audioData?._size || 0) / 1024).toFixed(2)}{" "}
+                                  {((audioData._size || 0) / 1024).toFixed(2)}{" "}
                                   KB
                                 </Badge>
                               </div>
                               <p className="text-sm text-muted-foreground">
-                                {audioData?.message}
+                                {audioData.message}
                               </p>
                               <audio
                                 controls
                                 className="w-full mt-4"
-                                src={audioData?._audioUrl}
+                                src={audioData._audioUrl}
                               >
                                 <track kind="captions" />
                               </audio>
@@ -1083,7 +1083,7 @@ export function ApiTester({
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    const audioUrl = audioData?._audioUrl;
+                                    const audioUrl = audioData._audioUrl;
                                     if (audioUrl) {
                                       const a = document.createElement("a");
                                       a.href = audioUrl;

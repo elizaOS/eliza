@@ -49,7 +49,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  await cleanup?.();
+  await cleanup();
 });
 
 function ownerMessage(text: string): Memory {

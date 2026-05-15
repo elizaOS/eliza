@@ -575,7 +575,7 @@ function normalizePlannerProviders(
 	}
 
 	const providerLookup = new Map<string, string>();
-	for (const provider of runtime.providers ?? []) {
+	for (const provider of runtime.providers) {
 		const normalized = normalizeActionIdentifier(provider.name);
 		if (!normalized || providerLookup.has(normalized)) {
 			continue;
@@ -615,7 +615,7 @@ function normalizePlannerProviders(
 	}
 
 	const providerDefinitions = new Map(
-		(runtime.providers ?? []).map((provider) => [
+		runtime.providers.map((provider) => [
 			normalizeActionIdentifier(provider.name),
 			provider,
 		]),
@@ -894,7 +894,7 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 }
 
 function hasPageScopedRoutingMetadata(message: Memory): boolean {
-	const metadataCandidates = [message.content?.metadata, message.metadata];
+	const metadataCandidates = [message.content.metadata, message.metadata];
 	for (const rawMetadata of metadataCandidates) {
 		if (!rawMetadata || typeof rawMetadata !== "object") continue;
 		const routing = parseContextRoutingMetadata(
@@ -913,7 +913,7 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 function latestMessageHistoryCompactionTelemetry(
 	state: State,
 ): MessageHistoryCompactionTelemetry | undefined {
-	const value = state.data?.messageHistoryCompaction;
+	const value = state.data.messageHistoryCompaction;
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return undefined;
 	}
@@ -924,7 +924,7 @@ function appendMessageHistoryCompactionTelemetry(
 	state: State,
 	telemetry: MessageHistoryCompactionTelemetry,
 ): State {
-	const history = Array.isArray(state.data?.messageHistoryCompactionHistory)
+	const history = Array.isArray(state.data.messageHistoryCompactionHistory)
 		? state.data.messageHistoryCompactionHistory
 		: [];
 	return {
@@ -1070,7 +1070,7 @@ function selectV5PlannerStateProviderNames(args: {
 		args.selectedContexts,
 		args.userRoles,
 	)) {
-		const name = provider.name?.trim();
+		const name = provider.name.trim();
 		if (!name || provider.private) {
 			continue;
 		}
@@ -1103,12 +1103,12 @@ function _ensureActionStateValues(
 	state: State,
 ): State {
 	const currentActionNames =
-		typeof state.values?.actionNames === "string" &&
+		typeof state.values.actionNames === "string" &&
 		state.values.actionNames.trim().length > 0
 			? state.values.actionNames
 			: null;
 	const currentDescriptions =
-		typeof state.values?.actionsWithDescriptions === "string" &&
+		typeof state.values.actionsWithDescriptions === "string" &&
 		state.values.actionsWithDescriptions.trim().length > 0
 			? state.values.actionsWithDescriptions
 			: null;
@@ -1118,7 +1118,7 @@ function _ensureActionStateValues(
 	}
 
 	const actionProviderEntry =
-		state.data?.providers &&
+		state.data.providers &&
 		typeof state.data.providers === "object" &&
 		state.data.providers !== null &&
 		"ACTIONS" in state.data.providers
@@ -1178,7 +1178,7 @@ function _ensureActionStateValues(
 	return {
 		...state,
 		values: {
-			...(state.values ?? {}),
+			...state.values,
 			...(actionNames ? { actionNames } : {}),
 			...(actionsWithDescriptions ? { actionsWithDescriptions } : {}),
 		},
@@ -1447,8 +1447,8 @@ function extractGenerateTextContentText(raw: GenerateTextResult): string {
 
 function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
 	return (
-		message.content?.channelType === ChannelType.VOICE_DM ||
-		message.content?.channelType === ChannelType.VOICE_GROUP
+		message.content.channelType === ChannelType.VOICE_DM ||
+		message.content.channelType === ChannelType.VOICE_GROUP
 	);
 }
 
@@ -1463,7 +1463,7 @@ type VoiceTurnSignalMetadata = {
 function getVoiceTurnSignalMetadata(
 	message: Pick<Memory, "content">,
 ): VoiceTurnSignalMetadata | null {
-	const value = message.content?.voiceTurnSignal;
+	const value = message.content.voiceTurnSignal;
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		return null;
 	}
@@ -1562,7 +1562,7 @@ function appendPriorDialogueEvents(
 	state: State,
 	currentMessage: Memory,
 ): void {
-	const providers = state.data?.providers;
+	const providers = state.data.providers;
 	if (!providers || typeof providers !== "object") {
 		return;
 	}
@@ -1589,7 +1589,7 @@ function appendPriorDialogueEvents(
 					: undefined;
 			if (contentType === "action_result") return false;
 			const text =
-				typeof m.content?.text === "string" ? m.content.text.trim() : "";
+				typeof m.content.text === "string" ? m.content.text.trim() : "";
 			return text.length > 0;
 		})
 		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -1614,7 +1614,7 @@ function appendPriorDialogueEvents(
 }
 
 function hasStructuredRecentMessagesProvider(state: State): boolean {
-	const providers = state.data?.providers;
+	const providers = state.data.providers;
 	if (!providers || typeof providers !== "object") {
 		return false;
 	}
@@ -1669,7 +1669,7 @@ function appendStateProviderEvents(
 	state: State,
 	excludedProviderNames?: readonly string[],
 ): void {
-	const providers = state.data?.providers;
+	const providers = state.data.providers;
 	const excluded = excludedProviderNames
 		? new Set(excludedProviderNames.map((name) => name.toUpperCase()))
 		: null;
@@ -1977,7 +1977,7 @@ function buildV5PlannerActionSurface(params: {
 	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
-		messageText: getUserMessageText(params.message) ?? "",
+		messageText: getUserMessageText(params.message),
 		recentConversationText: getRecentConversationSearchText(
 			params.state,
 			params.message,
@@ -2033,7 +2033,7 @@ function buildV5PlannerActionSurface(params: {
 				latencyMs: toolSearchEndedAt - toolSearchStartedAt,
 				toolSearch: {
 					query: {
-						text: getUserMessageText(params.message) ?? "",
+						text: getUserMessageText(params.message),
 						tokens: retrieval.query.tokens,
 						candidateActions: [...candidateActions],
 						parentActionHints: [...parentActionHints],
@@ -2312,7 +2312,7 @@ async function generateDirectReplyOnce(args: {
 	state: State;
 	messageHandler: MessageHandlerResult;
 }): Promise<string> {
-	const latestText = getUserMessageText(args.message) ?? "";
+	const latestText = getUserMessageText(args.message);
 	const instructions = resolveOptimizedPromptForRuntime(
 		args.runtime,
 		"response",
@@ -2517,7 +2517,7 @@ export async function renderMessageHandlerStablePrefix(
 ): Promise<string> {
 	const syntheticMessage: Memory = {
 		id: asUUID(v4()),
-		entityId: (runtime.agentId ?? asUUID(v4())) as UUID,
+		entityId: runtime.agentId as UUID,
 		agentId: runtime.agentId,
 		roomId,
 		createdAt: Date.now(),
@@ -2590,15 +2590,11 @@ function extractHandleResponseToolArguments(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(
-			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
-		).trim();
+		const name = String(entry.name).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
-		const args = parseToolArguments(
-			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
-		);
+		const args = parseToolArguments(entry.arguments);
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
 		}
@@ -3123,7 +3119,7 @@ function isEmptyStage1Result(raw: string | GenerateTextResult): boolean {
 }
 
 function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
-	const raw = runtime.getSetting?.("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES");
+	const raw = runtime.getSetting("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES");
 	if (raw === undefined || raw === null || raw === "") return 2;
 	const parsed =
 		typeof raw === "number" ? raw : Number.parseInt(String(raw).trim(), 10);
@@ -3135,7 +3131,7 @@ function shouldUseStage1PlannerFallback(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): boolean {
-	const content = message.content ?? {};
+	const content = message.content;
 	const channelType = String(content.channelType ?? "").toLowerCase();
 	if (
 		channelType === ChannelType.DM.toLowerCase() ||
@@ -3296,7 +3292,7 @@ function trimExtractedUrl(value: string): string {
 function extractCalendlyAvailabilityFallbackParams(
 	message: Memory,
 ): Record<string, unknown> | null {
-	const text = getUserMessageText(message) ?? "";
+	const text = getUserMessageText(message);
 	const lower = text.toLowerCase();
 	if (
 		!/\bcalendly\b|api\.calendly\.com/u.test(lower) ||
@@ -3410,7 +3406,7 @@ async function runDeterministicPlannerFallback(args: {
 		evaluatorOutputs: [],
 	};
 
-	args.runtime.logger?.warn?.(
+	args.runtime.logger.warn(
 		{
 			src: "service:message",
 			action: toolCall.name,
@@ -3665,7 +3661,7 @@ function readTierAParentsFromContext(context: ContextObject): Set<string> {
 function collectActionsFromContext(context: ContextObject): Action[] {
 	const seen = new Set<string>();
 	const actions: Action[] = [];
-	for (const event of context.events ?? []) {
+	for (const event of context.events) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as { action?: Action; name?: string } | undefined;
 		const action = tool?.action;
@@ -3742,11 +3738,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		: undefined;
 	const trajectoryId = recorder
 		? recorder.startTrajectory({
-				agentId: String(args.runtime.agentId ?? "unknown-agent"),
+				agentId: String(args.runtime.agentId),
 				roomId: args.message.roomId ? String(args.message.roomId) : undefined,
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
-					text: getUserMessageText(args.message) ?? "",
+					text: getUserMessageText(args.message),
 					sender: args.message.entityId
 						? String(args.message.entityId)
 						: undefined,
@@ -3764,9 +3760,9 @@ export async function runV5MessageRuntimeStage1(args: {
 	try {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
-			args.message.content?.channelType === ChannelType.DM ||
-			args.message.content?.channelType === ChannelType.API ||
-			args.message.content?.channelType === ChannelType.SELF;
+			args.message.content.channelType === ChannelType.DM ||
+			args.message.content.channelType === ChannelType.API ||
+			args.message.content.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
@@ -3864,16 +3860,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// equivalent (unforced) contract for them.
 		const responseGrammar = buildResponseGrammar(
 			{
-				actions: args.runtime.actions ?? [],
-				responseHandlerFields:
-					args.runtime.responseHandlerFieldRegistry?.list() ?? [],
+				actions: args.runtime.actions,
+				responseHandlerFields: args.runtime.responseHandlerFieldRegistry.list(),
 				responseHandlerFieldSignature:
-					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+					args.runtime.responseHandlerFieldRegistry.composeSchemaSignature(),
 			},
 			{
 				contexts: availableContexts.map((definition) => String(definition.id)),
 				channelType:
-					typeof args.message.content?.channelType === "string"
+					typeof args.message.content.channelType === "string"
 						? args.message.content.channelType
 						: undefined,
 			},
@@ -3930,7 +3925,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			emptyRetryCount < emptyRetryLimit
 		) {
 			emptyRetryCount += 1;
-			args.runtime.logger?.warn?.(
+			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					attempt: emptyRetryCount + 1,
@@ -3963,7 +3958,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				fieldRunResult,
 				{
 					actions: args.runtime.actions,
-					messageText: args.message.content?.text ?? "",
+					messageText: args.message.content.text ?? "",
 				},
 			);
 		}
@@ -3980,9 +3975,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = synthesizePlannerFallbackFromStage1Failure({
 				reason: stage1FailureReason,
 				actions: args.runtime.actions,
-				messageText: args.message.content?.text ?? "",
+				messageText: args.message.content.text ?? "",
 			});
-			args.runtime.logger?.warn?.(
+			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					reason: stage1FailureReason,
@@ -4067,7 +4062,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				message: args.message,
 				addressedTo,
 			}).catch((error) => {
-				args.runtime.logger?.warn?.(
+				args.runtime.logger.warn(
 					{
 						err: error,
 						messageId: args.message.id,
@@ -4206,7 +4201,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				normalizeActionIdentifier(action.name),
 			),
 		);
-		args.runtime.logger.debug?.(
+		args.runtime.logger.debug(
 			{
 				src: "service:message",
 				actionSurface: actionSurface.summary,
@@ -4444,7 +4439,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (recorder && trajectoryId) {
 			await recorder.endTrajectory(trajectoryId, endStatus).catch((err) => {
-				args.runtime.logger?.warn?.(
+				args.runtime.logger.warn(
 					{ err: (err as Error).message, trajectoryId },
 					"[TrajectoryRecorder] endTrajectory failed",
 				);
@@ -4649,12 +4644,8 @@ function extractMessageHandlerToolCalls(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(
-			entry.name ?? entry.toolName ?? entry.tool ?? entry.action ?? "",
-		).trim();
-		const args = parseToolArguments(
-			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
-		);
+		const name = String(entry.name).trim();
+		const args = parseToolArguments(entry.arguments);
 		toolCalls.push({
 			id:
 				typeof entry.id === "string"
@@ -4680,9 +4671,9 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	| undefined {
 	const usage = raw.usage;
 	if (!usage) return undefined;
-	const promptTokens = usage.promptTokens ?? 0;
-	const completionTokens = usage.completionTokens ?? 0;
-	const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+	const promptTokens = usage.promptTokens;
+	const completionTokens = usage.completionTokens;
+	const totalTokens = usage.totalTokens;
 	const out: {
 		promptTokens: number;
 		completionTokens: number;
@@ -4975,8 +4966,8 @@ async function _repairCanonicalPlannerActions(args: {
 }): Promise<Record<string, unknown> | null> {
 	const availableActionNames = Array.from(
 		new Set(
-			(args.runtime.actions ?? [])
-				.map((action) => action.name?.trim())
+			args.runtime.actions
+				.map((action) => action.name.trim())
 				.filter((name): name is string => Boolean(name)),
 		),
 	).sort();
@@ -5218,7 +5209,7 @@ function exampleContentText(action: Action): string[] {
 	return (action.examples ?? []).flatMap((example) =>
 		example.flatMap((turn) => {
 			const text =
-				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
+				typeof turn.content.text === "string" ? turn.content.text.trim() : "";
 			return text.length > 0 ? [text] : [];
 		}),
 	);
@@ -5400,7 +5391,7 @@ function findDirectOwnedActionSuggestion(
 			messageText,
 		)
 	) {
-		const calendarAction = (runtime.actions ?? []).find(
+		const calendarAction = runtime.actions.find(
 			(action) =>
 				normalizeActionIdentifier(action.name) ===
 				normalizeActionIdentifier("CALENDAR"),
@@ -5423,7 +5414,7 @@ function findRuntimeActionByNames(
 	names: string[],
 ): Action | undefined {
 	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return (runtime.actions ?? []).find((action) => {
+	return runtime.actions.find((action) => {
 		const candidates = [action.name, ...(action.similes ?? [])]
 			.filter((value): value is string => typeof value === "string")
 			.map(normalizeActionIdentifier);
@@ -5745,7 +5736,7 @@ export function suggestOwnedActionFromMetadata(
 		return null;
 	}
 
-	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
+	const ranked: ActionOwnershipCandidate[] = runtime.actions
 		.filter((action) => {
 			const normalized = normalizeActionIdentifier(action.name);
 			return (
@@ -5821,14 +5812,14 @@ export function findOwnedActionCorrectionFromMetadata(
 		return null;
 	}
 
-	const currentActionDef = (runtime.actions ?? []).find(
+	const currentActionDef = runtime.actions.find(
 		(action) =>
 			normalizeActionIdentifier(action.name) ===
 			normalizeActionIdentifier(currentAction),
 	);
 	const currentScore = currentActionDef
 		? scoreActionOwnershipMatch(
-				typeof message.content?.text === "string" ? message.content.text : "",
+				typeof message.content.text === "string" ? message.content.text : "",
 				currentActionDef,
 			).score
 		: 0;
@@ -5954,12 +5945,12 @@ function _shouldAttemptActionRescue(
 	}
 
 	const availableActionNames =
-		typeof state.values?.actionNames === "string"
+		typeof state.values.actionNames === "string"
 			? state.values.actionNames
 			: "";
 	if (
 		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
+		runtime.actions.length === 0
 	) {
 		return false;
 	}
@@ -6020,12 +6011,12 @@ function _shouldAttemptOwnershipRepair(
 	}
 
 	const availableActionNames =
-		typeof state.values?.actionNames === "string"
+		typeof state.values.actionNames === "string"
 			? state.values.actionNames
 			: "";
 	if (
 		availableActionNames.trim().length === 0 &&
-		(runtime.actions?.length ?? 0) === 0
+		runtime.actions.length === 0
 	) {
 		return false;
 	}
@@ -6500,7 +6491,7 @@ export function actionResultsSuppressPostActionContinuation(
 ): boolean {
 	return actionResults.some((result) => {
 		const data =
-			result?.data &&
+			result.data &&
 			typeof result.data === "object" &&
 			!Array.isArray(result.data)
 				? (result.data as Record<string, unknown>)
@@ -6676,13 +6667,13 @@ export function wrapSingleTurnVisibleCallback(
 			? store.getSlot(message.entityId)
 			: null;
 	const globalSlot = store.getSlot("global");
-	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
+	const verbosity = userSlot?.verbosity ?? globalSlot.verbosity ?? null;
 	if (verbosity !== "terse") {
 		return callback;
 	}
 
 	const wrapped: HandlerCallback = async (response, actionName) => {
-		if (typeof response?.text === "string" && response.text.length > 0) {
+		if (typeof response.text === "string" && response.text.length > 0) {
 			const result = enforceVerbosity(response.text, "terse");
 			if (result.truncated) {
 				fullRuntime.logger.debug(
@@ -6765,9 +6756,7 @@ function _shouldWaitForUserAfterIncompleteReflection(
 
 	return actionResults.every((result) => {
 		const actionName =
-			typeof result?.data?.actionName === "string"
-				? result.data.actionName
-				: "";
+			typeof result.data?.actionName === "string" ? result.data.actionName : "";
 		return isReplyActionIdentifier(actionName);
 	});
 }
@@ -6938,7 +6927,7 @@ export class DefaultMessageService implements IMessageService {
 		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
 		// services/analysis-mode-handler.ts and review #15.
 		const analysisActivation = maybeHandleAnalysisActivation({
-			text: message.content?.text,
+			text: message.content.text,
 			roomId: message.roomId,
 		});
 		if (analysisActivation.handled) {
@@ -6963,7 +6952,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		const source =
-			typeof message.content?.source === "string" &&
+			typeof message.content.source === "string" &&
 			message.content.source.trim() !== ""
 				? message.content.source
 				: "messageService";
@@ -7028,7 +7017,7 @@ export class DefaultMessageService implements IMessageService {
 
 		const senderRole = await resolveStage1SenderRole(runtime, message);
 		const trajectoryContextBase = {
-			runId: runtime.getCurrentRunId?.(),
+			runId: runtime.getCurrentRunId(),
 			roomId: message.roomId,
 			messageId: message.id,
 			userRole: senderRole,
@@ -7517,7 +7506,7 @@ export class DefaultMessageService implements IMessageService {
 
 		// Skip messages from self (unless it's an autonomous message)
 		const isAutonomousMessage =
-			message.content?.metadata &&
+			message.content.metadata &&
 			typeof message.content.metadata === "object" &&
 			(message.content.metadata as Record<string, unknown>).isAutonomous ===
 				true;
@@ -7637,7 +7626,7 @@ export class DefaultMessageService implements IMessageService {
 			const gateDecision = decideReplyGate({
 				userSlot,
 				globalSlot,
-				messageText: message.content?.text,
+				messageText: message.content.text,
 				explicitlyAddressesAgent,
 			});
 			if (gateDecision.allow === false) {
@@ -7692,7 +7681,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		const preIncomingHookText =
-			typeof message.content?.text === "string" ? message.content.text : "";
+			typeof message.content.text === "string" ? message.content.text : "";
 
 		await runtime.applyPipelineHooks(
 			"incoming_before_compose",
@@ -7704,7 +7693,7 @@ export class DefaultMessageService implements IMessageService {
 		);
 
 		const postIncomingHookText =
-			typeof message.content?.text === "string" ? message.content.text : "";
+			typeof message.content.text === "string" ? message.content.text : "";
 
 		if (message.id && postIncomingHookText !== preIncomingHookText) {
 			await runtime.updateMemory({
@@ -8110,8 +8099,8 @@ export class DefaultMessageService implements IMessageService {
 
 			const providerStateValues = {
 				[AVAILABLE_CONTEXTS_STATE_KEY]:
-					state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
-				[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
+					state.values[AVAILABLE_CONTEXTS_STATE_KEY],
+				[CONTEXT_ROUTING_STATE_KEY]: state.values[CONTEXT_ROUTING_STATE_KEY],
 			};
 
 			if (responseContent?.providers && responseContent.providers.length > 0) {
@@ -8357,7 +8346,7 @@ export class DefaultMessageService implements IMessageService {
 
 		if (!isDM) {
 			const roomDatas = await runtime.getRoomsByIds([message.roomId]);
-			if (roomDatas?.length) {
+			if (roomDatas.length) {
 				const roomData = roomDatas[0];
 				if (roomData.name) {
 					roomName = roomData.name;
@@ -8374,7 +8363,7 @@ export class DefaultMessageService implements IMessageService {
 		const date = new Date();
 		// Extract available actions from provider data
 		const stateData = state.data;
-		const stateDataProviders = stateData?.providers;
+		const stateDataProviders = stateData.providers;
 		const actionsProvider = stateDataProviders?.ACTIONS;
 		const actionsProviderData = actionsProvider?.data;
 		const actionsData =
@@ -8483,7 +8472,7 @@ export class DefaultMessageService implements IMessageService {
 			(s: string) => s.trim().toLowerCase(),
 		);
 
-		const roomType = room.type?.toString().toLowerCase();
+		const roomType = room.type.toString().toLowerCase();
 		const sourceStr = message.content.source?.toLowerCase() || "";
 		const textMentionsAgentByName = textContainsAgentName(
 			message.content.text,
@@ -8659,8 +8648,10 @@ export class DefaultMessageService implements IMessageService {
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									descriptionPreview:
-										processedAttachment.description?.substring(0, 100),
+									descriptionPreview: processedAttachment.description.substring(
+										0,
+										100,
+									),
 								},
 								"Generated image description",
 							);
@@ -8684,7 +8675,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime.logger.debug(
 							{
 								src: "service:message",
-								descriptionPreview: processedAttachment.description?.substring(
+								descriptionPreview: processedAttachment.description.substring(
 									0,
 									100,
 								),
@@ -8723,7 +8714,7 @@ export class DefaultMessageService implements IMessageService {
 						runtime.logger.debug(
 							{
 								src: "service:message",
-								textPreview: processedAttachment.text?.substring(0, 100),
+								textPreview: processedAttachment.text.substring(0, 100),
 							},
 							"Extracted text content",
 						);
@@ -8768,10 +8759,7 @@ export class DefaultMessageService implements IMessageService {
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									transcriptPreview: processedAttachment.text?.substring(
-										0,
-										100,
-									),
+									transcriptPreview: processedAttachment.text.substring(0, 100),
 								},
 								"Transcribed audio attachment",
 							);
@@ -8817,10 +8805,7 @@ export class DefaultMessageService implements IMessageService {
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									transcriptPreview: processedAttachment.text?.substring(
-										0,
-										100,
-									),
+									transcriptPreview: processedAttachment.text.substring(0, 100),
 								},
 								"Transcribed video attachment",
 							);
@@ -8845,7 +8830,7 @@ export class DefaultMessageService implements IMessageService {
 		message: Memory,
 	): string {
 		if (
-			typeof state.values?.recentMessages === "string" &&
+			typeof state.values.recentMessages === "string" &&
 			state.values.recentMessages.trim().length > 0
 		) {
 			return state.values.recentMessages;

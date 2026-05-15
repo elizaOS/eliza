@@ -194,11 +194,11 @@ export class UsageRecordsRepository {
       .where(and(...conditions));
 
     return {
-      totalRequests: stats?.totalRequests || 0,
-      totalInputTokens: stats?.totalInputTokens || 0,
-      totalOutputTokens: stats?.totalOutputTokens || 0,
-      totalCost: Number(stats?.totalCost || 0), // Convert NUMERIC to number
-      successRate: stats?.successRate || 1.0,
+      totalRequests: stats.totalRequests || 0,
+      totalInputTokens: stats.totalInputTokens || 0,
+      totalOutputTokens: stats.totalOutputTokens || 0,
+      totalCost: Number(stats.totalCost || 0), // Convert NUMERIC to number
+      successRate: stats.successRate || 1.0,
     };
   }
 

@@ -128,7 +128,7 @@ function resolveApiUrl() {
   if (typeof fromVite === "string" && fromVite.length > 0) return fromVite;
   if (
     typeof process !== "undefined" &&
-    typeof process.env?.NEXT_PUBLIC_API_URL === "string"
+    typeof process.env.NEXT_PUBLIC_API_URL === "string"
   ) {
     return process.env.NEXT_PUBLIC_API_URL;
   }

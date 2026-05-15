@@ -102,7 +102,7 @@ function buildSchemaForParams(
     const prefixHint = API_KEY_PREFIX_HINTS[p.key];
     const fieldHint: ConfigUiHint = {
       label: autoLabel(p.key, selectedProvider.id),
-      sensitive: p.sensitive ?? false,
+      sensitive: p.sensitive,
       ...(prefixHint
         ? {
             pattern: `^${prefixHint.prefix}`,
@@ -201,7 +201,7 @@ export function ApiKeyConfig({
       setModelsFetchResult(null);
       try {
         const result = await client.fetchModels(providerId, true);
-        const count = Array.isArray(result?.models) ? result.models.length : 0;
+        const count = Array.isArray(result.models) ? result.models.length : 0;
         setModelsFetchResult({
           tone: "success",
           message: t("apikeyconfig.loadedModels", { count }),

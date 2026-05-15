@@ -63,10 +63,10 @@ const DEFAULT_RUNNER: PersistenceRunner = {
       });
       let stdout = "";
       let stderr = "";
-      child.stdout?.on("data", (chunk: Buffer) => {
+      child.stdout.on("data", (chunk: Buffer) => {
         stdout += chunk.toString();
       });
-      child.stderr?.on("data", (chunk: Buffer) => {
+      child.stderr.on("data", (chunk: Buffer) => {
         stderr += chunk.toString();
       });
       child.on("error", (err) => {
@@ -105,8 +105,8 @@ const DEFAULT_RUNNER: PersistenceRunner = {
           message: stderr.trim().slice(0, 1500) || `exit ${code}`,
         });
       });
-      child.stdin?.write(`${passphrase}\n`);
-      child.stdin?.end();
+      child.stdin.write(`${passphrase}\n`);
+      child.stdin.end();
     });
   },
 };

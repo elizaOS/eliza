@@ -233,7 +233,7 @@ const messageReceivedHandler = async ({
 					const name =
 						(msg.content as Record<string, string>)?.name ??
 						msg.entityId.toString();
-					const text = msg.content?.text ?? "";
+					const text = msg.content.text ?? "";
 					return `${name}: ${text}`;
 				})
 				.join("\n");
@@ -330,7 +330,7 @@ const messageReceivedHandler = async ({
 			for (const extractedRec of extractedRecommendations) {
 				if (
 					extractedRec.sentiment === "neutral" ||
-					!extractedRec.tokenMentioned?.trim()
+					!extractedRec.tokenMentioned.trim()
 				) {
 					logger.debug(
 						`[CommunityInvestor] Skipping neutral or empty token mention: "${extractedRec.quote}"`,
@@ -402,7 +402,7 @@ const messageReceivedHandler = async ({
 				const recTimestamp = createdAt || Date.now();
 				const existingRecent = userProfile.recommendations.find(
 					(r) =>
-						r.tokenAddress === resolvedToken?.address &&
+						r.tokenAddress === resolvedToken.address &&
 						r.recommendationType ===
 							(extractedRec.sentiment === "positive" ? "BUY" : "SELL") &&
 						recTimestamp - r.timestamp < RECENT_REC_DUPLICATION_TIMEFRAME_MS,

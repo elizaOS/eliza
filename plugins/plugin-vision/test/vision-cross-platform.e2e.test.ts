@@ -115,7 +115,7 @@ describe("plugin-vision cross-platform e2e", () => {
       const body = (await response.json()) as {
         choices: Array<{ message: { content: string } }>;
       };
-      const text = body.choices?.[0]?.message?.content ?? "";
+      const text = body.choices[0]?.message?.content ?? "";
       expect(text.length).toBeGreaterThan(0);
     },
     60_000,

@@ -66,7 +66,7 @@ function nonEmptyString(value: unknown): string | undefined {
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
-  return nonEmptyString(runtime.getSetting?.(key));
+  return nonEmptyString(runtime.getSetting(key));
 }
 
 function readClientConfig(runtime: IAgentRuntime): {

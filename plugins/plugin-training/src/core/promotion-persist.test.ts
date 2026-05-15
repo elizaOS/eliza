@@ -149,7 +149,7 @@ describe("gatedPersistNativeResult", () => {
     expect(out.artifactPath).toBeTruthy();
     expect(state.promotedWrites).toBe(1);
     expect(state.currentPrompt).toBe(goodCandidatePrompt);
-    const promoteLine = out.notes?.find((n) => n.includes("PROMOTE"));
+    const promoteLine = out.notes.find((n) => n.includes("PROMOTE"));
     expect(promoteLine).toBeTruthy();
     // No rejected file should be written.
     const rejectedDir = join(tempRoot, "action_planner", REJECTED_DIRNAME);
@@ -175,7 +175,7 @@ describe("gatedPersistNativeResult", () => {
     expect(out.artifactPath).toBeUndefined();
     expect(state.promotedWrites).toBe(0);
     expect(state.currentPrompt).toBeNull();
-    const rejectLine = out.notes?.find((n) => n.includes("REJECT"));
+    const rejectLine = out.notes.find((n) => n.includes("REJECT"));
     expect(rejectLine).toBeTruthy();
     // Confirm the rejected file landed under <task>/rejected/.
     const rejectedDir = join(tempRoot, "action_planner", REJECTED_DIRNAME);
@@ -301,7 +301,7 @@ describe("gatedPersistNativeResult", () => {
       service,
       notesPrefix: [],
     });
-    const fallbackLine = out.notes?.find((n) =>
+    const fallbackLine = out.notes.find((n) =>
       n.includes("gate_dataset=full-dataset"),
     );
     expect(fallbackLine).toBeTruthy();
@@ -328,7 +328,7 @@ describe("gatedPersistNativeResult", () => {
       notesPrefix: [],
     });
     expect(out.invoked).toBe(true);
-    const noteLine = out.notes?.find((n) =>
+    const noteLine = out.notes.find((n) =>
       n.includes("incumbent_source=baseline"),
     );
     expect(noteLine).toBeTruthy();

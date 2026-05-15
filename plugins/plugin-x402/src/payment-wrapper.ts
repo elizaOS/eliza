@@ -240,7 +240,7 @@ function sumOwnerMint(
   let s = 0n;
   for (const b of balances) {
     if (b.mint === mint && b.owner === owner) {
-      s += BigInt(b.uiTokenAmount?.amount ?? "0");
+      s += BigInt(b.uiTokenAmount.amount);
     }
   }
   return s;
@@ -458,7 +458,7 @@ async function verifyPayment(
                   network: cfg.network,
                   amountAtomic: atomic,
                   symbol: cfg.symbol,
-                  payer: auth?.from,
+                  payer: auth.from,
                   proofId:
                     typeof authObj.signature === "string"
                       ? authObj.signature
@@ -691,7 +691,7 @@ async function verifyPaymentIdViaFacilitator(
 
     if (response.ok) {
       const isValid =
-        responseData?.valid !== false && responseData?.verified !== false;
+        responseData.valid !== false && responseData.verified !== false;
       if (isValid) {
         if (
           ctx &&
@@ -1125,8 +1125,8 @@ async function verifyEip712Authorization(
     }
 
     log("Authorization:", {
-      from: `${authorization.from?.substring(0, 10)}...`,
-      to: `${authorization.to?.substring(0, 10)}...`,
+      from: `${authorization.from.substring(0, 10)}...`,
+      to: `${authorization.to.substring(0, 10)}...`,
       value: authorization.value,
     });
 
@@ -1483,9 +1483,9 @@ export function createPaymentAwareHandler(
       typedReq.headers["x-payment-proof"] ||
       typedReq.headers["x-payment"] ||
       typedReq.headers["payment-signature"] ||
-      typedReq.query?.paymentProof;
+      typedReq.query.paymentProof;
     const paymentId =
-      typedReq.headers["x-payment-id"] || typedReq.query?.paymentId;
+      typedReq.headers["x-payment-id"] || typedReq.query.paymentId;
 
     log("Payment credentials:", {
       "x-payment-proof": !!typedReq.headers["x-payment-proof"],
@@ -1747,7 +1747,7 @@ function buildX402Response(
       config.network === "POLYGON" ||
       config.network === "BSC"
     ) {
-      const isUsdc = config.symbol?.toUpperCase() === "USDC";
+      const isUsdc = config.symbol.toUpperCase() === "USDC";
       const tokenName = isUsdc ? "USD Coin" : config.symbol || "Token";
       extra.name = tokenName;
       extra.version = "2";

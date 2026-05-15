@@ -153,7 +153,7 @@ function readParam(
   key: string,
 ): unknown {
   const maybeOptions = options as { parameters?: Record<string, unknown> };
-  if (maybeOptions?.parameters && key in maybeOptions.parameters) {
+  if (maybeOptions.parameters && key in maybeOptions.parameters) {
     return maybeOptions.parameters[key];
   }
   return (options as Record<string, unknown> | undefined)?.[key];
@@ -269,7 +269,7 @@ function hasKeywordIntent(
   keywords: readonly string[],
 ): boolean {
   const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof message.content.text === "string" ? message.content.text : "",
     typeof state?.values?.recentMessages === "string"
       ? state.values.recentMessages
       : "",

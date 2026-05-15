@@ -380,7 +380,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     };
 
     void syncVoiceSupport();
-    synthRef.current = window.speechSynthesis ?? null;
+    synthRef.current = window.speechSynthesis;
 
     return () => {
       cancelled = true;
@@ -1381,7 +1381,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         utteranceRef.current = utterance;
 
         let selectedVoice: SpeechSynthesisVoice | undefined;
-        if (synth?.getVoices) {
+        if (synth.getVoices) {
           const voices = synth.getVoices();
 
           if (config?.provider === "edge" && config.edge?.voice) {
@@ -1490,7 +1490,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const errEv = ev as SpeechSynthesisErrorEvent;
           ttsDebug("play:browser:speechSynthesis:error", {
             segment: task.segment,
-            synthesisError: errEv.error ?? "unknown",
+            synthesisError: errEv.error,
             preview: ttsDebugTextPreview(text),
             requestedLocale,
             ...webSpeechVoiceDebugFields(selectedVoice),

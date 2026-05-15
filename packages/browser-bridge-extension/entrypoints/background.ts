@@ -999,7 +999,7 @@ async function handlePopupMessage(
       }
       case "browser-bridge:save-config": {
         if (
-          typeof message.config?.apiBaseUrl === "string" &&
+          typeof message.config.apiBaseUrl === "string" &&
           message.config.apiBaseUrl.trim().length > 0 &&
           !isValidApiBaseUrl(message.config.apiBaseUrl)
         ) {
@@ -1007,7 +1007,7 @@ async function handlePopupMessage(
         }
         const nextConfig = normalizeCompanionConfig({
           ...(await readConfig()),
-          ...(message.config ?? {}),
+          ...(message.config),
           browser: __BROWSER_BRIDGE_KIND__,
         });
         if (!nextConfig) {

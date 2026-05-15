@@ -17,9 +17,7 @@ function normalizeEnvPrefix(value: string): string {
     .toUpperCase();
 }
 
-const APP_ENV_PREFIX = normalizeEnvPrefix(
-  appConfig.envPrefix ?? appConfig.cliName,
-);
+const APP_ENV_PREFIX = normalizeEnvPrefix(appConfig.envPrefix);
 
 const allowedHostsEnv =
   process.env.ELIZA_ALLOWED_HOSTS ??

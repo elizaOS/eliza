@@ -4521,7 +4521,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const msgId = streamingCtx?.messageId;
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
-		const resolvedProviderName = resolvedModel?.provider;
+		const resolvedProviderName = resolvedModel.provider;
 		// stream: false = force no stream, otherwise stream if any callback exists
 		const shouldStream =
 			explicitStream === false

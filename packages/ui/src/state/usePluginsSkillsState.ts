@@ -321,7 +321,7 @@ export function usePluginsSkillsState({
             ? `Plugin settings saved, but vault storage failed for ${vaultMirrorFailures.join(", ")}.`
             : isAiProvider
               ? providerSwitchError
-                ? `Provider settings saved, but activating ${plugin?.name ?? pluginId} failed: ${providerSwitchError.message}`
+                ? `Provider settings saved, but activating ${plugin.name} failed: ${providerSwitchError.message}`
                 : "Provider settings saved. Restarting agent..."
               : result.requiresRestart
                 ? "Plugin settings saved. Agent restarted."
@@ -434,7 +434,7 @@ export function usePluginsSkillsState({
       setActionNotice(`Skill "${name}" created.`, "success");
       await refreshSkills();
       if (result.path)
-        await client.openSkill(result.skill?.id ?? name).catch(() => undefined);
+        await client.openSkill(result.skill.id).catch(() => undefined);
     } catch (err) {
       setActionNotice(
         `Failed to create skill: ${err instanceof Error ? err.message : "error"}`,

@@ -126,7 +126,7 @@ export const vendorConnectionsRepository = {
       .from(vendorConnections)
       .where(eq(vendorConnections.id, id))
       .limit(1);
-    return row ?? null;
+    return row;
   },
 
   async findByVendorLabel(
@@ -163,7 +163,7 @@ export const vendorConnectionsRepository = {
         ),
       )
       .limit(1);
-    return row ?? null;
+    return row;
   },
 
   /** Pick the most-recently-updated connection for this `(org, vendor)`. */
@@ -182,7 +182,7 @@ export const vendorConnectionsRepository = {
       )
       .orderBy(desc(vendorConnections.updated_at))
       .limit(1);
-    return row ?? null;
+    return row;
   },
 
   async listByOrganization(organizationId: string): Promise<VendorConnection[]> {

@@ -107,7 +107,7 @@ export class VercelAIGatewayProvider implements AIProvider {
           message: {
             role: "assistant",
             content: result.text || null,
-            ...(result.toolCalls?.length
+            ...(result.toolCalls.length
               ? {
                   tool_calls: result.toolCalls.map((toolCall) => ({
                     id: toolCall.toolCallId,
@@ -503,11 +503,11 @@ function mergeGatewayProviderOptions(
   const base = request.providerOptions ? { ...request.providerOptions } : {};
   const promptCacheKey = request.prompt_cache_key;
   if (promptCacheKey) {
-    const cerebras = { ...(base.cerebras ?? {}) };
+    const cerebras = { ...base.cerebras };
     cerebras.prompt_cache_key = promptCacheKey;
     cerebras.promptCacheKey = promptCacheKey;
     base.cerebras = cerebras;
-    const eliza = { ...(base.eliza ?? {}) };
+    const eliza = { ...base.eliza };
     eliza.promptCacheKey = promptCacheKey;
     base.eliza = eliza;
   }

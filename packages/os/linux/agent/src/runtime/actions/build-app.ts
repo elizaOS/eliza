@@ -75,13 +75,13 @@ export const BUILD_APP_ACTION: Action = {
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     return extractSlot(text, VERBS) !== null;
   },
 
   handler: async (_runtime, message, _state, _options, callback) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     const target = extractSlot(text, VERBS);
     if (target === null) {
       return { success: false, text: "I couldn't tell what to build." };

@@ -32,7 +32,7 @@ interface ResourceResult {
 
 export function processResourceResult(
   result: ResourceResult,
-  uri: string
+  _uri: string
 ): { resourceContent: string; resourceMeta: string } {
   let resourceContent = "";
   let resourceMeta = "";
@@ -44,7 +44,7 @@ export function processResourceResult(
       resourceContent += `[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
     }
 
-    resourceMeta += `Resource: ${content.uri ?? uri}\n`;
+    resourceMeta += `Resource: ${content.uri}\n`;
     if (content.mimeType) {
       resourceMeta += `Type: ${content.mimeType}\n`;
     }

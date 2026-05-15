@@ -16,7 +16,8 @@
 		"outDir": "./dist",
 		"rootDir": "../../../..",
 		"types": [
-			"bun-types"
+			"bun-types",
+			"react"
 		],
 		"paths": {
 			"drizzle-orm": [
@@ -156,6 +157,7 @@
 	"include": [
 		"src/**/*.ts",
 		"scripts/**/*.ts",
+		"../../../ui/src/react-jsx.d.ts",
 		"../../../agent/src/external-modules.d.ts"
 	],
 	"exclude": [

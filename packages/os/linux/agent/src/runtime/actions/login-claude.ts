@@ -78,10 +78,10 @@ function defaultSpawn(cmd: string, args: readonly string[]): SpawnHandle {
     child.on("error", () => resolve(null));
     child.on("close", (code) => resolve(code));
   });
-  child.stdout?.on("data", (chunk: Buffer) => {
+  child.stdout.on("data", (chunk: Buffer) => {
     stdoutBuf.value += chunk.toString();
   });
-  child.stderr?.on("data", (chunk: Buffer) => {
+  child.stderr.on("data", (chunk: Buffer) => {
     stderrBuf.value += chunk.toString();
   });
   return {

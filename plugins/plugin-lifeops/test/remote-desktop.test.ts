@@ -72,7 +72,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
 
   it("start without confirmed returns CONFIRMATION_REQUIRED", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = await remoteDesktopAction.handler?.(
+    const result = await remoteDesktopAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "start a remote session"),
       undefined,
@@ -91,7 +91,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
 
   it("start with confirmed:true in local mode authorizes a session", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = await remoteDesktopAction.handler?.(
+    const result = await remoteDesktopAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "start"),
       undefined,
@@ -126,7 +126,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       confirmed: true,
     });
 
-    const result = await remoteDesktopAction.handler?.(
+    const result = await remoteDesktopAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "list remote sessions"),
       undefined,
@@ -151,7 +151,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       confirmed: true,
     });
 
-    const revoke = await remoteDesktopAction.handler?.(
+    const revoke = await remoteDesktopAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "revoke"),
       undefined,
@@ -163,7 +163,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
     );
     expect(revoke?.success).toBe(true);
 
-    const after = await remoteDesktopAction.handler?.(
+    const after = await remoteDesktopAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "list"),
       undefined,
@@ -179,7 +179,7 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
 
   it("revoke surfaces SESSION_NOT_FOUND for an unknown id", async () => {
     const runtime = createMinimalRuntimeStub();
-    const result = await remoteDesktopAction.handler?.(
+    const result = await remoteDesktopAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "revoke"),
       undefined,

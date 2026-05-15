@@ -136,7 +136,7 @@ export function BugReportModal() {
         if (cancelled) return;
         setForm((f) => ({
           ...f,
-          ...(info.nodeVersion ? { nodeVersion: info.nodeVersion ?? "" } : {}),
+          ...(info.nodeVersion ? { nodeVersion: info.nodeVersion } : {}),
           ...(info.platform
             ? {
                 environment:

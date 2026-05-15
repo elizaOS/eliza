@@ -38,14 +38,14 @@ function hasViteEnv(meta: ImportMeta): meta is ImportMeta & ImportMetaEnvLike {
 }
 
 function getViteEnvFlag(name: string): string | undefined {
-  return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
+  return hasViteEnv(import.meta) ? import.meta.env[name] : undefined;
 }
 
 function isPlaywrightTestAuthEnabled(): boolean {
   return (
     getViteEnvFlag("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
     (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
+      process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
   );
 }
 

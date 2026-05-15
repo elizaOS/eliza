@@ -285,9 +285,9 @@ export async function handleStewardCompatRoutes(
 
   // ── POST /api/wallet/steward-webhook (loopback only, no auth) ──────
   if (method === "POST" && url.pathname === "/api/wallet/steward-webhook") {
-    if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
       logger.warn(
-        `[steward-webhook] Rejected non-loopback request from ${req.socket?.remoteAddress}`,
+        `[steward-webhook] Rejected non-loopback request from ${req.socket.remoteAddress}`,
       );
       sendJsonErrorResponse(res, 403, "Webhook only accepted from localhost");
       return true;

@@ -48,7 +48,7 @@ function readShimConfig(): Promise<WalletShimStored | null> {
       // Some browsers (Firefox) return a Promise instead of using callback.
       if (maybe && typeof (maybe as Promise<unknown>).then === "function") {
         (maybe as Promise<{ walletShim?: WalletShimStored }>)
-          .then((items) => resolve(items?.walletShim ?? null))
+          .then((items) => resolve(items.walletShim ?? null))
           .catch(() => resolve(null));
       }
     } catch {

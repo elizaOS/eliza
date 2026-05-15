@@ -275,7 +275,7 @@ export function AppWorkspaceChrome({
 
   const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() =>
     isControlled
-      ? (chatCollapsedProp ?? false)
+      ? chatCollapsedProp
       : readStoredCollapsed(chatDefaultCollapsed),
   );
 
@@ -283,14 +283,12 @@ export function AppWorkspaceChrome({
   const prevIsControlled = useRef(isControlled);
   useEffect(() => {
     if (!prevIsControlled.current && isControlled) {
-      setInternalCollapsed(chatCollapsedProp ?? false);
+      setInternalCollapsed(chatCollapsedProp);
     }
     prevIsControlled.current = isControlled;
   }, [isControlled, chatCollapsedProp]);
 
-  const collapsed = isControlled
-    ? (chatCollapsedProp ?? false)
-    : internalCollapsed;
+  const collapsed = isControlled ? chatCollapsedProp : internalCollapsed;
   // Controlled mode is the source of truth on every viewport — including
   // mobile. When the page passes chatCollapsed=true (e.g. forcing a
   // single canonical compose surface in an empty state), the mobile

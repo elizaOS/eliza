@@ -48,7 +48,7 @@ async function makeRuntime(): Promise<TestRuntimeContext> {
       return id as Task['id'];
     },
     async getTasks(params: { tags?: string[] }) {
-      if (!params?.tags?.length) return [...tasks];
+      if (!params.tags?.length) return [...tasks];
       return tasks.filter((t) => params.tags?.every((tag) => t.tags?.includes(tag)));
     },
     async deleteTask(id: string) {

@@ -342,7 +342,7 @@ export function ReleaseCenterView() {
           {actionMessage}
         </div>
       )}
-      {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason && (
+      {autoUpdateDisabled && nativeUpdater.autoUpdateDisabledReason && (
         <div
           role="status"
           className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"

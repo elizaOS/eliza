@@ -130,7 +130,7 @@ export function resolveBrowserWorkspaceIframeDocument(
     }
     if (
       iframe.contentDocument &&
-      normalizeBrowserWorkspaceText(iframe.contentDocument.body?.textContent)
+      normalizeBrowserWorkspaceText(iframe.contentDocument.body.textContent)
         .length > 0
     ) {
       return iframe.contentDocument;
@@ -229,8 +229,8 @@ export function isBrowserWorkspaceElementVisible(element: Element): boolean {
   }
 
   const htmlElement = element as HTMLElement;
-  const inlineDisplay = htmlElement.style?.display?.trim().toLowerCase();
-  const inlineVisibility = htmlElement.style?.visibility?.trim().toLowerCase();
+  const inlineDisplay = htmlElement.style.display.trim().toLowerCase();
+  const inlineVisibility = htmlElement.style.visibility.trim().toLowerCase();
   if (inlineDisplay === "none" || inlineVisibility === "hidden") {
     return false;
   }
@@ -246,7 +246,7 @@ export function findBrowserWorkspaceElementByLabel(
   const labels = Array.from(document.querySelectorAll("label"));
   for (const label of labels) {
     if (
-      !browserWorkspaceTextMatches(label.textContent ?? "", labelText, exact)
+      !browserWorkspaceTextMatches(label.textContent, labelText, exact)
     ) {
       continue;
     }

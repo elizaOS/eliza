@@ -423,7 +423,7 @@ export class AppCreditsService {
     const orgDeduct = await creditsService.reserveAndDeductCredits({
       organizationId: user.organization_id,
       amount: totalCost,
-      description: description ?? `App inference (${app.name ?? appId})`,
+      description: description,
       metadata: {
         appId,
         userId,
@@ -582,7 +582,7 @@ export class AppCreditsService {
       const { newBalance } = await creditsService.refundCredits({
         organizationId,
         amount: refundAmount,
-        description: `App reconciliation refund (${app.name ?? appId})`,
+        description: `App reconciliation refund (${app.name})`,
         metadata: {
           appId,
           userId,
@@ -643,7 +643,7 @@ export class AppCreditsService {
     const orgDeduct = await creditsService.reserveAndDeductCredits({
       organizationId,
       amount: additionalCharge,
-      description: `App reconciliation charge (${app.name ?? appId})`,
+      description: `App reconciliation charge (${app.name})`,
       metadata: {
         appId,
         userId,

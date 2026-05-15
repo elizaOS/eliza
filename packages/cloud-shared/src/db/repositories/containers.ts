@@ -93,7 +93,7 @@ async function prepareContainerUpdatePayload(
     organizationId: data.organization_id ?? context.organization_id,
     objectId: context.id,
     field: "deployment_log",
-    createdAt: data.created_at ?? context.created_at ?? new Date(),
+    createdAt: data.created_at ?? context.created_at,
     value: data.deployment_log,
   });
 

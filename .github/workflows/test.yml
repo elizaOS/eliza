@@ -55,8 +55,113 @@ env:
   ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:
+  lint:
+    name: Gate / Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          run-postinstall: "false"
+
+      - name: Prompt secret scan
+        run: bun run --cwd packages/prompts check:secrets
+
+      - name: Run lint
+        run: bun run lint
+
+  typecheck:
+    name: Gate / Typecheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build @elizaos/core dist
+        working-directory: packages/core
+        run: bun run build
+
+      - name: Run typecheck
+        run: bun run typecheck
+
+  build:
+    name: Gate / Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build packages
+        run: bun run build
+
+  release-gate:
+    name: First Release Gate
+    runs-on: ubuntu-24.04
+    needs: [lint, typecheck, build]
+    steps:
+      - name: Lint, typecheck, and build passed
+        run: echo "First release gate passed; fan-out suites may start."
+
   server-tests:
     name: Server Tests
+    needs: release-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -104,6 +209,7 @@ jobs:
 
   client-tests:
     name: Client Tests
+    needs: release-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -134,6 +240,7 @@ jobs:
 
   plugin-tests:
     name: Plugin Tests
+    needs: release-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 95
     env:
@@ -187,6 +294,7 @@ jobs:
 
   desktop-contract:
     name: Electrobun Desktop Contract
+    needs: release-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -215,6 +323,7 @@ jobs:
 
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
+    needs: release-gate
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -280,15 +389,278 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
 
+  e2e-tests:
+    name: E2E Tests
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run E2E tests
+        run: bun run test:e2e
+
+  cloud-workspace-tests:
+    name: Cloud / ${{ matrix.name }}
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Verify
+            command: bun run verify:cloud
+            setup-db: "false"
+            playwright: "false"
+          - name: Unit
+            command: bun run test:cloud
+            setup-db: "false"
+            playwright: "false"
+          - name: Integration
+            command: bun run test:cloud:integration
+            setup-db: "true"
+            playwright: "false"
+          - name: E2E
+            command: bun run test:cloud:e2e
+            setup-db: "true"
+            playwright: "false"
+          - name: Playwright
+            command: bun run test:cloud:playwright
+            setup-db: "true"
+            playwright: "true"
+    env:
+      DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      CACHE_BACKEND: wadis
+      CACHE_ENABLED: "false"
+      NODE_ENV: test
+      PLAYWRIGHT_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/cloud-setup-test-env
+        with:
+          setup-db: ${{ matrix.setup-db }}
+
+      - name: Install Playwright browsers
+        if: matrix.playwright == 'true'
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run cloud suite
+        run: ${{ matrix.command }}
+
+  os-package-tests:
+    name: OS Package / ${{ matrix.name }}
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux agent
+            directory: packages/os/linux/agent
+            typecheck: bun run typecheck
+            test: bun test
+          - name: Linux desktop shell
+            directory: packages/os/linux/desktop-shell
+            typecheck: bun run typecheck
+            test: bun run test
+          - name: Android system UI
+            directory: packages/os/android/system-ui
+            typecheck: bun run typecheck
+            test: bun run test
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Typecheck
+        working-directory: ${{ matrix.directory }}
+        run: ${{ matrix.typecheck }}
+
+      - name: Test
+        working-directory: ${{ matrix.directory }}
+        run: ${{ matrix.test }}
+
+  linux-elizaos-build-test:
+    name: Linux elizaOS Build & Test
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: packages/os/linux
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config \
+            build-essential \
+            node-gyp
+
+      - name: Install Rust toolchain components
+        run: |
+          rustup show
+          rustup component add clippy rustfmt
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/os/linux
+          shared-key: os-linux-ci
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install Linux agent dependencies
+        working-directory: packages/os/linux/agent
+        run: bun install --frozen-lockfile
+
+      - name: Rust format check
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --workspace --all-features
+
+      - name: Linux agent typecheck
+        working-directory: packages/os/linux/agent
+        run: bun run typecheck
+
+      - name: Linux agent tests
+        working-directory: packages/os/linux/agent
+        run: bun test
+
+      - name: License header check
+        run: ./scripts/check-license-headers.sh
+
+  aosp-system-build-test:
+    name: AOSP System App Build & Static Validation
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Build privileged AOSP APK
+        run: bun run build:android:system
+
+      - name: Static AOSP brand validation
+        run: node packages/scripts/distro-android/validate.mjs --brand-config packages/scripts/distro-android/brand.eliza.json
+
+  aosp-cuttlefish:
+    name: AOSP Cuttlefish Build & Boot Validation
+    needs: release-gate
+    if: ${{ vars.AOSP_ROOT != '' }}
+    uses: ./.github/workflows/elizaos-cuttlefish.yml
+    with:
+      brand-config: packages/scripts/distro-android/brand.eliza.json
+      aosp-root: ${{ vars.AOSP_ROOT }}
+      jobs: ${{ vars.AOSP_JOBS || '8' }}
+      launch: true
+
   test-status:
     name: All Tests Passed
     if: always()
     needs:
+      - lint
+      - typecheck
+      - build
+      - release-gate
       - server-tests
       - client-tests
       - plugin-tests
       - desktop-contract
       - cloud-live-e2e
+      - e2e-tests
+      - cloud-workspace-tests
+      - os-package-tests
+      - linux-elizaos-build-test
+      - aosp-system-build-test
+      - aosp-cuttlefish
     runs-on: ubuntu-24.04
     steps:
       - name: Check test results
@@ -301,17 +673,37 @@ jobs:
           echo "plugin-tests:     ${{ needs.plugin-tests.result }}"
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
           echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
+          echo "e2e-tests:        ${{ needs.e2e-tests.result }}"
+          echo "cloud-workspace:  ${{ needs.cloud-workspace-tests.result }}"
+          echo "os-package-tests: ${{ needs.os-package-tests.result }}"
+          echo "linux-elizaos:    ${{ needs.linux-elizaos-build-test.result }}"
+          echo "aosp-system:      ${{ needs.aosp-system-build-test.result }}"
+          echo "aosp-cuttlefish:  ${{ needs.aosp-cuttlefish.result }}"
           echo "==================================="
           strict_results="${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}"
           bad=0
           for pair in \
+            "lint:${{ needs.lint.result }}" \
+            "typecheck:${{ needs.typecheck.result }}" \
+            "build:${{ needs.build.result }}" \
+            "release-gate:${{ needs.release-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
             "plugin-tests:${{ needs.plugin-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \
-            "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}"; do
+            "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}" \
+            "e2e-tests:${{ needs.e2e-tests.result }}" \
+            "cloud-workspace-tests:${{ needs.cloud-workspace-tests.result }}" \
+            "os-package-tests:${{ needs.os-package-tests.result }}" \
+            "linux-elizaos-build-test:${{ needs.linux-elizaos-build-test.result }}" \
+            "aosp-system-build-test:${{ needs.aosp-system-build-test.result }}" \
+            "aosp-cuttlefish:${{ needs.aosp-cuttlefish.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
+            if [ "$name" = "aosp-cuttlefish" ] && [ "${{ vars.AOSP_ROOT != '' }}" != "true" ]; then
+              echo "::warning title=Test gate::AOSP Cuttlefish full image job skipped because repository variable AOSP_ROOT is not configured."
+              continue
+            fi
             if [ "$result" = "skipped" ] && [ "$strict_results" != "true" ]; then
               echo "::warning title=Test gate::Live-only job '${name}' was skipped for this PR context."
               continue

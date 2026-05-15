@@ -6,7 +6,7 @@ import {
   shortId,
 } from "../actions/common.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
-import type { SessionInfo } from "../services/types.js";
+import type { AvailableAgentInfo, SessionInfo } from "../services/types.js";
 
 const MAX_RENDERED_ACTIVE_SESSIONS = 8;
 const TERMINAL_SESSION_STATUSES = new Set([
@@ -17,7 +17,7 @@ const TERMINAL_SESSION_STATUSES = new Set([
 ]);
 
 function sessionSortTime(session: SessionInfo): number {
-  return new Date(session.lastActivityAt ?? session.createdAt).getTime();
+  return new Date(session.lastActivityAt).getTime();
 }
 
 function sessionIsActive(session: SessionInfo): boolean {
@@ -55,36 +55,41 @@ export const availableAgentsProvider: Provider = {
       };
     }
 
-    const [agents, sessions, frameworkState] = await Promise.all([
+    const [rawAgents, sessions, frameworkState] = await Promise.all([
       service.checkAvailableAgents?.() ??
         service.getAvailableAgents?.() ??
         Promise.resolve([]),
       listSessionsWithin(service, 2000),
-      // opencode is wired through the shell adapter (not in
+      // Some adapters are wired through custom ACP commands or vendored shims
       // `coding-agent-adapters`'s registry), so `checkAvailableAgents`
-      // misses it. Query the framework-state directly so the planner sees
-      // opencode in its action context when authReady — otherwise the
+      // can miss them. Query framework-state directly so the planner sees
+      // configured adapters in its action context when authReady; otherwise the
       // model reads "no compatible agent available" and refuses to spawn.
       getTaskAgentFrameworkState(runtime).catch(() => null),
     ]);
+    const agents = rawAgents as AvailableAgentInfo[];
 
     const lines = ["# acpx task agents"];
-    const opencodeFramework = frameworkState?.frameworks.find(
-      (framework) => framework.id === "opencode",
+    const knownAgentIds = new Set(
+      agents.map((agent) => String(agent.agentType)),
     );
-    const augmentedAgents =
-      opencodeFramework?.installed && opencodeFramework.authReady
-        ? [
-            ...agents,
-            {
-              agentType: "opencode",
-              adapter: "OpenCode",
-              installed: true,
-              auth: { status: "authenticated" as const },
-              reason: opencodeFramework.reason,
-            },
-          ]
-        : agents;
+    const augmentedAgents = [
+      ...agents,
+      ...(frameworkState?.frameworks
+        .filter(
+          (framework) =>
+            framework.installed &&
+            framework.authReady &&
+            !knownAgentIds.has(framework.id),
+        )
+        .map((framework) => ({
+          agentType: framework.id,
+          adapter: framework.label,
+          installed: true,
+          auth: { status: "authenticated" as const },
+          reason: framework.reason,
+        })) ?? []),
+    ];
 
     if (augmentedAgents.length > 0) {
       lines.push("", "## Available adapters");
@@ -95,7 +100,7 @@ export const availableAgentsProvider: Provider = {
             ? ` — ${agent.reason}`
             : "";
         lines.push(
-          `- ${agent.agentType ?? agent.adapter}: ${agent.installed ? "installed" : "not installed"}${auth}${reason}`,
+          `- ${agent.agentType}: ${agent.installed ? "installed" : "not installed"}${auth}${reason}`,
         );
       }
     } else {

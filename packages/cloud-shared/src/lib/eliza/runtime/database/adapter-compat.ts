@@ -320,7 +320,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
 
       if (hasAdapterMethod(compat, "getEntitiesByIds") && entityIds.length > 0) {
         const existingEntities = await compat.getEntitiesByIds(entityIds);
-        for (const existingEntity of existingEntities ?? []) {
+        for (const existingEntity of existingEntities) {
           const existingId = (existingEntity as { id?: UUID }).id;
           if (existingId) {
             existingById.add(existingId as string);
@@ -481,7 +481,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
         return [];
       }
 
-      const entities = (await compat.getEntitiesByIds(entityIds)) ?? [];
+      const entities = await compat.getEntitiesByIds(entityIds);
       const filteredEntities = await Promise.all(
         entities.map(async (entity) => {
           if (!hasAdapterMethod(compat, "getComponents")) {
@@ -705,7 +705,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
               countMemoriesByRoom(roomId, params.unique ?? false, params.tableName ?? "messages"),
             ),
           );
-          return counts.reduce((sum, value) => sum + Number(value ?? 0), 0);
+          return counts.reduce((sum, value) => sum + Number(value), 0);
         }
 
         return countMemoriesByRoom(roomIdOrParams as UUID, unique, tableName);
@@ -873,7 +873,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
         const existingRooms = await compat.getRoomsByIds(
           rooms.flatMap((room) => (room.id ? [room.id] : [])),
         );
-        for (const existingRoom of existingRooms ?? []) {
+        for (const existingRoom of existingRooms) {
           const existingId = (existingRoom as { id?: UUID }).id;
           if (existingId) {
             existingIds.add(existingId as string);

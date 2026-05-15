@@ -78,7 +78,7 @@ export const formPlugin = {
       _env: Record<string, string | undefined>,
       config: Record<string, unknown>,
     ) => {
-      const f = (config?.features as Record<string, unknown> | undefined)?.form;
+      const f = (config.features as Record<string, unknown> | undefined)?.form;
       return (
         f === true ||
         (typeof f === "object" &&

@@ -100,7 +100,7 @@ async function getCreditBalance(organizationId: string): Promise<number> {
 async function fetchDashboardDataInternal(
   user: Awaited<ReturnType<typeof requireAuthWithOrg>>,
 ): Promise<DashboardData> {
-  const organizationId = user.organization_id!;
+  const organizationId = user.organization_id;
 
   // Fetch only the data rendered on the dashboard home.
   const [generationStats, userCharacters, apiKeys, userRooms, apps, org] = await Promise.all([
@@ -164,9 +164,7 @@ async function fetchDashboardDataInternal(
     },
     onboarding: {
       hasAgents: userCharacters.length > 0,
-      hasApiKey: apiKeys.some(
-        (key) => key.name !== "Default API Key" || (key.usage_count ?? 0) > 0,
-      ),
+      hasApiKey: apiKeys.some((key) => key.name !== "Default API Key" || key.usage_count > 0),
       hasChatHistory: chatRoomCount > 0,
     },
     agents: userCharacters.map((c) => ({
@@ -206,7 +204,7 @@ async function fetchDashboardDataInternal(
  */
 export async function getDashboardData(request: Request): Promise<DashboardData> {
   const user = await requireAuthWithOrg(request);
-  const organizationId = user.organization_id!;
+  const organizationId = user.organization_id;
   const cacheKey = CacheKeys.org.dashboard(organizationId);
 
   // Use stale-while-revalidate pattern

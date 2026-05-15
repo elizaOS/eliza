@@ -363,8 +363,7 @@ export class LocalInferenceService {
 		if (!localInferenceEngine.hasLoadedModel()) return false;
 		if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
 		try {
-			const fixedRoomId = (runtime.agentId ??
-				SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
+			const fixedRoomId = runtime.agentId as UUID;
 			const prefix = await renderMessageHandlerStablePrefix(
 				runtime,
 				fixedRoomId,

@@ -56,7 +56,7 @@ function runCommand(
         resolve({ code: -1, stderr: `timeout after ${timeoutMs}ms` });
       }
     }, timeoutMs);
-    child.stderr?.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
     child.on("error", (err) => {

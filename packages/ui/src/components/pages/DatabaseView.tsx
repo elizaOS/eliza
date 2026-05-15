@@ -396,7 +396,7 @@ export function DatabaseView({
                         </SidebarContent.ItemTitle>
                         <SidebarContent.ItemDescription>
                           {t("databaseview.RowCountLabel", {
-                            count: (table.rowCount ?? 0).toLocaleString(),
+                            count: table.rowCount.toLocaleString(),
                             defaultValue: "{{count}} rows",
                           })}
                         </SidebarContent.ItemDescription>
@@ -740,7 +740,7 @@ export function DatabaseView({
                             {t.name}
                           </SidebarContent.ItemTitle>
                           <SidebarContent.ItemDescription>
-                            {(t.rowCount ?? 0).toLocaleString()} rows
+                            {t.rowCount.toLocaleString()} rows
                           </SidebarContent.ItemDescription>
                         </SidebarContent.ItemBody>
                       </SidebarContent.Item>

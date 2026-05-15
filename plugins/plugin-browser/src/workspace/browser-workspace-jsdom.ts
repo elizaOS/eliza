@@ -156,7 +156,7 @@ export function applyBrowserWorkspaceDomSettings(
     value: {
       readText: async () => browserWorkspaceClipboardText,
       writeText: async (value: string) => {
-        setBrowserWorkspaceClipboardText(String(value ?? ""));
+        setBrowserWorkspaceClipboardText(String(value));
       },
     },
   });

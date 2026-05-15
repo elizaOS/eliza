@@ -208,7 +208,7 @@ async function r2GetBytes(blobKey: string): Promise<Uint8Array | null> {
     const text = await obj.text();
     return new TextEncoder().encode(text);
   } catch (err) {
-    logger.warn?.(
+    logger.warn(
       `[tts-first-line-cache] R2 get(${blobKey}) failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
@@ -232,7 +232,7 @@ async function r2PutBytes(
     });
     return true;
   } catch (err) {
-    logger.warn?.(
+    logger.warn(
       `[tts-first-line-cache] R2 put(${blobKey}) failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
@@ -298,7 +298,7 @@ export class CloudFirstLineCacheService {
       })
       .where(eq(ttsFirstLineCache.id, row.id))
       .catch((err) => {
-        logger.warn?.(
+        logger.warn(
           `[tts-first-line-cache] failed to touch row ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
         );
       });
@@ -391,7 +391,7 @@ export class CloudFirstLineCacheService {
         await dbWrite.insert(ttsFirstLineCache).values(insert);
       }
     } catch (err) {
-      logger.warn?.(
+      logger.warn(
         `[tts-first-line-cache] manifest write failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return false;
@@ -412,7 +412,7 @@ export class CloudFirstLineCacheService {
       .select({ total: sql<number>`COALESCE(SUM(${ttsFirstLineCache.byteSize}), 0)` })
       .from(ttsFirstLineCache)
       .where(eq(ttsFirstLineCache.scope, scope));
-    const currentBytes = Number(total?.total ?? 0);
+    const currentBytes = Number(total.total);
     if (currentBytes <= this.maxBytesPerScope) return 0;
 
     // Pull the oldest-accessed rows and remove them until we're under budget.
@@ -439,7 +439,7 @@ export class CloudFirstLineCacheService {
         runningTotal -= Number(row.byteSize);
         removed++;
       } catch (err) {
-        logger.warn?.(
+        logger.warn(
           `[tts-first-line-cache] eviction step failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }

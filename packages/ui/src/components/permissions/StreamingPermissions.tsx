@@ -108,7 +108,7 @@ async function checkWebPermissions(): Promise<
   const states: Record<string, MediaPermissionState> = {};
   states.screen =
     typeof navigator !== "undefined" &&
-    typeof navigator.mediaDevices?.getDisplayMedia === "function"
+    typeof navigator.mediaDevices.getDisplayMedia === "function"
       ? "prompt"
       : "unknown";
 

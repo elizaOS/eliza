@@ -185,7 +185,7 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     });
     expect(overviewResult).toMatchObject({ success: true });
     const occurrences =
-      (overviewResult?.data as { occurrences?: Array<{ id: string }> })
+      (overviewResult.data as { occurrences?: Array<{ id: string }> })
         ?.occurrences ?? [];
     expect(occurrences.length).toBeGreaterThan(0);
     const targetOccurrenceId = occurrences[0]?.id;

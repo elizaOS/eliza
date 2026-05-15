@@ -88,7 +88,7 @@ function isDmLike(chat: InboxChatSidebarRow): boolean {
   if (chat.roomType?.trim().toUpperCase() === "DM") return true;
   const trimmedWorldId = chat.worldId?.trim();
   if (!trimmedWorldId) return true;
-  const label = chat.worldLabel?.trim() ?? "";
+  const label = chat.worldLabel.trim();
   // Fallback heuristic — backends emit "World for server <id>" / "World for
   // room <id>" when there is no named guild. In practice that's a DM.
   return FALLBACK_WORLD_LABEL_RE.test(label);
@@ -105,7 +105,7 @@ function normalizeWorldLabel(
       }) ?? "DMs"
     );
   }
-  const trimmed = chat.worldLabel?.trim();
+  const trimmed = chat.worldLabel.trim();
   if (trimmed) {
     return trimmed;
   }

@@ -173,11 +173,11 @@ async function callCerebrasStage1(model: string): Promise<{ rawArgs: string; raw
     );
   }
   const json = (await response.json()) as CerebrasResponse;
-  const message = json.choices?.[0]?.message;
-  const toolCall = message?.tool_calls?.[0];
+  const message = json.choices[0].message;
+  const toolCall = message.tool_calls?.[0];
   return {
     rawArgs: toolCall?.function.arguments ?? "{}",
-    rawText: typeof message?.content === "string" ? message.content : "",
+    rawText: typeof message.content === "string" ? message.content : "",
   };
 }
 
@@ -228,9 +228,7 @@ async function runProbe(model: string, trials: number): Promise<Bucketed> {
         ? rawJson.candidateActionNames.map(String)
         : [];
 
-      const hasPlanningContext = (parsed.plan.contexts ?? []).some(
-        (context) => context !== "simple"
-      );
+      const hasPlanningContext = parsed.plan.contexts.some((context) => context !== "simple");
       const hasSpawnCandidate = candidateActionNames.some((name) =>
         SPAWN_CANDIDATE_HINT.test(name)
       );
@@ -357,7 +355,7 @@ async function callAdversarialStage1(model: string): Promise<{ rawArgs: string }
     throw new Error(`Cerebras (${model}) ${response.status}`);
   }
   const json = (await response.json()) as CerebrasResponse;
-  const toolCall = json.choices?.[0]?.message?.tool_calls?.[0];
+  const toolCall = json.choices[0].message.tool_calls?.[0];
   return { rawArgs: toolCall?.function.arguments ?? "{}" };
 }
 
@@ -380,9 +378,7 @@ adversarialDescribe(
               const parsed = parseMessageHandlerOutput(rawArgs);
               if (!parsed) continue;
               const isWireRefusal = WIRE_REFUSAL_HINT.test(wireText);
-              const hasPlanning = (parsed.plan.contexts ?? []).some(
-                (context) => context !== "simple"
-              );
+              const hasPlanning = parsed.plan.contexts.some((context) => context !== "simple");
               if (isWireRefusal) wireRefusal += 1;
               if (isWireRefusal && hasPlanning && (parsed.plan.reply ?? "") === "") {
                 suppressed += 1;

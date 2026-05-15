@@ -611,7 +611,7 @@ async function findStickyNodeForProject(
     .orderBy(sql`${containersTable.created_at} desc`)
     .limit(1);
 
-  if (!row?.node_id) return null;
+  if (!row.node_id) return null;
 
   const node = await dockerNodesRepository.findByNodeId(row.node_id);
   if (!node || !node.enabled || node.status !== "healthy") return null;
@@ -639,7 +639,7 @@ async function findNodeInLocation(location: string): Promise<DockerNode | null> 
     )
     .orderBy(sql`(${dockerNodesTable.capacity} - ${dockerNodesTable.allocated_count}) DESC`)
     .limit(1);
-  return r ?? null;
+  return r;
 }
 
 function getDockerNodeLocation(node: DockerNode): string | null {
@@ -842,9 +842,9 @@ export class HetznerContainersClient {
     // 4. SSH into the node, pull the image, create + start the container.
     const ssh = DockerSSHClient.getClient(
       node.hostname,
-      node.ssh_port ?? 22,
+      node.ssh_port,
       node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? "root",
+      node.ssh_user,
     );
 
     const containerName = deriveContainerName(row.id);

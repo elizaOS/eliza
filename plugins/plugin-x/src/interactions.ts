@@ -73,7 +73,7 @@ function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
     conversationId: tweet.conversationId ?? tweet.id,
     text: tweet.text ?? "",
     timestamp: tweet.timestamp ?? Date.now(),
-    thread: tweet.thread?.length ? tweet.thread : [tweet],
+    thread: tweet.thread.length ? tweet.thread : [tweet],
   };
 }
 
@@ -151,7 +151,7 @@ export class TwitterInteractionClient {
     // `state` values are typed as strings but runtime settings may pass booleans;
     // widen to unknown so the defensive boolean check below still compiles.
     const dryRunSetting: unknown =
-      this.state?.TWITTER_DRY_RUN ??
+      this.state.TWITTER_DRY_RUN ??
       getSetting(this.runtime, "TWITTER_DRY_RUN") ??
       process.env.TWITTER_DRY_RUN;
     this.isDryRun =
@@ -229,7 +229,7 @@ export class TwitterInteractionClient {
         ((getSetting(this.runtime, "TWITTER_TARGET_USERS") ??
           process.env.TWITTER_TARGET_USERS) as string) || "";
 
-      if (targetUsersConfig?.trim()) {
+      if (targetUsersConfig.trim()) {
         await this.handleTargetUserPosts(targetUsersConfig);
       }
 
@@ -455,7 +455,7 @@ export class TwitterInteractionClient {
       };
 
       const _state = await this.runtime.composeState(shouldEngageMemory);
-      const characterName = this.runtime?.character?.name || "AI Assistant";
+      const characterName = this.runtime.character.name || "AI Assistant";
       const context = `You are ${characterName}. Should you reply to this tweet based on your interests and expertise?
       
 Tweet by @${tweet.username}: "${tweet.text}"
@@ -556,7 +556,7 @@ Response (YES/NO):`;
       const result = await this.handleTweet({
         tweet,
         message,
-        thread: tweet.thread || [tweet],
+        thread: tweet.thread,
       });
 
       return Boolean(result.text && result.text.length > 0);
@@ -597,7 +597,7 @@ Response (YES/NO):`;
         process.env.TWITTER_TARGET_USERS) as string) || "";
 
     // Filter tweets based on TWITTER_TARGET_USERS if configured
-    if (targetUsersConfig?.trim()) {
+    if (targetUsersConfig.trim()) {
       uniqueTweetCandidates = uniqueTweetCandidates.filter((tweet) => {
         const shouldTarget = shouldTargetUser(
           tweet.username || "",
@@ -818,7 +818,7 @@ Response (YES/NO):`;
         await createMemorySafe(this.runtime, memory, "messages");
 
         // Handle thread-specific events
-        if (tweet.thread && tweet.thread.length > 0) {
+        if (tweet.thread.length > 0) {
           const threadStartId = tweet.thread[0]?.id ?? tweet.id;
           const threadMemoryId = createUniqueUuid(
             this.runtime,
@@ -874,7 +874,7 @@ Response (YES/NO):`;
    *  - Emits a generic REACTION_RECEIVED event with metadata
    */
   async handleInteraction(interaction: TwitterInteractionPayload) {
-    if (interaction?.targetTweet?.conversationId) {
+    if (interaction.targetTweet.conversationId) {
       const memory = this.createMemoryObject(
         interaction.type,
         `${interaction.id}-${interaction.type}`,
@@ -1176,13 +1176,13 @@ Response (YES/NO):`;
     );
 
     // Extract response for Twitter posting
-    const response = result.responseMessages || [];
+    const response = result.responseMessages;
 
     // Check if response is an array of memories and extract the text
     let responseText = "";
     if (Array.isArray(response) && response.length > 0) {
       const firstResponse = response[0];
-      if (firstResponse?.content?.text) {
+      if (firstResponse?.content.text) {
         responseText = firstResponse.content.text;
       }
     }

@@ -236,9 +236,9 @@ describe("local inference downloader status", () => {
 
 		const [job] = new Downloader().snapshot();
 
-		expect(job?.modelId).toBe("eliza-1-2b");
-		expect(job?.state).toBe("failed");
-		expect(job?.error).toBe("network reset");
+		expect(job.modelId).toBe("eliza-1-2b");
+		expect(job.state).toBe("failed");
+		expect(job.error).toBe("network reset");
 	});
 
 	it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {

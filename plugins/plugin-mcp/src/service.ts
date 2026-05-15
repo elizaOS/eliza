@@ -211,7 +211,7 @@ export class McpService extends Service {
     const isHttpTransport = config.type !== "stdio";
 
     connection.transport.onerror = async (error): Promise<void> => {
-      const errorMessage = error?.message ?? String(error);
+      const errorMessage = error.message;
       const isExpectedTimeout =
         isHttpTransport &&
         (errorMessage === "undefined" ||
@@ -372,7 +372,7 @@ export class McpService extends Service {
 
     const response = await connection.client.listTools();
 
-    const tools = (response?.tools ?? []).map((tool) => {
+    const tools = response.tools.map((tool) => {
       const processedTool = { ...tool };
 
       if (tool.inputSchema) {
@@ -398,7 +398,7 @@ export class McpService extends Service {
     }
 
     const response = await connection.client.listResources();
-    return response?.resources ?? [];
+    return response.resources;
   }
 
   private async fetchResourceTemplatesList(serverName: string): Promise<ResourceTemplate[]> {
@@ -408,7 +408,7 @@ export class McpService extends Service {
     }
 
     const response = await connection.client.listResourceTemplates();
-    return response?.resourceTemplates ?? [];
+    return response.resourceTemplates;
   }
 
   public getServers(): McpServer[] {

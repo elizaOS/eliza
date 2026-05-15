@@ -1,4 +1,11 @@
-import { boolean, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
 const created = () =>
@@ -126,10 +133,14 @@ const worlds = pgTable("worlds", {
   createdAt: created(),
 });
 
-const serverAgents = pgTable("server_agents", {
-  serverId: text("server_id"),
-  agentId: text("agent_id"),
-});
+const messageServerAgents = pgTable(
+  "message_server_agents",
+  {
+    messageServerId: text("message_server_id").notNull(),
+    agentId: text("agent_id").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.messageServerId, table.agentId] })],
+);
 
 const messages = pgTable("messages", {
   id: id(),
@@ -186,7 +197,7 @@ export const schema = {
   logTable: logs,
   cacheTable: cache,
   worldTable: worlds,
-  serverAgentsTable: serverAgents,
+  messageServerAgentsTable: messageServerAgents,
   messageTable: messages,
   messageServerTable: messageServers,
   channelTable: channels,
@@ -227,12 +238,12 @@ export {
   entities as entityTable,
   logs as logTable,
   memories as memoryTable,
+  messageServerAgents as messageServerAgentsTable,
   messageServers as messageServerTable,
   messages as messageTable,
   participants as participantTable,
   relationships as relationshipTable,
   rooms as roomTable,
-  serverAgents as serverAgentsTable,
   tasks as taskTable,
   worlds as worldTable,
 };

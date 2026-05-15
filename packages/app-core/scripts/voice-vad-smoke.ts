@@ -143,7 +143,7 @@ async function main(): Promise<void> {
 	} finally {
 		if (vad) ffi.vadClose(vad);
 		ffi.destroy(ctx);
-		ffi.close?.();
+		ffi.close();
 	}
 
 	// Wake-word: report bundled GGUF presence only. Runtime inference is

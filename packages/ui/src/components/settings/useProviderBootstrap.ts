@@ -38,7 +38,7 @@ export function useProviderBootstrap(
   const loadSubscriptionStatus = useCallback(async () => {
     try {
       const res = await client.getSubscriptionStatus();
-      setSubscriptionStatus(res.providers ?? []);
+      setSubscriptionStatus(res.providers);
     } catch {
       // subscription status is best-effort; component renders with empty list
     }
@@ -54,11 +54,11 @@ export function useProviderBootstrap(
       try {
         const opts = await client.getOnboardingOptions();
         cloudModel.setModelOptions({
-          nano: opts.models?.nano ?? [],
-          small: opts.models?.small ?? [],
-          medium: opts.models?.medium ?? [],
-          large: opts.models?.large ?? [],
-          mega: opts.models?.mega ?? [],
+          nano: opts.models.nano ?? [],
+          small: opts.models.small ?? [],
+          medium: opts.models.medium ?? [],
+          large: opts.models.large ?? [],
+          mega: opts.models.mega ?? [],
         });
       } catch {
         // onboarding options are best-effort

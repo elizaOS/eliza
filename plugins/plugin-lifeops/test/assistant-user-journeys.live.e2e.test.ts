@@ -693,7 +693,7 @@ describeIf(LIVE_SUITE_ENABLED)(
           );
         }
       }
-      envBackup?.restore();
+      envBackup.restore();
       fs.rmSync(workspaceDir, { recursive: true, force: true });
     }, 30_000);
 

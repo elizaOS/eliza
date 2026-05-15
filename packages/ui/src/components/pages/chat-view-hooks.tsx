@@ -733,8 +733,7 @@ export function useChatVoiceController(options: {
         messageId,
         voiceTurnId: pendingVoiceTurn.id,
         speechEndedAtMs: pendingVoiceTurn.speechEndedAtMs,
-        assistantFirstTextAtMs:
-          pendingVoiceTurn.assistantFirstTextAtMs ?? textUpdatedAtMs,
+        assistantFirstTextAtMs: pendingVoiceTurn.assistantFirstTextAtMs,
         assistantTextUpdatedAtMs: textUpdatedAtMs,
       };
     }

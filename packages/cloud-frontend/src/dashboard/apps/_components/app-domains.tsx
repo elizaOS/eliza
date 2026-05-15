@@ -234,7 +234,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
   const primaryDomain = domains.find((d) => d.isPrimary);
   const hasCustomDomain = !!primaryDomain?.customDomain;
   const needsVerification =
-    hasCustomDomain && !primaryDomain?.customDomainVerified;
+    hasCustomDomain && !primaryDomain.customDomainVerified;
 
   return (
     <TooltipProvider>
@@ -328,7 +328,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
               )}
 
               {/* Custom Domain */}
-              {hasCustomDomain && primaryDomain?.customDomain && (
+              {hasCustomDomain && primaryDomain.customDomain && (
                 <DomainCard
                   domain={primaryDomain.customDomain}
                   url={primaryDomain.customDomainUrl}
@@ -442,10 +442,10 @@ export function AppDomains({ appId }: AppDomainsProps) {
               exit={{ opacity: 0, y: -10 }}
             >
               <DnsConfigPanel
-                domain={primaryDomain?.customDomain || ""}
+                domain={primaryDomain.customDomain || ""}
                 domainStatus={domainStatus}
                 onRefresh={() =>
-                  checkDomainStatus(primaryDomain?.customDomain || "")
+                  checkDomainStatus(primaryDomain.customDomain || "")
                 }
                 isChecking={isChecking}
                 lastChecked={lastChecked}

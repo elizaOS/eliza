@@ -196,7 +196,7 @@ async function loadBunFFI(): Promise<BunFFIModule> {
   // vitest never resolve it statically. Same trick the AOSP loader uses.
   const specifier = `bun${":"}ffi`;
   const mod = (await import(specifier)) as unknown as BunFFIModule;
-  if (typeof mod?.dlopen !== "function") {
+  if (typeof mod.dlopen !== "function") {
     throw new OmnivoiceNotInstalled(
       "bun:ffi unavailable in this runtime. Run under Bun, not Node.",
     );

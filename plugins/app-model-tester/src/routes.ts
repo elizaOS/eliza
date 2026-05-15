@@ -75,7 +75,7 @@ function runtimeHasModel(
 
 function coerceText(value: unknown): string {
   if (typeof value === "string") return value;
-  if (value && typeof value === "object" && "text" in value) {
+  if (value !== null && typeof value === "object" && "text" in value) {
     const text = (value as { text?: unknown }).text;
     if (typeof text === "string") return text;
   }
@@ -134,7 +134,11 @@ function toPcmPayload(body: ModelTestRequest): {
 } | null {
   const samples = readNumberArray(body.pcmSamples);
   const sampleRateHz = body.sampleRateHz;
-  if (!samples || typeof sampleRateHz !== "number" || sampleRateHz <= 0) {
+  if (
+    samples === null ||
+    typeof sampleRateHz !== "number" ||
+    sampleRateHz <= 0
+  ) {
     return null;
   }
   return { pcm: Float32Array.from(samples), sampleRateHz };
@@ -228,7 +232,7 @@ async function runText(
     stream,
     onStreamChunk: (chunk: string) => chunks.push(chunk),
   });
-  if (result && typeof result === "object" && "textStream" in result) {
+  if (result !== null && typeof result === "object" && "textStream" in result) {
     for await (const chunk of (result as { textStream: AsyncIterable<string> })
       .textStream) {
       chunks.push(chunk);
@@ -292,7 +296,7 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
     }
     case "vad": {
       const samples = readNumberArray(body.pcmSamples);
-      if (!samples || typeof body.sampleRateHz !== "number") {
+      if (samples === null || typeof body.sampleRateHz !== "number") {
         throw new Error("Choose an audio file first.");
       }
       return detectVoiceActivity(samples, body.sampleRateHz);

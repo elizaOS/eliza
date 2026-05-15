@@ -162,32 +162,32 @@ export const characterProvider: Provider = {
             )
           : "";
 
-      const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
+      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
       const isPostFormat = room?.type === ChannelType.FEED || room?.type === ChannelType.THREAD;
 
       // Style directions
       const postDirections =
-        (character?.style?.all?.length && character?.style?.all?.length > 0) ||
-        (character?.style?.post?.length && character?.style?.post?.length > 0)
+        (character.style?.all?.length && character.style.all.length > 0) ||
+        (character.style?.post?.length && character.style.post.length > 0)
           ? addHeader(
               `# Post Directions for ${character.name}`,
               (() => {
-                const all = character?.style?.all || [];
-                const post = character?.style?.post || [];
+                const all = character.style.all || [];
+                const post = character.style.post || [];
                 return truncateText([...all, ...post].join("\n"));
               })(),
             )
           : "";
 
       const messageDirections =
-        (character?.style?.all?.length && character?.style?.all?.length > 0) ||
-        (character?.style?.chat?.length && character?.style?.chat?.length > 0)
+        (character.style?.all?.length && character.style.all.length > 0) ||
+        (character.style?.chat?.length && character.style.chat.length > 0)
           ? addHeader(
               `# Message Directions for ${character.name}`,
               (() => {
-                const all = character?.style?.all || [];
-                const chat = character?.style?.chat || [];
+                const all = character.style.all || [];
+                const chat = character.style.chat || [];
                 return truncateText([...all, ...chat].join("\n"));
               })(),
             )
@@ -195,7 +195,7 @@ export const characterProvider: Provider = {
 
       // Summary-specific directions: ONLY style.chat (voice/tone), no execution rules from style.all
       const summaryDirections =
-        character?.style?.chat?.length && character?.style?.chat?.length > 0
+        character.style?.chat?.length && character.style.chat.length > 0
           ? addHeader(`# Response Style`, truncateText(character.style.chat.join("\n")))
           : "";
 

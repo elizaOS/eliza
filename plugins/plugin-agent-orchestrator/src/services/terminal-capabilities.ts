@@ -1,5 +1,7 @@
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
+import { readConfigEnvKey } from "./config-env.js";
+import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
 export const ORCHESTRATOR_TOOL_NAMES = [
   "sh",
@@ -7,6 +9,8 @@ export const ORCHESTRATOR_TOOL_NAMES = [
   "rg",
   "bun",
   "acpx",
+  "elizaos",
+  "pi-agent",
   "codex",
   "claude",
   "opencode",
@@ -121,6 +125,56 @@ function firstExecutable(candidates: readonly string[]): string | undefined {
   return undefined;
 }
 
+function configuredToolCommand(name: OrchestratorToolName): string | undefined {
+  switch (name) {
+    case "acpx":
+      return readConfigEnvKey("ELIZA_ACP_CLI");
+    case "elizaos":
+      return (
+        readConfigEnvKey("ELIZAOS_ACP_COMMAND") ??
+        readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND")
+      );
+    case "pi-agent":
+      return readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND");
+    case "opencode":
+      return readConfigEnvKey("ELIZA_OPENCODE_ACP_COMMAND");
+    default:
+      return undefined;
+  }
+}
+
+function firstCommandWord(command: string): string {
+  const trimmed = command.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith('"')) {
+    return trimmed.slice(1).split('"')[0] ?? "";
+  }
+  if (trimmed.startsWith("'")) {
+    return trimmed.slice(1).split("'")[0] ?? "";
+  }
+  return trimmed.split(/\s+/)[0] ?? "";
+}
+
+function resolveConfiguredToolCommand(
+  name: OrchestratorToolName,
+): string | undefined {
+  const configured = configuredToolCommand(name);
+  if (configured?.trim()) {
+    const executable = firstCommandWord(configured);
+    const resolved = executable ? resolveExecutable(executable) : undefined;
+    return resolved ? configured.trim() : undefined;
+  }
+  if (name === "opencode") {
+    const vendoredShim = resolveVendoredOpencodeShim();
+    if (vendoredShim) {
+      const executable =
+        process.platform === "win32" ? "opencode.cmd" : "opencode";
+      return path.join(vendoredShim, executable);
+    }
+  }
+  return undefined;
+}
+
 export function resolveOrchestratorShell(): ResolvedOrchestratorShell {
   const explicitEntries = [
     ["CODING_TOOLS_SHELL", process.env.CODING_TOOLS_SHELL] as const,
@@ -175,6 +229,8 @@ export function detectOrchestratorCapabilities(): OrchestratorToolCapability[] {
         available: shell.available,
       };
     }
+    const configured = resolveConfiguredToolCommand(name);
+    if (configured) return { name, path: configured, available: true };
     const resolved = resolveExecutable(name);
     return { name, path: resolved, available: Boolean(resolved) };
   });

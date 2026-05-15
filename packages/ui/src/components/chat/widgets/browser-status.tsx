@@ -27,9 +27,9 @@ const POLL_INTERVAL_MS = 4_000;
 const MAX_TAB_ROWS = 8;
 
 function tabLabel(tab: BrowserWorkspaceTab): string {
-  const title = tab.title?.trim();
+  const title = tab.title.trim();
   if (title) return title;
-  const url = tab.url?.trim();
+  const url = tab.url.trim();
   if (!url) return "New tab";
   try {
     return new URL(url).hostname.replace(/^www\./, "") || url;
@@ -105,7 +105,7 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
     // navigate to /browser so the user lands on the workspace view.
     void (async () => {
       try {
-        await client.showBrowserWorkspaceTab?.(tab.id);
+        await client.showBrowserWorkspaceTab(tab.id);
       } catch {
         // Ignore — navigation still happens.
       }
@@ -129,7 +129,7 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               key={tab.id}
               type="button"
               onClick={() => handleTabClick(tab)}
-              title={tab.url ?? label}
+              title={tab.url}
               data-testid={`chat-widget-browser-tab-${tab.id}`}
               className="flex items-center gap-2 rounded-[var(--radius-sm)] px-0.5 py-0.5 text-left transition-colors hover:bg-bg-hover/40"
             >

@@ -253,7 +253,7 @@ export async function submitWebBrowserWorkspaceForm(
   }
 
   const html = await response.text();
-  const finalUrl = assertBrowserWorkspaceUrl(response.url?.trim() || submitUrl);
+  const finalUrl = assertBrowserWorkspaceUrl(response.url.trim() || submitUrl);
   const nextDom = new (getJSDOMClass())(html, {
     pretendToBeVisual: true,
     url: finalUrl,
@@ -335,7 +335,7 @@ export async function loadWebBrowserWorkspaceTabDocument(
   }
 
   const html = await response.text();
-  const finalUrl = assertBrowserWorkspaceUrl(response.url?.trim() || tab.url);
+  const finalUrl = assertBrowserWorkspaceUrl(response.url.trim() || tab.url);
   const dom = new (getJSDOMClass())(html, {
     pretendToBeVisual: true,
     url: finalUrl,

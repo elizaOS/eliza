@@ -249,7 +249,6 @@ export const elizaOSCloudPlugin: Plugin = {
             );
 
             if (
-              result &&
               typeof result === "object" &&
               "title" in result &&
               "description" in result

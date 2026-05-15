@@ -195,7 +195,7 @@ export class ShopifyService extends Service {
   }
 
   private requireClient(accountId?: string): ShopifyClient {
-    return this.getClientState(accountId)?.client as ShopifyClient;
+    return this.getClientState(accountId).client as ShopifyClient;
   }
 
   // -----------------------------------------------------------------------

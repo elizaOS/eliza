@@ -59,7 +59,7 @@ export default function PublicChatPage() {
     )
       .then((payload) => {
         if (!payload.success || !payload.data) {
-          throw new Error(payload?.error ?? "Agent not found.");
+          throw new Error(payload.error ?? "Agent not found.");
         }
         setCharacter(payload.data);
       })

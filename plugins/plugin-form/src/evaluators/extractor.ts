@@ -285,7 +285,7 @@ export const formEvaluator: Evaluator<
     const roomId = message.roomId as UUID | undefined;
     if (!entityId || !roomId) return false;
 
-    const text = message.content?.text;
+    const text = message.content.text;
     if (!text?.trim()) return false;
 
     const session = await formService.getActiveSession(entityId, roomId);
@@ -330,7 +330,7 @@ export const formEvaluator: Evaluator<
   },
 
   prompt({ message, prepared }) {
-    const text = message.content?.text ?? "";
+    const text = message.content.text ?? "";
     return buildFormExtractorPromptSection({
       text,
       form: prepared.form,

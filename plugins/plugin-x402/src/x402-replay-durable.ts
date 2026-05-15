@@ -62,7 +62,7 @@ function resultHadRows(result: unknown): boolean {
 }
 
 async function getSqlDb(runtime: AgentRuntime): Promise<QueryableDb | null> {
-  const db = await runtime.adapter?.getConnection?.();
+  const db = await runtime.adapter.getConnection();
   if (
     db &&
     typeof db === "object" &&

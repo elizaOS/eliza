@@ -511,10 +511,10 @@ class ElizaAppUserService {
     signupCode?: string,
   ): Promise<FindOrCreateResult> {
     // Validate required fields
-    if (!discordId?.trim()) {
+    if (!discordId.trim()) {
       throw new Error("Discord ID is required");
     }
-    if (!discordData.username?.trim()) {
+    if (!discordData.username.trim()) {
       throw new Error("Discord username is required");
     }
 

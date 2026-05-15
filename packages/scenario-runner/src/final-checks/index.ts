@@ -1043,7 +1043,7 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
   }
   const canceled = ctx.actionsCalled.some((action) => {
     const data = actionResultData(action);
-    return data?.noop === true && data?.cancelled === true;
+    return data?.noop === true && data.cancelled === true;
   });
   return canceled
     ? { status: "passed", detail: "canceled Gmail approval observed" }

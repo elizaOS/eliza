@@ -66,7 +66,7 @@ export function normalizePhoneNumber(phone: string, defaultCountry?: string): st
       ? parsePhoneNumberWithError(input)
       : parsePhoneNumberWithError(input, country);
 
-    if (parsed?.isValid()) {
+    if (parsed.isValid()) {
       return parsed.format("E.164");
     }
 

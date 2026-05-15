@@ -156,12 +156,12 @@ export class AgentLoader {
   }> {
     // Use default character's actual settings for plugin resolution
     const characterSettings: Record<string, unknown> = {
-      ...(defaultAgent.character.settings ?? {}),
+      ...defaultAgent.character.settings,
     };
     if (options?.webSearchEnabled) {
       characterSettings.webSearch = { enabled: true };
     }
-    const modeResolution = await resolveEffectiveMode(agentMode, defaultAgent.character.id!);
+    const modeResolution = await resolveEffectiveMode(agentMode, defaultAgent.character.id);
     const plugins = await this.resolvePlugins(modeResolution.mode, [], characterSettings);
     const character = this.buildCharacter({
       ...defaultAgent.character,

@@ -64,7 +64,7 @@ export async function discoverGatewayEndpoints(args?: {
     const result = await plugin.startDiscovery({
       timeout: args?.timeoutMs ?? 1500,
     });
-    return normalizeGateways(result?.gateways);
+    return normalizeGateways(result.gateways);
   } catch {
     return [];
   } finally {

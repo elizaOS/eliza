@@ -331,7 +331,7 @@ class RedeemableEarningsService {
 
       return {
         success: true,
-        newBalance: Number(result.earnings?.available_balance ?? 0),
+        newBalance: Number(result.earnings.available_balance),
         ledgerEntryId: result.ledgerEntryId,
       };
     }

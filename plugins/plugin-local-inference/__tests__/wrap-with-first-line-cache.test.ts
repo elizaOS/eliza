@@ -231,7 +231,7 @@ describe("wrapWithFirstLineCache — hit path concat", () => {
 		const lastCall = inner.mock.calls[inner.mock.calls.length - 1];
 		const lastInput = lastCall ? lastCall[1] : "";
 		const remainderText =
-			typeof lastInput === "string" ? lastInput : (lastInput?.text ?? "");
+			typeof lastInput === "string" ? lastInput : (lastInput?.text);
 		expect(remainderText.includes("Got it")).toBe(false);
 		expect(remainderText.startsWith("Here is the rest")).toBe(true);
 	});

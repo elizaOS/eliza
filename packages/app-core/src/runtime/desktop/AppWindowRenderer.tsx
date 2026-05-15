@@ -51,7 +51,6 @@ import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
 import { TrajectoriesView } from "@elizaos/ui/components/pages/TrajectoriesView";
 import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
-import type { Tab } from "@elizaos/ui/navigation";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
@@ -66,6 +65,8 @@ import {
 interface AppWindowRendererProps {
   slug: string;
 }
+
+type Tab = string;
 
 function AppWindowSuspense({
   children,
@@ -341,7 +342,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
-      if (event.data?.type !== expectedReadyType) return;
+      if (event.data.type !== expectedReadyType) return;
       if (targetOrigin !== "*" && event.origin !== targetOrigin) return;
       iframeWindow.postMessage(authMessage, targetOrigin);
       authSentRef.current = true;

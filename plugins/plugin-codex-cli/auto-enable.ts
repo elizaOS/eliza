@@ -12,7 +12,7 @@ import type { PluginAutoEnableContext } from "@elizaos/core";
  * not an env var, so config presence is the right signal.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const profiles = (ctx.config?.auth as Record<string, unknown> | undefined)
+  const profiles = (ctx.config.auth as Record<string, unknown> | undefined)
     ?.profiles;
   if (!profiles || typeof profiles !== "object") return false;
   return Object.values(profiles as Record<string, unknown>).some((p) => {

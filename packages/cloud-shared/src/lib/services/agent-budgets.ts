@@ -784,7 +784,7 @@ class AgentBudgetService {
       .where(eq(userCharacters.id, agentId))
       .limit(1);
 
-    if (!agentInfo?.organizationId) {
+    if (!agentInfo.organizationId) {
       logger.warn("[AgentBudgets] Cannot send alert - no organization found", {
         agentId,
       });
@@ -801,7 +801,7 @@ class AgentBudgetService {
       .where(eq(organizations.id, agentInfo.organizationId))
       .limit(1);
 
-    let recipientEmail = orgInfo?.billingEmail;
+    let recipientEmail = orgInfo.billingEmail;
 
     // Fallback to owner's email if no billing email
     if (!recipientEmail && agentInfo.ownerId) {
@@ -810,7 +810,7 @@ class AgentBudgetService {
         .from(users)
         .where(eq(users.id, agentInfo.ownerId))
         .limit(1);
-      recipientEmail = ownerInfo?.email;
+      recipientEmail = ownerInfo.email;
     }
 
     if (!recipientEmail) {
@@ -823,7 +823,7 @@ class AgentBudgetService {
     // Send email using low credits template (repurposed for agent budget)
     await emailService.sendLowCreditsEmail({
       email: recipientEmail,
-      organizationName: orgInfo?.orgName ?? "Your Organization",
+      organizationName: orgInfo.orgName,
       currentBalance: balance,
       threshold: 5.0, // Standard low budget threshold
       billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing`,

@@ -30,11 +30,11 @@ export function resolveRosterEntries(
   styles: readonly StylePreset[],
 ): CharacterRosterEntry[] {
   return styles.map((preset, index) => {
-    const fallbackName = `Character ${index + 1}`;
+    const _fallbackName = `Character ${index + 1}`;
     return {
       id: preset.id,
-      name: preset.name ?? fallbackName,
-      avatarIndex: preset.avatarIndex ?? (index % 4) + 1,
+      name: preset.name,
+      avatarIndex: preset.avatarIndex,
       voicePresetId: preset.voicePresetId,
       catchphrase: preset.catchphrase,
       greetingAnimation: preset.greetingAnimation,

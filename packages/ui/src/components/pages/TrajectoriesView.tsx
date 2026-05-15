@@ -151,7 +151,7 @@ export function TrajectoriesView({
     }
     previousSearchQueryRef.current = searchQuery;
     if (selectedTrajectoryId != null) {
-      onSelectTrajectory?.(null);
+      onSelectTrajectory(null);
     }
   }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
 
@@ -192,18 +192,18 @@ export function TrajectoriesView({
   useLayoutEffect(() => {
     if (loading) return;
     if (trajectories.length === 0) {
-      if (selectedTrajectoryId != null) onSelectTrajectory?.(null);
+      if (selectedTrajectoryId != null) onSelectTrajectory(null);
       return;
     }
     if (selectedTrajectoryId == null) {
-      onSelectTrajectory?.(trajectories[0].id);
+      onSelectTrajectory(trajectories[0].id);
       return;
     }
     if (
       page === 0 &&
       !trajectories.some((tr) => tr.id === selectedTrajectoryId)
     ) {
-      onSelectTrajectory?.(trajectories[0].id);
+      onSelectTrajectory(trajectories[0].id);
     }
   }, [loading, trajectories, selectedTrajectoryId, onSelectTrajectory, page]);
 
@@ -229,13 +229,13 @@ export function TrajectoriesView({
 
       try {
         const response = await client.deleteTrajectories([normalizedId]);
-        const deletedCount = Number(response.deleted ?? 0);
+        const deletedCount = Number(response.deleted);
 
         if (selectedTrajectoryId === normalizedId) {
           const remainingOnPage = trajectories.filter(
             (trajectory) => trajectory.id !== normalizedId,
           );
-          onSelectTrajectory?.(remainingOnPage[0]?.id ?? null);
+          onSelectTrajectory(remainingOnPage[0]?.id ?? null);
         }
 
         if (page > 0 && trajectories.length <= 1) {
@@ -245,7 +245,7 @@ export function TrajectoriesView({
         }
 
         if (deletedCount > 0) {
-          setActionNotice?.(
+          setActionNotice(
             t("trajectoriesview.TrajectoryDeleted", {
               defaultValue: "Trajectory deleted.",
             }),
@@ -253,7 +253,7 @@ export function TrajectoriesView({
             2400,
           );
         } else {
-          setActionNotice?.(
+          setActionNotice(
             t("trajectoriesview.NoTrajectoryDeleted", {
               defaultValue: "No trajectory was deleted.",
             }),
@@ -269,7 +269,7 @@ export function TrajectoriesView({
                 defaultValue: "Failed to delete trajectory",
               });
         setError(message);
-        setActionNotice?.(message, "error", 4200);
+        setActionNotice(message, "error", 4200);
       } finally {
         setDeletingTrajectoryId((currentId) =>
           currentId === normalizedId ? null : currentId,
@@ -300,10 +300,10 @@ export function TrajectoriesView({
         limit: pageSize,
       });
       setPage(0);
-      onSelectTrajectory?.(null);
+      onSelectTrajectory(null);
 
-      if (Number(response.deleted ?? 0) > 0) {
-        setActionNotice?.(
+      if (Number(response.deleted) > 0) {
+        setActionNotice(
           t("trajectoriesview.TrajectoriesCleared", {
             defaultValue: "Trajectories cleared.",
           }),
@@ -311,7 +311,7 @@ export function TrajectoriesView({
           2400,
         );
       } else {
-        setActionNotice?.(
+        setActionNotice(
           t("trajectoriesview.NoTrajectoryDeleted", {
             defaultValue: "No trajectory was deleted.",
           }),
@@ -327,7 +327,7 @@ export function TrajectoriesView({
               defaultValue: "Failed to clear trajectories",
             });
       setError(message);
-      setActionNotice?.(message, "error", 4200);
+      setActionNotice(message, "error", 4200);
     } finally {
       setClearingAll(false);
     }
@@ -484,7 +484,7 @@ export function TrajectoriesView({
                   <TrajectorySidebarItem
                     key={trajectory.id}
                     active={selected}
-                    onSelect={() => onSelectTrajectory?.(trajectory.id)}
+                    onSelect={() => onSelectTrajectory(trajectory.id)}
                     callCount={trajectory.llmCallCount}
                     title={formatTrajectoryTimestamp(
                       trajectory.createdAt,

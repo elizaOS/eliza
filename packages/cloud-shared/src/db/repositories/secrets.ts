@@ -203,7 +203,7 @@ class SecretsRepository {
       .limit(limit)
       .offset(offset);
 
-    return { secrets: results, total: countResult?.count ?? 0 };
+    return { secrets: results, total: countResult.count };
   }
 
   async listByOrganization(organizationId: string): Promise<Secret[]> {
@@ -492,7 +492,7 @@ class SecretBindingsRepository {
       .limit(limit)
       .offset(offset);
 
-    return { bindings, total: countResult?.count ?? 0 };
+    return { bindings, total: countResult.count };
   }
 
   async findBySecretAndProject(

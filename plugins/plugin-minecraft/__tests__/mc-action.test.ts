@@ -58,7 +58,7 @@ describe("MC_ACTION", () => {
     const result = await minecraftVisionProvider.get(runtime, memory("scan nearby blocks"));
 
     expect(result.text).toContain("NearbyBlocksFound: 2");
-    expect(result?.values).toMatchObject({ connected: true, blocksFound: 2 });
+    expect(result.values).toMatchObject({ connected: true, blocksFound: 2 });
     expect(mc.request).toHaveBeenCalledWith("scan", {
       blocks: expect.arrayContaining(["oak_log", "stone"]),
       radius: 16,

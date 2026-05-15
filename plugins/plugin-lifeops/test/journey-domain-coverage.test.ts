@@ -388,13 +388,13 @@ describe("Domain 7 — Reminders & escalation ladder", () => {
       const ladder = resolveEffectiveLadder(t, reg);
       expect(ladder.ladderKey).toBe(PRIORITY_DEFAULT_LADDER_KEYS[priority]);
     }
-    expect(DEFAULT_ESCALATION_LADDERS.priority_low_default?.steps.length).toBe(
+    expect(DEFAULT_ESCALATION_LADDERS.priority_low_default.steps.length).toBe(
       0,
     );
     expect(
-      DEFAULT_ESCALATION_LADDERS.priority_medium_default?.steps.length,
+      DEFAULT_ESCALATION_LADDERS.priority_medium_default.steps.length,
     ).toBe(1);
-    expect(DEFAULT_ESCALATION_LADDERS.priority_high_default?.steps.length).toBe(
+    expect(DEFAULT_ESCALATION_LADDERS.priority_high_default.steps.length).toBe(
       3,
     );
   });

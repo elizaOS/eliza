@@ -1038,7 +1038,7 @@ export function MessageContent({
   message,
   analysisMode = false,
 }: MessageContentProps) {
-  useRenderGuard(`MessageContent:${message.id ?? "unknown"}`);
+  useRenderGuard(`MessageContent:${message.id}`);
   const app = useApp();
   const { sendActionMessage } = app;
   const [localDownloadState, setLocalDownloadState] = useState<
@@ -1092,7 +1092,7 @@ export function MessageContent({
   );
 
   const handleOpenSettings = useCallback(() => {
-    app.setTab?.("settings");
+    app.setTab("settings");
   }, [app.setTab]);
 
   const handleDownloadDefaultLocalModel = useCallback(async () => {

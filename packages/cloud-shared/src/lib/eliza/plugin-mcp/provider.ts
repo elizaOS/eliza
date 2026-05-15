@@ -25,11 +25,11 @@ export const provider: Provider = {
       if (!svc) return EMPTY_PROVIDER;
       await svc.waitForInitialization();
       const result = await svc.getProviderData();
-      const text = (result.text ?? "").slice(0, MAX_MCP_TEXT_CHARS);
+      const text = result.text.slice(0, MAX_MCP_TEXT_CHARS);
       return {
         text,
-        values: result.values ?? { mcp: {} },
-        data: result.data ?? { mcp: {} },
+        values: result.values,
+        data: result.data,
       };
     } catch (error) {
       return {

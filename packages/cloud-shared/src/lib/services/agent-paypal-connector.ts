@@ -321,10 +321,10 @@ export async function searchPaypalTransactions(
     page: number;
   };
   return {
-    transactions: data.transaction_details ?? [],
-    totalItems: data.total_items ?? 0,
-    totalPages: data.total_pages ?? 0,
-    page: data.page ?? 1,
+    transactions: data.transaction_details,
+    totalItems: data.total_items,
+    totalPages: data.total_pages,
+    page: data.page,
   };
 }
 

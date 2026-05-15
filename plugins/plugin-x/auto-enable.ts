@@ -8,7 +8,7 @@ import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /** Enable when an `x` (or legacy `twitter`) connector block is present and not explicitly disabled. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const connectors = ctx.config?.connectors as
+  const connectors = ctx.config.connectors as
     | Record<string, unknown>
     | undefined;
   if (!connectors) return false;

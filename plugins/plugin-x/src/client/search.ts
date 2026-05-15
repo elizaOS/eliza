@@ -75,7 +75,7 @@ export async function* searchTweets(
     for await (const tweet of searchIterator) {
       if (count >= maxTweets) break;
 
-      const author = searchIterator.includes?.users?.find(
+      const author = searchIterator.includes.users.find(
         (u) => u.id === tweet.author_id,
       );
       const inReplyToStatusId = tweet.referenced_tweets?.find(
@@ -90,7 +90,7 @@ export async function* searchTweets(
           )
         : undefined;
       const inReplyToAuthor = inReplyToStatus?.author_id
-        ? searchIterator.includes?.users?.find(
+        ? searchIterator.includes.users.find(
             (u) => u.id === inReplyToStatus.author_id,
           )
         : undefined;
@@ -205,7 +205,7 @@ export async function* searchProfiles(
       }
 
       // Also get users from includes
-      if (searchIterator.includes?.users) {
+      if (searchIterator.includes.users) {
         for (const user of searchIterator.includes.users) {
           if (profiles.length < maxProfiles && user.id) {
             const profile: Profile = {

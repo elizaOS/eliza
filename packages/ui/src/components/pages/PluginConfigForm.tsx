@@ -22,11 +22,11 @@ export function useTelegramChatMode(
   pluginConfigs: Record<string, Record<string, string>>,
   onParamChange: (pluginId: string, paramKey: string, value: string) => void,
 ) {
-  const localValue = pluginConfigs.telegram?.TELEGRAM_ALLOWED_CHATS;
-  const serverValue =
-    plugin.parameters?.find((p) => p.key === "TELEGRAM_ALLOWED_CHATS")
+  const localValue = pluginConfigs.telegram.TELEGRAM_ALLOWED_CHATS;
+  const _serverValue =
+    plugin.parameters.find((p) => p.key === "TELEGRAM_ALLOWED_CHATS")
       ?.currentValue ?? "";
-  const currentValue = localValue ?? serverValue;
+  const currentValue = localValue;
 
   // Explicit mode state — initialized from current value, then user-controlled
   const [allowAll, setAllowAll] = useState(() => !currentValue.trim());
@@ -43,7 +43,7 @@ export function useTelegramChatMode(
       if (next) {
         onParamChange("telegram", "TELEGRAM_ALLOWED_CHATS", "");
       } else {
-        const restore = stashedChats.current?.trim() || "[]";
+        const restore = stashedChats.current.trim() || "[]";
         onParamChange("telegram", "TELEGRAM_ALLOWED_CHATS", restore);
       }
     },
@@ -134,7 +134,7 @@ export function PluginConfigForm({
   onParamChange: (pluginId: string, paramKey: string, value: string) => void;
   hiddenKeys?: Set<string>;
 }) {
-  const params = plugin.parameters ?? [];
+  const params = plugin.parameters;
   const { schema, hints: autoHints } = useMemo(
     () => paramsToSchema(params, plugin.id),
     [params, plugin.id],
@@ -163,10 +163,7 @@ export function PluginConfigForm({
   // Array-typed fields need comma-separated strings parsed into arrays.
   const values = useMemo(() => {
     const v: Record<string, unknown> = {};
-    const props = (schema.properties ?? {}) as Record<
-      string,
-      Record<string, unknown>
-    >;
+    const props = schema.properties as Record<string, Record<string, unknown>>;
     for (const p of params) {
       const isArrayField = props[p.key]?.type === "array";
       const configValue = pluginConfigs[plugin.id]?.[p.key];

@@ -263,7 +263,7 @@ export async function requireAuthWithOrg(
   if (!user.organization_id) {
     throw new ForbiddenError("This feature requires a full account. Please sign up to continue.");
   }
-  if (!user.organization || !user.organization?.is_active) {
+  if (!user.organization || !user.organization.is_active) {
     throw new ForbiddenError("Organization is inactive");
   }
   return user as UserWithOrganization & {

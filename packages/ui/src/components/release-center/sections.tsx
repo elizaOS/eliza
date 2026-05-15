@@ -184,7 +184,7 @@ export function ReleaseStatusSection({
               fallback: tr(t, "releasecenter.NotYet", "Not yet"),
             })}
           />
-          {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason ? (
+          {autoUpdateDisabled && nativeUpdater.autoUpdateDisabledReason ? (
             <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
               {nativeUpdater.autoUpdateDisabledReason}
             </div>

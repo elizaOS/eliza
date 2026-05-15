@@ -42,7 +42,7 @@ describe("SCHEDULED_TASK action", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const created = await scheduledTaskAction.handler?.(
+    const created = await scheduledTaskAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "schedule a reminder"),
       undefined,
@@ -66,7 +66,7 @@ describe("SCHEDULED_TASK action", () => {
     if (!taskId) throw new Error("create did not return a taskId");
 
     // list
-    const listed = await scheduledTaskAction.handler?.(
+    const listed = await scheduledTaskAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "what scheduled tasks do i have?"),
       undefined,
@@ -79,7 +79,7 @@ describe("SCHEDULED_TASK action", () => {
     expect(tasks.some((task) => task.taskId === taskId)).toBe(true);
 
     // snooze 30m
-    const snoozed = await scheduledTaskAction.handler?.(
+    const snoozed = await scheduledTaskAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "snooze it"),
       undefined,
@@ -92,7 +92,7 @@ describe("SCHEDULED_TASK action", () => {
     expect(snoozedTask?.state.lastDecisionLog).toMatch(/snoozed until/);
 
     // complete
-    const completed = await scheduledTaskAction.handler?.(
+    const completed = await scheduledTaskAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "done"),
       undefined,
@@ -109,7 +109,7 @@ describe("SCHEDULED_TASK action", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const result = await scheduledTaskAction.handler?.(
+    const result = await scheduledTaskAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "do something"),
       undefined,
@@ -127,7 +127,7 @@ describe("SCHEDULED_TASK action", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const result = await scheduledTaskAction.handler?.(
+    const result = await scheduledTaskAction.handler(
       runtime,
       ownerMessage(runtime.agentId, "get task"),
       undefined,

@@ -121,12 +121,12 @@ describe('Ngrok Integration Tests', () => {
       return;
     }
     console.log('Runtime in beforeEach:', !!runtime);
-    console.log('Runtime getSetting type:', typeof runtime?.getSetting);
+    console.log('Runtime getSetting type:', typeof runtime.getSetting);
     service = new NgrokService(runtime);
   });
 
   afterEach(async () => {
-    if (service?.isActive()) {
+    if (service.isActive()) {
       await service.stopTunnel();
     }
   });

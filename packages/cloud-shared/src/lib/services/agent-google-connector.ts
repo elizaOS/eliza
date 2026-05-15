@@ -375,7 +375,7 @@ async function getConnectionRow(
       ),
     )
     .limit(1);
-  return row ?? null;
+  return row;
 }
 
 async function getScopedGoogleConnections(args: {
@@ -1081,7 +1081,7 @@ export async function getManagedGoogleConnectorStatus(args: {
 
   const { activeConnection, latestConnection, activeRow, latestRow } =
     await getActiveGoogleConnectionRecord(args);
-  const currentConnection = activeConnection ?? latestConnection ?? null;
+  const currentConnection = activeConnection ?? latestConnection;
   const currentRow = activeRow ?? latestRow ?? null;
 
   if (!currentConnection) {

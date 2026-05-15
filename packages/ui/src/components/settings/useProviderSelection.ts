@@ -242,7 +242,7 @@ export function useProviderSelection(
 
   const handleSelectLocalOnly = useCallback(async () => {
     if (cloudRuntimeLocked) {
-      app.setActionNotice?.(
+      app.setActionNotice(
         "Eliza Cloud is required while this app is running in cloud mode.",
         "error",
         6000,

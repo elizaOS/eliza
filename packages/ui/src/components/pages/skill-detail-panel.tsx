@@ -259,7 +259,7 @@ export function SkillsModalView() {
       if (
         searchLower &&
         !s.name.toLowerCase().includes(searchLower) &&
-        !(s.description ?? "").toLowerCase().includes(searchLower)
+        !s.description.toLowerCase().includes(searchLower)
       )
         return false;
       return true;

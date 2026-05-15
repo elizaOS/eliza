@@ -49,7 +49,7 @@ const walletExportAttempts = new Map<
 >();
 
 function rateLimitWalletExport(req: http.IncomingMessage): boolean {
-  const key = req.socket?.remoteAddress ?? "unknown";
+  const key = req.socket.remoteAddress ?? "unknown";
   const now = Date.now();
   // Lazy sweep
   if (walletExportAttempts.size > 50) {
@@ -485,10 +485,10 @@ export async function handleWalletRoutes(
             agentExists = true;
             const agent = readStewardAgentWalletPayload(await agentRes.json());
             agentEvm =
-              agent?.walletAddresses?.evm?.trim() ||
-              agent?.walletAddress?.trim() ||
+              agent.walletAddresses?.evm?.trim() ||
+              agent.walletAddress?.trim() ||
               null;
-            agentSolana = agent?.walletAddresses?.solana?.trim() || null;
+            agentSolana = agent.walletAddresses?.solana?.trim() || null;
           }
         } catch {
           // agent doesn't exist or fetch failed — will try to create
@@ -511,10 +511,10 @@ export async function handleWalletRoutes(
 
           const created = readStewardAgentWalletPayload(await createRes.json());
           agentEvm =
-            created?.walletAddresses?.evm?.trim() ||
-            created?.walletAddress?.trim() ||
+            created.walletAddresses?.evm?.trim() ||
+            created.walletAddress?.trim() ||
             null;
-          agentSolana = created?.walletAddresses?.solana?.trim() || null;
+          agentSolana = created.walletAddresses?.solana?.trim() || null;
 
           logger.info(
             `[wallet] Created steward agent "${agentId}" with wallets`,
@@ -733,7 +733,7 @@ export async function handleWalletRoutes(
     const addresses = deps.getWalletAddresses();
 
     logger.warn(
-      `[wallet] Private keys exported via API (ip=${req.socket?.remoteAddress ?? "unknown"})`,
+      `[wallet] Private keys exported via API (ip=${req.socket.remoteAddress ?? "unknown"})`,
     );
 
     json(res, {

@@ -312,7 +312,7 @@ export const tiktokProvider: SocialMediaProvider = {
         },
       );
 
-      const video = response.videos?.[0];
+      const video = response.videos[0];
       if (!video) return null;
 
       return {

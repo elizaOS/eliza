@@ -172,7 +172,7 @@ export function AppPermissionsSection() {
               : row,
           ),
         );
-        setActionNotice?.(
+        setActionNotice(
           `Failed to update permissions for ${slug}: ${message}`,
           "error",
         );

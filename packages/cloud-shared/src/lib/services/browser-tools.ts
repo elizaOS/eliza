@@ -372,7 +372,7 @@ async function logHostedBrowserUsage(
   auth: HostedBrowserAuthContext | undefined,
   metadata: Record<string, unknown>,
 ): Promise<void> {
-  if (!auth?.organizationId || !auth?.userId) {
+  if (!auth?.organizationId || !auth.userId) {
     return;
   }
 

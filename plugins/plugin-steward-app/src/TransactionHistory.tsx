@@ -84,8 +84,8 @@ export function TransactionHistory({
         limit: 200,
         offset: 0,
       });
-      setRecords(result.records ?? []);
-      setTotal(result.total ?? 0);
+      setRecords(result.records);
+      setTotal(result.total);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load transactions",
@@ -104,7 +104,7 @@ export function TransactionHistory({
   const filtered = useMemo(() => {
     let items = records;
     if (chainFilter !== "") {
-      items = items.filter((tx) => tx.request?.chainId === chainFilter);
+      items = items.filter((tx) => tx.request.chainId === chainFilter);
     }
     // Sort newest first
     return [...items].sort((a, b) => {
@@ -251,29 +251,29 @@ export function TransactionHistory({
                           type="button"
                           className="inline-flex items-center gap-1 font-mono text-xs text-txt hover:text-accent transition-colors cursor-pointer"
                           onClick={() =>
-                            void handleCopy(tx.request?.to ?? "", "Address")
+                            void handleCopy(tx.request.to, "Address")
                           }
-                          title={tx.request?.to}
+                          title={tx.request.to}
                         >
-                          {truncateAddress(tx.request?.to ?? "")}
+                          {truncateAddress(tx.request.to)}
                           <Copy className="h-3 w-3 opacity-0 group-hover:opacity-60" />
                         </button>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-txt">
                         {formatWeiValue(
-                          tx.request?.value ?? "0",
-                          tx.request?.chainId ?? 8453,
+                          tx.request.value,
+                          tx.request.chainId,
                         )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-muted">
-                        {getChainName(tx.request?.chainId ?? 0)}
+                        {getChainName(tx.request.chainId)}
                       </td>
                       <td className="px-4 py-3">
                         {tx.txHash ? (
                           <a
                             href={
                               getExplorerTxUrl(
-                                tx.request?.chainId ?? 8453,
+                                tx.request.chainId,
                                 tx.txHash,
                               ) ?? "#"
                             }

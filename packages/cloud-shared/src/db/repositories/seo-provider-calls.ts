@@ -49,7 +49,7 @@ async function prepareSeoProviderCallPayload<
     return data;
   }
 
-  const createdAt = data.created_at ?? context.created_at ?? new Date();
+  const createdAt = data.created_at ?? context.created_at;
   const organizationId = await requestOrganizationId(data.request_id ?? context.request_id);
   const [requestPayload, responsePayload] = await Promise.all([
     data.request_payload === undefined

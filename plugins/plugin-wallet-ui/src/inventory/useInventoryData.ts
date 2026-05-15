@@ -98,8 +98,8 @@ function buildTokenRowsAllChains({
           chain: chain.chain,
           symbol: tk.symbol,
           name: tk.name,
-          contractAddress: tk.contractAddress ?? null,
-          logoUrl: tk.logoUrl ?? null,
+          contractAddress: tk.contractAddress,
+          logoUrl: tk.logoUrl,
           balance: tk.balance,
           valueUsd: Number.parseFloat(tk.valueUsd) || 0,
           balanceRaw: Number.parseFloat(tk.balance) || 0,
@@ -160,8 +160,8 @@ function buildTokenRowsAllChains({
         chain: "Solana",
         symbol: tk.symbol,
         name: tk.name,
-        contractAddress: tk.mint ?? null,
-        logoUrl: tk.logoUrl ?? null,
+        contractAddress: tk.mint,
+        logoUrl: tk.logoUrl,
         balance: tk.balance,
         valueUsd: Number.parseFloat(tk.valueUsd) || 0,
         balanceRaw: Number.parseFloat(tk.balance) || 0,
@@ -338,8 +338,8 @@ export function useInventoryData({
     if (!chainConfig && !evmChain) return null;
 
     return {
-      name: evmChain?.chain ?? chainConfig?.name ?? singleChainFocus,
-      nativeSymbol: evmChain?.nativeSymbol ?? chainConfig?.nativeSymbol ?? null,
+      name: evmChain?.chain ?? chainConfig?.name,
+      nativeSymbol: evmChain?.nativeSymbol ?? chainConfig?.nativeSymbol,
       nativeBalance: evmChain?.nativeBalance ?? (knownEvmAddr ? "0" : null),
       error: evmChain?.error ?? null,
     };

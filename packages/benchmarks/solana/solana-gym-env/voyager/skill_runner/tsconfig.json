@@ -16,5 +16,5 @@
     "allowJs": true,
     "types": ["node"]
   },
-  "exclude": ["code.ts"]
+  "exclude": ["code.ts", "_test_bad.ts"]
 }

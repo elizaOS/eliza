@@ -105,10 +105,7 @@ async function fileToDataUrl(file: File): Promise<string> {
 async function audioFileToPayload(file: File): Promise<AudioPayload> {
   const audioDataUrl = await fileToDataUrl(file);
   const buffer = await file.arrayBuffer();
-  const AudioContextCtor =
-    window.AudioContext ??
-    (window as unknown as { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext;
+  const AudioContextCtor = window.AudioContext;
   if (!AudioContextCtor) {
     throw new Error("This browser cannot decode audio files.");
   }

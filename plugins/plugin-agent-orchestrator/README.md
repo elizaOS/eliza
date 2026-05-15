@@ -4,7 +4,7 @@
 [![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (codex, claude, opencode) via the [`acpx`](https://github.com/0xouroboros/acp) CLI using the structured Agent Client Protocol, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
+The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) via the [`acpx`](https://github.com/0xouroboros/acp) CLI using the structured Agent Client Protocol, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that uses `acpx` to run coding agents as subprocesses on the same host as the runtime.
 
@@ -24,7 +24,7 @@ npm install -g acpx@latest
 acpx --version
 ```
 
-You also need at least one ACP-compatible agent CLI (`codex`, `claude`, or `opencode`) installed and authenticated.
+You also need at least one ACP-compatible agent CLI (`elizaos`, `pi-agent`, `opencode`, `codex`, or `claude`) installed and authenticated.
 
 ## Quick start
 
@@ -105,12 +105,13 @@ You usually don't subscribe directly — `SubAgentRouter` already does, and rout
 
 ## Configuration
 
-All configuration is via environment variables. Sensible defaults; most users only need `ELIZA_ACP_CLI` if `acpx` is not on `PATH`.
+All configuration is via environment variables. Sensible defaults; most users only need `ELIZA_ACP_CLI` if `acpx` is not on `PATH`. The settings API writes these keys to the eliza config env block, and `AcpService` rereads that block for each spawn, so changing the default adapter does not require a runtime restart.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path. |
-| `ELIZA_ACP_DEFAULT_AGENT` | `codex` | Default agent type. |
+| `ELIZA_ACP_DEFAULT_AGENT` / `ELIZA_DEFAULT_AGENT_TYPE` | `elizaos` | Default agent type. The settings API supports `elizaos`, `pi-agent`, and `opencode` as configurable defaults. Operators may still set `claude` or `codex` directly. |
+| `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | When `fixed`, the configured default wins over planner-supplied adapter guesses. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `1800000` (30m) | Per-prompt timeout. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acpx` | Where to persist session state when no runtime DB. |
@@ -118,6 +119,18 @@ All configuration is via environment variables. Sensible defaults; most users on
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap. |
 | `ACPX_SUB_AGENT_ROUTER_DISABLED` | unset | Set to `1` to keep the router service registered but unbound (test/staging). |
 | `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap before force-stop to prevent ping-pong loops. |
+
+### Adapter Commands And Models
+
+`acpx` can run named adapters (`acpx elizaos ...`) or an explicit ACP subprocess command (`acpx --agent "opencode acp" ...`). The orchestrator uses the named adapter unless one of these command overrides is set:
+
+| Variable | Purpose |
+| --- | --- |
+| `ELIZAOS_ACP_COMMAND` / `ELIZA_ELIZAOS_ACP_COMMAND` | Explicit elizaOS ACP command, for example `/opt/elizaos/bin/elizaos acp`. |
+| `ELIZA_PI_AGENT_ACP_COMMAND` | Explicit Pi Agent ACP command, for example `/opt/pi-agent/bin/pi-agent acp`. |
+| `ELIZA_OPENCODE_ACP_COMMAND` | Explicit OpenCode ACP command. If unset and the vendored source is present, the plugin points `acpx --agent` at the bundled shim. |
+
+For Cerebras-backed benchmark runs, set `CEREBRAS_API_KEY` (and optionally `CEREBRAS_BASE_URL`). The default powerful model for `elizaos`, `pi-agent`, and `opencode` is `gpt-oss-120b`; override it globally with `CEREBRAS_MODEL`, or per adapter with `ELIZA_ELIZAOS_MODEL_POWERFUL`, `ELIZA_PI_AGENT_MODEL_POWERFUL`, or `ELIZA_OPENCODE_MODEL_POWERFUL`.
 
 ## Persistence
 

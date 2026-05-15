@@ -75,7 +75,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs?.();
+  vi.unstubAllEnvs();
 });
 
 describe("clipboard — macOS", () => {

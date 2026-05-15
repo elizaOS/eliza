@@ -89,7 +89,7 @@ export function WidgetHost({
   const developerModeEnabled = useIsDeveloperMode();
 
   const resolved = useMemo(() => {
-    const all = resolveWidgetsForSlot(slot, plugins ?? []);
+    const all = resolveWidgetsForSlot(slot, plugins);
     const gated = developerModeEnabled
       ? all
       : all.filter((entry) => entry.declaration.developerOnly !== true);
@@ -106,9 +106,7 @@ export function WidgetHost({
     >
       {resolved.map(({ declaration, Component }) => {
         const widgetKey = `${declaration.pluginId}/${declaration.id}`;
-        const pluginState = (plugins ?? []).find(
-          (p) => p.id === declaration.pluginId,
-        );
+        const pluginState = plugins.find((p) => p.id === declaration.pluginId);
 
         const widgetProps: WidgetProps = {
           pluginId: declaration.pluginId,

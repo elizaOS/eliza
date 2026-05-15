@@ -64,7 +64,7 @@ const ELIZA_BRANDING: Partial<BrandingConfig> = {
   // other hosts inject an explicit API base before React boots, and that host
   // backend should control onboarding capabilities instead.
   cloudOnly: shouldUseCloudOnlyBranding({
-    isDev: import.meta.env.DEV ?? false,
+    isDev: import.meta.env.DEV,
     injectedApiBase:
       typeof window === "undefined" ? undefined : window.__ELIZA_API_BASE__,
     isNativePlatform: Capacitor.isNativePlatform(),

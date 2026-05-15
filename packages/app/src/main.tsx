@@ -308,7 +308,7 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // other hosts inject an explicit API base before React boots, and that host
   // backend should control onboarding capabilities instead.
   cloudOnly: shouldUseCloudOnlyBranding({
-    isDev: import.meta.env.DEV ?? false,
+    isDev: import.meta.env.DEV,
     injectedApiBase:
       typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
@@ -359,8 +359,8 @@ function hasRuntimePickerOverride(): boolean {
 }
 
 function getWindowUrlSearchParams(): URLSearchParams {
-  const search = window.location?.search ?? "";
-  const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+  const search = window.location.search;
+  const hashSearch = window.location.hash.split("?")[1] ?? "";
   return new URLSearchParams(search || hashSearch);
 }
 
@@ -1473,7 +1473,7 @@ function handleDeepLink(url: string): void {
 function getDeepLinkPath(parsed: URL): string {
   const host = parsed.host.replace(/^\/+|\/+$/g, "");
   const pathname = parsed.pathname.replace(/^\/+|\/+$/g, "");
-  if (host === APP_CONFIG.appId || host === APP_CONFIG.desktop?.bundleId) {
+  if (host === APP_CONFIG.appId || host === APP_CONFIG.desktop.bundleId) {
     return pathname;
   }
   return [host, pathname].filter(Boolean).join("/");
@@ -1825,10 +1825,7 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
   const existing = await Preferences.get({ key: DEVICE_BRIDGE_ID_KEY });
   if (existing.value?.trim()) return existing.value.trim();
 
-  const prefix = isAndroid ? "android" : isIOS ? "ios" : "mobile";
-  const generated =
-    globalThis.crypto?.randomUUID?.() ??
-    `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const generated = globalThis.crypto.randomUUID();
   await Preferences.set({ key: DEVICE_BRIDGE_ID_KEY, value: generated });
   return generated;
 }

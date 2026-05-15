@@ -450,7 +450,7 @@ describe("interactive voice path — wiring (stub backends)", () => {
 		const signals: string[] = [];
 		bridge.scheduler.bargeIn.onSignal((s) => {
 			signals.push(s.type);
-			if (s.type === "hard-stop" && s.token?.signal) {
+			if (s.type === "hard-stop" && s.token.signal) {
 				s.token.signal.addEventListener("abort", () => {
 					aborted = true;
 				});

@@ -490,9 +490,12 @@ async function generateText(
 
       const data = (await response.json()) as ChatCompletionResponse;
 
-      const choice = data.choices?.[0];
-      const rawText = choice?.message?.content ?? "";
-      const rawToolCalls = choice?.message?.tool_calls ?? [];
+      const choice = data.choices[0];
+      if (!choice) {
+        throw new Error("No choices in Grok response");
+      }
+      const rawText = choice.message.content ?? "";
+      const rawToolCalls = choice.message.tool_calls ?? [];
 
       if (!returnNative && !rawText) {
         throw new Error("No content in Grok response");
@@ -564,7 +567,7 @@ async function createEmbedding(
 
   const data = (await response.json()) as EmbeddingResponse;
 
-  if (!data.data?.[0]?.embedding) {
+  if (!data.data[0]?.embedding) {
     throw new Error("No embedding in Grok response");
   }
 

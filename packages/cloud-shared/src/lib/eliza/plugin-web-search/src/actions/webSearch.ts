@@ -119,7 +119,7 @@ async function extractSearchParams(
     actionInput: content.actionInput,
   }) as WebSearchParams;
 
-  if (messageParams?.query?.trim()) {
+  if (messageParams.query?.trim()) {
     logger.info(
       { src: "webSearch:extractParams", source: "message.params" },
       "Using params from action message",
@@ -130,9 +130,9 @@ async function extractSearchParams(
   // First, try to get params from state (custom bootstrap pattern)
   const composedState = await runtime.composeState(message, ["ACTION_STATE"], true);
   const stateParamSources = [
-    { source: "actionParams", value: composedState?.data?.actionParams },
-    { source: "webSearch", value: composedState?.data?.webSearch },
-    { source: "websearch", value: composedState?.data?.websearch },
+    { source: "actionParams", value: composedState.data.actionParams },
+    { source: "webSearch", value: composedState.data.webSearch },
+    { source: "websearch", value: composedState.data.websearch },
   ];
   const matchedStateParams = stateParamSources.find(
     (candidate) =>
@@ -141,7 +141,7 @@ async function extractSearchParams(
   const stateParams = (matchedStateParams?.value || {}) as WebSearchParams;
 
   // If we have a query from state, use it
-  if (stateParams?.query?.trim()) {
+  if (stateParams.query?.trim()) {
     logger.info(
       {
         src: "webSearch:extractParams",
@@ -160,8 +160,8 @@ async function extractSearchParams(
     const extractionState = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
 
     // Prefer conversationLog if available, fallback to recentMessages
-    const conversationLog = extractionState?.values?.conversationLog;
-    const recentMessages = extractionState?.values?.recentMessages;
+    const conversationLog = extractionState.values.conversationLog;
+    const recentMessages = extractionState.values.recentMessages;
 
     const conversationContext =
       (typeof conversationLog === "string" && conversationLog.trim()) ||
@@ -205,7 +205,7 @@ async function extractSearchParams(
   }
 
   // Final fallback: use the message text directly as the query
-  const messageText = message.content?.text?.trim();
+  const messageText = message.content.text?.trim();
   if (messageText) {
     logger.info(
       { src: "webSearch:extractParams", source: "messageText" },
@@ -319,7 +319,7 @@ export const webSearch: Action & Record<string, unknown> = {
       const params = await extractSearchParams(runtime, message, state);
 
       // Extract and validate query parameter (required)
-      const query: string | undefined = params?.query?.trim();
+      const query: string | undefined = params.query?.trim();
 
       if (!query) {
         const errorMsg = "Missing required parameter 'query'. Please specify what to search for.";
@@ -341,9 +341,9 @@ export const webSearch: Action & Record<string, unknown> = {
         return emptyResult;
       }
 
-      const source = params?.source?.trim();
-      const topic = params?.topic === "finance" ? "finance" : "general";
-      const maxResults = params?.max_results ? Math.min(Math.max(1, params.max_results), 10) : 5;
+      const source = params.source?.trim();
+      const topic = params.topic === "finance" ? "finance" : "general";
+      const maxResults = params.max_results ? Math.min(Math.max(1, params.max_results), 10) : 5;
 
       logger.info({ src: "webSearch:handler", query, topic, source }, "Executing web search");
 
@@ -353,18 +353,18 @@ export const webSearch: Action & Record<string, unknown> = {
         topic,
         source,
         max_results: maxResults,
-        search_depth: params?.search_depth,
-        time_range: params?.time_range,
-        start_date: params?.start_date,
-        end_date: params?.end_date,
+        search_depth: params.search_depth,
+        time_range: params.time_range,
+        start_date: params.start_date,
+        end_date: params.end_date,
       };
 
       const searchResponse = await webSearchService.search(query, {
         topic,
         max_results: maxResults,
-        time_range: params?.time_range,
-        start_date: params?.start_date,
-        end_date: params?.end_date,
+        time_range: params.time_range,
+        start_date: params.start_date,
+        end_date: params.end_date,
         source,
       });
 

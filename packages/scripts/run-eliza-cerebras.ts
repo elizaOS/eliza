@@ -247,8 +247,8 @@ function buildMockActions(): Action[] {
     ],
     handler: async (_rt, _msg, _state, options) => {
       const params = options.parameters as Record<string, unknown>;
-      const content = (params?.content as string) ?? "";
-      const title = (params?.title as string) ?? "Untitled";
+      const content = (params.content as string) ?? "";
+      const title = (params.title as string) ?? "Untitled";
       const docId = `doc-${Date.now()}`;
       printStage(
         "TOOL",
@@ -349,9 +349,9 @@ function buildMockActions(): Action[] {
     ],
     handler: async (_rt, _msg, _state, options) => {
       const params = options.parameters as Record<string, unknown>;
-      const title = (params?.title as string) ?? "Untitled meeting";
-      const time = (params?.time as string) ?? "TBD";
-      const attendees = (params?.attendees as string) ?? "";
+      const title = (params.title as string) ?? "Untitled meeting";
+      const time = (params.time as string) ?? "TBD";
+      const attendees = (params.attendees as string) ?? "";
       printStage(
         "TOOL",
         `CALENDAR_CREATE_EVENT called: title="${title}", time="${time}", attendees="${attendees}"`,
@@ -404,8 +404,8 @@ function buildMockActions(): Action[] {
     ],
     handler: async (_rt, _msg, _state, options) => {
       const params = options.parameters as Record<string, unknown>;
-      const to = (params?.to as string) ?? "unknown@example.com";
-      const subject = (params?.subject as string) ?? "(no subject)";
+      const to = (params.to as string) ?? "unknown@example.com";
+      const subject = (params.subject as string) ?? "(no subject)";
       printStage("TOOL", `EMAIL_DRAFT called: to="${to}", subject="${subject}"`);
       return {
         success: true,
@@ -449,8 +449,8 @@ function buildMockActions(): Action[] {
     ],
     handler: async (_rt, _msg, _state, options) => {
       const params = options.parameters as Record<string, unknown>;
-      const to = (params?.to as string) ?? "unknown@example.com";
-      const subject = (params?.subject as string) ?? "(no subject)";
+      const to = (params.to as string) ?? "unknown@example.com";
+      const subject = (params.subject as string) ?? "(no subject)";
       printStage("TOOL", `EMAIL_SEND called: to="${to}", subject="${subject}"`);
       return {
         success: true,
@@ -758,7 +758,7 @@ async function runScenario(
   console.log(`\n${GREEN}[RESULT]${RESET} kind: ${result?.kind ?? "error"}`);
 
   if (result?.kind === "planned_reply" || result?.kind === "direct_reply") {
-    const text = result.result?.responseContent?.text;
+    const text = result.result.responseContent?.text;
     console.log(`${GREEN}[RESPONSE]${RESET} "${text}"`);
   } else if (result?.kind === "terminal") {
     console.log(`${YELLOW}[TERMINAL]${RESET} action: ${result.action}`);
@@ -800,9 +800,9 @@ async function runScenario(
     for (const stage of t.stages ?? []) {
       const u = stage.model?.usage as Record<string, number> | undefined;
       if (u) {
-        totalPrompt += u.promptTokens ?? 0;
-        totalCompletion += u.completionTokens ?? 0;
-        totalCacheRead += u.cacheReadInputTokens ?? 0;
+        totalPrompt += u.promptTokens;
+        totalCompletion += u.completionTokens;
+        totalCacheRead += u.cacheReadInputTokens;
       }
     }
     const totalTokens = totalPrompt + totalCompletion;

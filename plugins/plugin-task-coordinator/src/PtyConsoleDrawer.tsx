@@ -69,10 +69,10 @@ export function PtyConsoleDrawer({
                   }`}
                 >
                   <div className="truncate font-medium">
-                    {session.label ?? "Terminal"}
+                    {session.label}
                   </div>
                   <div className="truncate text-[11px] opacity-75">
-                    {session.workdir ?? session.sessionId}
+                    {session.workdir}
                   </div>
                 </button>
               );

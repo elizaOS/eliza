@@ -126,7 +126,7 @@ export async function writeClipboard(text: string): Promise<void> {
   }
   if (result.status !== 0) {
     // encoding: "utf-8" forces stderr to string when present.
-    const stderr = result.stderr ?? "";
+    const stderr = result.stderr;
     throw new Error(
       `Clipboard write failed (${plan.write.command} exit ${result.status}): ${stderr.trim()}`,
     );

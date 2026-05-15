@@ -15,7 +15,7 @@ function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/20 bg-card/30 px-3 py-3 transition-colors hover:bg-card/50">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/30 bg-bg-accent text-xs-tight font-semibold uppercase text-muted-strong">
-        {(customer.firstName?.[0] ?? customer.email[0] ?? "?").toUpperCase()}
+        {(customer.firstName[0] ?? customer.email[0] ?? "?").toUpperCase()}
       </div>
 
       <div className="min-w-0 flex-1">

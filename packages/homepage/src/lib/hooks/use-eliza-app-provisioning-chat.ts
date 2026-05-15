@@ -23,10 +23,7 @@ interface ChatResponse {
 }
 
 function uid(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return globalThis.crypto.randomUUID();
 }
 
 const POLL_INTERVAL_MS = 5_000;

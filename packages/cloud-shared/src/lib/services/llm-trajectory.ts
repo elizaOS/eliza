@@ -196,7 +196,7 @@ class LlmTrajectoryService {
 
     return {
       trajectories,
-      total: Number(countResult?.count ?? 0),
+      total: Number(countResult.count),
       limit,
       offset,
     };
@@ -237,12 +237,12 @@ class LlmTrajectoryService {
       .groupBy(llmTrajectories.model);
 
     return {
-      total: Number(result?.total ?? 0),
-      totalInputTokens: Number(result?.totalInputTokens ?? 0),
-      totalOutputTokens: Number(result?.totalOutputTokens ?? 0),
-      avgLatencyMs: Math.round(Number(result?.avgLatencyMs ?? 0)),
-      successCount: Number(result?.successCount ?? 0),
-      failureCount: Number(result?.failureCount ?? 0),
+      total: Number(result.total),
+      totalInputTokens: Number(result.totalInputTokens),
+      totalOutputTokens: Number(result.totalOutputTokens),
+      avgLatencyMs: Math.round(Number(result.avgLatencyMs)),
+      successCount: Number(result.successCount),
+      failureCount: Number(result.failureCount),
       byPurpose: byPurpose.map((r: { purpose: string | null; count: unknown }) => ({
         purpose: r.purpose,
         count: Number(r.count),

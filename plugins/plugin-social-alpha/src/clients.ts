@@ -339,7 +339,7 @@ export class JupiterClient {
 		if ("error" in quote) {
 			console.error("Quote error:", quote);
 			throw new Error(
-				`Failed to get quote: ${quote?.error || "Unknown error"}`,
+				`Failed to get quote: ${quote.error || "Unknown error"}`,
 			);
 		}
 
@@ -377,10 +377,10 @@ export class JupiterClient {
 			},
 		);
 
-		if (!swapData?.swapTransaction) {
+		if (!swapData.swapTransaction) {
 			console.error("Swap error:", swapData);
 			throw new Error(
-				`Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`,
+				`Failed to get swap transaction: ${swapData.error || "No swap transaction returned"}`,
 			);
 		}
 
@@ -476,7 +476,7 @@ export class DexscreenerClient {
 				options,
 			);
 
-			if (!data?.pairs) {
+			if (!data.pairs) {
 				throw new Error("No DexScreener data available");
 			}
 
@@ -603,7 +603,7 @@ export class HeliusClient {
 					HeliusTokenAccountsParams
 				>(url, "getTokenAccounts", params);
 
-				if (!data?.result?.token_accounts?.length) break;
+				if (!data.result?.token_accounts?.length) break;
 
 				data.result.token_accounts.forEach((account) => {
 					const owner = account.owner;
@@ -1095,10 +1095,10 @@ export class BirdeyeClient {
 				valueSol: new BigNumber(item.valueUsd || 0)
 					.div(solPriceInUSD)
 					.toFixed(6),
-				priceUsd: item.priceUsd?.toString() || "0",
-				valueUsd: item.valueUsd?.toString() || "0",
-				uiAmount: item.uiAmount?.toString() || "0",
-				balance: item.balance?.toString() || "0",
+				priceUsd: item.priceUsd.toString() || "0",
+				valueUsd: item.valueUsd.toString() || "0",
+				uiAmount: item.uiAmount.toString() || "0",
+				balance: item.balance.toString() || "0",
 			}));
 
 			const totalSol = totalUsd.div(solPriceInUSD);

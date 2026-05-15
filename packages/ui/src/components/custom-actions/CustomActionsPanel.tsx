@@ -281,7 +281,7 @@ export function CustomActionsPanel({
                         {action.name}
                       </div>
                       <p className="text-2xs text-muted mt-0.5">
-                        {formatParameterCount(action.parameters?.length || 0)}
+                        {formatParameterCount(action.parameters.length || 0)}
                         {action.similes?.length
                           ? ` • ${formatAliasCount(action.similes.length)}`
                           : ""}

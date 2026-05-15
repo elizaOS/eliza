@@ -54,7 +54,7 @@ export class MockLpService extends Service implements ILpService {
 
     if (!tokenAMint && !tokenBMint) return pools;
     return pools.filter((pool) => {
-      const mints = [pool.tokenA?.mint, pool.tokenB?.mint];
+      const mints = [pool.tokenA.mint, pool.tokenB.mint];
       return (
         (!tokenAMint || mints.includes(tokenAMint)) &&
         (!tokenBMint || mints.includes(tokenBMint))
@@ -63,7 +63,7 @@ export class MockLpService extends Service implements ILpService {
   }
 
   async addLiquidity(config: AddLiquidityConfig): Promise<TransactionResult> {
-    const owner = config.userVault?.publicKey?.toBase58?.() || "test-owner";
+    const owner = config.userVault.publicKey.toBase58() || "test-owner";
     const position: LpPositionDetails = {
       poolId: config.poolId,
       dex: this.dexName,
@@ -89,7 +89,7 @@ export class MockLpService extends Service implements ILpService {
   async removeLiquidity(
     config: RemoveLiquidityConfig,
   ): Promise<TransactionResult> {
-    const owner = config.userVault?.publicKey?.toBase58?.() || "test-owner";
+    const owner = config.userVault.publicKey.toBase58() || "test-owner";
     this.positions.set(
       owner,
       (this.positions.get(owner) || []).filter(

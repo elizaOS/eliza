@@ -29,7 +29,7 @@ app.post("/", async (c) => {
     }
 
     const body = (await c.req.json()) as { session_id?: string };
-    const sessionId = body?.session_id;
+    const sessionId = body.session_id;
     if (!sessionId) {
       return c.json({ success: false, error: "Missing session_id" }, 400);
     }

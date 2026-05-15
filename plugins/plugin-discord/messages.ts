@@ -980,7 +980,7 @@ export class MessageManager {
 								);
 							}
 						}
-					} else if (content && content.channelType === "DM") {
+					} else if (content.channelType === "DM") {
 						const user = await this.client.users.fetch(message.author.id);
 						if (!user) {
 							this.runtime.logger.warn(

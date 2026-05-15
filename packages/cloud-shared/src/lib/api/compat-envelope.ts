@@ -238,7 +238,7 @@ export function toCompatJob(sandbox: AgentSandbox): CompatJobShape {
     createdAt: toISO(sandbox.created_at),
     startedAt: sandbox.status !== "pending" ? toISO(sandbox.updated_at) : null,
     completedAt: isTerminal ? toISO(sandbox.updated_at) : null,
-    retryCount: sandbox.error_count ?? 0,
+    retryCount: sandbox.error_count,
     id: sandbox.id,
     name: "provision",
     state: waifuStateMap[sandbox.status] ?? "unknown",

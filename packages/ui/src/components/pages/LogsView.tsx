@@ -73,10 +73,10 @@ function LogsViewBody() {
     if (!normalizedSearch) return logs;
     return logs.filter((entry) => {
       const haystack = [
-        entry.message ?? "",
-        entry.source ?? "",
-        entry.level ?? "",
-        ...(entry.tags ?? []),
+        entry.message,
+        entry.source,
+        entry.level,
+        ...entry.tags,
       ];
       return haystack.some((part) =>
         part.toLowerCase().includes(normalizedSearch),
@@ -287,7 +287,7 @@ function LogsViewBody() {
 
                 {/* Tag badges */}
                 <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
-                  {(entry.tags ?? []).map((t: string) => {
+                  {entry.tags.map((t: string) => {
                     return (
                       <span
                         key={t}

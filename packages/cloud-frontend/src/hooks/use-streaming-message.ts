@@ -342,7 +342,7 @@ export function processSSEMessage(
     case "error": {
       const errorData = data as SSEErrorData;
       const errorMessage =
-        errorData?.message || errorData?.error || "Unknown error";
+        errorData.message || errorData.error || "Unknown error";
       onError?.(errorMessage);
       break;
     }
@@ -356,7 +356,7 @@ export function processSSEMessage(
     case "warning": {
       // Warning event - log but don't treat as error
       const warningData = data as SSEErrorData;
-      const warningMessage = warningData?.message || "Warning received";
+      const warningMessage = warningData.message || "Warning received";
       console.warn("[Stream] Warning:", warningMessage);
       break;
     }

@@ -710,7 +710,7 @@ export function GameView() {
     activeGameRun?.viewerAttachment === "detached";
   const canDetachViewer =
     activeGameRun?.viewerAttachment === "attached" &&
-    (activeGameRun?.supportsViewerDetach ?? true);
+    (activeGameRun.supportsViewerDetach ?? true);
 
   useEffect(() => {
     appRunsRef.current = appRuns;
@@ -781,22 +781,7 @@ export function GameView() {
       const currentRuns = appRunsRef.current;
       const nextRuns = currentRuns.map((run) => {
         if (run.runId !== nextRun.runId) return run;
-        const nextHealth =
-          nextRun.health ??
-          (nextRun.session?.status === "disconnected"
-            ? {
-                state: "degraded" as const,
-                message:
-                  nextRun.session.summary ??
-                  nextRun.summary ??
-                  "Session unavailable.",
-              }
-            : nextRun.session
-              ? {
-                  state: "healthy" as const,
-                  message: nextRun.session.summary ?? null,
-                }
-              : run.health);
+        const nextHealth = nextRun.health;
         return {
           ...run,
           ...nextRun,
@@ -872,7 +857,7 @@ export function GameView() {
         if (!isCurrentRefresh()) return sessionStateRef.current;
         if (activeGameRunId) {
           setConnectionStatus("disconnected");
-          return currentSession ?? null;
+          return currentSession;
         }
         applySessionState(buildDisconnectedSessionState(currentSession));
         setConnectionStatus("disconnected");
@@ -887,7 +872,7 @@ export function GameView() {
     try {
       return await refreshTask;
     } finally {
-      if (refreshSessionPromiseRef.current?.promise === refreshTask) {
+      if (refreshSessionPromiseRef.current.promise === refreshTask) {
         refreshSessionPromiseRef.current = null;
       }
     }
@@ -952,7 +937,7 @@ export function GameView() {
   useEffect(() => {
     if (!activeGameRunId) return;
     const handleUnload = () => {
-      const beacon = navigator?.sendBeacon;
+      const beacon = navigator.sendBeacon;
       if (typeof beacon !== "function") return;
       const baseUrl = client.getBaseUrl();
       const stopPath = `/api/apps/runs/${encodeURIComponent(activeGameRunId)}/stop`;
@@ -1167,9 +1152,9 @@ export function GameView() {
       packageNameToAppRouteSlug(activeGameApp) ?? activeGameApp
     ).toLowerCase();
     return logs.filter((entry) => {
-      const message = (entry.message ?? "").toLowerCase();
-      const source = (entry.source ?? "").toLowerCase();
-      const tags = (entry.tags ?? []).map((t) => t.toLowerCase());
+      const message = entry.message.toLowerCase();
+      const source = entry.source.toLowerCase();
+      const tags = entry.tags.map((t) => t.toLowerCase());
       return (
         message.includes(appKeyword) ||
         source.includes(appKeyword) ||
@@ -1290,7 +1275,7 @@ export function GameView() {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
-      if (event.data?.type !== expectedReadyType) return;
+      if (event.data.type !== expectedReadyType) return;
       if (
         postMessageTargetOrigin !== "*" &&
         event.origin !== postMessageTargetOrigin
@@ -1824,7 +1809,7 @@ export function GameView() {
                 >
                   {entry.level}
                 </span>
-                {(entry.tags ?? []).slice(0, 2).map((t: string) => {
+                {entry.tags.slice(0, 2).map((t: string) => {
                   const c = TAG_COLORS[t];
                   return (
                     <span

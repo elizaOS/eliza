@@ -36,7 +36,7 @@ app.post("/", async (c) => {
   }
 
   const body = (await c.req.json().catch(() => null)) as VerifyBody | null;
-  if (!body?.message || !body?.signature) {
+  if (!body?.message || !body.signature) {
     return c.json({ error: "message and signature are required" }, 400);
   }
 

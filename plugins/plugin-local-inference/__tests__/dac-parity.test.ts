@@ -355,7 +355,7 @@ describe.skipIf("skip" in resolved)(
       );
       expect(
         proc.status,
-        `omnivoice-codec failed (status=${proc.status}, stderr=${proc.stderr?.slice(-2000) ?? ""})`,
+        `omnivoice-codec failed (status=${proc.status}, stderr=${proc.stderr.slice(-2000)})`,
       ).toBe(0);
 
       const producedWav = inputCopy.replace(/\.rvq$/, ".wav");

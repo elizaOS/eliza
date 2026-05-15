@@ -249,7 +249,7 @@ export function ViewManagerPage() {
       return (
         v.label.toLowerCase().includes(q) ||
         (v.description?.toLowerCase().includes(q) ?? false) ||
-        (v.pluginName?.toLowerCase().includes(q) ?? false) ||
+        v.pluginName.toLowerCase().includes(q) ||
         (v.tags?.some((t) => t.toLowerCase().includes(q)) ?? false)
       );
     });

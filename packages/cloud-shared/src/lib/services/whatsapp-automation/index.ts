@@ -456,7 +456,7 @@ class WhatsAppAutomationService {
 
     try {
       const response = await sendWhatsAppMessage(accessToken, phoneNumberId, to, text);
-      const messageId = response.messages?.[0]?.id;
+      const messageId = response.messages[0]?.id;
 
       logger.info("[WhatsAppAutomation] Message sent", {
         organizationId,

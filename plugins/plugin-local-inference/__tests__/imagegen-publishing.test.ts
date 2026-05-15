@@ -120,7 +120,7 @@ describe("WS3 imagegen publishing pipeline", () => {
 		)) {
 			for (let i = 0; i < perTier.optional.length; i += 1) {
 				const entry = perTier.optional[i];
-				const where = `imagegen.perTier.${tierId}.optional[${i}] (${entry?.id ?? "<no id>"})`;
+				const where = `imagegen.perTier.${tierId}.optional[${i}] (${entry?.id})`;
 				const hasUrl = isHttpsUrl(entry?.url);
 				const isStaged = entry?.staged === true;
 				if (hasUrl && isStaged) {
@@ -157,7 +157,7 @@ describe("WS3 imagegen publishing pipeline", () => {
 		const extras = loadExtras();
 		const failures: string[] = [];
 		const walk = (where: string, entry: ImageGenEntry) => {
-			if (entry?.sha256 !== undefined && !isHexSha256(entry.sha256)) {
+			if (entry.sha256 !== undefined && !isHexSha256(entry.sha256)) {
 				failures.push(
 					`${where}: sha256 is set but not a 64-char hex digest`,
 				);

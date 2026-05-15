@@ -212,7 +212,7 @@ const workflowRoutes: LinearRoute[] = [
 ];
 
 function textOf(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function readOptions(options?: HandlerOptions | Record<string, unknown>): Record<string, unknown> {
@@ -292,7 +292,7 @@ async function dispatchRoute<T extends LinearRouterResultData>(
   if (!route) {
     const subactions = routes.map((candidate) => candidate.subaction).join(", ");
     const text = `${routerName} requires one of these subactions: ${subactions}.`;
-    await callback?.({ text, source: message.content?.source });
+    await callback?.({ text, source: message.content.source });
     const data: T = {
       actionName: routerName,
       router: routerName,
@@ -324,7 +324,7 @@ async function dispatchRoute<T extends LinearRouterResultData>(
     typeof result.text === "string" && result.text.length > 0
       ? result.text
       : `${routerName} routed to ${route.action.name}.`;
-  const success = result.success ?? true;
+  const success = result.success;
   const childData = typeof result.data === "object" && result.data !== null ? result.data : {};
   const data: T = {
     ...childData,

@@ -405,7 +405,7 @@ export async function recommendSkillsForTask(
     | (Service & SkillsServiceShape)
     | undefined;
   if (!service) {
-    log.debug?.(
+    log.debug(
       `${LOG_PREFIX} AGENT_SKILLS_SERVICE not registered; no recommendations`,
     );
     return [];
@@ -446,7 +446,7 @@ export async function recommendSkillsForTask(
     .slice(0, KEYWORD_CANDIDATE_LIMIT);
 
   if (scoredCandidates.length === 0) {
-    log.debug?.(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);
+    log.debug(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);
     return withForcedCloudAppSkills([], candidates, opts.taskText, max);
   }
 
@@ -508,7 +508,7 @@ export async function recommendSkillsForTask(
   const responseText = typeof rawResponse === "string" ? rawResponse : "";
   const llmScores = parseLlmScores(responseText);
   if (llmScores.length === 0) {
-    log.debug?.(
+    log.debug(
       `${LOG_PREFIX} LLM scoring returned no parseable entries; falling back to keyword pass`,
     );
     return withForcedCloudAppSkills(

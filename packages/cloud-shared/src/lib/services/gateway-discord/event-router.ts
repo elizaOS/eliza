@@ -491,8 +491,8 @@ function processMessage(data: MessageCreateData, payload: DiscordEventPayload): 
       attachments.push({
         id: uuidv4(),
         url: va.url,
-        contentType: resolveContentType(va.content_type ?? undefined),
-        title: va.filename ?? undefined,
+        contentType: resolveContentType(va.content_type),
+        title: va.filename,
       });
     }
   }

@@ -858,7 +858,7 @@ export class XService extends Service {
       cursor?: string;
     } = {},
   ): Promise<Memory[]> {
-    const runtime = context.runtime ?? this.runtime;
+    const runtime = context.runtime;
     const accountId = this.resolveAccountId(
       params.target,
       context.target,
@@ -910,12 +910,12 @@ export class XService extends Service {
     context: PostConnectorQueryContext,
     params: { query: string; limit?: number; cursor?: string },
   ): Promise<Memory[]> {
-    const query = params.query?.trim();
+    const query = params.query.trim();
     if (!query) {
       throw new Error("X searchPosts connector requires a query.");
     }
 
-    const runtime = context.runtime ?? this.runtime;
+    const runtime = context.runtime;
     const accountId = this.resolveAccountId(context.target, context.metadata);
     const base = (await this.getTwitterClientForAccount(accountId)).client;
     const result = await base.fetchSearchTweets(
@@ -952,7 +952,7 @@ export class XService extends Service {
       after?: string;
     } = {},
   ): Promise<Memory[]> {
-    const runtime = context.runtime ?? this.runtime;
+    const runtime = context.runtime;
     const target = params.target ?? context.target;
     const accountId = this.resolveAccountId(target, context.target, context);
     const targetUserId =

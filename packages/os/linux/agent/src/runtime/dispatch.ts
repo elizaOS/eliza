@@ -150,7 +150,7 @@ async function runAction(
   // are quick acknowledgements that trigger a window open; the user
   // wants the window NOW, not 5s later after the model rephrases.
   const userText =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const shouldRephrase =
     launch === null && presetReply.length > 0 && llmRepliesEnabled();
   const reply = shouldRephrase
@@ -173,7 +173,7 @@ async function runChatModel(
 ): Promise<DispatchResult> {
   const systemPrompt = buildSystemPrompt(calibration);
   const userText =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   // GenerateTextParams (proto) only has `prompt` — no separate `system`
   // field. node-llama-cpp's LlamaChatSession accepts `systemPrompt` via
   // its own API, but the @elizaos/core proto wraps that internally per
@@ -247,7 +247,7 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
       const reply = await maybeRephrase(runtime, {
         actionName: "WIFI_FLOW",
         userMessage: input.text,
-        data: { step: flow.step ?? null, intent: result.reply },
+        data: { step: flow.step, intent: result.reply },
         suggestedText: result.reply,
         calibration: input.calibration,
       });
@@ -258,7 +258,7 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
       const reply = await maybeRephrase(runtime, {
         actionName: "PERSISTENCE_FLOW",
         userMessage: input.text,
-        data: { step: flow.step ?? null, intent: result.reply },
+        data: { step: flow.step, intent: result.reply },
         suggestedText: result.reply,
         calibration: input.calibration,
       });
@@ -276,7 +276,7 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
       const reply = await maybeRephrase(runtime, {
         actionName: "INSTALL_PACKAGE_FLOW",
         userMessage: input.text,
-        data: { step: flow.step ?? null, intent: result.reply },
+        data: { step: flow.step, intent: result.reply },
         suggestedText: result.reply,
         calibration: input.calibration,
       });

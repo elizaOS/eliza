@@ -232,7 +232,7 @@ export function applyUiTheme(theme: UiTheme): void {
   const currentTheme =
     typeof root.getAttribute === "function"
       ? root.getAttribute("data-theme")
-      : (root.dataset?.theme ?? null);
+      : (root.dataset.theme ?? null);
   const shouldBeDark = normalizedTheme === "dark";
   const classMatchesTheme = root.classList
     ? root.classList.contains("dark") === shouldBeDark

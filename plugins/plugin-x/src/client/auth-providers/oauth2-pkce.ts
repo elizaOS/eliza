@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";
-import { DEFAULT_X_ACCOUNT_ID, resolveRequestedXAccountId } from "../accounts";
+import { resolveRequestedXAccountId } from "../accounts";
 import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
 import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
 import type { StoredOAuth2Tokens, TokenStore } from "./token-store";
@@ -44,8 +44,7 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     private readonly state?: TwitterClientState,
     private readonly tokenStore: TokenStore = chooseDefaultTokenStore(
       runtime,
-      resolveRequestedXAccountId(runtime, state, state?.accountId) ??
-        DEFAULT_X_ACCOUNT_ID,
+      resolveRequestedXAccountId(runtime, state, state?.accountId),
     ),
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly interactiveLoginFn?: () => Promise<StoredOAuth2Tokens>,

@@ -121,7 +121,7 @@ describe("hyperliquidPlugin wiring", () => {
 describe("perpetualMarketAction validation gating", () => {
   it("validates when selectedContexts includes a hyperliquid context", async () => {
     const runtime = makeRuntime(null);
-    const result = await perpetualMarketAction.validate?.(
+    const result = await perpetualMarketAction.validate(
       runtime,
       makeMessage("some unrelated text"),
       makeState(["finance"]),
@@ -131,7 +131,7 @@ describe("perpetualMarketAction validation gating", () => {
 
   it("validates when message text contains a hyperliquid keyword", async () => {
     const runtime = makeRuntime(null);
-    const result = await perpetualMarketAction.validate?.(
+    const result = await perpetualMarketAction.validate(
       runtime,
       makeMessage("what are the funding rates on hyperliquid"),
       makeState([]),
@@ -141,7 +141,7 @@ describe("perpetualMarketAction validation gating", () => {
 
   it("rejects when neither context nor keyword intent is present", async () => {
     const runtime = makeRuntime(null);
-    const result = await perpetualMarketAction.validate?.(
+    const result = await perpetualMarketAction.validate(
       runtime,
       makeMessage("hello world"),
       makeState([]),

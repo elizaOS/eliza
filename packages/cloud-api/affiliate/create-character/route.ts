@@ -310,7 +310,7 @@ app.post("/", async (c) => {
       avatar_url: resolvedAvatarUrl,
     });
 
-    if (typeof c.executionCtx?.waitUntil === "function") {
+    if (typeof c.executionCtx.waitUntil === "function") {
       c.executionCtx.waitUntil(
         apiKeysService.incrementUsage(apiKey.id).catch((error) => {
           logger.warn("[Affiliate API] Failed to increment API key usage", {

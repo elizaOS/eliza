@@ -11,7 +11,6 @@ import {
   APP_CATALOG_SECTION_LABELS,
   type AppCatalogSectionKey,
   getAppCatalogSectionKey,
-  getAppShortName,
 } from "./helpers";
 
 interface AppsSidebarProps {
@@ -73,16 +72,14 @@ export function AppsSidebar({
   const starredEntries = useMemo(() => {
     return browseApps
       .filter((app) => favoriteAppNames.has(app.name))
-      .sort((a, b) =>
-        (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name),
-      );
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [browseApps, favoriteAppNames]);
 
   const activeEntries = useMemo(() => {
     return runs
       .map((run) => {
         const app = appsByName.get(run.appName);
-        const displayName = app?.displayName ?? run.displayName ?? run.appName;
+        const displayName = app?.displayName ?? run.displayName;
         return { run, app, displayName };
       })
       .sort((a, b) => b.run.updatedAt.localeCompare(a.run.updatedAt));
@@ -110,9 +107,7 @@ export function AppsSidebar({
       buckets.set(key, list);
     }
     for (const list of buckets.values()) {
-      list.sort((a, b) =>
-        (a.displayName ?? a.name).localeCompare(b.displayName ?? b.name),
-      );
+      list.sort((a, b) => a.displayName.localeCompare(b.displayName));
     }
     return GENRE_ORDER.flatMap((key) => {
       const list = buckets.get(key) ?? [];
@@ -167,7 +162,7 @@ export function AppsSidebar({
                     <AppsSidebarAppButton
                       key={app.name}
                       name={app.name}
-                      displayName={app.displayName ?? getAppShortName(app)}
+                      displayName={app.displayName}
                       active={activeAppNames.has(app.name)}
                       selected={selectedAppName === app.name}
                       identitySource={app}
@@ -186,7 +181,7 @@ export function AppsSidebar({
                     <AppsSidebarAppButton
                       key={app.name}
                       name={app.name}
-                      displayName={app.displayName ?? getAppShortName(app)}
+                      displayName={app.displayName}
                       active={activeAppNames.has(app.name)}
                       selected={selectedAppName === app.name}
                       identitySource={app}
@@ -229,7 +224,7 @@ export function AppsSidebar({
                     <AppsSidebarAppButton
                       key={app.name}
                       name={app.name}
-                      displayName={app.displayName ?? getAppShortName(app)}
+                      displayName={app.displayName}
                       active={activeAppNames.has(app.name)}
                       selected={selectedAppName === app.name}
                       identitySource={app}

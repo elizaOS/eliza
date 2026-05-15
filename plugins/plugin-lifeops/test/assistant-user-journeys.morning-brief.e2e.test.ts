@@ -243,7 +243,7 @@ describeIf(LIVE_SUITE_ENABLED)(
       if (runtime) {
         await withTimeout(runtime.stop(), 15_000, "runtime.stop()");
       }
-      envBackup?.restore();
+      envBackup.restore();
       fs.rmSync(workspaceDir, { recursive: true, force: true });
       fs.rmSync(pgliteDir, { recursive: true, force: true });
       fs.rmSync(stateDir, { recursive: true, force: true });

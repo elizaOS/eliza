@@ -179,7 +179,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     );
 
     const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
-    const parsedDurationSeconds = metadata.format?.duration;
+    const parsedDurationSeconds = metadata.format.duration;
     const durationSeconds = Number.isFinite(parsedDurationSeconds)
       ? Math.max(parsedDurationSeconds ?? 0, 1)
       : Math.max(

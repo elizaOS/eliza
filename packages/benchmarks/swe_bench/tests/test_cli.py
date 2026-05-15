@@ -99,10 +99,12 @@ def test_capability_report_flags_unknown_provider_missing_caps() -> None:
     assert report["missing"] == ["code.read"]
 
 
-def test_default_task_agent_provider_prefers_opencode_without_keys(
+def test_default_task_agent_provider_prefers_elizaos_without_keys(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for key in (
+        "BENCHMARK_TASK_AGENT",
+        "CEREBRAS_API_KEY",
         "OPENAI_API_KEY",
         "CODEX_API_KEY",
         "ANTHROPIC_API_KEY",
@@ -111,12 +113,14 @@ def test_default_task_agent_provider_prefers_opencode_without_keys(
     ):
         monkeypatch.delenv(key, raising=False)
 
-    assert _default_task_agent_provider() == "opencode"
+    assert _default_task_agent_provider() == "elizaos"
 
 
 def test_default_task_agent_provider_uses_codex_for_openai_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("BENCHMARK_TASK_AGENT", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
@@ -126,6 +130,8 @@ def test_default_task_agent_provider_uses_codex_for_openai_key(
 def test_default_task_agent_provider_uses_claude_for_anthropic_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("BENCHMARK_TASK_AGENT", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("CODEX_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")

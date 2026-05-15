@@ -437,7 +437,7 @@ export async function handleShopifyRoute(
       const orders = data.orders.edges.map((edge) => ({
         id: edge.node.id,
         name: edge.node.name,
-        email: edge.node.email ?? "",
+        email: edge.node.email,
         totalPrice: edge.node.totalPriceSet.shopMoney.amount,
         currencyCode: edge.node.totalPriceSet.shopMoney.currencyCode,
         fulfillmentStatus: edge.node.displayFulfillmentStatus as
@@ -547,7 +547,7 @@ export async function handleShopifyRoute(
           if (levels.length === 0) {
             items.push({
               id: variant.inventoryItem.id,
-              sku: variant.sku ?? "",
+              sku: variant.sku,
               productTitle: productEdge.node.title,
               variantTitle:
                 variant.title === "Default Title" ? "" : variant.title,
@@ -562,7 +562,7 @@ export async function handleShopifyRoute(
           for (const levelEdge of levels) {
             items.push({
               id: variant.inventoryItem.id,
-              sku: variant.sku ?? "",
+              sku: variant.sku,
               productTitle: productEdge.node.title,
               variantTitle:
                 variant.title === "Default Title" ? "" : variant.title,
@@ -772,9 +772,9 @@ export async function handleShopifyRoute(
 
       const customers = data.customers.edges.map((edge) => ({
         id: edge.node.id,
-        firstName: edge.node.firstName ?? "",
-        lastName: edge.node.lastName ?? "",
-        email: edge.node.email ?? "",
+        firstName: edge.node.firstName,
+        lastName: edge.node.lastName,
+        email: edge.node.email,
         ordersCount: edge.node.ordersCount,
         totalSpent: edge.node.totalSpentV2.amount,
         currencyCode: edge.node.totalSpentV2.currencyCode,

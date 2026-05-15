@@ -75,7 +75,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         { action: "create", title: "Brush teeth" },
       );
 
-      expect(result?.success).toBe(true);
+      expect(result.success).toBe(true);
 
       const definitions = await service.listDefinitions();
       const matchingDef = definitions.find((d) => {
@@ -99,11 +99,11 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
 
       expect(result).toBeTruthy();
       // Handler may succeed (created) or return a deferred preview
-      if (result?.data?.deferred) {
+      if (result.data?.deferred) {
         expect(result.success).toBe(true);
         expect(result.data.lifeDraft).toBeTruthy();
       } else {
-        expect(result?.success).toBe(true);
+        expect(result.success).toBe(true);
         const definitions = await service.listDefinitions();
         const matchingDef = definitions.find((d) => {
           const title = d.definition.title.toLowerCase();
@@ -146,9 +146,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         } as never,
       );
 
-      expect(result?.success).toBe(true);
-      expect(result?.data?.noop).toBe(true);
-      expect(result?.data?.suggestedOperation).toBe("create_goal");
+      expect(result.success).toBe(true);
+      expect(result.data?.noop).toBe(true);
+      expect(result.data?.suggestedOperation).toBe("create_goal");
 
       const goalsAfter = await service.listGoals();
       expect(goalsAfter.length).toBe(goalsBefore.length);
@@ -188,7 +188,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         } as never,
       );
 
-      expect(result?.success).toBe(true);
+      expect(result.success).toBe(true);
 
       const goalsAfter = await service.listGoals();
       const createdGoal = goalsAfter.find(
@@ -226,7 +226,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         { action: "create" },
       );
 
-      expect(result?.success).toBe(true);
+      expect(result.success).toBe(true);
 
       const definitions = await service.listDefinitions();
       const matchingDef = definitions.find((d) => {
@@ -262,9 +262,9 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       );
 
       expect(result).toBeTruthy();
-      expect(result?.success).toBe(true);
+      expect(result.success).toBe(true);
       // Should return a deferred draft, not actually create
-      expect(result?.data?.deferred).toBe(true);
+      expect(result.data?.deferred).toBe(true);
 
       const definitionsAfter = (await service.listDefinitions()).length;
       expect(definitionsAfter).toBe(definitionsBefore);
@@ -297,8 +297,8 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         } as never,
       );
 
-      expect(previewResult?.success).toBe(true);
-      if (!previewResult?.data?.deferred) {
+      expect(previewResult.success).toBe(true);
+      if (!previewResult.data?.deferred) {
         const definitionsAfter = await service.listDefinitions();
         expect(definitionsAfter.length).toBe(definitionsBefore + 1);
         const created = definitionsAfter.find(
@@ -331,7 +331,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         } as never,
       );
 
-      expect(confirmResult?.success).toBe(true);
+      expect(confirmResult.success).toBe(true);
 
       const definitionsAfter = await service.listDefinitions();
       expect(definitionsAfter.length).toBe(definitionsBefore + 1);

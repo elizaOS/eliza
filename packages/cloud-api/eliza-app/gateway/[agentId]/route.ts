@@ -22,7 +22,7 @@ app.post("/", async (c) => {
   try {
     const agentId = c.req.param("agentId") ?? "";
     const body = (await c.req.json()) as { message?: string };
-    const message = body?.message;
+    const message = body.message;
 
     if (!message) {
       return c.json({ success: false, error: "Empty message" }, 400);

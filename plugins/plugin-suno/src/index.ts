@@ -15,7 +15,7 @@ export const sunoPlugin: Plugin = {
         shouldEnable: (env, config) => {
             const key = env.SUNO_API_KEY;
             if (typeof key === 'string' && key.trim() !== '') return true;
-            const media = config?.media as Record<string, unknown> | undefined;
+            const media = config.media as Record<string, unknown> | undefined;
             const audio = media?.audio as
                 | { enabled?: unknown; mode?: unknown; provider?: unknown }
                 | undefined;

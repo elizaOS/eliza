@@ -299,7 +299,7 @@ describe("scheduled task production dispatcher", () => {
     });
 
     const [stored] = await runner.list();
-    expect(stored?.metadata?.lastDispatchResult).toEqual({
+    expect(stored.metadata?.lastDispatchResult).toEqual({
       ok: true,
       messageId: "msg_task",
     });

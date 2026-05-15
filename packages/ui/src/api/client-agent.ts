@@ -3311,7 +3311,7 @@ ElizaClient.prototype.getPtyBufferedOutput = async function (
     const res = await this.fetch<{ output: string }>(
       `/api/coding-agents/${encodeURIComponent(sessionId)}/buffered-output`,
     );
-    return res.output ?? "";
+    return res.output;
   } catch {
     return "";
   }

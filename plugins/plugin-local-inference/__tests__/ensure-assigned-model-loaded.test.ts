@@ -129,7 +129,7 @@ function makeRuntime(): {
 		loadModel: vi.fn(async (args: unknown) => {
 			loaderState.loadCalls.push(args);
 			const a = args as { modelPath?: string };
-			if (a?.modelPath) loaderState.currentPath = a.modelPath;
+			if (a.modelPath) loaderState.currentPath = a.modelPath;
 		}),
 		unloadModel: vi.fn(async () => {
 			loaderState.unloadCalls += 1;

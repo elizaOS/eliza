@@ -107,7 +107,7 @@ export function capturePageContext(): PageContextSnapshot {
   return {
     url: window.location.href,
     title: document.title || window.location.href,
-    selectionText: normalizeText(window.getSelection?.()?.toString(), 2000),
+    selectionText: normalizeText(window.getSelection()?.toString(), 2000),
     mainText: collectVisibleText(12000),
     headings: collectHeadings(),
     links: collectLinks(),

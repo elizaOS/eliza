@@ -276,7 +276,7 @@ function ConnectorPluginCard({
   const cloudBackedConnectorMode =
     elizaCloudConnected && (isCloudOAuthMode || isDiscordManagedMode);
   const hasParams =
-    (plugin.parameters?.length ?? 0) > 0 && plugin.id !== "__ui-showcase__";
+    plugin.parameters.length > 0 && plugin.id !== "__ui-showcase__";
   const isExpanded = connectorExpandedIds.has(plugin.id);
   const isSelected = connectorSelectedId === plugin.id;
   const requiredParams = hasParams
@@ -355,7 +355,7 @@ function ConnectorPluginCard({
             ? (buildManagedDiscordSettingsReturnUrl(window.location.href) ??
               undefined)
             : undefined,
-        botNickname: agent.agent_name?.trim() || undefined,
+        botNickname: agent.agent_name.trim() || undefined,
       });
 
     await handleOpenPluginExternalUrl(oauthResponse.data.authorizeUrl);
@@ -645,7 +645,7 @@ function ConnectorPluginCard({
           isExpanded ? "text-txt" : "text-muted hover:text-txt"
         }`}
         onClick={(event) => {
-          event?.stopPropagation();
+          event.stopPropagation();
           handleConnectorSectionToggle(plugin.id);
         }}
         aria-expanded={isExpanded}

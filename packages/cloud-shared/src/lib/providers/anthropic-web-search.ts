@@ -9,7 +9,7 @@ export const ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER = 10_000;
 
 function normalizeModelName(model: string): string {
   const [, normalized] = model.split("/");
-  return (normalized ?? model).toLowerCase();
+  return normalized.toLowerCase();
 }
 
 export function supportsAnthropicWebSearch(model: string): boolean {

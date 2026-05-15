@@ -74,7 +74,7 @@ ElizaClient.prototype.listWorkflowDefinitions = async function (
   const res = await this.fetch<{ workflows: WorkflowDefinition[] }>(
     "/api/workflow/workflows",
   );
-  return res.workflows ?? [];
+  return res.workflows;
 };
 
 ElizaClient.prototype.createWorkflowDefinition = async function (

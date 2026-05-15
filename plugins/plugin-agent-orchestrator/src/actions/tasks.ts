@@ -25,6 +25,7 @@
  * @module actions/tasks
  */
 
+import { createHash } from "node:crypto";
 import type {
   Action,
   ActionResult,
@@ -33,6 +34,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  UUID,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import {
@@ -81,6 +83,7 @@ const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
 const WORKSPACE_PATH_MAX_CHARS = 500;
 const ISSUE_RESULT_LIMIT = 25;
 const ISSUE_BODY_MAX_CHARS = 4_000;
+const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 
 type TaskOp =
   | "create"
@@ -203,17 +206,154 @@ function taskWithResolvedRoute(
   route: ResolvedWorkdirRoute | undefined,
   workdir: string,
 ): string {
-  if (!route?.instructions?.trim()) return task;
+  const routed = route?.instructions?.trim()
+    ? [
+        "--- Resolved Workspace ---",
+        `The parent runtime resolved this task to workdir: ${workdir}`,
+        "Work only inside that directory. Route instructions are authoritative.",
+        "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
+        "--- Workspace Routing Note ---",
+        route.instructions.trim(),
+        "--- User Task ---",
+        task,
+      ].join("\n")
+    : task;
+  return routed;
+}
+
+function taskWithSwarmInstructions(args: {
+  task: string;
+  label: string;
+  workdir: string;
+  taskRoomKey: string;
+  taskRoomId: string;
+  worktreeRoomKey: string;
+  worktreeRoomId: string;
+  peerNames: string[];
+}): string {
+  const peerLine =
+    args.peerNames.length > 0
+      ? `Known peers on this task: ${args.peerNames.join(", ")}.`
+      : "You may be the only worker currently assigned to this task.";
   return [
-    "--- Resolved Workspace ---",
-    `The parent runtime resolved this task to workdir: ${workdir}`,
-    "Work only inside that directory. Route instructions are authoritative.",
-    "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
-    "--- Workspace Routing Note ---",
-    route.instructions.trim(),
-    "--- User Task ---",
-    task,
+    "--- Swarm Coordination ---",
+    `Your sub-agent name is: ${args.label}`,
+    `Task chat: ${args.taskRoomKey} (${args.taskRoomId})`,
+    `Worktree chat: ${args.worktreeRoomKey} (${args.worktreeRoomId})`,
+    peerLine,
+    "Keep working until the task is genuinely finished and verified. If you get blocked, need owner input, or notice another agent may be editing the same files, say so explicitly in your response with the session/room key and the exact files or question involved.",
+    "To ask the task creator for help, emit a clear line starting with QUESTION_FOR_TASK_CREATOR: followed by the question and the unblock condition. The parent agent will route that to the originating channel.",
+    "To coordinate with other agents, emit a clear line starting with AGENT_COORDINATION: followed by the affected files, intended edits, and what you need peers to know.",
+    "Use only coding-relevant capabilities: shell/command execution, file reads, file edits/patches, search, tests, and parent-agent skill requests when workspace context is insufficient. Avoid unrelated tools.",
+    "--- Task ---",
+    args.task,
   ].join("\n");
+}
+
+function deriveUuidFromString(input: string): UUID {
+  const hex = createHash("sha1").update(input).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}` as UUID;
+}
+
+function swarmRoomIds(
+  runtime: IAgentRuntime,
+  args: {
+    taskRoomKey: string;
+    worktreeRoomKey: string;
+  },
+): { taskRoomId: UUID; worktreeRoomId: UUID } {
+  return {
+    taskRoomId: deriveUuidFromString(
+      `${runtime.agentId}:acpx:task-room:${args.taskRoomKey}`,
+    ),
+    worktreeRoomId: deriveUuidFromString(
+      `${runtime.agentId}:acpx:worktree-room:${args.worktreeRoomKey}`,
+    ),
+  };
+}
+
+async function ensureSwarmRooms(args: {
+  runtime: IAgentRuntime;
+  session: SpawnResult;
+  label: string;
+  worldId?: UUID;
+  userId?: UUID;
+  taskRoomKey: string;
+  taskRoomId: UUID;
+  worktreeRoomKey: string;
+  worktreeRoomId: UUID;
+}): Promise<void> {
+  const { runtime } = args;
+  const runtimeWithRooms = runtime as IAgentRuntime & {
+    getRoom?: IAgentRuntime["getRoom"];
+    createRoom?: IAgentRuntime["createRoom"];
+    createEntity?: IAgentRuntime["createEntity"];
+    addParticipant?: IAgentRuntime["addParticipant"];
+  };
+  if (
+    typeof runtimeWithRooms.getRoom !== "function" ||
+    typeof runtimeWithRooms.createRoom !== "function" ||
+    typeof runtimeWithRooms.createEntity !== "function" ||
+    typeof runtimeWithRooms.addParticipant !== "function"
+  ) {
+    return;
+  }
+  const worldId = args.worldId ?? args.taskRoomId;
+  const roomInputs = [
+    {
+      id: args.taskRoomId,
+      name: `task:${args.label}`,
+      source: "sub_agent_swarm",
+      type: "GROUP" as const,
+      channelId: args.taskRoomKey,
+      worldId,
+    },
+    {
+      id: args.worktreeRoomId,
+      name: `worktree:${args.session.workdir}`,
+      source: "sub_agent_swarm",
+      type: "GROUP" as const,
+      channelId: args.worktreeRoomKey,
+      worldId,
+    },
+  ];
+  for (const room of roomInputs) {
+    const existing = await runtimeWithRooms.getRoom(room.id).catch(() => null);
+    if (!existing) {
+      await runtimeWithRooms.createRoom(room).catch(() => undefined);
+    }
+  }
+  const subAgentEntityId = deriveUuidFromString(
+    `${runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:${args.session.sessionId}`,
+  );
+  await runtimeWithRooms
+    .createEntity({
+      id: subAgentEntityId,
+      agentId: runtime.agentId,
+      names: [`sub-agent: ${args.label}`],
+      metadata: {
+        sub_agent_swarm: {
+          sessionId: args.session.sessionId,
+          agentType: args.session.agentType,
+          taskRoomId: args.taskRoomId,
+          worktreeRoomId: args.worktreeRoomId,
+        },
+      },
+    })
+    .catch(() => undefined);
+
+  const participantIds = [
+    runtime.agentId,
+    args.userId,
+    subAgentEntityId,
+  ].filter((id): id is UUID => typeof id === "string" && id.length > 0);
+  for (const roomId of [args.taskRoomId, args.worktreeRoomId]) {
+    for (const entityId of participantIds) {
+      await runtimeWithRooms
+        .addParticipant(entityId, roomId)
+        .catch(() => undefined);
+    }
+  }
 }
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
@@ -328,6 +468,32 @@ async function runCreate(
         route,
         sessionWorkdir,
       );
+      const taskRoomKey = `task:${message.id ?? message.roomId}`;
+      const worktreeRoomKey = `worktree:${sessionWorkdir}`;
+      const { taskRoomId, worktreeRoomId } = swarmRoomIds(runtime, {
+        taskRoomKey,
+        worktreeRoomKey,
+      });
+      const taskWithCoordination = taskWithSwarmInstructions({
+        task: taskWithRouteHints,
+        label,
+        workdir: sessionWorkdir,
+        taskRoomKey,
+        taskRoomId,
+        worktreeRoomKey,
+        worktreeRoomId,
+        peerNames: tasks
+          .map((other, peerIndex) =>
+            peerIndex === index
+              ? undefined
+              : (baseLabel ??
+                labelFrom(
+                  parseAgentPrefix(other, baseAgentType).task,
+                  peerIndex,
+                )),
+          )
+          .filter((value): value is string => Boolean(value)),
+      });
       const session = await service.spawnSession({
         agentType,
         workdir: sessionWorkdir,
@@ -342,15 +508,30 @@ async function runCreate(
           worldId: message.worldId,
           userId: message.entityId,
           label,
+          taskRoomKey,
+          taskRoomId,
+          worktreeRoomKey,
+          worktreeRoomId,
           source: content.source,
           workdirRouteId: route?.id,
           workdirRoute: route,
         },
       });
+      await ensureSwarmRooms({
+        runtime,
+        session,
+        label,
+        worldId: message.worldId,
+        userId: message.entityId,
+        taskRoomKey,
+        taskRoomId,
+        worktreeRoomKey,
+        worktreeRoomId,
+      });
       await runPromptAndClose(
         service,
         session,
-        taskWithRouteHints,
+        taskWithCoordination,
         timeoutMs,
         model,
       );
@@ -380,7 +561,7 @@ async function runCreate(
     const agentType = parsed.agentType as AgentType;
     const label = baseLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
-    logger(runtime).error?.(
+    logger(runtime).error(
       `TASKS:create launch failed: ${JSON.stringify({
         error: msg,
         agentType,
@@ -467,6 +648,22 @@ async function runSpawnAgent(
       { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
     );
     const taskWithRouteHints = taskWithResolvedRoute(task, route, workdir);
+    const taskRoomKey = `task:${message.id ?? message.roomId}`;
+    const worktreeRoomKey = `worktree:${workdir}`;
+    const { taskRoomId, worktreeRoomId } = swarmRoomIds(runtime, {
+      taskRoomKey,
+      worktreeRoomKey,
+    });
+    const taskWithCoordination = taskWithSwarmInstructions({
+      task: taskWithRouteHints,
+      label: pickString(params, content, "label") ?? task.slice(0, 80),
+      workdir,
+      taskRoomKey,
+      taskRoomId,
+      worktreeRoomKey,
+      worktreeRoomId,
+      peerNames: [],
+    });
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),
@@ -511,7 +708,7 @@ async function runSpawnAgent(
     const session = await service.spawnSession({
       agentType,
       workdir,
-      initialTask: taskWithRouteHints,
+      initialTask: taskWithCoordination,
       memoryContent,
       approvalPreset,
       metadata: {
@@ -521,6 +718,10 @@ async function runSpawnAgent(
         worldId: message.worldId,
         userId: message.entityId,
         label,
+        taskRoomKey,
+        taskRoomId,
+        worktreeRoomKey,
+        worktreeRoomId,
         source: resolvedSpawnSource,
         keepAliveAfterComplete,
         workdirRouteId: route?.id,
@@ -528,12 +729,23 @@ async function runSpawnAgent(
         // Stash the resolved task so SubAgentRouter can re-dispatch the
         // sub-agent on a failed verification without reconstructing it.
         // SessionInfo itself doesn't carry initialTask; metadata does.
-        initialTask: taskWithRouteHints,
+        initialTask: taskWithCoordination,
       },
+    });
+    await ensureSwarmRooms({
+      runtime,
+      session,
+      label,
+      worldId: message.worldId,
+      userId: message.entityId,
+      taskRoomKey,
+      taskRoomId,
+      worktreeRoomKey,
+      worktreeRoomId,
     });
 
     setCurrentSession(state, session);
-    logger(runtime).info?.(
+    logger(runtime).info(
       `Spawned acpx task agent: ${JSON.stringify({
         sessionId: session.sessionId,
         agentType: session.agentType,
@@ -1961,7 +2173,7 @@ async function runManageIssues(
   const repo = (params.repo as string) ?? (content.repo as string);
 
   if (!repo) {
-    const urlMatch = text?.match(
+    const urlMatch = text.match(
       /(?:https?:\/\/github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
     );
     if (!urlMatch) {
@@ -2183,12 +2395,12 @@ export const tasksAction: Action & {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work.",
   descriptionCompressed:
-    "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
+    "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -2214,7 +2426,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
+        "Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2659,7 +2871,8 @@ export const tasksAction: Action & {
     // inline FILE.write or hallucinate a refusal. The cluster covers
     // explicit verbs (spawn / delegate / fire up), explicit nouns
     // (sub-agent / coding agent / sub-process), and the
-    // user-naming-the-adapter case (opencode / claude / codex) so the
+    // user-naming-the-adapter case (elizaos / pi-agent / opencode / claude /
+    // codex) so the
     // few-shot matches whatever provider the user has wired.
     [
       {
@@ -2675,7 +2888,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to PTYService.spawnSession with the configured adapter (claude / codex / opencode).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to PTYService.spawnSession with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
         },
       },
     ],
@@ -2747,7 +2960,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (claude / codex / opencode).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
         },
       },
     ],

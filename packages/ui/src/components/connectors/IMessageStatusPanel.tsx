@@ -16,7 +16,7 @@ export function IMessageStatusPanel() {
       : null;
   const isSendOnly = status?.sendOnly === true;
   const canReadMessages =
-    status?.connected === true && status?.chatDbAvailable === true;
+    status?.connected === true && status.chatDbAvailable === true;
 
   const refresh = useCallback(async () => {
     setLoading(true);

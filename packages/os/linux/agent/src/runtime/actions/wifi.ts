@@ -22,12 +22,12 @@ import {
 import { normalize } from "../match.ts";
 
 function textOf(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function shapeNetworkError(err: unknown, action: string): string {
   const ne = err as NetworkError;
-  switch (ne.code ?? "unknown") {
+  switch (ne.code) {
     case "no-nmcli":
       return `I can't ${action} — nmcli isn't on this system.`;
     case "no-daemon":

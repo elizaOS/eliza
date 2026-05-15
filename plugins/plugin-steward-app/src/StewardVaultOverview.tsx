@@ -166,7 +166,7 @@ export function StewardVaultOverview({
     setAddresses(resolvedAddresses);
 
     if (eventsResult.status === "fulfilled") {
-      const orderedEvents = [...(eventsResult.value.events ?? [])].sort(
+      const orderedEvents = [...(eventsResult.value.events)].sort(
         (a, b) => {
           const aTime = new Date(a.timestamp ?? 0).getTime();
           const bTime = new Date(b.timestamp ?? 0).getTime();

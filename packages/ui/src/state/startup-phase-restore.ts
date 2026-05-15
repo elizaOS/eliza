@@ -56,7 +56,7 @@ async function backfillCloudApiBase(
   active: PersistedActiveServer,
 ): Promise<PersistedActiveServer> {
   if (active.kind !== "cloud" || active.apiBase) return active;
-  const agentId = active.id?.startsWith("cloud:")
+  const agentId = active.id.startsWith("cloud:")
     ? active.id.slice("cloud:".length)
     : null;
   if (!agentId) return active;

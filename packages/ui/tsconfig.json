@@ -6,7 +6,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "react"],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
@@ -14,6 +14,16 @@
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager/*": [
+        "../../plugins/plugin-app-manager/src/*"
+      ],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": ["../../plugins/plugin-streaming/src/*"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
@@ -69,6 +79,7 @@
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/ui": ["./src/index.ts"],
+      "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
       "@elizaos/ui/*": ["./src/*"],
       "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }

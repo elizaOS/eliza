@@ -42,7 +42,7 @@ export class AffiliatesRepository {
 
         const [created] = await tx.insert(affiliateCodes).values(data).returning();
 
-        return created ?? null;
+        return created;
       });
     } catch (error) {
       if (!isNeonHttpTransactionUnsupported(error)) {
@@ -68,7 +68,7 @@ export class AffiliatesRepository {
     }
 
     const [created] = await dbWrite.insert(affiliateCodes).values(data).returning();
-    return created ?? null;
+    return created;
   }
 
   async updateAffiliateCode(
@@ -90,7 +90,7 @@ export class AffiliatesRepository {
       .where(eq(affiliateCodes.user_id, userId))
       .orderBy(asc(affiliateCodes.created_at))
       .limit(1);
-    return result ?? null;
+    return result;
   }
 
   async getAffiliateCodeByCode(code: string): Promise<AffiliateCode | null> {

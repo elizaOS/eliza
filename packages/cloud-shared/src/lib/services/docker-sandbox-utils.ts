@@ -386,7 +386,7 @@ export function parseDockerNodes(): DockerNodeEnv[] {
     }
 
     const [nodeId, hostname, capacityStr] = parts;
-    const capacity = parseInt(capacityStr!, 10);
+    const capacity = parseInt(capacityStr, 10);
     if (!nodeId || !hostname || isNaN(capacity) || capacity <= 0) {
       logger.warn(`[docker-sandbox] Skipping invalid node entry: "${trimmed}"`);
       continue;

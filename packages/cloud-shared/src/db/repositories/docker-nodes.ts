@@ -33,12 +33,12 @@ export class DockerNodesRepository {
       .from(dockerNodes)
       .where(eq(dockerNodes.node_id, nodeId))
       .limit(1);
-    return r ?? null;
+    return r;
   }
 
   async findById(id: string): Promise<DockerNode | null> {
     const [r] = await dbRead.select().from(dockerNodes).where(eq(dockerNodes.id, id)).limit(1);
-    return r ?? null;
+    return r;
   }
 
   /**
@@ -58,7 +58,7 @@ export class DockerNodesRepository {
       )
       .orderBy(sql`(${dockerNodes.capacity} - ${dockerNodes.allocated_count}) DESC`)
       .limit(1);
-    return r ?? null;
+    return r;
   }
 
   // ============================================================================
@@ -77,7 +77,7 @@ export class DockerNodesRepository {
       .set({ ...data, updated_at: new Date() })
       .where(eq(dockerNodes.id, id))
       .returning();
-    return r ?? null;
+    return r;
   }
 
   async delete(id: string): Promise<boolean> {

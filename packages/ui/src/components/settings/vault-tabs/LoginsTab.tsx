@@ -81,7 +81,7 @@ export function LoginsTab() {
             ok?: boolean;
             allowed?: boolean;
           };
-          return [d, json?.allowed === true] as const;
+          return [d, json.allowed === true] as const;
         }),
       );
       for (const [d, allowed] of responses) next[d] = allowed;

@@ -1011,8 +1011,7 @@ export function RelationshipsDocumentsPanel({
         }
         setDocuments(
           Array.from(byId.values()).sort(
-            (left, right) =>
-              Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0),
+            (left, right) => Number(right.createdAt) - Number(left.createdAt),
           ),
         );
       } catch (loadError) {

@@ -298,7 +298,7 @@ export class AppsService {
 
     // Invalidate cache before delete
     if (app) {
-      await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug ?? undefined);
+      await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug);
     }
 
     // Clean up app database state. The service reads canonical app_databases and
@@ -556,7 +556,7 @@ export class AppsService {
     const configured = [
       app.app_url,
       ...((app.allowed_origins as string[] | null | undefined) ?? []),
-    ].filter((origin): origin is string => Boolean(origin?.trim()));
+    ].filter((origin): origin is string => Boolean(origin.trim()));
     const customDomainOrigins = await managedDomainsService.listVerifiedAppOrigins(app.id);
     return [...new Set([...configured, ...customDomainOrigins])];
   }
@@ -583,7 +583,7 @@ export class AppsService {
 
     if (oldApiKeyId) {
       // Invalidate cache for old API key before deleting
-      await this.invalidateCache(appId, oldApiKeyId, app.slug ?? undefined);
+      await this.invalidateCache(appId, oldApiKeyId, app.slug);
       await apiKeysService.delete(oldApiKeyId);
     }
 
@@ -599,7 +599,7 @@ export class AppsService {
     await appsRepository.update(appId, { api_key_id: apiKey.id });
 
     // Invalidate cache again with new API key ID
-    await this.invalidateCache(appId, apiKey.id, app.slug ?? undefined);
+    await this.invalidateCache(appId, apiKey.id, app.slug);
 
     logger.info(`Regenerated API key for app: ${app.name} (${appId})`);
 

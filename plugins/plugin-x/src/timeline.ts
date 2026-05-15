@@ -103,7 +103,7 @@ export class TwitterTimelineClient {
     // Some runtime settings pass boolean dryRun values; widen to `unknown` so
     // the boolean check below remains valid.
     const dryRunSetting: unknown =
-      this.state?.TWITTER_DRY_RUN ??
+      this.state.TWITTER_DRY_RUN ??
       getSetting(this.runtime, "TWITTER_DRY_RUN") ??
       process.env.TWITTER_DRY_RUN;
     this.isDryRun =
@@ -133,7 +133,7 @@ export class TwitterTimelineClient {
 
       // Use shared engagement interval
       const engagementIntervalMinutes = parseInt(
-        this.state?.TWITTER_ENGAGEMENT_INTERVAL ||
+        this.state.TWITTER_ENGAGEMENT_INTERVAL ||
           (getSetting(this.runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string) ||
           process.env.TWITTER_ENGAGEMENT_INTERVAL ||
           "30",
@@ -184,7 +184,7 @@ export class TwitterTimelineClient {
       content: {
         text: tweet.text,
         url: tweet.permanentUrl,
-        imageUrls: tweet.photos?.map((photo) => photo.url) || [],
+        imageUrls: tweet.photos.map((photo) => photo.url),
         inReplyTo: tweet.inReplyToStatusId
           ? createUniqueUuid(runtime, tweet.inReplyToStatusId)
           : undefined,

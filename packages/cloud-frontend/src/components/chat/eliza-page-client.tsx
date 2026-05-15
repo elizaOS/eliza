@@ -210,13 +210,12 @@ export function ElizaPageClient({
       getOrCreateAnonymousUserAction()
         .then((result) => {
           // Safely handle potentially null/undefined result
-          if (result?.session) {
+          if (result.session) {
             setAnonymousSession({
-              messageCount: result.session.message_count ?? 0,
-              messagesLimit: result.session.messages_limit ?? 3,
+              messageCount: result.session.message_count,
+              messagesLimit: result.session.messages_limit,
               remainingMessages:
-                (result.session.messages_limit ?? 3) -
-                (result.session.message_count ?? 0),
+                result.session.messages_limit - result.session.message_count,
             });
             // Store session token in chat store so it gets passed with messages
             if (result.session.session_token) {

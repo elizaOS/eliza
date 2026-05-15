@@ -203,7 +203,7 @@ async function readRuntimeAccountRecord(
 
   try {
     return (
-      (await accountRuntime.getConnectorAccount?.({
+      (await accountRuntime.getConnectorAccount({
         source: "x",
         accountId,
       })) ?? null

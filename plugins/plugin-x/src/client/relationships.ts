@@ -84,7 +84,7 @@ export async function* getFollowing(
         count++;
       }
 
-      paginationToken = response.meta?.next_token;
+      paginationToken = response.meta.next_token;
       if (!paginationToken) break;
     }
   } catch (error) {
@@ -146,7 +146,7 @@ export async function* getFollowers(
         count++;
       }
 
-      paginationToken = response.meta?.next_token;
+      paginationToken = response.meta.next_token;
       if (!paginationToken) break;
     }
   } catch (error) {
@@ -197,11 +197,11 @@ export async function fetchProfileFollowing(
       ],
     });
 
-    const profiles = response.data?.map(parseV2UserToProfile) || [];
+    const profiles = response.data.map(parseV2UserToProfile);
 
     return {
       profiles,
-      next: response.meta?.next_token,
+      next: response.meta.next_token,
     };
   } catch (error) {
     console.error("Error fetching following profiles:", error);
@@ -252,11 +252,11 @@ export async function fetchProfileFollowers(
       ],
     });
 
-    const profiles = response.data?.map(parseV2UserToProfile) || [];
+    const profiles = response.data.map(parseV2UserToProfile);
 
     return {
       profiles,
-      next: response.meta?.next_token,
+      next: response.meta.next_token,
     };
   } catch (error) {
     console.error("Error fetching follower profiles:", error);
@@ -302,7 +302,7 @@ export async function followUser(
 
     // Return the same Response shape used by the rest of the client.
     return new Response(JSON.stringify(result), {
-      status: result.data?.following ? 200 : 400,
+      status: result.data.following ? 200 : 400,
       headers: new Headers({
         "Content-Type": "application/json",
       }),

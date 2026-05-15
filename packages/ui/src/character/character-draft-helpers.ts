@@ -292,8 +292,8 @@ export function prepareDraftForSave(
               : null;
           const originalMessage = originalGroup?.examples?.find(
             (candidate) =>
-              candidate?.name?.trim() === msg.name &&
-              candidate?.content?.text?.trim() === msg.content.text,
+              candidate.name?.trim() === msg.name &&
+              candidate.content?.text?.trim() === msg.content.text,
           );
           return {
             name: msg.name.trim(),

@@ -118,7 +118,7 @@ export class DatabasePriorityManager {
         })
         .from(albPriorities);
 
-      const nextPriority = (maxResult?.maxPriority || 0) + 1;
+      const nextPriority = (maxResult.maxPriority || 0) + 1;
 
       // Validate we haven't exceeded ALB limit
       if (nextPriority > 50000) {
@@ -267,9 +267,9 @@ export class DatabasePriorityManager {
       .from(albPriorities)
       .where(isNull(albPriorities.expiresAt));
 
-    const highestPriority = maxResult?.max || 0;
-    const totalActive = activeCount?.count || 0;
-    const totalExpired = expiredCount?.count || 0;
+    const highestPriority = maxResult.max || 0;
+    const totalActive = activeCount.count || 0;
+    const totalExpired = expiredCount.count || 0;
 
     return {
       totalActive,

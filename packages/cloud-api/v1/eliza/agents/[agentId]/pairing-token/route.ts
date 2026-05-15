@@ -225,7 +225,7 @@ async function __hono_POST(
 
     const tokenService = getPairingTokenService();
     const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
-    const supportsUiTokenPairing = Boolean(envVars.ELIZA_API_TOKEN?.trim());
+    const supportsUiTokenPairing = Boolean(envVars.ELIZA_API_TOKEN.trim());
     const pairingToken = await tokenService.generateToken(
       user.id,
       user.organization_id,

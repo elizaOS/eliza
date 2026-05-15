@@ -155,9 +155,9 @@ describe("promoteSubactionsToActions", () => {
     const stub = makeStubAction();
     const handlerSpy = vi.spyOn(stub, "handler");
     const [, virtualList] = promoteSubactionsToActions(stub);
-    expect(virtualList?.name).toBe("STUB_LIST");
+    expect(virtualList.name).toBe("STUB_LIST");
 
-    const result = await virtualList?.handler(
+    const result = await virtualList.handler(
       STATIC_RUNTIME,
       STATIC_MESSAGE,
       NOOP_STATE,
@@ -178,7 +178,7 @@ describe("promoteSubactionsToActions", () => {
     const stub = makeCanonicalActionStub();
     const handlerSpy = vi.spyOn(stub, "handler");
     const [, virtualList] = promoteSubactionsToActions(stub);
-    const result = await virtualList?.handler(
+    const result = await virtualList.handler(
       STATIC_RUNTIME,
       STATIC_MESSAGE,
       NOOP_STATE,
@@ -199,7 +199,7 @@ describe("promoteSubactionsToActions", () => {
     const stub = makeStubAction();
     const handlerSpy = vi.spyOn(stub, "handler");
     const [, virtualList] = promoteSubactionsToActions(stub);
-    await virtualList?.handler(
+    await virtualList.handler(
       STATIC_RUNTIME,
       STATIC_MESSAGE,
       NOOP_STATE,
@@ -216,7 +216,7 @@ describe("promoteSubactionsToActions", () => {
   it("virtual handler caller-supplied subaction is overridden by virtual's name", async () => {
     const stub = makeStubAction();
     const [, , virtualCreate] = promoteSubactionsToActions(stub);
-    const result = await virtualCreate?.handler(
+    const result = await virtualCreate.handler(
       STATIC_RUNTIME,
       STATIC_MESSAGE,
       NOOP_STATE,

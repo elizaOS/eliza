@@ -21,7 +21,7 @@ async function getCreditBalance(): Promise<number> {
     );
   }
   const data = (await res.json()) as { balance: number };
-  return Number(data.balance ?? 0);
+  return Number(data.balance);
 }
 
 interface CreditBalanceDisplayProps {

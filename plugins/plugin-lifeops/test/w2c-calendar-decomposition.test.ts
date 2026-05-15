@@ -75,7 +75,7 @@ describe("W2-C: CALENDAR umbrella narrowing", () => {
   });
 
   it("CALENDAR.description does not advertise calendly_ or negotiate_ subactions", () => {
-    const description = calendarAction.description ?? "";
+    const description = calendarAction.description;
     expect(description).not.toMatch(
       /\bcalendly_(availability|list_event_types|upcoming|single_use_link)\b/,
     );

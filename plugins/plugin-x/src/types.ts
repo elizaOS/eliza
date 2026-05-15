@@ -139,12 +139,12 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
     conversationId: tweet.conversationId || "",
     inReplyToStatusId: tweet.inReplyToStatusId,
     timestamp: tweet.timestamp || 0,
-    photos: tweet.photos || [],
+    photos: tweet.photos,
     mentions,
     hashtags,
     urls,
-    videos: tweet.videos || [],
-    thread: tweet.thread || [],
+    videos: tweet.videos,
+    thread: tweet.thread,
     permanentUrl: tweet.permanentUrl || "",
   };
 }

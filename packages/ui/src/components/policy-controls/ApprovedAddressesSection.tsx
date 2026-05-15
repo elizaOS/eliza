@@ -22,7 +22,7 @@ export function ApprovedAddressesSection({
 
   const entries: ApprovedAddressEntry[] = useMemo(
     () =>
-      (config.addresses ?? []).map((addr) => {
+      config.addresses.map((addr) => {
         if (typeof addr !== "string") {
           return {
             address: addr.address,
@@ -188,7 +188,7 @@ export function ApprovedAddressesSection({
 }
 
 export function addressSummary(config: ApprovedAddressesConfig): string {
-  const count = config.addresses?.length ?? 0;
+  const count = config.addresses.length;
   const mode = config.mode === "whitelist" ? "allowed" : "blocked";
   return count === 0 ? `No addresses ${mode}` : `${count} ${mode}`;
 }

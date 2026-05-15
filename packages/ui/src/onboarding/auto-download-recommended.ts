@@ -41,7 +41,7 @@ const HEALTH_POLL_DEADLINE_MS = 5 * 60 * 1000;
 function readMarker(): boolean {
   if (typeof window === "undefined") return true;
   try {
-    return window.localStorage?.getItem(AUTO_DOWNLOAD_MARKER_KEY) === "1";
+    return window.localStorage.getItem(AUTO_DOWNLOAD_MARKER_KEY) === "1";
   } catch {
     return false;
   }
@@ -50,7 +50,7 @@ function readMarker(): boolean {
 function writeMarker(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage?.setItem(AUTO_DOWNLOAD_MARKER_KEY, "1");
+    window.localStorage.setItem(AUTO_DOWNLOAD_MARKER_KEY, "1");
   } catch {
     // Embedded shells without storage simply lose dedupe across sessions.
   }

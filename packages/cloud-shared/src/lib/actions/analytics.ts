@@ -32,7 +32,7 @@ export interface AnalyticsFilters {
  */
 export async function getAnalyticsData(request: Request, filters: AnalyticsFilters = {}) {
   const user = await requireAuthWithOrg(request);
-  const organizationId = user.organization_id!;
+  const organizationId = user.organization_id;
 
   const {
     startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),

@@ -983,7 +983,7 @@ export class PriceEnrichmentService {
 				expires: "5m",
 			});
 
-			if (!searchResults?.pairs || searchResults.pairs.length === 0) {
+			if (!searchResults.pairs || searchResults.pairs.length === 0) {
 				return null;
 			}
 

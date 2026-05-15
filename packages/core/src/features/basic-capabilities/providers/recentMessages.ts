@@ -35,7 +35,7 @@ function isInternalBridgeMessage(memory: Memory): boolean {
 			? memory.content.source.trim()
 			: "";
 	const metadata =
-		memory.content?.metadata && typeof memory.content.metadata === "object"
+		memory.content.metadata && typeof memory.content.metadata === "object"
 			? (memory.content.metadata as Record<string, unknown>)
 			: {};
 	return (

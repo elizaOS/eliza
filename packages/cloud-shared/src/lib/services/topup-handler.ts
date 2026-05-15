@@ -136,7 +136,7 @@ async function getTopupRecipient(
     };
   }
 
-  if (!body?.walletAddress?.trim()) {
+  if (!body.walletAddress?.trim()) {
     throw new Error("walletAddress is required (body or wallet signature headers)");
   }
 
@@ -314,7 +314,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
 
   return async function handler(req: Request, env?: TopupEnv): Promise<Response> {
     const body = (await req.json().catch(() => ({}))) as TopupBody;
-    if (!body?.walletAddress?.trim() && !req.headers.get("X-Wallet-Signature")) {
+    if (!body.walletAddress?.trim() && !req.headers.get("X-Wallet-Signature")) {
       return Response.json(
         {
           error: "walletAddress is required (body or wallet signature headers)",
@@ -322,7 +322,7 @@ export function createTopupHandler(options: CreateTopupHandlerOptions) {
         { status: 400 },
       );
     }
-    if (body?.walletAddress && !isAddress(body.walletAddress)) {
+    if (body.walletAddress && !isAddress(body.walletAddress)) {
       return Response.json({ error: "Valid EVM walletAddress is required" }, { status: 400 });
     }
 

@@ -309,7 +309,7 @@ class OxaPayService {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
-      return data?.status === true;
+      return data.status === true;
     } catch {
       return false;
     }

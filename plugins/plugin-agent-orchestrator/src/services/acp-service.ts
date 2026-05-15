@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { readConfigEnvKey } from "./config-env.js";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -80,7 +81,14 @@ const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
+const DEFAULT_CEREBRAS_CODING_MODEL = "gpt-oss-120b";
+const DEFAULT_AGENTS: AgentType[] = [
+  "elizaos",
+  "pi-agent",
+  "opencode",
+  "codex",
+  "claude",
+];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -94,9 +102,6 @@ export class AcpService extends Service {
 
   capabilityDescription =
     "Manages asynchronous ACPX task-agent sessions for open-ended background work";
-
-  readonly defaultApprovalPreset: ApprovalPreset;
-  readonly agentSelectionStrategy: string;
 
   protected override readonly runtime: RuntimeLike;
   private readonly logger: RuntimeLogger;
@@ -114,28 +119,35 @@ export class AcpService extends Service {
   constructor(runtime: IAgentRuntime, opts: { store?: SessionStore } = {}) {
     super(runtime);
     this.runtime = runtime as RuntimeLike;
-    this.logger = (this.runtime.logger ?? {}) as RuntimeLogger;
+    this.logger = this.runtime.logger as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     this.defaultAgent =
       this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
       this.setting("ELIZA_DEFAULT_AGENT_TYPE") ??
-      "codex";
-    this.defaultApprovalPreset = normalizeApprovalPreset(
-      boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
-        ? "approve-all"
-        : (this.setting("ELIZA_ACP_DEFAULT_APPROVAL") ??
-            this.setting("ELIZA_DEFAULT_APPROVAL_PRESET")),
-    );
-    this.agentSelectionStrategy =
-      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ??
-      this.setting("ELIZA_AGENT_SELECTION_STRATEGY") ??
-      "fixed";
+      "elizaos";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
     this.sessionTimeoutMs = parsePositiveInt(
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
         this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
+    );
+  }
+
+  get defaultApprovalPreset(): ApprovalPreset {
+    return normalizeApprovalPreset(
+      boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
+        ? "approve-all"
+        : (this.setting("ELIZA_ACP_DEFAULT_APPROVAL") ??
+            this.setting("ELIZA_DEFAULT_APPROVAL_PRESET")),
+    );
+  }
+
+  get agentSelectionStrategy(): string {
+    return (
+      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ??
+      this.setting("ELIZA_AGENT_SELECTION_STRATEGY") ??
+      "fixed"
     );
   }
 
@@ -168,7 +180,7 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
-    const agentType = opts.agentType ?? this.defaultAgent;
+    const agentType = opts.agentType ?? this.currentDefaultAgent();
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     const workdir = resolve(
       opts.workdir ??
@@ -475,7 +487,7 @@ export class AcpService extends Service {
   }
 
   async resolveAgentType(): Promise<string> {
-    return String(this.defaultAgent);
+    return String(this.currentDefaultAgent());
   }
 
   async sendToSession(sessionId: string, input: string): Promise<PromptResult> {
@@ -547,9 +559,31 @@ export class AcpService extends Service {
     return resolveVendoredOpencodeAcpCommand();
   }
 
+  private currentDefaultAgent(): AgentType {
+    return (
+      this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
+      this.setting("ELIZA_DEFAULT_AGENT_TYPE") ??
+      this.defaultAgent
+    );
+  }
+
+  private configuredAgentCommand(agentType: AgentType): string | undefined {
+    const normalized = String(agentType).toLowerCase();
+    if (normalized === "opencode") return this.opencodeAgentCommand();
+    if (normalized === "elizaos") {
+      return (
+        this.setting("ELIZAOS_ACP_COMMAND") ??
+        this.setting("ELIZA_ELIZAOS_ACP_COMMAND")
+      )?.trim();
+    }
+    if (normalized === "pi-agent" || normalized === "pi") {
+      return this.setting("ELIZA_PI_AGENT_ACP_COMMAND")?.trim();
+    }
+    return undefined;
+  }
+
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
+    const command = this.configuredAgentCommand(agentType);
     if (!command) return [agentType, ...args];
     return ["--agent", command, ...args];
   }
@@ -679,7 +713,7 @@ export class AcpService extends Service {
       if (opts.timeoutMs && opts.timeoutMs > 0) {
         setTimeout(() => {
           if (!proc.killed) this.terminateProcess(opts.sessionId ?? "", record);
-        }, opts.timeoutMs).unref?.();
+        }, opts.timeoutMs).unref();
       }
     });
   }
@@ -787,8 +821,8 @@ export class AcpService extends Service {
         const status = stringifyMaybe(updateBlock?.status);
         const toolOutput = updateBlock?.rawOutput ?? updateBlock?.content;
         const toolCall: AcpToolCall = {
-          id: stringifyMaybe(updateBlock?.toolCallId ?? updateBlock?.id) ?? "",
-          title: stringifyMaybe(updateBlock?.title) ?? "",
+          id: stringifyMaybe(updateBlock?.toolCallId ?? updateBlock?.id),
+          title: stringifyMaybe(updateBlock?.title),
           status: (status as AcpToolCall["status"]) ?? "running",
           output: stringifyMaybe(toolOutput),
         };
@@ -908,13 +942,19 @@ export class AcpService extends Service {
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value === "string") env[key] = value;
     }
-    if (model) {
-      env.OPENAI_MODEL = model;
-      if (agentType === "claude") env.ANTHROPIC_MODEL = model;
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
+    const resolvedModel = model ?? defaultModelForAgent(env, String(agentType));
+    if (resolvedModel) {
+      env.OPENAI_MODEL = resolvedModel;
+      if (agentType === "claude") env.ANTHROPIC_MODEL = resolvedModel;
+      if (agentType === "opencode") env.OPENCODE_MODEL = resolvedModel;
+      if (agentType === "elizaos") env.ELIZAOS_MODEL = resolvedModel;
+      if (agentType === "pi-agent" || agentType === "pi") {
+        env.PI_AGENT_MODEL = resolvedModel;
+      }
+      if (usesCerebrasProvider(env)) env.CEREBRAS_MODEL = resolvedModel;
     }
     if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
+      const opencode = buildOpencodeAcpEnv(this.runtime, env, resolvedModel);
       Object.assign(env, opencode.env);
       if (opencode.config) {
         this.log("info", "OpenCode ACP provider configured", {
@@ -951,11 +991,18 @@ export class AcpService extends Service {
   }
 
   private setting(key: string): string | undefined {
-    const fromRuntime = this.runtime.getSetting?.(key);
-    if (typeof fromRuntime === "string" && fromRuntime.length > 0)
-      return fromRuntime;
+    // The settings API writes to the eliza config env block. Prefer that file
+    // so default-agent and adapter command changes take effect without a
+    // process restart, even if runtime.getSetting still reflects startup state.
+    const fromConfig = readConfigEnvKey(key);
+    if (typeof fromConfig === "string" && fromConfig.trim()) {
+      return fromConfig.trim();
+    }
+    const fromRuntime = this.runtime.getSetting(key);
+    if (typeof fromRuntime === "string" && fromRuntime.trim())
+      return fromRuntime.trim();
     const fromEnv = process.env[key];
-    return fromEnv && fromEnv.length > 0 ? fromEnv : undefined;
+    return fromEnv?.trim() ? fromEnv.trim() : undefined;
   }
 
   private ensureStarted(): void {
@@ -1037,6 +1084,8 @@ function shouldForwardEnv(key: string): boolean {
       "CEREBRAS_MODEL",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
+      "ELIZAOS_MODEL",
+      "PI_AGENT_MODEL",
       "OPENCODE_MODEL",
       "OPENCODE_CONFIG_CONTENT",
       "OPENCODE_DISABLE_AUTOUPDATE",
@@ -1044,6 +1093,41 @@ function shouldForwardEnv(key: string): boolean {
       "CODEX_HOME",
     ].includes(key)
   );
+}
+
+function usesCerebrasProvider(env: NodeJS.ProcessEnv): boolean {
+  const provider =
+    env.ELIZA_LLM_PROVIDER?.toLowerCase() ??
+    env.ELIZA_PROVIDER?.toLowerCase() ??
+    env.BENCHMARK_MODEL_PROVIDER?.toLowerCase();
+  return (
+    provider === "cerebras" ||
+    Boolean(env.CEREBRAS_API_KEY) ||
+    Boolean(
+      env.CEREBRAS_BASE_URL &&
+        /(^|[/.])cerebras\.ai(?:\/|$)/i.test(env.CEREBRAS_BASE_URL),
+    ) ||
+    Boolean(
+      env.OPENAI_BASE_URL &&
+        /(^|[/.])cerebras\.ai(?:\/|$)/i.test(env.OPENAI_BASE_URL),
+    )
+  );
+}
+
+function defaultModelForAgent(
+  env: NodeJS.ProcessEnv,
+  agentType: string,
+): string | undefined {
+  if (!usesCerebrasProvider(env)) return undefined;
+  if (
+    agentType === "elizaos" ||
+    agentType === "pi-agent" ||
+    agentType === "pi" ||
+    agentType === "opencode"
+  ) {
+    return env.CEREBRAS_MODEL?.trim() || DEFAULT_CEREBRAS_CODING_MODEL;
+  }
+  return undefined;
 }
 
 function extractSessionId(event: AcpJsonRpcMessage): string | undefined {
@@ -1202,7 +1286,7 @@ function createDefaultSessionStore(runtime: RuntimeLike): SessionStore {
     databaseAdapter: runtime.databaseAdapter,
     logger: runtime.logger,
     getSetting: (key: string) => {
-      const value = runtime.getSetting?.(key);
+      const value = runtime.getSetting(key);
       return typeof value === "string" ? value : undefined;
     },
   };

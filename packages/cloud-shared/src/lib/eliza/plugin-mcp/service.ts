@@ -177,7 +177,7 @@ export class McpService extends Service {
         character?: { settings?: { mcp?: McpSettings } };
         settings?: { mcp?: McpSettings };
       };
-      s = rt.character?.settings?.mcp ?? null;
+      s = rt.character.settings?.mcp ?? null;
       if (!s || typeof s !== "object" || !("servers" in s)) {
         s = rt.settings?.mcp ?? null;
       }
@@ -246,7 +246,7 @@ export class McpService extends Service {
         this.registerToolsAsActions(name, tools);
       }
 
-      logger.info(`[MCP] Connected: ${name} (${tools?.length || 0} tools)`);
+      logger.info(`[MCP] Connected: ${name} (${tools.length || 0} tools)`);
     } catch (e) {
       state.status = "disconnected";
       state.lastError = e instanceof Error ? e : new Error(String(e));
@@ -333,13 +333,13 @@ export class McpService extends Service {
     isStdio: boolean,
   ): void {
     conn.transport.onerror = async (e) => {
-      const isAbortError = e?.name === "AbortError";
+      const isAbortError = e.name === "AbortError";
       if (!isStdio && isAbortError) {
         logger.debug({ error: e, server: name }, `[MCP] Suppressed transport AbortError: ${name}`);
         return;
       }
 
-      const msg = e?.message || "";
+      const msg = e.message || "";
       if (isStdio || (!msg.includes("SSE") && !msg.includes("timeout") && msg !== "undefined")) {
         logger.error({ error: e, server: name }, `[MCP] Transport error: ${name}`);
         conn.server.status = "disconnected";
@@ -417,7 +417,7 @@ export class McpService extends Service {
     if (!conn) return [];
     try {
       const res = await conn.client.listTools();
-      return (res?.tools || []).map((t) => {
+      return (res.tools || []).map((t) => {
         if (!t.inputSchema) return t;
         const toolCompatibility =
           this.toolCompatibility ?? createMcpToolCompatibilitySync(this.runtime);
@@ -465,7 +465,7 @@ export class McpService extends Service {
   // ─── Action Registration ───────────────────────────────────────────────────
 
   private registerToolsAsActions(serverName: string, tools: Tool[]): void {
-    if (!tools?.length) return;
+    if (!tools.length) return;
 
     // Split tools into Tier-1 (crucial, always visible) and Tier-2 (discoverable via SEARCH_ACTIONS).
     // Servers without a curated crucial-tools list register ALL tools as Tier-1 (old behavior).

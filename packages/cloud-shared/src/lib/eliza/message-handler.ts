@@ -133,9 +133,9 @@ export class MessageHandler {
       messageOptions,
     );
 
-    if (result?.responseMessages && result.responseMessages.length > 0) {
+    if (result.responseMessages && result.responseMessages.length > 0) {
       responseMemory = result.responseMessages[0];
-      if (responseMemory?.id) {
+      if (responseMemory.id) {
         const existing = await this.runtime.getMemoryById(responseMemory.id);
         if (!existing) {
           await this.runtime.createMemory(responseMemory, "messages");
@@ -143,7 +143,7 @@ export class MessageHandler {
       }
     }
 
-    if (!responseMemory && result?.responseContent) {
+    if (!responseMemory && result.responseContent) {
       responseMemory = await this.createAgentResponseMemory(
         roomId,
         userMessage,
@@ -192,7 +192,7 @@ export class MessageHandler {
     const responseText =
       typeof responseMemory.content === "string"
         ? responseMemory.content
-        : responseMemory.content?.text || "";
+        : responseMemory.content.text || "";
     this.sendToDiscordThread(roomId, text, responseText, options.characterId).catch((e) => {
       elizaLogger.warn(`[MessageHandler] Discord thread sync failed for room ${roomId}: ${e}`);
     });
@@ -315,9 +315,9 @@ export class MessageHandler {
       await this.runtime.createEntity({
         id: this.runtime.agentId,
         agentId: this.runtime.agentId,
-        names: [this.runtime.character?.name || "Agent"],
+        names: [this.runtime.character.name || "Agent"],
         metadata: {
-          name: this.runtime.character?.name || "Agent",
+          name: this.runtime.character.name || "Agent",
           type: "agent",
         },
       });

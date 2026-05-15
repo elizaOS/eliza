@@ -86,7 +86,7 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
     };
   }
 
-  const createdAt = data.created_at ?? context.created_at ?? new Date();
+  const createdAt = data.created_at ?? context.created_at;
   const forceInlineData = data.data_storage === "inline";
   const forceInlineResult = data.result_storage === "inline";
   const forceInlineError = data.error_storage === "inline";

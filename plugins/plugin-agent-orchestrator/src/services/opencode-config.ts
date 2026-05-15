@@ -212,6 +212,8 @@ export function resolveVendoredOpencodeShim(): string | undefined {
     );
     const sourceEntry = path.join(
       root,
+      "plugins",
+      "plugin-agent-orchestrator",
       "vendor",
       "opencode",
       "packages",

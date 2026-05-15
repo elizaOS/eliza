@@ -42,7 +42,7 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
 
 export function formatSkillEntriesForPrompt(entries: SkillEntry[]): string {
   const visibleSkills = entries
-    .filter((entry) => entry.invocation?.disableModelInvocation !== true)
+    .filter((entry) => entry.invocation.disableModelInvocation !== true)
     .map((entry) => entry.skill);
 
   return formatSkillsForPrompt(visibleSkills);
@@ -97,7 +97,7 @@ export function buildSkillCommandSpecs(
   reservedNames?: Set<string>,
 ): SkillCommandSpec[] {
   const userInvocable = entries.filter(
-    (entry) => entry.invocation?.userInvocable !== false,
+    (entry) => entry.invocation.userInvocable !== false,
   );
 
   const used = new Set<string>();
@@ -113,7 +113,7 @@ export function buildSkillCommandSpecs(
     const unique = resolveUniqueSkillCommandName(base, used);
     used.add(unique.toLowerCase());
 
-    const rawDescription = entry.skill.description?.trim() || rawName;
+    const rawDescription = entry.skill.description.trim() || rawName;
     const description =
       rawDescription.length > SKILL_COMMAND_DESCRIPTION_MAX_LENGTH
         ? `${rawDescription.slice(0, SKILL_COMMAND_DESCRIPTION_MAX_LENGTH - 1)}…`
@@ -121,8 +121,8 @@ export function buildSkillCommandSpecs(
 
     const dispatch = (() => {
       const kindRaw = (
-        entry.frontmatter?.["command-dispatch"] ??
-        entry.frontmatter?.command_dispatch ??
+        entry.frontmatter["command-dispatch"] ??
+        entry.frontmatter.command_dispatch ??
         ""
       )
         .toString()
@@ -134,8 +134,8 @@ export function buildSkillCommandSpecs(
       }
 
       const toolName = (
-        entry.frontmatter?.["command-tool"] ??
-        entry.frontmatter?.command_tool ??
+        entry.frontmatter["command-tool"] ??
+        entry.frontmatter.command_tool ??
         ""
       )
         .toString()

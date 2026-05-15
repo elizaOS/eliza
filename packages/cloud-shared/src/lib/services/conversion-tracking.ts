@@ -194,7 +194,7 @@ class ConversionTrackingService {
       .where(and(eq(appUsers.app_id, appId), eq(appUsers.user_id, userId)))
       .limit(1);
 
-    if (!appUser?.metadata) {
+    if (!appUser.metadata) {
       return null;
     }
 
@@ -213,8 +213,8 @@ class ConversionTrackingService {
 
     return {
       campaignId,
-      campaignName: campaign?.name,
-      platform: campaign?.platform,
+      campaignName: campaign.name,
+      platform: campaign.platform,
       utmSource: metadata.utm_source as string | undefined,
       utmMedium: metadata.utm_medium as string | undefined,
     };

@@ -101,7 +101,7 @@ const DOCUMENT_UPLOAD_SCOPE_OPTIONS: ReadonlyArray<{
 ];
 
 export function getDocumentUploadFilename(file: DocumentUploadFile): string {
-  return file.webkitRelativePath?.trim() || file.name;
+  return file.webkitRelativePath.trim() || file.name;
 }
 
 export function shouldReadDocumentFileAsText(

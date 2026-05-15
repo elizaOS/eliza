@@ -156,7 +156,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
     else void load();
   }, [externalOnChanged, load]);
 
-  const entries = ownsData ? internalEntries : (externalEntries ?? []);
+  const entries = ownsData ? internalEntries : externalEntries;
 
   const grouped = useMemo(() => {
     const buckets: Record<VaultEntryCategory, VaultEntryMeta[]> = {

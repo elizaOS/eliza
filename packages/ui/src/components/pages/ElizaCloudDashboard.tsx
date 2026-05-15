@@ -527,8 +527,8 @@ export function CloudDashboard() {
 
   const summaryCritical =
     elizaCloudAuthRejected ||
-    (billingSummary?.critical ?? elizaCloudCreditsCritical ?? false);
-  const summaryLow = billingSummary?.low ?? elizaCloudCreditsLow ?? false;
+    (billingSummary?.critical ?? elizaCloudCreditsCritical);
+  const summaryLow = billingSummary?.low ?? elizaCloudCreditsLow;
   const creditStatusColor = summaryCritical
     ? "text-danger"
     : summaryLow
@@ -541,8 +541,7 @@ export function CloudDashboard() {
         ? billingSummary.balance
         : null;
   const cloudCurrency = billingSummary?.currency ?? "USD";
-  const fallbackBillingUrl =
-    billingSummary?.topUpUrl ?? elizaCloudTopUpUrl ?? null;
+  const fallbackBillingUrl = billingSummary?.topUpUrl ?? elizaCloudTopUpUrl;
   const minimumTopUp =
     readNumber(
       (billingSummary as Record<string, unknown> | null)?.minimumTopUp,

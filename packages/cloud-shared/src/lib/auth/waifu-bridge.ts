@@ -104,7 +104,7 @@ async function resolveServiceUser(
 
   // 1. Try existing user by serviceId
   const user = await usersService.getByStewardId(serviceId);
-  if (user?.organization_id && user?.organization) {
+  if (user?.organization_id && user.organization) {
     return user as WaifuBridgeAuthResult["user"];
   }
 
@@ -174,7 +174,7 @@ async function resolveServiceUser(
       // Another request won the race and may have created the user too —
       // re-check before falling through to user creation.
       const retryUser = await usersService.getByStewardId(serviceId);
-      if (retryUser?.organization_id && retryUser?.organization) {
+      if (retryUser?.organization_id && retryUser.organization) {
         return retryUser as WaifuBridgeAuthResult["user"];
       }
 
@@ -220,13 +220,13 @@ async function resolveServiceUser(
     });
 
     const existing = await usersService.getByStewardId(serviceId);
-    if (existing?.organization_id && existing?.organization) {
+    if (existing?.organization_id && existing.organization) {
       return existing as WaifuBridgeAuthResult["user"];
     }
     // If wallet-based, try that path too
     if (walletAddr) {
       const walletUser = await usersService.getByWalletAddressWithOrganization(walletAddr);
-      if (walletUser?.organization_id && walletUser?.organization) {
+      if (walletUser?.organization_id && walletUser.organization) {
         return walletUser as WaifuBridgeAuthResult["user"];
       }
     }
@@ -242,7 +242,7 @@ async function resolveServiceUser(
   });
 
   const fullUser = await usersService.getWithOrganization(newUser.id);
-  if (!fullUser?.organization_id || !fullUser?.organization) {
+  if (!fullUser?.organization_id || !fullUser.organization) {
     throw new ForbiddenError("Failed to provision service account for waifu-core bridge");
   }
 

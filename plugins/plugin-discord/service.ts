@@ -643,7 +643,7 @@ export class DiscordService extends Service implements IDiscordService {
 				}
 
 				const guilds = client.guilds.cache;
-				if (guilds && transformedAllGeneralCommands.length > 0) {
+				if (transformedAllGeneralCommands.length > 0) {
 					await Promise.all(
 						[...guilds].map(async ([guildId, guild]) => {
 							try {
@@ -668,7 +668,7 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 				}
 
-				if (guilds && targetedGuildCommands.length > 0) {
+				if (targetedGuildCommands.length > 0) {
 					await Promise.all(
 						targetedGuildCommands.flatMap((cmd) => {
 							const transformedCmd = transformCommandToDiscordApi(cmd);

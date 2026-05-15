@@ -39,7 +39,7 @@ function loadCodes(): Map<string, number> {
   }
   const map = new Map<string, number>();
   for (const [code, amount] of Object.entries(codes)) {
-    const normalized = code?.trim().toLowerCase();
+    const normalized = code.trim().toLowerCase();
     if (!normalized) continue;
     const num = typeof amount === "number" ? amount : parseFloat(String(amount));
     if (!isNaN(num) && num > 0) {
@@ -60,7 +60,7 @@ function getCodes(): Map<string, number> {
 }
 
 export function getBonusForCode(code: string): number | undefined {
-  if (!code?.trim()) return undefined;
+  if (!code.trim()) return undefined;
   return getCodes().get(code.trim().toLowerCase());
 }
 

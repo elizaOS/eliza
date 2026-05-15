@@ -186,7 +186,7 @@ function ModelListRow({
               <DownloadProgress job={download} />
             </div>
           ) : null}
-          {failed && download?.error ? (
+          {failed && download.error ? (
             <div className="mt-1 text-danger text-xs">
               Download failed: {download.error}
             </div>

@@ -1039,7 +1039,7 @@ function AppProviderInner({
     setActionNotice,
     promptModal,
     agentName: agentStatus?.agentName,
-    characterName: characterDraft?.name,
+    characterName: characterDraft.name,
   });
   const {
     state: {

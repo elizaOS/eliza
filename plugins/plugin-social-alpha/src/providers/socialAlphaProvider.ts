@@ -209,7 +209,7 @@ export const socialAlphaProvider: Provider = {
 			`\\b(${__providerKeywords.join("|")})\\b`,
 			"i",
 		);
-		const __recentMessages = Array.isArray(_state?.recentMessagesData)
+		const __recentMessages = Array.isArray(_state.recentMessagesData)
 			? (_state.recentMessagesData as Memory[])
 			: [];
 		const __isRelevant =

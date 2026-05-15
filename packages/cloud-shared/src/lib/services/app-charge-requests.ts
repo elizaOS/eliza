@@ -174,11 +174,9 @@ function defaultRedirectUrl(path: string): string {
 }
 
 function allowedRedirectOrigins(app: App): string[] {
-  return [
-    ...getDefaultPlatformRedirectOrigins(),
-    app.app_url,
-    ...(app.allowed_origins ?? []),
-  ].filter((origin): origin is string => Boolean(origin));
+  return [...getDefaultPlatformRedirectOrigins(), app.app_url, ...app.allowed_origins].filter(
+    (origin): origin is string => Boolean(origin),
+  );
 }
 
 function validateRedirects(params: {

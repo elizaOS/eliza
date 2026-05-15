@@ -476,10 +476,10 @@ function DesktopPermissionsView() {
               <PermissionRow
                 key={def.id}
                 def={def}
-                status={state?.status ?? "not-determined"}
+                status={state?.status}
                 reason={state?.reason}
                 platform={platform}
-                canRequest={state?.canRequest ?? false}
+                canRequest={state?.canRequest}
                 onRequest={() => handleRequest(def.id)}
                 onOpenSettings={() => handleOpenSettings(def.id)}
                 isShell={def.id === "shell"}

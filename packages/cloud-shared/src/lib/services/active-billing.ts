@@ -207,7 +207,7 @@ class ActiveBillingService {
       .limit(Math.min(Math.max(limit, 1), 200));
 
     return rows.map((row) => {
-      const metadata = row.metadata ?? {};
+      const metadata = row.metadata;
       const detected = detectLedgerResource(metadata);
       return {
         id: row.id,
@@ -281,7 +281,7 @@ class ActiveBillingService {
         }
 
         const metadata = {
-          ...(container.metadata ?? {}),
+          ...container.metadata,
           billing_cancelled_at: now.toISOString(),
           billing_cancel_mode: mode,
           billing_cancel_infrastructure_action: infrastructureAction,

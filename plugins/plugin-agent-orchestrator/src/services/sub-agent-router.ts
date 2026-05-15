@@ -13,8 +13,10 @@ import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
+const ACPX_COORDINATION_SOURCE = "sub_agent_coordination";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 const DEFAULT_ROUND_TRIP_CAP = 32;
+const MAX_ROUTED_SIGNALS_PER_EVENT = 8;
 
 // Matches an http(s) URL embedded in free text. Excludes whitespace,
 // quotes, brackets, parens, backticks AND `*` — so a markdown-bolded link
@@ -55,7 +57,7 @@ function collectVerifiableUrlCandidates(
   const candidates: string[] = [];
   for (const match of text.matchAll(URL_IN_TEXT_RE)) {
     const raw = match[0];
-    const index = match.index ?? -1;
+    const index = match.index;
     const suffix =
       index >= 0 ? text.slice(index + raw.length, index + raw.length + 4) : "";
     // Route instructions and docs often contain URL templates such as
@@ -423,6 +425,7 @@ export class SubAgentRouter extends Service {
           error: err instanceof Error ? err.message : String(err),
         });
       });
+    await this.ensureSwarmParticipation(subAgentEntityId, origin, sessionId);
     // Normalize URLs in the sub-agent's narration before anything else
     // reads it. Weak coding models (gpt-oss-class) emit Unicode look-alike
     // dashes (non-breaking hyphen U+2011, en/em dashes) inside URLs, so the
@@ -472,6 +475,20 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
     }
+    const swarmSignals = extractSwarmSignals(text);
+    if (swarmSignals.coordination.length > 0) {
+      await this.routeCoordinationSignals({
+        origin,
+        session,
+        sessionId,
+        subAgentEntityId,
+        event,
+        signals: swarmSignals.coordination,
+      });
+    }
+    if (swarmSignals.questions.length > 0) {
+      text = questionFocusedText(text, swarmSignals.questions);
+    }
     const memory: Memory = {
       id: randomUUID() as UUID,
       entityId: subAgentEntityId,
@@ -494,6 +511,24 @@ export class SubAgentRouter extends Service {
           subAgentRoundTrip: nextCount,
           subAgentRoundTripCap: this.roundTripCap,
           ...(capExceeded ? { subAgentCapExceeded: true } : {}),
+          ...(swarmSignals.questions.length > 0
+            ? {
+                subAgentQuestionForTaskCreator: true,
+                subAgentQuestions: swarmSignals.questions,
+              }
+            : {}),
+          ...(swarmSignals.coordination.length > 0
+            ? {
+                subAgentCoordination: true,
+                subAgentCoordinationMessages: swarmSignals.coordination,
+                ...(origin.taskRoomId
+                  ? { subAgentTaskRoomId: origin.taskRoomId }
+                  : {}),
+                ...(origin.worktreeRoomId
+                  ? { subAgentWorktreeRoomId: origin.worktreeRoomId }
+                  : {}),
+              }
+            : {}),
           ...(verifiedUrls.length > 0
             ? { subAgentVerifiedUrls: verifiedUrls }
             : {}),
@@ -577,7 +612,7 @@ export class SubAgentRouter extends Service {
     if (!source) return undefined;
     return async (response: Content): Promise<Memory[]> => {
       const text =
-        typeof response?.text === "string" ? response.text.trim() : "";
+        typeof response.text === "string" ? response.text.trim() : "";
       if (!text) return [];
       const delivered = await sendToTarget(
         {
@@ -596,6 +631,118 @@ export class SubAgentRouter extends Service {
       });
       return delivered ? [delivered] : [];
     };
+  }
+
+  private async ensureSwarmParticipation(
+    subAgentEntityId: UUID,
+    origin: OriginInfo,
+    sessionId: string,
+  ): Promise<void> {
+    const roomIds = dedupeUuids([origin.taskRoomId, origin.worktreeRoomId]);
+    if (roomIds.length === 0) return;
+    for (const roomId of roomIds) {
+      await this.runtime.addParticipant(subAgentEntityId, roomId).catch((err) =>
+        this.log("warn", "addParticipant for sub-agent swarm room failed", {
+          sessionId,
+          roomId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+
+  private async routeCoordinationSignals(args: {
+    origin: OriginInfo;
+    session: SessionInfo;
+    sessionId: string;
+    subAgentEntityId: UUID;
+    event: SessionEventName;
+    signals: string[];
+  }): Promise<void> {
+    const targets = dedupeSwarmTargets([
+      args.origin.taskRoomId
+        ? {
+            roomId: args.origin.taskRoomId,
+            kind: "task" as const,
+            key: args.origin.taskRoomKey,
+          }
+        : undefined,
+      args.origin.worktreeRoomId
+        ? {
+            roomId: args.origin.worktreeRoomId,
+            kind: "worktree" as const,
+            key: args.origin.worktreeRoomKey,
+          }
+        : undefined,
+    ]);
+    if (targets.length === 0) return;
+
+    const text = [
+      `[sub-agent coordination: ${args.origin.label} (${args.session.agentType})]`,
+      ...args.signals.map((signal) => `- ${signal}`),
+    ].join("\n");
+
+    for (const target of targets) {
+      const memory: Memory = {
+        id: randomUUID() as UUID,
+        entityId: args.subAgentEntityId,
+        agentId: this.runtime.agentId,
+        roomId: target.roomId,
+        ...(args.origin.worldId ? { worldId: args.origin.worldId } : {}),
+        content: {
+          text,
+          source: ACPX_COORDINATION_SOURCE,
+          metadata: {
+            subAgent: true,
+            subAgentSessionId: args.sessionId,
+            subAgentLabel: args.origin.label,
+            subAgentEvent: args.event,
+            subAgentAgentType: args.session.agentType,
+            subAgentCoordination: true,
+            subAgentCoordinationMessages: args.signals,
+            swarmRoomKind: target.kind,
+            ...(target.key ? { swarmRoomKey: target.key } : {}),
+            originRoomId: args.origin.roomId,
+            ...(args.origin.userId ? { originUserId: args.origin.userId } : {}),
+            ...(args.origin.parentMessageId
+              ? { originMessageId: args.origin.parentMessageId }
+              : {}),
+            ...(args.origin.source ? { originSource: args.origin.source } : {}),
+          },
+        },
+        createdAt: Date.now(),
+      };
+
+      await this.runtime.createMemory(memory, "messages").catch((err) => {
+        this.log("warn", "createMemory for sub-agent coordination failed", {
+          sessionId: args.sessionId,
+          roomId: target.roomId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+
+      const emit = this.runtime.emitEvent.bind(this.runtime) as
+        | ((
+            name: string,
+            payload: {
+              source: string;
+              message: Memory;
+              runtime: IAgentRuntime;
+            },
+          ) => Promise<void>)
+        | undefined;
+      await emit?.("MESSAGE_RECEIVED", {
+        runtime: this.runtime,
+        message: memory,
+        source: ACPX_COORDINATION_SOURCE,
+      }).catch((err) => {
+        this.log("warn", "emit coordination message failed", {
+          sessionId: args.sessionId,
+          roomId: target.roomId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
   }
 
   /**
@@ -726,7 +873,7 @@ Do not report done until every referenced URL in the final page resolves without
     data?: unknown,
   ): void {
     const logger = this.runtime.logger;
-    const fn = logger?.[level];
+    const fn = logger[level];
     if (typeof fn === "function") {
       fn.call(
         logger,
@@ -774,6 +921,10 @@ interface OriginInfo {
   parentMessageId?: UUID;
   label: string;
   source?: string;
+  taskRoomId?: UUID;
+  taskRoomKey?: string;
+  worktreeRoomId?: UUID;
+  worktreeRoomKey?: string;
 }
 
 function readOrigin(session: SessionInfo): OriginInfo | null {
@@ -788,7 +939,87 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
     parentMessageId: pickUuid(meta.messageId),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
+    taskRoomId: pickUuid(meta.taskRoomId),
+    taskRoomKey:
+      typeof meta.taskRoomKey === "string" ? meta.taskRoomKey : undefined,
+    worktreeRoomId: pickUuid(meta.worktreeRoomId),
+    worktreeRoomKey:
+      typeof meta.worktreeRoomKey === "string"
+        ? meta.worktreeRoomKey
+        : undefined,
   };
+}
+
+function extractSwarmSignals(text: string): {
+  questions: string[];
+  coordination: string[];
+} {
+  const questions: string[] = [];
+  const coordination: string[] = [];
+  for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+    const match = line.match(
+      /^\s*(QUESTION_FOR_TASK_CREATOR|AGENT_COORDINATION)\s*:\s*(.+?)\s*$/i,
+    );
+    if (!match) continue;
+    const kind = match[1]?.toUpperCase();
+    const value = sanitizeSignalText(match[2] ?? "");
+    if (!value) continue;
+    if (
+      kind === "QUESTION_FOR_TASK_CREATOR" &&
+      questions.length < MAX_ROUTED_SIGNALS_PER_EVENT
+    ) {
+      questions.push(value);
+    }
+    if (
+      kind === "AGENT_COORDINATION" &&
+      coordination.length < MAX_ROUTED_SIGNALS_PER_EVENT
+    ) {
+      coordination.push(value);
+    }
+  }
+  return {
+    questions: dedupeStrings(questions),
+    coordination: dedupeStrings(coordination),
+  };
+}
+
+function sanitizeSignalText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 2000);
+}
+
+function questionFocusedText(text: string, questions: string[]): string {
+  const header = [
+    "[sub-agent question for task creator]",
+    ...questions.map((question) => `- ${question}`),
+  ].join("\n");
+  return `${header}\n\nFull sub-agent output:\n${text}`;
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function dedupeUuids(values: Array<UUID | undefined>): UUID[] {
+  return [...new Set(values.filter((v): v is UUID => typeof v === "string"))];
+}
+
+function dedupeSwarmTargets(
+  values: Array<
+    { roomId: UUID; kind: "task" | "worktree"; key?: string } | undefined
+  >,
+): Array<{ roomId: UUID; kind: "task" | "worktree"; key?: string }> {
+  const seen = new Set<UUID>();
+  const result: Array<{
+    roomId: UUID;
+    kind: "task" | "worktree";
+    key?: string;
+  }> = [];
+  for (const value of values) {
+    if (!value || seen.has(value.roomId)) continue;
+    seen.add(value.roomId);
+    result.push(value);
+  }
+  return result;
 }
 
 function pickUuid(v: unknown): UUID | undefined {

@@ -300,7 +300,7 @@ describeIf(LIVE_SUITE_ENABLED)(
       const originalSend = runtime.sendMessageToTarget.bind(runtime);
       runtime.sendMessageToTarget = (async (target, content) => {
         dispatches.push({
-          source: String(target.source ?? ""),
+          source: String(target.source),
           target: String(
             target.channelId ?? target.roomId ?? target.entityId ?? "",
           ),
@@ -320,7 +320,7 @@ describeIf(LIVE_SUITE_ENABLED)(
     }, 240_000);
 
     afterAll(async () => {
-      envBackup?.restore();
+      envBackup.restore();
       if (runtime) {
         await runtime.stop();
       }

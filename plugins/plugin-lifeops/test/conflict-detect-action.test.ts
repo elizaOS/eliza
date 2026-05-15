@@ -180,7 +180,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(start).toBeTruthy();
       expect(end).toBeTruthy();
       const days =
-        (Date.parse(end!) - Date.parse(start!)) / (24 * 60 * 60 * 1000);
+        (Date.parse(end) - Date.parse(start)) / (24 * 60 * 60 * 1000);
       expect(days).toBeGreaterThanOrEqual(6.9);
       expect(days).toBeLessThanOrEqual(8.1);
     });

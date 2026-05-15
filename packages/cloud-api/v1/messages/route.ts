@@ -518,7 +518,7 @@ app.post("/", async (c) => {
   if (
     !request.model ||
     request.max_tokens == null ||
-    !request.messages?.length
+    !request.messages.length
   ) {
     return anthropicError(
       "invalid_request_error",
@@ -749,10 +749,7 @@ async function handleNonStream(
   const MIN_RESPONSE_BUFFER = 4096;
   const effectiveMaxTokens =
     cotBudget != null
-      ? Math.max(
-          request.max_tokens ?? MIN_RESPONSE_BUFFER,
-          cotBudget + MIN_RESPONSE_BUFFER,
-        )
+      ? Math.max(request.max_tokens, cotBudget + MIN_RESPONSE_BUFFER)
       : request.max_tokens;
 
   try {
@@ -818,7 +815,7 @@ async function handleNonStream(
       responseContent.push({ type: "text", text: result.text });
     }
 
-    if (result.toolCalls?.length) {
+    if (result.toolCalls.length) {
       for (const toolCall of result.toolCalls) {
         responseContent.push({
           type: "tool_use",
@@ -833,7 +830,7 @@ async function handleNonStream(
       responseContent.push({ type: "text", text: "" });
     }
 
-    const hasToolCalls = Boolean(result.toolCalls?.length);
+    const hasToolCalls = Boolean(result.toolCalls.length);
     const stopReason = mapFinishReason(
       result.finishReason,
       result.rawFinishReason,
@@ -901,10 +898,7 @@ async function handleStream(
   const MIN_RESPONSE_BUFFER = 4096;
   const effectiveMaxTokens =
     cotBudget != null
-      ? Math.max(
-          request.max_tokens ?? MIN_RESPONSE_BUFFER,
-          cotBudget + MIN_RESPONSE_BUFFER,
-        )
+      ? Math.max(request.max_tokens, cotBudget + MIN_RESPONSE_BUFFER)
       : request.max_tokens;
 
   const result = streamText({

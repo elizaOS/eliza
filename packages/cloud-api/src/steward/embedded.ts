@@ -107,7 +107,7 @@ async function patchProvidersResponse(
   } catch {
     return upstream;
   }
-  if (!parsed?.data) return upstream;
+  if (!parsed.data) return upstream;
 
   const oauth = new Set<string>(parsed.data.oauth ?? []);
   const patched: ProvidersBody["data"] = { ...parsed.data };

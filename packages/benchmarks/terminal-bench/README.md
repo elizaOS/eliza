@@ -61,10 +61,9 @@ terminal-bench
 # Force the legacy one-shot exec_run path (no tmux).
 terminal-bench --task-ids hello-world --one-shot
 
-# Eliza bridge task-agent selection defaults to opencode. If
-# ANTHROPIC_API_KEY/CLAUDE_API_KEY is present it resolves to claude; if
-# CODEX_API_KEY/OPENAI_API_KEY is present it resolves to codex. Override it:
+# Eliza bridge task-agent selection defaults to elizaos. Override it:
 terminal-bench --task-ids hello-world --task-agent opencode
+terminal-bench --task-ids hello-world --task-agent pi-agent
 
 # Cerebras via the eliza bridge, preserving the configured model name.
 terminal-bench --model-provider cerebras --model gpt-oss-120b

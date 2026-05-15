@@ -329,18 +329,18 @@ async function cmdList(opts: ListOptions): Promise<void> {
       const traj = JSON.parse(raw) as RecordedTrajectory;
 
       if (opts.agent && traj.agentId !== opts.agent) continue;
-      if (opts.since && (traj.startedAt ?? 0) < opts.since) continue;
+      if (opts.since && (traj.startedAt) < opts.since) continue;
 
-      const decision = traj.metrics?.finalDecision ?? traj.status;
+      const decision = traj.metrics.finalDecision ?? traj.status;
       rows.push({
         id: traj.trajectoryId,
         started: formatTimestamp(traj.startedAt),
-        duration: formatDuration(traj.metrics?.totalLatencyMs ?? 0),
+        duration: formatDuration(traj.metrics.totalLatencyMs),
         stages: traj.stages.length,
-        tools: traj.metrics?.toolCallsExecuted ?? 0,
-        cost: formatUsd(traj.metrics?.totalCostUsd ?? 0),
+        tools: traj.metrics.toolCallsExecuted,
+        cost: formatUsd(traj.metrics.totalCostUsd),
         decision,
-        agent: traj.agentId ?? "—",
+        agent: traj.agentId,
       });
     } catch (err) {
       console.error(
@@ -482,13 +482,13 @@ async function cmdPrint(idOrPath: string, opts: PrintOptions): Promise<void> {
     `${c.dim("agent:")}  ${t.agentId}  ${c.dim("room:")} ${t.roomId ?? "—"}`,
   );
   console.log(
-    `${c.dim("from:")}   ${t.rootMessage?.sender ?? "user"}: ${t.rootMessage?.text ?? "—"}`,
+    `${c.dim("from:")}   ${t.rootMessage.sender ?? "user"}: ${t.rootMessage.text}`,
   );
   console.log(
     `${c.dim("status:")} ${t.status}  ${c.dim("started:")} ${formatTimestamp(t.startedAt)}  ${c.dim("ended:")} ${t.endedAt ? formatTimestamp(t.endedAt) : "—"}`,
   );
   console.log(
-    `${c.dim("metrics:")} ${formatDuration(t.metrics?.totalLatencyMs ?? 0)} · ${formatUsd(t.metrics?.totalCostUsd ?? 0)} · stages ${t.stages.length} · tool calls ${t.metrics?.toolCallsExecuted ?? 0} · final ${t.metrics?.finalDecision ?? "—"}`,
+    `${c.dim("metrics:")} ${formatDuration(t.metrics.totalLatencyMs)} · ${formatUsd(t.metrics.totalCostUsd)} · stages ${t.stages.length} · tool calls ${t.metrics.toolCallsExecuted} · final ${t.metrics.finalDecision ?? "—"}`,
   );
   console.log("");
 
@@ -556,18 +556,18 @@ async function cmdStats(idOrPath: string): Promise<void> {
 
   console.log(c.bold(`Trajectory ${t.trajectoryId}`));
   console.log(
-    `agent ${t.agentId} · started ${formatTimestamp(t.startedAt)} · ${formatDuration(m?.totalLatencyMs ?? 0)} total`,
+    `agent ${t.agentId} · started ${formatTimestamp(t.startedAt)} · ${formatDuration(m.totalLatencyMs)} total`,
   );
   console.log(`Stages: ${t.stages.length} (${stageBreakdown || "—"})`);
   console.log(
-    `Tokens: ${m?.totalPromptTokens ?? 0} input (${m?.totalCacheReadTokens ?? 0} cache-read, ${m?.totalCacheCreationTokens ?? 0} cache-created), ${m?.totalCompletionTokens ?? 0} output`,
+    `Tokens: ${m.totalPromptTokens} input (${m.totalCacheReadTokens} cache-read, ${m.totalCacheCreationTokens} cache-created), ${m.totalCompletionTokens} output`,
   );
-  console.log(`Cost: ${formatUsd(m?.totalCostUsd ?? 0)}`);
+  console.log(`Cost: ${formatUsd(m.totalCostUsd)}`);
   console.log(
-    `Tool calls: ${m?.toolCallsExecuted ?? 0} executed (${(m?.toolCallsExecuted ?? 0) - (m?.toolCallFailures ?? 0)} success, ${m?.toolCallFailures ?? 0} failed)`,
+    `Tool calls: ${m.toolCallsExecuted} executed (${m.toolCallsExecuted - m.toolCallFailures} success, ${m.toolCallFailures} failed)`,
   );
   console.log(`Evaluator decisions: ${decisionList || "—"}`);
-  console.log(`Evaluator success=false: ${m?.evaluatorFailures ?? 0} stages`);
+  console.log(`Evaluator success=false: ${m.evaluatorFailures} stages`);
   console.log(`Cache hit rate (avg): ${meanCacheRate.toFixed(1)}%`);
 }
 
@@ -732,9 +732,9 @@ function exportMarkdown(t: RecordedTrajectory): string {
   lines.push(`- ended: ${t.endedAt ? formatTimestamp(t.endedAt) : "—"}`);
   lines.push(`- status: ${t.status}`);
   lines.push(
-    `- total: ${formatDuration(t.metrics?.totalLatencyMs ?? 0)} · ${formatUsd(t.metrics?.totalCostUsd ?? 0)}`,
+    `- total: ${formatDuration(t.metrics.totalLatencyMs)} · ${formatUsd(t.metrics.totalCostUsd)}`,
   );
-  lines.push(`- root message: ${t.rootMessage?.text ?? "—"}`);
+  lines.push(`- root message: ${t.rootMessage.text}`);
   lines.push("");
 
   t.stages.forEach((stage, idx) => {
@@ -826,7 +826,7 @@ function exportHtml(t: RecordedTrajectory): string {
     })
     .join("\n");
 
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape(t.trajectoryId)}</title><style>body{font-family:system-ui,sans-serif;max-width:960px;margin:2em auto;padding:0 1em}pre{white-space:pre-wrap;background:#f4f4f4;padding:0.5em;border-radius:4px}h2{margin-top:2em;border-bottom:1px solid #ddd;padding-bottom:0.2em}</style></head><body><h1>Trajectory ${htmlEscape(t.trajectoryId)}</h1><p>agent: ${htmlEscape(t.agentId)} · ${formatDuration(t.metrics?.totalLatencyMs ?? 0)} · ${formatUsd(t.metrics?.totalCostUsd ?? 0)}</p>${stages}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape(t.trajectoryId)}</title><style>body{font-family:system-ui,sans-serif;max-width:960px;margin:2em auto;padding:0 1em}pre{white-space:pre-wrap;background:#f4f4f4;padding:0.5em;border-radius:4px}h2{margin-top:2em;border-bottom:1px solid #ddd;padding-bottom:0.2em}</style></head><body><h1>Trajectory ${htmlEscape(t.trajectoryId)}</h1><p>agent: ${htmlEscape(t.agentId)} · ${formatDuration(t.metrics.totalLatencyMs)} · ${formatUsd(t.metrics.totalCostUsd)}</p>${stages}</body></html>`;
 }
 
 async function cmdExport(idOrPath: string, opts: ExportOptions): Promise<void> {
@@ -997,7 +997,7 @@ async function cmdAggregate(opts: AggregateOptions): Promise<void> {
       const t = JSON.parse(raw) as RecordedTrajectory;
       if (!Array.isArray(t.stages) || !t.metrics || !t.trajectoryId) continue;
       if (opts.agent && t.agentId !== opts.agent) continue;
-      if (opts.since && (t.startedAt ?? 0) < opts.since) continue;
+      if (opts.since && (t.startedAt) < opts.since) continue;
       trajectories.push(t);
     } catch {
       // skip
@@ -1010,7 +1010,7 @@ async function cmdAggregate(opts: AggregateOptions): Promise<void> {
   }
 
   const durations = trajectories
-    .map((t) => t.metrics?.totalLatencyMs ?? 0)
+    .map((t) => t.metrics.totalLatencyMs)
     .sort((a, b) => a - b);
   const median =
     durations.length === 0
@@ -1018,7 +1018,7 @@ async function cmdAggregate(opts: AggregateOptions): Promise<void> {
       : (durations[Math.floor(durations.length / 2)] ?? 0);
   const p95 = durations[Math.floor(durations.length * 0.95)] ?? 0;
   const totalCost = trajectories.reduce((sum, traj) => {
-    const recorded = traj.metrics?.totalCostUsd;
+    const recorded = traj.metrics.totalCostUsd;
     if (typeof recorded === "number" && recorded > 0) return sum + recorded;
     // Fallback: re-derive from per-stage usage when the recorder did not
     // pre-compute. Lets us compare cost across runs even on older trajectories.

@@ -107,7 +107,7 @@ export function CustomActionEditor({
       setDescription(action.description || "");
       setSimilesInput((action.similes ?? []).join(", "));
       setParameters(
-        action.parameters?.map((p) => ({
+        action.parameters.map((p) => ({
           name: p.name,
           description: p.description || "",
           required: p.required || false,
@@ -758,7 +758,7 @@ export function CustomActionEditor({
             </div>
             {parameters.map((param, paramIdx) => (
               <div
-                key={`${param.name}-${param.description ?? ""}`}
+                key={`${param.name}-${param.description}`}
                 className="flex gap-2 items-start"
               >
                 <Input

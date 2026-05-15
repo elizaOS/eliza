@@ -23,7 +23,7 @@ export default function DashboardLayout() {
   const playwrightTestAuthEnabled =
     import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
     (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+      process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
   const hasBeenAuthenticated = useRef(false);
   const authLossTimerRef = useRef<number | null>(null);
@@ -40,7 +40,7 @@ export default function DashboardLayout() {
   const authReady = ready || playwrightTestAuthEnabled;
 
   const isFreeModePath = FREE_MODE_PATHS.some((path) =>
-    pathname?.startsWith(path),
+    pathname.startsWith(path),
   );
   const shouldAllowProtectedContent =
     authenticated || authGraceActive || hasPlaywrightTestSession;
@@ -100,7 +100,7 @@ export default function DashboardLayout() {
       ? `/login?returnTo=${encodeURIComponent(pathname + search)}`
       : undefined;
 
-  const minimalOutletChrome = pathname?.startsWith("/dashboard/chat");
+  const minimalOutletChrome = pathname.startsWith("/dashboard/chat");
 
   return (
     <DashboardShell

@@ -181,7 +181,7 @@ export async function checkAvailabilities(domains: string[]): Promise<Availabili
       body: JSON.stringify({ domains }),
     },
   );
-  return (result.domains ?? []).map(fromCheckEntry);
+  return result.domains.map(fromCheckEntry);
 }
 
 /**
@@ -207,7 +207,7 @@ export async function searchDomains(query: string, limit = 10): Promise<Availabi
     `/accounts/${cfg.accountId}/registrar/domain-search?q=${encodeURIComponent(query)}&limit=${boundedLimit}`,
     cfg.apiToken,
   );
-  return (result.domains ?? []).map(fromCheckEntry);
+  return result.domains.map(fromCheckEntry);
 }
 
 /**

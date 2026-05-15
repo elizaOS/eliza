@@ -40,11 +40,12 @@ export function initializeAnthropic(_config: PluginConfig, runtime: IAgentRuntim
             };
           }
         ).Bun;
-        const result = bunRuntime?.spawnSync(["claude", "--version"], {
+        if (!bunRuntime) throw new Error("bun runtime not found");
+        const result = bunRuntime.spawnSync(["claude", "--version"], {
           stdout: "pipe",
           stderr: "pipe",
         });
-        if (!result || result.exitCode !== 0) throw new Error("claude not found");
+        if (result.exitCode !== 0) throw new Error("claude not found");
         logger.log("[Anthropic] CLI mode — using `claude -p` for all model calls");
       } catch {
         logger.warn(

@@ -230,10 +230,10 @@ async function main() {
     gate: "billing_records",
     status: billingStatus ? "pass" : "fail",
     completedAt: new Date().toISOString(),
-    usageRecordId: latest?.usage_record_id ?? null,
+    usageRecordId: latest?.usage_record_id,
     creditTransactionId,
-    idempotencyKey: latest?.idempotency_key ?? null,
-    billingRecordId: latest?.id ?? null,
+    idempotencyKey: latest?.idempotency_key,
+    billingRecordId: latest?.id,
     settlementTransactionIds: settlementIds,
     summary: billingStatus
       ? `AI billing record ${latest.id} joins usage ${latest.usage_record_id} to credit transaction ${creditTransactionId}`

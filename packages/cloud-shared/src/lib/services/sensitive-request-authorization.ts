@@ -179,7 +179,7 @@ async function resolveActor(
         ...resolved,
         authenticated: resolved.authenticated !== false,
         entityIds: normalizeEntityIds([
-          ...(resolved.entityIds ?? []),
+          ...resolved.entityIds,
           actor.entityId,
           actor.userId,
           ...(actor.entityIds ?? []),
@@ -199,7 +199,7 @@ async function resolveActor(
     userId: resolved.userId ?? fallback.userId,
     organizationId: resolved.organizationId ?? fallback.organizationId,
     role: resolved.role ?? fallback.role,
-    entityIds: normalizeEntityIds([...(resolved.entityIds ?? []), ...(fallback.entityIds ?? [])]),
+    entityIds: normalizeEntityIds([...resolved.entityIds, ...fallback.entityIds]),
     connector: resolved.connector ?? fallback.connector,
   };
 }

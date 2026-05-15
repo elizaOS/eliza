@@ -104,7 +104,7 @@ describe.skipIf(skipReason !== null)("Ollama native text plumbing (live)", () =>
       stream: true,
     } as never)) as TextStreamResult;
 
-    expect(result && typeof result === "object" && "textStream" in result).toBe(true);
+    expect(typeof result === "object" && "textStream" in result).toBe(true);
     const chunks: string[] = [];
     for await (const c of result.textStream) {
       chunks.push(c);

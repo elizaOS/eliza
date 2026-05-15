@@ -492,7 +492,7 @@ async function startScenarioApiServer(
     const method = (req.method ?? "GET").toUpperCase();
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
-    for (const route of runtime.routes ?? []) {
+    for (const route of runtime.routes) {
       if (route.type !== method || typeof route.handler !== "function") {
         continue;
       }
@@ -1068,7 +1068,7 @@ async function executeMessageTurn(
     `handleMessage(${turn.name})`,
   );
 
-  if (!responseText && result?.responseContent?.text) {
+  if (!responseText && result.responseContent?.text) {
     responseText = result.responseContent.text;
   }
 

@@ -60,19 +60,20 @@ export function AvatarHost(props: AvatarHostProps): JSX.Element {
       handle = mod.mount(target, ctx);
     } catch (error) {
       logger.warn(
-        "[AvatarHost] Failed to mount avatar module; falling back to solid sky",
         { error: error instanceof Error ? error.message : String(error) },
+        "[AvatarHost] Failed to mount avatar module; falling back to solid sky",
       );
       setFailed(true);
       return;
     }
     return () => {
       try {
-        handle?.unmount();
+        handle.unmount();
       } catch (error) {
-        logger.warn("[AvatarHost] Unmount threw", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          "[AvatarHost] Unmount threw",
+        );
       }
     };
   }, [moduleId, audioLevel, speakingState, ownerName]);

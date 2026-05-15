@@ -21,11 +21,11 @@ function truncateText(value: string, limit = FIELD_TEXT_LIMIT): string {
 }
 
 function stringifyLimited(value: unknown): string {
-  return truncateText(JSON.stringify(value) ?? "");
+  return truncateText(JSON.stringify(value));
 }
 
 function formatActionResult(result: NativePlannerActionResult, index: number): string {
-  const actionName = result.data?.actionName || "Unknown Action";
+  const actionName = result.data.actionName || "Unknown Action";
   const status = result.success ? "Success" : "Failed";
   const lines = [`**${index + 1}. ${actionName}** - ${status}`];
 
@@ -71,7 +71,7 @@ function formatWorkingMemory(workingMemory: Record<string, unknown>): string {
 function formatActionMemories(memories: Memory[]): string {
   const groupedByRun = new Map<string, Memory[]>();
   for (const mem of memories) {
-    const runId = String(mem.content?.runId || "unknown");
+    const runId = String(mem.content.runId || "unknown");
     const group = groupedByRun.get(runId) || [];
     group.push(mem);
     groupedByRun.set(runId, group);
@@ -82,10 +82,10 @@ function formatActionMemories(memories: Memory[]): string {
       const sorted = mems.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       const runText = sorted
         .map((mem) => {
-          const actionName = mem.content?.actionName || "Unknown";
-          const status = mem.content?.actionStatus || "unknown";
-          const planStep = mem.content?.planStep || "";
-          const text = typeof mem.content?.text === "string" ? truncateText(mem.content.text) : "";
+          const actionName = mem.content.actionName || "Unknown";
+          const status = mem.content.actionStatus || "unknown";
+          const planStep = mem.content.planStep || "";
+          const text = typeof mem.content.text === "string" ? truncateText(mem.content.text) : "";
           let line = `  - ${actionName} (${status})`;
           if (planStep) line += ` [${planStep}]`;
           if (text && text !== `Executed action: ${actionName}`) line += `: ${text}`;
@@ -112,11 +112,11 @@ export const actionStateProvider: Provider = {
     // Check state.data first, then message metadata as fallback
     // This handles the timing issue where actionResults may be in message metadata
     // before state is fully composed
-    const messageMetadata = (message.content?.metadata || {}) as Record<string, unknown>;
-    const actionResults = (state.data?.actionResults ||
+    const messageMetadata = (message.content.metadata || {}) as Record<string, unknown>;
+    const actionResults = (state.data.actionResults ||
       messageMetadata.actionResults ||
       []) as NativePlannerActionResult[];
-    const workingMemory = (state.data?.workingMemory || {}) as Record<string, unknown>;
+    const workingMemory = (state.data.workingMemory || {}) as Record<string, unknown>;
 
     // Format action results
     const cappedActionResults = actionResults.slice(0, ACTION_RESULT_LIMIT);
@@ -148,7 +148,7 @@ export const actionStateProvider: Provider = {
       recentActionMemories = recentMessages
         .filter(
           (msg) =>
-            (msg.content?.type as string) === "action_result" &&
+            (msg.content.type as string) === "action_result" &&
             (msg.metadata?.type as string) === "action_result",
         )
         .slice(0, ACTION_MEMORY_LIMIT);

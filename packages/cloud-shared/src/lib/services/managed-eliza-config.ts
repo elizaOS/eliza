@@ -122,7 +122,7 @@ export async function prepareManagedElizaBaseEnvironment(
     agentSandboxId: params.agentSandboxId,
   });
   const apiToken =
-    existingEnv.ELIZA_API_TOKEN?.trim() || `agent_${crypto.randomUUID().replace(/-/g, "")}`;
+    existingEnv.ELIZA_API_TOKEN.trim() || `agent_${crypto.randomUUID().replace(/-/g, "")}`;
 
   return {
     apiToken,
@@ -134,7 +134,7 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
       // Public web UI off by default. Operators can re-enable per-agent with
       // ELIZA_UI_ENABLE=true via existingEnv when needed for ops/debug.
-      ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE ?? "false",
+      ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE,
       ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),

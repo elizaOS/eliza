@@ -188,7 +188,7 @@ function useReasoningTypewriter(
     // Detect reset
     if (!targetText || targetText.length < state.lastTargetLength) {
       state.visibleLength = 0;
-      state.lastTargetLength = targetText?.length || 0;
+      state.lastTargetLength = targetText.length || 0;
       setDisplayLength(0);
       if (!targetText) {
         state.everActive = false;

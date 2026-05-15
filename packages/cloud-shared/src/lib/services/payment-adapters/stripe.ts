@@ -27,7 +27,7 @@ interface RequestMetadata {
 }
 
 function readMetadata(request: PaymentRequestRow): RequestMetadata {
-  const meta = (request.metadata ?? {}) as Record<string, unknown>;
+  const meta = request.metadata as Record<string, unknown>;
   const pickString = (key: string): string | undefined => {
     const value = meta[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -179,7 +179,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
         }
         case "payment_intent.payment_failed": {
           const intent = event.data.object as Stripe.PaymentIntent;
-          const paymentRequestId = intent.metadata?.payment_request_id;
+          const paymentRequestId = intent.metadata.payment_request_id;
           if (!paymentRequestId) {
             throw new IgnoredWebhookEvent(
               `Stripe ${event.type} event missing payment_request_id (id=${event.id})`,

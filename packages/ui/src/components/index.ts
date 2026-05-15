@@ -112,4 +112,6 @@ export {
   type PromptDialogProps as PromptModalProps,
 } from "./ui/confirm-dialog";
 export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
+export { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+export { Textarea, type TextareaProps, textareaVariants } from "./ui/textarea";
 export * from "./workspace/AppWorkspaceChrome";

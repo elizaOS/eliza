@@ -321,7 +321,7 @@ export function AppDetailsView({
   // rest of the component can rely on it.
   const widgets = useMemo<PluginWidgetDeclaration[]>(() => {
     if (!resolved) return [];
-    const ownPlugin = plugins?.find((p) => p.id === resolved.pluginId);
+    const ownPlugin = plugins.find((p) => p.id === resolved.pluginId);
     const raw = ownPlugin?.widgets ?? [];
     return raw.map(
       (decl): PluginWidgetDeclaration => ({
@@ -443,7 +443,7 @@ export function AppDetailsView({
         ipcChannel: "desktop:openAppWindow",
         params: {
           slug,
-          title: resolved.info.displayName ?? resolved.info.name,
+          title: resolved.info.displayName,
           path: resolved.windowPath,
           alwaysOnTop: config.alwaysOnTop,
         },
@@ -532,14 +532,12 @@ export function AppDetailsView({
             />
           ) : (
             <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-border/40 bg-card/40 text-xs uppercase text-muted">
-              {(resolved.info.displayName ?? resolved.info.name)
-                .slice(0, 2)
-                .toUpperCase()}
+              {resolved.info.displayName.slice(0, 2).toUpperCase()}
             </div>
           )}
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-foreground">
-              {resolved.info.displayName ?? resolved.info.name}
+              {resolved.info.displayName}
             </h2>
             <p className="truncate text-xs text-muted">{resolved.info.name}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted">
@@ -580,7 +578,7 @@ export function AppDetailsView({
             type="button"
             onClick={handleLaunch}
             disabled={launching}
-            title={`Launch ${resolved.info.displayName ?? resolved.info.name}`}
+            title={`Launch ${resolved.info.displayName}`}
             className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Rocket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -596,7 +594,7 @@ export function AppDetailsView({
               Run
             </div>
             <div className="truncate text-sm font-medium text-foreground">
-              {activeRun?.status ?? "Ready"}
+              {activeRun?.status}
             </div>
           </div>
           <div className="min-w-0 border-l border-border/35 pl-3">
@@ -712,7 +710,7 @@ export function AppDetailsView({
         {resolved.info.description ? (
           <p className="text-sm text-muted">{resolved.info.description}</p>
         ) : null}
-        <ChipList items={resolved.info.capabilities ?? []} />
+        <ChipList items={resolved.info.capabilities} />
       </section>
 
       {DetailExtension ? (

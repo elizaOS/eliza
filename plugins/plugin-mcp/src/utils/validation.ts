@@ -64,7 +64,7 @@ export function validateToolSelectionName(
     };
   }
 
-  const toolInfo = server.tools?.[data.toolName];
+  const toolInfo = server.tools[data.toolName];
   if (!toolInfo) {
     return {
       success: false,

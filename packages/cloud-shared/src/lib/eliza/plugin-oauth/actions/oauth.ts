@@ -572,7 +572,7 @@ export const oauthAction: ActionWithParams = {
     const explicitOp = normalizeOp(params.op ?? params.subaction);
     const op =
       explicitOp ??
-      inferOpFromMessage(typeof message.content?.text === "string" ? message.content.text : "");
+      inferOpFromMessage(typeof message.content.text === "string" ? message.content.text : "");
 
     if (!op) {
       const text = `OAUTH could not determine the operation. Specify one of: ${OAUTH_OPS.join(", ")}.`;

@@ -212,7 +212,7 @@ async function invoke(
   message: Memory = makeMessage(),
 ): Promise<ActionResult> {
   const opts = { parameters } as HandlerOptions;
-  const result = await todoAction.handler!(runtime, message, undefined, opts);
+  const result = await todoAction.handler(runtime, message, undefined, opts);
   if (result === undefined) {
     throw new Error("todoAction.handler returned undefined");
   }

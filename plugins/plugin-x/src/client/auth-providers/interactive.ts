@@ -124,12 +124,8 @@ export async function waitForLoopbackCallback(
     server.on("close", () => clearTimeout(timer));
     server.once("error", (err: NodeJS.ErrnoException) => {
       // EADDRINUSE / EACCES / etc. should fail fast instead of hanging until timeout.
-      const code = err?.code ? ` (${err.code})` : "";
-      finish(
-        new Error(
-          `OAuth callback server error${code}: ${err?.message ?? String(err)}`,
-        ),
-      );
+      const code = err.code ? ` (${err.code})` : "";
+      finish(new Error(`OAuth callback server error${code}: ${err.message}`));
     });
     server.listen(port, url.hostname, () => {
       logger.info(

@@ -85,8 +85,8 @@ async function readReminderById(
   return {
     reminderId: resolvedId,
     title,
-    body: body ?? "",
-    dueText: dueText ?? "",
+    body: body,
+    dueText: dueText,
   };
 }
 

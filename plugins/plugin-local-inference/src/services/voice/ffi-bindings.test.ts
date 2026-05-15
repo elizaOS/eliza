@@ -296,7 +296,7 @@ describe("ffi-stub stub library — ABI v3 symbol audit", () => {
 			{ encoding: "utf8" },
 		);
 		expect(nm.status).toBe(0);
-		const symbols = nm.stdout ?? "";
+		const symbols = nm.stdout;
 		for (const name of ABI_V3_SYMBOLS) {
 			expect(new RegExp(`\\b_?${name}\\b`).test(symbols)).toBe(true);
 		}

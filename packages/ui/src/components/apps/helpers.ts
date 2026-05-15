@@ -269,7 +269,7 @@ export function filterAppsForCatalog(
       return leftCanonicalPenalty - rightCanonicalPenalty;
     }
 
-    return (right.stars ?? 0) - (left.stars ?? 0);
+    return right.stars - left.stars;
   });
 
   return sortedApps.filter((app) => {
@@ -292,9 +292,9 @@ export function filterAppsForCatalog(
     if (
       normalizedSearch &&
       !app.name.toLowerCase().includes(normalizedSearch) &&
-      !(app.displayName ?? "").toLowerCase().includes(normalizedSearch) &&
-      !(app.description ?? "").toLowerCase().includes(normalizedSearch) &&
-      !(app.category ?? "").toLowerCase().includes(normalizedSearch) &&
+      !app.displayName.toLowerCase().includes(normalizedSearch) &&
+      !app.description.toLowerCase().includes(normalizedSearch) &&
+      !app.category.toLowerCase().includes(normalizedSearch) &&
       !sectionLabel.includes(normalizedSearch)
     ) {
       return false;
@@ -383,12 +383,7 @@ export function getAppCatalogSectionKey(
     return "finance";
   }
 
-  const searchBlob = [
-    app.name,
-    app.displayName ?? "",
-    app.description ?? "",
-    app.category,
-  ]
+  const searchBlob = [app.name, app.displayName, app.description, app.category]
     .join(" ")
     .toLowerCase();
 
@@ -493,7 +488,7 @@ export function groupAppsForCatalog(
 }
 
 export function getAppShortName(app: RegistryAppInfo): string {
-  const display = app.displayName ?? app.name;
+  const display = app.displayName;
   const clean = display.replace(/^@[^/]+\/app-/, "");
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }

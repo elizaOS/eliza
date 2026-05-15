@@ -487,7 +487,7 @@ export async function sendMessageInChunks(
 	}
 	if (
 		messages.length === 0 &&
-		((files && files.length > 0) || (components && components.length > 0))
+		(files.length > 0 || (components && components.length > 0))
 	) {
 		messages = [""];
 	}
@@ -496,7 +496,7 @@ export async function sendMessageInChunks(
 			const message = messages[i];
 			if (
 				message.trim().length > 0 ||
-				(i === messages.length - 1 && files && files.length > 0) ||
+				(i === messages.length - 1 && files.length > 0) ||
 				(i === messages.length - 1 && components && components.length > 0)
 			) {
 				const options: MessageSendOptions = {
@@ -661,7 +661,7 @@ export async function sendMessageInChunks(
 
 	const attemptedSend =
 		content.trim().length > 0 ||
-		(files && files.length > 0) ||
+		files.length > 0 ||
 		(components && components.length > 0);
 	if (attemptedSend && sentMessages.length === 0) {
 		if (lastSendError instanceof Error) {

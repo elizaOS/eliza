@@ -57,31 +57,31 @@ function makeIface(extra: Partial<ComputerInterfaceDeps> = {}): {
     listDisplays: () => fakeDisplays(),
     driver: {
       click: async (x, y) => {
-        calls.click!.push([x, y]);
+        calls.click.push([x, y]);
       },
       doubleClick: async (x, y) => {
-        calls.doubleClick!.push([x, y]);
+        calls.doubleClick.push([x, y]);
       },
       rightClick: async (x, y) => {
-        calls.rightClick!.push([x, y]);
+        calls.rightClick.push([x, y]);
       },
       mouseMove: async (x, y) => {
-        calls.mouseMove!.push([x, y]);
+        calls.mouseMove.push([x, y]);
       },
       drag: async (x1, y1, x2, y2) => {
-        calls.drag!.push([x1, y1, x2, y2]);
+        calls.drag.push([x1, y1, x2, y2]);
       },
       scroll: async (x, y, dir, amt) => {
-        calls.scroll!.push([x, y, dir, amt]);
+        calls.scroll.push([x, y, dir, amt]);
       },
       type: async (t) => {
-        calls.type!.push([t]);
+        calls.type.push([t]);
       },
       keyPress: async (k) => {
-        calls.keyPress!.push([k]);
+        calls.keyPress.push([k]);
       },
       keyCombo: async (c) => {
-        calls.keyCombo!.push([c]);
+        calls.keyCombo.push([c]);
       },
     },
     ...extra,

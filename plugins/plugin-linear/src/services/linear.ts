@@ -117,7 +117,7 @@ export class LinearService extends Service {
   }
 
   private getClient(accountId?: string): LinearClient {
-    return this.getAccountState(accountId)?.client as LinearClient;
+    return this.getAccountState(accountId).client as LinearClient;
   }
 
   private logActivity(

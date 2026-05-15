@@ -103,8 +103,8 @@ export const characterProvider: Provider = {
     // Research: Multi-layered style with positive directives + negative constraints
     // Injected as "Message Directions" in system prompt
     const styleDirectives = (() => {
-      const all = character?.style?.all || [];
-      const chat = character?.style?.chat || [];
+      const all = character.style?.all || [];
+      const chat = character.style?.chat || [];
 
       // Combine all directives
       const combined = [...all, ...chat];
@@ -167,14 +167,14 @@ export const characterProvider: Provider = {
       }
 
       // Extract keywords from the current message for contextual matching
-      const messageText = _message.content?.text?.toLowerCase() ?? "";
+      const messageText = _message.content.text?.toLowerCase() ?? "";
       const messageWords = new Set(messageText.split(/\s+/).filter((w) => w.length > 3));
 
       // Score each example by keyword overlap
       const scoredExamples = character.messageExamples.map((example) => {
         const messages = getExampleMessages(example);
         const exampleText = messages
-          .map((msg) => msg.content?.text ?? "")
+          .map((msg) => msg.content.text ?? "")
           .join(" ")
           .toLowerCase();
         const exampleWords = exampleText.split(/\s+/).filter((w) => w.length > 3);
@@ -201,7 +201,7 @@ export const characterProvider: Provider = {
           return exchange
             .map((msg) => {
               // Skip messages without text content
-              if (!msg.content?.text) {
+              if (!msg.content.text) {
                 return null;
               }
 

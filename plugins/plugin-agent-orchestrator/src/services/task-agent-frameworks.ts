@@ -36,7 +36,12 @@ type TaskAgentPreflightResult = {
   auth?: { status?: unknown };
 };
 
-export type SupportedTaskAgentAdapter = "claude" | "codex" | "opencode";
+export type SupportedTaskAgentAdapter =
+  | "elizaos"
+  | "pi-agent"
+  | "opencode"
+  | "claude"
+  | "codex";
 export type TaskAgentFrameworkId = SupportedTaskAgentAdapter;
 
 export interface TaskAgentModelPrefs {
@@ -174,18 +179,42 @@ const FRAMEWORK_CAPABILITY_PROFILES: Record<
     repoWork: 0.85,
     fastIteration: 0.85,
   },
+  elizaos: {
+    implementation: 1,
+    research: 0.85,
+    planning: 0.85,
+    ops: 0.9,
+    verification: 1,
+    coordination: 1,
+    repoWork: 1,
+    fastIteration: 0.95,
+  },
+  "pi-agent": {
+    implementation: 0.9,
+    research: 0.8,
+    planning: 0.8,
+    ops: 0.8,
+    verification: 0.9,
+    coordination: 0.9,
+    repoWork: 0.9,
+    fastIteration: 0.9,
+  },
 };
 
 const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
+  elizaos: "elizaOS",
+  "pi-agent": "Pi Agent",
   claude: "Claude Code",
   codex: "Codex",
   opencode: "OpenCode",
 };
 
 const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
+  "elizaos",
+  "pi-agent",
+  "opencode",
   "claude",
   "codex",
-  "opencode",
 ];
 
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
@@ -235,6 +264,14 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
     powerful: "ELIZA_OPENCODE_MODEL_POWERFUL",
     fast: "ELIZA_OPENCODE_MODEL_FAST",
   },
+  elizaos: {
+    powerful: "ELIZA_ELIZAOS_MODEL_POWERFUL",
+    fast: "ELIZA_ELIZAOS_MODEL_FAST",
+  },
+  "pi-agent": {
+    powerful: "ELIZA_PI_AGENT_MODEL_POWERFUL",
+    fast: "ELIZA_PI_AGENT_MODEL_FAST",
+  },
 };
 
 export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
@@ -243,7 +280,9 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
 > = {
   claude: { powerful: "claude-opus-4-7" },
   codex: { powerful: "gpt-5.5", fast: "gpt-5.4-mini" },
-  opencode: {},
+  opencode: { powerful: "gpt-oss-120b" },
+  elizaos: { powerful: "gpt-oss-120b" },
+  "pi-agent": { powerful: "gpt-oss-120b" },
 };
 
 const TASK_AGENT_COMPLEXITY_RE =
@@ -279,6 +318,14 @@ function normalizePreflightAdapterId(
     case "opencode":
     case "open code":
       return "opencode";
+    case "elizaos":
+    case "eliza":
+    case "eliza os":
+      return "elizaos";
+    case "pi":
+    case "pi-agent":
+    case "pi agent":
+      return "pi-agent";
     default:
       return null;
   }
@@ -364,6 +411,15 @@ function normalizeTaskAgentAdapterForModelPrefs(
     case "open-code":
     case "open code":
       return "opencode";
+    case "elizaos":
+    case "eliza-os":
+    case "eliza os":
+    case "eliza":
+      return "elizaos";
+    case "pi":
+    case "pi-agent":
+    case "pi agent":
+      return "pi-agent";
     default:
       return undefined;
   }
@@ -378,8 +434,12 @@ export function getTaskAgentModelPrefs(
   if (!adapter) return undefined;
 
   const keys = TASK_AGENT_MODEL_PREF_SETTING_KEYS[adapter];
+  const genericCerebrasModel =
+    adapter === "elizaos" || adapter === "pi-agent" || adapter === "opencode"
+      ? safeGetSetting(runtime, "CEREBRAS_MODEL")
+      : undefined;
   const runtimePrefs = compactTaskAgentModelPrefs({
-    powerful: safeGetSetting(runtime, keys.powerful),
+    powerful: safeGetSetting(runtime, keys.powerful) ?? genericCerebrasModel,
     fast: safeGetSetting(runtime, keys.fast),
   });
 
@@ -552,6 +612,18 @@ function hasBinaryOnPath(binaryName: string): boolean {
 
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
   switch (id) {
+    case "elizaos":
+      return (
+        hasBinaryOnPath("elizaos") ||
+        hasBinaryOnPath("eliza") ||
+        Boolean(readConfigEnvKey("ELIZAOS_ACP_COMMAND"))
+      );
+    case "pi-agent":
+      return (
+        hasBinaryOnPath("pi-agent") ||
+        hasBinaryOnPath("pi") ||
+        Boolean(readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND"))
+      );
     case "claude":
       return hasBinaryOnPath("claude");
     case "codex":
@@ -620,6 +692,12 @@ async function computeTaskAgentFrameworkState(
   const opencodePreflightAuth = getPreflightAuthStatus(
     preflightByAdapter.get("opencode"),
   );
+  const elizaosPreflightAuth = getPreflightAuthStatus(
+    preflightByAdapter.get("elizaos"),
+  );
+  const piAgentPreflightAuth = getPreflightAuthStatus(
+    preflightByAdapter.get("pi-agent"),
+  );
 
   const claudeSubscriptionReady =
     claudePreflightAuth === "authenticated" || hasClaudeSubscriptionAuth();
@@ -639,16 +717,41 @@ async function computeTaskAgentFrameworkState(
         readConfigEnvKey("ELIZA_OPENCODE_API_KEY"),
     ) ||
     Boolean(readConfigEnvKey("CEREBRAS_API_KEY"));
+  const elizaosAuthReady =
+    elizaosPreflightAuth === "authenticated" ||
+    cloudReady ||
+    Boolean(
+      readConfigEnvKey("CEREBRAS_API_KEY") ||
+        readConfigEnvKey("OPENAI_API_KEY") ||
+        readConfigEnvKey("ELIZAOS_API_KEY"),
+    );
+  const piAgentAuthReady =
+    piAgentPreflightAuth === "authenticated" ||
+    cloudReady ||
+    Boolean(
+      readConfigEnvKey("CEREBRAS_API_KEY") ||
+        readConfigEnvKey("OPENAI_API_KEY") ||
+        readConfigEnvKey("PI_AGENT_API_KEY"),
+    );
 
   const providerPrefersClaude =
     configuredSubscriptionProvider === "anthropic-subscription";
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
-  const providerPrefersOpencode =
-    !providerPrefersClaude && !providerPrefersCodex;
+  const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
+    ?.toLowerCase()
+    .trim();
+  const providerPrefersOpencode = explicitDefault === "opencode";
+  const providerPrefersPiAgent =
+    explicitDefault === "pi-agent" ||
+    explicitDefault === "pi" ||
+    explicitDefault === "pi agent";
+  const providerPrefersElizaos =
+    !providerPrefersClaude &&
+    !providerPrefersCodex &&
+    !providerPrefersOpencode &&
+    !providerPrefersPiAgent;
 
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
@@ -666,21 +769,29 @@ async function computeTaskAgentFrameworkState(
           ? claudeAuthReady
           : id === "codex"
             ? codexAuthReady
-            : opencodeAuthReady;
+            : id === "opencode"
+              ? opencodeAuthReady
+              : id === "pi-agent"
+                ? piAgentAuthReady
+                : elizaosAuthReady;
       const reason =
-        id === "claude" && subscriptionReady
-          ? "ready to use the user's Claude subscription"
-          : id === "codex" && subscriptionReady
-            ? "ready to use the user's OpenAI subscription"
-            : id === "opencode" && installed && opencodeLocalMode
-              ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
-              : id === "opencode" && installed && authReady
-                ? "ready to use the configured OpenCode provider"
-                : installed
-                  ? authReady
-                    ? "installed with credentials available"
-                    : "installed but credentials were not detected"
-                  : "CLI not detected";
+        id === "elizaos" && installed && authReady
+          ? "ready to use the repo-native elizaOS coding agent"
+          : id === "pi-agent" && installed && authReady
+            ? "ready to use the configured Pi Agent provider"
+            : id === "claude" && subscriptionReady
+              ? "ready to use the user's Claude subscription"
+              : id === "codex" && subscriptionReady
+                ? "ready to use the user's OpenAI subscription"
+                : id === "opencode" && installed && opencodeLocalMode
+                  ? "ready to use a local model provider (ELIZA_OPENCODE_LOCAL)"
+                  : id === "opencode" && installed && authReady
+                    ? "ready to use the configured OpenCode provider"
+                    : installed
+                      ? authReady
+                        ? "installed with credentials available"
+                        : "installed but credentials were not detected"
+                      : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],
@@ -712,9 +823,6 @@ async function computeTaskAgentFrameworkState(
   }));
   const metrics = probe?.getAgentMetrics?.() ?? {};
   const profile = buildTaskAgentTaskProfile(profileInput);
-  const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
-    ?.toLowerCase()
-    .trim();
   const selectable = frameworks.filter(
     (framework) => framework.installed && !framework.temporarilyDisabled,
   );
@@ -743,7 +851,15 @@ async function computeTaskAgentFrameworkState(
             ? framework.authReady
               ? 18
               : 6
-            : 0;
+            : providerPrefersPiAgent && framework.id === "pi-agent"
+              ? framework.authReady
+                ? 18
+                : 6
+              : providerPrefersElizaos && framework.id === "elizaos"
+                ? framework.authReady
+                  ? 22
+                  : 8
+                : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -899,13 +1015,19 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
-  const providerPrefersOpencode =
-    !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
+  const providerPrefersOpencode = explicitDefault === "opencode";
+  const providerPrefersPiAgent =
+    explicitDefault === "pi-agent" ||
+    explicitDefault === "pi" ||
+    explicitDefault === "pi agent";
+  const providerPrefersElizaos =
+    !providerPrefersClaude &&
+    !providerPrefersCodex &&
+    !providerPrefersOpencode &&
+    !providerPrefersPiAgent;
   const candidates =
     frameworks.filter(
       (framework) => framework.installed && !framework.temporarilyDisabled,
@@ -934,7 +1056,15 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
             ? framework.authReady
               ? 18
               : 6
-            : 0;
+            : providerPrefersPiAgent && framework.id === "pi-agent"
+              ? framework.authReady
+                ? 18
+                : 6
+              : providerPrefersElizaos && framework.id === "elizaos"
+                ? framework.authReady
+                  ? 22
+                  : 8
+                : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +

@@ -31,9 +31,7 @@ export function VideoPreview({ video }: VideoPreviewProps) {
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasModerationFlag = video?.hasNsfwConcepts?.some(Boolean) ?? false;
-  const timingMs = video?.timings
-    ? (video.timings.inference ?? video.timings.total ?? video.timings.duration)
-    : undefined;
+  const timingMs = video?.timings ? video.timings.inference : undefined;
   const processingTimeLabel =
     typeof timingMs === "number"
       ? timingMs >= 1000

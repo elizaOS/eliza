@@ -37,7 +37,7 @@ describeIf(LIVE)("App Documents: API e2e", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.close();
+    await runtime.close();
   });
 
   it("GET /api/documents returns document list status", async () => {

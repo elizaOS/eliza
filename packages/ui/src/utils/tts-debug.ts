@@ -35,8 +35,8 @@ function ttsDebugEnabled(): boolean {
 
   try {
     const viteEnv = (import.meta as RuntimeImportMeta).env;
-    if (truthy(String(viteEnv?.ELIZA_TTS_DEBUG ?? ""))) return true;
-    if (truthy(String(viteEnv?.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
+    if (truthy(String(viteEnv.ELIZA_TTS_DEBUG ?? ""))) return true;
+    if (truthy(String(viteEnv.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
   } catch {
     /* no import.meta */
   }

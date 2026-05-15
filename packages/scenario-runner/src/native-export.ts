@@ -193,7 +193,7 @@ export function recordedTrajectoryToNativeRows(
     ? trajectory.stages
     : [];
   for (const [stepIndex, stage] of stages.entries()) {
-    const model = stage?.model;
+    const model = stage.model;
     if (!model || typeof model !== "object") continue;
     const request = buildRequest(model);
     const response = buildResponse(model);
@@ -232,7 +232,7 @@ export function recordedTrajectoryToNativeRows(
       timestamp:
         typeof stage.startedAt === "number" && Number.isFinite(stage.startedAt)
           ? stage.startedAt
-          : (trajectory.startedAt ?? 0),
+          : trajectory.startedAt,
       purpose: stage.kind,
       stepType: stage.kind,
       model: typeof model.modelName === "string" ? model.modelName : undefined,

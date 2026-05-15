@@ -178,8 +178,8 @@ export const RUNTIME_GATE_PICKER_OVERRIDE_VALUE = "picker";
 export function hasPickerOverride(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const search = window.location?.search ?? "";
-    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+    const search = window.location.search;
+    const hashSearch = window.location.hash.split("?")[1] ?? "";
     const params = new URLSearchParams(search || hashSearch);
     return (
       params.get(RUNTIME_GATE_PICKER_OVERRIDE_PARAM) ===
@@ -193,8 +193,8 @@ export function hasPickerOverride(): boolean {
 export function readPickerTargetOverride(): RuntimePickerTarget | null {
   if (typeof window === "undefined") return null;
   try {
-    const search = window.location?.search ?? "";
-    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+    const search = window.location.search;
+    const hashSearch = window.location.hash.split("?")[1] ?? "";
     const params = new URLSearchParams(search || hashSearch);
     const target = params.get(RUNTIME_PICKER_TARGET_QUERY_NAME);
     return target === "cloud" || target === "local" || target === "remote"
@@ -712,7 +712,7 @@ export function RuntimeGate() {
 
       setError(null);
       client.setBaseUrl(apiBase);
-      client.setToken(accessToken ?? null);
+      client.setToken(accessToken);
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setState("onboardingServerTarget", "elizacloud");
       // Apply embedding preference before handing off. Non-blocking: if this
@@ -1311,9 +1311,9 @@ export function RuntimeGate() {
         agentName: DEFAULT_AUTO_AGENT_NAME,
       });
       if (cancelled) return;
-      if (!createRes.success || !createRes.data?.agentId) {
+      if (!createRes.success || !createRes.data.agentId) {
         setError(
-          createRes.data?.message ||
+          createRes.data.message ||
             t("runtimegate.failedCreate", {
               defaultValue: "Failed to create agent. Try again.",
             }),
@@ -1336,10 +1336,7 @@ export function RuntimeGate() {
       // automatically. Pass it through so we skip the redundant provision call
       // (which would 405 on a compat-namespace agent) and poll the job directly.
       try {
-        await provisionAndConnect(
-          createRes.data.agentId,
-          createRes.data.jobId ?? undefined,
-        );
+        await provisionAndConnect(createRes.data.agentId, createRes.data.jobId);
       } catch (err) {
         setError(
           err instanceof Error
@@ -1573,8 +1570,8 @@ export function RuntimeGate() {
                     if (agentRes.success) {
                       void finishAsCloud({
                         ...agentRes.data,
-                        bridge_url: bridgeUrl ?? agentRes.data.bridge_url,
-                        containerUrl: bridgeUrl ?? agentRes.data.containerUrl,
+                        bridge_url: bridgeUrl,
+                        containerUrl: bridgeUrl,
                       });
                     }
                   })

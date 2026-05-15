@@ -171,7 +171,7 @@ export class ElevenLabsService {
           }
         ).transcripts || {};
       transcript = Object.values(transcripts)
-        .map((t: { text?: string }) => t?.text || "")
+        .map((t: { text?: string }) => t.text || "")
         .filter(Boolean)
         .join(" ");
     }

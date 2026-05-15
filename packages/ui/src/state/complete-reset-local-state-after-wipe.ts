@@ -71,7 +71,7 @@ export async function completeResetLocalStateAfterServerWipe(
     const options = await d.fetchOnboardingOptions();
     d.setOnboardingOptions(options);
     d.logResetDebug("resetLocalState: onboarding options loaded", {
-      styleCount: options.styles?.length ?? 0,
+      styleCount: options.styles.length,
     });
   } catch (optErr) {
     d.logResetWarn(

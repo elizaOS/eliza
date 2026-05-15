@@ -176,7 +176,7 @@ function validateX402Route(
       );
     }
   } else if (typeof raw === "object") {
-    priceInCents = raw.priceInCents ?? cx?.defaultPriceInCents;
+    priceInCents = raw.priceInCents;
     paymentConfigs = (raw.paymentConfigs ?? cx?.defaultPaymentConfigs) as
       | string[]
       | undefined;

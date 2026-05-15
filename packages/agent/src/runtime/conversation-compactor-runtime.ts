@@ -1162,9 +1162,9 @@ function readRecentMessageMemories(state: State): Memory[] {
   const provider = getRecentMessagesProvider(state);
   const recentMessages = provider?.data?.recentMessages;
   if (!Array.isArray(recentMessages)) return [];
-  return recentMessages.filter(
+  return (recentMessages as unknown[]).filter(
     (memory): memory is Memory =>
-      Boolean(memory) &&
+      memory !== null &&
       typeof memory === "object" &&
       !Array.isArray(memory) &&
       "content" in memory &&

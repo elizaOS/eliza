@@ -1,11 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../../tsconfig.json",
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
     "types": ["node", "bun-types"],
     "noEmit": true,
     "paths": {

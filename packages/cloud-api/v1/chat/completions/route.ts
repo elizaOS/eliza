@@ -729,7 +729,7 @@ export async function handleChatCompletionsPOST(
     const request: ChatRequest = await req.json();
 
     // 4. Validate
-    if (!request.model || !request.messages?.length) {
+    if (!request.model || !request.messages.length) {
       return addCorsHeaders(
         Response.json(
           {
@@ -1071,7 +1071,7 @@ async function handleStreamingRequest(
       : undefined,
   });
 
-  const result = streamText({
+  const streamOptions = {
     model: getLanguageModel(model),
     system: systemPrompt,
     messages,
@@ -1160,7 +1160,9 @@ async function handleStreamingRequest(
         model,
       });
     },
-  });
+  } as Parameters<typeof streamText>[0];
+
+  const result = streamText(streamOptions);
 
   // Convert to OpenAI-compatible SSE stream
   const encoder = new TextEncoder();
@@ -1388,7 +1390,7 @@ async function handleNonStreamingRequest(
   });
 
   try {
-    const result = await generateText({
+    const generateOptions = {
       model: getLanguageModel(model),
       system: systemPrompt,
       messages,
@@ -1403,7 +1405,9 @@ async function handleNonStreamingRequest(
         maxOutputTokens: effectiveMaxTokens,
       }),
       ...cotOptions,
-    });
+    } as Parameters<typeof generateText>[0];
+
+    const result = await generateText(generateOptions);
 
     // Bill using actual usage from SDK response
     const billingContext = {
@@ -1477,7 +1481,7 @@ async function handleNonStreamingRequest(
             message: {
               role: "assistant",
               content: result.text || null,
-              ...(result.toolCalls?.length
+              ...(result.toolCalls.length
                 ? {
                     tool_calls: result.toolCalls.map((toolCall) => ({
                       id: toolCall.toolCallId,
@@ -1491,7 +1495,7 @@ async function handleNonStreamingRequest(
                 : {}),
             },
             finish_reason:
-              result.toolCalls?.length || result.finishReason === "tool-calls"
+              result.toolCalls.length || result.finishReason === "tool-calls"
                 ? "tool_calls"
                 : result.finishReason === "length"
                   ? "length"

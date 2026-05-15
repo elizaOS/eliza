@@ -429,12 +429,12 @@ function generateNodeId(): string {
 }
 
 function getHcloudServerId(node: DockerNode): number | undefined {
-  const meta = (node.metadata ?? {}) as Record<string, unknown>;
+  const meta = node.metadata as Record<string, unknown>;
   return typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
 }
 
 function isAutoscaledHetznerNode(node: DockerNode): boolean {
-  const meta = (node.metadata ?? {}) as Record<string, unknown>;
+  const meta = node.metadata as Record<string, unknown>;
   return (
     meta.provider === "hetzner-cloud" &&
     meta.autoscaled === true &&

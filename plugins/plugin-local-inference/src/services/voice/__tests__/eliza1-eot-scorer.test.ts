@@ -84,7 +84,7 @@ function buildFakeModel(opts: {
 			return Array.from(text).map((c) => c.charCodeAt(0));
 		},
 		async createContext(args) {
-			createContextCalls.push({ lora: args?.lora });
+			createContextCalls.push({ lora: args.lora });
 			return context;
 		},
 	};

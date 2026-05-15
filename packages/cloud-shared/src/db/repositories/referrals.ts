@@ -290,7 +290,7 @@ class SocialShareRewardsRepository {
       .from(socialShareRewards)
       .where(eq(socialShareRewards.user_id, userId));
 
-    return Number(result?.total || 0);
+    return Number(result.total || 0);
   }
 
   // ============================================================================

@@ -101,14 +101,14 @@ app.get("/", async (c) => {
       nodesData.nodes || nodesData.machines || [];
 
     const filteredMachines = HEADSCALE_USER
-      ? machines.filter((m) => m.user?.name === HEADSCALE_USER || !m.user?.name)
+      ? machines.filter((m) => m.user.name === HEADSCALE_USER || !m.user.name)
       : machines;
 
     const vpnNodes = filteredMachines.map((m) => ({
       id: m.id,
       name: m.name,
       givenName: m.givenName,
-      user: m.user?.name,
+      user: m.user.name,
       ipAddresses: m.ipAddresses,
       online: m.online,
       lastSeen: m.lastSeen,

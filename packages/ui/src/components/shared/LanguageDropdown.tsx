@@ -72,7 +72,7 @@ export function LanguageDropdown({
             variant="outline"
             className={triggerClassNameResolved}
             onPointerDown={(event) => event.stopPropagation()}
-            aria-label={`${t?.("settings.language") ?? "Language"}: ${current.label ?? current.id}`}
+            aria-label={`${t?.("settings.language") ?? "Language"}: ${current.label}`}
             data-testid="language-dropdown-trigger"
           >
             <span className="text-sm leading-none">{current.flag}</span>

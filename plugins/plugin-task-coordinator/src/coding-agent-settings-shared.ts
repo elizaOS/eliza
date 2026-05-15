@@ -5,7 +5,7 @@
  * project's ~500 LOC guideline.
  */
 
-export type AgentTab = "claude" | "codex" | "opencode";
+export type AgentTab = "elizaos" | "pi-agent" | "opencode" | "claude" | "codex";
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -14,7 +14,13 @@ export type ApprovalPreset =
 export type AgentSelectionStrategy = "fixed" | "ranked";
 export type LlmProvider = "subscription" | "api_keys" | "cloud";
 
-export const AGENT_TABS: AgentTab[] = ["claude", "codex", "opencode"];
+export const AGENT_TABS: AgentTab[] = [
+  "elizaos",
+  "pi-agent",
+  "opencode",
+  "claude",
+  "codex",
+];
 
 export const APPROVAL_PRESETS: {
   value: ApprovalPreset;
@@ -49,9 +55,11 @@ export interface ModelOption {
 }
 
 export const AGENT_PROVIDER_MAP: Record<AgentTab, string> = {
+  elizaos: "cerebras",
+  "pi-agent": "cerebras",
   claude: "anthropic",
   codex: "openai",
-  opencode: "openai",
+  opencode: "cerebras",
 };
 
 export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
@@ -65,9 +73,12 @@ export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
     { value: "o4-mini", label: "o4-mini" },
     { value: "gpt-4o", label: "GPT-4o" },
   ],
+  cerebras: [{ value: "gpt-oss-120b", label: "gpt-oss-120b" }],
 };
 
 export const AGENT_LABELS: Record<AgentTab, string> = {
+  elizaos: "elizaOS",
+  "pi-agent": "Pi Agent",
   claude: "Claude",
   codex: "Codex",
   opencode: "OpenCode",
@@ -76,14 +87,22 @@ export const AGENT_LABELS: Record<AgentTab, string> = {
 /** Map full adapter names from the preflight API to short tab keys. */
 export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   "claude code": "claude",
+  eliza: "elizaos",
+  "eliza os": "elizaos",
+  elizaos: "elizaos",
   "openai codex": "codex",
   "open code": "opencode",
   opencode: "opencode",
+  pi: "pi-agent",
+  "pi agent": "pi-agent",
+  "pi-agent": "pi-agent",
   claude: "claude",
   codex: "codex",
 };
 
 export const ENV_PREFIX: Record<AgentTab, string> = {
+  elizaos: "ELIZA_ELIZAOS",
+  "pi-agent": "ELIZA_PI_AGENT",
   claude: "ELIZA_CLAUDE",
   codex: "ELIZA_CODEX",
   opencode: "ELIZA_OPENCODE",

@@ -167,9 +167,9 @@ export class ElizaClient {
 
   private static generateClientId(): string {
     let random: string;
-    if (typeof globalThis.crypto?.randomUUID === "function") {
+    if (typeof globalThis.crypto.randomUUID === "function") {
       random = globalThis.crypto.randomUUID();
-    } else if (typeof globalThis.crypto?.getRandomValues === "function") {
+    } else if (typeof globalThis.crypto.getRandomValues === "function") {
       const buf = new Uint8Array(16);
       globalThis.crypto.getRandomValues(buf);
       random = `${Date.now().toString(36)}${Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("")}`;
@@ -609,7 +609,7 @@ export class ElizaClient {
         const pending = this.wsSendQueue;
         this.wsSendQueue = [];
         for (let i = 0; i < pending.length; i++) {
-          if (this.ws?.readyState !== WebSocket.OPEN) {
+          if (this.ws.readyState !== WebSocket.OPEN) {
             this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
             break;
           }

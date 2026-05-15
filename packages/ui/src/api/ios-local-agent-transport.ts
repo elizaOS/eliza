@@ -131,7 +131,7 @@ function shouldRequireFullBunRuntime(): boolean {
 function hasIosFullBunSmokeRequest(): boolean {
   try {
     return (
-      globalThis.localStorage?.getItem("eliza:ios-full-bun-smoke:request") ===
+      globalThis.localStorage.getItem("eliza:ios-full-bun-smoke:request") ===
       "1"
     );
   } catch {
@@ -141,9 +141,7 @@ function hasIosFullBunSmokeRequest(): boolean {
 
 function readPersistedRuntimeMode(): string | null {
   try {
-    return (
-      globalThis.localStorage?.getItem("eliza:mobile-runtime-mode") ?? null
-    );
+    return globalThis.localStorage.getItem("eliza:mobile-runtime-mode") ?? null;
   } catch {
     return null;
   }
@@ -281,7 +279,7 @@ function isFullBunRuntimePluginAvailable(): boolean {
     const capacitor = Capacitor as typeof Capacitor & {
       isPluginAvailable?: (name: string) => boolean;
     };
-    return capacitor.isPluginAvailable?.("ElizaBunRuntime") === true;
+    return capacitor.isPluginAvailable("ElizaBunRuntime") === true;
   } catch {
     return false;
   }
@@ -512,7 +510,7 @@ async function dispatchIosLocalAgentRequest(
 export async function handleIosLocalAgentNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
 ): Promise<IosLocalAgentNativeRequestResult> {
-  const path = options.path?.trim();
+  const path = options.path.trim();
   if (!path || !isSafeLocalPath(path)) {
     throw new Error(
       "iOS local Agent.request requires a path that starts with / and is not an absolute URL",
@@ -628,7 +626,7 @@ export function installIosLocalAgentFetchBridge(): void {
       url = new URL(
         rawUrl,
         typeof window !== "undefined"
-          ? (window.location?.href ?? "http://localhost")
+          ? window.location.href
           : "http://localhost",
       );
     } catch {

@@ -665,11 +665,11 @@ export class AppsRepository {
       .groupBy(appRequests.status);
 
     return {
-      totalRequests: basicStats?.totalRequests ?? 0,
-      uniqueIps: basicStats?.uniqueIps ?? 0,
-      uniqueUsers: basicStats?.uniqueUsers ?? 0,
-      totalCredits: basicStats?.totalCredits ?? "0",
-      avgResponseTime: basicStats?.avgResponseTime ?? null,
+      totalRequests: basicStats.totalRequests,
+      uniqueIps: basicStats.uniqueIps,
+      uniqueUsers: basicStats.uniqueUsers,
+      totalCredits: basicStats.totalCredits,
+      avgResponseTime: basicStats.avgResponseTime,
       byType: Object.fromEntries(typeStats.map((s) => [s.type, s.count])),
       bySource: Object.fromEntries(sourceStats.map((s) => [s.source, s.count])),
       byStatus: Object.fromEntries(statusStats.map((s) => [s.status, s.count])),

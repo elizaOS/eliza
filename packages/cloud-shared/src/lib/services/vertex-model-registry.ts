@@ -186,7 +186,7 @@ function getScopePriority(scope: VertexTuningScope): number {
 function getRecommendedModelId(remoteJob: TuningJob, fallbackDisplayName: string): string {
   return (
     remoteJob.tunedModelEndpointName?.trim() ||
-    remoteJob.tunedModelDisplayName?.trim() ||
+    remoteJob.tunedModelDisplayName.trim() ||
     fallbackDisplayName
   );
 }
@@ -542,7 +542,7 @@ export class VertexModelRegistryService {
           deactivated_at: new Date(),
           updated_at: new Date(),
         })
-        .where(scopeCondition!);
+        .where(scopeCondition);
 
       const [assignment] = await tx
         .insert(vertexModelAssignments)
@@ -611,7 +611,7 @@ export class VertexModelRegistryService {
         deactivated_at: now,
         updated_at: now,
       })
-      .where(scopeCondition!)
+      .where(scopeCondition)
       .returning({ id: vertexModelAssignments.id });
 
     return result.length;
@@ -662,13 +662,12 @@ export class VertexModelRegistryService {
     remoteJob: TuningJob,
   ): Promise<VertexTunedModelRecord> {
     const recommendedModelId = getRecommendedModelId(remoteJob, job.display_name);
-    const modelPreferences =
-      buildVertexModelPreferencePatch({
-        slot: job.slot,
-        tunedModelId: recommendedModelId,
-        scope: job.scope,
-        ownerId: job.user_id ?? job.organization_id ?? undefined,
-      }).modelPreferences ?? {};
+    const modelPreferences = buildVertexModelPreferencePatch({
+      slot: job.slot,
+      tunedModelId: recommendedModelId,
+      scope: job.scope,
+      ownerId: job.user_id ?? job.organization_id ?? undefined,
+    }).modelPreferences;
 
     const [model] = await dbWrite
       .insert(vertexTunedModels)

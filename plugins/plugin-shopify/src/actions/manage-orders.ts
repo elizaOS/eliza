@@ -99,7 +99,7 @@ export async function manageOrdersHandler(
   }
 
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const intent =
     readOrderIntent(options) ?? (await classifyIntent(runtime, text));
 

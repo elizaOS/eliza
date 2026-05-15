@@ -62,7 +62,7 @@ function getInitials(name: string): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) {
     const first = parts[0];
-    return first?.charAt(0).toUpperCase() ?? "?";
+    return first.charAt(0).toUpperCase();
   }
   const first = parts[0]?.charAt(0) ?? "";
   const last = parts[parts.length - 1]?.charAt(0) ?? "";
@@ -280,7 +280,9 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                setQuery(e.target.value)
+              }
               placeholder={t("contacts.search", {
                 defaultValue: "Search contacts",
               })}
@@ -559,7 +561,9 @@ function NewContactForm({
         <Input
           id={nameId}
           value={form.displayName}
-          onChange={(e) => onChange({ ...form, displayName: e.target.value })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            onChange({ ...form, displayName: e.target.value })
+          }
           placeholder={t("contacts.form.namePlaceholder", {
             defaultValue: "Full name",
           })}
@@ -580,7 +584,9 @@ function NewContactForm({
           type="tel"
           inputMode="tel"
           value={form.phoneNumber}
-          onChange={(e) => onChange({ ...form, phoneNumber: e.target.value })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            onChange({ ...form, phoneNumber: e.target.value })
+          }
           placeholder="+1 555 123 4567"
         />
       </div>
@@ -597,7 +603,9 @@ function NewContactForm({
           type="email"
           inputMode="email"
           value={form.emailAddress}
-          onChange={(e) => onChange({ ...form, emailAddress: e.target.value })}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            onChange({ ...form, emailAddress: e.target.value })
+          }
           placeholder="name@example.com"
         />
       </div>

@@ -90,14 +90,12 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
     const server = mcpData[serverName];
     if (server.status !== "connected") continue;
 
-    const resourceUris = Object.keys(server.resources ?? {});
+    const resourceUris = Object.keys(server.resources);
     for (const uri of resourceUris) {
       const resource = server.resources[uri];
       resourcesDescription += `Resource: ${uri} (Server: ${serverName})\n`;
-      resourcesDescription += `Name: ${resource.name ?? "No name available"}\n`;
-      resourcesDescription += `Description: ${
-        resource.description ?? "No description available"
-      }\n`;
+      resourcesDescription += `Name: ${resource.name}\n`;
+      resourcesDescription += `Description: ${resource.description}\n`;
       resourcesDescription += `MIME Type: ${resource.mimeType ?? "Not specified"}\n\n`;
     }
   }
@@ -200,7 +198,7 @@ async function handleCallTool(
         toolArgumentsJson: JSON.stringify(toolSelectionArgument.toolArguments),
         reasoning: toolSelectionName.reasoning,
         output: toolOutput,
-        attachmentCount: attachments?.length ?? 0,
+        attachmentCount: attachments.length,
       },
       success: true,
     };
@@ -322,9 +320,9 @@ async function handleReadResource(
         op: "read_resource",
         serverName,
         uri,
-        reasoning: parsedSelection?.reasoning,
+        reasoning: parsedSelection.reasoning,
         resourceMeta,
-        contentLength: resourceContent?.length ?? 0,
+        contentLength: resourceContent.length,
       },
       success: true,
     };
@@ -342,7 +340,7 @@ async function handleReadResource(
 }
 
 function textOf(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function hasConnectedCapability(runtime: IAgentRuntime): boolean {
@@ -480,7 +478,7 @@ export const mcpAction: Action = {
 
     if (op === "search_actions" || op === "list_connections") {
       const text = `MCP op=${op} is only available in the cloud runtime.`;
-      await callback?.({ text, source: message.content?.source });
+      await callback?.({ text, source: message.content.source });
       return {
         success: false,
         text,

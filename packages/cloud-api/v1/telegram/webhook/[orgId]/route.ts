@@ -232,7 +232,7 @@ async function handleChatMemberUpdate(
 function setupBotHandlers(bot: Telegraf, orgId: string, activeApps: App[]) {
   bot.start(async (ctx) => {
     const chatId = ctx.chat.id;
-    const userName = ctx.from?.first_name || "there";
+    const userName = ctx.from.first_name || "there";
 
     const matchingApp = activeApps.find(
       (app) =>
@@ -297,10 +297,10 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
     if (isCommand(text)) return;
 
     const chatId = ctx.chat.id;
-    const userName = ctx.from?.first_name;
-    const telegramUserId = String(ctx.from?.id ?? chatId);
-    const telegramUsername = ctx.from?.username ?? `telegram-${telegramUserId}`;
-    const isPrivateChat = ctx.chat?.type === "private";
+    const userName = ctx.from.first_name;
+    const telegramUserId = String(ctx.from.id);
+    const telegramUsername = ctx.from.username ?? `telegram-${telegramUserId}`;
+    const isPrivateChat = ctx.chat.type === "private";
 
     if (isPrivateChat) {
       const routed = await agentGatewayRouterService.routeTelegramMessage({

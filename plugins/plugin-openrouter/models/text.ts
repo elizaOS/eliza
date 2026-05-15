@@ -123,7 +123,7 @@ function textFromMessages(messages: ModelMessage[] | undefined): string {
       if (!Array.isArray(content)) return "";
       return content
         .map((part) =>
-          part && typeof part === "object" && "text" in part && typeof part.text === "string"
+          typeof part === "object" && "text" in part && typeof part.text === "string"
             ? part.text
             : ""
         )

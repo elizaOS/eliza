@@ -112,7 +112,7 @@ export class AgentSandboxesRepository {
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, id))
       .limit(1);
-    return r?.organizationId;
+    return r.organizationId;
   }
 
   async findByIdAndOrg(id: string, orgId: string): Promise<AgentSandbox | undefined> {
@@ -326,7 +326,7 @@ export class AgentSandboxesRepository {
       .select({ count: sql<number>`count(*)::int` })
       .from(agentSandboxes)
       .where(and(...conditions));
-    return row?.count ?? 0;
+    return row.count;
   }
 
   /**
@@ -350,7 +350,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.status} in ('pending','provisioning')`,
         ),
       );
-    return { ready: ready?.count ?? 0, provisioning: provisioning?.count ?? 0 };
+    return { ready: ready.count, provisioning: provisioning.count };
   }
 
   /**
@@ -371,7 +371,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.pool_status} is null`,
         ),
       );
-    return row?.count ?? 0;
+    return row.count;
   }
 
   /**
@@ -498,7 +498,7 @@ export class AgentSandboxesRepository {
 
       if (params.expectedUpdatedAt) {
         const expectedMs = new Date(params.expectedUpdatedAt).getTime();
-        const currentMs = userRow.updated_at?.getTime() ?? Number.NaN;
+        const currentMs = userRow.updated_at.getTime();
         if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && expectedMs !== currentMs) {
           return null;
         }
@@ -535,7 +535,7 @@ export class AgentSandboxesRepository {
 
       await tx.delete(agentSandboxes).where(eq(agentSandboxes.id, pool.id));
 
-      return updated ?? null;
+      return updated;
     });
   }
 

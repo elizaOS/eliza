@@ -80,7 +80,7 @@ describe("plugin-vision macOS real-screen e2e (post-merge)", () => {
       const body = (await response.json()) as {
         choices: Array<{ message: { content: string } }>;
       };
-      const text = body.choices?.[0]?.message?.content ?? "";
+      const text = body.choices[0]?.message?.content ?? "";
       expect(text.length).toBeGreaterThan(0);
     },
     120_000,

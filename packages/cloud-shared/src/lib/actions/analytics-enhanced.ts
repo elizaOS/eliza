@@ -43,7 +43,7 @@ export async function getEnhancedAnalyticsData(
   filters: EnhancedAnalyticsFilters = {},
 ) {
   const user = await requireAuthWithOrg(request);
-  const organizationId = user.organization_id!;
+  const organizationId = user.organization_id;
 
   const timeRange = filters.timeRange || "weekly";
   const now = new Date();
@@ -128,7 +128,7 @@ export async function getEnhancedAnalyticsData(
  */
 export async function getProjectionsData(request: Request, periods: number = 7) {
   const user = await requireAuthWithOrg(request);
-  const organizationId = user.organization_id!;
+  const organizationId = user.organization_id;
 
   const now = new Date();
   const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

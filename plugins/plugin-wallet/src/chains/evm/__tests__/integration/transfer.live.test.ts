@@ -112,7 +112,7 @@ describe("Transfer Action", () => {
 
     itIf(HAS_ELIZA_CLOUD_RPC_KEY)("should prefer Eliza Cloud RPCs when configured", () => {
       const chainConfigs = wp.getChainConfigs("mainnet");
-      expect(chainConfigs.rpcUrls.custom?.http[0]).toBe(
+      expect(chainConfigs.rpcUrls.custom.http[0]).toBe(
         `${ELIZA_CLOUD_BASE_URL}/proxy/evm-rpc/mainnet`
       );
     });

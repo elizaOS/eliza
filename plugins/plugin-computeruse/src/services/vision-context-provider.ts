@@ -130,7 +130,7 @@ export class VisionContextProvider extends Service {
   private async getCurrentTaskGoal(): Promise<string | null> {
     const runtime = this.runtime as IAgentRuntime & RuntimeCacheReader;
     try {
-      const cached = await runtime.getCache?.<unknown>(
+      const cached = await runtime.getCache<unknown>(
         VISION_CONTEXT_TASK_GOAL_CACHE_KEY,
       );
       if (typeof cached === "string" && cached.trim()) return cached.trim();

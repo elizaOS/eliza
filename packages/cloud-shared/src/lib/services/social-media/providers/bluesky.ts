@@ -181,8 +181,8 @@ export const blueskyProvider: SocialMediaProvider = {
         valid: true,
         accountId: session.did,
         username: session.handle,
-        displayName: profile.data?.displayName,
-        avatarUrl: profile.data?.avatar,
+        displayName: profile.data.displayName,
+        avatarUrl: profile.data.avatar,
       };
     } catch (error) {
       return {

@@ -33,7 +33,7 @@ async function prepareSeoRequestPayload<T extends NewSeoRequest | Partial<NewSeo
     organizationId: data.organization_id ?? context.organization_id,
     objectId: context.id,
     field: "prompt_context",
-    createdAt: data.created_at ?? context.created_at ?? new Date(),
+    createdAt: data.created_at ?? context.created_at,
     value: data.prompt_context,
   });
 

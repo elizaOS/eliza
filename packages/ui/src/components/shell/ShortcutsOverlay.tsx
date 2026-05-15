@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 function formatKey(shortcut: (typeof COMMON_SHORTCUTS)[number]): string {
   const isMac =
-    typeof navigator !== "undefined" && navigator.platform?.includes("Mac");
+    typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const parts: string[] = [];
   if (shortcut.ctrl) {
     parts.push(isMac ? "\u2318" : "Ctrl");

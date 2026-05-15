@@ -654,7 +654,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     }
 
     if (responseContent) {
-      const mode = result.mode ?? "actions";
+      const mode = result.mode;
 
       if (mode === "simple") {
         // Simple mode - just call callback with content
@@ -701,7 +701,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     await runtime.emitEvent(EventType.RUN_ENDED, {
       runtime,
       runId,
-      messageId: message.id!,
+      messageId: message.id,
       roomId: message.roomId,
       entityId: message.entityId,
       startTime,
@@ -809,7 +809,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         "userAuthStatus",
       ];
       for (const key of stableProviderKeys) {
-        const val = accumulatedState.values?.[key] ?? accumulatedState[key];
+        const val = accumulatedState.values[key] ?? accumulatedState[key];
         if (val !== undefined && isStateValue(val)) {
           cachedStableValues[key] = val;
         }
@@ -1135,13 +1135,13 @@ export class CloudBootstrapMessageService implements IMessageService {
             typeof result.text === "string" && result.text.length > 0
               ? result.text
               : capturedCallback?.text;
-          const success = (result?.success as boolean) ?? false;
+          const success = (result.success as boolean) ?? false;
 
           const actionResult: NativePlannerActionResult = {
             data: { actionName: action },
             success,
             text: resultText,
-            values: result?.values,
+            values: result.values,
             error: success ? undefined : resultText,
           };
 
@@ -1182,7 +1182,7 @@ export class CloudBootstrapMessageService implements IMessageService {
           );
 
           // Check if action requires user input before continuing
-          const resultData = result?.data as Record<string, unknown> | undefined;
+          const resultData = result.data as Record<string, unknown> | undefined;
           if (resultData?.awaitingUserInput === true) {
             logger.info(`[NativePlanner] Action ${action} awaiting user input, pausing loop`);
             break;
@@ -1579,7 +1579,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       s.trim().toLowerCase(),
     );
 
-    const roomType = room.type?.toString().toLowerCase();
+    const roomType = room.type.toString().toLowerCase();
     const sourceStr = message.content.source?.toLowerCase() || "";
 
     // DM/VOICE_DM/API channels: always respond
@@ -1620,7 +1620,7 @@ export class CloudBootstrapMessageService implements IMessageService {
   }
 
   async processAttachments(runtime: IAgentRuntime, attachments: Media[]): Promise<Media[]> {
-    if (!attachments?.length) return attachments;
+    if (!attachments.length) return attachments;
 
     return Promise.all(
       attachments.map(async (attachment) => {

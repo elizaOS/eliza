@@ -94,8 +94,8 @@ describe("PAYMENTS action integration", () => {
         },
       },
     );
-    expect(addResult?.success).toBe(true);
-    const addedSource = (addResult?.data as { source?: LifeOpsPaymentSource })
+    expect(addResult.success).toBe(true);
+    const addedSource = (addResult.data as { source?: LifeOpsPaymentSource })
       .source;
     expect(addedSource?.kind).toBe("manual");
     expect(addedSource?.label).toBe("Chase Checking");
@@ -109,9 +109,9 @@ describe("PAYMENTS action integration", () => {
       undefined,
       { parameters: { subaction: "list_sources" } },
     );
-    expect(listResult?.success).toBe(true);
+    expect(listResult.success).toBe(true);
     const sources =
-      (listResult?.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
+      (listResult.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
     expect(sources).toHaveLength(1);
     expect(sources[0]?.id).toBe(addedSource?.id);
   });
@@ -132,7 +132,7 @@ describe("PAYMENTS action integration", () => {
         },
       },
     );
-    const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
+    const sourceId = (add.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
     expect(sourceId).toBeTruthy();
 
@@ -148,9 +148,9 @@ describe("PAYMENTS action integration", () => {
         },
       },
     );
-    expect(firstImport?.success).toBe(true);
+    expect(firstImport.success).toBe(true);
     const firstResult = (
-      firstImport?.data as {
+      firstImport.data as {
         result?: { inserted: number; skipped: number };
       }
     ).result;
@@ -166,7 +166,7 @@ describe("PAYMENTS action integration", () => {
       },
     );
     const reResult = (
-      reImport?.data as { result?: { inserted: number; skipped: number } }
+      reImport.data as { result?: { inserted: number; skipped: number } }
     ).result;
     expect(reResult?.inserted).toBe(0);
     expect(reResult?.skipped).toBe(3);
@@ -178,7 +178,7 @@ describe("PAYMENTS action integration", () => {
       { parameters: { subaction: "list_transactions", sourceId } },
     );
     const txns =
-      (listTxn?.data as { transactions?: LifeOpsPaymentTransaction[] })
+      (listTxn.data as { transactions?: LifeOpsPaymentTransaction[] })
         .transactions ?? [];
     expect(txns).toHaveLength(3);
     const merchants = txns.map((t) => t.merchantRaw).sort();
@@ -197,7 +197,7 @@ describe("PAYMENTS action integration", () => {
         parameters: { subaction: "add_source", kind: "manual", label: "Daily" },
       },
     );
-    const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
+    const sourceId = (add.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
 
     await runPaymentsHandler(
@@ -219,9 +219,9 @@ describe("PAYMENTS action integration", () => {
       undefined,
       { parameters: { subaction: "dashboard", windowDays: 30 } },
     );
-    expect(dashboard?.success).toBe(true);
+    expect(dashboard.success).toBe(true);
     const dash = (
-      dashboard?.data as {
+      dashboard.data as {
         dashboard?: {
           sources: LifeOpsPaymentSource[];
           spending: { totalSpendUsd: number; transactionCount: number };
@@ -249,7 +249,7 @@ describe("PAYMENTS action integration", () => {
         },
       },
     );
-    const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
+    const sourceId = (add.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
 
     const remove = await runPaymentsHandler(
@@ -258,7 +258,7 @@ describe("PAYMENTS action integration", () => {
       undefined,
       { parameters: { subaction: "remove_source", sourceId } },
     );
-    expect(remove?.success).toBe(true);
+    expect(remove.success).toBe(true);
 
     const list = await runPaymentsHandler(
       runtime,
@@ -267,7 +267,7 @@ describe("PAYMENTS action integration", () => {
       { parameters: { subaction: "list_sources" } },
     );
     const sources =
-      (list?.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
+      (list.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
     expect(sources).toHaveLength(0);
   });
 
@@ -281,8 +281,8 @@ describe("PAYMENTS action integration", () => {
       undefined,
       { parameters: { subaction: "add_source" } },
     );
-    expect(result?.success).toBe(false);
-    expect((result?.data as { error?: string }).error).toBe(
+    expect(result.success).toBe(false);
+    expect((result.data as { error?: string }).error).toBe(
       "MISSING_SOURCE_FIELDS",
     );
   });

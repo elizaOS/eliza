@@ -303,7 +303,7 @@ export async function orchestrateVertexTuning(
   const job = createdJob.job;
 
   const recommendedModelId =
-    job.tunedModelEndpointName?.trim() || job.tunedModelDisplayName?.trim() || config.displayName;
+    job.tunedModelEndpointName?.trim() || job.tunedModelDisplayName.trim() || config.displayName;
 
   return {
     job,

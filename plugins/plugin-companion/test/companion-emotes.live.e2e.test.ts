@@ -37,7 +37,7 @@ describeIf(LIVE)("App-Companion: Emotes API e2e", () => {
   }, 180_000);
 
   afterAll(async () => {
-    await runtime?.close();
+    await runtime.close();
   });
 
   it("GET /api/emotes returns the emote catalog", async () => {

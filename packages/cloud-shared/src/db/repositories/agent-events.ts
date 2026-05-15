@@ -204,7 +204,7 @@ export class AgentEventsRepository {
     }
 
     return {
-      total: countResult?.total || 0,
+      total: countResult.total || 0,
       byType,
     };
   }

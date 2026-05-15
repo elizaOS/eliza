@@ -234,12 +234,12 @@ export function openUrl(url: string, opts: SpawnOptions = {}): SpawnResult {
   // Detach so child survives if Eliza restarts and so wait() doesn't
   // block us on shutdown. The kill path uses `child.kill` directly.
   try {
-    child.unref?.();
+    child.unref();
   } catch {
     // Some test stubs return objects without unref; harmless.
   }
   // Don't crash the agent if chromium dies / never starts.
-  child.on?.("error", () => {});
+  child.on("error", () => {});
   OPEN_WINDOWS.set(url, child);
   return { status: "spawned", pid: child.pid ?? undefined };
 }
@@ -254,7 +254,7 @@ export function closeUrl(url: string): boolean {
   if (child === undefined) return false;
   OPEN_WINDOWS.delete(url);
   try {
-    child.kill?.("SIGTERM");
+    child.kill("SIGTERM");
   } catch {
     // Already dead — fine.
   }
@@ -315,13 +315,13 @@ export const OPEN_URL_ACTION: Action = {
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     return URL_RE.test(text);
   },
 
   handler: async (_runtime, message, _state, options, callback) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     const match = URL_RE.exec(text);
     if (match === null) {
       const reply =

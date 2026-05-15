@@ -53,7 +53,7 @@ const desktopHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
     const rpc = getElectrobunRendererRpc();
     const request = rpc?.request?.desktopHttpRequest;
-    if (!request || !rpc?.request) {
+    if (!request || !rpc.request) {
       return fetchAgentTransport.request(url, init, context);
     }
 

@@ -152,7 +152,7 @@ class AbuseDetectionService {
         ),
       );
 
-    const signupCount = recentSignups?.count || 0;
+    const signupCount = recentSignups.count || 0;
 
     if (signupCount >= MAX_SIGNUPS_PER_IP_24H) {
       flags.push("ip_rate_limit_exceeded");
@@ -186,7 +186,7 @@ class AbuseDetectionService {
         ),
       );
 
-    const signupCount = recentSignups?.count || 0;
+    const signupCount = recentSignups.count || 0;
 
     if (signupCount >= MAX_SIGNUPS_PER_FINGERPRINT_24H) {
       flags.push("fingerprint_rate_limit_exceeded");
@@ -207,7 +207,7 @@ class AbuseDetectionService {
         .where(eq(organizations.id, organizationId))
         .limit(1);
 
-      const currentSettings = (org?.settings || {}) as Record<string, unknown>;
+      const currentSettings = (org.settings || {}) as Record<string, unknown>;
 
       const updatedSettings = {
         ...currentSettings,
@@ -243,7 +243,7 @@ class AbuseDetectionService {
         .where(eq(organizations.id, organizationId))
         .limit(1);
 
-      const settings = (org?.settings || {}) as Record<string, unknown>;
+      const settings = (org.settings || {}) as Record<string, unknown>;
 
       const signupContext: SignupContext = {
         ipAddress: settings.signup_ip as string | undefined,
@@ -271,7 +271,7 @@ class AbuseDetectionService {
           .from(organizations)
           .where(or(...conditions));
 
-        relatedOrganizations = Math.max(0, (result?.count || 1) - 1);
+        relatedOrganizations = Math.max(0, (result.count || 1) - 1);
       }
 
       return {

@@ -327,7 +327,7 @@ export function useWalletState({
     async (config: WalletConfigUpdateRequest) => {
       if (
         Object.keys(config.credentials ?? {}).length === 0 &&
-        Object.keys(config.selections ?? {}).length === 0
+        Object.keys(config.selections).length === 0
       ) {
         return false;
       }
@@ -351,7 +351,7 @@ export function useWalletState({
             walletConfigAfterSave = await fetchWalletConfig();
             const notice = summarizeCloudWalletImport(
               walletConfigAfterSave,
-              refreshResult?.warnings,
+              refreshResult.warnings,
             );
             setActionNotice(notice.text, notice.tone);
           } finally {
@@ -395,7 +395,7 @@ export function useWalletState({
     try {
       const result = await client.refreshCloudWallets();
       const nextConfig = await fetchWalletConfig();
-      const notice = summarizeCloudWalletImport(nextConfig, result?.warnings);
+      const notice = summarizeCloudWalletImport(nextConfig, result.warnings);
       setActionNotice(notice.text, notice.tone);
       await loadBalances();
     } catch (err) {

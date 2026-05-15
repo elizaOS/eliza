@@ -96,7 +96,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         err instanceof Error && err.message.trim()
           ? `${prefix}: ${err.message}`
           : prefix;
-      setActionNotice?.(message, "error", 6000);
+      setActionNotice(message, "error", 6000);
     },
     [setActionNotice],
   );

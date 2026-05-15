@@ -186,10 +186,10 @@ class TelegramAppAutomationService {
     }
 
     const config = app.telegram_automation as TelegramAutomationConfig;
-    const vibeStyle = config?.vibeStyle || "professional and engaging";
+    const vibeStyle = config.vibeStyle || "professional and engaging";
 
     let characterPrompt = "";
-    if (config?.agentCharacterId) {
+    if (config.agentCharacterId) {
       const characterContext = await getCharacterPromptContext(config.agentCharacterId);
       if (characterContext) {
         characterPrompt = buildCharacterSystemPrompt(characterContext);
@@ -276,10 +276,10 @@ Maximum 500 characters.`;
     }
 
     const config = app.telegram_automation as TelegramAutomationConfig;
-    const vibeStyle = config?.vibeStyle || "helpful and friendly";
+    const vibeStyle = config.vibeStyle || "helpful and friendly";
 
     let characterPrompt = "";
-    if (config?.agentCharacterId) {
+    if (config.agentCharacterId) {
       const characterContext = await getCharacterPromptContext(config.agentCharacterId);
       if (characterContext) {
         characterPrompt = buildCharacterSystemPrompt(characterContext);
@@ -504,7 +504,7 @@ Maximum 300 characters.`;
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.telegram_automation;
 
-    if (!config?.enabled || !config?.autoReply) {
+    if (!config?.enabled || !config.autoReply) {
       return { success: false, error: "Auto-reply not enabled" };
     }
 
@@ -572,7 +572,7 @@ Maximum 300 characters.`;
    */
   isAnnouncementDue(app: App): boolean {
     const config = app.telegram_automation as TelegramAutomationConfig | null;
-    if (!config?.enabled || !config?.autoAnnounce) return false;
+    if (!config?.enabled || !config.autoAnnounce) return false;
 
     // If never announced, it's due
     if (!config.lastAnnouncementAt) return true;

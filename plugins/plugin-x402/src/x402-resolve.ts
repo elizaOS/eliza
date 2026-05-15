@@ -23,7 +23,7 @@ export function resolveEffectiveX402(
   route: PaymentEnabledRoute,
   runtime: AgentRuntime,
 ): X402Config | null {
-  const cx = readCharacterX402(runtime.character?.settings);
+  const cx = readCharacterX402(runtime.character.settings);
   const raw = route.x402;
   if (raw === true) {
     if (cx?.defaultPriceInCents == null || !cx.defaultPaymentConfigs?.length)
@@ -34,7 +34,7 @@ export function resolveEffectiveX402(
     };
   }
   if (raw && typeof raw === "object") {
-    const price = raw.priceInCents ?? cx?.defaultPriceInCents;
+    const price = raw.priceInCents;
     const configs = raw.paymentConfigs ?? cx?.defaultPaymentConfigs;
     if (price == null || !configs?.length) return null;
     return { priceInCents: price, paymentConfigs: [...configs] };

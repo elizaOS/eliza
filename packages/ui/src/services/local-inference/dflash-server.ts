@@ -493,8 +493,8 @@ export class DflashLlamaServer {
     this.baseUrl = `http://${host}:${port}`;
     this.loadedPlan = plan;
 
-    child.stdout?.on("data", (chunk) => this.captureLog(chunk));
-    child.stderr?.on("data", (chunk) => this.captureLog(chunk));
+    child.stdout.on("data", (chunk) => this.captureLog(chunk));
+    child.stderr.on("data", (chunk) => this.captureLog(chunk));
     child.on("exit", (code, signal) => {
       if (this.child && (code !== null || signal !== null)) {
         this.child = null;

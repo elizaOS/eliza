@@ -29,7 +29,7 @@ describe("emitAndroidAction", () => {
       expect(payload.kind).toBe("tap");
       expect(spy).toHaveBeenCalledTimes(1);
       const [first] = spy.mock.calls;
-      const obj = first?.[0] as Record<string, unknown>;
+      const obj = first[0] as Record<string, unknown>;
       expect(obj.evt).toBe("computeruse.android.action");
       expect(obj.platform).toBe("android");
       expect(obj.kind).toBe("tap");

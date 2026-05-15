@@ -123,19 +123,19 @@ describe("runAppBlockHandler", () => {
       },
     );
 
-    if (!result?.success) {
+    if (!result.success) {
       throw new Error(
         "expected APP_BLOCK to succeed; got: " +
-          JSON.stringify({ text: result?.text, data: result?.data }),
+          JSON.stringify({ text: result.text, data: result.data }),
       );
     }
-    expect(result?.success).toBe(true);
+    expect(result.success).toBe(true);
     expect(stubCalls.block).toHaveLength(1);
     expect(stubCalls.block[0]?.packageNames).toEqual(["com.twitter.android"]);
     expect(stubCalls.block[0]?.durationMinutes).toBe(60);
-    expect(result?.text ?? "").toMatch(/Started blocking 1 app/);
+    expect(result.text ?? "").toMatch(/Started blocking 1 app/);
     expect(
-      (result?.data as { blockedCount?: number } | undefined)?.blockedCount,
+      (result.data as { blockedCount?: number } | undefined)?.blockedCount,
     ).toBe(1);
   });
 
@@ -150,11 +150,11 @@ describe("runAppBlockHandler", () => {
       { parameters: { subaction: "status" } },
     );
 
-    expect(result?.success).toBe(true);
-    expect((result?.data as { active?: boolean } | undefined)?.active).toBe(
+    expect(result.success).toBe(true);
+    expect((result.data as { active?: boolean } | undefined)?.active).toBe(
       false,
     );
-    expect(result?.text ?? "").toMatch(/No app block/);
+    expect(result.text ?? "").toMatch(/No app block/);
   });
 
   it("unblock subaction clears the active block", async () => {
@@ -173,9 +173,9 @@ describe("runAppBlockHandler", () => {
       { parameters: { subaction: "unblock" } },
     );
 
-    expect(result?.success).toBe(true);
+    expect(result.success).toBe(true);
     expect(stubCalls.unblock).toBe(1);
-    expect(result?.text ?? "").toMatch(/Removed the app block/);
+    expect(result.text ?? "").toMatch(/Removed the app block/);
   });
 
   it("status subaction surfaces blockedPackageNames + endsAt when active", async () => {
@@ -195,8 +195,8 @@ describe("runAppBlockHandler", () => {
       { parameters: { subaction: "status" } },
     );
 
-    expect(result?.success).toBe(true);
-    const data = result?.data as
+    expect(result.success).toBe(true);
+    const data = result.data as
       | {
           active?: boolean;
           blockedCount?: number;

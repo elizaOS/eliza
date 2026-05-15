@@ -215,7 +215,7 @@ export function PromptInputProvider({
   }, []);
 
   const openFileDialog = useCallback(() => {
-    openRef.current?.();
+    openRef.current();
   }, []);
 
   const attachments = useMemo<AttachmentsContext>(
@@ -305,7 +305,7 @@ export function PromptInputAttachment({
   const attachments = usePromptInputAttachments();
 
   const mediaType =
-    data.mediaType?.startsWith("image/") && data.url ? "image" : "file";
+    data.mediaType.startsWith("image/") && data.url ? "image" : "file";
 
   return (
     <div
@@ -415,14 +415,14 @@ export function PromptInputAttachments({
       <div className="space-y-2 py-1" ref={contentRef}>
         <div className="flex flex-wrap gap-2">
           {attachments.files
-            .filter((f) => !(f.mediaType?.startsWith("image/") && f.url))
+            .filter((f) => !(f.mediaType.startsWith("image/") && f.url))
             .map((file) => (
               <Fragment key={file.id}>{children(file)}</Fragment>
             ))}
         </div>
         <div className="flex flex-wrap gap-2">
           {attachments.files
-            .filter((f) => f.mediaType?.startsWith("image/") && f.url)
+            .filter((f) => f.mediaType.startsWith("image/") && f.url)
             .map((file) => (
               <Fragment key={file.id}>{children(file)}</Fragment>
             ))}
@@ -776,7 +776,7 @@ export const PromptInput = ({
 
     const form = event.currentTarget;
     const text = usingProvider
-      ? (providerBridge?.getTextInputValue() ?? "")
+      ? providerBridge.getTextInputValue()
       : (() => {
           const formData = new FormData(form);
           return (formData.get("message") as string) || "";
@@ -791,7 +791,7 @@ export const PromptInput = ({
     // Convert blob URLs to data URLs asynchronously
     Promise.all(
       files.map(async ({ id: _id, ...item }) => {
-        if (item.url?.startsWith("blob:")) {
+        if (item.url.startsWith("blob:")) {
           return {
             ...item,
             url: await convertBlobUrlToDataUrl(item.url),
@@ -806,12 +806,12 @@ export const PromptInput = ({
       if (result instanceof Promise) {
         result.then(() => {
           clear();
-          if (usingProvider) providerBridge?.clearTextInput();
+          if (usingProvider) providerBridge.clearTextInput();
         });
       } else {
         // Sync function completed without throwing, clear attachments
         clear();
-        if (usingProvider) providerBridge?.clearTextInput();
+        if (usingProvider) providerBridge.clearTextInput();
       }
     });
   };
@@ -879,7 +879,7 @@ export const PromptInputTextarea = ({
   };
 
   const handlePaste: ClipboardEventHandler<HTMLTextAreaElement> = (event) => {
-    const items = event.clipboardData?.items;
+    const items = event.clipboardData.items;
 
     if (!items) {
       return;

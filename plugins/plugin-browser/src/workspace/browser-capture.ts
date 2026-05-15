@@ -69,7 +69,7 @@ function ensurePopoutUrl(raw: string): string {
   try {
     const u = new URL(raw);
     // Handle both query and hash-based routing
-    if (u.hash?.includes("?")) {
+    if (u.hash.includes("?")) {
       if (!u.hash.includes("popout")) {
         u.hash = `${u.hash}&popout`;
       }

@@ -237,7 +237,7 @@ export function ApprovalQueue({
       <div className="space-y-3">
         {items.map((item) => {
           const tx = item.transaction;
-          const reasons = getPolicyReasons(tx.policyResults ?? []);
+          const reasons = getPolicyReasons(tx.policyResults);
           const isProcessing = actionInFlight === tx.id;
 
           return (
@@ -254,7 +254,7 @@ export function ApprovalQueue({
                     <Clock className="h-3 w-3" />
                     <span>{formatTime(item.requestedAt)}</span>
                     <span className="rounded-full border border-border/30 bg-card/60 px-2 py-0.5 text-2xs font-medium">
-                      {getChainName(tx.request?.chainId ?? 0)}
+                      {getChainName(tx.request.chainId)}
                     </span>
                   </div>
 
@@ -268,11 +268,11 @@ export function ApprovalQueue({
                         type="button"
                         className="flex items-center gap-1 font-mono text-sm text-txt hover:text-accent transition-colors cursor-pointer"
                         onClick={() =>
-                          void handleCopy(tx.request?.to ?? "", "Address")
+                          void handleCopy(tx.request.to, "Address")
                         }
-                        title={tx.request?.to}
+                        title={tx.request.to}
                       >
-                        {truncateAddress(tx.request?.to ?? "")}
+                        {truncateAddress(tx.request.to)}
                         <Copy className="h-3 w-3 opacity-40" />
                       </button>
                     </div>
@@ -282,8 +282,8 @@ export function ApprovalQueue({
                       </span>
                       <p className="text-sm font-semibold text-txt">
                         {formatWeiValue(
-                          tx.request?.value ?? "0",
-                          tx.request?.chainId ?? 8453,
+                          tx.request.value,
+                          tx.request.chainId,
                         )}
                       </p>
                     </div>

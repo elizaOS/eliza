@@ -63,7 +63,7 @@ const server = Bun.serve({
             { status: 400 },
           );
         }
-        if (typeof body?.message !== "string") {
+        if (typeof body.message !== "string") {
           return Response.json(
             { error: "missing `message` field" },
             { status: 400 },

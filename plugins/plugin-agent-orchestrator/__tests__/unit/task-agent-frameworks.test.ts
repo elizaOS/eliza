@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTaskAgentFrameworkStateCache,
   getTaskAgentFrameworkState,
+  getTaskAgentModelPrefs,
   type TaskAgentFrameworkProbe,
 } from "../../src/services/task-agent-frameworks.js";
 
@@ -14,6 +15,7 @@ const ENV_KEYS = [
   "BENCHMARK_MODEL_PROVIDER",
   "CEREBRAS_API_KEY",
   "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
   "CLAUDE_API_KEY",
   "CLAUDE_CODE_API_KEY",
   "CODEX_API_KEY",
@@ -42,6 +44,8 @@ function installedProbe(): TaskAgentFrameworkProbe {
       { adapter: "Claude Code", installed: true },
       { adapter: "OpenAI Codex", installed: true },
       { adapter: "OpenCode", installed: true },
+      { adapter: "elizaOS", installed: true },
+      { adapter: "Pi Agent", installed: true },
     ]),
   };
 }
@@ -82,7 +86,7 @@ describe("getTaskAgentFrameworkState", () => {
     fs.rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it("defaults Cerebras-backed benchmark runs to OpenCode", async () => {
+  it("defaults Cerebras-backed benchmark runs to elizaOS", async () => {
     setEnv({
       BENCHMARK_MODEL_PROVIDER: "cerebras",
       CEREBRAS_API_KEY: "csk-test",
@@ -90,7 +94,10 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("opencode");
+    expect(state.preferred.id).toBe("elizaos");
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.authReady,
+    ).toBe(true);
     expect(
       state.frameworks.find((item) => item.id === "opencode")?.authReady,
     ).toBe(true);
@@ -109,7 +116,10 @@ describe("getTaskAgentFrameworkState", () => {
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
-    expect(state.preferred.id).toBe("opencode");
+    expect(state.preferred.id).toBe("elizaos");
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.authReady,
+    ).toBe(true);
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);
@@ -135,5 +145,27 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "claude")?.authReady,
     ).toBe(true);
+  });
+
+  it("uses Cerebras model overrides for elizaOS and pi-agent model prefs", () => {
+    setEnv({ CEREBRAS_MODEL: "gpt-oss-120b-test" });
+
+    expect(getTaskAgentModelPrefs(runtime(), "elizaos")).toEqual({
+      powerful: "gpt-oss-120b-test",
+    });
+    expect(getTaskAgentModelPrefs(runtime(), "pi-agent")).toEqual({
+      powerful: "gpt-oss-120b-test",
+    });
+  });
+
+  it("lets adapter-specific model prefs override generic Cerebras defaults", () => {
+    setEnv({ CEREBRAS_MODEL: "gpt-oss-120b-generic" });
+
+    expect(
+      getTaskAgentModelPrefs(
+        runtime({ ELIZA_ELIZAOS_MODEL_POWERFUL: "gpt-oss-120b-eliza" }),
+        "elizaos",
+      ),
+    ).toEqual({ powerful: "gpt-oss-120b-eliza" });
   });
 });

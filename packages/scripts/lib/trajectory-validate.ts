@@ -785,15 +785,15 @@ export function rollupTrajectory(
   trajectory: RecordedTrajectory,
 ): TrajectoryRollup {
   const rollup = cloneRollup();
-  for (const stage of trajectory.stages ?? []) {
+  for (const stage of trajectory.stages) {
     rollup.totalLatencyMs += Number.isFinite(stage.latencyMs)
       ? stage.latencyMs
       : 0;
     if (stage.model) {
       rollup.modelCallStages += 1;
       if (stage.model.usage) {
-        rollup.totalPromptTokens += stage.model.usage.promptTokens ?? 0;
-        rollup.totalCompletionTokens += stage.model.usage.completionTokens ?? 0;
+        rollup.totalPromptTokens += stage.model.usage.promptTokens;
+        rollup.totalCompletionTokens += stage.model.usage.completionTokens;
         rollup.totalCacheReadTokens +=
           stage.model.usage.cacheReadInputTokens ?? 0;
         rollup.totalCacheCreationTokens +=

@@ -118,7 +118,7 @@ function addAccount(
 
 export function readLinearAccounts(runtime: IAgentRuntime): LinearAccountConfig[] {
   const accounts = new Map<string, LinearAccountConfig>();
-  const characterConfig = runtime.character?.settings?.linear as { accounts?: unknown } | undefined;
+  const characterConfig = runtime.character.settings?.linear as { accounts?: unknown } | undefined;
   const characterAccounts = characterConfig?.accounts;
 
   if (Array.isArray(characterAccounts)) {

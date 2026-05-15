@@ -59,12 +59,12 @@ class TwitterAppAutomationService {
     const currentConfig = (app.twitter_automation || {}) as TwitterAutomationConfig;
     const updatedConfig: TwitterAutomationConfig = {
       enabled: true,
-      autoPost: config.autoPost ?? currentConfig.autoPost ?? true,
-      autoReply: config.autoReply ?? currentConfig.autoReply ?? true,
-      autoEngage: config.autoEngage ?? currentConfig.autoEngage ?? false,
-      discovery: config.discovery ?? currentConfig.discovery ?? false,
-      postIntervalMin: config.postIntervalMin ?? currentConfig.postIntervalMin ?? 90,
-      postIntervalMax: config.postIntervalMax ?? currentConfig.postIntervalMax ?? 150,
+      autoPost: config.autoPost ?? currentConfig.autoPost,
+      autoReply: config.autoReply ?? currentConfig.autoReply,
+      autoEngage: config.autoEngage ?? currentConfig.autoEngage,
+      discovery: config.discovery ?? currentConfig.discovery,
+      postIntervalMin: config.postIntervalMin ?? currentConfig.postIntervalMin,
+      postIntervalMax: config.postIntervalMax ?? currentConfig.postIntervalMax,
       vibeStyle: config.vibeStyle ?? currentConfig.vibeStyle,
       topics: config.topics ?? currentConfig.topics,
       totalPosts: currentConfig.totalPosts ?? 0,

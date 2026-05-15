@@ -70,7 +70,7 @@ function hasSelectedContext(state: State | undefined): boolean {
 
 function collectText(message: Memory, state?: State): string {
   return [
-    message.content?.text,
+    message.content.text,
     state?.values?.conversationLog,
     state?.values?.recentMessages,
     state?.values?.mcp,
@@ -191,7 +191,7 @@ export function createMcpToolAction(
         serverName,
         tool.name,
         runtime,
-        String(message.entityId ?? ""),
+        String(message.entityId),
       );
       const boundedToolOutput = truncateMcpToolOutput(toolOutput);
 

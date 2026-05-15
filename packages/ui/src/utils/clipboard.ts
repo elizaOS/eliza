@@ -30,7 +30,7 @@ export async function copyTextToClipboard(text: string): Promise<void> {
 
   if (bridged !== null) return;
 
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+  if (typeof navigator !== "undefined" && navigator.clipboard.writeText) {
     await navigator.clipboard.writeText(text);
     return;
   }

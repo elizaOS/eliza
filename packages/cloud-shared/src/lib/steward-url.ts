@@ -10,13 +10,13 @@ function isUsableUrl(value: string | undefined): value is string {
 
 function getBrowserOrigin(): string | undefined {
   const location = (globalThis as typeof globalThis & { location?: { origin?: unknown } }).location;
-  return typeof location?.origin === "string" ? location.origin : undefined;
+  return typeof location.origin === "string" ? location.origin : undefined;
 }
 
 function getBrowserHostname(): string | undefined {
   const location = (globalThis as typeof globalThis & { location?: { hostname?: unknown } })
     .location;
-  return typeof location?.hostname === "string" ? location.hostname.toLowerCase() : undefined;
+  return typeof location.hostname === "string" ? location.hostname.toLowerCase() : undefined;
 }
 
 /**

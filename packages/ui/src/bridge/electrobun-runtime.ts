@@ -86,7 +86,7 @@ export function getBackendStartupTimeoutMs(): number {
   // backend outage surfaces fast instead of staring at the splash.
   if (
     typeof navigator !== "undefined" &&
-    /\bElizaOS\//.test(navigator.userAgent ?? "")
+    /\bElizaOS\//.test(navigator.userAgent)
   ) {
     return 180_000;
   }

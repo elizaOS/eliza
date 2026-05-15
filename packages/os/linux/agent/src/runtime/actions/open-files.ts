@@ -99,11 +99,11 @@ export function openFiles(opts: SpawnOptions = {}): SpawnResult {
   const args = argsForBinary(binary, target);
   const child = spawnFn(binary, args);
   try {
-    child.unref?.();
+    child.unref();
   } catch {
     // Some test stubs return objects without unref; harmless.
   }
-  child.on?.("error", () => {});
+  child.on("error", () => {});
   return {
     status: "spawned",
     pid: child.pid ?? undefined,

@@ -2682,7 +2682,7 @@ export class ElizaSandboxService {
     logger.info("[agent-sandbox] Backup created", {
       agentId: sandboxRecordId,
       type,
-      bytes: backup?.size_bytes ?? sizeBytes,
+      bytes: backup.size_bytes ?? sizeBytes,
     });
   }
 
@@ -2690,7 +2690,7 @@ export class ElizaSandboxService {
     await agentSandboxesRepository.update(rec.id, {
       status: "error",
       error_message: msg,
-      error_count: (rec.error_count ?? 0) + 1,
+      error_count: rec.error_count + 1,
     });
   }
 

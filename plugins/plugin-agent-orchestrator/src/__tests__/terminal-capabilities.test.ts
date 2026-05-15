@@ -2,7 +2,9 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeConfigEnvKeys } from "../services/config-env.js";
 import {
+  detectOrchestratorCapabilities,
   detectOrchestratorTerminalSupport,
   resolveExecutable,
   resolveOrchestratorShell,
@@ -19,6 +21,11 @@ const ENV_KEYS = [
   "CODING_TOOLS_SHELL",
   "SHELL",
   "PATH",
+  "ELIZA_STATE_DIR",
+  "ELIZA_NAMESPACE",
+  "ELIZAOS_ACP_COMMAND",
+  "ELIZA_OPENCODE_ACP_COMMAND",
+  "ELIZA_PI_AGENT_ACP_COMMAND",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -27,6 +34,11 @@ let tempDir = "";
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   tempDir = mkdtempSync(path.join(tmpdir(), "orch-cap-"));
+  process.env.ELIZA_STATE_DIR = tempDir;
+  process.env.ELIZA_NAMESPACE = "eliza";
+  delete process.env.ELIZAOS_ACP_COMMAND;
+  delete process.env.ELIZA_OPENCODE_ACP_COMMAND;
+  delete process.env.ELIZA_PI_AGENT_ACP_COMMAND;
 });
 
 afterEach(() => {
@@ -116,5 +128,28 @@ describe("orchestrator terminal capability detection", () => {
     const support = detectOrchestratorTerminalSupport();
 
     expect(support.supported).toBe(true);
+  });
+
+  it("reports configured adapter command overrides as available", () => {
+    const elizaos = executable("elizaos-acp");
+    const piAgent = executable("pi-agent-acp");
+    writeConfigEnvKeys({
+      ELIZAOS_ACP_COMMAND: `${elizaos} acp`,
+      ELIZA_PI_AGENT_ACP_COMMAND: `${piAgent} acp`,
+    });
+    process.env.PATH = "";
+
+    const capabilities = detectOrchestratorCapabilities();
+
+    expect(capabilities.find((item) => item.name === "elizaos")).toMatchObject({
+      available: true,
+      path: `${elizaos} acp`,
+    });
+    expect(capabilities.find((item) => item.name === "pi-agent")).toMatchObject(
+      {
+        available: true,
+        path: `${piAgent} acp`,
+      },
+    );
   });
 });

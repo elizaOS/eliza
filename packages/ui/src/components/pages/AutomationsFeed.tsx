@@ -206,7 +206,7 @@ export function AutomationsFeed({
     if (typeof window === "undefined") return;
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ filter?: FeedFilter }>).detail;
-      if (detail?.filter) setFilter(detail.filter);
+      if (detail.filter) setFilter(detail.filter);
     };
     window.addEventListener("eliza:automations:setFilter", handler);
     return () =>
@@ -219,7 +219,7 @@ export function AutomationsFeed({
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<VisualizeWorkflowEventDetail>)
         .detail;
-      if (!detail?.workflowId) return;
+      if (!detail.workflowId) return;
       setLink({ kind: "workflow", id: detail.workflowId });
       const row = rowRefs.current.get(detail.workflowId);
       row?.scrollIntoView({ behavior: "smooth", block: "center" });

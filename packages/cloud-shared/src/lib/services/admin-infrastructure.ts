@@ -216,8 +216,8 @@ function parsePercent(value: string): number | null {
 
 function parseMemoryPercent(value: string): number | null {
   const [usedRaw, totalRaw] = value.split("|");
-  const used = Number.parseInt(usedRaw ?? "", 10);
-  const total = Number.parseInt(totalRaw ?? "", 10);
+  const used = Number.parseInt(usedRaw, 10);
+  const total = Number.parseInt(totalRaw, 10);
 
   if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) {
     return null;
@@ -404,7 +404,7 @@ export function classifyContainerHealth(params: {
     // If the container is running and Docker health check says healthy,
     // downgrade severity — the heartbeat mechanism may be broken but the
     // container itself is functional.
-    const runtimeHealthy = runtime?.state === "running" && runtime?.health === "healthy";
+    const runtimeHealthy = runtime.state === "running" && runtime.health === "healthy";
     return {
       status: "stale",
       severity: runtimeHealthy ? "warning" : "critical",
@@ -665,7 +665,7 @@ export async function getAdminInfrastructureSnapshot(): Promise<AdminInfrastruct
           lastHeartbeatAt: toIso(container.lastHeartbeatAt),
           heartbeatAgeMinutes: getHeartbeatAgeMinutes(toIso(container.lastHeartbeatAt)),
           errorMessage: container.errorMessage,
-          errorCount: container.errorCount ?? 0,
+          errorCount: container.errorCount,
           createdAt: toIso(container.createdAt) ?? refreshedAt,
           updatedAt: toIso(container.updatedAt) ?? refreshedAt,
         };
@@ -765,7 +765,7 @@ export async function getAdminInfrastructureSnapshot(): Promise<AdminInfrastruct
         lastHeartbeatAt: toIso(container.lastHeartbeatAt),
         heartbeatAgeMinutes: getHeartbeatAgeMinutes(toIso(container.lastHeartbeatAt)),
         errorMessage: container.errorMessage,
-        errorCount: container.errorCount ?? 0,
+        errorCount: container.errorCount,
         createdAt: toIso(container.createdAt) ?? refreshedAt,
         updatedAt: toIso(container.updatedAt) ?? refreshedAt,
       };

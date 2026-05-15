@@ -118,9 +118,9 @@ export class AgentStateCache {
       roomId: context.roomId,
       messages: context.messages.map((msg) => ({
         id: msg.id?.toString() || "",
-        entityId: msg.entityId?.toString() || "",
+        entityId: msg.entityId.toString() || "",
         agentId: msg.agentId?.toString() || "",
-        roomId: msg.roomId?.toString() || "",
+        roomId: msg.roomId.toString() || "",
         content: (() => {
           if (typeof msg.content === "object" && msg.content !== null) {
             const content = msg.content as {

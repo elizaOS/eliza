@@ -418,7 +418,7 @@ export class Client {
 
       return {
         tweets,
-        next: response.meta?.next_token,
+        next: response.meta.next_token,
       };
     } catch (error) {
       console.error("Failed to fetch user tweets:", error);

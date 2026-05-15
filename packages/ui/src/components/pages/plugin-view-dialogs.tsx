@@ -208,7 +208,7 @@ export function PluginSettingsDialog({
                 >
                   {installingPlugins.has(plugin.id)
                     ? installProgressLabel(
-                        installProgress.get(plugin.npmName ?? "")?.message,
+                        installProgress.get(plugin.npmName)?.message,
                       )
                     : installPluginLabel}
                 </Button>

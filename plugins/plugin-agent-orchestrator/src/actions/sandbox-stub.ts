@@ -3,7 +3,8 @@
  *
  * Store-distributed builds (Mac App Store, Microsoft Store, Flathub) run in
  * an OS sandbox that forbids forking arbitrary user-installed binaries. The
- * orchestrator's spawn paths (claude / codex / opencode CLIs via ACP) are
+ * orchestrator's spawn paths (elizaos / pi-agent / opencode / claude / codex
+ * CLIs via ACP) are
  * therefore not viable in those builds, so we replace the TASKS action with
  * a single stub that explains the limitation and points the user at the
  * direct-download artifact.

@@ -137,7 +137,7 @@ export class IdentityLinksRepository {
       .select({ count: sql<number>`count(*)::int` })
       .from(identityLinks)
       .where(eq(identityLinks.organization_id, organizationId));
-    return row?.count ?? 0;
+    return row.count;
   }
 }
 

@@ -114,7 +114,7 @@ export function GameViewOverlay() {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
-      if (event.data?.type !== expectedReadyType) return;
+      if (event.data.type !== expectedReadyType) return;
       if (
         postMessageTargetOrigin !== "*" &&
         event.origin !== postMessageTargetOrigin

@@ -130,7 +130,7 @@ export const createCommentAction: Action = {
       let commentBody: string;
 
       const params = _options?.parameters as CreateCommentParameters | undefined;
-      if (params?.issueId && params?.body) {
+      if (params?.issueId && params.body) {
         issueId = params.issueId;
         commentBody = params.body;
       } else {

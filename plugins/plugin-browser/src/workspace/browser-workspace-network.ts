@@ -121,17 +121,17 @@ export async function fetchBrowserWorkspaceTrackedResponse(
       route.status !== null ||
       Object.keys(route.headers).length > 0)
   ) {
-    const response = new Response(route?.body ?? "", {
-      headers: route?.headers,
-      status: route?.status ?? 200,
+    const response = new Response(route.body ?? "", {
+      headers: route.headers,
+      status: route.status ?? 200,
     });
     recordBrowserWorkspaceNetworkRequest(state, {
-      matchedRoute: route?.pattern ?? null,
+      matchedRoute: route.pattern,
       method: String(init.method ?? "GET").toUpperCase(),
       resourceType,
-      responseBody: route?.body ?? "",
-      responseHeaders: route?.headers ?? {},
-      status: route?.status ?? 200,
+      responseBody: route.body ?? "",
+      responseHeaders: route.headers,
+      status: route.status ?? 200,
       url,
     });
     return response;

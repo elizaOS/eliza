@@ -133,13 +133,13 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     }));
 
     const stats = {
-      pending: statusCounts.pending?.count || 0,
-      approved: statusCounts.approved?.count || 0,
-      processing: statusCounts.processing?.count || 0,
-      completed: statusCounts.completed?.count || 0,
-      failed: statusCounts.failed?.count || 0,
-      rejected: statusCounts.rejected?.count || 0,
-      totalPendingUsd: statusCounts.pending?.totalUsd || 0,
+      pending: statusCounts.pending.count || 0,
+      approved: statusCounts.approved.count || 0,
+      processing: statusCounts.processing.count || 0,
+      completed: statusCounts.completed.count || 0,
+      failed: statusCounts.failed.count || 0,
+      rejected: statusCounts.rejected.count || 0,
+      totalPendingUsd: statusCounts.pending.totalUsd || 0,
     };
 
     return c.json({

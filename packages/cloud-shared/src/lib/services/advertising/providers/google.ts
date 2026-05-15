@@ -167,7 +167,7 @@ async function createGoogleYouTubeVideoAsset(
     }),
   });
 
-  const resourceName = response.results?.[0]?.resourceName;
+  const resourceName = response.results[0]?.resourceName;
   if (!resourceName) {
     return {
       success: false,
@@ -212,7 +212,7 @@ export const googleAdsProvider: AdProvider = {
     }
 
     const data = (await response.json()) as { resourceNames: string[] };
-    const customerId = data.resourceNames?.[0]?.replace("customers/", "");
+    const customerId = data.resourceNames[0]?.replace("customers/", "");
 
     return {
       valid: true,
@@ -342,7 +342,7 @@ export const googleAdsProvider: AdProvider = {
       }),
     });
 
-    const budgetResourceName = budgetMutateResponse.results?.[0]?.resourceName;
+    const budgetResourceName = budgetMutateResponse.results[0]?.resourceName;
     if (!budgetResourceName) {
       return { success: false, error: "Failed to create campaign budget" };
     }
@@ -373,7 +373,7 @@ export const googleAdsProvider: AdProvider = {
       }),
     });
 
-    const campaignResourceName = campaignMutateResponse.results?.[0]?.resourceName;
+    const campaignResourceName = campaignMutateResponse.results[0]?.resourceName;
     if (!campaignResourceName) {
       return { success: false, error: "Failed to create campaign" };
     }
@@ -561,7 +561,7 @@ export const googleAdsProvider: AdProvider = {
       }),
     });
 
-    const adGroupResourceName = adGroupResponse.results?.[0]?.resourceName;
+    const adGroupResourceName = adGroupResponse.results[0]?.resourceName;
     if (!adGroupResourceName) {
       return { success: false, error: "Failed to create ad group" };
     }
@@ -636,7 +636,7 @@ export const googleAdsProvider: AdProvider = {
       }),
     });
 
-    const adResourceName = adResponse.results?.[0]?.resourceName;
+    const adResourceName = adResponse.results[0]?.resourceName;
     if (!adResourceName) {
       return { success: false, error: "Failed to create ad" };
     }
@@ -781,7 +781,7 @@ export const googleAdsProvider: AdProvider = {
         }),
       });
 
-      const resourceName = response.results?.[0]?.resourceName;
+      const resourceName = response.results[0]?.resourceName;
       if (!resourceName) {
         return { success: false, error: "Google Ads image upload returned no asset resource name" };
       }
@@ -937,7 +937,7 @@ export const googleAdsProvider: AdProvider = {
       body: JSON.stringify({ query }),
     });
 
-    const result = response.results?.[0];
+    const result = response.results[0];
     if (!result) {
       return {
         success: true,

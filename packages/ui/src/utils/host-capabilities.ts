@@ -33,7 +33,7 @@ export function detectUiHostCapabilities(): UiHostCapabilities {
   // Cloudflare Workers — short-lived per request, no persistent process.
   if (
     typeof navigator !== "undefined" &&
-    typeof navigator?.userAgent === "string" &&
+    typeof navigator.userAgent === "string" &&
     navigator.userAgent.includes("Cloudflare-Workers")
   ) {
     return {

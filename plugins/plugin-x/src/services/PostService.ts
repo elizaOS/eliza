@@ -145,7 +145,7 @@ export class TwitterPostService implements IPostService {
             : JSON.stringify(result, null, 2).slice(0, 8000);
         logger.error(
           `Twitter createPost: could not extract tweet id from API result ${JSON.stringify(
-            { inReplyTo: options.inReplyTo, textLength: options.text?.length },
+            { inReplyTo: options.inReplyTo, textLength: options.text.length },
           )} ${safeResult}`,
         );
         throw new Error(
@@ -217,12 +217,11 @@ export class TwitterPostService implements IPostService {
           quotes: tweet.quotes || 0,
           views: tweet.views || 0,
         },
-        media:
-          tweet.photos?.map((photo) => ({
-            type: "image" as const,
-            url: photo.url,
-            metadata: { id: photo.id },
-          })) || [],
+        media: tweet.photos.map((photo) => ({
+          type: "image" as const,
+          url: photo.url,
+          metadata: { id: photo.id },
+        })),
         metadata: {
           conversationId: tweet.conversationId,
           permanentUrl: tweet.permanentUrl,
@@ -281,12 +280,11 @@ export class TwitterPostService implements IPostService {
               quotes: tweet.quotes || 0,
               views: tweet.views || 0,
             },
-            media:
-              tweet.photos?.map((photo) => ({
-                type: "image" as const,
-                url: photo.url,
-                metadata: { id: photo.id },
-              })) || [],
+            media: tweet.photos.map((photo) => ({
+              type: "image" as const,
+              url: photo.url,
+              metadata: { id: photo.id },
+            })),
             metadata: {
               conversationId: tweet.conversationId,
               permanentUrl: tweet.permanentUrl,
@@ -359,12 +357,11 @@ export class TwitterPostService implements IPostService {
               quotes: tweet.quotes || 0,
               views: tweet.views || 0,
             },
-            media:
-              tweet.photos?.map((photo) => ({
-                type: "image" as const,
-                url: photo.url,
-                metadata: { id: photo.id },
-              })) || [],
+            media: tweet.photos.map((photo) => ({
+              type: "image" as const,
+              url: photo.url,
+              metadata: { id: photo.id },
+            })),
             metadata: {
               conversationId: tweet.conversationId,
               permanentUrl: tweet.permanentUrl,

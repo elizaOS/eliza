@@ -40,7 +40,7 @@ function compareProfiles(a: VoiceProfile, b: VoiceProfile): number {
   const ar = relationshipRank(a.cohort);
   const br = relationshipRank(b.cohort);
   if (ar !== br) return ar - br;
-  return (b.lastHeardAtMs ?? 0) - (a.lastHeardAtMs ?? 0);
+  return b.lastHeardAtMs - a.lastHeardAtMs;
 }
 
 function relationshipRank(cohort: VoiceProfile["cohort"]): number {

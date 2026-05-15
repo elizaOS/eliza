@@ -15,6 +15,8 @@ const WORLD = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const USER = "ffffffff-1111-2222-3333-444444444444";
 const PARENT_MSG = "99999999-8888-7777-6666-555555555555";
 const SESSION_ID = "01234567-89ab-cdef-0123-456789abcdef";
+const TASK_ROOM = "22222222-3333-4444-5555-666666666666";
+const WORKTREE_ROOM = "33333333-4444-5555-6666-777777777777";
 
 interface CapturedHandler {
   fn?: (sessionId: string, event: string, data: unknown) => void;
@@ -247,6 +249,126 @@ describe("SubAgentRouter", () => {
     expect(
       (posted.content?.metadata as Record<string, unknown>)?.subAgentEvent,
     ).toBe("error");
+  });
+
+  it("flags task-creator questions for the origin room main-agent path", async () => {
+    const { runtime, handleMessage, createMemory } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "blocked", {
+      message:
+        "QUESTION_FOR_TASK_CREATOR: Should I change the public API or preserve compatibility?",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    if (!posted) throw new Error("expected handleMessage to receive a memory");
+    expect(posted.roomId).toBe(ROOM);
+    expect(posted.content?.text).toContain(
+      "[sub-agent question for task creator]",
+    );
+    expect(posted.content?.text).toContain("preserve compatibility");
+    const metadata = posted.content?.metadata as Record<string, unknown>;
+    expect(metadata?.subAgentQuestionForTaskCreator).toBe(true);
+    expect(metadata?.subAgentQuestions).toEqual([
+      "Should I change the public API or preserve compatibility?",
+    ]);
+  });
+
+  it("persists and broadcasts coordination messages into task and worktree rooms", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        taskRoomId: TASK_ROOM,
+        taskRoomKey: "task:msg-1",
+        worktreeRoomId: WORKTREE_ROOM,
+        worktreeRoomKey: "worktree:/tmp/wf",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, createMemory, emitEvent, addParticipant } =
+      makeRuntime({
+        acp: acp.service,
+      });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response:
+        "AGENT_COORDINATION: touching src/a.ts; reviewer please avoid this file\nAGENT_COORDINATION: tests are running in /tmp/wf",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(addParticipant).toHaveBeenCalledWith(expect.any(String), TASK_ROOM);
+    expect(addParticipant).toHaveBeenCalledWith(
+      expect.any(String),
+      WORKTREE_ROOM,
+    );
+    expect(createMemory).toHaveBeenCalledTimes(2);
+    const rooms = createMemory.mock.calls.map(([memory]) => memory.roomId);
+    expect(rooms).toEqual([TASK_ROOM, WORKTREE_ROOM]);
+    const coordination = createMemory.mock.calls[0]?.[0];
+    expect(coordination?.content?.source).toBe("sub_agent_coordination");
+    expect(coordination?.content?.text).toContain("touching src/a.ts");
+    expect(coordination?.content?.text).toContain("tests are running");
+    const metadata = coordination?.content?.metadata as Record<string, unknown>;
+    expect(metadata?.subAgentCoordination).toBe(true);
+    expect(metadata?.swarmRoomKind).toBe("task");
+    expect(metadata?.originRoomId).toBe(ROOM);
+    expect(emitEvent).toHaveBeenCalledTimes(2);
+    expect(emitEvent.mock.calls[0]?.[0]).toBe("MESSAGE_RECEIVED");
+    expect(emitEvent.mock.calls[0]?.[1]).toMatchObject({
+      source: "sub_agent_coordination",
+    });
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const postedMetadata = posted?.content?.metadata as
+      | Record<string, unknown>
+      | undefined;
+    expect(postedMetadata?.subAgentCoordination).toBe(true);
+    expect(postedMetadata?.subAgentCoordinationMessages).toEqual([
+      "touching src/a.ts; reviewer please avoid this file",
+      "tests are running in /tmp/wf",
+    ]);
+  });
+
+  it("dedupes identical task/worktree coordination rooms", async () => {
+    session = makeSession({
+      metadata: {
+        label: "solo",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        taskRoomId: TASK_ROOM,
+        taskRoomKey: "task:msg-1",
+        worktreeRoomId: TASK_ROOM,
+        worktreeRoomKey: "worktree:/tmp/wf",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, createMemory, emitEvent } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "AGENT_COORDINATION: same room should only get one post",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(createMemory.mock.calls[0]?.[0]?.roomId).toBe(TASK_ROOM);
+    expect(emitEvent).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to MESSAGE_RECEIVED emit if messageService is missing", async () => {

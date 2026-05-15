@@ -13,6 +13,6 @@ import type { PluginAutoEnableContext } from '@elizaos/core';
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     const apiKey = ctx.env.SUNO_API_KEY;
     if (apiKey && apiKey.trim() !== '') return true;
-    const audio = ctx.config?.media?.audio;
+    const audio = ctx.config.media?.audio;
     return audio?.provider === 'suno' && audio?.mode === 'own-key';
 }

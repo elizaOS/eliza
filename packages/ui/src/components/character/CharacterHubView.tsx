@@ -184,7 +184,7 @@ function readHubCache<T>(suffix: string, fallback: T): T {
     const raw = window.localStorage.getItem(hubCacheKey(suffix));
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as T;
-    return parsed ?? fallback;
+    return parsed;
   } catch {
     return fallback;
   }
@@ -451,7 +451,7 @@ export function CharacterHubView({
       .getRelationshipsActivity(50)
       .then((response) => {
         if (!cancelled) {
-          const activity = response.activity ?? [];
+          const activity = response.activity;
           setRelationshipActivity(activity);
           writeHubCache("relationship-activity", activity);
         }
@@ -483,7 +483,7 @@ export function CharacterHubView({
       .listDocuments({ limit: 100 })
       .then((response) => {
         if (cancelled) return;
-        const docs = response.documents ?? [];
+        const docs = response.documents;
         setDocumentRecords(docs);
         writeHubCache("documents", docs);
       })
@@ -581,8 +581,7 @@ export function CharacterHubView({
       .slice(0, 3);
     const recentExperience = [...experienceRecords].sort(
       (left, right) =>
-        latestTimestamp(right.updatedAt ?? right.createdAt) -
-        latestTimestamp(left.updatedAt ?? left.createdAt),
+        latestTimestamp(right.updatedAt) - latestTimestamp(left.updatedAt),
     )[0];
     const recentRelationshipActivity = [...relationshipActivity]
       .filter((item) => item.type !== "relationship")
@@ -602,7 +601,7 @@ export function CharacterHubView({
     const personalityBody: ReactNode = personalityHasHistory ? (
       <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
         {recentHistory.map((entry, index) => {
-          const fields = entry.fieldsChanged ?? [];
+          const fields = entry.fieldsChanged;
           const headField = fields[0];
           const extraCount = Math.max(fields.length - 1, 0);
           const actor =
@@ -615,7 +614,7 @@ export function CharacterHubView({
             ? extraCount > 0
               ? `${headField} +${extraCount} more`
               : headField
-            : (entry.summary?.trim() ?? "personality");
+            : entry.summary.trim();
           return (
             <li
               key={entry.id ?? `history-${index}`}
@@ -725,10 +724,10 @@ export function CharacterHubView({
                 const connectors = parseConnectorsFromDetail(item.detail);
                 const memoryText =
                   item.type === "fact"
-                    ? item.summary?.trim() || item.detail?.trim() || "fact"
+                    ? item.summary.trim() || item.detail?.trim() || "fact"
                     : item.type === "identity"
                       ? "joined"
-                      : item.summary?.trim() || item.type;
+                      : item.summary.trim() || item.type;
                 return (
                   <li
                     key={[
@@ -743,7 +742,7 @@ export function CharacterHubView({
                   >
                     <span className="inline-flex shrink-0 items-center gap-1">
                       <span className="rounded-full border border-border/40 bg-bg-muted/30 px-1.5 py-0.5 text-2xs font-medium text-muted">
-                        @{item.personName?.trim() || "unknown"}
+                        @{item.personName.trim() || "unknown"}
                       </span>
                       {connectors.map((connector) => (
                         <ConnectorBadge key={connector} connector={connector} />

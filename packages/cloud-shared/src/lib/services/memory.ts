@@ -484,7 +484,7 @@ export class MemoryService {
 
     const summary: SummarizeConversationResult = {
       summary: fullText,
-      tokenCount: usage?.totalTokens || 0,
+      tokenCount: usage.totalTokens || 0,
       keyTopics: this.extractTopics(fullText),
       participants: context.participants.map((p) => p.toString()),
     };
@@ -513,7 +513,7 @@ export class MemoryService {
     );
 
     logger.info(
-      `[Memory Service] Generated conversation summary: ${input.roomId} (${usage?.totalTokens} tokens)`,
+      `[Memory Service] Generated conversation summary: ${input.roomId} (${usage.totalTokens} tokens)`,
     );
     return summary;
   }

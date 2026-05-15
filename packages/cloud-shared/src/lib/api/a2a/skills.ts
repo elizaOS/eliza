@@ -128,8 +128,8 @@ export async function executeSkillChatCompletion(
     const { inputCost, outputCost, totalCost } = await calculateCost(
       model,
       provider,
-      usage?.inputTokens || 0,
-      usage?.outputTokens || 0,
+      usage.inputTokens || 0,
+      usage.outputTokens || 0,
     );
 
     // Reconcile with actual cost
@@ -142,8 +142,8 @@ export async function executeSkillChatCompletion(
       type: "chat",
       model,
       provider,
-      input_tokens: usage?.inputTokens || 0,
-      output_tokens: usage?.outputTokens || 0,
+      input_tokens: usage.inputTokens || 0,
+      output_tokens: usage.outputTokens || 0,
       input_cost: String(inputCost),
       output_cost: String(outputCost),
       is_successful: true,
@@ -153,9 +153,9 @@ export async function executeSkillChatCompletion(
       content: fullText,
       model,
       usage: {
-        inputTokens: usage?.inputTokens || 0,
-        outputTokens: usage?.outputTokens || 0,
-        totalTokens: usage?.totalTokens || 0,
+        inputTokens: usage.inputTokens || 0,
+        outputTokens: usage.outputTokens || 0,
+        totalTokens: usage.totalTokens || 0,
       },
       cost: totalCost,
     };

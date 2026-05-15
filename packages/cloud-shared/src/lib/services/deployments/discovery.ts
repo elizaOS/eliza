@@ -264,7 +264,7 @@ export class CharacterDeploymentDiscoveryService {
 
     // Calculate uptime (time since last deployment)
     let uptime = 0;
-    if (container?.last_deployed_at && status === "deployed") {
+    if (container.last_deployed_at && status === "deployed") {
       uptime = Date.now() - new Date(container.last_deployed_at).getTime();
     }
 

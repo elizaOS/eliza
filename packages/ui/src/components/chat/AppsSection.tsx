@@ -13,7 +13,6 @@ import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppIdentityTile } from "../apps/app-identity";
 import { loadMergedCatalogApps } from "../apps/catalog-loader";
-import { getAppShortName } from "../apps/helpers";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
 import { isOverlayApp } from "../apps/overlay-app-registry";
 import {
@@ -29,7 +28,7 @@ import { WidgetSection } from "./widgets/shared";
 // ---------------------------------------------------------------------------
 
 function getRunRingClass(run: AppRunSummary): string {
-  const state = run.health?.state;
+  const state = run.health.state;
   if (state === "healthy") return "ring-2 ring-ok/60";
   if (state === "degraded") return "ring-2 ring-warn/60";
   return "ring-2 ring-danger/60";
@@ -121,17 +120,13 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           method: "POST",
           body: JSON.stringify({ name: app.name }),
         });
-        setActionNotice(
-          `${app.displayName ?? app.name} relaunched.`,
-          "success",
-          3000,
-        );
+        setActionNotice(`${app.displayName} relaunched.`, "success", 3000);
       } catch (err) {
         setActionNotice(
           err instanceof Error
             ? err.message
             : t("appsview.LaunchFailed", {
-                name: app.displayName ?? app.name,
+                name: app.displayName,
                 message: t("common.error"),
               }),
           "error",
@@ -149,16 +144,12 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           method: "POST",
           body: JSON.stringify({ intent: "edit", editTarget: app.name }),
         });
-        setActionNotice(
-          `Editing ${app.displayName ?? app.name}…`,
-          "info",
-          3500,
-        );
+        setActionNotice(`Editing ${app.displayName}…`, "info", 3500);
       } catch (err) {
         setActionNotice(
           err instanceof Error
             ? err.message
-            : `Couldn't start an edit for ${app.displayName ?? app.name}.`,
+            : `Couldn't start an edit for ${app.displayName}.`,
           "error",
           4000,
         );
@@ -171,16 +162,12 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
     async (app: RegistryAppInfo) => {
       try {
         await client.stopApp(app.name);
-        setActionNotice(
-          `${app.displayName ?? app.name} stopped.`,
-          "success",
-          3000,
-        );
+        setActionNotice(`${app.displayName} stopped.`, "success", 3000);
       } catch (err) {
         setActionNotice(
           err instanceof Error
             ? err.message
-            : `Couldn't stop ${app.displayName ?? app.name}.`,
+            : `Couldn't stop ${app.displayName}.`,
           "error",
           4000,
         );
@@ -219,7 +206,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
             await openExternalUrl(targetUrl);
             setActionNotice(
               t("appsview.OpenedInNewTab", {
-                name: app.displayName ?? app.name,
+                name: app.displayName,
               }),
               "success",
               2600,
@@ -227,7 +214,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           } catch {
             setActionNotice(
               t("appsview.PopupBlockedOpen", {
-                name: app.displayName ?? app.name,
+                name: app.displayName,
               }),
               "error",
               4200,
@@ -242,7 +229,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
         }
         setActionNotice(
           t("appsview.LaunchedNoViewer", {
-            name: app.displayName ?? app.name,
+            name: app.displayName,
           }),
           "error",
           4000,
@@ -250,7 +237,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
       } catch (err) {
         setActionNotice(
           t("appsview.LaunchFailed", {
-            name: app.displayName ?? app.name,
+            name: app.displayName,
             message: err instanceof Error ? err.message : t("common.error"),
           }),
           "error",
@@ -276,7 +263,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
         <div className="flex flex-wrap items-center gap-2">
           {orderedApps.map((app) => {
             const run = runByName.get(app.name);
-            const displayName = app.displayName ?? getAppShortName(app);
+            const displayName = app.displayName;
             const ringClass = run ? getRunRingClass(run) : "";
             const isRunning = Boolean(run);
             return (

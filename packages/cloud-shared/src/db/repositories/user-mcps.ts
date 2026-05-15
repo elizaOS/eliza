@@ -25,7 +25,7 @@ export const userMcpsRepository = {
    */
   async getById(id: string): Promise<UserMcp | null> {
     const [mcp] = await dbRead.select().from(userMcps).where(eq(userMcps.id, id));
-    return mcp ?? null;
+    return mcp;
   },
 
   /**
@@ -36,7 +36,7 @@ export const userMcpsRepository = {
       .select()
       .from(userMcps)
       .where(and(eq(userMcps.slug, slug), eq(userMcps.organization_id, organizationId)));
-    return mcp ?? null;
+    return mcp;
   },
 
   /**
@@ -127,7 +127,7 @@ export const userMcpsRepository = {
       .select({ count: sql<number>`count(*)` })
       .from(userMcps)
       .where(eq(userMcps.organization_id, organizationId));
-    return Number(result?.count ?? 0);
+    return Number(result.count);
   },
 
   // ============================================================================
@@ -154,7 +154,7 @@ export const userMcpsRepository = {
       .set({ ...data, updated_at: new Date() })
       .where(eq(userMcps.id, id))
       .returning();
-    return mcp ?? null;
+    return mcp;
   },
 
   /**
@@ -203,7 +203,7 @@ export const userMcpsRepository = {
       .set(updateData)
       .where(eq(userMcps.id, id))
       .returning();
-    return mcp ?? null;
+    return mcp;
   },
 };
 
@@ -273,10 +273,10 @@ export const mcpUsageRepository = {
       .where(eq(mcpUsage.mcp_id, mcpId));
 
     return {
-      totalRequests: Number(result?.totalRequests ?? 0),
-      totalCreditsCharged: Number(result?.totalCreditsCharged ?? 0),
-      totalX402Usd: Number(result?.totalX402Usd ?? 0),
-      uniqueOrgs: Number(result?.uniqueOrgs ?? 0),
+      totalRequests: Number(result.totalRequests),
+      totalCreditsCharged: Number(result.totalCreditsCharged),
+      totalX402Usd: Number(result.totalX402Usd),
+      uniqueOrgs: Number(result.uniqueOrgs),
     };
   },
 

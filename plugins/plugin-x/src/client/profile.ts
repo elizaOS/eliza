@@ -173,7 +173,7 @@ export function parseProfile(
   }
 
   const urls = user.entities?.url?.urls;
-  if (urls?.length != null && urls?.length > 0) {
+  if (urls?.length != null && urls.length > 0) {
     profile.website = urls[0].expanded_url;
   }
 
@@ -287,7 +287,7 @@ export async function getScreenNameByUserId(
       "user.fields": ["username"],
     });
 
-    if (!user.data?.username) {
+    if (!user.data.username) {
       return {
         success: false,
         err: new Error(`User with ID ${userId} not found`),

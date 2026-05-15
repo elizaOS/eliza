@@ -570,14 +570,14 @@ export function CharacterEditor({
   const applyCharacterDefaults = useCallback(
     (entry: CharacterRosterEntry) => {
       const next = buildCharacterDraftFromPreset(entry);
-      handleFieldEdit("name", next.name ?? "");
-      handleFieldEdit("username", next.username ?? "");
-      handleFieldEdit("bio", next.bio ?? "");
-      handleFieldEdit("system", next.system ?? "");
-      handleFieldEdit("adjectives", next.adjectives ?? []);
-      handleFieldEdit("style", next.style ?? { all: [], chat: [], post: [] });
-      handleFieldEdit("messageExamples", next.messageExamples ?? []);
-      handleFieldEdit("postExamples", next.postExamples ?? []);
+      handleFieldEdit("name", next.name);
+      handleFieldEdit("username", next.username);
+      handleFieldEdit("bio", next.bio);
+      handleFieldEdit("system", next.system);
+      handleFieldEdit("adjectives", next.adjectives);
+      handleFieldEdit("style", next.style);
+      handleFieldEdit("messageExamples", next.messageExamples);
+      handleFieldEdit("postExamples", next.postExamples);
     },
     [handleFieldEdit],
   );
@@ -835,7 +835,7 @@ export function CharacterEditor({
           (voiceConfig.elevenlabs as Record<string, string> | undefined)
             ?.modelId ?? DEFAULT_ELEVEN_FAST_MODEL,
       };
-      const sanitizedKey = sanitizeApiKey(normalized?.apiKey);
+      const sanitizedKey = sanitizeApiKey(normalized.apiKey);
       if (sanitizedKey) normalized.apiKey = sanitizedKey;
       else delete normalized.apiKey;
       normalizedVoiceConfig = {
@@ -1190,7 +1190,7 @@ export function CharacterEditor({
                       requestPageChange(nextPage);
                       requestAnimationFrame(() => {
                         globalThis.document
-                          ?.getElementById(`character-editor-tab-${nextPage}`)
+                          .getElementById(`character-editor-tab-${nextPage}`)
                           ?.focus();
                       });
                     }}

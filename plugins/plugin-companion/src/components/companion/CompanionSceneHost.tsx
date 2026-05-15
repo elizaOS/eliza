@@ -526,7 +526,7 @@ function CompanionSceneSurface({
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ offset: number }>).detail;
-      const offset = detail?.offset;
+      const offset = detail.offset;
       for (const engine of stageEnginesRef.current) {
         engine.setCameraXOffset(offset);
       }

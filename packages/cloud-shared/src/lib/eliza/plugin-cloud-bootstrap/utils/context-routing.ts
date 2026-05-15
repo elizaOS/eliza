@@ -196,7 +196,7 @@ export function parseContextRoutingMetadata(raw: unknown): ContextRoutingDecisio
 }
 
 export function getContextRoutingFromMessage(message: Memory): ContextRoutingDecision {
-  const metadata = message.content?.metadata;
+  const metadata = message.content.metadata;
   if (!metadata || typeof metadata !== "object") {
     return {};
   }
@@ -268,7 +268,7 @@ export function attachAvailableContexts(
   return {
     ...state,
     values: {
-      ...(state.values ?? {}),
+      ...state.values,
       [AVAILABLE_CONTEXTS_STATE_KEY]: availableContexts.join(", "),
     },
   };

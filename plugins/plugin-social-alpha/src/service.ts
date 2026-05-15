@@ -120,7 +120,7 @@ function parseRecommendationExtraction(response: string): {
 			messageIndex:
 				typeof rec.messageIndex === "number"
 					? rec.messageIndex
-					: Number.parseInt(String(rec.messageIndex ?? "0"), 10),
+					: Number.parseInt(String(rec.messageIndex), 10),
 			isCall:
 				rec.isCall === true || String(rec.isCall).toLowerCase() === "true",
 		})),
@@ -257,7 +257,7 @@ export class CommunityInvestorService
 	static async stop(runtime: IAgentRuntime): Promise<void> {
 		const service = runtime.getService("trading");
 		if (service) {
-			await service.stop?.();
+			await service.stop();
 		}
 	}
 
@@ -616,12 +616,12 @@ export class CommunityInvestorService
 				const tokenData = {
 					chain,
 					address: tokenAddress,
-					name: birdeyeData?.name || dexScreenerData?.baseToken?.name || "",
+					name: birdeyeData.name || dexScreenerData?.baseToken?.name || "",
 					symbol:
-						birdeyeData?.symbol || dexScreenerData?.baseToken?.symbol || "",
-					decimals: birdeyeData?.decimals || 9, // Default for Solana tokens
+						birdeyeData.symbol || dexScreenerData?.baseToken?.symbol || "",
+					decimals: birdeyeData.decimals || 9, // Default for Solana tokens
 					metadata: {
-						logoURI: birdeyeData?.logoURI || "",
+						logoURI: birdeyeData.logoURI || "",
 						pairAddress: dexScreenerData?.pairAddress || "",
 						dexId: dexScreenerData?.dexId || "",
 					},
@@ -680,7 +680,7 @@ export class CommunityInvestorService
 			for (const msg of contextMessages.slice().reverse()) {
 				// Check recent first
 				if (
-					msg.content?.text?.includes(ticker) &&
+					msg.content.text?.includes(ticker) &&
 					msg.content.text.length > ticker.length + 5
 				) {
 					// Basic check for potential address patterns
@@ -753,7 +753,7 @@ export class CommunityInvestorService
 				const searchResults = await this.dexscreenerClient.search(cleanTicker, {
 					expires: "5m",
 				});
-				if (searchResults?.pairs && searchResults.pairs.length > 0) {
+				if (searchResults.pairs && searchResults.pairs.length > 0) {
 					// Find the most liquid pair for this token
 					const bestPair = searchResults.pairs
 						.filter(
@@ -807,7 +807,7 @@ export class CommunityInvestorService
 				const searchResults = await this.dexscreenerClient.search(cleanTicker, {
 					expires: "5m",
 				});
-				if (searchResults?.pairs && searchResults.pairs.length > 0) {
+				if (searchResults.pairs && searchResults.pairs.length > 0) {
 					const bestPair = searchResults.pairs
 						.filter(
 							(pair) =>
@@ -858,7 +858,7 @@ export class CommunityInvestorService
 				const searchResults = await this.dexscreenerClient.search(cleanTicker, {
 					expires: "5m",
 				});
-				if (searchResults?.pairs && searchResults.pairs.length > 0) {
+				if (searchResults.pairs && searchResults.pairs.length > 0) {
 					const bestPair = searchResults.pairs
 						.filter(
 							(pair) =>
@@ -950,7 +950,7 @@ export class CommunityInvestorService
 			// Get the key metrics
 			const { tradeData, security, dexScreenerData } = tokenData;
 
-			if (!dexScreenerData?.pairs || dexScreenerData.pairs.length === 0) {
+			if (!dexScreenerData.pairs || dexScreenerData.pairs.length === 0) {
 				return false;
 			}
 
@@ -2596,11 +2596,11 @@ ${report.tokenReports.join("\n")}
 							this.dexscreenerClient.search(address, { expires: "5m" }),
 						]);
 
-					const dexPair = dexScreenerData.pairs?.[0];
+					const dexPair = dexScreenerData.pairs[0];
 
 					tokenData = {
-						name: tokenOverview.name || dexPair?.baseToken?.name,
-						symbol: tokenOverview.symbol || dexPair?.baseToken?.symbol,
+						name: tokenOverview.name || dexPair?.baseToken.name,
+						symbol: tokenOverview.symbol || dexPair?.baseToken.symbol,
 						currentPrice: price || parseFloat(dexPair?.priceUsd || "0"),
 						liquidity: dexPair?.liquidity?.usd || 0,
 						marketCap: dexPair?.marketCap || tradeData.market || 0,
@@ -2686,7 +2686,7 @@ ${report.tokenReports.join("\n")}
 							address,
 							{ expires: "5m" },
 						);
-						const dexPair = dexScreenerData.pairs?.[0];
+						const dexPair = dexScreenerData.pairs[0];
 
 						if (dexPair) {
 							tokenData = {
@@ -2724,7 +2724,7 @@ ${report.tokenReports.join("\n")}
 					});
 					const chainFilter =
 						chain === SupportedChain.ETHEREUM ? "ethereum" : "base";
-					const dexPair = dexScreenerData.pairs?.find(
+					const dexPair = dexScreenerData.pairs.find(
 						(pair) => pair.chainId.toLowerCase() === chainFilter,
 					);
 
@@ -2746,22 +2746,22 @@ ${report.tokenReports.join("\n")}
 							{
 								timestamp: now - 24 * 60 * 60 * 1000,
 								price:
-									currentPrice / (1 + (dexPair.priceChange?.h24 || 0) / 100),
+									currentPrice / (1 + (dexPair.priceChange.h24 || 0) / 100),
 							},
 							{
 								timestamp: now - 6 * 60 * 60 * 1000,
 								price:
-									currentPrice / (1 + (dexPair.priceChange?.h6 || 0) / 100),
+									currentPrice / (1 + (dexPair.priceChange.h6 || 0) / 100),
 							},
 							{
 								timestamp: now - 1 * 60 * 60 * 1000,
 								price:
-									currentPrice / (1 + (dexPair.priceChange?.h1 || 0) / 100),
+									currentPrice / (1 + (dexPair.priceChange.h1 || 0) / 100),
 							},
 							{
 								timestamp: now - 5 * 60 * 1000,
 								price:
-									currentPrice / (1 + (dexPair.priceChange?.m5 || 0) / 100),
+									currentPrice / (1 + (dexPair.priceChange.m5 || 0) / 100),
 							},
 							{ timestamp: now, price: currentPrice },
 						].filter((p) => p.price > 0);
@@ -2777,8 +2777,8 @@ ${report.tokenReports.join("\n")}
 
 						// Simple scam detection for Ethereum/Base tokens
 						const hasRugPullPattern =
-							(dexPair.priceChange?.h24 || 0) < -90 || // 90% drop in 24h
-							((dexPair.volume?.h24 || 0) < 1000 &&
+							(dexPair.priceChange.h24 || 0) < -90 || // 90% drop in 24h
+							((dexPair.volume.h24 || 0) < 1000 &&
 								(dexPair.marketCap || 0) > 100000); // Low volume but high market cap
 
 						tokenData.isKnownScam = hasRugPullPattern;
@@ -3184,7 +3184,7 @@ ${report.tokenReports.join("\n")}
 			userId,
 			TRUST_MARKETPLACE_COMPONENT_TYPE,
 			this.componentWorldId,
-			runtime.agentId!,
+			runtime.agentId,
 		);
 
 		if (!componentResult) {
@@ -3200,10 +3200,10 @@ ${report.tokenReports.join("\n")}
 			await runtime.createComponent({
 				id: userId, // Use userId as component ID
 				entityId: userId,
-				agentId: runtime.agentId!,
+				agentId: runtime.agentId,
 				worldId: this.componentWorldId,
 				roomId: this.componentRoomId,
-				sourceEntityId: runtime.agentId!,
+				sourceEntityId: runtime.agentId,
 				type: TRUST_MARKETPLACE_COMPONENT_TYPE,
 				createdAt: Date.now(),
 				data: newProfile,
@@ -3644,7 +3644,7 @@ ${report.tokenReports.join("\n")}
 					userId,
 					TRUST_MARKETPLACE_COMPONENT_TYPE,
 					worldIdForComponents, // Use consistent worldId
-					runtime.agentId!,
+					runtime.agentId,
 				);
 
 				if (component?.data) {
@@ -3893,7 +3893,7 @@ ${report.tokenReports.join("\n")}
 		const contextText = recentMessages
 			.map(
 				(msg) =>
-					`${msg.content?.name || msg.entityId.toString()}: ${msg.content?.text || ""}`,
+					`${msg.content.name || msg.entityId.toString()}: ${msg.content.text || ""}`,
 			)
 			.join("\n");
 		const messagesText = `[0] ${username || userId}: ${text}`;
@@ -4045,7 +4045,7 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 			userId,
 			TRUST_MARKETPLACE_COMPONENT_TYPE,
 			this.componentWorldId,
-			this.runtime.agentId!,
+			this.runtime.agentId,
 		);
 
 		let userProfile: UserTrustProfile;
@@ -4161,10 +4161,10 @@ RESPOND WITH JSON CONTAINING EXACTLY ${batchSize} RECOMMENDATION ENTRIES:`;
 				await this.runtime.createComponent({
 					id: newComponentId,
 					entityId: userId,
-					agentId: this.runtime.agentId!,
+					agentId: this.runtime.agentId,
 					worldId: this.componentWorldId,
 					roomId: this.componentRoomId,
-					sourceEntityId: this.runtime.agentId!,
+					sourceEntityId: this.runtime.agentId,
 					type: TRUST_MARKETPLACE_COMPONENT_TYPE,
 					createdAt: Date.now(),
 					data: userProfile,

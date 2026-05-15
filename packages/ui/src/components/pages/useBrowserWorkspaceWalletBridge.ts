@@ -270,7 +270,7 @@ export function useBrowserWorkspaceWalletBridge({
 
   const postBrowserWalletReady = useCallback(
     (tab: BrowserWorkspaceTab, state: BrowserWorkspaceWalletState) => {
-      const iframeWindow = iframeRefs.current?.get(tab.id)?.contentWindow;
+      const iframeWindow = iframeRefs.current.get(tab.id)?.contentWindow;
       const targetOrigin = resolveTargetOrigin(tab.url);
       if (!iframeWindow || !targetOrigin) return;
       iframeWindow.postMessage(
@@ -308,11 +308,10 @@ export function useBrowserWorkspaceWalletBridge({
       const request = event.data;
 
       const sourceTab = workspaceTabsRef.current.find(
-        (tab) =>
-          iframeRefs.current?.get(tab.id)?.contentWindow === event.source,
+        (tab) => iframeRefs.current.get(tab.id)?.contentWindow === event.source,
       );
       const sourceWindow = sourceTab
-        ? iframeRefs.current?.get(sourceTab.id)?.contentWindow
+        ? iframeRefs.current.get(sourceTab.id)?.contentWindow
         : null;
       if (!sourceTab || !sourceWindow) return;
 

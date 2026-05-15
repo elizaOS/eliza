@@ -426,8 +426,8 @@ export async function createCreateTweetRequestV2(
     tweetConfig = {
       text,
       poll: {
-        options: poll?.options.map((option) => option.label) ?? [],
-        duration_minutes: poll?.duration_minutes ?? 60,
+        options: poll.options.map((option) => option.label),
+        duration_minutes: poll.duration_minutes,
       },
     };
   } else if (tweetId) {
@@ -464,7 +464,7 @@ export function parseTweetV2ToV1(
 ): Tweet {
   const parsedTweet: Tweet = {
     id: tweetV2.id,
-    text: tweetV2.text ?? "",
+    text: tweetV2.text,
     hashtags: tweetV2.entities?.hashtags?.map((tag) => tag.tag) ?? [],
     mentions:
       tweetV2.entities?.mentions?.map((mention) => ({
@@ -552,20 +552,20 @@ export function parseTweetV2ToV1(
       (user: UserV2) => user.id === tweetV2.author_id,
     );
     if (user) {
-      parsedTweet.username = user.username ?? "";
-      parsedTweet.name = user.name ?? "";
+      parsedTweet.username = user.username;
+      parsedTweet.name = user.name;
     }
   }
 
   // Process Place (if any)
-  if (tweetV2?.geo?.place_id && includes?.places?.length) {
+  if (tweetV2.geo?.place_id && includes?.places?.length) {
     const place = includes.places.find(
-      (place: PlaceV2) => place.id === tweetV2?.geo?.place_id,
+      (place: PlaceV2) => place.id === tweetV2.geo?.place_id,
     );
     if (place) {
       parsedTweet.place = {
         id: place.id,
-        full_name: place.full_name ?? "",
+        full_name: place.full_name,
         country: place.country ?? "",
         country_code: place.country_code ?? "",
         name: place.name ?? "",
@@ -999,13 +999,13 @@ export async function getTweetV2(
       "place.fields": options?.placeFields,
     });
 
-    if (!tweetData?.data) {
+    if (!tweetData.data) {
       console.warn(`Tweet data not found for ID: ${id}`);
       return null;
     }
 
     // Extract primary tweet data
-    const parsedTweet = parseTweetV2ToV1(tweetData.data, tweetData?.includes);
+    const parsedTweet = parseTweetV2ToV1(tweetData.data, tweetData.includes);
 
     return parsedTweet;
   } catch (error) {

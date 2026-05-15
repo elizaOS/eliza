@@ -7521,7 +7521,7 @@ export const allActionsSpec = {
 		{
 			name: "TASKS",
 			description:
-				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). ",
+				"Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). ",
 			parameters: [
 				{
 					name: "action",
@@ -7564,13 +7564,13 @@ export const allActionsSpec = {
 				{
 					name: "agentType",
 					description:
-						"Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Agent type (codex, claude, or opencode) for create/spawn_agent/control. resume.",
+						"Agent type (elizaos, pi-agent, opencode, codex, or claude) for create/spawn_agent/control. resume.",
 				},
 				{
 					name: "agents",
@@ -8040,7 +8040,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
+				"ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",

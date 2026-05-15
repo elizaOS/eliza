@@ -970,8 +970,8 @@ function parseVastPricingOverrides(): Record<string, { input: number; output: nu
     const parsed = JSON.parse(raw) as Record<string, { input?: unknown; output?: unknown }>;
     return Object.fromEntries(
       Object.entries(parsed).flatMap(([model, value]) => {
-        const input = Number(value?.input);
-        const output = Number(value?.output);
+        const input = Number(value.input);
+        const output = Number(value.output);
         if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) {
           logger.warn("ai-pricing: ignoring invalid Vast pricing override", { model });
           return [];

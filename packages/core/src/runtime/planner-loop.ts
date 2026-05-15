@@ -610,7 +610,7 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	}
 	const seen = new Set<string>();
 	const lines: string[] = [];
-	for (const event of events ?? []) {
+	for (const event of events) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
 		const hint = tool.action?.routingHint?.trim();
@@ -642,7 +642,7 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	const tools: ContextObjectTool[] = [];
 	const seen = new Set<string>();
 
-	for (const event of context.events ?? []) {
+	for (const event of context.events) {
 		if (event.type !== "tool" || !("tool" in event)) {
 			continue;
 		}
@@ -1833,42 +1833,12 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	}
 
 	const record = entry as ToolCall & Record<string, unknown>;
-	const rawFunction =
-		record.function && typeof record.function === "object"
-			? (record.function as Record<string, unknown>)
-			: null;
-	const functionName =
-		typeof record.function === "string" ? record.function : rawFunction?.name;
-	const name = normalizeToolCallName(
-		record.name ??
-			record.toolName ??
-			record.tool ??
-			record.action ??
-			record.actionName ??
-			functionName ??
-			// gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
-			// is the last-resort name source so the canonical OpenAI/Anthropic
-			// envelope shapes, where `type` is "function"/"tool", still resolve
-			// through `functionName`/`name` first.
-			record.type ??
-			"",
-	);
+	const name = normalizeToolCallName(record.name);
 	if (!name) {
 		return null;
 	}
 
-	const args = normalizeArgs(
-		record.input ??
-			record.args ??
-			record.arguments ??
-			record.params ??
-			record.parameters ??
-			rawFunction?.input ??
-			rawFunction?.args ??
-			rawFunction?.arguments ??
-			rawFunction?.params ??
-			rawFunction?.parameters,
-	);
+	const args = normalizeArgs(record.input);
 
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,

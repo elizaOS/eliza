@@ -129,7 +129,7 @@ function defaultSpawn(cmd: string, args: readonly string[]): SpawnHandle {
   // claude --print reads its prompt from argv, not stdin — close stdin
   // immediately so it doesn't hang waiting for EOF.
   try {
-    child.stdin?.end();
+    child.stdin.end();
   } catch {
     // Best-effort; if stdin is already closed (rare race with spawn
     // error), proceed.
@@ -138,7 +138,7 @@ function defaultSpawn(cmd: string, args: readonly string[]): SpawnHandle {
     child.on("error", () => resolve(null));
     child.on("close", (code) => resolve(code));
   });
-  child.stdout?.on("data", (chunk: Buffer) => {
+  child.stdout.on("data", (chunk: Buffer) => {
     if (stdoutBuf.value.length >= MAX_OUTPUT_BYTES) return;
     stdoutBuf.value += chunk.toString();
     if (stdoutBuf.value.length > MAX_OUTPUT_BYTES) {
@@ -150,7 +150,7 @@ function defaultSpawn(cmd: string, args: readonly string[]): SpawnHandle {
       }
     }
   });
-  child.stderr?.on("data", (chunk: Buffer) => {
+  child.stderr.on("data", (chunk: Buffer) => {
     if (stderrBuf.value.length >= MAX_OUTPUT_BYTES) return;
     stderrBuf.value += chunk.toString();
     if (stderrBuf.value.length > MAX_OUTPUT_BYTES) {

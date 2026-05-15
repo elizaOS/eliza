@@ -103,10 +103,10 @@ async function handleRunStarted(payload: RunStartedPayload): Promise<void> {
 
   const { runId, messageId, roomId, entityId, source } = payload;
   const runtime = payload.runtime as { agentId?: UUID };
-  const agentId = runtime?.agentId ?? ("unknown" as UUID);
+  const agentId = runtime.agentId ?? ("unknown" as UUID);
 
   let agentMode: "chat" | "unknown" = "unknown";
-  if (source?.includes("chat")) {
+  if (source.includes("chat")) {
     agentMode = "chat";
   }
 

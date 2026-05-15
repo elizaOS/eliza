@@ -186,10 +186,10 @@ class DiscordAppAutomationService {
     }
 
     const config = app.discord_automation as DiscordAutomationConfig;
-    const vibeStyle = config?.vibeStyle || "professional and engaging";
+    const vibeStyle = config.vibeStyle || "professional and engaging";
 
     let characterPrompt = "";
-    if (config?.agentCharacterId) {
+    if (config.agentCharacterId) {
       const characterContext = await getCharacterPromptContext(config.agentCharacterId);
       if (characterContext) {
         characterPrompt = buildCharacterSystemPrompt(characterContext);
@@ -290,7 +290,7 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
     const app = await this.getAppForOrg(organizationId, appId);
     const config = app.discord_automation as DiscordAutomationConfig;
 
-    if (!config?.enabled) {
+    if (!config.enabled) {
       return { success: false, error: "Automation not enabled for this app" };
     }
 
@@ -379,7 +379,7 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
    */
   isAnnouncementDue(app: App): boolean {
     const config = app.discord_automation as DiscordAutomationConfig | null;
-    if (!config?.enabled || !config?.autoAnnounce) return false;
+    if (!config?.enabled || !config.autoAnnounce) return false;
 
     if (!config.lastAnnouncementAt) return true;
 

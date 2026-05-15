@@ -140,7 +140,7 @@ export const starterPlugin: Plugin = {
       if (error instanceof z.ZodError) {
         const errorIssues = error.issues;
         const errorMessages =
-          errorIssues?.map((e) => e.message).join(", ") || "Unknown validation error";
+          errorIssues.map((e) => e.message).join(", ") || "Unknown validation error";
         throw new Error(`Invalid plugin configuration: ${errorMessages}`);
       }
       throw new Error(

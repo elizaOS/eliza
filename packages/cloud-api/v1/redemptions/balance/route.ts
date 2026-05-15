@@ -168,7 +168,7 @@ app.get("/", async (c) => {
       reason = `Minimum redemption is $${SUPPLY_SHOCK_PROTECTION.MIN_REDEMPTION_USD.toFixed(2)}. You have $${availableBalance.toFixed(2)} available.`;
     } else if (isInCooldown) {
       canRedeem = false;
-      reason = `Cooldown active. You can redeem again after ${cooldownEndsAt?.toISOString()}.`;
+      reason = `Cooldown active. You can redeem again after ${cooldownEndsAt.toISOString()}.`;
     } else if (dailyLimitRemaining <= 0) {
       canRedeem = false;
       reason = `Daily limit reached. Resets at midnight UTC.`;

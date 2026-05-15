@@ -3,7 +3,7 @@ import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { Skeleton } from "../ui/skeleton";
 import { AppHero } from "./app-identity";
-import { getAppShortName, groupAppsForCatalog } from "./helpers";
+import { groupAppsForCatalog } from "./helpers";
 import { getProvenanceFlags, getProvenanceTitle } from "./provenance";
 
 interface AppsCatalogGridProps {
@@ -430,8 +430,7 @@ export function AppsCatalogGrid({
                                 const isFavorite = favoriteAppNames.has(
                                   app.name,
                                 );
-                                const displayName =
-                                  app.displayName ?? getAppShortName(app);
+                                const displayName = app.displayName;
                                 const provenanceLabels =
                                   appProvenanceLabels(app);
 

@@ -120,7 +120,7 @@ export async function manageInventoryHandler(
   }
 
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const intent =
     readInventoryIntent(options) ?? (await classifyIntent(runtime, text));
 

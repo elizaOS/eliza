@@ -8,7 +8,7 @@ export function LlmsTxtBadge() {
   const pathname = useLocation().pathname;
 
   // Only show this control on docs routes.
-  if (!pathname?.startsWith("/docs")) return null;
+  if (!pathname.startsWith("/docs")) return null;
 
   // On the docs landing page, only show a single llms.txt link (no full pack).
   const isDocsLanding = pathname === "/docs" || pathname === "/docs/";

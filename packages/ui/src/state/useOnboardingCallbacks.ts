@@ -24,7 +24,7 @@ const ensureOnboardedAgentRunning = async (
 ): Promise<void> => {
   try {
     const status = await client.getStatus();
-    if (status?.state !== "running" && status?.state !== "starting") {
+    if (status.state !== "running" && status.state !== "starting") {
       await client.startAgent();
     }
   } catch {
@@ -519,8 +519,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             selectedVrmIndex,
             uiLanguage,
           });
-          const defaultName =
-            style.name ?? getDefaultStylePreset(uiLanguage).name;
+          const defaultName = style.name;
           const fastTrackSandboxMode = isElizaCloudOnboardingTarget(
             onboardingServerTarget,
           )
@@ -530,21 +529,19 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           await client.submitOnboarding({
             name: onboardingName || defaultName,
             sandboxMode: fastTrackSandboxMode as "off",
-            bio: style?.bio ?? ["An autonomous AI agent."],
-            systemPrompt:
-              style?.system?.replace(
-                /\{\{name\}\}/g,
-                onboardingName || defaultName,
-              ) ??
-              `You are ${onboardingName || defaultName}, an autonomous AI agent powered by elizaOS.`,
-            style: style?.style,
-            adjectives: style?.adjectives,
-            postExamples: style?.postExamples,
-            messageExamples: style?.messageExamples,
-            topics: style?.topics,
-            avatarIndex: style?.avatarIndex ?? 1,
+            bio: style.bio,
+            systemPrompt: style.system.replace(
+              /\{\{name\}\}/g,
+              onboardingName || defaultName,
+            ),
+            style: style.style,
+            adjectives: style.adjectives,
+            postExamples: style.postExamples,
+            messageExamples: style.messageExamples,
+            topics: style.topics,
+            avatarIndex: style.avatarIndex,
             language: uiLanguage,
-            presetId: style?.id ?? getDefaultStylePreset(uiLanguage).id,
+            presetId: style.id,
             deploymentTarget: runtimeConfig.deploymentTarget,
             ...(runtimeConfig.linkedAccounts
               ? { linkedAccounts: runtimeConfig.linkedAccounts }
@@ -596,7 +593,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           uiLanguage,
         });
 
-        const systemPrompt = style?.system
+        const systemPrompt = style.system
           ? style.system.replace(/\{\{name\}\}/g, onboardingName)
           : `You are ${onboardingName}, an autonomous AI agent powered by elizaOS. ${onboardingOptions.sharedStyleRules}`;
 
@@ -627,7 +624,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             cloudApiBase,
             authToken,
             name: onboardingName,
-            bio: style?.bio ?? ["An autonomous AI agent."],
+            bio: style.bio,
             onProgress: () => {},
           });
 
@@ -692,18 +689,16 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         await client.submitOnboarding({
           name: onboardingName,
           sandboxMode: sandboxMode as "off",
-          bio: style?.bio ?? ["An autonomous AI agent."],
+          bio: style.bio,
           systemPrompt,
-          style: style?.style,
-          adjectives: style?.adjectives,
-          topics: style?.topics,
-          postExamples: style?.postExamples,
-          messageExamples: style?.messageExamples,
-          avatarIndex: style?.avatarIndex ?? selectedVrmIndex,
+          style: style.style,
+          adjectives: style.adjectives,
+          topics: style.topics,
+          postExamples: style.postExamples,
+          messageExamples: style.messageExamples,
+          avatarIndex: style.avatarIndex,
           language: uiLanguage,
-          presetId:
-            (style?.id ?? onboardingStyle) ||
-            getDefaultStylePreset(uiLanguage).id,
+          presetId: style.id || getDefaultStylePreset(uiLanguage).id,
           deploymentTarget: runtimeConfig.deploymentTarget,
           ...(runtimeConfig.linkedAccounts
             ? { linkedAccounts: runtimeConfig.linkedAccounts }

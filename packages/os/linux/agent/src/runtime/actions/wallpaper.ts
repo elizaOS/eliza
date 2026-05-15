@@ -177,8 +177,12 @@ function darken(hex: string): string {
   // Cheap dim: clamp each channel to 70% of value
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   if (m === null) return hex;
-  const [r, g, b] = [m[1], m[2], m[3]].map((c) =>
-    Math.round(Number.parseInt(c ?? "0", 16) * 0.55)
+  const [, red, green, blue] = m;
+  if (red === undefined || green === undefined || blue === undefined) {
+    return hex;
+  }
+  const [r, g, b] = [red, green, blue].map((c) =>
+    Math.round(Number.parseInt(c, 16) * 0.55)
       .toString(16)
       .padStart(2, "0"),
   );
@@ -193,7 +197,7 @@ async function generateWallpaper(brief: string, slug: string): Promise<string> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn("convert", args, { stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
     child.on("error", (err) =>
@@ -293,13 +297,13 @@ export const SET_WALLPAPER_ACTION: Action = {
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     return briefFromMessage(text) !== null;
   },
 
   handler: async (_runtime, message, _state, _options, callback) => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     const brief = briefFromMessage(text) ?? "default";
     const slug = slugify(brief).slice(0, 32) || "untitled";
 
