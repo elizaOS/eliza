@@ -44,8 +44,8 @@ def test_canonical_harness_labels_have_default_research_capabilities() -> None:
     required = ["research.web_search", "research.web_browse", "research.docs_lookup"]
 
     assert _capability_report("eliza", required)["satisfied"] is True
-    assert _capability_report("hermes", required)["satisfied"] is True
-    assert _capability_report("openclaw", required)["satisfied"] is True
+    assert _capability_report("hermes", required)["satisfied"] is False
+    assert _capability_report("openclaw", required)["satisfied"] is False
 
 
 def test_legacy_default_providers_collapse_to_inherited_harness(
@@ -53,9 +53,13 @@ def test_legacy_default_providers_collapse_to_inherited_harness(
 ) -> None:
     monkeypatch.setenv("ELIZA_BENCH_HARNESS", "hermes")
 
-    providers = _effective_provider_labels(["claude-code", "swe-agent", "codex"])
+    with pytest.raises(ValueError, match="native hermes harness routing"):
+        _effective_provider_labels(["claude-code", "swe-agent", "codex"])
 
-    assert providers == ["hermes"]
+
+def test_explicit_non_eliza_harness_labels_are_rejected() -> None:
+    with pytest.raises(ValueError, match="native openclaw harness routing"):
+        _effective_provider_labels(["openclaw"])
 
 
 def test_model_provider_default_preserves_delegate_defaults(
