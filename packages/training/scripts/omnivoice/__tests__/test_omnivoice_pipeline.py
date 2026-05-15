@@ -11,7 +11,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 OMNIVOICE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OMNIVOICE_DIR))

@@ -29,7 +29,6 @@ import json
 import logging
 import random
 import re
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
