@@ -322,9 +322,29 @@ export async function runPlannerLoop(
 					terminalMessage: finalMessage,
 					terminalOnly: true,
 				});
+				const terminalEvaluator = terminalToolCallFinish(finalMessage);
+				trajectory.evaluatorOutputs.push(terminalEvaluator);
+				trajectory.context = appendEvaluationEvent({
+					context: trajectory.context,
+					iteration,
+					evaluator: terminalEvaluator,
+				});
+				const terminalEvalStartedAt = Date.now();
+				await recordGatedEvaluationStage({
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: terminalEvalStartedAt,
+					endedAt: Date.now(),
+					output: terminalEvaluator,
+					reason: "terminal_tool_call",
+					logger: params.runtime.logger,
+				});
 				return {
 					status: "finished",
 					trajectory,
+					evaluator: terminalEvaluator,
 					finalMessage,
 				};
 			}
@@ -1176,6 +1196,7 @@ async function recordGatedEvaluationStage(args: {
 	startedAt: number;
 	endedAt: number;
 	output: EvaluatorOutput;
+	reason?: string;
 	logger?: PlannerRuntime["logger"];
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
@@ -1195,7 +1216,7 @@ async function recordGatedEvaluationStage(args: {
 				messageToUser: args.output.messageToUser,
 				gated: true,
 				llmCallSkipped: true,
-				reason: "explicit_terminal_reply",
+				reason: args.reason ?? "explicit_terminal_reply",
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
@@ -2072,6 +2093,23 @@ function tryGateEvaluator(args: {
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
+	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";
+
+function terminalToolCallFinish(
+	finalMessage: string | undefined,
+): EvaluatorOutput {
+	const output: EvaluatorOutput = {
+		success: true,
+		decision: "FINISH",
+		thought: TERMINAL_TOOL_CALL_FINISH_THOUGHT,
+	};
+	if (finalMessage) {
+		output.messageToUser = finalMessage;
+	}
+	return output;
+}
 
 function userSafeFinalMessage(
 	message: string | undefined,

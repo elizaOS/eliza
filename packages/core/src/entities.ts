@@ -18,6 +18,9 @@ type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
 	data: string;
 };
 
+const MAX_ENTITY_DISPLAY_NAMES = 8;
+const MAX_ENTITY_DISPLAY_COUNT = 10;
+const MAX_ENTITY_METADATA_CHARS = 2_000;
 const ENTITY_DETAILS_CACHE_TTL_MS = 1_000;
 const entityDetailsCache = new WeakMap<
 	IAgentRuntime,
@@ -581,6 +584,27 @@ export async function getEntityDetails({
 	}
 }
 
+function formatEntityNames(names: string[]): string {
+	const uniqueNames = [...new Set(names.filter(Boolean))];
+	const visibleNames = uniqueNames.slice(0, MAX_ENTITY_DISPLAY_NAMES);
+	const omittedCount = uniqueNames.length - visibleNames.length;
+	const renderedNames =
+		visibleNames.length > 0
+			? `"${visibleNames.join('" aka "')}"`
+			: '"(unnamed)"';
+	return omittedCount > 0
+		? `${renderedNames} (+${omittedCount} aliases omitted)`
+		: renderedNames;
+}
+
+function truncateEntityMetadata(metadata: unknown): string {
+	const rendered = stableStringify(metadata);
+	if (rendered.length <= MAX_ENTITY_METADATA_CHARS) {
+		return rendered;
+	}
+	return `${rendered.slice(0, MAX_ENTITY_METADATA_CHARS)}... (truncated)`;
+}
+
 export function formatEntities({ entities }: { entities: Entity[] }) {
 	const sortedEntities = [...entities].sort((left, right) => {
 		const leftName = left.names[0] ?? "";
@@ -591,13 +615,19 @@ export function formatEntities({ entities }: { entities: Entity[] }) {
 		);
 	});
 
-	const entityStrings = sortedEntities.map((entity: Entity) => {
-		const header = `"${entity.names.join('" aka "')}"\nID: ${entity.id}${
+	const visibleEntities = sortedEntities.slice(0, MAX_ENTITY_DISPLAY_COUNT);
+	const omittedEntityCount = sortedEntities.length - visibleEntities.length;
+
+	const entityStrings = visibleEntities.map((entity: Entity) => {
+		const header = `${formatEntityNames(entity.names)}\nID: ${entity.id}${
 			entity.metadata && Object.keys(entity.metadata).length > 0
-				? `\nData: ${stableStringify(entity.metadata)}\n`
+				? `\nData: ${truncateEntityMetadata(entity.metadata)}\n`
 				: "\n"
 		}`;
 		return header;
 	});
+	if (omittedEntityCount > 0) {
+		entityStrings.push(`... (+${omittedEntityCount} entities omitted)`);
+	}
 	return entityStrings.join("\n");
 }

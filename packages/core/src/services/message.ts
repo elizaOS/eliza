@@ -1611,6 +1611,23 @@ function appendPriorDialogueEvents(
 	}
 }
 
+function hasStructuredRecentMessagesProvider(state: State): boolean {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") {
+		return false;
+	}
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") {
+		return false;
+	}
+	const data = (recent as { data?: unknown }).data;
+	return Boolean(
+		data &&
+			typeof data === "object" &&
+			Array.isArray((data as { recentMessages?: unknown }).recentMessages),
+	);
+}
+
 function getRecentConversationSearchText(
 	state: State | undefined,
 	currentMessage: Memory,
@@ -2087,9 +2104,19 @@ async function createV5MessageContextObject(args: {
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
-	const renderExclusions = args.extraProviderExclusions?.length
-		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
-		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
+	const renderExclusions = [
+		...MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
+		...(args.extraProviderExclusions ?? []),
+		// The recent-messages provider exposes structured prior turns in
+		// data.recentMessages. appendPriorDialogueEvents renders those as proper
+		// chat-message events, so also rendering provider.text would duplicate the
+		// same conversation and can leak stored assistant thought/action metadata
+		// into the prompt. Keep the text fallback only for legacy/unstructured
+		// provider states.
+		...(hasStructuredRecentMessagesProvider(args.state)
+			? ["RECENT_MESSAGES"]
+			: []),
+	];
 	appendStateProviderEvents(events, args.state, renderExclusions);
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
@@ -2635,7 +2662,10 @@ function normalizeRawParsedForFieldRegistry(
 export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
-	runtimeContext?: { actions: ReadonlyArray<Pick<Action, "name">> },
+	runtimeContext?: {
+		actions: ReadonlyArray<Pick<Action, "name">>;
+		messageText?: string;
+	},
 ): MessageHandlerResult {
 	const contexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
@@ -2645,6 +2675,32 @@ export function messageHandlerFromFieldResult(
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
+	const replyTextRaw =
+		typeof result.replyText === "string" ? result.replyText : "";
+	const currentMessageText = runtimeContext?.messageText ?? "";
+	const inferredAckCandidateActions =
+		candidateActions.length === 0 &&
+		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
+			? inferAckIntentCandidateActions(
+					result,
+					runtimeContext?.actions ?? [],
+					currentMessageText,
+				)
+			: [];
+	const inferredDirectCandidateActions =
+		candidateActions.length === 0 &&
+		inferredAckCandidateActions.length === 0 &&
+		currentMessageText.trim().length > 0
+			? inferDirectCurrentRequestCandidateActions(
+					runtimeContext?.actions ?? [],
+					currentMessageText,
+				)
+			: [];
+	const effectiveCandidateActions = uniqueActionNames([
+		...candidateActions,
+		...inferredAckCandidateActions,
+		...inferredDirectCandidateActions,
+	]);
 	// When the caller passes the runtime's `actions`, narrow the candidate set
 	// to those that are (a) registered actions OR (b) canonical control names
 	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
@@ -2652,14 +2708,14 @@ export function messageHandlerFromFieldResult(
 	// only context is "simple". When no `runtimeContext` is provided, behaviour
 	// is unchanged (back-compat).
 	const validCandidateCount = runtimeContext
-		? candidateActions.filter((name) => {
+		? effectiveCandidateActions.filter((name) => {
 				const normalized = normalizeActionIdentifier(name);
 				if (canonicalPlannerControlActionName(normalized) !== null) return true;
 				return runtimeContext.actions.some(
 					(action) => normalizeActionIdentifier(action.name) === normalized,
 				);
 			}).length
-		: candidateActions.length;
+		: effectiveCandidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -2703,8 +2759,6 @@ export function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const replyTextRaw =
-		typeof result.replyText === "string" ? result.replyText : "";
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
 		: contexts;
@@ -2737,8 +2791,8 @@ export function messageHandlerFromFieldResult(
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (candidateActions.length > 0) {
-		plan.candidateActions = candidateActions;
+	if (effectiveCandidateActions.length > 0) {
+		plan.candidateActions = effectiveCandidateActions;
 	}
 	const extract =
 		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
@@ -2750,6 +2804,159 @@ export function messageHandlerFromFieldResult(
 		plan,
 		...(extract ? { extract } : {}),
 	};
+}
+
+const PLANNING_ACK_REPLIES = new Set([
+	"got it.",
+	"looking into it.",
+	"on it.",
+	"running shell commands to gather disk usage...",
+	"spawning the sub-agent now.",
+	"working on it.",
+]);
+
+function looksLikeProgressOnlyReply(replyText: string): boolean {
+	const normalized = replyText.trim().toLowerCase();
+	if (!normalized) return false;
+	if (PLANNING_ACK_REPLIES.has(normalized)) return true;
+	return /^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will)\b/.test(
+		normalized,
+	);
+}
+
+function hasAckOnlyActionableIntent(
+	result: ResponseHandlerResult,
+	replyText: string,
+	fallbackText = "",
+): boolean {
+	if (!looksLikeProgressOnlyReply(replyText)) {
+		return false;
+	}
+	const intentText = Array.isArray(result.intents)
+		? result.intents
+				.map((intent) => (typeof intent === "string" ? intent : ""))
+				.join("\n")
+		: "";
+	const actionText = [intentText, fallbackText].filter(Boolean).join("\n");
+	return (
+		looksLikeLocalShellRequest(actionText) ||
+		looksLikeWebSearchRequest(actionText) ||
+		looksLikeCodingDelegationRequest(actionText)
+	);
+}
+
+function inferAckIntentCandidateActions(
+	result: ResponseHandlerResult,
+	actions: ReadonlyArray<Pick<Action, "name">>,
+	fallbackText = "",
+): string[] {
+	const intentText = Array.isArray(result.intents)
+		? result.intents
+				.map((intent) => (typeof intent === "string" ? intent : ""))
+				.join("\n")
+		: "";
+	const actionText = [intentText, fallbackText].filter(Boolean).join("\n");
+	if (!actionText.trim()) return [];
+	if (looksLikeLocalShellRequest(actionText)) {
+		const shellAction = findAvailableActionName(actions, [
+			"SHELL",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"RUN_SHELL",
+			"EXEC",
+		]);
+		if (shellAction) return [shellAction];
+	}
+	if (looksLikeWebSearchRequest(actionText)) {
+		const searchAction = findAvailableActionName(actions, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]);
+		if (searchAction) return [searchAction];
+	}
+	if (looksLikeCodingDelegationRequest(actionText)) {
+		const codingAction = findAvailableActionName(actions, [
+			"TASKS",
+			"SPAWN_AGENT",
+			"START_CODING_TASK",
+			"CODE_TASK",
+			"SPAWN_CODING_AGENT",
+		]);
+		if (codingAction) return [codingAction];
+	}
+	return [];
+}
+
+function inferDirectCurrentRequestCandidateActions(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+	messageText: string,
+): string[] {
+	if (looksLikeLocalShellRequest(messageText)) {
+		const shellAction = findAvailableActionName(actions, [
+			"SHELL",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"RUN_SHELL",
+			"EXEC",
+		]);
+		if (shellAction) return [shellAction];
+	}
+	if (looksLikeWebSearchRequest(messageText)) {
+		const searchAction = findAvailableActionName(actions, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]);
+		if (searchAction) return [searchAction];
+	}
+	if (looksLikeCodingDelegationRequest(messageText)) {
+		const codingAction = findAvailableActionName(actions, [
+			"TASKS",
+			"SPAWN_AGENT",
+			"START_CODING_TASK",
+			"CODE_TASK",
+			"SPAWN_CODING_AGENT",
+		]);
+		if (codingAction) return [codingAction];
+	}
+	return [];
+}
+
+function findAvailableActionName(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+	names: readonly string[],
+): string | undefined {
+	const wanted = new Set(names.map(normalizeActionIdentifier));
+	return actions.find((action) =>
+		wanted.has(normalizeActionIdentifier(action.name)),
+	)?.name;
+}
+
+function uniqueActionNames(names: readonly string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const name of names) {
+		const normalized = normalizeActionIdentifier(name);
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		result.push(name);
+	}
+	return result;
 }
 
 /**
@@ -2918,17 +3125,24 @@ function shouldUseStage1PlannerFallback(
 	]);
 }
 
-function synthesizePlannerFallbackFromStage1Failure(
-	reason: string,
-): MessageHandlerResult {
+function synthesizePlannerFallbackFromStage1Failure(args: {
+	reason: string;
+	actions: ReadonlyArray<Pick<Action, "name">>;
+	messageText: string;
+}): MessageHandlerResult {
+	const candidateActions = inferDirectCurrentRequestCandidateActions(
+		args.actions,
+		args.messageText,
+	);
 	return {
 		processMessage: "RESPOND",
-		thought: `Response handler returned ${reason}; falling back to planner because the message is explicitly addressed to the agent.`,
+		thought: `Response handler returned ${args.reason}; falling back to planner because the message is explicitly addressed to the agent.`,
 		plan: {
 			contexts: ["general"],
 			reply: "",
 			simple: false,
 			requiresTool: true,
+			candidateActions,
 		},
 	};
 }
@@ -3711,7 +3925,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = messageHandlerFromFieldResult(
 				fieldRunResult.parsed,
 				fieldRunResult,
-				{ actions: args.runtime.actions },
+				{
+					actions: args.runtime.actions,
+					messageText: args.message.content?.text ?? "",
+				},
 			);
 		}
 		if (!messageHandler) {
@@ -3724,8 +3941,11 @@ export async function runV5MessageRuntimeStage1(args: {
 			const stage1FailureReason = isEmptyStage1Result(rawMessageHandler)
 				? `empty output after ${emptyRetryLimit + 1} attempts`
 				: "unparseable output";
-			messageHandler =
-				synthesizePlannerFallbackFromStage1Failure(stage1FailureReason);
+			messageHandler = synthesizePlannerFallbackFromStage1Failure({
+				reason: stage1FailureReason,
+				actions: args.runtime.actions,
+				messageText: args.message.content?.text ?? "",
+			});
 			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
@@ -5194,7 +5414,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 	}
 
 	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh)\b/iu.test(
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|disk (?:space|usage)|storage usage)\b/iu.test(
 			normalized,
 		);
 	const asksToInspect =
@@ -5203,7 +5423,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk space|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
 			normalized,
 		);
 
@@ -5259,6 +5479,43 @@ function looksLikeWebSearchRequest(text: string): boolean {
 		);
 
 	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
+}
+
+function looksLikeCodingDelegationRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+
+	if (
+		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+
+	if (looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+
+	const asksDelegation =
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		);
+	if (!asksDelegation) return false;
+
+	const asksCodingWork =
+		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		);
+	return asksCodingWork;
 }
 
 function quoteShellArg(value: string): string {

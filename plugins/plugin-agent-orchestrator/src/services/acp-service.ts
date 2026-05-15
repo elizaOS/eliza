@@ -78,6 +78,8 @@ type RunResult = {
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
+const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
+const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
@@ -530,8 +532,7 @@ export class AcpService {
       opts.workdir,
       ...approvalArgs(opts.approvalPreset),
     ];
-    if (boolSetting(this.setting("ACPX_NO_TERMINAL")) !== false)
-      args.push("--no-terminal");
+    if (this.shouldDisableTerminalCapability()) args.push("--no-terminal");
     const timeoutMs = opts.timeoutMs ?? this.sessionTimeoutMs;
     if (timeoutMs && timeoutMs > 0)
       args.push("--timeout", String(timeoutMs / 1000));
@@ -556,6 +557,7 @@ export class AcpService {
     const startedAt = Date.now();
     let finalText = "";
     let stopReason: string | undefined;
+    const capturedToolOutputs = new Set<string>();
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,
@@ -588,6 +590,7 @@ export class AcpService {
                 finalText,
                 startedAt,
                 opts.activeForSession === true,
+                capturedToolOutputs,
               );
               finalText = handled.finalText;
               stopReason = handled.stopReason ?? stopReason;
@@ -628,6 +631,7 @@ export class AcpService {
               finalText,
               startedAt,
               opts.activeForSession === true,
+              capturedToolOutputs,
             );
             finalText = handled.finalText;
             stopReason = handled.stopReason ?? stopReason;
@@ -700,6 +704,7 @@ export class AcpService {
     currentFinalText: string,
     startedAt: number,
     emitPromptTerminalEvents: boolean,
+    capturedToolOutputs: Set<string>,
   ): { finalText: string; stopReason?: string } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
@@ -779,17 +784,28 @@ export class AcpService {
         sessionUpdate === "tool_call_update"
       ) {
         const status = stringifyMaybe(updateBlock?.status);
+        const toolOutput = updateBlock?.rawOutput ?? updateBlock?.content;
         const toolCall: AcpToolCall = {
           id: stringifyMaybe(updateBlock?.toolCallId ?? updateBlock?.id) ?? "",
           title: stringifyMaybe(updateBlock?.title) ?? "",
           status: (status as AcpToolCall["status"]) ?? "running",
-          output: stringifyMaybe(updateBlock?.rawOutput),
+          output: stringifyMaybe(toolOutput),
         };
         if (status === "in_progress" || status === "running") {
           this.emitSessionEvent(sessionId, "tool_running", { toolCall });
           void this.store
             .updateStatus(sessionId, "tool_running")
             .catch(() => undefined);
+        } else {
+          const captured = captureTerminalToolOutput(
+            toolCall,
+            toolOutput,
+            capturedToolOutputs,
+          );
+          if (captured) {
+            finalText = appendTextBlock(finalText, captured);
+            this.appendOutput(sessionId, captured);
+          }
         }
       }
       // usage_update is informational; we don't currently surface it but could log
@@ -955,6 +971,13 @@ export class AcpService {
       | undefined;
     loggerFn?.call(this.logger, `[AcpService] ${message}`, data);
   }
+
+  private shouldDisableTerminalCapability(): boolean {
+    const configured = boolSetting(
+      this.setting("ELIZA_ACP_NO_TERMINAL") ?? this.setting("ACPX_NO_TERMINAL"),
+    );
+    return configured === true;
+  }
 }
 
 function approvalArgs(preset: ApprovalPreset): string[] {
@@ -1046,6 +1069,96 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function stringifyMaybe(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? "");
+}
+
+function appendTextBlock(current: string, block: string): string {
+  if (!current) return block;
+  return `${current}${current.endsWith("\n") ? "" : "\n"}${block}`;
+}
+
+function captureTerminalToolOutput(
+  toolCall: AcpToolCall,
+  rawOutput: unknown,
+  capturedToolOutputs: Set<string>,
+): string | undefined {
+  const output = normalizeToolOutput(rawOutput);
+  if (!output) return undefined;
+  const key = `${toolCall.id}\0${output}`;
+  if (capturedToolOutputs.has(key)) return undefined;
+  capturedToolOutputs.add(key);
+  const truncated =
+    output.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
+      ? `${output.slice(0, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
+      : output;
+  const title = toolCall.title?.trim() || "tool output";
+  return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
+}
+
+function normalizeToolOutput(rawOutput: unknown): string {
+  if (typeof rawOutput === "string") {
+    const trimmed = rawOutput.trim();
+    const parsed = parseJsonRecord(trimmed);
+    return extractToolOutputText(parsed)?.trim() || trimmed;
+  }
+  if (rawOutput === undefined || rawOutput === null) return "";
+  const extracted = extractToolOutputText(rawOutput);
+  return extracted?.trim() || JSON.stringify(rawOutput).trim();
+}
+
+function parseJsonRecord(text: string): Record<string, unknown> | undefined {
+  if (!text.startsWith("{")) return undefined;
+  try {
+    return asRecord(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
+}
+
+function extractToolOutputText(
+  value: unknown,
+  depth = 0,
+  seen = new Set<object>(),
+): string | undefined {
+  if (value === undefined || value === null || depth > 4) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((entry) => extractToolOutputText(entry, depth + 1, seen))
+      .filter((entry): entry is string => Boolean(entry));
+    return uniqueStrings(parts).join("\n") || undefined;
+  }
+  if (typeof value !== "object") return undefined;
+  if (seen.has(value)) return undefined;
+  seen.add(value);
+
+  const record = value as Record<string, unknown>;
+  const parts = [
+    "output",
+    "stdout",
+    "stderr",
+    "content",
+    "text",
+    "message",
+    "result",
+    "response",
+    "value",
+  ]
+    .filter((key) => key in record)
+    .map((key) => extractToolOutputText(record[key], depth + 1, seen))
+    .filter((entry): entry is string => Boolean(entry));
+  return uniqueStrings(parts).join("\n") || undefined;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean)),
+  );
 }
 
 function isAuthText(text: string): boolean {

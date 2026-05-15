@@ -185,6 +185,26 @@ describe("AcpService", () => {
       ]),
       expect.objectContaining({ cwd: "/tmp/acp-test" }),
     );
+    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
+    expect(args).not.toContain("--no-terminal");
+  });
+
+  it("honors explicit terminal capability opt-out", async () => {
+    const reg = nextProc();
+    const service = new AcpService(runtime({ ELIZA_ACP_NO_TERMINAL: "true" }));
+    await service.start();
+
+    const promise = service.spawnSession({
+      name: "no-terminal",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    await promise;
+
+    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
+    expect(args).toContain("--no-terminal");
   });
 
   it("does not emit task_complete from the session creation command", async () => {
@@ -344,13 +364,31 @@ describe("AcpService", () => {
     prompt.proc.stdout.emit(
       "data",
       Buffer.from(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sessionId}","update":{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","title":"Running tool","rawOutput":"{\\"output\\":\\"Filesystem      Size  Used Avail Use% Mounted on\\\\n/dev/root        45G   38G  7.0G  84% /\\",\\"metadata\\":{\\"exitCode\\":0}}"}}}\n`,
+      ),
+    );
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sessionId}","update":{"sessionUpdate":"tool_call_update","toolCallId":"t2","status":"completed","title":"Read home usage","content":{"type":"text","text":"/home            387G  223G  165G  58% /home"}}}}\n`,
+      ),
+    );
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
         `{"jsonrpc":"2.0","id":"req-1","result":{"stopReason":"end_turn"},"sessionId":"${sessionId}"}\n`,
       ),
     );
     closeOk(prompt);
 
     const result = await sent;
-    expect(result.response).toBe("done");
+    expect(result.response).toContain("done");
+    expect(result.response).toContain("[tool output: Running tool]");
+    expect(result.response).toContain("/dev/root        45G");
+    expect(result.response).toContain("[/tool output]");
+    expect(result.response).toContain("[tool output: Read home usage]");
+    expect(result.response).toContain("/home            387G");
+    expect(result.response).not.toContain('"metadata"');
     expect(result.stopReason).toBe("end_turn");
     expect(events).toEqual(
       expect.arrayContaining([

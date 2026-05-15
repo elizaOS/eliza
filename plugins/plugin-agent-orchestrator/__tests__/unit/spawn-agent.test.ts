@@ -29,6 +29,30 @@ describe("TASKS:spawn_agent", () => {
     ).toBe(false);
   });
 
+  it("keeps TASKS available for routed sub-agent terminal events", async () => {
+    expect(
+      await spawnAgentAction.validate(
+        runtimeWith(serviceMock()),
+        memory({
+          source: "sub_agent",
+          metadata: {
+            subAgent: true,
+            subAgentEvent: "task_complete",
+            subAgentSessionId: "abcdef123456",
+          },
+        }),
+        state,
+      ),
+    ).toBe(true);
+    expect(
+      await spawnAgentAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ source: "sub_agent" }),
+        state,
+      ),
+    ).toBe(false);
+  });
+
   it("spawns a session with compatible data shape", async () => {
     const svc = serviceMock();
     const cb = callback();
@@ -54,11 +78,48 @@ describe("TASKS:spawn_agent", () => {
     });
   });
 
+  it("suppresses the spawn acknowledgement when the user requested a deferred reply", async () => {
+    const svc = serviceMock();
+    const cb = callback();
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({
+        task: "Build the app and verify the public URL. Reply only after verification with the final URL.",
+        agentType: "opencode",
+      }),
+      state,
+      spawnOptions,
+      cb,
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe("");
+    expect(result?.data).toMatchObject({ deferredUserReply: true });
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it("honors explicit deferUserReply from planner parameters", async () => {
+    const svc = serviceMock();
+    const cb = callback();
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "Build the app", agentType: "opencode" }),
+      state,
+      { parameters: { action: "spawn_agent", deferUserReply: true } },
+      cb,
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe("");
+    expect(result?.data).toMatchObject({ deferredUserReply: true });
+    expect(cb).not.toHaveBeenCalled();
+  });
+
   it("puts resolved route constraints before planner-authored task text", async () => {
     const oldRoutes = process.env.TASK_AGENT_WORKDIR_ROUTES;
     process.env.TASK_AGENT_WORKDIR_ROUTES = JSON.stringify([
       {
-        id: "agent-home",
+        id: "local-apps",
         workdir: process.cwd(),
         matchAny: ["counter"],
         instructions: "Create app files under data/apps/<slug>/.",
@@ -69,7 +130,7 @@ describe("TASKS:spawn_agent", () => {
       const result = await spawnAgentAction.handler(
         runtimeWith(svc),
         memory({
-          task: "Create a counter at /home/milady/data/apps/opencode-check.",
+          task: "Create a counter at /srv/apps/opencode-check.",
           agentType: "opencode",
         }),
         state,
