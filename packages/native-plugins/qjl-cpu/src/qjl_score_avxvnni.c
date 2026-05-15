@@ -38,6 +38,7 @@
 #include "qjl_block.h"
 #include <immintrin.h>
 #include <stdint.h>
+#include <string.h>
 
 /* Wrapper so the same body builds against either the AVX-VNNI (VEX, ymm)
  * intrinsic or the AVX512-VL flavour (EVEX-encoded ymm). */
@@ -64,7 +65,7 @@ static inline float bf16_to_fp32_inline(uint16_t b) {
 static inline __m256i expand_32_bits(const uint8_t *src4, __m256i bcast,
                                      __m256i sel, __m256i one) {
     uint32_t w;
-    __builtin_memcpy(&w, src4, 4);
+    memcpy(&w, src4, 4);
     __m256i v = _mm256_set1_epi32((int)w);              /* {b0,b1,b2,b3} x8 */
     v = _mm256_shuffle_epi8(v, bcast);                  /* lane i = byte i/8 */
     __m256i andv = _mm256_and_si256(v, sel);

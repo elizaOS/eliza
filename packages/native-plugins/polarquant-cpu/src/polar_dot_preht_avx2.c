@@ -20,6 +20,7 @@
 #include <immintrin.h>
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "polarquant/polarquant.h"
 
@@ -39,7 +40,7 @@ static inline __m256 centroid_gather8(__m256i idx, __m256 clo, __m256 chi) {
  * [lo0,hi0,lo1,hi1,...] (= natural element) order. */
 static inline __m256 unpack8_centroids(const uint8_t *qs4, __m256 clo, __m256 chi) {
     uint32_t w;
-    __builtin_memcpy(&w, qs4, 4);
+    memcpy(&w, qs4, 4);
     __m128i b = _mm_cvtsi32_si128((int)w);                 /* 4 bytes */
     /* duplicate each byte into two adjacent lanes */
     __m128i dup = _mm_shuffle_epi8(b, _mm_setr_epi8(0,0,1,1,2,2,3,3,
