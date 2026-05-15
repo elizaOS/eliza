@@ -115,6 +115,25 @@ describe("resolveKokoroEngineConfig", () => {
 		}
 	});
 
+	it("can probe an explicit bundle-local Kokoro root before the global install root", () => {
+		const bundleFx = makeStaged({
+			modelFile: "model_q4.onnx",
+			voices: ["af_bella.bin"],
+		});
+		cleanups.push(bundleFx.cleanup);
+		process.env.ELIZA_KOKORO_MODEL_DIR = path.join(
+			os.tmpdir(),
+			`not-used-${Date.now()}`,
+		);
+
+		const cfg = resolveKokoroEngineConfig(bundleFx.root);
+		expect(cfg).not.toBeNull();
+		expect(cfg?.layout.root).toBe(bundleFx.root);
+		expect(cfg?.layout.modelFile).toBe("model_q4.onnx");
+		expect(cfg?.defaultVoiceId).toBe("af_bella");
+		expect(kokoroEngineModelDir(bundleFx.root)).toBe(bundleFx.root);
+	});
+
 	it("auto-prefers the INT8 ONNX when it is the only one staged", () => {
 		const fx = makeStaged({
 			modelFile: "kokoro-v1.0.int8.onnx",

@@ -2,8 +2,9 @@
  * On-disk discovery for the Kokoro-only voice mode. Probes
  * `~/.eliza/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
  * for a model file (preferred order: fused-GGUF → quantized ONNX → fp32
- * ONNX) plus at least one voice `.bin` under `voices/`. Returns null when
- * anything is missing — no auto-download (AGENTS.md §3).
+ * ONNX) plus at least one voice `.bin` under `voices/`. Callers can pass an
+ * explicit model root to probe bundle-local Kokoro artifacts first. Returns
+ * null when anything is missing — no auto-download (AGENTS.md §3).
  *
  * The fused-GGUF path is produced by the elizaOS/llama.cpp fork's
  * `omnivoice/tools/convert_kokoro_to_gguf.py` and runs through the same
@@ -84,7 +85,9 @@ export interface KokoroEngineDiscoveryResult {
 }
 
 /** Returns the on-disk directory the discovery probes. */
-export function kokoroEngineModelDir(): string {
+export function kokoroEngineModelDir(rootOverride?: string): string {
+  const explicit = rootOverride?.trim();
+  if (explicit) return explicit;
   const env = process.env.ELIZA_KOKORO_MODEL_DIR?.trim();
   if (env) return env;
   return path.join(elizaModelsDir(), "kokoro");
@@ -95,8 +98,10 @@ export function kokoroEngineModelDir(): string {
  * piece is missing — the engine then falls back to its existing behaviour
  * (fused omnivoice or `StubOmniVoiceBackend`).
  */
-export function resolveKokoroEngineConfig(): KokoroEngineDiscoveryResult | null {
-  const root = kokoroEngineModelDir();
+export function resolveKokoroEngineConfig(
+  rootOverride?: string,
+): KokoroEngineDiscoveryResult | null {
+  const root = kokoroEngineModelDir(rootOverride);
   if (!existsSync(root)) return null;
 
   const modelFile = resolveModelFile(root);
