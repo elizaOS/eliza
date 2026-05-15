@@ -205,16 +205,30 @@ def _format_version_block(v: VoiceVersion) -> str:
 def already_has_entry(ts_text: str, model_id: str, version: str) -> bool:
     """Return True when `{ id: "<model_id>", version: "<version>", ... }`
     already lives in `VOICE_MODEL_VERSIONS`. Match is structural and
-    tolerant of whitespace + ordering inside the literal."""
+    tolerant of intervening lines / nested blocks (ggufAssets is a list
+    of inner `{}` objects, so we cannot rely on a flat `{...}` regex)."""
     needle_id = re.compile(rf'\bid:\s*"{re.escape(model_id)}"')
     needle_version = re.compile(rf'\bversion:\s*"{re.escape(version)}"')
-    # Walk the file looking for `{` … `}` blocks that contain both lines.
-    # The full AST parse is overkill; a regex pair is sufficient given the
-    # canonical formatting we emit.
-    block_re = re.compile(r"\{([^{}]*)\}")
-    for match in block_re.finditer(ts_text):
-        body = match.group(1)
-        if needle_id.search(body) and needle_version.search(body):
+    # Walk every `id: "<model_id>"` occurrence and look forward for the
+    # matching `version: "<version>"` line within the same top-level
+    # VoiceVersion record. A record always begins with `id: "..."` and ends
+    # at the next sibling `},\n  {` (or at the closing `];` of the array).
+    # Forward scan is bounded by the next top-level record terminator.
+    record_terminator = re.compile(r"\},\s*\{", re.MULTILINE)
+    end_of_array = re.compile(r"\}\s*,?\s*\];", re.MULTILINE)
+    for m in needle_id.finditer(ts_text):
+        scan_start = m.end()
+        terminator = record_terminator.search(ts_text, scan_start)
+        end = end_of_array.search(ts_text, scan_start)
+        if end is None and terminator is None:
+            continue
+        if end is None:
+            scan_end = terminator.start()
+        elif terminator is None:
+            scan_end = end.start()
+        else:
+            scan_end = min(terminator.start(), end.start())
+        if needle_version.search(ts_text, scan_start, scan_end):
             return True
     return False
 

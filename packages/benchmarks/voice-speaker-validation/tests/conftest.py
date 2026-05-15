@@ -207,12 +207,12 @@ class SegmentDiarizer:
         # single speaker (high intra-cluster similarity = small inter distance).
         #
         # INTER_SPEAKER_SPLIT_THRESHOLD calibration for ECAPA-TDNN on TTS audio:
-        #   - Intra-speaker (same TTS voice, different sentences): ~0.50-0.62
-        #   - Inter-speaker (pitch-shifted variants): ~0.35-0.42
-        # Threshold at 0.46: split only when centroids are clearly distinct
-        # (< 0.46 cosine), which covers the ~0.36-0.42 inter-speaker range
-        # without falsely splitting the ~0.50+ intra-speaker range.
-        INTER_SPEAKER_SPLIT_THRESHOLD = 0.46
+        #   - Intra-speaker (same TTS voice, different sentences): 0.50-0.66
+        #   - Inter-speaker (pitch-shifted ±6 semitones): 0.10-0.15
+        # Threshold at 0.35: split only when centroids are very clearly distinct
+        # (< 0.35 cosine), which catches the 0.10-0.15 inter-speaker range
+        # while respecting the 0.50+ intra-speaker TTS acoustic variance.
+        INTER_SPEAKER_SPLIT_THRESHOLD = 0.35
 
         n = len(valid_segments)
         max_k = min(4, n)
