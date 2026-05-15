@@ -19,7 +19,6 @@ import * as React from "react";
 import type {
   VoiceCaptureSession,
   VoiceCaptureSubmitResult,
-  VoiceProfile,
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
 import {
