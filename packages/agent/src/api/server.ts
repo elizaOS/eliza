@@ -120,8 +120,18 @@ const { discoverSkills, handleCuratedSkillsRoutes, handleSkillsRoutes } =
 const { AppManager, handleAppsRoutes } = await import(
   "@elizaos/plugin-app-manager"
 );
-const { handlePluginRoutes } = await import("@elizaos/plugin-registry");
 const { handleWalletRoutes } = await import("@elizaos/plugin-wallet");
+
+let pluginRegistryApiPromise:
+  | Promise<typeof import("@elizaos/plugin-registry")>
+  | undefined;
+
+function getPluginRegistryApi(): Promise<
+  typeof import("@elizaos/plugin-registry")
+> {
+  pluginRegistryApiPromise ??= import("@elizaos/plugin-registry");
+  return pluginRegistryApiPromise;
+}
 
 import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
@@ -2033,6 +2043,7 @@ async function handleRequest(
     pathname === "/api/secrets" ||
     pathname === "/api/core/status"
   ) {
+    const { handlePluginRoutes } = await getPluginRegistryApi();
     if (
       await handlePluginRoutes({
         req,
