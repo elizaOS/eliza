@@ -244,6 +244,7 @@ import {
 } from "./wallet-capability.ts";
 import { handleWalletRoutes } from "./wallet-routes.ts";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
+import { handleViewsRoutes } from "./views-routes.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
@@ -2586,6 +2587,21 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── View routes (/api/views/*) ────────────────────────────────────────────
+  if (
+    await handleViewsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
     })
   ) {
     return;

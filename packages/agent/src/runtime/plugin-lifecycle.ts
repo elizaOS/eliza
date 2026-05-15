@@ -13,6 +13,10 @@ import type {
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
+import {
+  registerPluginViews,
+  unregisterPluginViews,
+} from "../api/views-registry.ts";
 import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
@@ -881,6 +885,8 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
           capture.ownership,
         );
       }
+      // Register any views declared by this plugin into the view registry.
+      await registerPluginViews(plugin);
     } catch (error) {
       trackRoutesAndPluginRef(
         runtimeWithLifecycle,
@@ -903,6 +909,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     if (!ownership) {
       return null;
     }
+    unregisterPluginViews(pluginName);
     await teardownPluginOwnership(runtimeWithLifecycle, ownership, {
       removeOwnership: true,
     });
