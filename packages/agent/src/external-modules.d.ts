@@ -362,6 +362,15 @@ declare module "@elizaos/app-contacts" {
   export const appContactsPlugin: Plugin;
 }
 
+declare module "@elizaos/app-phone" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const phoneCallLogProvider: Provider;
+  export const appPhonePlugin: Plugin;
+  const plugin: Plugin;
+  export default plugin;
+}
+
 declare module "@elizaos/app-wifi" {
   import type { Plugin, Provider } from "@elizaos/core";
 
