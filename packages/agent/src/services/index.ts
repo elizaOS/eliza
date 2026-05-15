@@ -35,7 +35,20 @@ export type WhatsAppPairingSession = InstanceType<
 >;
 export type WhatsAppPairingStatus = string;
 export * from "./agent-export.ts";
-export * from "./app-manager.ts";
+// app-manager and app-run-store moved to @elizaos/plugin-app-manager (Phase 4G).
+export {
+  AppManager,
+  type AppLaunchResult,
+  type AppRunActionResult,
+  type AppRunSummary,
+  type AppStopResult,
+  type AppViewerAuthMessage,
+  type InstalledAppInfo,
+  readAppRunStore,
+  resolveAppRunStoreFilePath,
+  resolveLegacyAppRunStoreFilePath,
+  writeAppRunStore,
+} from "@elizaos/plugin-app-manager";
 export * from "./app-session-gate.ts";
 export {
   type AuditedDecision,

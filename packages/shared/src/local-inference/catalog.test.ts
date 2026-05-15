@@ -21,13 +21,9 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns the mobile OmniVoice ladder for small tiers", () => {
+  it("does not publish OmniVoice ladders for Kokoro-only small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([
-        "Q3_K_M",
-        "Q4_K_M",
-        "Q5_K_M",
-      ]);
+      expect(voiceQuantLadderForTier(id)).toEqual([]);
     }
   });
 
@@ -57,7 +53,7 @@ describe("voiceQuantLadderForTier", () => {
 });
 
 describe("defaultVoiceQuantForTier", () => {
-  it("returns Q4_K_M for mobile tiers (matches publish path mobile sweet spot)", () => {
+  it("keeps a Q4_K_M OmniVoice default if a small tier enables OmniVoice later", () => {
     for (const id of SMALL_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q4_K_M");
     }
