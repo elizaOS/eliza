@@ -194,12 +194,7 @@ import { ConnectorHealthMonitor } from "./connector-health.ts";
 import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
-import {
-  discoverSkills,
-  handleCuratedSkillsRoutes,
-  handleSkillsRoutes,
-} from "@elizaos/plugin-agent-skills";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
@@ -212,8 +207,7 @@ import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallbac
 import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-// Phase 4F: plugin routes moved to @elizaos/plugin-registry.
-import { handlePluginRoutes } from "@elizaos/plugin-registry";
+import { handlePluginRoutes } from "./plugin-routes.ts";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
@@ -248,27 +242,8 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
-import { handleWalletRoutes } from "@elizaos/plugin-wallet";
-import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import { persistConfigEnv } from "./config-env.ts";
-import {
-  deriveSolanaAddress,
-  fetchEvmBalances,
-  fetchSolanaBalances,
-  fetchSolanaNativeBalanceViaRpc,
-  generateWalletForChain,
-  importWallet,
-  setSolanaWalletEnv,
-  validatePrivateKey,
-} from "./wallet.ts";
-import {
-  applyWalletRpcConfigUpdate,
-  getStoredWalletRpcSelections,
-  resolveWalletNetworkMode,
-  resolveWalletRpcReadiness,
-} from "./wallet-rpc.ts";
+import { handleWalletRoutes } from "./wallet-routes.ts";
+import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
