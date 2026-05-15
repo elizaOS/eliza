@@ -15,14 +15,18 @@ import {
 
 describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   test("strips compact 8-digit date suffix", () => {
-    expect(stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku-20241022")).toBe(
-      "anthropic/claude-3-5-haiku",
-    );
+    expect(
+      stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku-20241022"),
+    ).toBe("anthropic/claude-3-5-haiku");
   });
 
   test("strips ISO date suffix", () => {
-    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-11-20")).toBe("openai/gpt-4o");
-    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-08-06")).toBe("openai/gpt-4o");
+    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-11-20")).toBe(
+      "openai/gpt-4o",
+    );
+    expect(stripVersionedSnapshotSuffix("openai/gpt-4o-2024-08-06")).toBe(
+      "openai/gpt-4o",
+    );
   });
 
   test("strips -latest label", () => {
@@ -42,7 +46,9 @@ describe("stripVersionedSnapshotSuffix — dated and labelled suffixes", () => {
   });
 
   test("dated suffix bypasses the 2-segment safety check for short bases", () => {
-    expect(stripVersionedSnapshotSuffix("openai/o1-2024-12-17")).toBe("openai/o1");
+    expect(stripVersionedSnapshotSuffix("openai/o1-2024-12-17")).toBe(
+      "openai/o1",
+    );
   });
 });
 
@@ -51,14 +57,18 @@ describe("stripVersionedSnapshotSuffix — numeric snapshot suffixes", () => {
     expect(stripVersionedSnapshotSuffix("google/gemini-2.0-flash-001")).toBe(
       "google/gemini-2.0-flash",
     );
-    expect(stripVersionedSnapshotSuffix("google/gemini-2.0-flash-lite-001")).toBe(
-      "google/gemini-2.0-flash-lite",
-    );
+    expect(
+      stripVersionedSnapshotSuffix("google/gemini-2.0-flash-lite-001"),
+    ).toBe("google/gemini-2.0-flash-lite");
   });
 
   test("strips multi-digit numeric snapshot when two+ segments remain", () => {
-    expect(stripVersionedSnapshotSuffix("vendor/family-name-1234")).toBe("vendor/family-name");
-    expect(stripVersionedSnapshotSuffix("vendor/family-name-99")).toBe("vendor/family-name");
+    expect(stripVersionedSnapshotSuffix("vendor/family-name-1234")).toBe(
+      "vendor/family-name",
+    );
+    expect(stripVersionedSnapshotSuffix("vendor/family-name-99")).toBe(
+      "vendor/family-name",
+    );
   });
 
   test("does NOT strip when result would collapse to one segment after slash", () => {
@@ -70,7 +80,9 @@ describe("stripVersionedSnapshotSuffix — numeric snapshot suffixes", () => {
 describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
   test("returns null when no suffix pattern matches", () => {
     expect(stripVersionedSnapshotSuffix("openai/gpt-4o-mini")).toBeNull();
-    expect(stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku")).toBeNull();
+    expect(
+      stripVersionedSnapshotSuffix("anthropic/claude-3-5-haiku"),
+    ).toBeNull();
     expect(stripVersionedSnapshotSuffix("google/gemini-2.5-flash")).toBeNull();
     expect(stripVersionedSnapshotSuffix("openai/gpt-4o")).toBeNull();
   });
@@ -94,7 +106,9 @@ describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
     // A vendor suffix like -99000001 must not be silently stripped as a
     // compact date. Year-anchoring the compact-date pattern is what blocks
     // this: only -19YYMMDD / -20YYMMDD shapes are accepted as dates.
-    expect(stripVersionedSnapshotSuffix("vendor/family-name-99000001")).toBeNull();
+    expect(
+      stripVersionedSnapshotSuffix("vendor/family-name-99000001"),
+    ).toBeNull();
   });
 
   test("accepts realistic compact-date suffixes for both 19xx and 20xx years", () => {
@@ -125,14 +139,22 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
     expect(inputEntries).toHaveLength(2);
     expect(outputEntries).toHaveLength(2);
 
-    const exactInput = inputEntries.find((e) => e.model === "google/gemini-2.0-flash-001");
-    const strippedInput = inputEntries.find((e) => e.model === "google/gemini-2.0-flash");
+    const exactInput = inputEntries.find(
+      (e) => e.model === "google/gemini-2.0-flash-001",
+    );
+    const strippedInput = inputEntries.find(
+      (e) => e.model === "google/gemini-2.0-flash",
+    );
     expect(exactInput?.priority).toBeUndefined();
     expect(strippedInput?.priority).toBe(-1);
     expect(exactInput?.unitPrice).toBe(strippedInput?.unitPrice);
 
-    const exactOutput = outputEntries.find((e) => e.model === "google/gemini-2.0-flash-001");
-    const strippedOutput = outputEntries.find((e) => e.model === "google/gemini-2.0-flash");
+    const exactOutput = outputEntries.find(
+      (e) => e.model === "google/gemini-2.0-flash-001",
+    );
+    const strippedOutput = outputEntries.find(
+      (e) => e.model === "google/gemini-2.0-flash",
+    );
     expect(exactOutput?.priority).toBeUndefined();
     expect(strippedOutput?.priority).toBe(-1);
     expect(exactOutput?.unitPrice).toBe(strippedOutput?.unitPrice);
@@ -157,8 +179,11 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
       pricing: { prompt: "0.0000008" },
     });
 
-    const stripped = entries.find((e) => e.model === "anthropic/claude-3-5-haiku");
-    expect(stripped).toBeDefined();
+    const stripped = entries.find(
+      (e) => e.model === "anthropic/claude-3-5-haiku",
+    );
+    expect(stripped?.model).toBe("anthropic/claude-3-5-haiku");
+    expect(stripped?.priority).toBe(-1);
     expect(stripped?.provider).toBe("anthropic");
     expect(stripped?.productFamily).toBe("language");
     expect(stripped?.billingSource).toBe("openrouter");
@@ -184,7 +209,9 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
 
     expect(entries).toHaveLength(2);
     expect(entries.every((e) => e.chargeType === "input")).toBe(true);
-    expect(entries.find((e) => e.model === "google/gemini-2.0-flash")?.priority).toBe(-1);
+    expect(
+      entries.find((e) => e.model === "google/gemini-2.0-flash")?.priority,
+    ).toBe(-1);
   });
 });
 
@@ -239,8 +266,12 @@ describe("chooseBestCandidatePricingEntry — tie-break when stripped variants c
     const a = buildCandidate("google/gemini-2.0-flash-001", 0.0000001);
     const b = buildCandidate("google/gemini-2.0-flash-002", 0.0000001);
 
-    const winner = chooseBestCandidatePricingEntry([a, b], {}, "google/gemini-2.0-flash");
-    expect(winner).not.toBeNull();
+    const winner = chooseBestCandidatePricingEntry(
+      [a, b],
+      {},
+      "google/gemini-2.0-flash",
+    );
+    expect(winner?.entry.model).toBe("google/gemini-2.0-flash");
     expect(winner?.entry.unitPrice).toBe(0.0000001);
   });
 });
