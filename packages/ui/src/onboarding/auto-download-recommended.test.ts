@@ -5,8 +5,14 @@ const mockClient = vi.hoisted(() => ({
   startLocalInferenceDownload: vi.fn(),
 }));
 
+const mockFetchWithCsrf = vi.hoisted(() => vi.fn());
+
 vi.mock("../api", () => ({
   client: mockClient,
+}));
+
+vi.mock("../api/csrf-client", () => ({
+  fetchWithCsrf: mockFetchWithCsrf,
 }));
 
 import { MODEL_CATALOG } from "../services/local-inference/catalog";
@@ -75,10 +81,9 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
 
   it("queues the fit-aware recommended default model on iOS simulator hardware", async () => {
     vi.stubGlobal("window", { localStorage: stubLocalStorage() });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("ok", { status: 200 })),
-    );
+    const rawFetch = vi.fn();
+    vi.stubGlobal("fetch", rawFetch);
+    mockFetchWithCsrf.mockResolvedValue(new Response("ok", { status: 200 }));
     mockClient.getLocalInferenceHub.mockResolvedValue(simulatorSnapshot());
     mockClient.startLocalInferenceDownload.mockResolvedValue({ ok: true });
 
@@ -89,5 +94,10 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     expect(mockClient.startLocalInferenceDownload).toHaveBeenCalledWith(
       "eliza-1-2b",
     );
+    expect(mockFetchWithCsrf).toHaveBeenCalledWith(
+      "http://127.0.0.1:31337/api/health",
+      { method: "GET" },
+    );
+    expect(rawFetch).not.toHaveBeenCalled();
   });
 });

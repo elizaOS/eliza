@@ -382,9 +382,9 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-0_8b": [],
+  "eliza-1-2b": [],
+  "eliza-1-4b": [],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
