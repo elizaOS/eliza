@@ -90,7 +90,7 @@ const formatPositions = (positions: LpPositionDetails[]): string => {
       `\n${index + 1}. ${pos.poolId} on ${pos.dex}\n` +
       `   Value: $${pos.valueUsd?.toFixed(2) || "N/A"}\n` +
       `   Tokens: ${underlying || "N/A"}\n` +
-      `   LP balance: ${pos.lpTokenBalance?.uiAmount?.toFixed(6) || pos.lpTokenBalance?.balance || "N/A"} ${pos.lpTokenBalance?.symbol || ""}\n`;
+      `   LP balance: ${pos.lpTokenBalance.uiAmount?.toFixed(6) || pos.lpTokenBalance.balance || "N/A"} ${pos.lpTokenBalance.symbol || ""}\n`;
   });
   return response;
 };
@@ -213,7 +213,7 @@ function normalizeParams(
   message: Memory,
   handlerParams?: Record<string, unknown>,
 ): LpActionParams | null {
-  const contentParams = (message?.content || {}) as Record<string, unknown>;
+  const contentParams = (message.content || {}) as Record<string, unknown>;
   const params = {
     ...contentParams,
     ...(handlerParams || {}),
@@ -788,7 +788,7 @@ export const liquidityAction: Action = {
     message: Memory,
     state?: State,
   ): Promise<boolean> => {
-    if (!message?.content) return false;
+    if (!message.content) return false;
     if ((message.content as LpActionParams & { action?: string }).action)
       return true;
     if ((message.content as LpActionParams).subaction) return true;

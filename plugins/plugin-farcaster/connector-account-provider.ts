@@ -34,7 +34,7 @@ function toConnectorAccount(
 	try {
 		const config = validateFarcasterConfig(runtime, accountId);
 		fid = config.FARCASTER_FID;
-		hubUrl = config.FARCASTER_HUB_URL ?? "";
+		hubUrl = config.FARCASTER_HUB_URL;
 		connected = Boolean(
 			fid && config.FARCASTER_SIGNER_UUID && config.FARCASTER_NEYNAR_API_KEY,
 		);

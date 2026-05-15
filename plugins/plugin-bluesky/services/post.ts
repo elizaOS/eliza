@@ -145,7 +145,7 @@ export class BlueSkyPostService {
 			);
 		}
 
-		const query = params.query?.trim();
+		const query = params.query.trim();
 		if (!query) {
 			throw new Error("BlueSky searchPosts connector requires a query.");
 		}

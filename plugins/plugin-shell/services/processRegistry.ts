@@ -357,7 +357,7 @@ function startSweeper(): void {
     return;
   }
   sweeper = setInterval(pruneFinishedSessions, Math.max(30_000, jobTtlMs / 6));
-  sweeper.unref?.();
+  sweeper.unref();
 }
 
 function stopSweeper(): void {

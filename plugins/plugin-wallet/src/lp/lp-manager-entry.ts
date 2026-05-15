@@ -143,7 +143,7 @@ async function loadSolanaDexes(
           const meteoraPlugin = await import(
             "../chains/solana/dex/meteora/index.ts"
           );
-          if (meteoraPlugin.default?.init) {
+          if (meteoraPlugin.default.init) {
             await meteoraPlugin.default.init(config, runtime);
           }
           logger.info(`[LP Manager] Loaded Meteora DEX`);

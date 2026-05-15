@@ -90,14 +90,14 @@ function normalizeDateValue(value: unknown): string | null {
 }
 
 function resolveAgentName(runtime: AgentRuntime): string {
-  return runtime.character?.name?.trim() || 'Eliza';
+  return runtime.character.name?.trim() || 'Eliza';
 }
 
 function isSystemTask(task: WorkbenchTaskView): boolean {
   if (SYSTEM_TASK_NAMES.has(task.name)) {
     return true;
   }
-  const tags = new Set(task.tags ?? []);
+  const tags = new Set(task.tags);
   return tags.has('queue') && tags.has('repeat');
 }
 
@@ -264,7 +264,7 @@ async function listTriggerTasks(runtime: AgentRuntime): Promise<Task[]> {
   const merged = new Map<string, Task>();
   for (const task of [...triggerTasks, ...heartbeatTasks]) {
     const key =
-      task.id ?? `${task.name ?? ''}:${task.description ?? ''}:${(task.tags ?? []).join(',')}`;
+      task.id ?? `${task.name}:${task.description ?? ''}:${(task.tags ?? []).join(',')}`;
     if (!merged.has(key)) {
       merged.set(key, task);
     }
@@ -455,7 +455,7 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
 }
 
 function getWorkflowService(runtime: AgentRuntime): WorkflowService | null {
-  const candidate = runtime.getService?.(WORKFLOW_SERVICE_TYPE);
+  const candidate = runtime.getService(WORKFLOW_SERVICE_TYPE);
   return (candidate as WorkflowService | null) ?? null;
 }
 

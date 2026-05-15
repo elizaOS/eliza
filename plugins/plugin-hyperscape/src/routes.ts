@@ -159,7 +159,7 @@ function persistCredential(
   }
 
   try {
-    runtime.setSetting?.(key, value, secret);
+    runtime.setSetting(key, value, secret);
   } catch (err) {
     logger.error(`[hyperscape] Failed to persist credential "${key}": ${err}`);
   }
@@ -255,7 +255,7 @@ async function prepareWalletAuthFromRuntime(
       body: JSON.stringify({
         walletAddress: evm,
         walletType: "evm",
-        agentName: runtime.character?.name,
+        agentName: runtime.character.name,
         agentId: runtime.agentId,
       }),
       signal: AbortSignal.timeout(HYPERSCAPE_WALLET_AUTH_TIMEOUT_MS),

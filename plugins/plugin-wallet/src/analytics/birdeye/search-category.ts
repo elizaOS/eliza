@@ -215,7 +215,7 @@ export function registerBirdeyeSearchCategories(
   options: BirdeyeSearchCategoryOptions = {},
 ): void {
   if (typeof runtime.registerSearchCategory !== "function") {
-    runtime.logger?.warn?.(
+    runtime.logger.warn(
       "Birdeye search category registry is unavailable; token search metadata was not registered",
     );
     return;
@@ -382,7 +382,7 @@ async function searchTokensBySymbol(
         markets:
           typeof filters.markets === "string" ? filters.markets : undefined,
       });
-      const tokens = (response?.data?.items ?? [])
+      const tokens = (response.data.items)
         .filter((item) => item.type === "token" && item.result)
         .flatMap((item) => item.result)
         .filter(
@@ -529,7 +529,7 @@ export async function searchBirdeyeTokens(
   request: BirdeyeTokenSearchRequest,
   provider: BirdeyeTokenSearchProvider = new BirdeyeProvider(runtime),
 ) {
-  const query = String(request.query ?? "").trim();
+  const query = String(request.query).trim();
   const filters = request.filters ?? {};
   const requestedMode = normalizeMode(request.mode ?? filters.mode);
   const mode = inferMode(query, requestedMode);

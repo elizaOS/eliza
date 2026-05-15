@@ -149,14 +149,14 @@ export class MessageManager {
         "Processing image from message",
       );
 
-      if ("photo" in message && message.photo?.length > 0) {
+      if ("photo" in message && message.photo.length > 0) {
         const photo = message.photo[message.photo.length - 1];
         const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
         imageUrl = fileLink.toString();
       } else if (
         "document" in message &&
-        message.document?.mime_type?.startsWith("image/") &&
-        !message.document?.mime_type?.startsWith("application/pdf")
+        message.document.mime_type?.startsWith("image/") &&
+        !message.document.mime_type.startsWith("application/pdf")
       ) {
         const fileLink = await this.bot.telegram.getFileLink(
           message.document.file_id,
@@ -489,7 +489,7 @@ export class MessageManager {
     }
 
     // Process images
-    if ("photo" in message && message.photo?.length > 0) {
+    if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
         const photo = message.photo[message.photo.length - 1];
@@ -874,7 +874,7 @@ export class MessageManager {
 
           let sentMessages: boolean | Message.TextMessage[] = false;
           // channelType target === 'telegram'
-          if (content?.channelType === "DM") {
+          if (content.channelType === "DM") {
             sentMessages = [];
             if (ctx.from) {
               // FIXME split on 4096 chars
@@ -1005,8 +1005,8 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           chatId: ctx.chat?.id,
-          messageId: ctx.message?.message_id,
-          from: ctx.from?.username || ctx.from?.id,
+          messageId: ctx.message.message_id,
+          from: ctx.from.username || ctx.from.id,
           error: error instanceof Error ? error.message : String(error),
         },
         "Error handling Telegram message",
@@ -1195,7 +1195,7 @@ export class MessageManager {
         messageThreadId,
       );
 
-      if (!sentMessages?.length) {
+      if (!sentMessages.length) {
         return [];
       }
 

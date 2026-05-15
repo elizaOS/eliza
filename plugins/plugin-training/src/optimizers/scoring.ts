@@ -143,11 +143,11 @@ export function extractPlannerAction(text: string): string | null {
     }
   }
   const raw =
-    parsed?.action ??
-    parsed?.actionName ??
-    parsed?.name ??
-    parsed?.type ??
-    parsed?.actions;
+    parsed.action ??
+    parsed.actionName ??
+    parsed.name ??
+    parsed.type ??
+    parsed.actions;
   if (typeof raw === "string" && raw.trim()) {
     return raw.split(",")[0]?.trim().toUpperCase() ?? null;
   }

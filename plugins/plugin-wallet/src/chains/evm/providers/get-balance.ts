@@ -30,7 +30,7 @@ export const tokenBalanceProvider: Provider = {
     const inputText =
       typeof message.content === "string"
         ? message.content
-        : typeof message.content?.text === "string"
+        : typeof message.content.text === "string"
           ? message.content.text
           : "";
     const normalizedText = inputText.toLowerCase();

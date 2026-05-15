@@ -73,7 +73,7 @@ export function loadShellConfig(): ShellConfig {
 
   const parseResult = configSchema.safeParse(config);
   if (!parseResult.success) {
-    const errorMessage = parseResult.error.issues?.[0]?.message || parseResult.error.toString();
+    const errorMessage = parseResult.error.issues[0]?.message || parseResult.error.toString();
     throw new Error(`Shell plugin configuration error: ${errorMessage}`);
   }
 

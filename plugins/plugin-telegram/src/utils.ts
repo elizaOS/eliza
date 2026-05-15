@@ -236,7 +236,7 @@ export function convertToTelegramButtons(
 
   for (const button of buttons) {
     // Validate button has required properties
-    if (!button?.text || !button.url) {
+    if (!button.text || !button.url) {
       logger.warn(
         { src: "plugin:telegram", button },
         "Invalid button configuration, skipping",

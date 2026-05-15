@@ -95,7 +95,7 @@ export const agentSkillsPlugin: Plugin = {
 	// Self-declared auto-enable: activate when features.agentSkills is enabled.
 	autoEnable: {
 		shouldEnable: (_env, config) => {
-			const f = (config?.features as Record<string, unknown> | undefined)
+			const f = (config.features as Record<string, unknown> | undefined)
 				?.agentSkills;
 			return (
 				f === true ||

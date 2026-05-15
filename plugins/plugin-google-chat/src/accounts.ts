@@ -25,7 +25,7 @@ function envOrSetting(runtime: IAgentRuntime, key: string): string | undefined {
 }
 
 function characterConfig(runtime: IAgentRuntime): GoogleChatMultiAccountConfig {
-  const settings = runtime.character?.settings as Record<string, unknown> | undefined;
+  const settings = runtime.character.settings as Record<string, unknown> | undefined;
   const raw = settings?.googleChat ?? settings?.["google-chat"];
   return raw && typeof raw === "object" ? (raw as GoogleChatMultiAccountConfig) : {};
 }

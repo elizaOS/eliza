@@ -47,8 +47,8 @@ export const emoteAction: Action = {
     "Play one-shot VRM avatar emote animation. Silent visual side-action.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state) => {
-    if (runtime.character?.settings?.DISABLE_EMOTES) return false;
-    const source = (message?.content as Record<string, unknown>)?.source;
+    if (runtime.character.settings?.DISABLE_EMOTES) return false;
+    const source = (message.content as Record<string, unknown>)?.source;
     return source === "client_chat";
   },
 

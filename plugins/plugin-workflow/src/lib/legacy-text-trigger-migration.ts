@@ -128,7 +128,7 @@ export async function migrateLegacyTextTriggers(
     }
 
     try {
-      const draft = buildRespondToEventWorkflow(trigger, task.name ?? 'Trigger');
+      const draft = buildRespondToEventWorkflow(trigger, task.name);
       const deployed = await service.deployWorkflow(draft, runtime.agentId);
 
       if (!deployed.id) {

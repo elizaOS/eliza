@@ -31,7 +31,7 @@ interface AndroidContactEntry {
 function toEntry(contact: ContactSummary): AndroidContactEntry {
   return {
     id: contact.id,
-    displayName: contact.displayName ?? "",
+    displayName: contact.displayName,
     phones: contact.phoneNumbers,
     emails: contact.emailAddresses,
     starred: Boolean(contact.starred),

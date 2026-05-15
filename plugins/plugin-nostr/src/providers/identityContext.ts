@@ -37,7 +37,7 @@ export const identityContextProvider: Provider = {
       };
     }
 
-    const agentName = state?.agentName || "The agent";
+    const agentName = state.agentName || "The agent";
     try {
       const publicKey = nostrService.getPublicKey();
       const npub = nostrService.getNpub();

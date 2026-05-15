@@ -183,7 +183,7 @@ function filterMemoriesByQuery(memories: Memory[], query: string, limit: number)
   }
   return memories
     .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      const text = typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -358,8 +358,8 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           return readStoredMessagesForTargets(context.runtime, targets, limit);
         },
         searchMessages: async (context, params) => {
-          const limit = normalizeConnectorLimit(params?.limit);
-          const target = params?.target ?? context.target;
+          const limit = normalizeConnectorLimit(params.limit);
+          const target = params.target ?? context.target;
           const messages = target?.roomId
             ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
             : await readStoredMessagesForTargets(
@@ -442,7 +442,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           }
           return {
             entityId,
-            label: entity.names?.[0],
+            label: entity.names[0],
             aliases: entity.names,
             handles: {},
             metadata: entity.metadata,
@@ -545,7 +545,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   isConnected(): boolean {
     const legacy = this as { connected?: boolean };
-    const states = this.states ?? new Map<string, GoogleChatAccountState>();
+    const states = this.states;
     if (states.size === 0 && typeof legacy.connected === "boolean") {
       return legacy.connected;
     }
@@ -554,7 +554,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   getAccountId(runtime?: IAgentRuntime): string {
     const legacy = this as { settings?: GoogleChatSettings | null };
-    const states = this.states ?? new Map<string, GoogleChatAccountState>();
+    const states = this.states;
     if (states.size === 0 && legacy.settings?.accountId) {
       return normalizeGoogleChatAccountId(legacy.settings.accountId);
     }
@@ -575,7 +575,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
     const state = this.getState(accountId);
     const client = await state.auth.getClient();
     const tokenResponse = await client.getAccessToken();
-    const token = typeof tokenResponse === "string" ? tokenResponse : tokenResponse?.token;
+    const token = typeof tokenResponse === "string" ? tokenResponse : tokenResponse.token;
 
     if (!token) {
       throw new GoogleChatAuthenticationError("Failed to obtain access token");
@@ -1022,7 +1022,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private getState(accountId = this.defaultAccountId): GoogleChatAccountState {
     const normalized = normalizeGoogleChatAccountId(accountId);
-    const states = this.states ?? new Map<string, GoogleChatAccountState>();
+    const states = this.states;
     const state = states.get(normalized);
     if (state) {
       return state;

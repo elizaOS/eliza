@@ -39,7 +39,7 @@ function inferSummarizeFields(node: WorkflowNode): string[] | null {
   }
   const out: string[] = [];
   for (const entry of fields.values) {
-    if (typeof entry?.aggregation !== 'string' || typeof entry?.field !== 'string') {
+    if (typeof entry.aggregation !== 'string' || typeof entry.field !== 'string') {
       continue;
     }
     const prefix = SUMMARIZE_AGG_PREFIX[entry.aggregation];
@@ -64,7 +64,7 @@ function inferSetFields(node: WorkflowNode): string[] | null {
   const modern = params.assignments as { assignments?: Array<{ name?: string }> } | undefined;
   if (modern?.assignments && Array.isArray(modern.assignments)) {
     const names = modern.assignments
-      .map((a) => a?.name)
+      .map((a) => a.name)
       .filter((n): n is string => typeof n === 'string' && n.length > 0);
     if (names.length > 0) {
       return names;
@@ -80,7 +80,7 @@ function inferSetFields(node: WorkflowNode): string[] | null {
         continue;
       }
       for (const v of arr) {
-        if (typeof v?.name === 'string' && v.name.length > 0) {
+        if (typeof v.name === 'string' && v.name.length > 0) {
           names.push(v.name);
         }
       }

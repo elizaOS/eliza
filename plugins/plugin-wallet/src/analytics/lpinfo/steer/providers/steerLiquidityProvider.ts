@@ -283,7 +283,7 @@ async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
     const token0Address =
       typeof vault.token0 === "string"
         ? vault.token0
-        : vault.token0?.address || "Unknown";
+        : vault.token0.address || "Unknown";
     const token0Symbol = getTokenSymbol(token0Address);
     details += `   🪙 Token0: ${token0Address} (${token0Symbol})\n`;
   } else {
@@ -294,7 +294,7 @@ async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
     const token1Address =
       typeof vault.token1 === "string"
         ? vault.token1
-        : vault.token1?.address || "Unknown";
+        : vault.token1.address || "Unknown";
     const token1Symbol = getTokenSymbol(token1Address);
     details += `   🪙 Token1: ${token1Address} (${token1Symbol})\n`;
   } else {

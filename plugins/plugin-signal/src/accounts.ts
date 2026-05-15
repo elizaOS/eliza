@@ -119,7 +119,7 @@ export function normalizeAccountId(accountId?: string | null): string {
  * Gets the multi-account configuration from runtime settings
  */
 function getMultiAccountConfig(runtime: IAgentRuntime): SignalMultiAccountConfig {
-  const characterSignal = runtime.character?.settings?.signal as
+  const characterSignal = runtime.character.settings?.signal as
     | SignalMultiAccountConfig
     | undefined;
 

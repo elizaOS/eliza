@@ -175,7 +175,7 @@ export const extractChain = (
 };
 
 export const extractAddresses = (text: string): BaseAddress[] => {
-  if (!text?.match) return [];
+  if (!text.match) return [];
   const addresses: BaseAddress[] = [];
 
   // Sui addresses (0x followed by 64 hex chars). Extract first so the EVM
@@ -213,7 +213,7 @@ export const extractAddresses = (text: string): BaseAddress[] => {
   // Solana addresses (base58 strings)
   const solAddresses = Array.from(text.matchAll(/[1-9A-HJ-NP-Za-km-z]{32,44}/g))
     .filter((match) => {
-      const start = match.index ?? 0;
+      const start = match.index;
       const end = start + match[0].length;
       return (
         !/[A-Za-z0-9]/.test(text[start - 1] ?? "") &&
@@ -551,7 +551,7 @@ export const extractSymbols = (
   // strict mode will only extract symbols that are clearly formatted as a symbol using $SOL format
   mode: "strict" | "loose" = "loose",
 ): string[] => {
-  if (!text?.matchAll) return [];
+  if (!text.matchAll) return [];
   const symbols = new Set<string>();
 
   // Match patterns

@@ -69,7 +69,7 @@ export function ChatAvatar(_props: ChatAvatarProps) {
       const engine = vrmEngineRef.current;
       if (!engine) return;
       const detail = (event as CustomEvent<AppEmoteEventDetail>).detail;
-      if (!detail?.path) return;
+      if (!detail.path) return;
       const resolvedPath = resolveAppAssetUrl(detail.path);
       const duration =
         typeof detail.duration === "number" && Number.isFinite(detail.duration)

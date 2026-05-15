@@ -62,7 +62,7 @@ function toConnectorAccount(settings: GoogleChatSettings): ConnectorAccount {
     updatedAt: now,
     metadata: {
       audienceType: settings.audienceType,
-      audience: settings.audience ?? "",
+      audience: settings.audience,
       webhookPath: settings.webhookPath,
       requireMention: settings.requireMention,
       botUser: settings.botUser ?? "",

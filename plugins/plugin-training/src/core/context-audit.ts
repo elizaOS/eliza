@@ -143,7 +143,7 @@ function auditPluginEntries(
   const gaps: ContextAuditGap[] = [];
 
   for (const plugin of plugins) {
-    const pluginName = plugin.name ?? "unknown-plugin";
+    const pluginName = plugin.name;
     const pluginContexts = normalizeContexts(
       (plugin as PluginWithContexts).contexts,
     );

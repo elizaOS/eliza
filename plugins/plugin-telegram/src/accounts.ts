@@ -45,7 +45,7 @@ export function normalizeTelegramAccountId(accountId?: string | null): string {
 export function getTelegramMultiAccountConfig(
   runtime: IAgentRuntime,
 ): TelegramMultiAccountConfig {
-  const characterTelegram = runtime.character?.settings?.telegram as
+  const characterTelegram = runtime.character.settings?.telegram as
     | TelegramMultiAccountConfig
     | undefined;
 
