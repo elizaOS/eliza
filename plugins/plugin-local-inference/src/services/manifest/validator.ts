@@ -181,7 +181,6 @@ const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 
 const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
@@ -189,7 +188,6 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 
 function collectContractErrors(m: Eliza1Manifest): string[] {
@@ -487,7 +485,9 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	} else {
 		if (!dflashEnabled) {
-			errors.push(`evals.dflash: unsupported for DFlash-disabled tier ${m.tier}`);
+			errors.push(
+				`evals.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
 		}
 		if (
 			m.evals.dflash.passed &&
