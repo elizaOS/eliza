@@ -16,7 +16,7 @@ export type {
   ToolCacheEntry,
   ToolCallCacheOptions,
   ToolOutput,
-} from "@elizaos/agent/runtime/tool-call-cache/index";
+} from "@elizaos/agent";
 export {
   buildCacheKey,
   CACHEABLE_TOOL_REGISTRY,
@@ -25,4 +25,4 @@ export {
   isCacheable,
   resolveToolDescriptor,
   ToolCallCache,
-} from "@elizaos/agent/runtime/tool-call-cache/index";
+} from "@elizaos/agent";
