@@ -151,7 +151,7 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     expect(
-      screen.getByTestId("voice-prefix-family-list").textContent,
+      screen.getByTestId("voice-prefix-family-empty").textContent,
     ).toContain("No additional people");
     // Skip is rendered for optional steps.
     expect(screen.getByTestId("voice-prefix-skip")).toBeTruthy();
