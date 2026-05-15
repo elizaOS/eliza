@@ -40,6 +40,7 @@ export type VoiceModelId =
  * GGUF catalog. ONNX-only voice models use a sentinel `onnx-*` quant tag.
  */
 export type VoiceModelQuant =
+  | "q3_k_m"
   | "q4_0"
   | "q4_k_m"
   | "q5_k_m"
@@ -559,6 +560,54 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Qwen3-ASR streaming transcriber Q8_0.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "asr",
+    version: "0.2.0",
+    publishedToHfAt: "2026-05-15T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4",
+    ggufAssets: [
+      {
+        filename: "voice/asr/eliza-1-asr-q3_k_m.gguf",
+        sha256:
+          "80c046bf44cf52699bcef0f5a10d9774a0415c127432a0d0f428e6f1634d7f12",
+        sizeBytes: 1_073_237_952,
+        quant: "q3_k_m",
+      },
+      {
+        filename: "voice/asr/eliza-1-asr-q4_k_m.gguf",
+        sha256:
+          "de11f7110e6faddc277088262cffe8adc3228220a1cfd133c49420bb8bd3c3c5",
+        sizeBytes: 1_282_435_008,
+        quant: "q4_k_m",
+      },
+      {
+        filename: "voice/asr/eliza-1-asr-q5_k_m.gguf",
+        sha256:
+          "dcffc861bc968202a6ca1107f3335c3dfcd89d6945ca87569596d6a9f551207a",
+        sizeBytes: 1_471_801_280,
+        quant: "q5_k_m",
+      },
+      {
+        filename: "voice/asr/eliza-1-asr-q6_k.gguf",
+        sha256:
+          "b0f6f2d610dfcc95c4147271855d1aadf78d298d193666834912eb600c5eaf0b",
+        sizeBytes: 1_673_002_944,
+        quant: "q6_k",
+      },
+      {
+        filename: "voice/asr/eliza-1-asr-mmproj.gguf",
+        sha256:
+          "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        sizeBytes: 355_709_344,
+        quant: "q8_0",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K added for Qwen3-ASR-1.7B. Enables memory-tier selection. mmproj stays Q8_0 per R8 §3.6.",
     minBundleVersion: "0.0.0",
   },
 ];
