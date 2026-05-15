@@ -1,5 +1,7 @@
 # W3-12 — HuggingFace Audit Report
 
+phase=impl-done
+
 **Agent:** W3-12 (eliza-1 HF feature-complete)
 **Date:** 2026-05-14
 **HF repo audited:** `elizaos/eliza-1` (https://huggingface.co/elizaos/eliza-1)
