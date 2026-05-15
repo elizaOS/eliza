@@ -35,10 +35,20 @@ Per-frame speaker-activity segmentation for the Eliza-1 voice pipeline. Powers `
 
 | File | Role | Size |
 |------|------|------|
-| `pyannote-segmentation-3.0-int8.onnx` | Primary (INT8) | ~1.5 MB |
-| `pyannote-segmentation-3.0-fp32.onnx` | FP32 reference | ~6 MB |
+| `pyannote-segmentation-3.0-int8.onnx` | Primary (INT8) | 1.5 MB |
+| `pyannote-segmentation-3.0-fp32.onnx` | FP32 reference | 5.9 MB |
 | `manifest.json` | Machine-readable metadata | — |
+
+## Usage
+
+```python
+import numpy as np, onnxruntime as ort
+sess = ort.InferenceSession("pyannote-segmentation-3.0-int8.onnx", providers=["CPUExecutionProvider"])
+audio = np.random.randn(1, 1, 80_000).astype(np.float32) * 0.05  # 5 s @ 16 kHz
+logits = sess.run(None, {sess.get_inputs()[0].name: audio})[0]
+# logits.shape == (1, 293, 7)  # frames × powerset classes
+```
 
 ## License
 
-MIT.
+MIT. Upstream: [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) (MIT); ONNX export via [onnx-community/pyannote-segmentation-3.0](https://huggingface.co/onnx-community/pyannote-segmentation-3.0).

@@ -12,6 +12,24 @@
  */
 
 export { useSkillAction } from "./actions/use-skill";
+// === Phase 4E: consolidated skill code from packages/agent ===
+// HTTP route handlers + supporting services moved from packages/agent/src/api/
+// and packages/agent/src/services/. The agent's server.ts now imports them
+// from this barrel instead of co-locating them with the runtime.
+export { handleCuratedSkillsRoutes } from "./api/curated-skills-routes";
+export {
+	discoverSkills,
+	loadSkillPreferences,
+	saveSkillPreferences,
+} from "./api/skill-discovery-helpers";
+export { skillScaffoldMarkdown } from "./api/skill-scaffold";
+export type {
+	ElizaConfig as SkillsRouteElizaConfig,
+	SkillEntry,
+	SkillsRouteContext,
+	SkillsServerState,
+} from "./api/skills-routes";
+export { handleSkillsRoutes } from "./api/skills-routes";
 // Parser utilities
 export {
 	estimateTokens,
@@ -42,6 +60,30 @@ export {
 	isHomebrewAvailable,
 	isPipAvailable,
 } from "./services/install";
+export type {
+	CatalogSearchResult,
+	CatalogSkill,
+	CatalogSkillStats,
+	CatalogSkillVersion,
+} from "./services/skill-catalog-client";
+export {
+	getCatalogSkill,
+	getCatalogSkills,
+	getTrendingSkills,
+	refreshCatalog,
+	searchCatalogSkills,
+} from "./services/skill-catalog-client";
+export type {
+	InstalledMarketplaceSkill,
+	InstallSkillInput,
+	SkillsMarketplaceSearchItem,
+} from "./services/skill-marketplace";
+export {
+	installMarketplaceSkill,
+	listInstalledMarketplaceSkills,
+	searchSkillsMarketplace,
+	uninstallMarketplaceSkill,
+} from "./services/skill-marketplace";
 export type { AgentSkillsServiceConfig } from "./services/skills";
 // Service
 export { AgentSkillsService } from "./services/skills";
@@ -107,49 +149,6 @@ export {
 	SKILL_NAME_PATTERN,
 	SKILL_SOURCE_PRECEDENCE,
 } from "./types";
-
-// === Phase 4E: consolidated skill code from packages/agent ===
-// HTTP route handlers + supporting services moved from packages/agent/src/api/
-// and packages/agent/src/services/. The agent's server.ts now imports them
-// from this barrel instead of co-locating them with the runtime.
-export { handleCuratedSkillsRoutes } from "./api/curated-skills-routes";
-export {
-	discoverSkills,
-	loadSkillPreferences,
-	saveSkillPreferences,
-} from "./api/skill-discovery-helpers";
-export { skillScaffoldMarkdown } from "./api/skill-scaffold";
-export type {
-	ElizaConfig as SkillsRouteElizaConfig,
-	SkillEntry,
-	SkillsRouteContext,
-	SkillsServerState,
-} from "./api/skills-routes";
-export { handleSkillsRoutes } from "./api/skills-routes";
-export type {
-	CatalogSearchResult,
-	CatalogSkill,
-	CatalogSkillStats,
-	CatalogSkillVersion,
-} from "./services/skill-catalog-client";
-export {
-	getCatalogSkill,
-	getCatalogSkills,
-	getTrendingSkills,
-	refreshCatalog,
-	searchCatalogSkills,
-} from "./services/skill-catalog-client";
-export type {
-	InstalledMarketplaceSkill,
-	InstallSkillInput,
-	SkillsMarketplaceSearchItem,
-} from "./services/skill-marketplace";
-export {
-	installMarketplaceSkill,
-	listInstalledMarketplaceSkills,
-	searchSkillsMarketplace,
-	uninstallMarketplaceSkill,
-} from "./services/skill-marketplace";
 
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel

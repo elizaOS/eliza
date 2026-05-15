@@ -1,16 +1,16 @@
 {
   "$schema": "https://elizaos.dev/schemas/voice-manifest/v1.json",
   "version": 1,
-  "generatedAt": "2026-05-14T00:00:00Z",
+  "generatedAt": "2026-05-15T00:00:00Z",
   "assetAudit": {
-    "auditedAt": "2026-05-15T00:00:00Z",
-    "status": "all-discovered-binaries-hydrated-with-quality-notes",
+    "auditedAt": "2026-05-15T12:00:00Z",
+    "status": "all-10-voice-repos-live-on-hf-with-real-weights",
     "notes": [
-      "Public upstream payloads were downloaded into artifacts/voice-sub-model-staging and verified by sha256.",
-      "Binary-bearing voice repos were published to Hugging Face and hfRevision pins point at the publish commits.",
-      "Custom Eliza-only assets remain missing until their training/build pipelines produce binaries.",
-      "Remaining local custom payloads were staged where available: voice-emotion, Kokoro same, OmniVoice same preset, and wakeword.",
-      "Kokoro same and voice-emotion projection metrics remain quality-gate failed and are marked in sub-model manifests."
+      "All 10 elizaos/eliza-1-voice-* HF repos confirmed live with real ONNX/GGUF weights.",
+      "SHA256 and sizeBytes verified against HF LFS metadata for every binary asset.",
+      "turn-detector updated to v0.2.0 (DailyDialog fine-tune, F1=0.9811); hfRevision updated to 9eaff4947ebd87b1d811e27dec939e29362a9e42.",
+      "Kokoro same voice and voice-emotion remain quality-gate=false; staged and published as-is per spec.",
+      "OmniVoice same preset (716 bytes frozen conditioning) live on HF at b766eb23d5f6c84d580973c0f2013b6fcbd561c0."
     ]
   },
   "models": [

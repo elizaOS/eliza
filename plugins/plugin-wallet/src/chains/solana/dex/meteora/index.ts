@@ -12,7 +12,8 @@ export const meteoraPlugin: Plugin = {
   tests: [],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     try {
-      const { MeteoraLpService } = await import("./services/MeteoraLpService.ts");
+      const serviceModulePath = "./services/MeteoraLpService.ts";
+      const { MeteoraLpService } = await import(serviceModulePath);
       console.info("Meteora Plugin Initialized");
       const service =
         runtime.getService(MeteoraLpService.serviceType) ??

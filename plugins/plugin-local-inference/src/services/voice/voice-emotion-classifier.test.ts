@@ -128,10 +128,10 @@ describe("interpretCls7Output (cls7 head)", () => {
 	it("picks the argmax class with calibrated softmax confidence", () => {
 		// Logits aligned with EXPRESSIVE_EMOTION_TAGS:
 		//   ["happy","sad","angry","nervous","calm","excited","whisper"]
-		const logits = new Float32Array([0, 0, 3, 0, 0, 0, 0]); // strong angry
+		const logits = new Float32Array([0, 0, 5, 0, 0, 0, 0]); // strong angry
 		const out = interpretCls7Output(logits, WAV2SMALL_INT8_MODEL_ID, 7);
 		expect(out.emotion).toBe("angry");
-		expect(out.confidence).toBeGreaterThan(0.8);
+		expect(out.confidence).toBeGreaterThan(0.9);
 		// All 7 score keys present, all probabilities in [0, 1], sum ≈ 1.
 		const tags = [
 			"happy",

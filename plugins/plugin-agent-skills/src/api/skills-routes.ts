@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
@@ -15,7 +16,6 @@ import {
   PutSkillSourceRequestSchema,
   parseClampedInteger,
 } from "@elizaos/shared";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
