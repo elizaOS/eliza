@@ -83,18 +83,43 @@ Stable model ids:
 
 ## kokoro
 
+### 0.1.1 — 2026-05-14 (W3-11 post-mortem — samantha HF push BLOCKED)
+
+- **Status:** BLOCKED. Samantha fine-tune (mel-fit voice clone + full-FT
+  pivot) regresses on all quality metrics vs baseline af_bella.
+- **Decision:** Shipped samantha TTS path is switched to OmniVoice
+  frozen-conditioning preset (see `omnivoice` 0.1.1 entry + I6). Kokoro
+  samantha fine-tune is retained as a developer option (not the default)
+  pending corpus expansion (≥ 3h target) and proper StyleTTS-2 training
+  harness.
+- **Regression summary:**
+  - mel-fit voice clone (I7): WER 0.60 (+0.53 vs baseline), SpkSim 0.26
+    (-0.21 vs baseline), UTMOS -7.9 vs baseline 26.4 (SQUIM scale).
+  - Full-FT path (N2/finetune_kokoro_full.py): structurally cannot converge
+    on 3.5 min corpus (20–60× below the 1–3h community minimum).
+- **Root cause:** 58-clip / 3.5-min corpus is insufficient. Mel-fit objective
+  optimizes frame-level reconstruction, not speaker identity. LoRA training
+  harness (jonirajala/kokoro_training) is not pip-installable and is a
+  from-scratch model, not a hexgrad/Kokoro-82M adapter.
+- **Post-mortem:** `.swarm/impl/W3-11-kokoro-post-mortem.md`.
+- **Net improvement:** n/a (blocked).
+- **HF push:** DRY RUN only. Real push blocked (quality regression + license).
+
 ### 0.1.0 — 2026-05-14
 
-- **Initial release.** Ships with the I7 kokoro samantha voice-clone.
+- **Initial release.** Ships with the I7 kokoro samantha voice-clone
+  infrastructure (plumbing, no quality-passing weights).
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-kokoro-samantha` @ rev `TBD`.
+- **HF repo:** `elizaOS/eliza-1-voice-kokoro-samantha` @ rev `TBD` (pending quality).
 - **GGUF assets:** populated by the publish pipeline (kokoro 82M F16, plus
-  per-voice samantha style embedding).
+  per-voice samantha style embedding — BLOCKED on quality gate).
 - **Eval deltas:** baseline (MOS expressive: 4.21 internal; RTF 0.42 M1 Air).
 - **Net improvement:** n/a (initial).
-- **What changed:** First publish. Voice-embedding clone from the
-  `ai_voices/samantha` corpus (58 paired clips, 3.51 min, 44.1 kHz).
-  Apache-2.0.
+- **What changed:** Infrastructure publish. Voice-clone plumbing from the
+  `ai_voices/samantha` corpus (58 paired clips, 3.51 min, 44.1 kHz). Apache-2.0.
+  Fine-tune configs (`kokoro_samantha.yaml`, `kokoro_samantha_full.yaml`),
+  push script (`push_voice_to_hf.py`), eval comparison baseline, voice-presets.ts
+  samantha entry. No quality-passing weights shipped this release.
 
 ## omnivoice
 
@@ -177,6 +202,22 @@ Stable model ids:
 
 ## asr
 
+### 0.1.1 — 2026-05-14 (W3-11 — fine-tune scaffold landed)
+
+- **What changed:** Fine-tune scaffold for Qwen3-ASR now ships at
+  `packages/training/scripts/asr/`. Includes:
+  - `finetune_asr.py` — end-to-end pipeline (real + synthetic-smoke CI path).
+  - `eval_asr.py` — WER + RTF evaluation + baseline comparison + HF push gate.
+  - `configs/base.yaml`, `configs/asr_samantha.yaml` — YAML configs.
+  - `__tests__/test_asr_pipeline.py` — 15 tests, all passing.
+  - Artifact receipt under `artifacts/voice-fine-tune/samantha/<run-id>/`.
+- **Real training:** gated behind `--real-train` flag; requires GPU + torch +
+  transformers + apollo-torch. Compute budget per W3-11 scope: real ASR
+  training is out of scope for Wave 3.
+- **HF push:** gated on `beatsBaseline=True && operatorSignedOff=True`.
+  Dry-run infrastructure verified. Real push pending quality evaluation.
+- **Net improvement:** scaffold (no weights change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Qwen3-ASR streaming transcriber, GGUF Q4_K_M.
@@ -186,6 +227,26 @@ Stable model ids:
 - **Eval deltas:** baseline (WER 6.8% on LibriSpeech test-clean).
 - **Net improvement:** n/a (initial).
 - **What changed:** First publish.
+
+## omnivoice-fine-tune
+
+### 0.1.0 — 2026-05-14 (W3-11 — fine-tune scaffold + Path A shipped)
+
+- **What changed:** OmniVoice fine-tune scaffold at
+  `packages/training/scripts/omnivoice/`. Includes:
+  - `finetune_omnivoice.py` — pipeline with synthetic-smoke + real-train modes.
+  - `eval_omnivoice.py` — WER + RTF + speaker similarity eval.
+  - `configs/base.yaml`, `configs/omnivoice_samantha.yaml` — YAML configs.
+  - `__tests__/test_omnivoice_pipeline.py` — 9 tests, all passing.
+- **Path A (shipped):** OmniVoice frozen-conditioning samantha preset (I6).
+  ELZ2 v2 preset at `<bundle>/cache/voice-preset-samantha.bin`. This IS the
+  shipped samantha TTS path for Wave 3 (Kokoro fine-tune regressed).
+- **Path B (scaffold only):** LM weight fine-tune requires GGUF→HF conversion
+  tooling not yet available. Architecture documented; deferred post-Wave-3.
+- **HF push:** Path A preset ships as part of the bundle (no separate HF push
+  needed for the preset — it's a side-car file). Path B HF push pending.
+- **Net improvement:** Path A is the default samantha voice; RTF ~3.5–5×
+  realtime (slight slowdown vs auto-voice from reference token overhead).
 
 ---
 
