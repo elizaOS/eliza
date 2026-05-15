@@ -9,6 +9,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildOpenRouterPreparedEntries,
+  chooseBestCandidatePricingEntry,
   stripVersionedSnapshotSuffix,
 } from "@/lib/services/ai-pricing";
 
@@ -87,6 +88,22 @@ describe("stripVersionedSnapshotSuffix — must-not-strip cases", () => {
   test("returns null for ids without dash-version markers", () => {
     expect(stripVersionedSnapshotSuffix("openai")).toBeNull();
     expect(stripVersionedSnapshotSuffix("anthropic/")).toBeNull();
+  });
+
+  test("does NOT treat a non-date 8-digit run id as a date suffix", () => {
+    // A vendor suffix like -99000001 must not be silently stripped as a
+    // compact date. Year-anchoring the compact-date pattern is what blocks
+    // this: only -19YYMMDD / -20YYMMDD shapes are accepted as dates.
+    expect(stripVersionedSnapshotSuffix("vendor/family-name-99000001")).toBeNull();
+  });
+
+  test("accepts realistic compact-date suffixes for both 19xx and 20xx years", () => {
+    expect(stripVersionedSnapshotSuffix("vendor/model-family-19991231")).toBe(
+      "vendor/model-family",
+    );
+    expect(stripVersionedSnapshotSuffix("vendor/model-family-20240605")).toBe(
+      "vendor/model-family",
+    );
   });
 });
 
@@ -168,5 +185,62 @@ describe("buildOpenRouterPreparedEntries — exact + stripped variants", () => {
     expect(entries).toHaveLength(2);
     expect(entries.every((e) => e.chargeType === "input")).toBe(true);
     expect(entries.find((e) => e.model === "google/gemini-2.0-flash")?.priority).toBe(-1);
+  });
+});
+
+describe("chooseBestCandidatePricingEntry — tie-break when stripped variants conflict", () => {
+  function buildCandidate(snapshotId: string, unitPrice: number) {
+    return {
+      entry: {
+        billingSource: "openrouter" as const,
+        provider: "google",
+        model: "google/gemini-2.0-flash",
+        productFamily: "language" as const,
+        chargeType: "input",
+        unit: "token" as const,
+        unitPrice,
+        sourceKind: "openrouter_catalog",
+        sourceUrl: "https://openrouter.ai/api/v1/models",
+        priority: -1,
+        metadata: { snapshotId },
+      },
+      modelId: "google/gemini-2.0-flash",
+      logicalProvider: "google",
+    };
+  }
+
+  test("picks the higher unitPrice when two stripped snapshots collide", () => {
+    // Two snapshots strip to the same canonical id but list different
+    // prices. Without the unitPrice tie-break the winner is decided by input
+    // ordering, which is non-deterministic across catalog fetches and DB
+    // result orderings. Conservative billing: the higher price wins.
+    const cheap = buildCandidate("google/gemini-2.0-flash-001", 0.0000001);
+    const expensive = buildCandidate("google/gemini-2.0-flash-002", 0.00000015);
+
+    const cheapFirst = chooseBestCandidatePricingEntry(
+      [cheap, expensive],
+      {},
+      "google/gemini-2.0-flash",
+    );
+    expect(cheapFirst?.entry.unitPrice).toBe(0.00000015);
+
+    const expensiveFirst = chooseBestCandidatePricingEntry(
+      [expensive, cheap],
+      {},
+      "google/gemini-2.0-flash",
+    );
+    expect(expensiveFirst?.entry.unitPrice).toBe(0.00000015);
+  });
+
+  test("returns deterministic winner when both prices are equal", () => {
+    // Equal prices: localeCompare on modelId is the final tie-break, but
+    // since both rows share the same stripped modelId we still need a
+    // stable answer. The function must return a non-null match either way.
+    const a = buildCandidate("google/gemini-2.0-flash-001", 0.0000001);
+    const b = buildCandidate("google/gemini-2.0-flash-002", 0.0000001);
+
+    const winner = chooseBestCandidatePricingEntry([a, b], {}, "google/gemini-2.0-flash");
+    expect(winner).not.toBeNull();
+    expect(winner?.entry.unitPrice).toBe(0.0000001);
   });
 });

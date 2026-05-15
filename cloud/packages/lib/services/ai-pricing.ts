@@ -372,7 +372,7 @@ function inferOpenRouterProductFamily(model: OpenRouterCatalogModel): PricingPro
 export function stripVersionedSnapshotSuffix(modelId: string): string | null {
   const datedOrLabelledPatterns = [
     /-\d{4}-\d{2}-\d{2}$/, // ISO date: -2024-06-05
-    /-\d{8}$/, // compact date: -20240605
+    /-(?:19|20)\d{6}$/, // compact date: -20240605 (year-anchored so unrelated 8-digit run-ids aren't stripped)
     /-latest$/,
     /-preview$/,
     /-beta$/,
@@ -1123,7 +1123,7 @@ function providerPersistRank(provider: string, logicalProvider: string): number 
   return idx === -1 ? keys.length : idx;
 }
 
-function chooseBestCandidatePricingEntry(
+export function chooseBestCandidatePricingEntry(
   candidates: CandidatePreparedPricingEntry[],
   requestedDimensions: PricingDimensions,
   canonicalModel: string,
@@ -1154,6 +1154,14 @@ function chooseBestCandidatePricingEntry(
       providerPersistRank(left.entry.provider, left.logicalProvider) -
       providerPersistRank(right.entry.provider, right.logicalProvider);
     if (providerDiff !== 0) return providerDiff;
+
+    // When two stripped snapshot variants reduce to the same canonical id
+    // (e.g. `gemini-2.0-flash-001` and `gemini-2.0-flash-002` both stripping
+    // to `gemini-2.0-flash`), every preceding tie-break is a no-op. Prefer
+    // the higher unitPrice as a conservative fallback: never under-bill the
+    // platform when snapshot prices diverge.
+    const priceDiff = right.entry.unitPrice - left.entry.unitPrice;
+    if (priceDiff !== 0) return priceDiff;
 
     return right.modelId.localeCompare(left.modelId);
   });
