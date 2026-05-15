@@ -17,13 +17,13 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from elizaos_gaia.harness import (
+from elizaos_gaia.runner import (
     harness_env_updates,
     normalize_harness_label,
     resolve_harness,
+    run_quick_test,
+    write_trajectory_artifacts,
 )
-from elizaos_gaia.runner import run_quick_test
-from elizaos_gaia.trajectory import write_trajectory_artifacts
 from elizaos_gaia.types import GAIAConfig
 
 _RESEARCH_CAPABILITIES = {

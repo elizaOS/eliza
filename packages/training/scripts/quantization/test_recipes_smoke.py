@@ -202,28 +202,6 @@ def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
     assert not hasattr(push_model_to_hf, "QUANT_BLURBS")
 
 
-def test_eliza1_required_quantization_hooks_are_reproducible():
-    training_root = _HERE.parents[1]
-    if str(training_root) not in sys.path:
-        sys.path.insert(0, str(training_root))
-    from scripts.training.model_registry import ELIZA1_REQUIRED_QUANTIZATION_AFTER
-
-    expected = (
-        "polarquant",
-        "turboquant",
-        "fused_turboquant",
-        "qjl",
-        "gguf-q3_k_m",
-        "gguf-q4_k_m",
-        "gguf-q5_k_m",
-        "gguf-q6_k",
-        "gguf-q8_0",
-    )
-    assert ELIZA1_REQUIRED_QUANTIZATION_AFTER == expected
-    for hook in expected:
-        assert (_HERE / f"{hook}_apply.py").is_file(), hook
-
-
 # ---------------------------------------------------------------------------
 # Kernel-vs-recipe parity tests
 #

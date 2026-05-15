@@ -5,7 +5,7 @@
  * Shared implementation ported forward to Electrobun; no runtime-specific APIs required.
  */
 
-import { ALL_PROBERS } from "@elizaos/agent";
+import { ALL_PROBERS } from "@elizaos/agent/services/permissions/probers/index";
 import { getMacPermissionDeepLink } from "@elizaos/shared";
 import type { SendToWebview } from "../types.js";
 import type {
