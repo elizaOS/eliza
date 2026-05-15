@@ -1,35 +1,37 @@
 #!/usr/bin/env python3
 """Fine-tune the Eliza-1 semantic end-of-turn (EOT) detector.
 
-This is the scaffolded entrypoint for the workflow specified in
-[``.swarm/research/R1-turn.md``][R1] §5. It implements the LoRA / APOLLO
-fine-tune path against the LiveKit Turn Detector ONNX export (the default
-ship target) and the Apache-2.0 ``latishab/turnsense`` fallback.
+Entrypoint for the workflow specified in
+[``.swarm/research/R1-turn.md``][R1] §5. Implements the APOLLO fine-tune
+path against the LiveKit Turn Detector (default ship target) and the
+Apache-2.0 ``latishab/turnsense`` fallback.
 
 [R1]: ../../../../.swarm/research/R1-turn.md
 
 Pipeline (each step is a function below; ``--help`` lists the flags):
 
-  1. Resolve the config YAML — `load_config()`. The config pins the
-     teacher repo / revision, the LoRA rank, optimizer choice (APOLLO or
-     AdamW), and the eval thresholds.
-  2. Stage TURNS-2K + the Easy Turn testset under
-     ``packages/training/data/turn/`` — `stage_data()`. Apply the
-     privacy filter on every transcript record.
+  1. Resolve the config YAML — `load_config()`. Pins the teacher repo /
+     revision, the LoRA rank, optimizer choice (APOLLO only — see
+     `packages/training/AGENTS.md §1`), and the eval thresholds.
+  2. Stage pretrain + SFT corpora — `build_pretrain_corpus()` for the
+     EOU-labelled JSONL from DailyDialog (MultiWOZ / EmotionPush /
+     TURNS-2K are documented add-ons), `build_sft_corpus()` for the
+     task-conditional augmentation pairs.
   3. Tokenize against the upstream tokenizer + apply the Qwen chat
      template — `build_examples()`.
-  4. Train — `train_lora()`. APOLLO is preferred (gradient-low-rank
-     projection beats AdamW under our throughput budget per the APOLLO
-     paper); fall back to AdamW if `apollo-py` is not available.
+  4. Train — `train_lora()`. APOLLO-Mini optimizer (rank-1 tensor-wise
+     scaling — the smallest optimizer-state footprint, right-sized for
+     a ~135M-param classifier head). Checkpoints every
+     ``--checkpoint-every`` steps, keeps top-3 by validation F1, raises
+     ``RuntimeError`` if the configured F1 gate isn't met at exit.
   5. Export — `export_onnx()`. Re-quantizes to INT8 (`onnx/model_q8.onnx`),
      matches the upstream filename so the bundle stager picks it up
      without an extra flag.
   6. Evaluate via `eval_turn_detector.py` — the gate
-     (F1 ≥ 0.85 and meanLatencyMs ≤ 30) is what decides publish-ability.
+     (F1 ≥ 0.85 and meanLatencyMs ≤ 30) decides publish-ability.
 
-This file is intentionally a runnable *skeleton* — the heavy training
-steps raise `NotImplementedError` until the real recipe lands. The
-config-IO + smoke surface is real and tested.
+Smoke mode (``--smoke``) writes only the resolved config + the staged-data
+manifest, so the CI surface stays runnable without the corpora or GPU.
 """
 
 from __future__ import annotations
