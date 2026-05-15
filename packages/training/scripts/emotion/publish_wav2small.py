@@ -38,11 +38,14 @@ import sys
 LOG = logging.getLogger("publish_wav2small")
 
 DEFAULT_REPO = "elizaos/eliza-1-voice-emotion"
-DEFAULT_RUN_DIR = pathlib.Path("packages/training/out/emotion-wav2small-v1")
+DEFAULT_RUN_DIR = pathlib.Path("packages/training/out/emotion-wav2small-final")
 
-# Files to upload — relative paths in the HF repo.
-ARTIFACT_ONNX = "wav2small-msp-dim-int8.onnx"
-ARTIFACT_PROV = "wav2small-msp-dim-int8.json"
+# Files to upload — relative paths in the HF repo. Defaults match the
+# V-A-D head; callers pass `--head cls7` to flip both filenames.
+ARTIFACT_ONNX_VAD = "wav2small-msp-dim-int8.onnx"
+ARTIFACT_PROV_VAD = "wav2small-msp-dim-int8.json"
+ARTIFACT_ONNX_CLS7 = "wav2small-cls7-int8.onnx"
+ARTIFACT_PROV_CLS7 = "wav2small-cls7-int8.json"
 
 
 README_TEMPLATE = """---
@@ -64,24 +67,26 @@ pipeline_tag: audio-classification
 **ONNX size:** {onnx_size_bytes:,} bytes
 **Quantization:** INT8 dynamic (opset 17)
 **Input:** `pcm: float32[batch, samples]` at 16 kHz mono
-**Output:** `vad: float32[batch, 3]` — `(valence, arousal, dominance)`
-in [0, 1]
+**Output ({head_name} head):** {head_description}
 
-A tiny (~72K-parameter) student model for continuous V-A-D emotion
-regression on speech, distilled from the
+A tiny (~72K-parameter) student model for speech emotion classification,
+distilled from the
 [`audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`](https://huggingface.co/audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim)
 teacher (Wagner et al., *Dawn of the Transformer Era in Speech Emotion
 Recognition*, 2022). Architecture follows Wav2Small (Wagner et al.,
 [arXiv:2408.13920](https://arxiv.org/abs/2408.13920)): a frozen LogMel
 front-end → two 1-D conv blocks → two small Transformer encoder layers
-→ mean pool → linear sigmoid head.
+→ mean pool → linear head.
 
-This release also exposes an auxiliary 7-class head trained against the
-projected `EXPRESSIVE_EMOTION_TAGS` set used by the eliza-1 runtime:
-`(happy, sad, angry, nervous, calm, excited, whisper)`. The shipped
-ONNX only exposes the V-A-D head; the runtime adapter
-`voice-emotion-classifier.ts` discretises V-A-D into the seven-class
-projection.
+The training graph has two heads — continuous V-A-D regression and a
+7-class direct classifier — supervised jointly. This release ships the
+**{head_name}** head as the ONNX output. The runtime adapter at
+`plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts`
+auto-detects the contract by the output's last dim (3 → V-A-D, 7 →
+cls7) and uses the appropriate path.
+
+Class label order (cls7 head):
+`(happy, sad, angry, nervous, calm, excited, whisper)`.
 
 ## Intended use
 
@@ -105,32 +110,31 @@ the sole signal in any decision that materially affects a person.**
 
 ## Training
 
-- Corpus: **RAVDESS** ([`xbgoose/ravdess`](https://huggingface.co/datasets/xbgoose/ravdess)),
-  1,440 clips, 24 actors, 8 emotional categories at 48 kHz mono speech.
-  Mapped 7-of-8 RAVDESS emotions onto `EXPRESSIVE_EMOTION_TAGS`
-  (`disgust` dropped — no good mapping); `whisper` is absent from
-  RAVDESS, so the seven-class head reports F1 over the six populated
-  classes.
+- Corpus: {corpus_list}
 - Teacher pseudo-labels: each clip resampled to 16 kHz mono, padded to
   one 8-second window, then run through the audeering teacher to
   extract continuous V-A-D in [0, 1]. The teacher's A-D-V output is
-  re-ordered to V-A-D to match our runtime contract.
-- Optimizer: APOLLO-Mini (rank-1 tensor-wise — repo policy forbids
+  re-ordered to V-A-D to match our runtime contract. Teacher outputs
+  are cached so retrains skip the teacher cost.
+- Optimizer: **APOLLO-Mini** (rank-1 tensor-wise — repo policy forbids
   AdamW / Muon, see `packages/training/AGENTS.md`).
 - Schedule: cosine decay + 5% linear warmup.
-- Joint loss: `0.3 * MSE(V-A-D) + 1.0 * weighted-CE(7-class)`;
+- Joint loss: `0.5 * MSE(V-A-D) + 1.0 * weighted-CE(7-class)`;
   class weights are inverse-frequency over the training split.
 - Split: deterministic 80/10/10 train/val/test (seed=7).
+- `whisper` is absent from both RAVDESS and CREMA-D, so the seven-class
+  head reports F1 over the six populated classes; `disgust` is dropped
+  on both corpora because there is no expressive-tag mapping.
 
 ## Eval
 
-Test-split metrics on the held-out RAVDESS slice (126 clips):
+Test-split metrics on the held-out split:
 
 | Metric              | Value |
 |---------------------|-------|
-| MSE (V-A-D)         | {mse_vad:.4f} |
-| Macro-F1 (7 class)  | {macro_f1:.4f} |
+| Macro-F1 (7 class)  | **{macro_f1:.4f}** |
 | Accuracy (7 class)  | {accuracy:.4f} |
+| MSE (V-A-D)         | {mse_vad:.4f} |
 
 Eval gate: `macro_f1 >= 0.35`. The release pipeline refuses to publish
 artifacts under this threshold.
@@ -176,8 +180,29 @@ def _sha256_of(path: pathlib.Path) -> str:
     return h.hexdigest()
 
 
+def _head_description(head: str) -> str:
+    if head == "cls7":
+        return (
+            "`cls_logits: float32[batch, 7]` — softmax-friendly logits "
+            "in `EXPRESSIVE_EMOTION_TAGS` order; the runtime adapter "
+            "argmaxes these directly."
+        )
+    return (
+        "`vad: float32[batch, 3]` — `(valence, arousal, dominance)` in "
+        "[0, 1]; the runtime adapter projects to "
+        "`EXPRESSIVE_EMOTION_TAGS`."
+    )
+
+
 def build_readme(
-    *, version: str, onnx_path: pathlib.Path, metrics: dict, param_count: int,
+    *,
+    version: str,
+    onnx_path: pathlib.Path,
+    metrics: dict,
+    param_count: int,
+    head: str,
+    corpora: list[str],
+    script_path: str,
 ) -> str:
     sha = _sha256_of(onnx_path)
     size = onnx_path.stat().st_size
@@ -189,17 +214,41 @@ def build_readme(
         mse_vad=float(metrics.get("mse_vad", 0.0)),
         macro_f1=float(metrics.get("macro_f1", 0.0)),
         accuracy=float(metrics.get("accuracy", 0.0)),
+        head_name=head,
+        head_description=_head_description(head),
+        corpus_list=", ".join(corpora) if corpora else "operator-managed",
+    ).replace(
+        "**Trainer script:** `packages/training/scripts/emotion/run_distill_ravdess.py`",
+        f"**Trainer script:** `{script_path}`",
     )
 
 
 def build_manifest(
-    *, version: str, onnx_path: pathlib.Path, metrics: dict, param_count: int,
+    *,
+    version: str,
+    onnx_path: pathlib.Path,
+    metrics: dict,
+    param_count: int,
+    head: str,
+    corpora: list[str],
+    script_path: str,
 ) -> dict:
+    artifact_onnx = ARTIFACT_ONNX_CLS7 if head == "cls7" else ARTIFACT_ONNX_VAD
+    display_name = (
+        "Wav2Small 7-class emotion classifier (cls7 head)" if head == "cls7"
+        else "Wav2Small acoustic V-A-D classifier (vad head)"
+    )
+    purpose = (
+        "voice-emotion 7-class classifier (argmax over EXPRESSIVE_EMOTION_TAGS)"
+        if head == "cls7"
+        else "voice-emotion V-A-D regression for prosody tagging"
+    )
     return {
         "id": "voice-emotion",
         "version": version,
-        "displayName": "Wav2Small acoustic V-A-D classifier",
-        "purpose": "voice-emotion V-A-D regression for prosody tagging",
+        "head": head,
+        "displayName": display_name,
+        "purpose": purpose,
         "license": "Apache-2.0",
         "teacher": {
             "repo": "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim",
@@ -221,15 +270,15 @@ def build_manifest(
         "paramCount": int(param_count),
         "artifacts": [
             {
-                "filename": ARTIFACT_ONNX,
+                "filename": artifact_onnx,
                 "quantization": "int8-dynamic",
                 "opset": 17,
                 "sha256": _sha256_of(onnx_path),
                 "sizeBytes": onnx_path.stat().st_size,
             },
         ],
-        "corpus": ["xbgoose/ravdess"],
-        "scriptPath": "packages/training/scripts/emotion/run_distill_ravdess.py",
+        "corpus": corpora,
+        "scriptPath": script_path,
     }
 
 
@@ -237,7 +286,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=pathlib.Path, default=DEFAULT_RUN_DIR)
     parser.add_argument("--hf-repo", default=DEFAULT_REPO)
-    parser.add_argument("--version", default="0.1.0")
+    parser.add_argument("--version", default="0.2.0")
+    parser.add_argument(
+        "--head", choices=("vad", "cls7"), default="cls7",
+        help="Which head the ONNX file emits. Selects the artifact filename "
+             "and labels the README/manifest accordingly.",
+    )
+    parser.add_argument(
+        "--corpus", action="append", default=None,
+        help="Repeatable: HF dataset slug used in training. Defaults to "
+             "['xbgoose/ravdess', 'confit/cremad-parquet'] (Path A combined).",
+    )
+    parser.add_argument(
+        "--script-path", default=None,
+        help="Trainer script path recorded in the manifest. Defaults to "
+             "the combined-corpus orchestrator.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -246,8 +310,13 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    onnx_path = args.run_dir / ARTIFACT_ONNX
-    prov_path = args.run_dir / ARTIFACT_PROV
+    artifact_onnx = ARTIFACT_ONNX_CLS7 if args.head == "cls7" else ARTIFACT_ONNX_VAD
+    artifact_prov = ARTIFACT_PROV_CLS7 if args.head == "cls7" else ARTIFACT_PROV_VAD
+    onnx_path = args.run_dir / artifact_onnx
+    prov_path = args.run_dir / artifact_prov
+    # Prefer the structured eval.json when present (Path A run dirs ship it);
+    # fall back to the legacy test-metrics.json under the v1 layout.
+    eval_path = args.run_dir / "eval.json"
     test_metrics_path = args.run_dir / "test-metrics.json"
     if not onnx_path.is_file():
         LOG.error("ONNX artifact missing: %s", onnx_path)
@@ -255,21 +324,37 @@ def main(argv: list[str] | None = None) -> int:
     if not prov_path.is_file():
         LOG.error("provenance sidecar missing: %s", prov_path)
         return 2
-    if not test_metrics_path.is_file():
-        LOG.error("test-metrics.json missing: %s", test_metrics_path)
+    metrics_source: pathlib.Path
+    if eval_path.is_file():
+        metrics_source = eval_path
+    elif test_metrics_path.is_file():
+        metrics_source = test_metrics_path
+    else:
+        LOG.error(
+            "eval.json or test-metrics.json missing under %s", args.run_dir,
+        )
         return 2
 
-    metrics = json.loads(test_metrics_path.read_text("utf-8"))
+    metrics = json.loads(metrics_source.read_text("utf-8"))
     prov = json.loads(prov_path.read_text("utf-8"))
     param_count = int(prov.get("param_count", 0))
+
+    corpora = args.corpus or ["xbgoose/ravdess", "confit/cremad-parquet"]
+    script_path = args.script_path or (
+        "packages/training/scripts/emotion/run_distill_combined.py"
+        if "confit/cremad-parquet" in corpora
+        else "packages/training/scripts/emotion/run_distill_ravdess.py"
+    )
 
     readme = build_readme(
         version=args.version, onnx_path=onnx_path,
         metrics=metrics, param_count=param_count,
+        head=args.head, corpora=corpora, script_path=script_path,
     )
     manifest = build_manifest(
         version=args.version, onnx_path=onnx_path,
         metrics=metrics, param_count=param_count,
+        head=args.head, corpora=corpora, script_path=script_path,
     )
 
     # Write the README + manifest into the run-dir so they're inspectable
@@ -282,9 +367,11 @@ def main(argv: list[str] | None = None) -> int:
     upload_plan = [
         (str(args.run_dir / "README.md"), "README.md"),
         (str(args.run_dir / "manifest.json"), "manifest.json"),
-        (str(onnx_path), ARTIFACT_ONNX),
-        (str(prov_path), ARTIFACT_PROV),
+        (str(onnx_path), artifact_onnx),
+        (str(prov_path), artifact_prov),
     ]
+    if eval_path.is_file():
+        upload_plan.append((str(eval_path), "eval.json"))
     LOG.info("upload plan to %s:", args.hf_repo)
     for local, remote in upload_plan:
         LOG.info("  %s  →  %s", local, remote)
@@ -307,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
             path_in_repo=remote,
             repo_id=args.hf_repo,
             repo_type="model",
-            commit_message=f"Publish wav2small-int8 {args.version}: {remote}",
+            commit_message=f"Publish wav2small-{args.head} {args.version}: {remote}",
         )
         LOG.info("  uploaded %s", remote)
 

@@ -1,0 +1,21 @@
+{
+  "model": "pyannote-segmentation-3.0-int8.onnx",
+  "upstream": "pyannote/segmentation-3.0",
+  "onnx_export_source": "onnx-community/pyannote-segmentation-3.0",
+  "license": "MIT",
+  "metrics": {
+    "der_ami_headset": 0.124,
+    "window_seconds": 5,
+    "frames_per_window": 293,
+    "powerset_classes": 7,
+    "max_local_speakers": 3
+  },
+  "smoke_test": {
+    "framework": "onnxruntime",
+    "input": "(B, 1, 80000) float32 audio @ 16 kHz",
+    "expected_output_shape": [1, 293, 7],
+    "observed_output_shape": [1, 293, 7],
+    "pass": true
+  },
+  "notes": "Eval numbers are the upstream pyannote-3.0 AMI-headset baseline; the smoke_test block is the S-static-models load-and-shape check."
+}
