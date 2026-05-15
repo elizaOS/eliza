@@ -595,6 +595,20 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ## asr
 
+### 0.2.0 — 2026-05-15 (T-asr — K-quant ladder)
+
+- **What changed:** K-quant ladder published for Qwen3-ASR-1.7B.
+  Four new quant variants uploaded to `elizaos/eliza-1`:
+  - `voice/asr/eliza-1-asr-q3_k_m.gguf` — 1.07 GB, sha256 `80c046bf…`
+  - `voice/asr/eliza-1-asr-q4_k_m.gguf` — 1.28 GB, sha256 `de11f711…`
+  - `voice/asr/eliza-1-asr-q5_k_m.gguf` — 1.47 GB, sha256 `dcffc861…`
+  - `voice/asr/eliza-1-asr-q6_k.gguf` — 1.67 GB, sha256 `b0f6f2d6…`
+  mmproj stays Q8_0 (sub-Q8 regresses WER per R8 §3.6). Enables tier-aware
+  memory selection: low-VRAM devices select Q3_K_M, standard devices Q4_K_M,
+  quality-first Q5_K_M+.
+  HF commit: `50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4`.
+- **Net improvement:** yes (ladder enables lower memory tiers).
+
 ### 0.1.3 — 2026-05-15 (G4 — HF repo live)
 
 - **What changed:** `elizaos/eliza-1-voice-asr` created on HuggingFace and
