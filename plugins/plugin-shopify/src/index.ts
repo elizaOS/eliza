@@ -35,6 +35,9 @@ const shopifyPlugin: Plugin = {
       );
     }
   },
+  async dispose(runtime) {
+    await runtime.getService<ShopifyService>(ShopifyService.serviceType)?.stop();
+  },
 };
 
 export default shopifyPlugin;

@@ -56,6 +56,10 @@ export const minecraftPlugin: Plugin = {
   services: [MinecraftService, WaypointsService],
   actions: [minecraftAction],
   providers: [minecraftStateProvider, minecraftWaypointsProvider, minecraftVisionProvider],
+  async dispose(runtime) {
+    await runtime.getService<WaypointsService>(WaypointsService.serviceType)?.stop();
+    await runtime.getService<MinecraftService>(MinecraftService.serviceType)?.stop();
+  },
 };
 
 export default minecraftPlugin;

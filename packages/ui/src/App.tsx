@@ -504,7 +504,10 @@ function ViewRouter({
     // Check if the current tab matches a dynamically-registered view with a
     // remote bundle URL. These are plugin-contributed views loaded at runtime
     // from /api/views — they live outside the main bundle.
-    const appSlug = tab === "apps" ? getAppSlugFromPath(navigationPath) : null;
+    const appSlug =
+      tab === "apps" || tab === "views"
+        ? getAppSlugFromPath(navigationPath)
+        : null;
     const remoteView = availableViews.find(
       (v) =>
         v.bundleUrl &&
@@ -568,9 +571,10 @@ function ViewRouter({
         return <ChatView />;
       case "stream":
         return <StreamView />;
+      case "views":
       case "apps":
-        // The "Views" tab now surfaces the ViewManagerPage — a searchable
-        // grid of all plugin-contributed views fetched from /api/views.
+        // The "views" and "apps" tabs both surface the ViewManagerPage — a
+        // searchable grid of all plugin-contributed views fetched from /api/views.
         // AppsPageView (game launcher) is accessible via app slug navigation.
         return APPS_ENABLED ? (
           <TabContentView chatScope="page-apps">
@@ -911,11 +915,11 @@ export function App() {
       if (!path) return;
       // For the Views manager specifically, navigate the tab directly so the
       // nav bar becomes visible without relying solely on URL routing.
-      if (
-        path === "/views" ||
-        path === "/apps" ||
-        detail.viewId === "views-manager"
-      ) {
+      if (path === "/views" || detail.viewId === "views-manager") {
+        setTab("views");
+        return;
+      }
+      if (path === "/apps") {
         setTab("apps");
         return;
       }
@@ -1225,7 +1229,7 @@ export function App() {
           />
           <main
             className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${
-              tab === "browser" || tab === "apps"
+              tab === "browser" || tab === "apps" || tab === "views"
                 ? ""
                 : "px-3 xl:px-5 py-4 xl:py-6"
             } ${tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS}`}
@@ -1346,7 +1350,7 @@ export function App() {
       )}
 
       {/* Persistent game overlay — stays visible across all tabs */}
-      {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && (
+      {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && tab !== "views" && (
         <GameViewOverlay />
       )}
       <ShellOverlays actionNotice={actionNotice} />

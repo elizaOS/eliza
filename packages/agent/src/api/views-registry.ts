@@ -6,11 +6,13 @@
  * layer (`views-routes.ts`) delegates all path resolution back to this module.
  */
 
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
 import type { AgentPlatform } from "./platform-detect.ts";
+import { BUILTIN_VIEWS } from "./builtin-views.ts";
 
 /** Hero image extensions checked in order when `heroImagePath` is not set. */
 const HERO_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg", ".svg"] as const;
@@ -53,6 +55,18 @@ export interface ViewRegistryEntry extends ViewDeclaration {
    * restricted platforms (iOS App Store, Google Play).
    */
   platform: AgentPlatform;
+  /** First 12 hex chars of the SHA-256 content hash of the bundle file. */
+  bundleHash?: string;
+  /** Bundle URL with `?v=<hash>` for immutable long-lived caching. */
+  bundleUrlVersioned?: string;
+  /** Bundle file size in bytes. */
+  bundleSize?: number;
+  /**
+   * True for entries registered by the built-in shell itself
+   * (pluginName === "@elizaos/builtin"). These views live in the main
+   * bundle and have no separate bundle file.
+   */
+  builtin?: boolean;
 }
 
 /** Module-level registry storage. Keyed by view id. */
@@ -242,6 +256,48 @@ export function unregisterPluginViews(pluginName: string): void {
 }
 
 /**
+ * Register all built-in first-party shell views.
+ *
+ * These views are declared in `builtin-views.ts` and live in the main shell
+ * bundle — no separate bundle file is required. Called once at server startup
+ * before any plugin views are registered, so plugin views can override them
+ * by registering the same id only when a conflict is logged (built-in wins
+ * under the existing conflict resolution rule).
+ *
+ * Safe to call multiple times — subsequent calls are no-ops because the
+ * conflict guard in `registerPluginViews` keeps the first registration.
+ */
+export function registerBuiltinViews(): void {
+  const loadedAt = Date.now();
+  const pluginName = "@elizaos/builtin";
+  for (const view of BUILTIN_VIEWS) {
+    if (registry.has(view.id)) {
+      // Already registered (e.g. called twice at startup). Skip silently.
+      continue;
+    }
+    const platform: AgentPlatform =
+      (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
+    const entry: ViewRegistryEntry = {
+      ...view,
+      pluginName,
+      pluginDir: undefined,
+      bundleUrl: undefined,
+      bundleUrlVersioned: undefined,
+      heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero`,
+      available: true,
+      loadedAt,
+      platform,
+      builtin: true,
+    };
+    registry.set(view.id, entry);
+  }
+  logger.info(
+    { src: "ViewRegistry", count: BUILTIN_VIEWS.length },
+    `[ViewRegistry] Registered ${BUILTIN_VIEWS.length} built-in views`,
+  );
+}
+
+/**
  * List all registered views.
  *
  * @param filter.developerMode - When `false` (default) hidden developer-only
@@ -276,27 +332,69 @@ export function getView(id: string): ViewRegistryEntry | undefined {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/** Compute a short content hash for a bundle file. Returns `null` on any I/O error. */
+async function computeBundleHash(filePath: string): Promise<string | null> {
+  try {
+    const content = await fs.readFile(filePath);
+    return createHash("sha256").update(content).digest("hex").slice(0, 12);
+  } catch {
+    return null;
+  }
+}
+
 async function buildEntry(
   view: ViewDeclaration,
   pluginName: string,
   pluginDir: string | undefined,
 ): Promise<ViewRegistryEntry> {
   const loadedAt = Date.now();
-  const bundleUrl = view.bundlePath
-    ? `/api/views/${encodeURIComponent(view.id)}/bundle.js?v=${loadedAt}`
-    : undefined;
 
-  const heroImageUrl = `/api/views/${encodeURIComponent(view.id)}/hero`;
-
-  // Check bundle availability synchronously using the resolved dir.
+  // Check bundle availability and collect hash + size when resolvable.
   let available = false;
+  let bundleHash: string | undefined;
+  let bundleSize: number | undefined;
   if (pluginDir && view.bundlePath) {
     const bundleAbs = path.resolve(pluginDir, view.bundlePath);
     const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
     if (bundleAbs.startsWith(packageRoot)) {
       available = await fileExists(bundleAbs);
+      if (available) {
+        const [hash, stat] = await Promise.all([
+          computeBundleHash(bundleAbs),
+          fs.stat(bundleAbs).catch(() => null),
+        ]);
+        if (hash) bundleHash = hash;
+        if (stat) bundleSize = stat.size;
+
+        // Log bundle size; warn when it exceeds 500 KB.
+        const sizeKb = stat ? stat.size / 1024 : 0;
+        if (stat && stat.size > 512 * 1024) {
+          logger.warn(
+            { src: "ViewRegistry", viewId: view.id, sizeKb: sizeKb.toFixed(0) },
+            `[ViewRegistry] View ${view.id} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
+          );
+        } else if (stat) {
+          logger.info(
+            { src: "ViewRegistry", viewId: view.id, sizeKb: sizeKb.toFixed(1) },
+            `[ViewRegistry] Registered view ${view.id} — bundle: ${sizeKb.toFixed(1)}KB`,
+          );
+        }
+      }
     }
   }
+
+  const encodedId = encodeURIComponent(view.id);
+  // bundleUrl uses a timestamp ?v= param for backwards-compat; bundleUrlVersioned
+  // uses the content hash when available (allows immutable long-lived caching).
+  const bundleUrl = view.bundlePath
+    ? `/api/views/${encodedId}/bundle.js?v=${loadedAt}`
+    : undefined;
+  const bundleUrlVersioned =
+    view.bundlePath && bundleHash
+      ? `/api/views/${encodedId}/bundle.js?v=${bundleHash}`
+      : bundleUrl;
+
+  const heroImageUrl = `/api/views/${encodedId}/hero`;
 
   // Derive a representative platform from the declaration's platforms list.
   // When multiple platforms are declared, the first entry wins. Absent the
@@ -309,9 +407,12 @@ async function buildEntry(
     pluginName,
     pluginDir,
     bundleUrl,
+    bundleUrlVersioned,
     heroImageUrl,
     available,
     loadedAt,
     platform,
+    bundleHash,
+    bundleSize,
   };
 }

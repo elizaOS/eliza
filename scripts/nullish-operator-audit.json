@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-15T10:27:32.117Z",
+  "generatedAt": "2026-05-15T10:34:05.390Z",
   "roots": [
     "packages/app-core"
   ],
@@ -9,22 +9,21 @@
   "apply": false,
   "summary": {
     "filesScanned": 291,
-    "total": 6018,
-    "typeObviousRemovable": 2,
+    "total": 6015,
+    "typeObviousRemovable": 0,
     "appliedEdits": 0
   },
   "byKind": {
     "binary-??": 1136,
     "binary-&&": 974,
-    "binary-||": 1190,
+    "binary-||": 1189,
     "non-null-assertion": 2,
-    "optional-chain": 992,
+    "optional-chain": 990,
     "optional-declaration": 1724
   },
   "byClassification": {
-    "review-required": 2157,
+    "review-required": 2156,
     "truthy-left-review": 7,
-    "type-obvious-removable": 2,
     "type-required-or-unknown": 2128,
     "upstream-type-review": 1724
   },
@@ -38970,36 +38969,6 @@
       "edit": null
     },
     {
-      "id": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:95:23:binary-||",
-      "kind": "binary-||",
-      "file": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts",
-      "line": 95,
-      "column": 23,
-      "classification": "review-required",
-      "reason": "|| has runtime truthiness/control-flow semantics",
-      "type": "false",
-      "text": "!request.target || request.target.kind !== \"secret\"",
-      "edit": null
-    },
-    {
-      "id": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:97:83:optional-chain",
-      "kind": "optional-chain",
-      "file": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts",
-      "line": 97,
-      "column": 83,
-      "classification": "type-obvious-removable",
-      "reason": "receiver type excludes null and undefined",
-      "type": "SensitiveRequestPrivateInfoTarget | SensitiveRequestPaymentTarget | SensitiveRequestOauthTarget",
-      "text": "request.target?.kind",
-      "edit": {
-        "file": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts",
-        "start": 2555,
-        "end": 2557,
-        "startLine": 97,
-        "replacement": "."
-      }
-    },
-    {
       "id": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:112:9:optional-chain",
       "kind": "optional-chain",
       "file": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts",
@@ -39094,24 +39063,6 @@
       "type": "string | null | undefined",
       "text": "request.ownerEntityId ?? undefined",
       "edit": null
-    },
-    {
-      "id": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:191:83:optional-chain",
-      "kind": "optional-chain",
-      "file": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts",
-      "line": 191,
-      "column": 83,
-      "classification": "type-obvious-removable",
-      "reason": "receiver type excludes null and undefined",
-      "type": "SensitiveRequestPrivateInfoTarget | SensitiveRequestPaymentTarget | SensitiveRequestOauthTarget",
-      "text": "request.target?.kind",
-      "edit": {
-        "file": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts",
-        "start": 5485,
-        "end": 5487,
-        "startLine": 191,
-        "replacement": "."
-      }
     },
     {
       "id": "packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:196:48:binary-??",

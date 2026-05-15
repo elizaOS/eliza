@@ -1,14 +1,14 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-15T10:27:32.117Z
+Generated: 2026-05-15T10:34:05.390Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
 | TypeScript files scanned | 291 |
-| Operators found | 6018 |
-| Type-obvious removable | 2 |
+| Operators found | 6015 |
+| Type-obvious removable | 0 |
 | Applied edits | 0 |
 
 ## By Kind
@@ -17,24 +17,20 @@ Generated: 2026-05-15T10:27:32.117Z
 | --- | ---: |
 | `binary-??` | 1136 |
 | `binary-&&` | 974 |
-| `binary-\|\|` | 1190 |
+| `binary-\|\|` | 1189 |
 | `non-null-assertion` | 2 |
-| `optional-chain` | 992 |
+| `optional-chain` | 990 |
 | `optional-declaration` | 1724 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 2157 |
+| `review-required` | 2156 |
 | `truthy-left-review` | 7 |
-| `type-obvious-removable` | 2 |
 | `type-required-or-unknown` | 2128 |
 | `upstream-type-review` | 1724 |
 
 ## Type-Obvious Removable Examples
 
-- `packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:97:83` optional-chain: request.target?.kind
-  - receiver type excludes null and undefined; type: `SensitiveRequestPrivateInfoTarget \| SensitiveRequestPaymentTarget \| SensitiveRequestOauthTarget`
-- `packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:191:83` optional-chain: request.target?.kind
-  - receiver type excludes null and undefined; type: `SensitiveRequestPrivateInfoTarget \| SensitiveRequestPaymentTarget \| SensitiveRequestOauthTarget`
+No type-obvious removable operators found.

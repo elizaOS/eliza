@@ -254,6 +254,7 @@ import {
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
 import { handleViewsRoutes } from "./views-routes.ts";
+import { registerBuiltinViews } from "./views-registry.ts";
 import {
   deriveSolanaAddress,
   fetchEvmBalances,
@@ -3291,6 +3292,10 @@ export async function startApiServer(opts?: {
 
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
+
+  // Register built-in first-party shell views in the view registry so
+  // GET /api/views always includes them and the agent can navigate to them.
+  registerBuiltinViews();
 
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,

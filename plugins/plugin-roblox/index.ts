@@ -31,6 +31,9 @@ export const robloxPlugin: Plugin = {
 
     runtime.logger.info({ universeId }, "Roblox plugin initialized");
   },
+  async dispose(runtime) {
+    await runtime.getService<RobloxService>(RobloxService.serviceType)?.stop();
+  },
 };
 
 export default robloxPlugin;

@@ -89,6 +89,7 @@
     "build:typescript": "turbo run build",
     "build:client": "turbo run build --filter=@elizaos/app",
     "build:views": "node scripts/build-views.mjs",
+    "dev:views": "node scripts/dev-views.mjs",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "clean": "turbo run clean --concurrency=100% && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",

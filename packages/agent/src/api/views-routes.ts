@@ -14,6 +14,7 @@
  *   POST /api/views/:id/interact       — reserved for agent-view interaction
  */
 
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 
@@ -134,9 +135,10 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    let data: Buffer;
+    // Stat the file first so we can compute an ETag and support 304 responses.
+    let stat: import("node:fs").Stats;
     try {
-      data = await fs.readFile(bundlePath);
+      stat = await fs.stat(bundlePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         error(
@@ -147,12 +149,54 @@ export async function handleViewsRoutes(
       } else {
         logger.error(
           { src: "ViewsRoutes", viewId: id, bundlePath, err },
-          `[ViewsRoutes] Failed to read bundle for view "${id}"`,
+          `[ViewsRoutes] Failed to stat bundle for view "${id}"`,
         );
         error(res, `Failed to read bundle for view "${id}"`, 500);
       }
       return true;
     }
+
+    // ETag derived from mtime + size — fast to compute, no need to read the
+    // full file, and stable across restarts for unchanged content.
+    const etagRaw = `${stat.mtimeMs}-${stat.size}`;
+    const etag = `"${createHash("sha256").update(etagRaw).digest("hex").slice(0, 16)}"`;
+    const ifNoneMatch = req.headers["if-none-match"];
+    if (ifNoneMatch === etag) {
+      const raw304 = res as {
+        writeHead?: (status: number, headers: Record<string, string>) => void;
+        end?: () => void;
+      };
+      if (typeof raw304.writeHead === "function") {
+        raw304.writeHead(304, {});
+      }
+      raw304.end?.();
+      return true;
+    }
+
+    let data: Buffer;
+    try {
+      data = await fs.readFile(bundlePath);
+    } catch (err) {
+      logger.error(
+        { src: "ViewsRoutes", viewId: id, bundlePath, err },
+        `[ViewsRoutes] Failed to read bundle for view "${id}"`,
+      );
+      error(res, `Failed to read bundle for view "${id}"`, 500);
+      return true;
+    }
+
+    // When the request carries a ?v= param that matches the entry's content
+    // hash, the URL is fully versioned — serve with a year-long immutable cache.
+    // Otherwise always revalidate via ETag so clients pick up updates promptly.
+    const vParam = url.searchParams.get("v");
+    const contentHashMatch =
+      entry.bundleHash && vParam === entry.bundleHash;
+    const cacheControl = contentHashMatch
+      ? "public, max-age=31536000, immutable"
+      : "no-cache";
+
+    // SRI informational header — sha256 of the raw bundle bytes.
+    const contentHash = createHash("sha256").update(data).digest("base64");
 
     const raw = res as {
       writeHead?: (
@@ -165,14 +209,18 @@ export async function handleViewsRoutes(
 
     if (typeof raw.writeHead === "function") {
       raw.writeHead(200, {
-        "Content-Type": "application/javascript",
+        "Content-Type": "application/javascript; charset=utf-8",
         "Content-Length": data.byteLength,
-        "Cache-Control": "no-cache",
+        "Cache-Control": cacheControl,
+        ETag: etag,
+        "X-Content-Hash": `sha256-${contentHash}`,
       });
     } else if (typeof raw.setHeader === "function") {
-      raw.setHeader("Content-Type", "application/javascript");
+      raw.setHeader("Content-Type", "application/javascript; charset=utf-8");
       raw.setHeader("Content-Length", data.byteLength);
-      raw.setHeader("Cache-Control", "no-cache");
+      raw.setHeader("Cache-Control", cacheControl);
+      raw.setHeader("ETag", etag);
+      raw.setHeader("X-Content-Hash", `sha256-${contentHash}`);
     }
     raw.end?.(data);
     return true;
@@ -188,14 +236,18 @@ export async function handleViewsRoutes(
 
     const resolved = await findHeroOnDisk(entry);
     if (resolved) {
+      let stat: import("node:fs").Stats | null = null;
       let data: Buffer;
       try {
-        data = await fs.readFile(resolved.absolutePath);
+        [stat, data] = await Promise.all([
+          fs.stat(resolved.absolutePath).catch(() => null),
+          fs.readFile(resolved.absolutePath),
+        ]);
       } catch {
         // Fall through to generated placeholder.
         return sendGeneratedHero(res, entry.label, entry.icon);
       }
-      return streamHeroImage(res, data, resolved.contentType);
+      return streamHeroImage(res, data, resolved.contentType, req, stat);
     }
 
     // No image found — send an SVG placeholder.
@@ -253,7 +305,26 @@ function streamHeroImage(
   res: http.ServerResponse,
   data: Buffer,
   contentType: string,
+  req: http.IncomingMessage,
+  stat: import("node:fs").Stats | null,
 ): true {
+  // Build an ETag from mtime + size when stat is available.
+  const etag = stat
+    ? `"${createHash("sha256").update(`${stat.mtimeMs}-${stat.size}`).digest("hex").slice(0, 16)}"`
+    : undefined;
+
+  if (etag && req.headers["if-none-match"] === etag) {
+    const raw304 = res as {
+      writeHead?: (status: number, headers: Record<string, string>) => void;
+      end?: () => void;
+    };
+    if (typeof raw304.writeHead === "function") {
+      raw304.writeHead(304, {});
+    }
+    raw304.end?.();
+    return true;
+  }
+
   const raw = res as {
     writeHead?: (
       status: number,
@@ -262,16 +333,19 @@ function streamHeroImage(
     setHeader?: (name: string, value: string | number) => void;
     end?: (chunk?: unknown) => void;
   };
+  const headers: Record<string, string | number> = {
+    "Content-Type": contentType,
+    "Content-Length": data.byteLength,
+    "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+  };
+  if (etag) headers["ETag"] = etag;
+
   if (typeof raw.writeHead === "function") {
-    raw.writeHead(200, {
-      "Content-Type": contentType,
-      "Content-Length": data.byteLength,
-      "Cache-Control": "public, max-age=300",
-    });
+    raw.writeHead(200, headers);
   } else if (typeof raw.setHeader === "function") {
-    raw.setHeader("Content-Type", contentType);
-    raw.setHeader("Content-Length", data.byteLength);
-    raw.setHeader("Cache-Control", "public, max-age=300");
+    for (const [k, v] of Object.entries(headers)) {
+      raw.setHeader(k, v);
+    }
   }
   raw.end?.(data);
   return true;

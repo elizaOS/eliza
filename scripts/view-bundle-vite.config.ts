@@ -114,6 +114,10 @@ export function createViewBundleConfig(
 
   const externals = [...DEFAULT_EXTERNALS, ...additionalExternals];
 
+  // In watch / dev mode enable sourcemaps and skip minification so rebuild
+  // cycles are fast and browser devtools show readable source.
+  const isDev = process.env.NODE_ENV !== "production";
+
   return defineConfig({
     plugins: [react()],
     build: {
@@ -125,7 +129,8 @@ export function createViewBundleConfig(
       },
       outDir,
       emptyOutDir: true,
-      sourcemap: false,
+      sourcemap: isDev,
+      minify: isDev ? false : "esbuild",
       rollupOptions: {
         external: (id: string) =>
           externals.some(

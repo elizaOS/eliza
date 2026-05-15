@@ -36,11 +36,16 @@ const MODES: readonly ViewsMode[] = [
 // Intent regexes — order matters: more specific first.
 const LIST_VERBS =
 	/\b(list|show all|what views|all views|available views|which views)\b/i;
+const WHAT_VIEWS_VERB = /what.{0,20}views?\b/i;
 const SEARCH_VERBS = /\b(search|find|look for|filter)\b.*\bview/i;
 const MANAGER_VERBS =
 	/\b(view manager|views manager|manage views|open manager|show manager)\b/i;
 const SHOW_ALL_VIEWS_MANAGER =
 	/\b(show|open|bring up|pull up)\b\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?views\b/i;
+const SHOW_APPS_VERBS =
+	/\b(show|open|go to|navigate to)\b\s+(?:the\s+)?(?:apps?|app page|apps page)\b/i;
+const CLOSE_VERBS =
+	/\b(close|dismiss|hide|exit|quit)\b.{0,40}\b(view|app|panel|window)\b/i;
 const SHOW_VERBS =
 	/\b(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i;
 const VIEW_NOUN = /\bview[s]?\b/i;
@@ -64,7 +69,10 @@ function inferMode(
 
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
 	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
+	if (SHOW_APPS_VERBS.test(trimmed)) return "manager";
+	if (CLOSE_VERBS.test(trimmed)) return "show";
 	if (SEARCH_VERBS.test(trimmed)) return "search";
+	if (WHAT_VIEWS_VERB.test(trimmed)) return "list";
 	if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "list";
 	if (SHOW_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "show";
 
@@ -103,6 +111,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"VIEWS_LIST",
 			"SWITCH_VIEW",
 			"CLOSE_VIEW",
+			"SHOW_APPS",
+			"OPEN_APPS",
+			"GO_TO_VIEW",
+			"NAVIGATE_TO_VIEW",
+			"WHAT_VIEWS",
 		],
 		description:
 			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, or show the view manager.",
@@ -203,13 +216,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				case "manager": {
-					// The view manager is the "/" or "/apps" shell route.
+					// The view manager lives at "/views" (preferred) or "/apps".
 					// Attempt navigation to it via the views API, same as show.
 					// Synthesize a fake view summary for the manager page.
 					const managerView = {
 						id: "__view-manager__",
 						label: "View Manager",
-						path: "/apps",
+						path: "/views",
 						pluginName: "core",
 						available: true,
 					};

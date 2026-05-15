@@ -12,7 +12,7 @@
  * static fallback instead of attempting to import the bundle.
  */
 
-import { type ComponentType, memo, useEffect, useState } from "react";
+import { type ComponentType, memo, useEffect, useRef, useState } from "react";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { ErrorBoundary } from "../ui/error-boundary";
 
@@ -24,6 +24,9 @@ interface ViewBundleModule {
 // Module cache lives outside React so it persists across re-renders and
 // component unmounts.
 const bundleModuleCache = new Map<string, Promise<ViewBundleModule>>();
+
+/** Dev-mode polling interval in ms. Not used in production builds. */
+const DEV_POLL_INTERVAL_MS = 2000;
 
 function loadBundleModule(
   bundleUrl: string,
@@ -114,6 +117,9 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 }: DynamicViewLoaderProps) {
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
+  // Incrementing this key invalidates the module cache entry and forces a
+  // fresh import. Used by the dev-mode ETag poller when the bundle changes.
+  const [reloadKey, setReloadKey] = useState(0);
   const dynamicLoadingAllowed = isDynamicViewLoadingAllowed();
 
   useEffect(() => {
@@ -153,6 +159,34 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           });
       }
     };
+  }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey]);
+
+  // Dev-mode only: poll the bundle URL with HEAD requests every 2s. When the
+  // ETag changes the bundle has been rebuilt — evict the cache entry and bump
+  // reloadKey so the component re-imports the updated bundle.
+  const lastEtagRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!import.meta.env.DEV || !bundleUrl || !dynamicLoadingAllowed) return;
+
+    const cacheKey = `${bundleUrl}::${componentExport}`;
+
+    const id = setInterval(() => {
+      void fetch(bundleUrl, { method: "HEAD" })
+        .then((res) => {
+          const etag = res.headers.get("etag");
+          if (lastEtagRef.current !== null && etag !== lastEtagRef.current) {
+            // Bundle changed on disk — evict cache and trigger re-import.
+            bundleModuleCache.delete(cacheKey);
+            setReloadKey((k) => k + 1);
+          }
+          lastEtagRef.current = etag;
+        })
+        .catch(() => {
+          // Network errors during polling are non-fatal; just wait for the next tick.
+        });
+    }, DEV_POLL_INTERVAL_MS);
+
+    return () => clearInterval(id);
   }, [bundleUrl, componentExport, dynamicLoadingAllowed]);
 
   // iOS App Store and Google Play builds cannot load remote JS at runtime.
