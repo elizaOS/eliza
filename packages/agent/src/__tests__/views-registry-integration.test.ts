@@ -28,10 +28,10 @@ import { EventEmitter } from "node:events";
 function makeReqWithBody(body?: unknown): http.IncomingMessage {
   const em = new EventEmitter() as http.IncomingMessage;
   // Provide just enough of the IncomingMessage interface for readJsonBody.
-  (em as Record<string, unknown>).headers = {
+  (em as unknown as { headers: Record<string, string> }).headers = {
     "content-type": "application/json",
   };
-  (em as Record<string, unknown>).method = "POST";
+  (em as unknown as { method: string }).method = "POST";
   if (body !== undefined) {
     const chunk = Buffer.from(JSON.stringify(body));
     // Emit data/end asynchronously on next tick so callers have time to attach listeners.
