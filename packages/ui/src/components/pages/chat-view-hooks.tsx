@@ -189,6 +189,8 @@ export function useChatVoiceController(options: {
   isGameModal: boolean;
   setState: ReturnType<typeof useApp>["setState"];
   uiLanguage: string;
+  /** Caller owns continuous-chat mode (persistence + UI toggle). Defaults to off. */
+  continuousMode?: VoiceContinuousMode;
 }) {
   const { setTimeout } = useTimeout();
   const { avatarReady: companionSceneAvatarReady } = useCompanionSceneStatus();
@@ -208,6 +210,7 @@ export function useChatVoiceController(options: {
     isGameModal,
     setState,
     uiLanguage,
+    continuousMode = DEFAULT_VOICE_CONTINUOUS_MODE,
   } = options;
   /** After the first `eliza:cloud-status-updated`, mirrors server `cloudVoiceProxyAvailable` (avoids one-frame lag vs context). */
   const [cloudVoiceSnapshot, setCloudVoiceSnapshot] = useState<boolean | null>(
@@ -221,9 +224,6 @@ export function useChatVoiceController(options: {
   );
   const [voiceSpeaker, setVoiceSpeaker] = useState<VoiceSpeakerMetadata | null>(
     null,
-  );
-  const [continuousMode, setContinuousMode] = useState<VoiceContinuousMode>(
-    DEFAULT_VOICE_CONTINUOUS_MODE,
   );
   const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
   const suppressedAssistantSpeechRef = useRef<{
@@ -808,8 +808,6 @@ export function useChatVoiceController(options: {
     beginVoiceCapture,
     endVoiceCapture,
     continuous,
-    continuousMode,
-    setContinuousMode,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
