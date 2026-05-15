@@ -943,21 +943,13 @@ export function App() {
         setTab("apps");
         return;
       }
-      // Auto-open as a desktop tab when the target view has desktopTabEnabled.
-      if (
-        detail.viewId &&
-        (detail.action === "pin-tab" ||
-          (() => {
-            const entry = availableViewsForDesktopTabs.find(
-              (v) => v.id === detail.viewId,
-            );
-            return entry?.desktopTabEnabled === true;
-          })())
-      ) {
+      // Auto-open as a desktop tab when the action is "pin-tab" or when the
+      // view declares desktopTabEnabled: true.
+      if (detail.viewId) {
         const entry = availableViewsForDesktopTabs.find(
           (v) => v.id === detail.viewId,
         );
-        if (entry) {
+        if (entry && (detail.action === "pin-tab" || entry.desktopTabEnabled)) {
           openDesktopTab(entry);
           setActiveDesktopTabId(entry.id);
         }

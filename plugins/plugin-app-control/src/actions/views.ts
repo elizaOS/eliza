@@ -321,6 +321,44 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						data: { eventType, payload },
 					};
 				}
+
+				case "interact": {
+					// Resolve the view ID from options or text.
+					const viewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					const capability = readStringOption(options, "capability");
+					if (!viewId || !capability) {
+						const reply =
+							'Specify view and capability, e.g. action=interact view=wallet capability=get-state.';
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const params =
+						options?.params !== null &&
+						typeof options?.params === "object" &&
+						!Array.isArray(options?.params)
+							? (options.params as Record<string, unknown>)
+							: undefined;
+					const timeoutMs =
+						typeof options?.timeoutMs === "number" && options.timeoutMs > 0
+							? options.timeoutMs
+							: 5_000;
+					const resultText = await interactWithView(
+						viewId,
+						capability,
+						params,
+						timeoutMs,
+					);
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: { mode: "interact", viewId, capability },
+						data: { viewId, capability, params },
+					};
+				}
 			}
 		},
 
