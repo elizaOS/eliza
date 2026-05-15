@@ -71,7 +71,7 @@ describe("coding-tools terminal capability detection", () => {
     expect(missingToolForCommand("codex exec test")).toBe("codex");
   });
 
-  it("rejects vanilla Android even in local-yolo mode", () => {
+  it("accepts direct Android local-yolo when a shell is executable", () => {
     const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
@@ -80,8 +80,7 @@ describe("coding-tools terminal capability detection", () => {
 
     const support = detectTerminalSupport();
 
-    expect(support.supported).toBe(false);
-    expect(support.reason).toBe("vanilla_mobile");
+    expect(support.supported).toBe(true);
   });
 
   it("rejects Play/store Android even when local-yolo has a staged shell", () => {
@@ -106,7 +105,7 @@ describe("coding-tools terminal capability detection", () => {
 
     expect(support.supported).toBe(false);
     expect(support.reason).toBe("vanilla_mobile");
-    expect(support.message).toContain("branded AOSP");
+    expect(support.message).toContain("iOS");
   });
 
   it("accepts branded AOSP local-yolo when a shell is executable", () => {
