@@ -18,8 +18,12 @@ function isTruthyEnv(...names: string[]): boolean {
 	return false;
 }
 
+export function isLocalEmbeddingDisabledByEnv(): boolean {
+	return isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS");
+}
+
 export function shouldWarmupLocalEmbeddingModel(): boolean {
-	if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
+	if (isLocalEmbeddingDisabledByEnv()) {
 		return false;
 	}
 

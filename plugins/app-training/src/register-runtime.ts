@@ -1,11 +1,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { logger, OptimizedPromptService } from "@elizaos/core";
-import { registerSkillScoringCron } from "./core/skill-scoring-cron";
-import { registerTrajectoryExportCron } from "./core/trajectory-export-cron";
+import { registerSkillScoringCron } from "./core/skill-scoring-cron.js";
+import { registerTrajectoryExportCron } from "./core/trajectory-export-cron.js";
 import {
   bootstrapOptimizationFromAccumulatedTrajectories,
   registerTrainingTriggerService,
-} from "./services/training-trigger";
+} from "./services/training-trigger.js";
 
 function trainingCronRegistrationDisabled(): boolean {
   const raw = process.env.ELIZA_DISABLE_TRAINING_CRONS;

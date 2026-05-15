@@ -195,17 +195,35 @@ export function checkWebGpuSupport(
 
 	// Linux / Windows with CEF
 	if (rendererType === "cef") {
-		// CEF needs --enable-unsafe-webgpu which we can't inject yet
-		// (upstream Electrobun feature needed)
 		const flags = getWebGpuChromiumFlags();
 		const flagList = flags.join(", ");
+		const linuxOptInHint =
+			process.platform === "linux"
+				? " Linux CEF WebGPU/Vulkan flags are disabled by default for desktop stability; set ELIZA_ELECTROBUN_ENABLE_CEF_WEBGPU=1 to opt into hardware WebGPU experiments."
+				: "";
 
 		return {
 			available: false,
-			reason: `CEF needs WebGPU-related Chromium flags (${flagList}); injecting them from ${getBrandConfig().appName} is pending upstream Electrobun support. ${chromeBeta.found ? "Chrome Beta is installed for optional WebGPU testing." : "Chrome Beta is not installed."} The ${getBrandConfig().appName} UI still runs on WebGL when the renderer has no WebGPU.`,
+			reason: `CEF needs WebGPU-related Chromium flags (${flagList}).${linuxOptInHint} ${chromeBeta.found ? "Chrome Beta is installed for optional WebGPU testing." : "Chrome Beta is not installed."} The ${getBrandConfig().appName} UI still runs on WebGL when the renderer has no WebGPU.`,
 			renderer: "cef",
 			chromeBetaPath: chromeBeta.path,
 			downloadUrl: chromeBeta.found ? null : chromeBeta.downloadUrl,
+		};
+	}
+
+	if (rendererType === "native") {
+		const nativeRendererName =
+			process.platform === "linux"
+				? "WebKitGTK"
+				: process.platform === "win32"
+					? "platform-native webview"
+					: "native webview";
+		return {
+			available: false,
+			reason: `${getBrandConfig().appName} is using the ${nativeRendererName} renderer; browser WebGPU is not expected in this renderer. The UI still runs on WebGL when WebGPU is unavailable.`,
+			renderer: "native",
+			chromeBetaPath: chromeBeta.path,
+			downloadUrl: chromeBeta.downloadUrl,
 		};
 	}
 

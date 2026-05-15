@@ -79,6 +79,9 @@ namespace eliza_omnivoice {
 static std::string g_model_path;
 static std::string g_codec_path;
 
+static std::string resolved_model_path();
+static std::string resolved_codec_path();
+
 // LE byte readers shared with the FFI preset parser. Inline so we don't
 // depend on the FFI bridge — this route runs in llama-server, not the
 // libelizainference dylib.
