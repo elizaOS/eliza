@@ -82,7 +82,7 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
 }
 
 function requestBaseUrl(req: http.IncomingMessage): string {
-  const headers = req.headers ?? {};
+  const headers = req.headers;
   const protocol =
     firstHeaderValue(headers["x-forwarded-proto"]) ??
     (req.socket instanceof TLSSocket && req.socket.encrypted

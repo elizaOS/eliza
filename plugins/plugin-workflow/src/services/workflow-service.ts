@@ -115,7 +115,7 @@ export class WorkflowService extends Service {
 
     // Get optional pre-configured credentials from character.settings.workflows
     // Note: runtime.getSetting() only returns primitives — nested objects must be read directly
-    const workflowSettings = runtime.character?.settings?.workflows as
+    const workflowSettings = runtime.character.settings?.workflows as
       | { credentials?: Record<string, string> }
       | undefined;
     const credentials = workflowSettings?.credentials;
@@ -369,7 +369,7 @@ export class WorkflowService extends Service {
     let workflow = await generateWorkflow(this.runtime, prompt, finalNodeDefs, runtimeContext);
     logger.debug(
       { src: 'plugin:workflow:service:main' },
-      `Generated workflow with ${workflow.nodes?.length || 0} nodes`
+      `Generated workflow with ${workflow.nodes.length || 0} nodes`
     );
 
     // Safety net: even with the MANDATORY INVARIANT prompt rule, the LLM
@@ -767,7 +767,7 @@ export class WorkflowService extends Service {
       id: deployedWorkflow.id,
       name: deployedWorkflow.name,
       active,
-      nodeCount: deployedWorkflow.nodes?.length || 0,
+      nodeCount: deployedWorkflow.nodes.length || 0,
       missingCredentials: credentialResult.missingConnections,
     };
   }

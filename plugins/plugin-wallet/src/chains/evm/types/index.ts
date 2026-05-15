@@ -176,9 +176,9 @@ export const BebopRouteSchema = z.object({
 });
 
 export interface SwapQuote {
-  readonly aggregator: "lifi" | "bebop";
+  readonly aggregator: "lifi" | "bebop" | "kyberswap";
   readonly minOutputAmount: string;
-  readonly swapData: Route | BebopRoute;
+  readonly swapData: Route | BebopRoute | KyberSwapRouteData;
 }
 
 export interface BridgeParams {
@@ -440,4 +440,3 @@ export interface KyberSwapRouteData {
   slippageBps: number;
   fromAddress: string;
 }
-

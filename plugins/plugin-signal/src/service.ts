@@ -1763,7 +1763,7 @@ export class SignalService extends Service implements ISignalService {
       this.runtime,
       accountId === DEFAULT_ACCOUNT_ID ? "signal-world" : `signal-world-${accountId}`
     );
-    const displayName = this.character?.name || "Agent";
+    const displayName = this.character.name || "Agent";
 
     await this.runtime.ensureConnection({
       entityId: this.runtime.agentId,
@@ -1947,11 +1947,11 @@ export class SignalService extends Service implements ISignalService {
     });
 
     return memories
-      .filter((memory) => memory.content?.source === "signal")
+      .filter((memory) => memory.content.source === "signal")
       .filter((memory) => this.memoryMatchesAccount(memory, normalizedAccountId))
       .filter(
         (memory) =>
-          typeof memory.content?.text === "string" && memory.content.text.trim().length > 0
+          typeof memory.content.text === "string" && memory.content.text.trim().length > 0
       )
       .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
       .slice(0, requestedLimit)
@@ -1963,7 +1963,7 @@ export class SignalService extends Service implements ISignalService {
         const text = String(memory.content.text ?? "").trim();
         const speakerName =
           memory.entityId === this.runtime.agentId
-            ? this.character?.name || "Agent"
+            ? this.character.name || "Agent"
             : typeof memory.content.name === "string" && memory.content.name.trim().length > 0
               ? memory.content.name.trim()
               : room?.name || room?.channelId || "Unknown";
@@ -2049,7 +2049,7 @@ export class SignalService extends Service implements ISignalService {
     const after = params.after ? Number(params.after) : undefined;
 
     return memories
-      .filter((memory) => memory.content?.source === "signal")
+      .filter((memory) => memory.content.source === "signal")
       .filter((memory) => this.memoryMatchesAccount(memory, accountId))
       .filter((memory) => {
         const createdAt = Number(memory.createdAt ?? 0);
@@ -2079,8 +2079,8 @@ export class SignalService extends Service implements ISignalService {
     });
     return memories
       .filter((memory) => {
-        const text = String(memory.content?.text ?? "").toLowerCase();
-        const name = String(memory.content?.name ?? "").toLowerCase();
+        const text = String(memory.content.text ?? "").toLowerCase();
+        const name = String(memory.content.name ?? "").toLowerCase();
         return text.includes(query) || name.includes(query);
       })
       .slice(0, params.limit ?? 25);

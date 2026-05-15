@@ -146,11 +146,11 @@ function executeScript(
 		let stdout = "";
 		let stderr = "";
 
-		child.stdout?.on("data", (data) => {
+		child.stdout.on("data", (data) => {
 			stdout += String(data);
 		});
 
-		child.stderr?.on("data", (data) => {
+		child.stderr.on("data", (data) => {
 			stderr += String(data);
 		});
 

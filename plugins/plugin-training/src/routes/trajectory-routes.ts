@@ -1354,12 +1354,10 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
       .sort((left, right) => {
         const leftTs =
           toFiniteNumber(left.body.timestamp) ??
-          Date.parse(left.createdAt ?? "") ??
-          0;
+          Date.parse(left.createdAt ?? "");
         const rightTs =
           toFiniteNumber(right.body.timestamp) ??
-          Date.parse(right.createdAt ?? "") ??
-          0;
+          Date.parse(right.createdAt ?? "");
         return leftTs - rightTs;
       });
 
@@ -1405,15 +1403,14 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
             ? body.provider.trim()
             : "";
         const model =
-          provider && modelKey?.toUpperCase().startsWith("TEXT_")
+          provider && modelKey.toUpperCase().startsWith("TEXT_")
             ? `${provider}/${modelKey}`
             : modelKey || provider || "unknown";
         return {
           callId: `${traj.trajectoryId}-log-${index + 1}`,
           timestamp:
             toFiniteNumber(body.timestamp) ??
-            Date.parse(row.createdAt ?? "") ??
-            firstCallTimestamp,
+            Date.parse(row.createdAt ?? ""),
           model,
           systemPrompt,
           userPrompt,
@@ -1423,8 +1420,7 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
           purpose: "chat",
           actionType: "runtime.useModel",
           latencyMs:
-            Math.max(0, Math.round(toFiniteNumber(body.executionTime) ?? 0)) ??
-            0,
+            Math.max(0, Math.round(toFiniteNumber(body.executionTime) ?? 0)),
           promptTokens: estimateTokenCount(systemPrompt + userPrompt),
           completionTokens: estimateTokenCount(response),
         };

@@ -214,7 +214,7 @@ export function normalizeContactHandle(raw: string): string {
  */
 export function parseContactsOutput(raw: string): ContactsMap {
   const map: ContactsMap = new Map();
-  if (!raw?.trim()) return map;
+  if (!raw.trim()) return map;
 
   for (const line of raw.split("\n")) {
     const trimmed = line.trim();

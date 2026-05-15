@@ -769,12 +769,12 @@ export async function handleDocumentsRoutes(
         const meta = asRecord(result.metadata);
         return {
           id: result.id,
-          text: result.content?.text || "",
+          text: result.content.text || "",
           similarity: result.similarity,
           documentId: meta?.documentId,
           documentTitle: getDocumentTitleFromMetadata(
             meta,
-            result.content?.text,
+            result.content.text,
           ),
           documentProvenance: meta ? getDocumentProvenance(meta) : undefined,
           position: meta?.position,
@@ -831,7 +831,7 @@ export async function handleDocumentsRoutes(
         allFragments.push({
           id: fragment.id,
           text: (fragment.content as { text?: string })?.text || "",
-          position: metadata?.position,
+          position: metadata.position,
           createdAt: fragment.createdAt,
         });
       }
@@ -1026,7 +1026,7 @@ export async function handleDocumentsRoutes(
       }
     }
 
-    if (document.filename?.endsWith(".mdx")) {
+    if (document.filename.endsWith(".mdx")) {
       contentType = "text/markdown";
     }
 
@@ -1157,10 +1157,10 @@ export async function handleDocumentsRoutes(
     }> = [];
 
     for (const [index, document] of body.documents.entries()) {
-      const filename = document?.filename || `document-${index + 1}`;
+      const filename = document.filename || `document-${index + 1}`;
       if (
-        typeof document?.content !== "string" ||
-        typeof document?.filename !== "string" ||
+        typeof document.content !== "string" ||
+        typeof document.filename !== "string" ||
         document.content.trim().length === 0 ||
         document.filename.trim().length === 0
       ) {
@@ -1231,7 +1231,7 @@ export async function handleDocumentsRoutes(
     }>(req, res);
     if (!body) return true;
 
-    if (!body.url?.trim()) {
+    if (!body.url.trim()) {
       error(res, "url is required");
       return true;
     }

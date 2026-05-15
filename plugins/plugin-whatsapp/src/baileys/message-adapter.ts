@@ -46,7 +46,7 @@ export class MessageAdapter {
     key: "image" | "video",
     media: WhatsAppMediaMessage
   ): Record<string, unknown> {
-    if (!media?.link) {
+    if (!media.link) {
       throw new Error(`${key} message requires a media link`);
     }
     return {
@@ -56,14 +56,14 @@ export class MessageAdapter {
   }
 
   private mediaNoCaption(key: "audio", media: WhatsAppMediaMessage): Record<string, unknown> {
-    if (!media?.link) {
+    if (!media.link) {
       throw new Error(`${key} message requires a media link`);
     }
     return { [key]: { url: media.link } };
   }
 
   private mediaWithFilename(media: WhatsAppMediaMessage): Record<string, unknown> {
-    if (!media?.link) {
+    if (!media.link) {
       throw new Error("document message requires a media link");
     }
     return {

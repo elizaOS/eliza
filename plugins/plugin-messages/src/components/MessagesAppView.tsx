@@ -60,7 +60,7 @@ function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
       const lastMessage = sorted[sorted.length - 1] ?? threadMessages[0];
       return {
         id,
-        address: lastMessage?.address ?? "Unknown",
+        address: lastMessage?.address,
         messages: sorted,
         lastMessage,
         unreadCount: sorted.filter(

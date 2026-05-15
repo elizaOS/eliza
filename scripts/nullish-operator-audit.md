@@ -1,37 +1,41 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-15T13:22:15.626Z
+Generated: 2026-05-15T13:44:09.387Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 190 |
-| Operators found | 3907 |
-| Type-obvious removable | 0 |
+| TypeScript files scanned | 77 |
+| Operators found | 997 |
+| Type-obvious removable | 3 |
 | Applied edits | 0 |
 
 ## By Kind
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 492 |
-| `binary-&&` | 378 |
-| `binary-\|\|` | 696 |
-| `definite-assignment-assertion` | 9 |
-| `non-null-assertion` | 8 |
-| `optional-chain` | 416 |
-| `optional-declaration` | 1908 |
+| `binary-??` | 188 |
+| `binary-&&` | 160 |
+| `binary-\|\|` | 230 |
+| `optional-chain` | 243 |
+| `optional-declaration` | 176 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 1056 |
-| `truthy-left-review` | 27 |
-| `type-required-or-unknown` | 916 |
-| `upstream-type-review` | 1908 |
+| `review-required` | 387 |
+| `truthy-left-review` | 3 |
+| `type-obvious-removable` | 3 |
+| `type-required-or-unknown` | 428 |
+| `upstream-type-review` | 176 |
 
 ## Type-Obvious Removable Examples
 
-No type-obvious removable operators found.
+- `plugins/plugin-companion/src/components/avatar/retargetMixamoFbxToVrm.ts:19:29` optional-chain: vrm.meta?.metaVersion
+  - receiver type excludes null and undefined; type: `VRMMeta`
+- `plugins/plugin-companion/src/components/avatar/retargetMixamoGltfToVrm.ts:19:29` optional-chain: vrm.meta?.metaVersion
+  - receiver type excludes null and undefined; type: `VRMMeta`
+- `plugins/plugin-companion/src/components/companion/CompanionSceneHost.tsx:529:28` optional-chain: detail?.offset
+  - receiver type excludes null and undefined; type: `{ offset: number; }`

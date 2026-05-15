@@ -315,7 +315,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     const triggers = tasks
       .map(taskToTriggerSummary)
       .filter((summary): summary is TriggerSummary => summary !== null)
-      .sort((a, b) => String(a.displayName ?? '').localeCompare(String(b.displayName ?? '')));
+      .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
     listResponse(triggers);
     return true;
   }

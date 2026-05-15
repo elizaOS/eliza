@@ -204,7 +204,7 @@ function readStringSetting(
   runtime: IAgentRuntime,
   key: string,
 ): string | undefined {
-  const fromRuntime = runtime.getSetting?.(key);
+  const fromRuntime = runtime.getSetting(key);
   if (typeof fromRuntime === "string" && fromRuntime.trim().length > 0) {
     return fromRuntime;
   }

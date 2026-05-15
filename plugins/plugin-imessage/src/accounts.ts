@@ -107,7 +107,7 @@ export function normalizeAccountId(accountId?: string | null): string {
  * Gets the multi-account configuration from runtime settings
  */
 export function getMultiAccountConfig(runtime: IAgentRuntime): IMessageMultiAccountConfig {
-  const characterIMessage = runtime.character?.settings?.imessage as
+  const characterIMessage = runtime.character.settings?.imessage as
     | IMessageMultiAccountConfig
     | undefined;
 

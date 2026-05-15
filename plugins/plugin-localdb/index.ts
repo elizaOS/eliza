@@ -133,7 +133,7 @@ class FileStorage implements IStorage {
 }
 
 function getDataDir(runtime: RuntimeWithDatabase): string {
-  const configured = runtime.getSetting?.("LOCALDB_DATA_DIR");
+  const configured = runtime.getSetting("LOCALDB_DATA_DIR");
   if (typeof configured === "string" && configured.length > 0) {
     return configured;
   }

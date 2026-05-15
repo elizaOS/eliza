@@ -272,7 +272,7 @@ export const shellAction: Action = {
   ): Promise<ActionResult> => {
     const explicitSubaction = readStringParam(options, "action");
     const inferredSubaction = inferShellSubactionFromText(
-      message.content?.text ?? "",
+      message.content.text ?? "",
     );
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)

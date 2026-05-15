@@ -2,7 +2,7 @@ import type { Media, Memory, MessagePayload } from "@elizaos/core";
 import type { Cast as NeynarCast, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 import * as zod from "zod";
 
-const z = zod.z ?? zod;
+const z = zod.z;
 
 export interface Profile {
   fid: number;

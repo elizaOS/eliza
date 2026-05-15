@@ -919,12 +919,12 @@ export class VrmEngine {
       vrm.lookAt.target = target;
     }
 
-    const headBone = vrm.humanoid?.getRawBoneNode("head") ?? null;
-    const neckBone = vrm.humanoid?.getRawBoneNode("neck") ?? null;
+    const headBone = vrm.humanoid.getRawBoneNode("head") ?? null;
+    const neckBone = vrm.humanoid.getRawBoneNode("neck") ?? null;
     const spineBone =
-      vrm.humanoid?.getRawBoneNode("upperChest") ??
-      vrm.humanoid?.getRawBoneNode("chest") ??
-      vrm.humanoid?.getRawBoneNode("spine") ??
+      vrm.humanoid.getRawBoneNode("upperChest") ??
+      vrm.humanoid.getRawBoneNode("chest") ??
+      vrm.humanoid.getRawBoneNode("spine") ??
       null;
 
     this.avatarLookRig = {
@@ -2574,7 +2574,7 @@ ${isOutgoing ? "if (teleportNoise >= teleportRatio) discard;" : "if (teleportNoi
     // Reset spring bones to rest pose (hair/cloth at initial position)
     const springBoneManager = this.vrm?.springBoneManager ?? null;
     if (disablePhysics && springBoneManager) {
-      springBoneManager.reset?.();
+      springBoneManager.reset();
     }
 
     // Resize renderer for the capture resolution
@@ -2587,7 +2587,7 @@ ${isOutgoing ? "if (teleportNoise >= teleportRatio) discard;" : "if (teleportNoi
     if (this.vrm) {
       if (disablePhysics && springBoneManager) {
         // Update only the humanoid/expression without spring bones
-        this.vrm.humanoid?.update?.();
+        this.vrm.humanoid.update();
         this.vrm.expressionManager?.update?.();
       } else {
         this.vrm.update(0);

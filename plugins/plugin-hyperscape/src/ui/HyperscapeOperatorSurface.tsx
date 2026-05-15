@@ -141,7 +141,7 @@ export function HyperscapeOperatorSurface({
       setStatusMessage(null);
       try {
         const response = await client.sendAppRunMessage(run.runId, content);
-        setStatusMessage(response.message ?? "Operator message sent.");
+        setStatusMessage(response.message);
         return response.success;
       } catch (error) {
         setStatusMessage(
@@ -181,10 +181,7 @@ export function HyperscapeOperatorSurface({
       try {
         const response = await client.controlAppRun(run.runId, action);
         setStatusMessage(
-          response.message ??
-            (action === "pause"
-              ? "Hyperscape autonomy paused."
-              : "Hyperscape autonomy resumed."),
+          response.message,
         );
       } catch (error) {
         setStatusMessage(
