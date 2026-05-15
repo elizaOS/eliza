@@ -1,96 +1,85 @@
 /**
  * Wake-word detection (openWakeWord) — opt-in, local-mode only.
  *
+ * Replaces the previous `onnxruntime-node`-backed implementation with a
+ * pure GGML / llama.cpp path. The three-stage openWakeWord pipeline (mel
+ * filterbank → speech embedding model → per-phrase classifier head) is
+ * compiled into one combined GGUF
+ * (`wake/openwakeword.gguf`, produced by
+ * `packages/training/scripts/wakeword/convert_openwakeword_to_gguf.py`)
+ * and executed natively by the fused `libelizainference` build via the
+ * `eliza_inference_wakeword_*` FFI surface (ABI v5).
+ *
+ * The JS side is now a thin adapter over that surface — there is NO ONNX
+ * fallback. When the fused library was built without the wake-word
+ * runtime, the JS path throws a structured `WakeWordUnavailableError`
+ * (AGENTS.md §3, §8 — no silent fallbacks).
+ *
  * Per `packages/inference/AGENTS.md` §1 + the three-mode rules (§1, §5):
- *   - openWakeWord (Apache-2.0, ~3 MB across three ONNX graphs) ships in
- *     the bundle but is **opt-in**: voice mode works without it
- *     (push-to-talk / VAD-gated).
+ *   - openWakeWord (Apache-2.0, ~3 MB) ships in the bundle but is
+ *     **opt-in**: voice mode works without it (push-to-talk / VAD-gated).
  *   - It is **local-mode only**. In `cloud` mode the surface is hidden
  *     *and inert* (hide-not-disable §5): the model is not loaded, the
  *     setting is rejected by the API, no background job runs it.
  *   - Detections feed the same place a push-to-talk press would: they arm
  *     a listening window that the VAD gate then bounds.
  *
- * openWakeWord is a three-stage streaming pipeline:
- *   1. melspectrogram.onnx — 16 kHz PCM → log-mel frames (32 mel bins,
- *      10 ms hop). Streamed: each 1280-sample (80 ms) chunk yields 8 new
- *      mel frames (a 480-sample lead-in is carried frame-to-frame).
- *   2. embedding_model.onnx — a sliding 76-mel-frame window → a 96-dim
- *      embedding, recomputed every 8 mel frames (i.e. once per chunk).
- *   3. <wakeword>.onnx — the last 16 embeddings → P(wake) in [0, 1].
- * Mel features are rescaled `x/10 + 2` before stage 2, matching upstream
- * openWakeWord. State (audio tail, mel ring, embedding ring) is carried
- * across `scoreFrame` calls; `reset()` clears it at the start of a
- * listening session.
- *
- * No test-only fallback model here (unlike VAD's energy gate) because a
- * wake word has no meaningful heuristic stand-in; tests inject a scripted
- * `WakeWordModel`.
+ * Streaming pipeline shape (16 kHz mono):
+ *   - 1280-sample (80 ms) PCM frames per `scoreFrame` call.
+ *   - Internally: mel filterbank → 32-bin frames; embedding model windows
+ *     76 mel frames, hop 8 → 96-dim embedding; head windows 16 embeddings
+ *     → P(wake) in [0, 1].
+ *   - The native runtime owns the audio tail, mel ring and embedding
+ *     ring; the JS side feeds frames and reads back probabilities.
  */
 
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { localInferenceRoot } from "../paths";
-import {
-	loadOnnxRuntime,
-	OnnxRuntimeUnavailableError,
-	type OrtInferenceSession,
-	type OrtTensorCtor,
-} from "./onnx-runtime";
+import type {
+	ElizaInferenceContextHandle,
+	ElizaInferenceFfi,
+	NativeWakeWordHandle,
+} from "./ffi-bindings";
 
-/** Directory holding the bundled openWakeWord ONNX graphs inside a bundle. */
+/** Directory holding the bundled openWakeWord GGUF inside a bundle. */
 export const OPENWAKEWORD_DIR_REL_PATH = "wake";
-/** Shared melspectrogram front-end (one per bundle, model-agnostic). */
-export const OPENWAKEWORD_MELSPEC_REL_PATH = path.join(
-	OPENWAKEWORD_DIR_REL_PATH,
-	"melspectrogram.onnx",
-);
-/** Shared audio→embedding model (one per bundle, model-agnostic). */
-export const OPENWAKEWORD_EMBEDDING_REL_PATH = path.join(
-	OPENWAKEWORD_DIR_REL_PATH,
-	"embedding_model.onnx",
-);
+
 /**
- * Default wake-word head shipped with a voice bundle (the wake phrase).
- * The documented default Eliza-1 wake phrase is **"hey eliza"** — a
- * two-word, four-syllable phrase the openWakeWord TTS-augmented pipeline
- * handles well. It is replaceable: retrain on a different `--phrase` via
- * `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py` and
- * re-point this constant + `WAKEWORD_FILES` in the asset-staging script.
+ * Combined wake-word GGUF: contains the mel filterbank constants, the
+ * speech embedding model weights, AND every per-phrase classifier head
+ * (`head.<name>.*` tensors). The fused `libelizainference` build mmaps
+ * this file from `<bundleRoot>/wake/openwakeword.gguf` (or the shared
+ * cache at `<state-dir>/local-inference/wake/openwakeword.gguf`).
+ */
+export const OPENWAKEWORD_GGUF_REL_PATH = path.join(
+	OPENWAKEWORD_DIR_REL_PATH,
+	"openwakeword.gguf",
+);
+
+/**
+ * Default wake-phrase head shipped with a voice bundle. The documented
+ * default Eliza-1 wake phrase is **"hey eliza"** — a two-word,
+ * four-syllable phrase the openWakeWord TTS-augmented pipeline handles
+ * well. It is replaceable: retrain on a different `--phrase` via
+ * `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`,
+ * convert to GGUF via
+ * `packages/training/scripts/wakeword/convert_openwakeword_to_gguf.py`,
+ * and re-point this constant.
  */
 export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
-/** Relative path of the default wake-word head ONNX inside a bundle. */
-export const OPENWAKEWORD_DEFAULT_HEAD_REL_PATH = path.join(
-	OPENWAKEWORD_DIR_REL_PATH,
-	`${OPENWAKEWORD_DEFAULT_HEAD}.onnx`,
-);
 
 /**
- * Heads that are placeholders, not a head trained on the Eliza-1 wake
- * phrase.
+ * Heads that are placeholders, not trained on the Eliza-1 wake phrase.
  *
- * Bundle assets at `wake/hey-eliza.onnx` may come from one of two sources
- * (see `stage_eliza1_bundle_assets.py`):
+ * `hey-eliza` stays in this set until a head trained against the real
+ * phrase ships in every tier bundle (currently the staging script falls
+ * back to the upstream `hey_jarvis_v0.1` weights renamed). `hey_jarvis`
+ * stays by definition — it is the wrong phrase.
  *
- *   1. **Trained head** (`--wakeword-head-path` passed to staging): the
- *      ONNX exported by
- *      `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`
- *      against the "hey eliza" phrase. The first such head (2026-05-14,
- *      TA=90% / FA=10% on a tiny 20+20 synthetic held-out) is staged into
- *      the two local Eliza-1 tier bundles; the per-bundle manifest carries
- *      `files.wake[*].releaseState = "weights-staged"` and `headMetrics`
- *      so consumers can audit the provenance.
- *   2. **Upstream placeholder** (no `--wakeword-head-path`): the staging
- *      script falls back to `hey_jarvis_v0.1.onnx` renamed — that fires on
- *      "hey jarvis", NOT "hey eliza".
- *
- * `hey-eliza` stays in this set for now because the runtime cannot
- * distinguish case 1 from case 2 by inspecting the head ONNX alone, and
- * not all bundles will be re-staged with the trained head immediately.
- * A future pass should teach the engine to consult the manifest's
+ * A future pass should teach the engine to consult the bundle manifest's
  * `releaseState` (so trained heads suppress the placeholder warning) and
- * then remove `hey-eliza` from this set. `hey_jarvis` stays by definition
- * — it is the wrong phrase.
+ * then remove `hey-eliza` from this set.
  */
 export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
 	"hey-eliza",
@@ -103,30 +92,18 @@ export function isPlaceholderWakeWordHead(head: string): boolean {
 
 /** Audio chunk the streaming pipeline consumes, in samples (80 ms @ 16 kHz). */
 const FRAME_SAMPLES = 1280;
-/** Samples of audio carried between chunks so melspec frames line up. */
-const MEL_LEAD_IN_SAMPLES = 480;
-/** Mel bins per frame (openWakeWord melspectrogram output width). */
-const MEL_BINS = 32;
-/** Mel frames the embedding model windows over. */
-const EMBEDDING_WINDOW_FRAMES = 76;
-/** Mel frames between successive embedding computations (one per 80 ms chunk). */
-const EMBEDDING_HOP_FRAMES = 8;
-/** Embedding dimension (openWakeWord embedding model output width). */
-const EMBEDDING_DIM = 96;
-/** Embeddings the wake-word head windows over. */
-const HEAD_WINDOW_EMBEDDINGS = 16;
-/** Cap on the retained mel ring (a touch over the embedding window). */
-const MEL_RING_CAP_FRAMES = EMBEDDING_WINDOW_FRAMES + 4 * EMBEDDING_HOP_FRAMES;
-/** Cap on the retained embedding ring (a touch over the head window). */
-const EMBEDDING_RING_CAP = HEAD_WINDOW_EMBEDDINGS + 8;
 
 /**
  * Per-frame wake-word probability source. openWakeWord runs on 80 ms
- * frames of 16 kHz audio; `scoreFrame` takes one PCM frame and returns the
- * latest P(wake) in [0, 1] (the head only re-runs once enough context has
- * accumulated — early frames return 0). Stateful (the streaming front-end
- * carries its buffers); `reset()` clears it. ONNX inference is async, so
- * `scoreFrame` is too.
+ * frames of 16 kHz audio; `scoreFrame` takes one PCM frame and returns
+ * the latest P(wake) in [0, 1] (the head only re-runs once enough
+ * context has accumulated — early frames return 0). Stateful (the
+ * streaming front-end carries its buffers); `reset()` clears it.
+ *
+ * The default backend (`GgmlWakeWordModel`) calls into the native FFI
+ * synchronously; the method is still `async` so the interface fits a
+ * future async-friendly backend (e.g. a worker-thread variant) and
+ * matches the same shape the previous ONNX backend exposed to callers.
  */
 export interface WakeWordModel {
 	readonly frameSamples: number;
@@ -150,12 +127,20 @@ const DEFAULTS: Required<WakeWordConfig> = {
 	refractoryFrames: 25, // ~2 s @ 80 ms frames
 };
 
-/** Thrown when the openWakeWord backend cannot be loaded — missing
- *  `onnxruntime-node` or a corrupt graph. NOT thrown for an absent
- *  bundled model (that is "wake word unavailable for this bundle", not a
- *  broken bundle — `resolveWakeWordModel` returns null instead). */
+/**
+ * Thrown when the native openWakeWord runtime cannot service this call:
+ *   - `ffi-missing`: the FFI handle was not provided to the loader (the
+ *     voice lifecycle hands one in via `loadBundledWakeWordModel`).
+ *   - `runtime-not-ready`: the fused `libelizainference` build does not
+ *     export `eliza_inference_wakeword_*` — the wake-word GGUF runtime
+ *     is not yet compiled into this binary. NOT thrown for an absent
+ *     bundled GGUF (that is "wake word unavailable for this bundle",
+ *     not a broken build — `resolveWakeWordModel` returns null instead).
+ *   - `model-load-failed`: the native side rejected the GGUF or the
+ *     selected head name at session open.
+ */
 export class WakeWordUnavailableError extends Error {
-	readonly code: "ort-missing" | "model-load-failed";
+	readonly code: "ffi-missing" | "runtime-not-ready" | "model-load-failed";
 	constructor(code: WakeWordUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "WakeWordUnavailableError";
@@ -163,235 +148,188 @@ export class WakeWordUnavailableError extends Error {
 	}
 }
 
-async function loadOrt() {
-	try {
-		return await loadOnnxRuntime();
-	} catch (err) {
-		if (err instanceof OnnxRuntimeUnavailableError) {
-			throw new WakeWordUnavailableError(
-				"ort-missing",
-				`${err.message} Install it to enable on-device wake-word detection; push-to-talk and VAD-gated listening keep working without it.`,
-			);
-		}
-		throw err;
-	}
-}
-
-/** Paths to the three ONNX graphs that make up one wake-word model. */
+/** Path to the combined wake-word GGUF and the name of the head to bind. */
 export interface WakeWordModelPaths {
-	/** Shared melspectrogram front-end. */
-	melspectrogram: string;
-	/** Shared audio→embedding model. */
-	embedding: string;
-	/** The wake-phrase head. */
+	/** Absolute path to `wake/openwakeword.gguf`. */
+	gguf: string;
+	/** Name of the classifier head inside the GGUF (e.g. "hey-eliza"). */
 	head: string;
 }
 
 /**
- * The real openWakeWord streaming detector. Owns three `InferenceSession`s
- * (melspec / embedding / head), a carried-over audio tail, a mel-frame ring
- * and an embedding ring. `scoreFrame` consumes exactly `frameSamples`
- * (1280) samples at 16 kHz and returns the most recent head probability.
+ * The real openWakeWord streaming detector, backed by the native FFI.
+ * Owns one `eliza_inference_wakeword_*` session; `scoreFrame` consumes
+ * exactly `frameSamples` (1280) samples at 16 kHz and returns the most
+ * recent head probability the native pipeline produced. The audio tail,
+ * mel ring and embedding ring live on the C side; this class is a thin
+ * handle.
  */
-export class OpenWakeWordModel implements WakeWordModel {
+export class GgmlWakeWordModel implements WakeWordModel {
 	readonly frameSamples = FRAME_SAMPLES;
 	readonly sampleRate = 16_000;
-
-	private audioTail = new Float32Array(MEL_LEAD_IN_SAMPLES);
-	private melRing: Float32Array[] = [];
-	private framesSinceEmbedding = 0;
-	private embeddingRing: Float32Array[] = [];
-	private lastProbability = 0;
+	private closed = false;
 
 	private constructor(
-		private readonly melspec: OrtInferenceSession,
-		private readonly embedding: OrtInferenceSession,
-		private readonly head: OrtInferenceSession,
-		private readonly Tensor: OrtTensorCtor,
-		private readonly melInputName: string,
-		private readonly melOutputName: string,
-		private readonly embeddingInputName: string,
-		private readonly embeddingOutputName: string,
-		private readonly headInputName: string,
-		private readonly headOutputName: string,
+		private readonly ffi: ElizaInferenceFfi,
+		private readonly handle: NativeWakeWordHandle,
 	) {}
 
 	/**
-	 * Load a wake-word model from its three ONNX graphs. Throws
-	 * `WakeWordUnavailableError` when `onnxruntime-node` is missing or a
-	 * graph fails to load.
+	 * True only when the fused `libelizainference` build exports the
+	 * wake-word ABI and advertises support at runtime. The wake-word
+	 * loader uses this to surface a structured `runtime-not-ready` error
+	 * before attempting to open a session.
 	 */
-	static async load(paths: WakeWordModelPaths): Promise<OpenWakeWordModel> {
-		const ort = await loadOrt();
-		let melspec: OrtInferenceSession;
-		let embedding: OrtInferenceSession;
-		let head: OrtInferenceSession;
+	static isSupported(ffi: ElizaInferenceFfi | null | undefined): boolean {
+		if (!ffi || typeof ffi.wakewordSupported !== "function") return false;
+		return ffi.wakewordSupported();
+	}
+
+	/**
+	 * Open a native wake-word session. Throws `WakeWordUnavailableError`
+	 * when the runtime is not present or rejects the head name. No silent
+	 * fallback (AGENTS.md §3).
+	 */
+	static async load(opts: {
+		ffi: ElizaInferenceFfi;
+		ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
+		headName: string;
+	}): Promise<GgmlWakeWordModel> {
+		if (!GgmlWakeWordModel.isSupported(opts.ffi)) {
+			throw new WakeWordUnavailableError(
+				"runtime-not-ready",
+				"[wake-word] The native wake-word GGUF runtime is not present in this libelizainference build. Rebuild with the openWakeWord GGML runtime linked in (eliza_inference_wakeword_* symbols).",
+			);
+		}
+		if (
+			!opts.ffi.wakewordOpen ||
+			!opts.ffi.wakewordScore ||
+			!opts.ffi.wakewordReset ||
+			!opts.ffi.wakewordClose
+		) {
+			throw new WakeWordUnavailableError(
+				"runtime-not-ready",
+				"[wake-word] Wake-word support probe succeeded, but the required FFI methods are missing on the binding.",
+			);
+		}
+		const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
+		let handle: NativeWakeWordHandle;
 		try {
-			[melspec, embedding, head] = await Promise.all([
-				ort.InferenceSession.create(paths.melspectrogram),
-				ort.InferenceSession.create(paths.embedding),
-				ort.InferenceSession.create(paths.head),
-			]);
+			handle = opts.ffi.wakewordOpen({
+				ctx,
+				sampleRateHz: 16_000,
+				headName: opts.headName,
+			});
 		} catch (err) {
 			throw new WakeWordUnavailableError(
 				"model-load-failed",
-				`[wake-word] failed to load openWakeWord graphs (${paths.melspectrogram} / ${paths.embedding} / ${paths.head}): ${
+				`[wake-word] failed to open native wake-word session for head '${opts.headName}': ${
 					err instanceof Error ? err.message : String(err)
 				}`,
 			);
 		}
-		return new OpenWakeWordModel(
-			melspec,
-			embedding,
-			head,
-			ort.Tensor,
-			requireName(melspec.inputNames, "melspectrogram input"),
-			requireName(melspec.outputNames, "melspectrogram output"),
-			requireName(embedding.inputNames, "embedding input"),
-			requireName(embedding.outputNames, "embedding output"),
-			requireName(head.inputNames, "wake-word head input"),
-			requireName(head.outputNames, "wake-word head output"),
-		);
-	}
-
-	reset(): void {
-		this.audioTail = new Float32Array(MEL_LEAD_IN_SAMPLES);
-		this.melRing = [];
-		this.framesSinceEmbedding = 0;
-		this.embeddingRing = [];
-		this.lastProbability = 0;
+		return new GgmlWakeWordModel(opts.ffi, handle);
 	}
 
 	async scoreFrame(frame: Float32Array): Promise<number> {
+		if (this.closed) {
+			throw new Error("[wake-word] GgmlWakeWordModel.scoreFrame called after close()");
+		}
 		if (frame.length !== FRAME_SAMPLES) {
 			throw new Error(
-				`[wake-word] OpenWakeWordModel.scoreFrame expects ${FRAME_SAMPLES} samples; got ${frame.length}`,
+				`[wake-word] GgmlWakeWordModel.scoreFrame expects ${FRAME_SAMPLES} samples; got ${frame.length}`,
 			);
 		}
-		await this.ingestMelFrames(frame);
-		const embeddingsToRun = this.drainEmbeddingWindows();
-		for (const window of embeddingsToRun) {
-			await this.appendEmbedding(window);
-			await this.runHeadIfReady();
+		const score = this.ffi.wakewordScore;
+		if (!score) {
+			throw new Error("[wake-word] scoreFrame missing FFI method");
 		}
-		return this.lastProbability;
+		return score({ wake: this.handle, pcm: frame });
 	}
 
-	private async ingestMelFrames(chunk: Float32Array): Promise<void> {
-		const input = new Float32Array(MEL_LEAD_IN_SAMPLES + FRAME_SAMPLES);
-		input.set(this.audioTail, 0);
-		input.set(chunk, MEL_LEAD_IN_SAMPLES);
-		this.audioTail = chunk.slice(FRAME_SAMPLES - MEL_LEAD_IN_SAMPLES);
-
-		const out = await this.melspec.run({
-			[this.melInputName]: new this.Tensor("float32", input, [1, input.length]),
-		});
-		const tensor = out[this.melOutputName];
-		if (!tensor || !(tensor.data instanceof Float32Array)) {
-			throw new Error("[wake-word] melspectrogram output was not float32");
+	reset(): void {
+		if (this.closed) return;
+		const reset = this.ffi.wakewordReset;
+		if (!reset) {
+			throw new Error("[wake-word] reset missing FFI method");
 		}
-		const dims = tensor.dims;
-		const frames = dims[dims.length - 2] ?? 0;
-		const bins = dims[dims.length - 1] ?? 0;
-		if (bins !== MEL_BINS) {
-			throw new Error(
-				`[wake-word] melspectrogram produced ${bins} mel bins; expected ${MEL_BINS}`,
-			);
-		}
-		const data = tensor.data;
-		for (let i = 0; i < frames; i++) {
-			const frame = new Float32Array(MEL_BINS);
-			for (let j = 0; j < MEL_BINS; j++) {
-				// openWakeWord rescales the melspectrogram before the embedding model.
-				frame[j] = data[i * MEL_BINS + j] / 10 + 2;
-			}
-			this.melRing.push(frame);
-			this.framesSinceEmbedding++;
-		}
-		if (this.melRing.length > MEL_RING_CAP_FRAMES) {
-			this.melRing = this.melRing.slice(
-				this.melRing.length - MEL_RING_CAP_FRAMES,
-			);
-		}
+		reset(this.handle);
 	}
 
-	/** Pull every embedding window that is due (76-frame window, 8-frame hop). */
-	private drainEmbeddingWindows(): Float32Array[] {
-		const windows: Float32Array[] = [];
-		while (
-			this.melRing.length >= EMBEDDING_WINDOW_FRAMES &&
-			this.framesSinceEmbedding >= EMBEDDING_HOP_FRAMES
-		) {
-			const start = this.melRing.length - EMBEDDING_WINDOW_FRAMES;
-			const flat = new Float32Array(EMBEDDING_WINDOW_FRAMES * MEL_BINS);
-			for (let i = 0; i < EMBEDDING_WINDOW_FRAMES; i++) {
-				flat.set(this.melRing[start + i], i * MEL_BINS);
-			}
-			windows.push(flat);
-			this.framesSinceEmbedding -= EMBEDDING_HOP_FRAMES;
-		}
-		return windows;
-	}
-
-	private async appendEmbedding(melWindow: Float32Array): Promise<void> {
-		const out = await this.embedding.run({
-			[this.embeddingInputName]: new this.Tensor("float32", melWindow, [
-				1,
-				EMBEDDING_WINDOW_FRAMES,
-				MEL_BINS,
-				1,
-			]),
-		});
-		const tensor = out[this.embeddingOutputName];
-		if (!tensor || !(tensor.data instanceof Float32Array)) {
-			throw new Error("[wake-word] embedding model output was not float32");
-		}
-		if (tensor.data.length < EMBEDDING_DIM) {
-			throw new Error(
-				`[wake-word] embedding model produced ${tensor.data.length} values; expected >= ${EMBEDDING_DIM}`,
-			);
-		}
-		this.embeddingRing.push(tensor.data.slice(0, EMBEDDING_DIM));
-		if (this.embeddingRing.length > EMBEDDING_RING_CAP) {
-			this.embeddingRing = this.embeddingRing.slice(
-				this.embeddingRing.length - EMBEDDING_RING_CAP,
-			);
-		}
-	}
-
-	private async runHeadIfReady(): Promise<void> {
-		if (this.embeddingRing.length < HEAD_WINDOW_EMBEDDINGS) return;
-		const start = this.embeddingRing.length - HEAD_WINDOW_EMBEDDINGS;
-		const flat = new Float32Array(HEAD_WINDOW_EMBEDDINGS * EMBEDDING_DIM);
-		for (let i = 0; i < HEAD_WINDOW_EMBEDDINGS; i++) {
-			flat.set(this.embeddingRing[start + i], i * EMBEDDING_DIM);
-		}
-		const out = await this.head.run({
-			[this.headInputName]: new this.Tensor("float32", flat, [
-				1,
-				HEAD_WINDOW_EMBEDDINGS,
-				EMBEDDING_DIM,
-			]),
-		});
-		const tensor = out[this.headOutputName];
-		if (!tensor || !(tensor.data instanceof Float32Array)) {
-			throw new Error("[wake-word] wake-word head output was not float32");
-		}
-		const p = tensor.data[0] ?? 0;
-		this.lastProbability = Math.min(1, Math.max(0, p));
+	close(): void {
+		if (this.closed) return;
+		this.closed = true;
+		this.ffi.wakewordClose?.(this.handle);
 	}
 }
 
-function requireName(names: readonly string[], what: string): string {
-	const name = names[0];
-	if (!name) throw new Error(`[wake-word] ONNX graph has no ${what} tensor`);
-	return name;
+/**
+ * Resolve the bundled wake-word GGUF. Unlike the VAD model this is
+ * *optional* — a missing file means "wake word unavailable for this
+ * bundle", not "broken bundle". Returns null when the GGUF is absent so
+ * callers keep voice mode working (push-to-talk / VAD-gated) without it.
+ *
+ * Search order:
+ *   1. `<bundleRoot>/wake/openwakeword.gguf`
+ *   2. `<state-dir>/local-inference/wake/openwakeword.gguf` (shared cache)
+ *
+ * `head` defaults to the bundle's default wake phrase. The head name is
+ * resolved by the native runtime against tensors inside the GGUF, so it
+ * is validated at open time, not here.
+ *
+ * MUST only be called in `local` mode. The cloud-mode router does not
+ * reach this (the wake-word setting is rejected there) — see AGENTS.md §5
+ * hide-not-disable.
+ */
+export function resolveWakeWordModel(opts: {
+	bundleRoot?: string;
+	head?: string;
+}): WakeWordModelPaths | null {
+	const headName = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+	const candidates: string[] = [];
+	if (opts.bundleRoot) {
+		candidates.push(path.join(opts.bundleRoot, OPENWAKEWORD_GGUF_REL_PATH));
+	}
+	candidates.push(path.join(localInferenceRoot(), OPENWAKEWORD_GGUF_REL_PATH));
+	for (const c of candidates) {
+		if (existsSync(c)) return { gguf: path.resolve(c), head: headName };
+	}
+	return null;
+}
+
+/**
+ * Convenience: resolve the bundled GGUF and open a native wake-word
+ * session against it. Returns null when the bundle has no wake-word
+ * GGUF (optional asset). Throws `WakeWordUnavailableError` when the
+ * GGUF is present but the native runtime is missing or rejects the
+ * head.
+ *
+ * `ffi` and `ctx` come from the voice lifecycle — they are the same
+ * `ElizaInferenceFfi` handle and context the VAD / TTS / ASR paths use.
+ */
+export async function loadBundledWakeWordModel(opts: {
+	ffi: ElizaInferenceFfi;
+	ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
+	bundleRoot?: string;
+	head?: string;
+}): Promise<GgmlWakeWordModel | null> {
+	const paths = resolveWakeWordModel({
+		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
+		...(opts.head !== undefined ? { head: opts.head } : {}),
+	});
+	if (!paths) return null;
+	return GgmlWakeWordModel.load({
+		ffi: opts.ffi,
+		ctx: opts.ctx,
+		headName: paths.head,
+	});
 }
 
 /**
  * Streaming wake-word detector. Feed frames; `onWake` fires once per
- * detected utterance (refractory-debounced). The voice loop wires `onWake`
- * to "start a listening window" — exactly what a push-to-talk press does.
+ * detected utterance (refractory-debounced). The voice loop wires
+ * `onWake` to "start a listening window" — exactly what a push-to-talk
+ * press does.
  *
  * Only constructed in `local` mode. `cloud` mode never instantiates this
  * (and `resolveWakeWordModel` is never called there), so the surface is
@@ -414,8 +352,8 @@ export class OpenWakeWordDetector {
 	}
 
 	/**
-	 * Score one PCM frame; fire `onWake` on a fresh detection. Resolves to
-	 * true when this frame fired the wake word.
+	 * Score one PCM frame; fire `onWake` on a fresh detection. Resolves
+	 * to true when this frame fired the wake word.
 	 */
 	async pushFrame(frame: Float32Array): Promise<boolean> {
 		if (frame.length !== this.model.frameSamples) {
@@ -441,55 +379,4 @@ export class OpenWakeWordDetector {
 		this.model.reset();
 		this.cooldown = 0;
 	}
-}
-
-/**
- * Resolve the bundled openWakeWord graphs. Unlike the VAD model this is
- * *optional* — a missing file means "wake word unavailable for this
- * bundle", not "broken bundle". Returns null when any of the three graphs
- * is absent so callers keep voice mode working (push-to-talk / VAD-gated)
- * without it.
- *
- * Search order, per graph:
- *   1. `<bundleRoot>/wake/<name>.onnx`
- *   2. `<state-dir>/local-inference/wake/<name>.onnx` (shared cache)
- * `head` defaults to the bundle's default wake phrase.
- *
- * MUST only be called in `local` mode. The cloud-mode router does not
- * reach this (the wake-word setting is rejected there) — see AGENTS.md §5
- * hide-not-disable.
- */
-export function resolveWakeWordModel(opts: {
-	bundleRoot?: string;
-	head?: string;
-}): WakeWordModelPaths | null {
-	const headName = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
-	const headRel = path.join(OPENWAKEWORD_DIR_REL_PATH, `${headName}.onnx`);
-	const find = (rel: string): string | null => {
-		const candidates: string[] = [];
-		if (opts.bundleRoot) candidates.push(path.join(opts.bundleRoot, rel));
-		candidates.push(path.join(localInferenceRoot(), rel));
-		for (const c of candidates) if (existsSync(c)) return path.resolve(c);
-		return null;
-	};
-	const melspectrogram = find(OPENWAKEWORD_MELSPEC_REL_PATH);
-	const embedding = find(OPENWAKEWORD_EMBEDDING_REL_PATH);
-	const head = find(headRel);
-	if (!melspectrogram || !embedding || !head) return null;
-	return { melspectrogram, embedding, head };
-}
-
-/**
- * Convenience: resolve the bundled graphs and load an `OpenWakeWordModel`.
- * Returns null when the bundle has no wake-word model (optional asset).
- * Throws `WakeWordUnavailableError` when the model exists but the runtime
- * is missing or a graph is corrupt.
- */
-export async function loadBundledWakeWordModel(opts: {
-	bundleRoot?: string;
-	head?: string;
-}): Promise<OpenWakeWordModel | null> {
-	const paths = resolveWakeWordModel(opts);
-	if (!paths) return null;
-	return OpenWakeWordModel.load(paths);
 }

@@ -5,27 +5,23 @@
  *   - `VadDetector`: speech state machine driven by a *deterministic fake
  *     Silero* (probability scripted per window), asserting the full
  *     `VadEvent` sequence (start → active → pause → end / blip).
- *   - `SileroVad` / `createSileroVadDetector`: a network-gated test against
- *     the real MIT Silero VAD ONNX model — downloaded into a temp dir on
- *     first run, skipped offline. This is the only test that touches
- *     `onnxruntime-node`.
+ *   - `GgmlSileroVad`: the native libelizainference VAD backend.
+ *     Exercised here via the fake FFI fixture; the real backend is covered
+ *     by the integration suite in `interactive-session.e2e.test.ts` when
+ *     libelizainference is built with the VAD ABI.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
-import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
 import type { PcmFrame, VadEvent } from "./types";
 import {
 	createSileroVadDetector,
 	createVadDetector,
+	GgmlSileroVad,
 	NativeSileroVad,
 	RmsEnergyGate,
 	resolveVadProvider,
 	rms,
-	SileroVad,
 	VadDetector,
 	VadUnavailableError,
 	vadProviderOrder,
@@ -261,17 +257,17 @@ describe("VadDetector", () => {
 	});
 });
 
-describe("NativeSileroVad", () => {
-	it("documents the auto provider order: Qwen toolkit → native Silero → ONNX Silero", () => {
-		expect(vadProviderOrder()).toEqual([
-			"qwen-toolkit",
-			"silero-native",
-			"silero-onnx",
-		]);
-		expect(vadProviderOrder("silero-native")).toEqual(["silero-native"]);
+describe("GgmlSileroVad", () => {
+	it("documents the auto provider order: Qwen toolkit → native GGML Silero", () => {
+		expect(vadProviderOrder()).toEqual(["qwen-toolkit", "silero-ggml"]);
+		expect(vadProviderOrder("silero-ggml")).toEqual(["silero-ggml"]);
 	});
 
-	it("prefers a supplied Qwen toolkit VAD adapter over native and ONNX providers", async () => {
+	it("exposes NativeSileroVad as a back-compat alias for GgmlSileroVad", () => {
+		expect(NativeSileroVad).toBe(GgmlSileroVad);
+	});
+
+	it("prefers a supplied Qwen toolkit VAD adapter over the native provider", async () => {
 		const qwenVad = new ScriptedSilero([
 			0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
 		]);
@@ -286,7 +282,6 @@ describe("NativeSileroVad", () => {
 			},
 			ffi,
 			ctx: 1n,
-			modelPath: "/nonexistent/should-not-load.onnx",
 		});
 
 		expect(resolved.id).toBe("qwen-toolkit");
@@ -298,7 +293,6 @@ describe("NativeSileroVad", () => {
 			},
 			ffi,
 			ctx: 1n,
-			modelPath: "/nonexistent/should-not-load.onnx",
 			config: {
 				onsetThreshold: 0.5,
 				pauseHangoverMs: 64,
@@ -310,32 +304,12 @@ describe("NativeSileroVad", () => {
 		expect(events.some((e) => e.type === "speech-start")).toBe(true);
 	});
 
-	it("falls back from an unavailable Qwen toolkit adapter to native Silero", async () => {
-		const ffi = fakeFfi("x", {
-			vadSupported: true,
-			vadProbs: [0.1],
-		});
-		const resolved = await resolveVadProvider({
-			qwenToolkitVad: {
-				isAvailable: () => false,
-				loadVad: async () => {
-					throw new Error("should not load");
-				},
-			},
-			ffi,
-			ctx: 1n,
-			modelPath: "/nonexistent/should-not-load.onnx",
-		});
-		expect(resolved.id).toBe("silero-native");
-		expect(await resolved.vad.process(new Float32Array(FRAME))).toBe(0.1);
-	});
-
 	it("uses the native FFI path when support is advertised", async () => {
 		const ffi = fakeFfi("x", {
 			vadSupported: true,
 			vadProbs: [0.1, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
 		});
-		const native = await NativeSileroVad.load({ ffi, ctx: 1n });
+		const native = await GgmlSileroVad.load({ ffi, ctx: 1n });
 		expect(native.windowSamples).toBe(FRAME);
 		expect(native.sampleRate).toBe(SR);
 		expect(await native.process(new Float32Array(FRAME))).toBe(0.1);
@@ -344,15 +318,17 @@ describe("NativeSileroVad", () => {
 		expect(() => native.close()).not.toThrow();
 	});
 
-	it("createSileroVadDetector prefers native VAD over ONNX when FFI supports it", async () => {
-		const ffi = fakeFfi("x", {
-			vadSupported: true,
-			vadProbs: [0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02],
-		});
+	it("createSileroVadDetector goes through the unified resolver", async () => {
+		// The Qwen toolkit adapter short-circuits resolution before any
+		// FFI / model-file checks run, which exercises the unified resolver
+		// end-to-end without needing a libelizainference build.
+		const qwenVad = new ScriptedSilero([
+			0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
+		]);
 		const det = await createSileroVadDetector({
-			ffi,
-			ctx: 1n,
-			modelPath: "/nonexistent/should-not-load.onnx",
+			qwenToolkitVad: {
+				loadVad: async () => qwenVad,
+			},
 			config: {
 				onsetThreshold: 0.5,
 				pauseHangoverMs: 64,
@@ -364,179 +340,51 @@ describe("NativeSileroVad", () => {
 		expect(events.some((e) => e.type === "speech-start")).toBe(true);
 	});
 
-	it("falls back to ONNX resolution when native VAD is unsupported", async () => {
+	it("fails loudly when the libelizainference build does not advertise VAD support", async () => {
 		const ffi = fakeFfi("x", { vadSupported: false });
 		await expect(
 			createSileroVadDetector({
 				ffi,
 				ctx: 1n,
-				modelPath: "/nonexistent/silero.onnx",
+				modelPath: "/nonexistent/silero.ggml.bin",
+			}),
+		).rejects.toMatchObject({
+			name: "VadUnavailableError",
+		});
+	});
+
+	it("fails loudly with provider-missing when no FFI and no adapter are supplied", async () => {
+		await expect(createSileroVadDetector({})).rejects.toMatchObject({
+			name: "VadUnavailableError",
+			code: "provider-missing",
+		});
+	});
+
+	it("fails loudly with model-missing when FFI is ready but the GGML model is absent", async () => {
+		const ffi = fakeFfi("x", { vadSupported: true, vadProbs: [0.1] });
+		await expect(
+			createSileroVadDetector({
+				ffi,
+				ctx: 1n,
+				modelPath: "/nonexistent/silero.ggml.bin",
 			}),
 		).rejects.toMatchObject({
 			name: "VadUnavailableError",
 			code: "model-missing",
 		});
 	});
-});
 
-describe("SileroVad — model not found", () => {
-	it("throws VadUnavailableError(model-missing) when the ONNX file is absent", async () => {
-		await expect(
-			SileroVad.load({ modelPath: "/nonexistent/silero.onnx" }),
-		).rejects.toMatchObject({
+	it("GgmlSileroVad.load throws VadUnavailableError when ffi.vadSupported returns false", async () => {
+		const ffi = fakeFfi("x", { vadSupported: false });
+		await expect(GgmlSileroVad.load({ ffi, ctx: 1n })).rejects.toMatchObject({
 			name: "VadUnavailableError",
-			code: "model-missing",
+			code: "ffi-missing",
 		});
 	});
-});
 
-// --- Network-gated real-model test ----------------------------------------
-
-// The bundle ships the int8 ONNX variant from `onnx-community/silero-vad`
-// (see `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`).
-// We fetch that exact artifact so the test exercises what the runtime loads.
-const SILERO_INT8_URL =
-	"https://huggingface.co/onnx-community/silero-vad/resolve/main/onnx/model_int8.onnx";
-
-async function tryFetchSileroModel(): Promise<string | null> {
-	if (process.env.ELIZA_VAD_MODEL_PATH) return process.env.ELIZA_VAD_MODEL_PATH;
-	if (process.env.CI && !process.env.ELIZA_VAD_ALLOW_NETWORK) return null;
-	try {
-		const ctrl = new AbortController();
-		const t = setTimeout(() => ctrl.abort(), 8000);
-		const res = await fetch(SILERO_INT8_URL, { signal: ctrl.signal });
-		clearTimeout(t);
-		if (!res.ok) return null;
-		const bytes = new Uint8Array(await res.arrayBuffer());
-		if (bytes.byteLength < 200_000) return null;
-		const dir = mkdtempSync(path.join(tmpdir(), "eliza-vad-"));
-		const p = path.join(dir, "silero-vad-int8.onnx");
-		writeFileSync(p, bytes);
-		return p;
-	} catch {
-		return null;
-	}
-}
-
-const modelPathPromise = tryFetchSileroModel();
-
-describe("SileroVad — real ONNX model (network-gated)", () => {
-	afterAll(() => {
-		/* temp dir left for the OS to reap */
+	it("VadUnavailableError code 'ffi-missing' is the canonical signal for a stub libelizainference build", () => {
+		const err = new VadUnavailableError("ffi-missing", "no symbols");
+		expect(err).toBeInstanceOf(VadUnavailableError);
+		expect(err.code).toBe("ffi-missing");
 	});
-
-	it("loads, runs 512-sample windows, and yields low prob on silence", async () => {
-		const modelPath = await modelPathPromise;
-		if (!modelPath) {
-			console.warn(
-				"[vad.test] Skipping real Silero ONNX test — model not available offline. Set ELIZA_VAD_MODEL_PATH or ELIZA_VAD_ALLOW_NETWORK=1.",
-			);
-			return;
-		}
-		let vad: SileroVad;
-		try {
-			vad = await SileroVad.load({ modelPath });
-		} catch (err) {
-			if (err instanceof VadUnavailableError && err.code === "ort-missing") {
-				console.warn("[vad.test] Skipping — onnxruntime-node not installed.");
-				return;
-			}
-			throw err;
-		}
-		expect(vad.windowSamples).toBe(512);
-		const silence = new Float32Array(512);
-		const p1 = await vad.process(silence);
-		const p2 = await vad.process(silence);
-		expect(p1).toBeGreaterThanOrEqual(0);
-		expect(p1).toBeLessThan(0.3);
-		expect(p2).toBeLessThan(0.3);
-		// A loud-ish broadband-ish burst should read higher than dead silence.
-		const noise = new Float32Array(512);
-		for (let i = 0; i < 512; i++)
-			noise[i] = (Math.sin(i * 0.7) + Math.sin(i * 1.9)) * 0.4;
-		vad.reset();
-		const pn = await vad.process(noise);
-		expect(pn).toBeGreaterThanOrEqual(0);
-		expect(pn).toBeLessThanOrEqual(1);
-	}, 20_000);
-
-	it("createSileroVadDetector wires a working VadDetector", async () => {
-		const modelPath = await modelPathPromise;
-		if (!modelPath) return;
-		let det: VadDetector;
-		try {
-			det = await createSileroVadDetector({
-				modelPath,
-				config: { onsetThreshold: 0.5 },
-			});
-		} catch (err) {
-			if (err instanceof VadUnavailableError && err.code === "ort-missing")
-				return;
-			throw err;
-		}
-		const events: VadEvent[] = [];
-		det.onVadEvent((e) => events.push(e));
-		// Feed 1 s of silence — should produce no speech events.
-		let ts = 0;
-		for (let i = 0; i < SR / 512; i++) {
-			await det.pushFrame({
-				pcm: new Float32Array(512),
-				sampleRate: SR,
-				timestampMs: ts,
-			});
-			ts += FRAME_MS;
-		}
-		await det.flush();
-		expect(events.filter((e) => e.type === "speech-start")).toHaveLength(0);
-	}, 20_000);
-
-	it("detects exactly one speech segment in a silence+speech+silence fixture and gates out the silence", async () => {
-		const modelPath = await modelPathPromise;
-		if (!modelPath) return;
-		let det: VadDetector;
-		try {
-			det = await createSileroVadDetector({
-				modelPath,
-				config: {
-					onsetThreshold: 0.5,
-					pauseHangoverMs: 220,
-					endHangoverMs: 500,
-					minSpeechMs: 150,
-				},
-			});
-		} catch (err) {
-			if (err instanceof VadUnavailableError && err.code === "ort-missing")
-				return;
-			throw err;
-		}
-		const fx = makeSpeechWithSilenceFixture({
-			sampleRate: SR,
-			leadSilenceSec: 0.6,
-			speechSec: 1.2,
-			tailSilenceSec: 0.6,
-		});
-		const speechStartMs = (fx.speechStartSample / SR) * 1000;
-		const speechEndMs = (fx.speechEndSample / SR) * 1000;
-		const events: VadEvent[] = [];
-		det.onVadEvent((e) => events.push(e));
-		// Feed the fixture in 512-sample windows on a mic-domain clock.
-		for (let i = 0; (i + 1) * 512 <= fx.pcm.length; i++) {
-			await det.pushFrame({
-				pcm: fx.pcm.slice(i * 512, (i + 1) * 512),
-				sampleRate: SR,
-				timestampMs: (i * 512 * 1000) / SR,
-			});
-		}
-		await det.flush();
-		const starts = events.filter((e) => e.type === "speech-start");
-		const ends = events.filter((e) => e.type === "speech-end");
-		expect(starts).toHaveLength(1);
-		expect(ends).toHaveLength(1);
-		const start = starts[0];
-		if (start.type !== "speech-start") throw new Error("unreachable");
-		// The onset must land inside the voiced region, not in the leading
-		// silence (small slack for Silero's look-ahead and the pause hangover).
-		expect(start.timestampMs).toBeGreaterThan(speechStartMs - 100);
-		expect(start.timestampMs).toBeLessThan(speechEndMs);
-	}, 30_000);
 });

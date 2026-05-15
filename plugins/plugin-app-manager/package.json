@@ -13,9 +13,9 @@
       "default": "./dist/index.js"
     },
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "files": [
@@ -39,7 +39,7 @@
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false",
+    "build": "tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",

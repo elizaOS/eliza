@@ -40,8 +40,15 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     `eliza_inference_encode_reference` entrypoint that the freeze CLI
  *     uses to pre-encode reference WAVs into the preset file. A v3 caller
  *     remains source-compatible: every v3 entry point keeps its v3 shape.
+ *
+ * v5: the FFI bridge gains the native openWakeWord surface
+ *     (`eliza_inference_wakeword_supported/open/score/reset/close`). It
+ *     replaces the previous `onnxruntime-node`-backed wake-word path —
+ *     the JS binding routes wake-word detection exclusively through this
+ *     ABI with no ONNX fallback (AGENTS.md §3, §8). v4 callers that
+ *     never touched the wake-word entries are source-compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 4 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 5 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -57,7 +64,13 @@ export const ELIZA_ERR_CANCELLED = -7;
  * Region names the lifecycle hands to `mmap_acquire` / `mmap_evict`.
  * Mirrors the set the C stub validates in `ffi-stub.c::valid_region`.
  */
-export type ElizaInferenceRegion = "tts" | "asr" | "text" | "dflash" | "vad";
+export type ElizaInferenceRegion =
+	| "tts"
+	| "asr"
+	| "text"
+	| "dflash"
+	| "vad"
+	| "wakeword";
 
 /**
  * Opaque pointer to the C-side `EliInferenceContext`. Numeric on Bun
@@ -68,6 +81,9 @@ export type ElizaInferenceContextHandle = bigint;
 
 /** Opaque pointer to a native Silero VAD session. */
 export type NativeVadHandle = bigint;
+
+/** Opaque pointer to a native openWakeWord session. */
+export type NativeWakeWordHandle = bigint;
 
 /** Opaque pointer to a streaming-LLM session. */
 export type LlmStreamHandle = bigint;
@@ -275,6 +291,40 @@ export interface ElizaInferenceFfi {
 	/** Close + free a native VAD session. Idempotent on already-closed handles. */
 	vadClose?(vad: NativeVadHandle): void;
 
+	/* ---- Native wake-word (ABI v5) -------------------------------- */
+
+	/**
+	 * True when this build exports and enables the native openWakeWord
+	 * backend. The JS binding routes wake-word detection exclusively
+	 * through this surface; when this returns false, the wake-word path
+	 * throws a structured "runtime not ready" error — no ONNX fallback
+	 * (AGENTS.md §3, §8).
+	 */
+	wakewordSupported?(): boolean;
+	/**
+	 * Open a native wake-word session. `sampleRateHz` must be 16000;
+	 * `headName` selects the classifier head inside the bundle's combined
+	 * wake-word GGUF (e.g. "hey-eliza").
+	 */
+	wakewordOpen?(args: {
+		ctx: ElizaInferenceContextHandle;
+		sampleRateHz: number;
+		headName: string;
+	}): NativeWakeWordHandle;
+	/**
+	 * Score one 1280-sample (80 ms @ 16 kHz) fp32 mono frame and return
+	 * the latest P(wake) in [0, 1]. Early calls before enough context
+	 * accumulates return 0.
+	 */
+	wakewordScore?(args: {
+		wake: NativeWakeWordHandle;
+		pcm: Float32Array;
+	}): number;
+	/** Clear all streaming state (audio tail, mel ring, embedding ring). */
+	wakewordReset?(wake: NativeWakeWordHandle): void;
+	/** Close + free a native wake-word session. Idempotent on already-closed handles. */
+	wakewordClose?(wake: NativeWakeWordHandle): void;
+
 	/* ---- Streaming ASR (ABI v2) ----------------------------------- */
 
 	/**
@@ -473,6 +523,22 @@ interface BunFfiSymbols {
 	) => number;
 	eliza_inference_vad_reset?: (vad: bigint, outErr: unknown) => number;
 	eliza_inference_vad_close?: (vad: bigint) => void;
+	eliza_inference_wakeword_supported?: () => number;
+	eliza_inference_wakeword_open?: (
+		ctx: bigint,
+		sampleRateHz: number,
+		headName: unknown,
+		outErr: unknown,
+	) => unknown;
+	eliza_inference_wakeword_score?: (
+		wake: bigint,
+		pcm: unknown,
+		nSamples: bigint | number,
+		outProbability: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_wakeword_reset?: (wake: bigint, outErr: unknown) => number;
+	eliza_inference_wakeword_close?: (wake: bigint) => void;
 	eliza_inference_asr_stream_supported: () => number;
 	eliza_inference_asr_stream_open: (
 		ctx: bigint,
@@ -632,6 +698,33 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		eliza_inference_vad_reset: { args: [T.usize, T.ptr], returns: T.i32 },
 		eliza_inference_vad_close: { args: [T.usize], returns: T.void },
 	};
+	// Native openWakeWord (ABI v5). Additive; transitional builds may report
+	// v5 before the wake-word symbols ship, so bind opportunistically and
+	// advertise unsupported when absent. The wake-word path throws a
+	// structured "runtime not ready" error in that case (no ONNX fallback).
+	let wakewordSymbolsAvailable = true;
+	const wakewordDefs = {
+		eliza_inference_wakeword_supported: { args: [], returns: T.i32 },
+		eliza_inference_wakeword_open: {
+			// ctx, sample_rate_hz, head_name (cstr), out_error
+			args: [T.ptr, T.i32, T.ptr, T.ptr],
+			returns: T.ptr,
+		},
+		eliza_inference_wakeword_score: {
+			// wake (usize), pcm (ptr), n_samples (usize), out_prob (ptr),
+			// out_error (ptr)
+			args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_wakeword_reset: {
+			args: [T.usize, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_wakeword_close: {
+			args: [T.usize],
+			returns: T.void,
+		},
+	};
 	// Streaming LLM (additive on top of v3). Bound opportunistically — when
 	// absent the runner falls back to the HTTP `llama-server` path.
 	let llmStreamSymbolsAvailable = true;
@@ -763,40 +856,71 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				...coreDefs,
 				...referenceEncodeDefs,
 				...nativeVadDefs,
+				...wakewordDefs,
 				...llmStreamDefs,
 			},
 			referenceEncode: true,
 			nativeVad: true,
+			wakeword: true,
+			llmStream: true,
+		},
+		{
+			defs: {
+				...coreDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...llmStreamDefs,
+			},
+			referenceEncode: false,
+			nativeVad: true,
+			wakeword: true,
+			llmStream: true,
+		},
+		{
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...llmStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: false,
 			llmStream: true,
 		},
 		{
 			defs: { ...coreDefs, ...nativeVadDefs, ...llmStreamDefs },
 			referenceEncode: false,
 			nativeVad: true,
+			wakeword: false,
 			llmStream: true,
 		},
 		{
 			defs: { ...coreDefs, ...referenceEncodeDefs, ...nativeVadDefs },
 			referenceEncode: true,
 			nativeVad: true,
+			wakeword: false,
 			llmStream: false,
 		},
 		{
 			defs: { ...coreDefs, ...nativeVadDefs },
 			referenceEncode: false,
 			nativeVad: true,
+			wakeword: false,
 			llmStream: false,
 		},
 		{
 			defs: { ...coreDefs, ...referenceEncodeDefs },
 			referenceEncode: true,
 			nativeVad: false,
+			wakeword: false,
 			llmStream: false,
 		},
 		{
 			defs: coreDefs,
 			referenceEncode: false,
 			nativeVad: false,
+			wakeword: false,
 			llmStream: false,
 		},
 	];
@@ -806,6 +930,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			lib = ffi.dlopen(dylibPath, attempt.defs);
 			referenceEncodeSymbolsAvailable = attempt.referenceEncode;
 			nativeVadSymbolsAvailable = attempt.nativeVad;
+			wakewordSymbolsAvailable = attempt.wakeword;
 			llmStreamSymbolsAvailable = attempt.llmStream;
 			break;
 		} catch (err) {
@@ -827,9 +952,18 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		loadedLib.symbols.eliza_inference_abi_version(),
 		ffi,
 	);
+	// v5 is the current full surface. Older fused builds may still be
+	// useful at degraded capability:
+	//   - v4: every v4 entry point works, just no wake-word — JS reports
+	//     wake-word unsupported and throws "runtime not ready" on use.
+	//   - v3: additionally no reference-encode — accepted only when the
+	//     optional reference-encode symbols are absent from the binding.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "3" && !referenceEncodeSymbolsAvailable);
+		(reported === "4" && !wakewordSymbolsAvailable) ||
+		(reported === "3" &&
+			!wakewordSymbolsAvailable &&
+			!referenceEncodeSymbolsAvailable);
 	if (!abiOk) {
 		loadedLib.close();
 		throw new VoiceLifecycleError(
@@ -1263,6 +1397,89 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
 		vadClose(vad) {
 			loadedLib.symbols.eliza_inference_vad_close?.(vad);
+		},
+
+		/* ---- Native wake-word (ABI v5) ----------------------------- */
+
+		wakewordSupported(): boolean {
+			if (
+				!wakewordSymbolsAvailable ||
+				typeof loadedLib.symbols.eliza_inference_wakeword_supported !==
+					"function"
+			) {
+				return false;
+			}
+			return (
+				loadedLib.symbols.eliza_inference_wakeword_supported() === 1
+			);
+		},
+
+		wakewordOpen({ ctx, sampleRateHz, headName }) {
+			const open = loadedLib.symbols.eliza_inference_wakeword_open;
+			if (!wakewordSymbolsAvailable || typeof open !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_wakeword_open is not exported by this libelizainference build (wake-word GGUF runtime not present)",
+				);
+			}
+			const err = makeOutErr();
+			const headArg = cstr(headName);
+			const handle = open(ctx, sampleRateHz, headArg.ptr, err.ptr);
+			if (isNullPointer(handle)) {
+				const message =
+					takeError(err.buf) ??
+					"[ffi-bindings] eliza_inference_wakeword_open returned NULL with no diagnostic";
+				throw new VoiceLifecycleError("kernel-missing", message);
+			}
+			return handle as NativeWakeWordHandle;
+		},
+
+		wakewordScore({ wake, pcm }) {
+			const score = loadedLib.symbols.eliza_inference_wakeword_score;
+			if (!wakewordSymbolsAvailable || typeof score !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_wakeword_score is not exported by this libelizainference build",
+				);
+			}
+			const err = makeOutErr();
+			const outProbability = new Float32Array(1);
+			const rc = score(
+				wake,
+				ffi.ptr(pcm),
+				BigInt(pcm.length),
+				ffi.ptr(outProbability),
+				err.ptr,
+			);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_wakeword_score rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			return outProbability[0] ?? 0;
+		},
+
+		wakewordReset(wake) {
+			const reset = loadedLib.symbols.eliza_inference_wakeword_reset;
+			if (!wakewordSymbolsAvailable || typeof reset !== "function") {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] eliza_inference_wakeword_reset is not exported by this libelizainference build",
+				);
+			}
+			const err = makeOutErr();
+			const rc = reset(wake, err.ptr);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_wakeword_reset rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+		},
+
+		wakewordClose(wake) {
+			loadedLib.symbols.eliza_inference_wakeword_close?.(wake);
 		},
 
 		/* ---- Streaming ASR (ABI v2) -------------------------------- */

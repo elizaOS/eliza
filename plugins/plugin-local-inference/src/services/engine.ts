@@ -1473,7 +1473,7 @@ export class LocalInferenceEngine {
 	 * Gated behind a complete real backend chain (AGENTS.md §3 — no silent
 	 * stub-mode "voice"):
 	 *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
-	 *   - a Silero ONNX VAD (caller-supplied detector, or `createSileroVadDetector()`),
+	 *   - a Silero v5 GGML VAD (caller-supplied detector, or `createSileroVadDetector()` — runs through libelizainference's native VAD ABI),
 	 *   - a working ASR (the bridge's `createStreamingTranscriber` throws
 	 *     `AsrUnavailableError` when neither the fused decoder nor whisper.cpp
 	 *     is available),
@@ -1702,7 +1702,25 @@ export class LocalInferenceEngine {
 					`[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
 				);
 			}
+			if (!bridge.ffi) {
+				throw new VoiceStartupError(
+					"missing-ffi",
+					"[voice] Cannot initialize wake-word detector: fused libelizainference FFI is not loaded. Wake-word detection requires the native GGUF runtime (eliza_inference_wakeword_* symbols).",
+				);
+			}
+			const ffiCtxResolver = () => {
+				const ctx = bridge.ffiCtx;
+				if (ctx === null) {
+					throw new VoiceStartupError(
+						"missing-ffi",
+						"[voice] Cannot initialize wake-word detector: fused FFI context is not loaded.",
+					);
+				}
+				return ctx;
+			};
 			const model = await loadBundledWakeWordModel({
+				ffi: bridge.ffi,
+				ctx: ffiCtxResolver,
 				bundleRoot: bridge.bundlePath(),
 				...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
 			});

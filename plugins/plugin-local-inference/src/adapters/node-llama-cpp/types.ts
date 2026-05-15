@@ -134,7 +134,7 @@ export const MODEL_SPECS: ModelSpecs = {
 			repo: "elizaos/eliza-1",
 			size: "bundle component",
 			quantization: "onnx-int8",
-			speakers: ["af_bella"],
+			speakers: ["af_same", "af_bella"],
 			languages: ["en"],
 			features: ["streaming", "barge-in", "low-latency"],
 			maxInputLength: 4096,
