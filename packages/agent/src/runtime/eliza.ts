@@ -1718,6 +1718,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
   const db = config.database;
   const provider = db?.provider ?? "pglite";
   const databaseUrl = process.env.DATABASE_URL?.trim();
+  const postgresUrl = process.env.POSTGRES_URL?.trim();
 
   if (provider === "postgres" && db?.postgres) {
     const pg = db.postgres;
@@ -1735,8 +1736,8 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     process.env.POSTGRES_URL = url;
     // Clear PGLite dir so plugin-sql does not fall back to PGLite
     delete process.env.PGLITE_DATA_DIR;
-  } else if (!db?.provider && databaseUrl && !process.env.POSTGRES_URL) {
-    process.env.POSTGRES_URL = databaseUrl;
+  } else if (!db?.provider && databaseUrl && (!postgresUrl || postgresUrl === databaseUrl)) {
+    process.env.POSTGRES_URL = postgresUrl || databaseUrl;
     delete process.env.PGLITE_DATA_DIR;
     logger.info("[eliza] DATABASE_URL detected: using Postgres database");
   } else {
