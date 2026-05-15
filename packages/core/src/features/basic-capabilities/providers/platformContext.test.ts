@@ -113,6 +113,8 @@ describe("platform context providers", () => {
 			threadId: "1700000000.000100",
 		});
 		expect(result.text).toContain('"platform_chat_context":');
+		expect(result.text).not.toContain("ship it");
+		expect(result.text).not.toContain('"recentMessages"');
 		expect(result.data).toMatchObject({
 			source: "slack",
 			chatContextCount: 1,
@@ -121,6 +123,7 @@ describe("platform context providers", () => {
 					source: "slack",
 					label: "#general",
 					summary: "team channel",
+					recentMessages: [{ name: "Sam", text: "ship it" }],
 				},
 			],
 		});

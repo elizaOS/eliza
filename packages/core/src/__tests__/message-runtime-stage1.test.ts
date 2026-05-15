@@ -3,7 +3,10 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import {
+	messageHandlerFromFieldResult,
+	runV5MessageRuntimeStage1,
+} from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -263,6 +266,108 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("preserves direct current-info candidates when explicitly addressed Stage 1 stays empty", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			{
+				thought: "Fallback planner can use search.",
+				toolCalls: [
+					{
+						id: "search-current-price",
+						name: "SEARCH",
+						args: { query: "current Bitcoin price USD" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Search returned current market data.",
+				messageToUser: "Current BTC price fetched from search.",
+			}),
+		]);
+		const searchHandler = vi.fn(async () => ({
+			success: true,
+			text: "BTC current price: 1 USD",
+			data: { actionName: "SEARCH" },
+		}));
+		runtime.actions = [
+			{
+				name: "SEARCH",
+				similes: ["WEB_SEARCH", "SEARCH_WEB"],
+				description: "Search current public data.",
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: searchHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "What is the current Bitcoin price in USD right now?",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(searchHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[3]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"candidateActions":["SEARCH"]');
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Current BTC price fetched from search.",
+			);
+		}
+	});
+
+	it("routes progress-only coding delegation replies through the planner", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				intents: ["build static app"],
+				replyText: "Spawning the sub-agent now.",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [{ name: "TASKS" }],
+				messageText:
+					"Use the OpenCode coding sub-agent to build a tiny static app with index.html, style.css, app.js, and verify the public URL.",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("general");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
 	it("falls back to the planner when an explicitly addressed Stage 1 turn is unparseable", async () => {
 		const runtime = makeRuntime([
 			"{not valid HANDLE_RESPONSE",
@@ -496,12 +601,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(systemContent).toContain("message_handler_stage:");
 		expect(systemContent).toContain("available_contexts");
-		// Stage 1 keeps both provider text and structured prior messages. This
-		// preserves long provider payloads while still giving the model clean
-		// chat-message-shaped prior turns.
-		expect(userContent).toContain("provider:RECENT_MESSAGES:");
-		expect(userContent).toContain("# Conversation Messages");
-		expect(userContent).toContain("full recent provider text");
+		// Stage 1 uses structured prior messages when RECENT_MESSAGES exposes
+		// data.recentMessages. Rendering the provider text too would duplicate the
+		// dialogue and can leak stored assistant thought/action metadata.
+		expect(userContent).not.toContain("provider:RECENT_MESSAGES:");
+		expect(userContent).not.toContain("# Conversation Messages");
+		expect(userContent).not.toContain("full recent provider text");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
 		expect(userContent).toContain("Can you check my calendar?");

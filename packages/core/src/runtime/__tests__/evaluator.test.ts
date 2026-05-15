@@ -51,6 +51,26 @@ describe("v5 evaluator skeleton", () => {
 		expect(output.parseError).toBe("response is not a single JSON object");
 	});
 
+	it("parses evaluator-labeled text without recording a schema failure", () => {
+		const output = parseEvaluatorOutput(`Success: true
+Decision: FINISH
+Thought: The tool result satisfies the request.
+
+\`\`\`bash
+df -h / /home
+\`\`\`
+
+**Result**
+- / has 165G available.`);
+
+		expect(output.success).toBe(true);
+		expect(output.decision).toBe("FINISH");
+		expect(output.parseError).toBeUndefined();
+		expect(output.thought).toBe("Recovered evaluator-labeled final answer.");
+		expect(output.messageToUser).toContain("df -h / /home");
+		expect(output.messageToUser).toContain("165G available");
+	});
+
 	it("applies message and clipboard effects through injected callbacks", async () => {
 		const copyToClipboard = vi.fn();
 		const messageToUser = vi.fn();
@@ -194,6 +214,186 @@ describe("v5 evaluator skeleton", () => {
 
 		expect(result.decision).toBe("FINISH");
 		expect(result.success).toBe(true);
+	});
+
+	it("promotes safe final thoughts to messageToUser with requested command echo", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "The root filesystem is 58% used with 165G available."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: {
+						content: "agent_name: Eliza",
+						stable: true,
+					},
+				},
+				events: [
+					{
+						id: "msg",
+						type: "message",
+						message: {
+							role: "user",
+							content: {
+								text: "Run the disk check and include the exact command you ran.",
+							},
+						},
+					},
+				],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "SHELL",
+							params: { command: "df -h / /home" },
+						},
+						result: {
+							success: true,
+							text: "Filesystem 58%",
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("Command run: `df -h / /home`");
+		expect(result.messageToUser).toContain("165G available");
+	});
+
+	it("recovers evaluator tool-attempt text as CONTINUE without parse failure", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					`{"action":"run","command":"df -h /","description":"Check disk","timeout":120000}\nNeed one more shell command before answering.`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "Filesystem 50%" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.parseError).toBeUndefined();
+		expect(result.thought).toContain("tool/action syntax");
+	});
+
+	it("recovers clean evaluator prose as FINISH after a successful tool result", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"Root is 58% used with 165 GB free. No deletions were performed.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "Filesystem 58%" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.parseError).toBeUndefined();
+		expect(result.messageToUser).toBe(
+			"Root is 58% used with 165 GB free. No deletions were performed.",
+		);
+	});
+
+	it("recovers clean evaluator prose with command fences after a successful tool result", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `The command executed was:
+
+\`\`\`
+df -h / /home
+\`\`\`
+
+Result: / and /home are on /dev/sda1, 387G total, 223G used, 165G free, 58% used.`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "Filesystem 58%" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.parseError).toBeUndefined();
+		expect(result.messageToUser).toContain("df -h / /home");
+		expect(result.messageToUser).toContain("165G free");
 	});
 
 	it("strips internal task-agent session-ids and auto-generated labels from messageToUser", async () => {
