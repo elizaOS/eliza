@@ -20,9 +20,9 @@ import { dbRead, dbWrite } from "../../../db/client";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { entitySettings } from "../../../db/schemas/entity-settings";
 import { oauthSessions } from "../../../db/schemas/secrets";
-import { getEncryptionService } from "../secrets";
 import { logger } from "../../utils/logger";
 import { isValidUUID } from "../../utils/validation";
+import { getEncryptionService } from "../secrets";
 import { entitySettingsCache } from "./cache";
 import type {
   EntitySettingMetadata,

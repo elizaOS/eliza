@@ -143,36 +143,23 @@ describe("per-feature routing registry", () => {
 
 describe("getFeaturePolicy", () => {
   it("returns the persisted policy for a known feature", () => {
-    expect(
-      getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }), "llm"),
-    ).toBe("local");
-    expect(
-      getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_RPC: "cloud" }), "rpc"),
-    ).toBe("cloud");
-    expect(
-      getFeaturePolicy(
-        runtime({ ELIZAOS_CLOUD_ROUTING_TOOL_USE: "auto" }),
-        "tool_use",
-      ),
-    ).toBe("auto");
+    expect(getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }), "llm")).toBe("local");
+    expect(getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_RPC: "cloud" }), "rpc")).toBe("cloud");
+    expect(getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_TOOL_USE: "auto" }), "tool_use")).toBe(
+      "auto",
+    );
   });
 
   it("is case-insensitive and tolerates surrounding whitespace", () => {
-    expect(
-      getFeaturePolicy(
-        runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "  CLOUD  " }),
-        "llm",
-      ),
-    ).toBe("cloud");
+    expect(getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "  CLOUD  " }), "llm")).toBe(
+      "cloud",
+    );
   });
 
   it("falls back to the default policy when the value is invalid", () => {
-    expect(
-      getFeaturePolicy(
-        runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "nonsense" }),
-        "llm",
-      ),
-    ).toBe(DEFAULT_FEATURE_POLICY);
+    expect(getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "nonsense" }), "llm")).toBe(
+      DEFAULT_FEATURE_POLICY,
+    );
   });
 
   it("falls back to the default policy when the value is unset", () => {
@@ -181,10 +168,7 @@ describe("getFeaturePolicy", () => {
 
   it("falls back to the default policy for unknown feature ids", () => {
     expect(
-      getFeaturePolicy(
-        runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }),
-        "unknown-feature",
-      ),
+      getFeaturePolicy(runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }), "unknown-feature"),
     ).toBe(DEFAULT_FEATURE_POLICY);
   });
 });
@@ -240,8 +224,7 @@ const FIXTURES: ResolveFixture[] = [
     expectSource: "local-key",
   },
   {
-    label:
-      "policy=local + no local key + cloud connected → disabled (no cloud fallback)",
+    label: "policy=local + no local key + cloud connected → disabled (no cloud fallback)",
     feature: "llm",
     policy: "local",
     localKeySet: false,
@@ -257,8 +240,7 @@ const FIXTURES: ResolveFixture[] = [
     expectSource: "disabled",
   },
   {
-    label:
-      "policy=cloud + local key set + cloud connected → cloud-proxy (ignores local key)",
+    label: "policy=cloud + local key set + cloud connected → cloud-proxy (ignores local key)",
     feature: "rpc",
     policy: "cloud",
     localKeySet: true,
@@ -266,8 +248,7 @@ const FIXTURES: ResolveFixture[] = [
     expectSource: "cloud-proxy",
   },
   {
-    label:
-      "policy=cloud + local key set + cloud disconnected → disabled (no local fallback)",
+    label: "policy=cloud + local key set + cloud disconnected → disabled (no local fallback)",
     feature: "rpc",
     policy: "cloud",
     localKeySet: true,
@@ -291,8 +272,7 @@ const FIXTURES: ResolveFixture[] = [
     expectSource: "disabled",
   },
   {
-    label:
-      "policy=auto + local key set + cloud connected → local-key (local wins)",
+    label: "policy=auto + local key set + cloud connected → local-key (local wins)",
     feature: "tool_use",
     policy: "auto",
     localKeySet: true,
@@ -332,9 +312,7 @@ describe("resolveFeatureCloudRoute", () => {
       expect(def).not.toBeNull();
       const settings: Record<string, unknown> = {
         ...(def ? { [def.settingKey]: fixture.policy } : {}),
-        ...(fixture.localKeySet
-          ? { [spec.localKeySetting]: "local-secret" }
-          : {}),
+        ...(fixture.localKeySet ? { [spec.localKeySetting]: "local-secret" } : {}),
         ...(fixture.cloudConnected
           ? {
               ELIZAOS_CLOUD_API_KEY: "cloud-secret",
@@ -344,11 +322,7 @@ describe("resolveFeatureCloudRoute", () => {
           : {}),
       };
 
-      const route = resolveFeatureCloudRoute(
-        runtime(settings),
-        fixture.feature,
-        spec,
-      );
+      const route = resolveFeatureCloudRoute(runtime(settings), fixture.feature, spec);
 
       expect(route.source).toBe(fixture.expectSource);
       expect(route.feature).toBe(fixture.feature);
@@ -358,9 +332,7 @@ describe("resolveFeatureCloudRoute", () => {
         expect(route.baseUrl).toBe("https://quotes.example.com");
         expect(route.headers).toEqual({ "x-api-key": "local-secret" });
       } else if (route.source === "cloud-proxy") {
-        expect(route.baseUrl).toBe(
-          "https://cloud.example.com/api/v1/apis/quotes",
-        );
+        expect(route.baseUrl).toBe("https://cloud.example.com/api/v1/apis/quotes");
         expect(route.headers).toEqual({ Authorization: "Bearer cloud-secret" });
       }
     });
@@ -393,23 +365,14 @@ describe("resolveFeatureCloudRoute", () => {
     const settings = runtime({
       [spec.localKeySetting]: "local-secret",
     });
-    const route = resolveFeatureCloudRoute(
-      settings,
-      "not-a-real-feature",
-      spec,
-    );
+    const route = resolveFeatureCloudRoute(settings, "not-a-real-feature", spec);
     expect(route.source).toBe("local-key");
     expect(route.policy).toBe(DEFAULT_FEATURE_POLICY);
     expect(route.feature).toBe("not-a-real-feature");
   });
 
   it("preserves the feature id and policy in every result branch", () => {
-    const disabled = resolveFeatureCloudRoute(
-      runtime({}),
-      "llm",
-      spec,
-      "cloud",
-    );
+    const disabled = resolveFeatureCloudRoute(runtime({}), "llm", spec, "cloud");
     expect(disabled).toMatchObject({
       source: "disabled",
       feature: "llm",

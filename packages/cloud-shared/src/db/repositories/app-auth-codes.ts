@@ -1,10 +1,6 @@
 import { and, eq, gt, lt } from "drizzle-orm";
 import { dbWrite } from "@/db/helpers";
-import {
-  type AppAuthCode,
-  appAuthCodes,
-  type NewAppAuthCode,
-} from "@/db/schemas/app-auth-codes";
+import { type AppAuthCode, appAuthCodes, type NewAppAuthCode } from "@/db/schemas/app-auth-codes";
 
 export type { AppAuthCode, NewAppAuthCode };
 
@@ -33,12 +29,7 @@ export class AppAuthCodesRepository {
     const now = new Date();
     const [row] = await dbWrite
       .delete(appAuthCodes)
-      .where(
-        and(
-          eq(appAuthCodes.code_hash, codeHash),
-          gt(appAuthCodes.expires_at, now),
-        ),
-      )
+      .where(and(eq(appAuthCodes.code_hash, codeHash), gt(appAuthCodes.expires_at, now)))
       .returning();
     return row;
   }

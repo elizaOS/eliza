@@ -1,5 +1,5 @@
-import { requireAdmin, requireUserOrApiKeyWithOrg } from "../auth/workers-hono-auth";
 import type { AppContext } from "../../types/cloud-worker-env";
+import { requireAdmin, requireUserOrApiKeyWithOrg } from "../auth/workers-hono-auth";
 import { type CloudCapability, type CloudCapabilityStatus, getCloudCapabilities } from "./registry";
 
 type CapabilityArgs = Record<string, unknown>;

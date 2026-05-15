@@ -96,8 +96,9 @@ function parseStringList(value: unknown): string[] {
 }
 
 function getKnownModels(runtime: IAgentRuntime): string[] {
-	const configured =
-		parseStringList(runtime.getSetting("DISCORD_KNOWN_MODELS"));
+	const configured = parseStringList(
+		runtime.getSetting("DISCORD_KNOWN_MODELS"),
+	);
 	return configured.length > 0 ? configured : [...FALLBACK_KNOWN_MODELS];
 }
 

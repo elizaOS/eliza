@@ -9,11 +9,11 @@
  * @see ANALYTICS_PR_REVIEW_ANALYSIS.md - Issue #1 (Fixed)
  */
 
+import type { RouteParams } from "../api/hono-next-style-params";
 import type { EndpointType } from "../services/org-rate-limits";
 import { getOrgRpmForEndpoint } from "../services/org-rate-limits";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
-import type { RouteParams } from "../api/hono-next-style-params";
 import { checkRateLimitRedis, type RateLimitResult } from "./rate-limit-redis";
 
 interface RateLimitConfig {

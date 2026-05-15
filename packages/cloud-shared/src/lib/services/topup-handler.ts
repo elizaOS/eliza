@@ -5,13 +5,13 @@
  */
 import { isAddress } from "viem";
 import { verifyWalletSignature } from "../auth/wallet-auth";
+import type { UserWithOrganization } from "../types";
+import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { referralsService } from "./referrals";
 import { findOrCreateUserByWalletAddress } from "./wallet-signup";
 import { x402FacilitatorService } from "./x402-facilitator";
-import type { UserWithOrganization } from "../types";
-import { logger } from "../utils/logger";
 
 const USDC_ASSETS_BY_NETWORK: Record<string, { caip2: string; asset: string; decimals: number }> = {
   base: {

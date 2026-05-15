@@ -212,9 +212,13 @@ async function callCloudVision(
 		},
 	);
 	if (!response.ok) {
-		throw new Error(`Eliza Cloud image fallback failed with ${response.status}`);
+		throw new Error(
+			`Eliza Cloud image fallback failed with ${response.status}`,
+		);
 	}
-	return normalizeVisionDescription((await response.json()) as LocalVisionResult);
+	return normalizeVisionDescription(
+		(await response.json()) as LocalVisionResult,
+	);
 }
 
 export function wrapImageDescriptionHandlerWithCloudFallback(

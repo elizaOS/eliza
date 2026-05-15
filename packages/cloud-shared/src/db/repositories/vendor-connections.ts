@@ -7,13 +7,13 @@
  */
 
 import { and, desc, eq } from "drizzle-orm";
+import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { db } from "../client";
 import {
   type VendorConnection,
   type VendorConnectionMetadata,
   vendorConnections,
 } from "../schemas/vendor-connections";
-import { getEncryptionService } from "../../lib/services/secrets/encryption";
 
 interface UpsertConnectionInput {
   organizationId: string;

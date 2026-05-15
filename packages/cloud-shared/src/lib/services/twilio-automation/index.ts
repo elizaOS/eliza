@@ -5,7 +5,6 @@
  * for Twilio integration. Follows the same pattern as Telegram and Blooio.
  */
 
-import { secretsService } from "../secrets";
 import { logger } from "../../utils/logger";
 import {
   isE164PhoneNumber,
@@ -13,6 +12,7 @@ import {
   type TwilioSendMessageResponse,
   twilioApiRequest,
 } from "../../utils/twilio-api";
+import { secretsService } from "../secrets";
 
 // Use ELIZA_API_URL (ngrok) for local dev webhooks, otherwise NEXT_PUBLIC_APP_URL
 const WEBHOOK_BASE_URL =

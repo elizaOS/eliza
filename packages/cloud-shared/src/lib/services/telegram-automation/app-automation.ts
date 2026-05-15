@@ -4,21 +4,18 @@ import { Telegraf } from "telegraf";
 import { appsRepository } from "../../../db/repositories/apps";
 import type { App } from "../../../db/schemas/apps";
 import { TELEGRAM_POST_COST } from "../../promotion-pricing";
-import {
-  getTelegramConfigWithDefaults,
-  TELEGRAM_AUTOMATION_DEFAULTS,
-} from "../automation-constants";
-import {
-  buildCharacterSystemPrompt,
-  getCharacterPromptContext,
-} from "../character-prompt-helper";
-import { creditsService } from "../credits";
 import { logger } from "../../utils/logger";
 import {
   createInlineKeyboard,
   splitMessage,
   TELEGRAM_RATE_LIMITS,
 } from "../../utils/telegram-helpers";
+import {
+  getTelegramConfigWithDefaults,
+  TELEGRAM_AUTOMATION_DEFAULTS,
+} from "../automation-constants";
+import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
+import { creditsService } from "../credits";
 import { telegramAutomationService } from "./index";
 
 export interface TelegramAutomationConfig {

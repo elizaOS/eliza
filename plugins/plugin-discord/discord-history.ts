@@ -182,10 +182,7 @@ export async function saveSpiderState(
 				const channel = await service.client.channels.fetch(state.channelId);
 				if (channel && "guild" in channel && channel.guild) {
 					serverId = channel.guild.id;
-					channelName =
-						"name" in channel
-							? (channel.name)
-							: state.channelId;
+					channelName = "name" in channel ? channel.name : state.channelId;
 				}
 			}
 		} catch {
@@ -725,7 +722,7 @@ export async function fetchChannelHistory(
 
 			const messages = Array.from(
 				batch.values() as IterableIterator<Message>,
-			).sort((a, b) => (a.createdTimestamp) - (b.createdTimestamp));
+			).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
 			const knownNewestTimestamp = spiderState.newestMessageTimestamp ?? 0;
 			const knownNewestId = spiderState.newestMessageId;
@@ -961,7 +958,7 @@ export async function fetchChannelHistory(
 		}
 
 		const messages = Array.from(batch.values()).sort(
-			(a, b) => (a.createdTimestamp) - (b.createdTimestamp),
+			(a, b) => a.createdTimestamp - b.createdTimestamp,
 		);
 		totalFetched += messages.length;
 

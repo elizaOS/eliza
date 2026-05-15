@@ -11,9 +11,9 @@
 import { randomUUID } from "node:crypto";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";
-import { SocketRedis } from "./socket-redis";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { SocketRedis } from "./socket-redis";
 
 function isCloudflareWorkerRuntime(): boolean {
   return typeof globalThis !== "undefined" && "WebSocketPair" in globalThis;

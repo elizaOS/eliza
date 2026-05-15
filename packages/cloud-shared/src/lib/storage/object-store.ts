@@ -2,10 +2,7 @@ import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./r2-runtime-binding";
-import {
-  getObjectStorageClient,
-  objectStorageConfigured,
-} from "./s3-compatible-client";
+import { getObjectStorageClient, objectStorageConfigured } from "./s3-compatible-client";
 
 export type ObjectStorageMode = "inline" | "r2";
 

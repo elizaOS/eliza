@@ -9,10 +9,10 @@ import type { Organization } from "../../db/repositories/organizations";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import { usersRepository } from "../../db/repositories/users";
+import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 import { organizationsService } from "./organizations";
 import { usersService } from "./users";
-import { logger } from "../utils/logger";
 
 const INITIAL_FREE_CREDITS = ((): number => {
   const v = process.env.INITIAL_FREE_CREDITS;

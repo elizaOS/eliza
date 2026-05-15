@@ -22,6 +22,7 @@
 		"skipLibCheck": true,
 		"paths": {
 			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/contracts": ["../contracts/dist/index.d.ts"],
 			"@elizaos/shared": ["../shared/src/index.ts"]
 		}
 	},

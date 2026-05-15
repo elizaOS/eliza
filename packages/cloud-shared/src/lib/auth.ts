@@ -1,17 +1,6 @@
 import crypto from "crypto";
 import type { Organization } from "../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "./api/errors";
-import { verifyWalletSignature } from "./auth/wallet-auth";
-import { cache as redisCache } from "./cache/client";
-import { CacheKeys, CacheTTL } from "./cache/keys";
-import { getCookieValueFromHeader } from "./http/cookie-header";
-import { getCloudAwareEnv } from "./runtime/cloud-bindings";
-import { adminService } from "./services/admin";
-import { apiKeysService } from "./services/api-keys";
-import { userSessionsService } from "./services/user-sessions";
-import { usersService } from "./services/users";
-import type { ApiKey, UserWithOrganization } from "./types";
-import { logger } from "./utils/logger";
 import {
   isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
@@ -22,7 +11,18 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "./auth/steward-client";
+import { verifyWalletSignature } from "./auth/wallet-auth";
+import { cache as redisCache } from "./cache/client";
+import { CacheKeys, CacheTTL } from "./cache/keys";
+import { getCookieValueFromHeader } from "./http/cookie-header";
+import { getCloudAwareEnv } from "./runtime/cloud-bindings";
+import { adminService } from "./services/admin";
+import { apiKeysService } from "./services/api-keys";
+import { userSessionsService } from "./services/user-sessions";
+import { usersService } from "./services/users";
 import { syncUserFromSteward } from "./steward-sync";
+import type { ApiKey, UserWithOrganization } from "./types";
+import { logger } from "./utils/logger";
 
 // Re-export Organization type for convenience
 export type { Organization };

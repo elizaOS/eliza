@@ -3,8 +3,8 @@ import { dbRead } from "../../db/helpers";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { type AgentSandboxStatus, agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import type { DockerNodeStatus } from "../../db/schemas/docker-nodes";
-import { DockerSSHClient } from "./docker-ssh";
 import { logger } from "../utils/logger";
+import { DockerSSHClient } from "./docker-ssh";
 
 const HEARTBEAT_WARNING_MINUTES = 5;
 const HEARTBEAT_STALE_MINUTES = 15;

@@ -1,10 +1,10 @@
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { resolveStewardContainerUrl } from "./docker-sandbox-utils";
 import {
   type ManagedElizaEnvironmentResult,
   prepareManagedElizaSharedEnvironment,
 } from "./managed-eliza-config";
-import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 
 export type { ManagedElizaEnvironmentResult } from "./managed-eliza-config";
 

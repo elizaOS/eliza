@@ -32,7 +32,7 @@
     "noUncheckedIndexedAccess": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["**/*.ts"],
+  "include": ["index.ts", "index.node.ts", "src/**/*.ts"],
   "exclude": [
     "dist",
     "node_modules",

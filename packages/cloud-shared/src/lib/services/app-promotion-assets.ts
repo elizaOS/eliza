@@ -8,10 +8,10 @@ import {
 } from "../providers/anthropic-thinking";
 import { getLanguageModel } from "../providers/language-model";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
-import { contentSafetyService } from "./content-safety";
 import { parseAiJson } from "../utils/ai-json-parse";
 import { extractErrorMessage } from "../utils/error-handling";
 import { logger } from "../utils/logger";
+import { contentSafetyService } from "./content-safety";
 
 const IMAGE_MODEL = "google/gemini-2.5-flash-image";
 

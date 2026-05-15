@@ -1,6 +1,4 @@
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
-import { elizaSandboxService } from "./eliza-sandbox";
-import { oauthService } from "./oauth";
 import { logger } from "../utils/logger";
 import {
   type ManagedAgentGithubBinding,
@@ -9,6 +7,8 @@ import {
   withManagedAgentGithubBinding,
   withoutManagedAgentGithubBinding,
 } from "./eliza-agent-config";
+import { elizaSandboxService } from "./eliza-sandbox";
+import { oauthService } from "./oauth";
 
 export interface ManagedAgentGithubStatus {
   configured: boolean;
