@@ -10,11 +10,12 @@
  */
 
 import { logger } from "../../logger.ts";
-import type { Plugin } from "../../types/index.ts";
+import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { secretsAction } from "./actions/manage-secret.ts";
 import {
 	missingSecretsProvider,
 	OnboardingService,
+	ONBOARDING_SERVICE_TYPE,
 	onboardingSettingsProvider,
 	updateSettingsAction,
 } from "./onboarding/index.ts";
@@ -22,8 +23,11 @@ import {
 	secretsInfoProvider,
 	secretsStatusProvider,
 } from "./providers/index.ts";
-import { PluginActivatorService } from "./services/plugin-activator.ts";
-import { SecretsService } from "./services/secrets.ts";
+import {
+	PLUGIN_ACTIVATOR_SERVICE_TYPE,
+	PluginActivatorService,
+} from "./services/plugin-activator.ts";
+import { SECRETS_SERVICE_TYPE, SecretsService } from "./services/secrets.ts";
 
 /**
  * Plugin configuration
@@ -107,6 +111,19 @@ export const secretsManagerPlugin: Plugin = {
 		// The runtime will call Service.start() for each service
 
 		logger.info("[SecretsManagerPlugin] Initialized");
+	},
+
+	async dispose(runtime: IAgentRuntime) {
+		const activator = runtime.getService<PluginActivatorService>(
+			PLUGIN_ACTIVATOR_SERVICE_TYPE,
+		);
+		await activator?.stop();
+		const secrets = runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+		await secrets?.stop();
+		const onboarding = runtime.getService<OnboardingService>(
+			ONBOARDING_SERVICE_TYPE,
+		);
+		await onboarding?.stop();
 	},
 };
 

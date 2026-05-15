@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 // Kamino Protocol Plugin
 import { kaminoPlugin } from "./kamino";
 // Steer Finance Plugin
@@ -33,6 +33,10 @@ export const lpinfoPlugin: Plugin = {
   ],
   actions: [...(steerPlugin.actions || []), ...(kaminoPlugin.actions || [])],
   services: [...(steerPlugin.services || []), ...(kaminoPlugin.services || [])],
+  async dispose(runtime: IAgentRuntime) {
+    await steerPlugin.dispose?.(runtime);
+    await kaminoPlugin.dispose?.(runtime);
+  },
 };
 
 export default lpinfoPlugin;

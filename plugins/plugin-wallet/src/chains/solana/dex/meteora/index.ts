@@ -27,6 +27,12 @@ export const meteoraPlugin: Plugin = {
       })
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<MeteoraLpService>(
+      MeteoraLpService.serviceType,
+    );
+    await svc?.stop();
+  },
 };
 
 export default meteoraPlugin;

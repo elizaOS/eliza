@@ -1,4 +1,4 @@
-import type { Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { kaminoLiquidityProvider } from "./providers/kaminoLiquidityProvider";
 import { kaminoPoolProvider } from "./providers/kaminoPoolProvider";
 // Providers
@@ -18,6 +18,14 @@ export const kaminoPlugin: Plugin = {
   providers: [kaminoProvider, kaminoLiquidityProvider, kaminoPoolProvider],
   actions: [],
   services: [KaminoService, KaminoLiquidityService],
+  async dispose(runtime: IAgentRuntime) {
+    const kamino = runtime.getService<KaminoService>(KaminoService.serviceType);
+    await kamino?.stop();
+    const liquidity = runtime.getService<KaminoLiquidityService>(
+      KaminoLiquidityService.serviceType,
+    );
+    await liquidity?.stop();
+  },
 };
 
 export default kaminoPlugin;

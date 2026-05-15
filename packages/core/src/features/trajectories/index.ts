@@ -379,6 +379,12 @@ export const trajectoriesPlugin: Plugin = {
 			},
 		],
 	},
+	async dispose(runtime: IAgentRuntime) {
+		const svc = runtime.getService<TrajectoriesService>(
+			TrajectoriesService.serviceType,
+		);
+		await svc?.stop();
+	},
 };
 
 export default trajectoriesPlugin;
