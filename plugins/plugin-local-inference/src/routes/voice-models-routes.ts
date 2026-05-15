@@ -56,16 +56,16 @@ import {
 import {
 	DEFAULT_NETWORK_POLICY_PREFERENCES,
 	type NetworkPolicyPreferences,
-	type VoiceModelId,
 	VOICE_MODEL_VERSIONS,
+	type VoiceModelId,
 	type VoiceModelVersion,
 } from "@elizaos/shared";
 import { evaluateRuntimePolicy } from "../services/network-policy";
 import {
 	downloadVoiceModel,
 	VoiceModelDownloadError,
-	VoiceModelUpdater,
 	type VoiceModelStatus,
+	VoiceModelUpdater,
 } from "../services/voice-model-updater";
 import { readCompatJsonBody } from "./compat-helpers";
 
@@ -159,7 +159,9 @@ async function readPreferences(): Promise<NetworkPolicyPreferences> {
 	}
 }
 
-async function writePreferences(prefs: NetworkPolicyPreferences): Promise<void> {
+async function writePreferences(
+	prefs: NetworkPolicyPreferences,
+): Promise<void> {
 	await fsp.mkdir(voicePrefsDir(), { recursive: true });
 	const out: PreferencesFile = {
 		autoUpdateOnWifi: prefs.autoUpdateOnWifi,
@@ -236,7 +238,8 @@ async function writePins(pins: ReadonlySet<VoiceModelId>): Promise<void> {
  * so we can recover `installedVersion` by directory listing.          *
  * ----------------------------------------------------------------- */
 
-const INSTALLED_FILENAME_RE = /^([a-z0-9-]+)-(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)-/;
+const INSTALLED_FILENAME_RE =
+	/^([a-z0-9-]+)-(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)-/;
 
 export async function resolveInstalledVersions(
 	dir: string = bundleVoiceDir(),

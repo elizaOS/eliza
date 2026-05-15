@@ -17,6 +17,14 @@ export {
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
 export {
+	handleVoiceModelsRoutes,
+	resolveInstalledVersions as resolveInstalledVoiceModelVersions,
+	setVoiceModelDownloader,
+	setVoiceModelsBundleVersionForTest,
+	setVoiceModelsUpdater,
+	type VoiceModelInstallationView,
+} from "./voice-models-routes.js";
+export {
 	__resetVoiceOnboardingSessions,
 	type EncoderFactory as VoiceOnboardingEncoderFactory,
 	handleVoiceOnboardingRoutes,
