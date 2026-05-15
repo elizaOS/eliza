@@ -225,8 +225,8 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getWorkspaceAppAliases(repoRoot, [
     "app-task-coordinator",
-    "app-steward",
-    "app-wallet",
+    "plugin-steward-app",
+    "plugin-wallet",
   ]),
   ...getWorkspacePluginAliases(repoRoot, [
     "plugin-companion",
