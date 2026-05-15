@@ -56,7 +56,7 @@ async function manifestDeclaresVoice(
 	// Voice tiers ship a TTS GGUF under `files.voice`; the ASR/VAD files are
 	// gated on top of that. If there is no voice file, this is a text-only
 	// bundle and the voice leg of the smoke is skipped.
-	return (manifest.files.voice).length > 0;
+	return manifest.files.voice.length > 0;
 }
 
 async function verifyText(

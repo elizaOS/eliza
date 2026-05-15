@@ -14,8 +14,8 @@ import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { secretsAction } from "./actions/manage-secret.ts";
 import {
 	missingSecretsProvider,
-	OnboardingService,
 	ONBOARDING_SERVICE_TYPE,
+	OnboardingService,
 	onboardingSettingsProvider,
 	updateSettingsAction,
 } from "./onboarding/index.ts";

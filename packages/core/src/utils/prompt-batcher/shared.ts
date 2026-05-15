@@ -116,7 +116,7 @@ export function buildCharacterContext(runtime: IAgentRuntime): string {
 
 export function getSourceMessageId(message: Memory): string {
 	const metadata = (message.metadata ?? {}) as Record<string, unknown>;
-	const content = (message.content) as Record<string, unknown>;
+	const content = message.content as Record<string, unknown>;
 
 	const discordId = metadata.discordMessageId;
 	if (typeof discordId === "string" && discordId) {

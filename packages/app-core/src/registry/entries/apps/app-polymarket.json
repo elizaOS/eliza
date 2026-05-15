@@ -2,7 +2,7 @@
   "id": "app-polymarket",
   "name": "Polymarket",
   "description": "Native Polymarket market discovery and trading readiness for prediction markets.",
-  "npmName": "@elizaos/app-polymarket",
+  "npmName": "@elizaos/plugin-polymarket-app",
   "source": "bundled",
   "tags": ["trading", "polymarket", "prediction-markets", "wallet"],
   "config": {},
@@ -24,7 +24,7 @@
     "capabilities": ["polymarket", "prediction-markets", "trading", "wallet"],
     "curatedSlug": "polymarket",
     "routePlugin": {
-      "specifier": "@elizaos/app-polymarket",
+      "specifier": "@elizaos/plugin-polymarket-app",
       "exportName": "polymarketPlugin"
     }
   }

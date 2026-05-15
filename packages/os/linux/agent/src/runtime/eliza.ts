@@ -25,7 +25,7 @@
  * What's intentionally smaller than milady's runtime:
  *  - No `@elizaos/app-core` / Vault bootstrap (milady's vault holds tokens;
  *    we have no auth surface yet).
- *  - No `@elizaos/app-lifeops` / `@elizaos/app-companion` (milady-specific apps).
+ *  - No `@elizaos/plugin-lifeops` / `@elizaos/plugin-companion` (milady-specific apps).
  *  - No autonomy / scheduling service (Phase 1.5).
  *  - No `@elizaos/plugin-sql` (PGLite) — opt-in once LUKS persistence ships.
  *
@@ -59,7 +59,7 @@ import { usbelizaPlugin } from "./plugin.ts";
  *
  * We inline rather than `import { PROVIDER_PLUGIN_MAP } from "@elizaos/agent"`
  * because importing from `@elizaos/agent` triggers its transitive module
- * loads (`@elizaos/plugin-browser-bridge`, `@elizaos/app-training`, the
+ * loads (`@elizaos/plugin-browser-bridge`, `@elizaos/plugin-training`, the
  * SQL/vault bootstrap chain). Those packages exist in the elizaOS
  * monorepo workspace but not in our minimal-mode agent's `node_modules`,
  * so the import would crash boot. We only need this 20-entry constant —

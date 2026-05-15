@@ -107,22 +107,20 @@ test("describeAndroidTargetDryRun emits cmake + graft + verify lines for fused t
     log,
   });
   const text = lines.join("\n");
-  // The graft block must be described.
-  assert.ok(text.includes("graft:"), "missing graft: header");
+  // The merged-tree omnivoice line must be described.
   assert.ok(
-    text.includes("prepareOmnivoiceFusion"),
-    "missing prepareOmnivoiceFusion step",
+    text.includes("omnivoice: merged in-fork path"),
+    "missing merged-path omnivoice line",
   );
-  assert.ok(text.includes("appendCmakeGraft"), "missing appendCmakeGraft step");
   // The cmake invocation must carry the fused flag.
   assert.ok(
-    text.includes("-DELIZA_FUSE_OMNIVOICE=ON"),
+    text.includes("-DLLAMA_BUILD_OMNIVOICE=ON"),
     "fused cmake flag not present",
   );
-  // The build target list must include omnivoice-core + elizainference.
+  // The build target list must include omnivoice_lib + elizainference.
   assert.ok(
-    text.includes("omnivoice-core"),
-    "omnivoice-core build target missing",
+    text.includes("omnivoice_lib"),
+    "omnivoice_lib build target missing",
   );
   assert.ok(
     text.includes("elizainference"),
@@ -139,7 +137,7 @@ test("describeAndroidTargetDryRun emits cmake + graft + verify lines for fused t
   );
 });
 
-test("describeAndroidTargetDryRun does NOT emit fused/graft lines for non-fused targets", () => {
+test("describeAndroidTargetDryRun does NOT emit fused/omnivoice lines for non-fused targets", () => {
   const lines = [];
   describeAndroidTargetDryRun({
     target: "android-arm64-cpu",
@@ -150,9 +148,12 @@ test("describeAndroidTargetDryRun does NOT emit fused/graft lines for non-fused 
     log: (line) => lines.push(line),
   });
   const text = lines.join("\n");
-  assert.ok(!text.includes("graft:"), "non-fused dry-run leaked graft block");
   assert.ok(
-    !text.includes("-DELIZA_FUSE_OMNIVOICE"),
+    !text.includes("omnivoice:"),
+    "non-fused dry-run leaked omnivoice line",
+  );
+  assert.ok(
+    !text.includes("-DLLAMA_BUILD_OMNIVOICE"),
     "non-fused dry-run leaked fused cmake flag",
   );
   assert.ok(
@@ -177,7 +178,7 @@ test("ABI_TARGETS still carries the two canonical ABIs", () => {
 // End-to-end smoke through the actual CLI entry. Spawns `node
 // compile-libllama.mjs --target ... --dry-run` and asserts the printed plan
 // matches the wiring contract.
-test("CLI --target ... --dry-run produces a plan that mentions cmake, the graft, and verify-symbols (fused target)", () => {
+test("CLI --target ... --dry-run produces a plan that mentions cmake, the merged-path omnivoice line, and verify-symbols (fused target)", () => {
   if (!fs.existsSync(scriptPath)) {
     throw new Error(`compile-libllama.mjs not found at ${scriptPath}`);
   }
@@ -200,9 +201,8 @@ test("CLI --target ... --dry-run produces a plan that mentions cmake, the graft,
   );
   const out = result.stdout;
   assert.ok(out.includes("(dry-run) target=android-x86_64-cpu-fused"));
-  assert.ok(out.includes("prepareOmnivoiceFusion"));
-  assert.ok(out.includes("appendCmakeGraft"));
-  assert.ok(out.includes("-DELIZA_FUSE_OMNIVOICE=ON"));
+  assert.ok(out.includes("omnivoice: merged in-fork path"));
+  assert.ok(out.includes("-DLLAMA_BUILD_OMNIVOICE=ON"));
   assert.ok(out.includes("elizainference"));
   assert.ok(out.includes("verifyFusedSymbols"));
   assert.ok(out.includes("plan complete: 1 target(s)"));

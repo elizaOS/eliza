@@ -2,7 +2,7 @@
   "id": "lifeops",
   "name": "LifeOps",
   "description": "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
-  "npmName": "@elizaos/app-lifeops",
+  "npmName": "@elizaos/plugin-lifeops",
   "source": "bundled",
   "tags": ["lifeops", "tasks", "calendar", "gmail"],
   "config": {},
@@ -24,7 +24,7 @@
     "target": "lifeops",
     "capabilities": ["lifeops", "tasks", "calendar", "gmail"],
     "routePlugin": {
-      "specifier": "@elizaos/app-lifeops",
+      "specifier": "@elizaos/plugin-lifeops",
       "exportName": "lifeopsPlugin"
     }
   }

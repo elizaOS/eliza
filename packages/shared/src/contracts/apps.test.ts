@@ -34,7 +34,7 @@ const RUN_SUMMARY = {
   runId: "run-1",
   appName: "companion",
   displayName: "Companion",
-  pluginName: "@elizaos/app-companion",
+  pluginName: "@elizaos/plugin-companion",
   launchType: "viewer",
   launchUrl: "http://x",
   viewer: null,

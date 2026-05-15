@@ -58,7 +58,13 @@
       },
       "description": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-2004scape#readme",
-      "topics": ["game", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "game",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -181,7 +187,12 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "pause", "resume"]
+          "features": [
+            "commands",
+            "telemetry",
+            "pause",
+            "resume"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -270,7 +281,11 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -317,7 +332,13 @@
       },
       "description": "Companion app package with the VRM scene runtime and avatar utilities.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-companion#readme",
-      "topics": ["shell", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "shell",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -376,7 +397,12 @@
       },
       "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-contacts#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -454,7 +480,11 @@
         "launchUrl": "https://www.defenseoftheagents.com/",
         "icon": "Gamepad",
         "heroImage": "assets/hero.png",
-        "capabilities": ["strategy", "telemetry", "lane-control"],
+        "capabilities": [
+          "strategy",
+          "telemetry",
+          "lane-control"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/plugin-defense-of-the-agents",
@@ -467,7 +497,11 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -514,7 +548,12 @@
       },
       "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-device-settings#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -531,7 +570,7 @@
         "visibleInAppStore": true
       }
     },
-    "@elizaos/app-documents": {
+    "@elizaos/plugin-documents": {
       "origin": "builtin",
       "source": "builtin",
       "support": "first-party",
@@ -541,7 +580,7 @@
       "status": "active",
       "kind": "app",
       "registryKind": "app",
-      "directory": "plugins/app-documents",
+      "directory": "plugins/plugin-documents",
       "git": {
         "repo": "elizaos/eliza",
         "v0": {
@@ -558,7 +597,7 @@
         }
       },
       "npm": {
-        "repo": "@elizaos/app-documents",
+        "repo": "@elizaos/plugin-documents",
         "v0": null,
         "v1": null,
         "v2": "2.0.0-beta.2",
@@ -572,7 +611,7 @@
         "v2": true
       },
       "description": "Character Knowledge documents, fragments, and search routes for the agent.",
-      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-documents#readme",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-documents#readme",
       "topics": [
         "documents",
         "tool",
@@ -590,10 +629,12 @@
         "launchUrl": null,
         "icon": "BookOpen",
         "heroImage": "assets/hero.png",
-        "capabilities": ["documents"],
+        "capabilities": [
+          "documents"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
-        "runtimePlugin": "@elizaos/app-documents",
+        "runtimePlugin": "@elizaos/plugin-documents",
         "bridgeExport": "documentsPlugin",
         "visibleInAppStore": false
       }
@@ -640,7 +681,12 @@
       },
       "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-elizamaker#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -718,7 +764,12 @@
         "launchUrl": null,
         "icon": "ChartCandlestick",
         "heroImage": "assets/hero.png",
-        "capabilities": ["hyperliquid", "trading", "wallet", "perps"],
+        "capabilities": [
+          "hyperliquid",
+          "trading",
+          "wallet",
+          "perps"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/plugin-hyperliquid-app",
@@ -768,7 +819,13 @@
       },
       "description": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-hyperscape#readme",
-      "topics": ["game", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "game",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -860,7 +917,12 @@
         "launchUrl": null,
         "icon": "Calendar",
         "heroImage": "assets/hero.png",
-        "capabilities": ["lifeops", "tasks", "calendar", "gmail"],
+        "capabilities": [
+          "lifeops",
+          "tasks",
+          "calendar",
+          "gmail"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/plugin-lifeops",
@@ -910,7 +972,12 @@
       },
       "description": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/capacitor-messages.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-messages#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -969,7 +1036,12 @@
       },
       "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-phone#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1148,12 +1220,16 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
     },
-    "@elizaos/app-screenshare": {
+    "@elizaos/plugin-screenshare": {
       "origin": "builtin",
       "source": "builtin",
       "support": "first-party",
@@ -1163,7 +1239,7 @@
       "status": "active",
       "kind": "app",
       "registryKind": "app",
-      "directory": "plugins/app-screenshare",
+      "directory": "plugins/plugin-screenshare",
       "git": {
         "repo": "elizaos/eliza",
         "v0": {
@@ -1180,7 +1256,7 @@
         }
       },
       "npm": {
-        "repo": "@elizaos/app-screenshare",
+        "repo": "@elizaos/plugin-screenshare",
         "v0": null,
         "v1": null,
         "v2": "2.0.0-beta.2",
@@ -1194,8 +1270,13 @@
         "v2": true
       },
       "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
-      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-screenshare#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-screenshare#readme",
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1213,7 +1294,7 @@
         ],
         "minPlayers": null,
         "maxPlayers": null,
-        "runtimePlugin": "@elizaos/app-screenshare",
+        "runtimePlugin": "@elizaos/plugin-screenshare",
         "bridgeExport": {
           "types": "./dist/index.d.ts",
           "import": "./dist/index.js",
@@ -1225,7 +1306,11 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -1272,7 +1357,13 @@
       },
       "description": "Storefront and admin tools for agent-driven commerce.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-shopify-ui#readme",
-      "topics": ["marketplace", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "marketplace",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1349,7 +1440,10 @@
         "launchUrl": null,
         "icon": "Wallet",
         "heroImage": "assets/hero.png",
-        "capabilities": ["wallet", "trading"],
+        "capabilities": [
+          "wallet",
+          "trading"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/plugin-steward-app",
@@ -1399,7 +1493,12 @@
       },
       "description": "Task Coordinator",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-task-coordinator#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1476,7 +1575,10 @@
         "launchUrl": null,
         "icon": "Zap",
         "heroImage": "assets/hero.png",
-        "capabilities": ["training", "trajectories"],
+        "capabilities": [
+          "training",
+          "trajectories"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/plugin-training",
@@ -1526,7 +1628,12 @@
       },
       "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-trajectory-logger#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1662,7 +1769,12 @@
       },
       "description": "Wallet",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-wallet-ui#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1721,7 +1833,12 @@
       },
       "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-wifi#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -2347,7 +2464,12 @@
       },
       "description": "Calendly integration plugin for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff via Calendly v2 API",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-calendly#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -2393,7 +2515,12 @@
       },
       "description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-capacitor-bridge#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -2998,7 +3125,12 @@
       },
       "description": "Deterministic ELIZA-style pattern matching (browser + Node); ships compiled ESM in dist/.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-eliza-classic#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -3324,7 +3456,12 @@
       },
       "description": "Google",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-google#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -3548,7 +3685,12 @@
       },
       "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-health#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -5014,7 +5156,12 @@
       },
       "description": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-shopify#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -5232,7 +5379,12 @@
       },
       "description": "Sql",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-sql#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -5905,7 +6057,12 @@
       },
       "description": "Web Search",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-web-search#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },

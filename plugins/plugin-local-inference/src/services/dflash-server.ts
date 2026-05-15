@@ -144,7 +144,7 @@ export interface DflashServerPlan {
 	/**
 	 * Absolute paths to the bundle's OmniVoice GGUFs (`tts/omnivoice-*.gguf`
 	 * and `tts/omnivoice-tokenizer-*.gguf`). When BOTH are set AND the
-	 * resolved `llama-server` is the omnivoice-fused build, `start()` passes
+	 * resolved `llama-server` is the omnivoice-mergedd build, `start()` passes
 	 * `--omnivoice-model` / `--omnivoice-codec` so the same process serves
 	 * `POST /v1/audio/speech` (AGENTS.md §4 — fused, not an IPC second
 	 * process). Absent on non-voice bundles or non-fused builds, in which
@@ -655,7 +655,7 @@ export function resolveFusedDflashBinary(): string | null {
 	if (!caps) return null;
 	const fused =
 		caps.fused === true ||
-		(caps.binaries).some(
+		caps.binaries.some(
 			(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 		);
 	return fused ? bin : null;
@@ -846,7 +846,7 @@ function capabilitiesAdvertiseDflashSpecType(binaryPath: string): boolean {
 			caps.kernels.dflash === true &&
 			caps.dflashDraftArchitecture === true &&
 			(caps.missingRequiredKernels?.length ?? 0) === 0 &&
-			(caps.binaries).includes("llama-server") &&
+			caps.binaries.includes("llama-server") &&
 			((caps.supportedArchitectures ?? []).includes("dflash-draft") ||
 				(caps.draftArchitectures ?? []).includes("dflash-draft")),
 	);
@@ -3019,7 +3019,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	/**
 	 * Merged HTTP route descriptor for the fused build (`packages/inference/
 	 * AGENTS.md` §4 + remaining-work-ledger P0 #3): when the running
-	 * `llama-server` is the omnivoice-fused build it serves `/v1/audio/speech`
+	 * `llama-server` is the omnivoice-mergedd build it serves `/v1/audio/speech`
 	 * *itself*, in the same process as `/completion` + `/v1/chat/completions`
 	 * + the DFlash speculative loop — there is no compat
 	 * `llama-omnivoice-server` second process and no IPC tax. Returns the
@@ -3042,7 +3042,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		if (!caps) return null;
 		const fused =
 			caps.fused === true ||
-			(caps.binaries).some(
+			caps.binaries.some(
 				(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 			);
 		if (!fused) return null;
@@ -3584,7 +3584,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
 		appendBackendSafeStartupFlags(args, status.binaryPath);
 
-		// Fused omnivoice TTS: when the resolved binary is the omnivoice-fused
+		// Fused omnivoice TTS: when the resolved binary is the omnivoice-mergedd
 		// `llama-server` and the bundle ships its TTS GGUFs, hand them to the
 		// server so it mounts `POST /v1/audio/speech` in-process (AGENTS.md §4
 		// — one process, not a second `llama-omnivoice-server` over IPC). The

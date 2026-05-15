@@ -57,7 +57,7 @@ const FREEZE_VOICE_SCRIPT = path.join(
   "packages",
   "app-core",
   "scripts",
-  "omnivoice-fuse",
+  "voice",
   "freeze-voice.mjs",
 );
 

@@ -1,13 +1,14 @@
 /**
  * @module plugin-app-control/actions/views
  *
- * Unified VIEWS action. Lets the Eliza agent list, open, search, and manage
- * UI views contributed by plugins via `Plugin.views`.
+ * Unified VIEWS action. Lets the Eliza agent list, open, search, manage,
+ * create, edit, and delete UI views contributed by plugins via `Plugin.views`.
  *
  * Sub-modes dispatched from a single action keep the planner surface minimal
  * and the handler testable. Mirrors the APP action structure.
  */
 
+import path from "node:path";
 import type {
 	Action,
 	ActionResult,
@@ -16,9 +17,21 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { createViewsClient, type ViewsClient } from "./views-client.js";
+import {
+	hasPendingViewsCreateIntent,
+	isChoiceReply,
+	runViewsCreate,
+} from "./views-create.js";
+import {
+	hasPendingDeleteConfirm,
+	isDeleteCancellation,
+	isDeleteConfirmation,
+	runViewsDelete,
+} from "./views-delete.js";
+import { runViewsEdit } from "./views-edit.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
@@ -30,7 +43,13 @@ export type ViewsMode =
 	| "search"
 	| "manager"
 	| "broadcast"
-	| "interact";
+	| "interact"
+	| "create"
+	| "edit"
+	| "delete"
+	| "remove"
+	| "pin"
+	| "window";
 
 const MODES: readonly ViewsMode[] = [
 	"list",
@@ -40,6 +59,12 @@ const MODES: readonly ViewsMode[] = [
 	"manager",
 	"broadcast",
 	"interact",
+	"create",
+	"edit",
+	"delete",
+	"remove",
+	"pin",
+	"window",
 ] as const;
 
 // Intent regexes — order matters: more specific first.
@@ -62,9 +87,34 @@ const BROADCAST_VERBS =
 	/\b(tell|notify|signal|broadcast|send.*event|emit|trigger|ping)\b.{0,60}\bview\b/i;
 const INTERACT_VERBS =
 	/\b(click|tap|press|focus|fill|interact|invoke|call|use capability)\b.{0,60}\b(view|button|input|field)\b/i;
+const CREATE_VERBS =
+	/\b(create|build|make|new|scaffold|generate|spin up)\b.{0,30}\b(view|plugin)\b/i;
+const EDIT_VERBS_RE =
+	/\b(edit|update|modify|change|fix|improve|rewrite)\b.{0,30}\b(view|plugin)\b/i;
+const DELETE_VERBS_RE =
+	/\b(delete|remove|uninstall|destroy|drop)\b.{0,30}\b(view|plugin)\b/i;
+const PIN_VERBS =
+	/\b(pin|pin as tab|add.*tab|pin.*desktop|keep.*tab|dock)\b.{0,40}\bview\b/i;
+const WINDOW_VERBS =
+	/\b(open in.*window|new window|separate window|pop.?out|detach)\b.{0,40}\bview\b|\bview\b.{0,40}\b(new window|separate window|pop.?out|detach)\b/i;
+
+type OwnerAccessFn = (
+	runtime: IAgentRuntime,
+	message: Memory,
+) => Promise<boolean>;
 
 interface ViewsActionDeps {
 	client?: ViewsClient;
+	hasOwnerAccess?: OwnerAccessFn;
+	repoRoot?: string;
+}
+
+function defaultRepoRoot(): string {
+	const fromEnv =
+		process.env.ELIZA_REPO_ROOT?.trim() ||
+		process.env.ELIZA_WORKSPACE_DIR?.trim();
+	if (fromEnv && path.isAbsolute(fromEnv)) return fromEnv;
+	return process.cwd();
 }
 
 function inferMode(
@@ -80,6 +130,11 @@ function inferMode(
 	const trimmed = text.trim();
 	if (!trimmed) return null;
 
+	if (DELETE_VERBS_RE.test(trimmed)) return "delete";
+	if (CREATE_VERBS.test(trimmed)) return "create";
+	if (EDIT_VERBS_RE.test(trimmed)) return "edit";
+	if (PIN_VERBS.test(trimmed)) return "pin";
+	if (WINDOW_VERBS.test(trimmed)) return "window";
 	if (INTERACT_VERBS.test(trimmed)) return "interact";
 	if (BROADCAST_VERBS.test(trimmed)) return "broadcast";
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
@@ -111,11 +166,13 @@ function extractSearchQuery(
 
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	const clientFactory = () => deps.client ?? createViewsClient();
+	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
+	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
 
 	return {
 		name: "VIEWS",
-		contexts: ["general", "automation", "settings"],
-		contextGate: { anyOf: ["general", "automation", "settings"] },
+		contexts: ["general", "automation", "settings", "code"],
+		contextGate: { anyOf: ["general", "automation", "settings", "code"] },
 		roleGate: { minRole: "USER" },
 		similes: [
 			"VIEW",
@@ -139,18 +196,28 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"INVOKE_VIEW_CAPABILITY",
 			"PIN_VIEW",
 			"OPEN_VIEW_WINDOW",
+			"CREATE_VIEW",
+			"CREATE_PLUGIN",
+			"BUILD_VIEW",
+			"MAKE_VIEW",
+			"EDIT_VIEW",
+			"UPDATE_VIEW",
+			"DELETE_VIEW",
+			"REMOVE_VIEW",
+			"REMOVE_PLUGIN",
+			"UNINSTALL_VIEW",
 		],
 		description:
-			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, or open a view in a separate window.",
+			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, open a view in a separate window, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), or delete/uninstall a view plugin.",
 		descriptionCompressed:
-			"views list|show|open|search|manager|broadcast|interact|pin|window; navigate UI views; push events; click/read/focus elements; pin desktop tabs; open in window",
+			"views list|show|open|search|manager|broadcast|interact|create|edit|delete; navigate UI views; push events; click/read/focus elements; scaffold new plugins; edit or remove view plugins",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "action",
 				description:
-					"Operation: list | show | open | search | manager | broadcast.",
+					"Operation: list | show | open | search | manager | broadcast | interact | create | edit | delete | remove.",
 				required: true,
 				schema: {
 					type: "string",
@@ -168,7 +235,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			},
 			{
 				name: "view",
-				description: "View name, label, or id (show / open).",
+				description: "View name, label, or id (show / open / edit / delete).",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -229,18 +296,71 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				required: false,
 				schema: { type: "number" },
 			},
+			{
+				name: "intent",
+				description:
+					"Free-form description of the view to build (create mode). Defaults to the user message text.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "editTarget",
+				description:
+					"Skip the picker and edit this installed view directly (create mode).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "choice",
+				description:
+					"Override choice reply (`new` | `edit-N` | `cancel`) for create-mode follow-up turns.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "confirm",
+				description:
+					'Set to "true" or "yes" to skip the delete confirmation prompt (delete mode).',
+				required: false,
+				schema: { type: "string" },
+			},
 		],
 
 		validate: async (
-			_runtime: IAgentRuntime,
-			_message: Memory,
+			runtime: IAgentRuntime,
+			message: Memory,
 		): Promise<boolean> => {
-			// Views are visible to all users — no owner gate required for read operations.
+			const text = message.content?.text ?? "";
+			const roomId =
+				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+
+			// Multi-turn create follow-up: choice reply matches a pending intent task.
+			if (isChoiceReply(text)) {
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+			}
+
+			// Multi-turn delete follow-up: yes/no matches a pending confirm task.
+			if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
+				if (await hasPendingDeleteConfirm(runtime, roomId)) return true;
+			}
+
+			// Create/edit/delete require owner access.
+			const mode = inferMode(text, undefined);
+			if (
+				mode === "create" ||
+				mode === "edit" ||
+				mode === "delete" ||
+				mode === "remove"
+			) {
+				return ownerCheck(runtime, message);
+			}
+
+			// Read modes are visible to all users.
 			return true;
 		},
 
 		handler: async (
-			_runtime: IAgentRuntime,
+			runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
 			options?: Record<string, unknown>,
@@ -248,11 +368,43 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		): Promise<ActionResult> => {
 			const client = clientFactory();
 			const text = message.content?.text ?? "";
+			const roomId =
+				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+
+			// Multi-turn follow-up: choice reply for an in-progress create flow.
+			if (isChoiceReply(text)) {
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+					const views = await client.listViews();
+					return runViewsCreate({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+			}
+
+			// Multi-turn follow-up: yes/no for a pending delete confirmation.
+			if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
+				if (await hasPendingDeleteConfirm(runtime, roomId)) {
+					const views = await client.listViews();
+					return runViewsDelete({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+			}
 
 			const mode = inferMode(text, options);
 			if (!mode) {
 				const reply =
-					'Tell me what to do with views. Try: "list views", "open wallet view", or "search views finance".';
+					'Tell me what to do with views. Try: "list views", "open wallet view", "create a new view", or "delete the LifeOps plugin".';
 				await callback?.({ text: reply });
 				return { success: false, text: reply };
 			}
@@ -273,9 +425,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				case "manager": {
-					// The view manager lives at "/views" (preferred) or "/apps".
-					// Attempt navigation to it via the views API, same as show.
-					// Synthesize a fake view summary for the manager page.
 					const managerView = {
 						id: "__view-manager__",
 						label: "View Manager",
@@ -324,7 +473,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				case "interact": {
-					// Resolve the view ID from options or text.
 					const viewId =
 						readStringOption(options, "view") ??
 						readStringOption(options, "id") ??
@@ -361,16 +509,51 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					};
 				}
 
+				case "create": {
+					const views = await client.listViews();
+					return runViewsCreate({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+
+				case "edit": {
+					const views = await client.listViews();
+					return runViewsEdit({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+
+				case "delete":
+				case "remove": {
+					const views = await client.listViews();
+					return runViewsDelete({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+
 				case "pin": {
-					// Resolve target view and ask the shell to pin it as a desktop tab.
-					// The shell listens for POST /api/views/:id/navigate with action=pin-tab.
 					const pinViewId =
 						readStringOption(options, "view") ??
 						readStringOption(options, "id") ??
 						readStringOption(options, "name");
 					if (!pinViewId) {
 						const reply =
-							'Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.';
+							"Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -385,14 +568,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				case "window": {
-					// Resolve target view and ask the shell to open it in a separate window.
 					const windowViewId =
 						readStringOption(options, "view") ??
 						readStringOption(options, "id") ??
 						readStringOption(options, "name");
 					if (!windowViewId) {
 						const reply =
-							'Specify which view to open in a new window, e.g. action=window view=wallet.';
+							"Specify which view to open in a new window, e.g. action=window view=wallet.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -477,19 +659,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "click the submit button in the wallet view" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: 'Interacted with view "wallet.inventory" — capability "focus-element": {"focused":true,"selector":"submit"}.',
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
 					content: { text: "get the state of the settings view" },
 				},
 				{
@@ -503,12 +672,38 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "what views are available?" },
+					content: { text: "create a new view for tracking habits" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "available_views:\n  count: 2\nviews[2]{id,label,path,available}:\n  wallet.inventory,Wallet,/wallet,yes\n  settings,Settings,/settings,yes",
+						text: "[CHOICE:views-create id=views-create-…]\nnew = Create a new view plugin\ncancel = Cancel\n[/CHOICE]",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "edit the wallet view" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Started view edit task for Wallet at /…/plugins/plugin-wallet. Task session abc123 is running.",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "delete the LifeOps plugin" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Are you sure you want to delete the LifeOps view (@elizaos/plugin-lifeops)? Reply "yes" to confirm or "cancel" to abort.',
 						action: "VIEWS",
 					},
 				},
@@ -524,9 +719,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 /**
  * Returns true when the agent is running on a platform that prohibits dynamic
  * code loading (iOS App Store and Google Play builds).
- *
- * Reads ELIZA_BUILD_VARIANT and ELIZA_PLATFORM from the process environment —
- * the same variables the coding-tools plugin uses to gate shell support.
  */
 export function isRestrictedPlatform(): boolean {
 	const variant = (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
@@ -535,7 +727,7 @@ export function isRestrictedPlatform(): boolean {
 	return platform === "ios" || platform === "android";
 }
 
-async function navigateToPath(path: string, label: string): Promise<string> {
+async function navigateToPath(pathStr: string, label: string): Promise<string> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
@@ -544,7 +736,7 @@ async function navigateToPath(path: string, label: string): Promise<string> {
 		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ path }),
+			body: JSON.stringify({ path: pathStr }),
 			signal: AbortSignal.timeout(5_000),
 		});
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
@@ -557,12 +749,63 @@ async function navigateToPath(path: string, label: string): Promise<string> {
 		// Network or timeout — not fatal.
 	}
 
-	return `Opened ${label} at ${path}.`;
+	return `Opened ${label} at ${pathStr}.`;
+}
+
+async function navigateViewWithShellAction(
+	viewId: string,
+	action: "pin-tab" | "open-window",
+	successText: string,
+	fallbackText: string,
+): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return successText;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return fallbackText;
+}
+
+function pinViewAsTab(viewId: string): Promise<string> {
+	return navigateViewWithShellAction(
+		viewId,
+		"pin-tab",
+		`Pinned view "${viewId}" as a desktop tab.`,
+		`Requested desktop tab pin for view "${viewId}".`,
+	);
+}
+
+function openViewInWindow(viewId: string): Promise<string> {
+	return navigateViewWithShellAction(
+		viewId,
+		"open-window",
+		`Opened view "${viewId}" in a separate window.`,
+		`Requested separate window for view "${viewId}".`,
+	);
 }
 
 /**
  * POST /api/views/:id/interact — invoke a capability on a mounted view and
- * return the result.  Waits up to timeoutMs for the frontend to respond.
+ * return the result. Waits up to timeoutMs for the frontend to respond.
  */
 async function interactWithView(
 	viewId: string,
@@ -623,9 +866,7 @@ async function interactWithView(
 	}
 
 	const resultStr =
-		result !== null && result !== undefined
-			? JSON.stringify(result)
-			: "null";
+		result !== null && result !== undefined ? JSON.stringify(result) : "null";
 	return `Interacted with view "${viewId}" — capability "${capability}": ${resultStr}.`;
 }
 
@@ -660,43 +901,67 @@ async function broadcastViewEvent(
 }
 
 /**
- * POST /api/views/:viewId/interact — invoke a named capability on a specific
- * view and return the result text.
+ * POST /api/views/:id/navigate with action=pin-tab — ask the frontend to pin
+ * this view as a desktop tab (Electrobun only; no-op on web/mobile).
  */
-async function interactWithView(
-	viewId: string,
-	capability: string,
-	params: Record<string, unknown> | undefined,
-	timeoutMs: number,
-): Promise<string> {
+async function pinViewAsTab(viewId: string): Promise<string> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
 
 	try {
 		const resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(viewId)}/interact`,
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ capability, params }),
-				signal: AbortSignal.timeout(timeoutMs),
+				body: JSON.stringify({ action: "pin-tab" }),
+				signal: AbortSignal.timeout(5_000),
 			},
 		);
-		if (resp.ok) {
-			const body = (await resp.json()) as { result?: string };
-			return (
-				body.result ?? `View "${viewId}" handled capability "${capability}".`
-			);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Pinned view "${viewId}" as a desktop tab.`;
 		}
 		logger.warn(
-			`[plugin-app-control] VIEWS/interact returned ${resp.status} for ${viewId}/${capability}`,
+			`[plugin-app-control] VIEWS/pin navigate returned ${resp.status}`,
 		);
 	} catch {
 		// Network or timeout — not fatal.
 	}
 
-	return `Sent "${capability}" to view "${viewId}".`;
+	return `Attempted to pin view "${viewId}" as a desktop tab.`;
+}
+
+/**
+ * POST /api/views/:id/navigate with action=open-window — ask the frontend to
+ * open this view in a separate Electrobun native window.
+ */
+async function openViewInWindow(viewId: string): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "open-window" }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Opened view "${viewId}" in a new window.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/window navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Attempted to open view "${viewId}" in a new window.`;
 }
 
 export const viewsAction: Action = createViewsAction();

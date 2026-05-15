@@ -43,7 +43,7 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 
-/** Workspace packages use `@elizaos/plugin-*` or `@elizaos/app-*` — normalize list/toggle ids. */
+/** Normalize npm names to list/toggle ids. Handles both `@elizaos/plugin-*` (current) and legacy `@elizaos/app-*`. */
 function optionalPluginListId(npmName: string): string {
   if (npmName.startsWith("@elizaos/app-")) {
     return npmName.slice("@elizaos/".length);

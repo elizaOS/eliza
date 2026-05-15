@@ -47,7 +47,7 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
  * runtime-app plugin (the `/plugin` subpath of the matching overlay app)
  * that exposes privileged system surfaces — WiFi, Contacts, Phone — to the
  * agent as actions. The overlay UIs themselves register at app boot via
- * `@elizaos/app-{wifi,contacts,phone}/register`, gated on `isElizaOS()` so
+ * `@elizaos/plugin-{wifi,contacts,phone}/register`, gated on `isElizaOS()` so
  * stock Android, iOS, web, and desktop are no-ops.
  *
  * Stock Android does not get these because Play Store style builds should not

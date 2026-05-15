@@ -24,7 +24,7 @@ export interface AppMenuEntry {
 const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
 	{
 		slug: "lifeops",
-		name: "@elizaos/app-lifeops",
+		name: "@elizaos/plugin-lifeops",
 		displayName: "LifeOps",
 		windowPath: "/apps/lifeops",
 		hasDetailsPage: true,
@@ -45,7 +45,7 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
 	},
 	{
 		slug: "training",
-		name: "@elizaos/app-training",
+		name: "@elizaos/plugin-training",
 		displayName: "Fine Tuning",
 		windowPath: "/apps/fine-tuning",
 		hasDetailsPage: true,
@@ -73,7 +73,7 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
 	},
 	{
 		slug: "steward",
-		name: "@elizaos/app-steward",
+		name: "@elizaos/plugin-steward-app",
 		displayName: "Steward",
 		windowPath: "/apps/inventory",
 		hasDetailsPage: true,
@@ -94,7 +94,7 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
 	},
 	{
 		slug: "elizamaker",
-		name: "@elizaos/app-elizamaker",
+		name: "@elizaos/plugin-elizamaker",
 		displayName: "ElizaMaker",
 		windowPath: "/apps/elizamaker",
 		hasDetailsPage: true,

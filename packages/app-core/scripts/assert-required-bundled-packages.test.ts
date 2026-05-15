@@ -95,7 +95,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
           "@elizaos/core",
           "@elizaos/plugin-sql",
           "@elizaos/plugin-local-inference",
-          "@elizaos/app-companion",
+          "@elizaos/plugin-companion",
         ]),
       );
       throw new Error("expected assertRequiredBundledPackagesLanded to throw");
@@ -103,7 +103,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
       const message = err instanceof Error ? err.message : String(err);
       expect(message).toContain("@elizaos/plugin-sql");
       expect(message).toContain("@elizaos/plugin-local-inference");
-      expect(message).toContain("@elizaos/app-companion");
+      expect(message).toContain("@elizaos/plugin-companion");
       // Count of missing should be in the header
       expect(message).toContain("3 required runtime package");
     }

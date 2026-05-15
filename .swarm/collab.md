@@ -68,6 +68,16 @@
 
 ## Active agents
 
+- 2026-05-15 H3 phase=impl-done: @elizaos/agent and @elizaos/plugin-local-inference
+  typecheck both GREEN (EXIT:0). Four fixes: (1) plugin-compiler.ts bunGlobal.Bun?.Transpiler
+  optional chain; (2) removed bare `declare module "@elizaos/plugin-commands"` stub from
+  external-modules.d.ts that shadowed real types → TS2709; (3) typed registerCommand local
+  variable as CommandDefinition instead of Record<string, unknown> → TS2322 under strict:true;
+  (4) added "skills" to CommandCategory union in plugin-commands types.ts; (5) added
+  @elizaos/app-phone ambient stub (no package.json in plugins/app-phone). Merge-safety
+  caveat: bare plugin-commands stub was re-introduced by merge from fdd1603889 — fixed again
+  in b6d38696f6. Report: .swarm/impl/H3-agent-typecheck.md. Commits: 61630536bf, b6d38696f6.
+
 - 2026-05-15 H4 phase=impl-done: All 10 elizaos/eliza-1-voice-* repos confirmed live
   on HuggingFace with real ONNX/GGUF weights. SHA256 verified against HF LFS metadata
   for all binaries. models/voice/manifest.json: turn-detector promoted to v0.2.0
@@ -214,7 +224,7 @@
 
 - 2026-05-14 02:25 I3-emotion phase=impl-done: 8 commits pushed to
   origin/develop, 103 tests green across packages/core,
-  plugins/plugin-local-inference, plugins/app-training, and the new
+  plugins/plugin-local-inference, plugins/plugin-training, and the new
   packages/benchmarks/voice-emotion sibling. Report at
   .swarm/impl/I3-emotion.md. Kokoro emotion-knob gap documented as I7
   follow-up; engine.ts/voice/index.ts pre-existing typecheck breakage
@@ -286,7 +296,7 @@
 
 - 2026-05-14 04:30 C0-W3 cycle=3 verify: RED on @elizaos/app#typecheck. Errors initially looked like @elizaos/ui missing exports (loadUiTheme, isElizaOS, OverlayApp, etc.), but root cause was transient: UI dist hadn't finished building when @elizaos/app#typecheck ran (build race under --concurrency=1; turbo dependsOn @elizaos/ui#build is loose, app-core dist also empty at the time). Re-ran @elizaos/app typecheck directly after builds settled → EXIT:0. Also tests RED on @elizaos/app-core#test: scripts/run-mobile-build-android-app-actions.test.mjs uses node:test syntax (not vitest), causing "No test suite found". Added it to vitest exclude list in packages/app-core/vitest.config.ts alongside the existing node:test scripts. Committed 163754ad31, pushed. Re-running as cycle=4.
 - 2026-05-14 04:15 C0-W3 cycle=2 verify: GREEN. 317/317 tasks (turbo run typecheck lint). After cycle=1 RED on @elizaos/example-autonomous#typecheck (engine-bridge.ts used VoiceProfileStore / VoiceAttributionOutput / VoiceAttributionPipeline without imports), added imports from ./profile-store + ./speaker/attribution-pipeline. Committed 1e4f474bd6, pushed. HEAD efdd774c25.
-- 2026-05-14 04:05 C0-W3 cycle=1 verify: RED on @elizaos/app-contacts#typecheck — packages/ui/src/components/onboarding/VoicePrefixSteps.tsx:640 used non-existent `MediaRecorderErrorEvent` DOM type. Replaced with `Event & { error?: Error }`. Folded into a prior peer commit (no separate W3-13 commit on first cycle — file was already in working tree at that point).
+- 2026-05-14 04:05 C0-W3 cycle=1 verify: RED on @elizaos/plugin-contacts#typecheck — packages/ui/src/components/onboarding/VoicePrefixSteps.tsx:640 used non-existent `MediaRecorderErrorEvent` DOM type. Replaced with `Event & { error?: Error }`. Folded into a prior peer commit (no separate W3-13 commit on first cycle — file was already in working tree at that point).
 
 - 2026-05-14 W3-12 phase=impl-done: HF feature-complete audit + elizalabs→elizaos slug fix.
   CRITICAL BUG FIXED: ELIZA_1_HF_REPO was "elizalabs/eliza-1" across 15 files; all
@@ -590,7 +600,7 @@ Each writes `.swarm/impl/G<N>-<slug>.md` and posts `phase=impl-done` here.
 - 2026-05-15 06:36 G6 cycle=8 verify: **GREEN**. 317/317 tasks, 5m0s (cache miss after llama.cpp bump b28109fc24). green_streak=3/5. Still only G4 impl-done; no new G1/G2/G3/G5 commits in 30+ min. Wave appears stalled — peer agents may be done but never posted impl-done lines.
 - 2026-05-15 06:17 G6 cycle=7 verify: **GREEN**. 317/317 tasks, 5m11s (cache miss after llama.cpp submodule bump aabdc063d0). green_streak=2/5. G-agent impl-done count still G4 only.
 - 2026-05-15 05:57 G6 cycle=6 verify: **GREEN**. 317/317 tasks, 8.19s (full turbo cache hit). green_streak=1/5. G-agent impl-done count still G4 only.
-- 2026-05-15 05:43 G6 cycle=5 verify: RED on @elizaos/app-device-settings#typecheck — CatalogQuantizationId was extended upstream with q3_k_m + q5_k_m but QUANT_SUFFIX's Record<CatalogQuantizationId, string> wasn't updated (TS2739). Added the two entries. Committed b0e59da28f + pushed. Also had to resolve a merge conflict on active-model.test.ts (502c98780b + 4d005f9406, kept incoming 40 GB scenario). green_streak reset 1 → 0.
+- 2026-05-15 05:43 G6 cycle=5 verify: RED on @elizaos/plugin-device-settings#typecheck — CatalogQuantizationId was extended upstream with q3_k_m + q5_k_m but QUANT_SUFFIX's Record<CatalogQuantizationId, string> wasn't updated (TS2739). Added the two entries. Committed b0e59da28f + pushed. Also had to resolve a merge conflict on active-model.test.ts (502c98780b + 4d005f9406, kept incoming 40 GB scenario). green_streak reset 1 → 0.
 - 2026-05-15 05:25 G6 cycle=4 verify: **GREEN**. 317/317 tasks successful, 5m27s. green_streak=1/5. G-agent impl-done count: G4 only (still waiting on G1, G2, G3, G5).
 - 2026-05-15 05:00 G6 cycle=3 verify: RED on @elizaos/app-core#typecheck — ComputerUseConfig.mode is now required but computer-use-service.ts initialized without it. Also restored actions/clipboard.ts (untracked in HEAD, wrong imports from driver.js → clipboard.js) and added missing `clipboard` field to PlatformCapabilities + per-platform detection + DESKTOP_PARITY entries. Committed ca86c5a39f + pushed. Affected packages all green (app-core, agent, electrobun, plugin-computeruse).
 - 2026-05-15 04:40 G6 cycle=2 verify: RED on @elizaos/agent#typecheck — plugin-computeruse/src/platform/clipboard.ts was untracked in HEAD; working-tree version had TS2339 on `out.toString` since execFileSync with encoding:"utf-8" returns string (narrowing the else-branch to `never`). Restored + fixed + biome auto-fix; committed a158c9e146 + pushed. Two prep commits to clear inherited 48 dirty working-tree files: e1c80ab8da (plugin-vision), 32b9410ff5 (backend.ts merge resolution).
@@ -683,3 +693,30 @@ read from `HF_TOKEN` env. Never commit it.
   (`elizaos/eliza-1-voice-omnivoice-same-v01@fd0d04439d`,
   `voice-models.ts` `omnivoice` 0.2.0). Impl report:
   `.swarm/impl/L-kokoro-distill.md`. Commit: `3f505127c1`.
+
+---
+
+## I-wave — single-runtime policy + Kokoro ship + gaps (2026-05-15)
+
+User directive 2026-05-15:
+- **No `node-llama-cpp` anywhere** unless it's the canonical wrapper for our
+  forked llama.cpp. No two versions.
+- **No ONNX. No external model runtimes.** Everything local → our llama.cpp
+  fork. End-to-end migration.
+- **Ship Kokoro sam FT** — don't care about quality. Just push it.
+- **Issue sub-agents for all remaining items / gaps.**
+
+Same hard rules: no worktrees, no stash, no branch hops, commit dirty,
+coordinate here, don't kill peers.
+
+- **I1** (Opus) — Single-runtime policy: remove `node-llama-cpp` dep + all
+  ONNX usage + every external model runtime. Port voice sub-models
+  (Wav2Small, Pyannote-3, WeSpeaker, Silero-VAD, hey-eliza wakeword,
+  Kokoro) into our llama.cpp fork as GGML kernels. Bump submodule pin.
+  Verify end-to-end via existing benches.
+- **I2** — Ship Kokoro sam FT regardless of eval — push the best weights
+  H1 produced to `elizaos/eliza-1-voice-kokoro` as `af_sam.bin`, update
+  manifest, ship. (Overrides H1 no-ship per user directive.)
+- **I3** — Close every remaining gap in `.swarm/impl/*.md` (W3, F, G, H
+  reports) that's not yet resolved. Drive each to DONE or
+  `compute-gated: <reason>` with precise next-step.

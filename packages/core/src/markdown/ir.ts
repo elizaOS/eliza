@@ -545,7 +545,7 @@ function renderTableAsCode(state: RenderState) {
 			if (cell) {
 				appendCell(state, cell);
 			}
-			const pad = widths[i] - (cell?.text.length);
+			const pad = widths[i] - cell?.text.length;
 			if (pad > 0) {
 				state.text += " ".repeat(pad);
 			}

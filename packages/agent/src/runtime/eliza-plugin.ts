@@ -122,7 +122,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;
 
-          let registerCommand: (cmd: Record<string, unknown>) => void;
+          let registerCommand: (command: CommandDefinition) => void;
           let initForRuntime: (agentId: string) => void;
           try {
             const cmds = await import("@elizaos/plugin-commands");

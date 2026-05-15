@@ -69,7 +69,6 @@ async function _localInference() {
   return _localInferenceRuntime;
 }
 
-import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
@@ -415,8 +414,7 @@ interface RuntimeHookModule {
   registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
 }
 
-const TRAINING_RUNTIME_HOOKS_SPECIFIER =
-  "@elizaos/app-training/register-runtime";
+const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
 
 async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,
@@ -428,7 +426,7 @@ async function registerTrainingRuntimeHooks(
     )) as RuntimeHookModule;
   } catch (err) {
     logger.warn(
-      `[eliza] @elizaos/app-training not installed, skipping runtime hooks: ${err instanceof Error ? err.message : String(err)}`,
+      `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks: ${err instanceof Error ? err.message : String(err)}`,
     );
     return;
   }
@@ -467,12 +465,7 @@ async function repairRuntimeAfterBoot(
 
   await ensureTextToSpeechHandler(runtime);
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
-  const autonomyEnabled = isRuntimeAutonomyEnabled(process.env);
-  if (autonomyEnabled) {
-    await ensureAutonomyBootstrapContext(runtime);
-  } else {
-    logger.info("[eliza] Autonomy bootstrap skipped — ENABLE_AUTONOMY=false");
-  }
+  await ensureAutonomyBootstrapContext(runtime);
 
   // ── Register app-specific route plugins ─────────────────────────────
   // The registry and explicit registration API own the package bindings; the
@@ -485,7 +478,7 @@ async function repairRuntimeAfterBoot(
   // dispatch registry (no-op when the registry service isn't present).
   registerCoreSensitiveRequestAdapters(runtime);
 
-  if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
+  if (!runtime.getService("AUTONOMY")) {
     try {
       await startAndRegisterAutonomyService(runtime);
       logger.info(
@@ -499,7 +492,7 @@ async function repairRuntimeAfterBoot(
   }
 
   // Enable the autonomy loop so trigger/heartbeat instructions are processed.
-  if (autonomyEnabled) {
+  {
     const autonomySvc = getAutonomyService(runtime);
     if (autonomySvc) {
       try {
@@ -513,8 +506,6 @@ async function repairRuntimeAfterBoot(
         );
       }
     }
-  } else {
-    logger.info("[eliza] AutonomyService disabled — ENABLE_AUTONOMY=false");
   }
 
   if (shouldStartTelegramStandaloneBot()) {

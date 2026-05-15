@@ -53,9 +53,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/plugin-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
-    "@elizaos/plugin-lifeops": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/scenario-schema": "workspace:*"

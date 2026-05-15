@@ -222,7 +222,7 @@ top-level entry as of 2026-05-10).
 If a future wave decides to add any of the proposed actions:
 
 1. Add the action definition under
-   `plugins/app-lifeops/src/actions/<name>.ts` (or in the right new
+   `plugins/plugin-lifeops/src/actions/<name>.ts` (or in the right new
    plugin).
 2. Re-export the manifest:
    `bun run scripts/lifeops-bench/export-action-manifest.ts`.

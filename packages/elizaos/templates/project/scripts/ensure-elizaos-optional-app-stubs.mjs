@@ -13,18 +13,18 @@ const repoRoot = path.resolve(
 const nodeModulesDir = path.join(repoRoot, "node_modules");
 
 const optionalPackages = [
-  "@elizaos/app-clawville",
-  "@elizaos/app-companion",
-  "@elizaos/app-elizamaker",
-  "@elizaos/app-hyperliquid",
-  "@elizaos/app-documents",
-  "@elizaos/app-lifeops",
-  "@elizaos/app-polymarket",
-  "@elizaos/app-shopify",
-  "@elizaos/app-steward",
-  "@elizaos/app-task-coordinator",
-  "@elizaos/app-training",
-  "@elizaos/app-vincent",
+  "@elizaos/plugin-clawville",
+  "@elizaos/plugin-companion",
+  "@elizaos/plugin-elizamaker",
+  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-documents",
+  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-task-coordinator",
+  "@elizaos/plugin-training",
+  "@elizaos/plugin-vincent",
 ];
 
 const forcedStubPackages = ["@elizaos/plugin-whatsapp"];

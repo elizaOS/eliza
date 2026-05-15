@@ -614,7 +614,7 @@ function normalizePlannerProviders(
 	}
 
 	const providerDefinitions = new Map(
-		(runtime.providers).map((provider) => [
+		runtime.providers.map((provider) => [
 			normalizeActionIdentifier(provider.name),
 			provider,
 		]),
@@ -1177,7 +1177,7 @@ function _ensureActionStateValues(
 	return {
 		...state,
 		values: {
-			...(state.values),
+			...state.values,
 			...(actionNames ? { actionNames } : {}),
 			...(actionsWithDescriptions ? { actionsWithDescriptions } : {}),
 		},
@@ -2553,7 +2553,7 @@ export async function renderMessageHandlerStablePrefix(
 ): Promise<string> {
 	const syntheticMessage: Memory = {
 		id: asUUID(v4()),
-		entityId: (runtime.agentId) as UUID,
+		entityId: runtime.agentId as UUID,
 		agentId: runtime.agentId,
 		roomId,
 		createdAt: Date.now(),
@@ -2626,15 +2626,11 @@ function extractHandleResponseToolArguments(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(
-			entry.name,
-		).trim();
+		const name = String(entry.name).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
-		const args = parseToolArguments(
-			entry.arguments,
-		);
+		const args = parseToolArguments(entry.arguments);
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
 		}
@@ -3680,8 +3676,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseGrammar = buildResponseGrammar(
 			{
 				actions: args.runtime.actions,
-				responseHandlerFields:
-					args.runtime.responseHandlerFieldRegistry.list(),
+				responseHandlerFields: args.runtime.responseHandlerFieldRegistry.list(),
 				responseHandlerFieldSignature:
 					args.runtime.responseHandlerFieldRegistry.composeSchemaSignature(),
 			},
@@ -4465,12 +4460,8 @@ function extractMessageHandlerToolCalls(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(
-			entry.name,
-		).trim();
-		const args = parseToolArguments(
-			entry.arguments,
-		);
+		const name = String(entry.name).trim();
+		const args = parseToolArguments(entry.arguments);
 		toolCalls.push({
 			id:
 				typeof entry.id === "string"
@@ -4791,7 +4782,7 @@ async function _repairCanonicalPlannerActions(args: {
 }): Promise<Record<string, unknown> | null> {
 	const availableActionNames = Array.from(
 		new Set(
-			(args.runtime.actions)
+			args.runtime.actions
 				.map((action) => action.name.trim())
 				.filter((name): name is string => Boolean(name)),
 		),
@@ -5216,7 +5207,7 @@ function findDirectOwnedActionSuggestion(
 			messageText,
 		)
 	) {
-		const calendarAction = (runtime.actions).find(
+		const calendarAction = runtime.actions.find(
 			(action) =>
 				normalizeActionIdentifier(action.name) ===
 				normalizeActionIdentifier("CALENDAR"),
@@ -5239,7 +5230,7 @@ function findRuntimeActionByNames(
 	names: string[],
 ): Action | undefined {
 	const wanted = new Set(names.map(normalizeActionIdentifier));
-	return (runtime.actions).find((action) => {
+	return runtime.actions.find((action) => {
 		const candidates = [action.name, ...(action.similes ?? [])]
 			.filter((value): value is string => typeof value === "string")
 			.map(normalizeActionIdentifier);
@@ -5524,7 +5515,7 @@ export function suggestOwnedActionFromMetadata(
 		return null;
 	}
 
-	const ranked: ActionOwnershipCandidate[] = (runtime.actions)
+	const ranked: ActionOwnershipCandidate[] = runtime.actions
 		.filter((action) => {
 			const normalized = normalizeActionIdentifier(action.name);
 			return (
@@ -5600,7 +5591,7 @@ export function findOwnedActionCorrectionFromMetadata(
 		return null;
 	}
 
-	const currentActionDef = (runtime.actions).find(
+	const currentActionDef = runtime.actions.find(
 		(action) =>
 			normalizeActionIdentifier(action.name) ===
 			normalizeActionIdentifier(currentAction),
@@ -5738,7 +5729,7 @@ function _shouldAttemptActionRescue(
 			: "";
 	if (
 		availableActionNames.trim().length === 0 &&
-		(runtime.actions.length) === 0
+		runtime.actions.length === 0
 	) {
 		return false;
 	}
@@ -5804,7 +5795,7 @@ function _shouldAttemptOwnershipRepair(
 			: "";
 	if (
 		availableActionNames.trim().length === 0 &&
-		(runtime.actions.length) === 0
+		runtime.actions.length === 0
 	) {
 		return false;
 	}
@@ -6544,9 +6535,7 @@ function _shouldWaitForUserAfterIncompleteReflection(
 
 	return actionResults.every((result) => {
 		const actionName =
-			typeof result.data?.actionName === "string"
-				? result.data.actionName
-				: "";
+			typeof result.data?.actionName === "string" ? result.data.actionName : "";
 		return isReplyActionIdentifier(actionName);
 	});
 }
@@ -8438,8 +8427,10 @@ export class DefaultMessageService implements IMessageService {
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									descriptionPreview:
-										processedAttachment.description.substring(0, 100),
+									descriptionPreview: processedAttachment.description.substring(
+										0,
+										100,
+									),
 								},
 								"Generated image description",
 							);
@@ -8547,10 +8538,7 @@ export class DefaultMessageService implements IMessageService {
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									transcriptPreview: processedAttachment.text.substring(
-										0,
-										100,
-									),
+									transcriptPreview: processedAttachment.text.substring(0, 100),
 								},
 								"Transcribed audio attachment",
 							);
@@ -8596,10 +8584,7 @@ export class DefaultMessageService implements IMessageService {
 							runtime.logger.debug(
 								{
 									src: "service:message",
-									transcriptPreview: processedAttachment.text.substring(
-										0,
-										100,
-									),
+									transcriptPreview: processedAttachment.text.substring(0, 100),
 								},
 								"Transcribed video attachment",
 							);

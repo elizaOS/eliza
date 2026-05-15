@@ -517,7 +517,9 @@ function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
           .includes("llm_build_dflash_draft::llm_build_dflash_draft"),
     )
   ) {
-    missing.push("src/models/dflash[-_]draft.cpp (missing dflash graph builder)");
+    missing.push(
+      "src/models/dflash[-_]draft.cpp (missing dflash graph builder)",
+    );
   }
   if (missing.length > 0) {
     throw new Error(

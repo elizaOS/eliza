@@ -27,7 +27,7 @@ interface InternalToolDef {
 const INTERNAL_TOOLS: InternalToolDef[] = [
   {
     id: "lifeops",
-    npmName: "@elizaos/app-lifeops",
+    npmName: "@elizaos/plugin-lifeops",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
@@ -36,7 +36,7 @@ const INTERNAL_TOOLS: InternalToolDef[] = [
     groupOrder: 0,
     icon: "Calendar",
     routePlugin: {
-      specifier: "@elizaos/app-lifeops",
+      specifier: "@elizaos/plugin-lifeops",
       exportName: "lifeopsPlugin",
     },
   },
@@ -147,7 +147,7 @@ interface CuratedDef {
 const CURATED_APPS: CuratedDef[] = [
   {
     id: "companion",
-    npmName: "@elizaos/app-companion",
+    npmName: "@elizaos/plugin-companion",
     displayName: "Companion",
     description: "The companion overlay shell for ambient agent presence.",
     subtype: "shell",
@@ -158,7 +158,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "hyperscape",
-    npmName: "@elizaos/app-hyperscape",
+    npmName: "@elizaos/plugin-hyperscape",
     displayName: "Hyperscape",
     description: "Multiplayer 3D world for embodied agent interactions.",
     subtype: "game",
@@ -168,7 +168,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "babylon",
-    npmName: "@elizaos/app-babylon",
+    npmName: "@elizaos/plugin-babylon",
     displayName: "Babylon",
     description: "Babylon.js scene host for embodied agents.",
     subtype: "game",
@@ -178,7 +178,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "2004scape",
-    npmName: "@elizaos/app-2004scape",
+    npmName: "@elizaos/plugin-2004scape",
     displayName: "2004scape",
     description: "Classic-era RuneScape-inspired multiplayer world.",
     subtype: "game",
@@ -188,7 +188,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "defense-of-the-agents",
-    npmName: "@elizaos/app-defense-of-the-agents",
+    npmName: "@elizaos/plugin-defense-of-the-agents",
     displayName: "Defense of the Agents",
     description: "MOBA-style arena for agent strategy and combat.",
     subtype: "game",
@@ -198,7 +198,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "vincent",
-    npmName: "@elizaos/app-vincent",
+    npmName: "@elizaos/plugin-vincent",
     displayName: "Vincent",
     description:
       "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
@@ -209,13 +209,13 @@ const CURATED_APPS: CuratedDef[] = [
     dependsOn: ["wallet"],
     capabilities: ["vincent", "delegated-trading", "wallet"],
     routePlugin: {
-      specifier: "@elizaos/app-vincent",
+      specifier: "@elizaos/plugin-vincent",
       exportName: "vincentPlugin",
     },
   },
   {
     id: "hyperliquid",
-    npmName: "@elizaos/app-hyperliquid",
+    npmName: "@elizaos/plugin-hyperliquid-app",
     displayName: "Hyperliquid",
     description:
       "Native Hyperliquid market, position, and order status for wallet trading.",
@@ -226,13 +226,13 @@ const CURATED_APPS: CuratedDef[] = [
     dependsOn: ["wallet"],
     capabilities: ["hyperliquid", "trading", "wallet"],
     routePlugin: {
-      specifier: "@elizaos/app-hyperliquid",
+      specifier: "@elizaos/plugin-hyperliquid-app",
       exportName: "hyperliquidPlugin",
     },
   },
   {
     id: "app-polymarket",
-    npmName: "@elizaos/app-polymarket",
+    npmName: "@elizaos/plugin-polymarket-app",
     displayName: "Polymarket",
     description:
       "Native Polymarket market discovery and trading readiness for prediction markets.",
@@ -243,13 +243,13 @@ const CURATED_APPS: CuratedDef[] = [
     dependsOn: ["wallet"],
     capabilities: ["polymarket", "prediction-markets", "trading", "wallet"],
     routePlugin: {
-      specifier: "@elizaos/app-polymarket",
+      specifier: "@elizaos/plugin-polymarket-app",
       exportName: "polymarketPlugin",
     },
   },
   {
     id: "shopify",
-    npmName: "@elizaos/app-shopify",
+    npmName: "@elizaos/plugin-shopify-ui",
     displayName: "Shopify",
     description: "Storefront and admin tools for agent-driven commerce.",
     subtype: "marketplace",
@@ -257,13 +257,13 @@ const CURATED_APPS: CuratedDef[] = [
     icon: "Briefcase",
     groupOrder: 9,
     routePlugin: {
-      specifier: "@elizaos/app-shopify",
+      specifier: "@elizaos/plugin-shopify-ui",
       exportName: "shopifyPlugin",
     },
   },
   {
     id: "steward",
-    npmName: "@elizaos/app-steward",
+    npmName: "@elizaos/plugin-steward-app",
     displayName: "Steward",
     description:
       "Wallet management, browser wallet bridge, and trade approval routes.",
@@ -273,13 +273,13 @@ const CURATED_APPS: CuratedDef[] = [
     groupOrder: 100,
     visible: false,
     routePlugin: {
-      specifier: "@elizaos/app-steward",
+      specifier: "@elizaos/plugin-steward-app",
       exportName: "stewardPlugin",
     },
   },
   {
     id: "clawville",
-    npmName: "@elizaos/app-clawville",
+    npmName: "@elizaos/plugin-clawville",
     displayName: "ClawVille",
     description:
       "Sea-themed agent world with skill-learning buildings, NPC chat, and Solana wallet identity.",

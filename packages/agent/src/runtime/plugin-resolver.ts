@@ -1226,7 +1226,8 @@ async function stagePluginImportRoot(params: {
   });
   const shouldLinkHoistedWorkspaceDeps =
     stageAllHoistedNodeModulesEnabled() ||
-    params.packageName.startsWith("@elizaos/app-");
+    params.packageName.startsWith("@elizaos/app-") ||
+    params.packageName.startsWith("@elizaos/plugin-");
   if (shouldLinkHoistedWorkspaceDeps) {
     await linkAncestorNodeModulesIfNeeded({
       installRoot: params.installRoot,

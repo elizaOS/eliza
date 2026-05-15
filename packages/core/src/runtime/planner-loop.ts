@@ -114,9 +114,10 @@ interface RawPlannerOutput {
 export async function runPlannerLoop(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
+	const plannerContext = normalizePlannerContext(params.context);
 	const config = mergeChainingLoopConfig(params.config);
 	const trajectory: PlannerTrajectory = {
-		context: params.context,
+		context: plannerContext,
 		steps: [],
 		archivedSteps: [],
 		plannedQueue: [],
@@ -470,6 +471,15 @@ export async function runPlannerLoop(
 
 		trajectory.plannedQueue.length = 0;
 	}
+}
+
+function normalizePlannerContext(context: ContextObject): ContextObject {
+	return Array.isArray(context.events)
+		? context
+		: {
+				...context,
+				events: [],
+			};
 }
 
 function renderPlannerModelInput(params: {
@@ -1282,7 +1292,7 @@ async function recordPlannerStage(args: {
 
 	try {
 		const responseText =
-			typeof args.raw === "string" ? args.raw : (args.raw.text);
+			typeof args.raw === "string" ? args.raw : args.raw.text;
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
@@ -1815,7 +1825,8 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 		record.name ??
 			record.toolName ??
 			record.tool ??
-			record.action,
+			record.action ??
+			functionName,
 	);
 	if (!name) {
 		return null;
@@ -1827,7 +1838,8 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.arguments ??
 			record.params ??
 			record.parameters ??
-			rawFunction?.input,
+			rawFunction?.input ??
+			rawFunction?.arguments,
 	);
 
 	return {

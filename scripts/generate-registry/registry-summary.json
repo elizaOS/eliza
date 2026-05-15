@@ -74,13 +74,13 @@
       "directory": "plugins/plugin-device-settings"
     },
     {
-      "name": "@elizaos/app-documents",
+      "name": "@elizaos/plugin-documents",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-documents"
+      "directory": "plugins/plugin-documents"
     },
     {
       "name": "@elizaos/plugin-elizamaker",
@@ -155,13 +155,13 @@
       "directory": "plugins/plugin-scape"
     },
     {
-      "name": "@elizaos/app-screenshare",
+      "name": "@elizaos/plugin-screenshare",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-screenshare"
+      "directory": "plugins/plugin-screenshare"
     },
     {
       "name": "@elizaos/plugin-shopify-ui",

@@ -83,10 +83,7 @@ export async function applyAddressedTo(
 				(existing.metadata as Record<string, unknown> | undefined) ?? {};
 			await runtime.updateRelationship({
 				...existing,
-				tags: dedupeTags([
-					...(existing.tags),
-					...ADDRESSED_RELATIONSHIP_TAGS,
-				]),
+				tags: dedupeTags([...existing.tags, ...ADDRESSED_RELATIONSHIP_TAGS]),
 				metadata: {
 					...existingMetadata,
 					lastInteractionAt: nowIso,

@@ -329,7 +329,7 @@ async function inspectActiveOptimizations(args) {
   } else {
     missing.push({
       what: "no real TTS backend — interactive voice needs the fused libelizainference build (the stub backend emits silence and is rejected)",
-      fix: "build it: see packages/app-core/scripts/omnivoice-fuse/README.md (the fused build ships real OmniVoice TTS + Qwen3-ASR on macOS-Metal; stub elsewhere)",
+      fix: "build it: see packages/app-core/scripts/omnivoice-merged/README.md (the fused build ships real OmniVoice TTS + Qwen3-ASR on macOS-Metal; stub elsewhere)",
     });
     active.push({
       name: "streaming OmniVoice TTS",

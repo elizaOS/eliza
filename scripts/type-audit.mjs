@@ -10,7 +10,7 @@
  * Usage:
  *   node scripts/type-audit.mjs --json
  *   node scripts/type-audit.mjs --json --include-tests
- *   node scripts/type-audit.mjs --roots=packages/core,plugins/app-lifeops
+ *   node scripts/type-audit.mjs --roots=packages/core,plugins/plugin-lifeops
  */
 
 import fs from "node:fs";

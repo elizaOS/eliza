@@ -17,8 +17,8 @@
  *
  * Usage:
  *   node scripts/nullish-operator-audit.mjs --json
- *   node scripts/nullish-operator-audit.mjs --json --roots=plugins/app-lifeops
- *   node scripts/nullish-operator-audit.mjs --json --type-aware --roots=plugins/app-lifeops
+ *   node scripts/nullish-operator-audit.mjs --json --roots=plugins/plugin-lifeops
+ *   node scripts/nullish-operator-audit.mjs --json --type-aware --roots=plugins/plugin-lifeops
  *   node scripts/nullish-operator-audit.mjs --apply --roots=packages/core
  */
 

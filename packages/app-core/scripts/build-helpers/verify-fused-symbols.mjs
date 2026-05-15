@@ -141,12 +141,12 @@ function dumpSymbols({ tool, file }) {
   });
   if (result.error) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: ${tool.cmd} failed to run on ${file}: ${result.error.message}`,
+      `[omnivoice-verify] symbol-verify: ${tool.cmd} failed to run on ${file}: ${result.error.message}`,
     );
   }
   if (typeof result.status === "number" && result.status !== 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: ${tool.cmd} ${tool.args.join(" ")} ${file} exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      `[omnivoice-verify] symbol-verify: ${tool.cmd} ${tool.args.join(" ")} ${file} exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   }
   return result.stdout || "";
@@ -160,12 +160,12 @@ function dumpOtoolLoadCommands(file) {
   });
   if (result.error) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: otool failed to inspect load commands for ${file}: ${result.error.message}`,
+      `[omnivoice-verify] symbol-verify: otool failed to inspect load commands for ${file}: ${result.error.message}`,
     );
   }
   if (typeof result.status === "number" && result.status !== 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: otool -l ${file} exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      `[omnivoice-verify] symbol-verify: otool -l ${file} exited ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   }
   return result.stdout || "";
@@ -305,18 +305,18 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   const lib = locateFusedLibrary({ outDir, target });
   if (!lib) {
     throw new Error(
-      `[omnivoice-fuse] fused library not found in ${outDir}; the fused build did not link libelizainference for target=${target}`,
+      `[omnivoice-verify] fused library not found in ${outDir}; the fused build did not link libelizainference for target=${target}`,
     );
   }
   const stubMarker = binaryContainsAnyMarker(lib, STUB_MARKERS);
   if (stubMarker) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: ${lib} contains stub marker '${stubMarker}' — refusing to accept stub-only libelizainference as a fused OmniVoice runtime`,
+      `[omnivoice-verify] symbol-verify: ${lib} contains stub marker '${stubMarker}' — refusing to accept stub-only libelizainference as a fused OmniVoice runtime`,
     );
   }
   if (/_stub\.(dylib|so|dll)$/i.test(path.basename(lib))) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: ${lib} is the stub library; fused targets must install libelizainference without the _stub suffix`,
+      `[omnivoice-verify] symbol-verify: ${lib} is the stub library; fused targets must install libelizainference without the _stub suffix`,
     );
   }
 
@@ -335,12 +335,12 @@ function verifyFusedSymbolsInner({ outDir, target }) {
 
   if (llamaCount === 0 && !llamaReexported) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no llama_* exports and does not link libllama — text inference is missing from the fused artifact`,
+      `[omnivoice-verify] symbol-verify: libelizainference at ${lib} has no llama_* exports and does not link libllama — text inference is missing from the fused artifact`,
     );
   }
   if (omnivoiceCount === 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no ov_* exports — TTS is missing from the fused artifact`,
+      `[omnivoice-verify] symbol-verify: libelizainference at ${lib} has no ov_* exports — TTS is missing from the fused artifact`,
     );
   }
   const missingOmnivoiceSymbols = REQUIRED_OMNIVOICE_SYMBOLS.filter(
@@ -348,7 +348,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingOmnivoiceSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing required OmniVoice ABI symbol(s): ${missingOmnivoiceSymbols.join(", ")}. The artifact is not a real omnivoice.cpp-backed libelizainference build.`,
+      `[omnivoice-verify] symbol-verify: libelizainference at ${lib} is missing required OmniVoice ABI symbol(s): ${missingOmnivoiceSymbols.join(", ")}. The artifact is not a real omnivoice.cpp-backed libelizainference build.`,
     );
   }
   const missingAbiSymbols = REQUIRED_ELIZA_INFERENCE_SYMBOLS.filter(
@@ -356,14 +356,14 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingAbiSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
+      `[omnivoice-verify] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/ffi-stub/ffi.h.`,
     );
   }
 
   const productServer = locateProductServer({ outDir, target });
   if (!productServer) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: fused target did not install llama-server in ${outDir}; /v1/audio/speech cannot be served from the product HTTP runtime`,
+      `[omnivoice-verify] symbol-verify: fused target did not install llama-server in ${outDir}; /v1/audio/speech cannot be served from the product HTTP runtime`,
     );
   }
   // An executable that static-links omnivoice-core carries `ov_*` in the
@@ -381,7 +381,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   };
   if (productServerReport.omnivoiceSymbolCount === 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: product llama-server at ${productServer} does not link OmniVoice symbols; /v1/audio/speech route would be a dead mount`,
+      `[omnivoice-verify] symbol-verify: product llama-server at ${productServer} does not link OmniVoice symbols; /v1/audio/speech route would be a dead mount`,
     );
   }
 
@@ -442,11 +442,11 @@ function parseCliArgs(argv) {
     } else if (arg === "--target") {
       args.target = argv[++i];
     } else {
-      throw new Error(`[omnivoice-fuse] unknown verify-symbols arg: ${arg}`);
+      throw new Error(`[omnivoice-verify] unknown verify-symbols arg: ${arg}`);
     }
   }
-  if (!args.outDir) throw new Error("[omnivoice-fuse] --out-dir is required");
-  if (!args.target) throw new Error("[omnivoice-fuse] --target is required");
+  if (!args.outDir) throw new Error("[omnivoice-verify] --out-dir is required");
+  if (!args.target) throw new Error("[omnivoice-verify] --target is required");
   return args;
 }
 
@@ -456,7 +456,7 @@ function main() {
     const report = verifyFusedSymbols(args);
     const line = args.json
       ? JSON.stringify(report, null, 2)
-      : `[omnivoice-fuse] symbol-verify PASS: ${report.library} llama=${report.llamaSymbolCount}${report.llamaReexported ? " (reexported)" : ""} omnivoice=${report.omnivoiceSymbolCount} abi=${report.abiSymbolCount}`;
+      : `[omnivoice-verify] symbol-verify PASS: ${report.library} llama=${report.llamaSymbolCount}${report.llamaReexported ? " (reexported)" : ""} omnivoice=${report.omnivoiceSymbolCount} abi=${report.abiSymbolCount}`;
     console.log(line);
   } catch (error) {
     if (args.json) {
