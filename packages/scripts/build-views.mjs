@@ -42,6 +42,11 @@ for (const configPath of configs) {
   const outDir = path.resolve(cwd, config.outDir ?? "dist/views");
   const externals = [
     config.packageName,
+    "@elizaos/ui",
+    "react",
+    "react-dom",
+    "react/jsx-dev-runtime",
+    "react/jsx-runtime",
     ...(config.additionalExternals ?? []),
   ].filter(Boolean);
 

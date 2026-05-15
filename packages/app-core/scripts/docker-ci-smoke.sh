@@ -250,7 +250,7 @@ node packages/scripts/patch-tsup-dts.mjs || true
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
-  "$BUN_BIN" run build.ts --node-only
+  "$BUN_BIN" run build:node
   popd >/dev/null
   node packages/scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
   CORE_NODE_MODULE="node_modules/@elizaos/core"
