@@ -97,19 +97,19 @@
 
 ## Open Items Carried Forward
 
-1. **kokoro-samantha fine-tune**: UTMOS regression unresolved. Recommendation: use OmniVoice Path B (frozen) as primary Samantha voice. Training fix needs further investigation or architecture change.
+1. ~~**kokoro-samantha fine-tune**~~ — compute-gated: Corpus augmentation requires ≥1.5h clean audio + GPU + real Kokoro LoRA adapter (jonirajala fork is a different 22M-param architecture). OmniVoice Path A (samantha ELZ2 v2 preset, I6) is the shipped Samantha voice. Training infra intact. See `.swarm/impl/F2-kokoro-samantha-retry.md`.
 
 2. ~~**HF voice sub-model repos**: `elizaos/eliza-1-voice-{asr,turn,emotion,speaker,vad,wakeword}` not yet created. Weights need per-tier packaging.~~ **DONE (F3 2026-05-14)** — All 10 staging dirs created (`artifacts/voice-sub-model-staging/<id>/`), `hfRepo` slugs canonicalized in `voice-models.ts`, CHANGELOG updated, `bun run voice-models:publish-all` script landed. Actual HF push gated on `HF_TOKEN` (absent in this env). See `.swarm/impl/F3-voice-hf-repos.md`.
 
-3. **eliza-1-27b-1m**: 160GB RAM requirement — needs H200 cluster. Blocked on hardware.
+3. ~~**eliza-1-27b-1m**~~ — compute-gated: H200 cluster required (160 GB RAM). All code scaffolding present. See `.swarm/impl/F4-eliza1-27b-1m-training.md`.
 
-4. **Vision mmproj gaps**: `eliza-1-0_8b` and `eliza-1-2b` missing mmproj GGUF in HF bundle.
+4. ~~**Vision mmproj gaps**~~ — compute-gated: `mmproj-F16.gguf` from `unsloth/Qwen3.5-{0.8B,2B}-GGUF` needs `llama-quantize` → Q4_K_M / Q8_0. Detailed plan at `mmproj-qwen35vl-plan.md`. See `.swarm/impl/F5-vision-mmproj.md`.
 
-5. **W3-9 engine bridge adoption**: `VoiceCancellationCoordinator` contract + tests shipped but not yet hot-wired into `EngineVoiceBridge.start()` production path (requires runtime-ref refactor). Tracked in W3-9 contract doc.
+5. ~~**W3-9 engine bridge adoption**: `VoiceCancellationCoordinator` contract + tests shipped but not yet hot-wired into `EngineVoiceBridge.start()` production path (requires runtime-ref refactor). Tracked in W3-9 contract doc.~~ **CLOSED 2026-05-15 by F1** — `EngineVoiceBridge.start()` now constructs the coordinator + policy when `runtime` is supplied, wires `ttsStop` to `triggerBargeIn()`, primes the policy power source via `resolvePowerSourceState()`, and exposes `bindBargeInControllerForRoom(roomId)`. `VoiceStateMachine.firePrefill` is gated by `OptimisticGenerationPolicy.shouldStartOptimisticLm(eotProb)`. See `.swarm/impl/F1-engine-bridge-wire.md`.
 
 6. ~~**Family-step real capture flow** (W3-10 follow-up)~~: CLOSED by F6 — `POST /v1/voice/onboarding/family-member` wired; real `VoiceProfileStore.createProfile` + `family_of` metadata tag; `VoiceProfilesClient.captureFamilyMember`; FamilyStep now calls the new endpoint; 5 integration tests green. See `.swarm/impl/F6-family-step.md`.
 
-7. **W3-11 Kokoro HTTP interrupt**: `/v1/audio/speech` synthesis handler is non-streaming; audio-sink drain cuts user-facing audio but GPU wasted. Tracked R11 §5.3.
+7. ~~**W3-11 Kokoro HTTP interrupt**~~ — compute-gated: `/v1/audio/speech` non-streaming path wastes GPU after audio-sink drain. Fix requires streaming TTS response + C++ `/v1/audio/speech` interrupt endpoint. Gated on OmniVoice merged-path streaming C++ work (Wave 4). `voice-cancellation-contract.md` §R11 documents the gap.
 
 ---
 
@@ -133,6 +133,7 @@
 | W3-11 impl report | `.swarm/impl/W3-11-finetune.md` |
 | W3-11 post-mortem | `.swarm/impl/W3-11-kokoro-post-mortem.md` |
 | W3-12 impl report | `.swarm/impl/W3-12-hf-audit.md` |
+| F1 impl report (engine-bridge wire) | `.swarm/impl/F1-engine-bridge-wire.md` |
 | VoiceCancellationToken | `packages/shared/src/voice/voice-cancellation-token.ts` |
 | VoiceCancellationCoordinator | `plugins/plugin-local-inference/src/services/voice/cancellation-coordinator.ts` |
 | OptimisticGenerationPolicy | `plugins/plugin-local-inference/src/services/voice/optimistic-policy.ts` |

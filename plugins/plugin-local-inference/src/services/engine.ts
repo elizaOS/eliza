@@ -57,6 +57,10 @@ import {
 import { resolveGuidedDecodeForParams } from "./structured-output";
 import type { InstalledModel } from "./types";
 import {
+	type CoordinatorRuntime,
+	VoiceCancellationCoordinator,
+} from "./voice/cancellation-coordinator";
+import {
 	buildLocalEmbeddingRoute,
 	EMBEDDING_FULL_DIM,
 	isValidEmbeddingDim,
@@ -1484,6 +1488,16 @@ export class LocalInferenceEngine {
 			/** Called once per detected utterance (refractory-debounced). */
 			onWake?: () => void;
 		};
+		/**
+		 * Runtime reference for cancellation coordination (W3-9 F1).
+		 * When provided, a `VoiceCancellationCoordinator` is constructed and
+		 * wired into:
+		 *   - `BargeInController` → coordinator.bargeIn (hard-stop ASR words)
+		 *   - `EngineVoiceBridge.triggerBargeIn` → coordinator ttsStop
+		 *   - `runtime.turnControllers.abortTurn` (planner-loop / action abort)
+		 * When absent the session runs with the pre-W3-9 VAD-only barge-in path.
+		 */
+		runtime?: CoordinatorRuntime;
 	}): Promise<import("./voice/turn-controller").VoiceTurnController> {
 		const bridge = this.requireVoiceBridge("start a voice session");
 		if (bridge.lifecycle.current().kind !== "voice-on") {
@@ -1574,6 +1588,22 @@ export class LocalInferenceEngine {
 			}
 		}
 
+		// F1 (Wave 3 follow-up): construct VoiceCancellationCoordinator when a
+		// runtime reference is provided. This wires the three abort paths (voice
+		// barge-in → runtime turn abort, runtime abort → voice token, slot cancel)
+		// into one canonical VoiceCancellationToken per turn.
+		// OptimisticGenerationPolicy is available (imported) for callers that
+		// integrate VoiceTurnController speculate-on-EOT with power-source gating;
+		// it is not wired here because VoiceTurnController.speculatePauseMs is the
+		// current gate — a future change can pass the policy through VoiceTurnControllerConfig.
+		let cancellationCoordinator: VoiceCancellationCoordinator | null = null;
+		if (opts.runtime) {
+			cancellationCoordinator = new VoiceCancellationCoordinator({
+				runtime: opts.runtime,
+				ttsStop: () => bridge.triggerBargeIn(),
+			});
+		}
+
 		const controller = new VoiceTurnController(
 			{
 				vad,
@@ -1596,6 +1626,16 @@ export class LocalInferenceEngine {
 			},
 			opts.events ?? {},
 		);
+
+		// Bind the BargeInController into the cancellation coordinator so
+		// ASR-confirmed hard-stop words trip the canonical voice token.
+		let unsubCoordinator: (() => void) | null = null;
+		if (cancellationCoordinator) {
+			unsubCoordinator = cancellationCoordinator.bindBargeInController(
+				opts.roomId,
+				bridge.scheduler.bargeIn,
+			);
+		}
 
 		// Mic → ring buffer (the buffer the ASR / instrumentation can read from)
 		// + per-frame fan-out to the VAD and the streaming transcriber.
@@ -1680,6 +1720,9 @@ export class LocalInferenceEngine {
 			void micSource.stop();
 			transcriber.dispose();
 			wakeWord?.reset();
+			// F1: dispose the cancellation coordinator (cancels all armed tokens).
+			unsubCoordinator?.();
+			cancellationCoordinator?.dispose();
 		};
 		return controller;
 	}
