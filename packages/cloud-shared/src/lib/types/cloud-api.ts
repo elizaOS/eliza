@@ -367,7 +367,9 @@ export type AgentSandboxStatus =
   | "running"
   | "stopped"
   | "disconnected"
-  | "error";
+  | "error"
+  | "deletion_pending"
+  | "deletion_failed";
 
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
 
