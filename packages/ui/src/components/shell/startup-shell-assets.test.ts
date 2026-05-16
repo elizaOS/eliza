@@ -21,4 +21,18 @@ describe("startup shell assets", () => {
       expect(source).not.toContain("splash-bg.png");
     }
   });
+
+  it("keeps the bootstrap shell on the plain yellow startup surface", () => {
+    const source = readFileSync(
+      resolve(repoRoot, "packages/ui/src/components/shell/StartupShell.tsx"),
+      "utf8",
+    );
+
+    const bootstrapShell = source.slice(
+      source.indexOf("function BootstrapGateShell"),
+    );
+    expect(bootstrapShell).toContain("bg-[#ffe600]");
+    expect(bootstrapShell).not.toContain("radial-gradient");
+    expect(bootstrapShell).not.toContain("blur-[");
+  });
 });
