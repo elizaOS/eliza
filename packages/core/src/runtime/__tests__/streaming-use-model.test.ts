@@ -139,7 +139,11 @@ describe("AgentRuntime structured streaming", () => {
 			await streamingParams.onStreamChunk?.(" there.");
 			return "Hello there.";
 		});
-		runtime.registerModel(ModelType.TEXT_LARGE, handler, "eliza-local-inference");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			handler,
+			"eliza-local-inference",
+		);
 
 		const result = await runWithStreamingContext(
 			{

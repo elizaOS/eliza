@@ -79,12 +79,12 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
+ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b")
 
 # Target tiers that are allowed to ship a DFlash drafter. 0_8b is target-only:
 # bundle manifests must keep DFlash disabled there, and this script must not
 # produce a drafter artifact for it.
-DFLASH_DRAFTER_TIERS = ("2b", "4b", "9b", "27b", "27b-256k")
+DFLASH_DRAFTER_TIERS = ("2b", "4b", "9b", "27b")
 TRAINING_SUPPORTED_TIERS = DFLASH_DRAFTER_TIERS
 
 # Use this only for synthetic smoke fixtures that cannot inspect a tokenizer.
@@ -98,7 +98,6 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
     "4b": "Qwen/Qwen3.5-0.8B-Base",
     "9b": "Qwen/Qwen3.5-0.8B-Base",
     "27b": "Qwen/Qwen3.5-0.8B-Base",
-    "27b-256k": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 # Canonical Eliza-1 text targets that each drafter is allowed to pair with.
@@ -111,7 +110,6 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
     "4b": "elizalabs/eliza-1/bundles/4b",
     "9b": "elizalabs/eliza-1/bundles/9b",
     "27b": "elizalabs/eliza-1/bundles/27b",
-    "27b-256k": "elizalabs/eliza-1/bundles/27b-256k",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -123,7 +121,6 @@ ACCEPTANCE_GATE: dict[str, float] = {
     "4b": 0.52,
     "9b": 0.52,
     "27b": 0.52,
-    "27b-256k": 0.52,
 }
 
 

@@ -133,15 +133,6 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         status="source-only",
         notes=("Final Eliza-1 27B uses Qwen3.6 and still needs training plus Q4_K_M quantization.",),
     ),
-    "27b-256k": SourceArtifact(
-        kind="text",
-        repo="unsloth/Qwen3.6-27B-GGUF",
-        filename="Qwen3.6-27B-Q8_0.gguf",
-        destination="source/text/qwen3.6-27b-256k-q8_0.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=("Final Eliza-1 27B-256k uses Qwen3.6 and still needs long-context assembly plus Q4_K_M quantization.",),
-    ),
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
@@ -183,32 +174,18 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
             "Final Eliza-1 27B still needs DFlash acceptance against the Eliza-1 text checkpoint before publish.",
         ),
     ),
-    "27b-256k": SourceArtifact(
-        kind="dflash",
-        repo="spiritbuun/Qwen3.6-27B-DFlash-GGUF",
-        filename="dflash-draft-3.6-q8_0.gguf",
-        destination="source/dflash/qwen3.6-27b-256k-dflash-q8_0.gguf",
-        license="mit",
-        status="source-gguf",
-        notes=(
-            "GGUF quantization of z-lab/Qwen3.6-27B-DFlash; shared with the 27B text target because the long-context tier is the same Qwen3.6 backbone.",
-            "Final Eliza-1 27B-256k still needs long-context DFlash acceptance against the Eliza-1 text checkpoint before publish.",
-        ),
-    ),
 }
 
 # mmproj-F16 sources per tier. Every active Qwen3.5 base
 # (0.8B/2B/4B/9B) ships its own `mmproj-F16.gguf` in the matching unsloth
 # repo. The Qwen3.6 27B projector is also published in the matching
-# unsloth/Qwen3.6-27B-GGUF repo and is shared verbatim across the
-# 27b / 27b-256k text-context variants,
-# so the long-context tiers reuse the 27B source byte-for-byte.
+# unsloth/Qwen3.6-27B-GGUF repo.
 #
 # Per-tier quantization (handled downstream by `llama-quantize` against the
 # fork at `plugins/plugin-local-inference/native/llama.cpp/`):
 #   0_8b              -> Q4_K_M
 #   2b / 4b / 9b      -> Q8_0
-#   27b / 27b-256k    -> Q8_0
+#   27b               -> Q8_0
 # The full canonical chain and the architectural reasoning for why
 # TurboQuant / PolarQuant / QJL are NOT applied to mmproj projectors are
 # documented in the 2026-05-14 plan memo cited above and in
@@ -236,7 +213,6 @@ VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "4b": _vision_source("4b", "Qwen3.5", "4B"),
     "9b": _vision_source("9b", "Qwen3.5", "9B"),
     "27b": _vision_source("27b", "Qwen3.6", "27B"),
-    "27b-256k": _vision_source("27b-256k", "Qwen3.6", "27B"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live
@@ -249,7 +225,6 @@ MMPROJ_QUANT_BY_TIER: Final[dict[str, str]] = {
     "4b": "Q8_0",
     "9b": "Q8_0",
     "27b": "Q8_0",
-    "27b-256k": "Q8_0",
 }
 
 # Per-tier tensor-type overrides passed to `llama-quantize --tensor-type`.
@@ -273,10 +248,6 @@ MMPROJ_QUANT_TENSOR_OVERRIDES: Final[dict[str, dict[str, str]]] = {
         "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
     },
     "27b": {
-        "v\\.patch_embd\\.weight": "f16",
-        "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
-    },
-    "27b-256k": {
         "v\\.patch_embd\\.weight": "f16",
         "v\\.blk\\.[0-9]+\\.ffn_down\\.weight": "f16",
     },

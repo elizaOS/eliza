@@ -1,6 +1,11 @@
 import { Capacitor } from "@capacitor/core";
 import { isStoreBuild } from "../build-variant";
 import {
+  isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
+  isMobileLocalAgentIpcUrl,
+  mobileLocalAgentPathFromUrl,
+} from "../onboarding/mobile-runtime-mode";
+import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
 } from "./ios-local-agent-kernel";
@@ -16,8 +21,6 @@ let fullBunRuntime:
   | PrimedFullBunRuntime
   | null = null;
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
-const LOCAL_AGENT_PORT = "31337";
-const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -193,22 +196,23 @@ function usesStrictIosNetworkPolicy(): boolean {
 function isLoopbackLocalAgentUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
+    const hostname = parsed.hostname || "";
     return (
       parsed.protocol === "http:" &&
       parsed.port === "31337" &&
-      (parsed.hostname === "127.0.0.1" ||
-        parsed.hostname.startsWith("127.") ||
-        parsed.hostname === "localhost" ||
-        parsed.hostname === "::1" ||
-        parsed.hostname === "[::1]")
+      (hostname === "127.0.0.1" ||
+        hostname.startsWith("127.") ||
+        hostname === "localhost" ||
+        hostname === "::1" ||
+        hostname === "[::1]")
     );
   } catch {
     return false;
   }
 }
 
-function normalizeHost(host: string): string {
-  return host
+function normalizeHost(host: string | null | undefined): string {
+  return (host ?? "")
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
@@ -246,22 +250,11 @@ function isCleartextNetworkUrl(url: URL): boolean {
 }
 
 function isIosLocalAgentIpcUrl(url: URL): boolean {
-  return url.protocol === "eliza-local-agent:" && url.hostname === "ipc";
+  return isMobileLocalAgentIpcUrl(url);
 }
 
 function isMobileLocalAgentUrl(value: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
-  }
-  if (isIosLocalAgentIpcUrl(parsed)) return true;
-  return (
-    parsed.protocol === "http:" &&
-    parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(parsed.hostname)
-  );
+  return isConfiguredMobileLocalAgentUrl(value);
 }
 
 function canUseIosLocalAgentIpc(): boolean {
@@ -333,6 +326,8 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function requestPathFromUrl(url: string): string {
+  const localAgentPath = mobileLocalAgentPathFromUrl(url);
+  if (localAgentPath) return localAgentPath;
   const parsed = new URL(url, `${IOS_LOCAL_AGENT_IPC_BASE}/`);
   return `${parsed.pathname}${parsed.search}`;
 }
@@ -594,7 +589,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
     );
   }
   if (isMobileLocalAgentUrl(url.toString())) return true;
-  if (url.pathname.startsWith("/api/")) {
+  if ((url.pathname || "").startsWith("/api/")) {
     return (
       shouldRequireFullBunRuntime() ||
       readPersistedRuntimeMode() === "local" ||
@@ -605,8 +600,9 @@ function shouldBridgeFetchUrl(url: URL): boolean {
 }
 
 function localAgentUrlForFetch(url: URL): string {
-  if (isMobileLocalAgentUrl(url.toString())) return url.toString();
-  return `${IOS_LOCAL_AGENT_IPC_BASE}${url.pathname}${url.search}`;
+  const localAgentPath = mobileLocalAgentPathFromUrl(url.toString());
+  if (localAgentPath) return `${IOS_LOCAL_AGENT_IPC_BASE}${localAgentPath}`;
+  return `${IOS_LOCAL_AGENT_IPC_BASE}${url.pathname || "/"}${url.search}`;
 }
 
 export function installIosLocalAgentFetchBridge(): void {

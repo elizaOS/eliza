@@ -1227,6 +1227,13 @@ export default defineConfig({
             replacement: path.join(uiSource, "$1"),
           },
           {
+            find: /^@elizaos\/app-core\/onboarding\/onboarding-config$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "onboarding/onboarding-config.ts",
+            ),
+          },
+          {
             find: /^@elizaos\/agent$/,
             replacement: path.join(
               appCoreSrcRoot,

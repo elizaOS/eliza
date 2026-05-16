@@ -85,14 +85,13 @@ def test_stage_sources_accepts_large_active_tier(
     assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
 
 
-@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
 def test_27b_class_tiers_use_qwen36_source(
     tmp_path: Path,
     monkeypatch,
-    tier: str,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
+    tier = "27b"
     report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
@@ -136,7 +135,7 @@ def test_known_dflash_sources_are_wired_without_faking_small_tiers() -> None:
     assert stage.DRAFTER_SOURCES["9b"].filename == "model.safetensors"
     assert stage.DRAFTER_SOURCES["9b"].license == "mit"
 
-    for tier in ("27b", "27b-256k"):
+    for tier in ("27b",):
         artifact = stage.DRAFTER_SOURCES[tier]
         assert artifact is not None
         assert artifact.repo == "spiritbuun/Qwen3.6-27B-DFlash-GGUF"
@@ -147,13 +146,11 @@ def test_known_dflash_sources_are_wired_without_faking_small_tiers() -> None:
 def test_every_active_tier_has_vision_source() -> None:
     """Every active release tier must source its own mmproj-F16.gguf.
 
-    The 27b / 27b-256k text-context variants reuse the
-    `unsloth/Qwen3.6-27B-GGUF` projector by design (the projector arch is
-    shared across the 27B family). The 0_8b/2b/4b/9b tiers each source the
-    matching Qwen3.5 projector. The 0_8b tier ships Q4_K_M; every other
-    tier ships Q8_0.
+    The 27b tier uses the `unsloth/Qwen3.6-27B-GGUF` projector. The
+    0_8b/2b/4b/9b tiers each source the matching Qwen3.5 projector. The
+    0_8b tier ships Q4_K_M; every other tier ships Q8_0.
     """
-    for tier in ("0_8b", "2b", "4b", "9b", "27b", "27b-256k"):
+    for tier in ("0_8b", "2b", "4b", "9b", "27b"):
         assert stage.VISION_SOURCES[tier] is not None, tier
         artifact = stage.VISION_SOURCES[tier]
         assert artifact.kind == "vision"
@@ -177,7 +174,7 @@ def test_large_projector_tiers_carry_ffn_down_override() -> None:
     with "Unsupported tensor size encountered" mid-stream. The 0_8b/2b/4b
     mid+small projectors do not need that override.
     """
-    for tier in ("9b", "27b", "27b-256k"):
+    for tier in ("9b", "27b"):
         overrides = stage.MMPROJ_QUANT_TENSOR_OVERRIDES[tier]
         assert "v\\.blk\\.[0-9]+\\.ffn_down\\.weight" in overrides
         assert "v\\.patch_embd\\.weight" in overrides

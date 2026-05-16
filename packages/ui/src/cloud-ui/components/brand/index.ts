@@ -15,6 +15,7 @@ export {
 } from "./brand-tabs";
 export type { TabItem } from "./brand-tabs-responsive";
 export { BrandTabsResponsive } from "./brand-tabs-responsive";
+export { CloudSkyBackground } from "./cloud-sky-background";
 export { CornerBrackets } from "./corner-brackets";
 export { DashboardSection } from "./dashboard-section";
 export { DashboardStatCard } from "./dashboard-stat-card";

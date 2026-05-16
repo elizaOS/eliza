@@ -17,6 +17,8 @@ License texts live next to this module under `license_texts/`:
 - `MIT-silero-vad.txt`    — the Silero VAD MIT license (with its
                             copyright line; the bare MIT body is the
                             same for omnivoice.cpp's MIT code clause)
+- `CC-BY-4.0.txt`         — Creative Commons Attribution 4.0
+                            International legalcode
 - `CC-BY-NC-SA-4.0.txt`   — Creative Commons Attribution-NonCommercial-
                             ShareAlike 4.0 International legalcode
 
@@ -110,6 +112,7 @@ class LicenseAttestation:
 # placeholder — see wakeword-head-plan.md).
 _APACHE = "Apache-2.0.txt"
 _MIT = "MIT-silero-vad.txt"
+_CC_BY = "CC-BY-4.0.txt"
 _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
@@ -251,7 +254,59 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k"),
+        tiers=("0_8b", "2b", "4b", "9b", "27b"),
+    ),
+    LicenseAttestation(
+        bundle_file="LICENSE.emotion",
+        component="acoustic voice emotion classifier",
+        spdx="Apache-2.0",
+        text_file=_APACHE,
+        upstream_repo="elizaos/eliza-1 voice/emotion/wav2small-cls7-int8.onnx",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
+        copyright_holder=(
+            "elizaOS / Eliza Labs and Wav2Small / upstream dataset contributors"
+        ),
+        note=(
+            "The shipped artifact is the distilled Wav2Small cls7 ONNX student "
+            "used for local acoustic-prosody emotion attribution. The audeering "
+            "teacher is recorded for attribution/eval lineage only and is not "
+            "redistributed in the bundle."
+        ),
+    ),
+    LicenseAttestation(
+        bundle_file="LICENSE.speaker-encoder",
+        component="speaker encoder",
+        spdx="CC-BY-4.0",
+        text_file=_CC_BY,
+        upstream_repo=(
+            "pyannote/wespeaker-voxceleb-resnet34-LM / "
+            "onnx-community/wespeaker-voxceleb-resnet34-LM"
+        ),
+        upstream_url="https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM",
+        copyright_holder=(
+            "pyannote / WeSpeaker authors and VoxCeleb-derived model contributors"
+        ),
+        note=(
+            "The speaker encoder is used only for local speaker attribution and "
+            "voice profile matching. It does not grant identity authority by "
+            "itself; matches are evidence rows consumed by the profile store "
+            "and merge engine."
+        ),
+    ),
+    LicenseAttestation(
+        bundle_file="LICENSE.diarizer",
+        component="local diarizer",
+        spdx="MIT",
+        text_file=_MIT,
+        upstream_repo="onnx-community/pyannote-segmentation-3.0",
+        upstream_url="https://huggingface.co/onnx-community/pyannote-segmentation-3.0",
+        copyright_holder="pyannote contributors",
+        note=(
+            "The diarizer is used for local multi-speaker segmentation and "
+            "attribution. It is not a VAD replacement; Silero remains the "
+            "low-latency microphone gate and pyannote refines speech windows "
+            "after VAD opens them."
+        ),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",
@@ -368,6 +423,9 @@ def attestations_for_components(components: Sequence[str]) -> tuple[LicenseAttes
         "embedding": "LICENSE.embedding",
         "vision": "LICENSE.vision",
         "wakeword": "LICENSE.wakeword",
+        "emotion": "LICENSE.emotion",
+        "speaker-encoder": "LICENSE.speaker-encoder",
+        "diarizer": "LICENSE.diarizer",
     }
     wanted: list[str] = [a.bundle_file for a in ATTESTATIONS if a.bundle_file in required_always]
     comp_set = set(components)
@@ -527,6 +585,18 @@ def _detect_components(bundle_dir: Path) -> list[str]:
         bundle_dir / "wakeword"
     ).is_dir():
         components.append("wakeword")
+    if (bundle_dir / "voice" / "emotion").is_dir() and any(
+        (bundle_dir / "voice" / "emotion").iterdir()
+    ):
+        components.append("emotion")
+    if (bundle_dir / "voice" / "speaker-encoder").is_dir() and any(
+        (bundle_dir / "voice" / "speaker-encoder").iterdir()
+    ):
+        components.append("speaker-encoder")
+    if (bundle_dir / "voice" / "diarizer").is_dir() and any(
+        (bundle_dir / "voice" / "diarizer").iterdir()
+    ):
+        components.append("diarizer")
     return components
 
 

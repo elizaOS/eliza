@@ -52,7 +52,6 @@ RAM_BUDGET_MB = {
     "4b": (6000, 8000),
     "9b": (12000, 18000),
     "27b": (32000, 48000),
-    "27b-256k": (96000, 128000),
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
@@ -61,7 +60,6 @@ TEXT_BASE_BY_TIER = {
     "4b": "Qwen/Qwen3.5-4B",
     "9b": "Qwen/Qwen3.5-9B",
     "27b": "Qwen/Qwen3.6-27B",
-    "27b-256k": "Qwen/Qwen3.6-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -77,7 +75,6 @@ DRAFTER_SOURCE_BY_TIER = {
     "4b": "z-lab/Qwen3.5-4B-DFlash",
     "9b": "z-lab/Qwen3.5-9B-DFlash",
     "27b": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
-    "27b-256k": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
 }
 
 # Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from

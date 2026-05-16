@@ -1,5 +1,7 @@
 "use client";
 
+/// <reference path="../../types/react-syntax-highlighter.d.ts" />
+
 import { useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 

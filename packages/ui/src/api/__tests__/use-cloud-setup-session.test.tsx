@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { MockCloudSetupSessionService } from "@elizaos/cloud-sdk/cloud-setup-session";
 import type { ContainerHandoffEnvelope } from "@elizaos/cloud-sdk/cloud-setup-session";
+import { MockCloudSetupSessionService } from "@elizaos/cloud-sdk/cloud-setup-session";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useCloudSetupSession } from "../cloud-setup.js";
 

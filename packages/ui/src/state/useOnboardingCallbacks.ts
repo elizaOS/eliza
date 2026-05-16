@@ -16,11 +16,24 @@ import {
   getDefaultStylePreset,
 } from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
-import type { StylePreset } from "../api";
-import { ElizaClient, type VoiceConfig } from "../api";
+import type { StylePreset, VoiceConfig } from "../api";
+import { ElizaClient } from "../api/client-base";
+
+type OnboardingClient = Pick<
+  ElizaClient,
+  | "getAuthStatus"
+  | "getBaseUrl"
+  | "getStatus"
+  | "provisionCloudSandbox"
+  | "setBaseUrl"
+  | "setToken"
+  | "startAgent"
+  | "submitOnboarding"
+  | "updateConfig"
+>;
 
 const ensureOnboardedAgentRunning = async (
-  client: ElizaClient,
+  client: OnboardingClient,
 ): Promise<void> => {
   try {
     const status = await client.getStatus();
@@ -213,7 +226,7 @@ async function persistOnboardingStyleVoice(args: {
   voiceProvider: string;
   voiceApiKey: string;
   cloudTtsSelected: boolean;
-  clientRef: ElizaClient;
+  clientRef: Pick<OnboardingClient, "updateConfig">;
 }): Promise<void> {
   const voiceConfig = buildOnboardingStyleVoiceConfig(args);
   if (!voiceConfig) {
@@ -313,7 +326,7 @@ export interface OnboardingCallbacksDeps {
   ) => void;
   retryStartup: () => void;
   forceLocalBootstrapRef: RefObject<boolean>;
-  client: ElizaClient;
+  client: OnboardingClient;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────
@@ -557,7 +570,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               : {}),
             ...onboardingFeaturePayload,
             walletConfig: nextWalletConfig,
-          } as Parameters<typeof client.submitOnboarding>[0]);
+          } as Parameters<OnboardingClient["submitOnboarding"]>[0]);
           try {
             await persistOnboardingStyleVoice({
               style,
@@ -716,7 +729,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             : {}),
           ...onboardingFeaturePayload,
           walletConfig: nextWalletConfig,
-        } as Parameters<typeof client.submitOnboarding>[0]);
+        } as Parameters<OnboardingClient["submitOnboarding"]>[0]);
         try {
           await persistOnboardingStyleVoice({
             style,

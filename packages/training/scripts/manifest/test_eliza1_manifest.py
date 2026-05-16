@@ -48,8 +48,6 @@ def quantization_kernel_fragments() -> list[dict[str, object]]:
 
 
 def text_file_for_tier(tier: str) -> FileEntry:
-    if tier == "27b-256k":
-        return FileEntry(path="text/eliza-1-27b-256k.gguf", sha256=SHA, ctx=262144)
     return FileEntry(path=f"text/eliza-1-{tier}-128k.gguf", sha256=SHA, ctx=131072)
 
 
@@ -146,7 +144,6 @@ def test_eliza1_tier_ids_are_canonical():
         "4b",
         "9b",
         "27b",
-        "27b-256k",
     )
     assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
@@ -172,7 +169,7 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
-    assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
+    assert VOICE_BACKENDS_BY_TIER["27b"] == ("omnivoice",)
 
 
 def test_build_manifest_happy_path():
@@ -739,20 +736,19 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert validate_manifest(manifest) == ()
 
 
-@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
-def test_base_v1_27b_provenance_requires_qwen36_text_source(tier: str):
-    kwargs = base_kwargs(tier)
+def test_base_v1_27b_provenance_requires_qwen36_text_source():
+    kwargs = base_kwargs("27b")
     prov = _base_v1_provenance()
     prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.6-27B"}
     kwargs["provenance"] = prov
     assert validate_manifest(build_manifest(**kwargs)) == ()
 
     prov = _base_v1_provenance()
-    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.5-27B"}
+    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3-4B"}
     kwargs["provenance"] = prov
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
-    assert any("Qwen/Qwen3.5-27B" in e for e in exc.value.errors)
+    assert any("Qwen/Qwen3-4B" in e for e in exc.value.errors)
 
 
 def test_base_v1_provenance_requires_finetuned_false():
@@ -846,11 +842,11 @@ def test_voice_quant_ladder_mobile_tiers_publish_narrow_omnivoice_ladder():
 
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():
-    """Large tiers (9b / 27b / 27b-256k) ship OmniVoice and must
+    """Large tiers (9b / 27b) ship OmniVoice and must
     publish the full Q3..Q8 ladder so the downloader can pick the level
     matching the host's RAM/SoC class at install time."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
-    for tier in ("9b", "27b", "27b-256k"):
+    for tier in ("9b", "27b"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
         assert "omnivoice" in VOICE_BACKENDS_BY_TIER[tier]
 

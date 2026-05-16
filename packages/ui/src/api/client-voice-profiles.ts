@@ -11,8 +11,6 @@
  * HTTP calls without touching the consumers.
  */
 
-import type { ElizaClient } from "./client";
-
 export type VoiceProfileCohort = "owner" | "family" | "guest" | "unknown";
 export type VoiceProfileSource = "onboarding" | "auto-clustered" | "manual";
 
@@ -435,7 +433,7 @@ function isMissingEndpointError(err: unknown): boolean {
 
 /** Helper for callers that already hold an `ElizaClient` instance. */
 export function createVoiceProfilesClient(
-  client: ElizaClient,
+  client: VoiceProfilesClientLike,
 ): VoiceProfilesClient {
   return new VoiceProfilesClient(client);
 }

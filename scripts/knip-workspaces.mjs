@@ -26,6 +26,10 @@ const DIRECTORY_SCOPED_WORKSPACES = new Set([
   "packages/examples/farcaster-miniapp",
   "packages/os/linux/agent",
   "packages/prompts",
+  "packages/shared",
+  "plugins/plugin-agent-orchestrator",
+  "plugins/plugin-app-control",
+  "plugins/plugin-app-manager",
 ]);
 
 const DIRECTORY_SCOPED_WORKSPACE_PREFIXES = [
@@ -223,7 +227,9 @@ function getKnipCommand() {
 
   const bunPath = process.env.PATH?.split(delimiter)
     .map((part) => join(part, "bun"))
-    .find((candidate) => existsSync(candidate) && basename(candidate) === "bun");
+    .find(
+      (candidate) => existsSync(candidate) && basename(candidate) === "bun",
+    );
   if (bunPath) return { command: bunPath, prefixArgs: ["x", "knip"] };
 
   return { command: "npx", prefixArgs: ["knip"] };

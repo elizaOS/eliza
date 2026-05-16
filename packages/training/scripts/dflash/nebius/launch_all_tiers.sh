@@ -31,16 +31,15 @@
 # Optional env vars:
 #   TARGET_GGUF_ROOT         Directory containing per-tier text GGUFs:
 #                              <root>/eliza-1-<tier>/text/eliza-1-<tier>-128k.gguf
-#                            except 27b-256k, which uses ...-256k.gguf
 #                            If unset, GGUF hash stamping is skipped (training
 #                            still runs; stamp manually after conversion).
 #   EXTRA_TRAIN_ARGS         Extra args passed to distill_drafter_h200.py.
 #
 # Tier-to-hardware mapping (1 GPU unless noted):
 #   2b  4b  9b  → 1× H200 each
-#   27b  27b-256k  → 2× H200 each (target + student don't fit on 1)
+#   27b          → 2× H200 (target + student don't fit on 1)
 #
-# All 5 drafter-enabled tiers are listed in canonical order matching
+# All 4 drafter-enabled tiers are listed in canonical order matching
 # ELIZA_1_GGUF_READINESS.md and packages/shared/src/local-inference/catalog.ts.
 set -euo pipefail
 
@@ -55,7 +54,6 @@ ALL_TIERS=(
   "4b:1.5:3:8:4:2e-4"
   "9b:1.5:5:8:4:1.5e-4"
   "27b:3.0:5:8:4:1e-4"
-  "27b-256k:3.0:5:8:4:1e-4"
 )
 
 # --------------------------------------------------------------------------
@@ -151,7 +149,7 @@ validate_selected_tiers() {
     fi
   done
   if (( ${#invalid[@]} )); then
-    die "unsupported DFlash drafter tier(s): ${invalid[*]}. Allowed: 2b,4b,9b,27b,27b-256k. eliza-1-0_8b is target-only."
+    die "unsupported DFlash drafter tier(s): ${invalid[*]}. Allowed: 2b,4b,9b,27b. eliza-1-0_8b is target-only."
   fi
 }
 
@@ -228,9 +226,6 @@ for entry in "${ALL_TIERS[@]}"; do
     gguf_root="${TARGET_GGUF_ROOT:-}"
     if [[ -n "${gguf_root}" ]]; then
       ctx="128k"
-      if [[ "${TIER}" == "27b-256k" ]]; then
-        ctx="256k"
-      fi
       gguf="${gguf_root}/eliza-1-${TIER}/text/eliza-1-${TIER}-${ctx}.gguf"
       cmd+=(--target-gguf "${gguf}")
     fi

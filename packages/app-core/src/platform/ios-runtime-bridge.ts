@@ -183,10 +183,7 @@ function normalizeIosFullBunSmokeReply(value: unknown): string {
     .trim();
 }
 
-function assertIosFullBunSmokeModelReply(
-  label: string,
-  value: unknown,
-): void {
+function assertIosFullBunSmokeModelReply(label: string, value: unknown): void {
   const text = String(value ?? "");
   if (
     normalizeIosFullBunSmokeReply(text) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||

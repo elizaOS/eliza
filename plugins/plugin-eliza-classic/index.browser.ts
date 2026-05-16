@@ -1,2 +1,4 @@
+import elizaClassicPlugin from "./index";
+
 export * from "./index";
-export { default } from "./index";
+export default elizaClassicPlugin;

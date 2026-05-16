@@ -30,7 +30,13 @@ function resolveTestModelPath(): string | undefined {
 
 	const candidates = [
 		path.join(os.homedir(), ".eliza", "models", "text", "eliza-1-2b-128k.gguf"),
-		path.join(os.homedir(), ".milady", "models", "text", "eliza-1-2b-128k.gguf"),
+		path.join(
+			os.homedir(),
+			".milady",
+			"models",
+			"text",
+			"eliza-1-2b-128k.gguf",
+		),
 	];
 	return candidates.find((p) => fs.existsSync(p));
 }

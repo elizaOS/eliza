@@ -6,8 +6,19 @@
   display: grid;
   grid-template-columns: 280px 1fr;
   min-height: 100vh;
-  color: rgb(229 229 229);
-  background: rgb(8 8 10);
+  color: #06131f;
+  background:
+    radial-gradient(
+      ellipse at 16% 0%,
+      rgba(255, 255, 255, 0.44),
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      var(--sky-0, #1d91e8) 0%,
+      var(--sky-1, #47b8ff) 58%,
+      var(--sky-2, #9bdcff) 100%
+    );
 }
 
 @media (max-width: 900px) {
@@ -25,8 +36,9 @@
   height: 100vh;
   overflow-y: auto;
   padding: 1.5rem 1rem 2rem;
-  border-right: 1px solid rgb(255 255 255 / 0.06);
-  background: rgb(10 10 12);
+  border-right: 1px solid rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.24);
+  backdrop-filter: blur(22px);
 }
 
 .docs-sidebar-brand {
@@ -53,7 +65,7 @@
 .docs-nav-list .docs-nav-list {
   margin-top: 0.25rem;
   padding-left: 0.5rem;
-  border-left: 1px solid rgb(255 255 255 / 0.06);
+  border-left: 1px solid rgb(255 255 255 / 0.22);
 }
 
 .docs-nav-separator {
@@ -63,7 +75,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 0.4);
+  color: rgb(255 255 255 / 0.62);
 }
 
 .docs-nav-section {
@@ -75,7 +87,7 @@
   padding: 0.35rem 0.5rem;
   font-size: 0.85rem;
   font-weight: 500;
-  color: rgb(255 255 255 / 0.85);
+  color: rgb(255 255 255 / 0.86);
   text-decoration: none;
   border-radius: 4px;
 }
@@ -83,26 +95,26 @@
 .docs-nav-section-title:hover,
 .docs-nav-section-title.active {
   color: rgb(255 255 255);
-  background: rgb(255 255 255 / 0.04);
+  background: rgb(255 255 255 / 0.16);
 }
 
 .docs-nav-link {
   display: block;
   padding: 0.3rem 0.5rem;
   font-size: 0.85rem;
-  color: rgb(255 255 255 / 0.65);
+  color: rgb(255 255 255 / 0.72);
   text-decoration: none;
   border-radius: 4px;
 }
 
 .docs-nav-link:hover {
   color: rgb(255 255 255);
-  background: rgb(255 255 255 / 0.04);
+  background: rgb(255 255 255 / 0.16);
 }
 
 .docs-nav-link.active {
-  color: rgb(255 88 0);
-  background: rgb(255 88 0 / 0.08);
+  color: #fff7ee;
+  background: rgb(255 138 36 / 0.28);
 }
 
 /* ─────────────────────────  Main content  ───────────────────────── */
@@ -115,6 +127,12 @@
 .docs-article {
   max-width: 920px;
   margin: 0 auto;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+  border: 1px solid rgb(255 255 255 / 0.32);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 0.8);
+  box-shadow: 0 24px 80px rgb(18 96 155 / 0.16);
+  backdrop-filter: blur(18px);
   font-size: 0.95rem;
   line-height: 1.7;
 }
@@ -124,15 +142,15 @@
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: rgb(255 255 255);
+  color: #06131f;
 }
 
 .docs-article h2 {
   margin: 2.5rem 0 0.75rem;
   font-size: 1.5rem;
   font-weight: 600;
-  color: rgb(255 255 255);
-  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  color: #06131f;
+  border-bottom: 1px solid rgb(6 19 31 / 0.12);
   padding-bottom: 0.4rem;
 }
 
@@ -140,37 +158,37 @@
   margin: 2rem 0 0.5rem;
   font-size: 1.15rem;
   font-weight: 600;
-  color: rgb(255 255 255);
+  color: #06131f;
 }
 
 .docs-article h4 {
   margin: 1.5rem 0 0.5rem;
   font-size: 1rem;
   font-weight: 600;
-  color: rgb(255 255 255 / 0.95);
+  color: rgb(6 19 31 / 0.92);
 }
 
 .docs-article p {
   margin: 0.75rem 0;
-  color: rgb(255 255 255 / 0.8);
+  color: rgb(6 19 31 / 0.72);
 }
 
 .docs-article a {
-  color: rgb(255 138 80);
+  color: #0c5f9e;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
 
 .docs-article a:hover {
-  color: rgb(255 168 110);
+  color: #d95f16;
 }
 
 .docs-article ul,
 .docs-article ol {
   margin: 0.75rem 0;
   padding-left: 1.5rem;
-  color: rgb(255 255 255 / 0.8);
+  color: rgb(6 19 31 / 0.72);
 }
 
 .docs-article li {
@@ -182,8 +200,8 @@
   font-size: 0.85em;
   padding: 0.1rem 0.35rem;
   border-radius: 3px;
-  background: rgb(255 255 255 / 0.07);
-  color: rgb(255 200 160);
+  background: rgb(29 145 232 / 0.1);
+  color: #0a4e82;
 }
 
 .docs-article pre {
@@ -191,14 +209,14 @@
   padding: 1rem;
   overflow-x: auto;
   border-radius: 6px;
-  background: rgb(15 15 18);
-  border: 1px solid rgb(255 255 255 / 0.06);
+  background: #07131f;
+  border: 1px solid rgb(6 19 31 / 0.12);
 }
 
 .docs-article pre code {
   padding: 0;
   background: transparent;
-  color: rgb(229 229 229);
+  color: #eef8ff;
   font-size: 0.85rem;
   line-height: 1.55;
 }
@@ -206,9 +224,9 @@
 .docs-article blockquote {
   margin: 1rem 0;
   padding: 0.5rem 1rem;
-  border-left: 3px solid rgb(255 88 0 / 0.6);
-  background: rgb(255 88 0 / 0.04);
-  color: rgb(255 255 255 / 0.85);
+  border-left: 3px solid rgb(255 138 36 / 0.7);
+  background: rgb(255 138 36 / 0.1);
+  color: rgb(6 19 31 / 0.78);
 }
 
 .docs-article table {
@@ -222,19 +240,33 @@
 .docs-article td {
   padding: 0.5rem 0.75rem;
   text-align: left;
-  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  border-bottom: 1px solid rgb(6 19 31 / 0.12);
 }
 
 .docs-article th {
   font-weight: 600;
-  color: rgb(255 255 255 / 0.95);
-  background: rgb(255 255 255 / 0.03);
+  color: rgb(6 19 31 / 0.9);
+  background: rgb(29 145 232 / 0.08);
 }
 
 .docs-article hr {
   margin: 2rem 0;
   border: 0;
-  border-top: 1px solid rgb(255 255 255 / 0.08);
+  border-top: 1px solid rgb(6 19 31 / 0.12);
+}
+
+.docs-article img,
+.docs-article svg {
+  max-width: min(100%, 520px);
+  height: auto;
+}
+
+.docs-article > img,
+.docs-article > svg,
+.docs-article p > img,
+.docs-article p > svg {
+  display: block;
+  margin: 1rem auto;
 }
 
 /* ─────────────────────────  Callout  ───────────────────────── */
@@ -245,8 +277,8 @@
   margin: 1rem 0;
   padding: 0.85rem 1rem;
   border-radius: 6px;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.03);
+  border: 1px solid rgb(6 19 31 / 0.1);
+  background: rgb(255 255 255 / 0.4);
 }
 
 .docs-callout-emoji {
@@ -294,10 +326,10 @@
 .docs-card {
   display: block;
   padding: 1rem;
-  border-radius: 6px;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.02);
-  color: rgb(255 255 255 / 0.9);
+  border-radius: 16px;
+  border: 1px solid rgb(6 19 31 / 0.1);
+  background: rgb(255 255 255 / 0.58);
+  color: rgb(6 19 31 / 0.86);
   text-decoration: none;
   transition:
     border-color 0.15s ease,
@@ -305,8 +337,8 @@
 }
 
 .docs-card:hover {
-  border-color: rgb(255 88 0 / 0.5);
-  background: rgb(255 88 0 / 0.04);
+  border-color: rgb(255 138 36 / 0.48);
+  background: rgb(255 138 36 / 0.08);
 }
 
 .docs-card-icon {
@@ -316,13 +348,13 @@
 
 .docs-card-title {
   font-weight: 600;
-  color: rgb(255 255 255);
+  color: #06131f;
   margin-bottom: 0.25rem;
 }
 
 .docs-card-desc {
   font-size: 0.85rem;
-  color: rgb(255 255 255 / 0.65);
+  color: rgb(6 19 31 / 0.66);
   line-height: 1.5;
 }
 
@@ -332,7 +364,7 @@
   counter-reset: docs-step;
   margin: 1rem 0;
   padding-left: 2rem;
-  border-left: 2px solid rgb(255 255 255 / 0.08);
+  border-left: 2px solid rgb(6 19 31 / 0.12);
 }
 
 .docs-steps h3 {
@@ -351,9 +383,9 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid rgb(255 88 0 / 0.4);
-  background: rgb(255 88 0 / 0.08);
-  color: rgb(255 138 80);
+  border: 1px solid rgb(255 138 36 / 0.42);
+  background: rgb(255 138 36 / 0.12);
+  color: #d95f16;
   font-size: 0.85rem;
   font-weight: 600;
 }
@@ -367,7 +399,7 @@
 .docs-tabs-list {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  border-bottom: 1px solid rgb(6 19 31 / 0.12);
   margin-bottom: 0.5rem;
 }
 
@@ -375,7 +407,7 @@
   padding: 0.5rem 0.85rem;
   font-size: 0.85rem;
   font-weight: 500;
-  color: rgb(255 255 255 / 0.6);
+  color: rgb(6 19 31 / 0.62);
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -383,12 +415,12 @@
 }
 
 .docs-tab-trigger:hover {
-  color: rgb(255 255 255);
+  color: #06131f;
 }
 
 .docs-tab-trigger.active {
-  color: rgb(255 88 0);
-  border-bottom-color: rgb(255 88 0);
+  color: #d95f16;
+  border-bottom-color: #ff8a24;
 }
 
 .docs-tabs-content > :first-child {
@@ -401,13 +433,13 @@
   position: relative;
   margin: 0 0 2rem;
   padding: 4rem 2rem;
-  border-radius: 8px;
+  border-radius: 22px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 30% 20%, rgb(255 88 0 / 0.15), transparent 60%),
-    radial-gradient(circle at 70% 80%, rgb(11 53 241 / 0.12), transparent 60%),
-    rgb(15 15 18);
-  border: 1px solid rgb(255 255 255 / 0.08);
+    radial-gradient(circle at 30% 20%, rgb(255 255 255 / 0.26), transparent 60%),
+    radial-gradient(circle at 70% 80%, rgb(255 138 36 / 0.16), transparent 60%),
+    rgb(255 255 255 / 0.24);
+  border: 1px solid rgb(255 255 255 / 0.32);
 }
 
 .docs-hero-content {
@@ -424,8 +456,8 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 0.7);
-  border: 1px solid rgb(255 255 255 / 0.15);
+  color: rgb(6 19 31 / 0.62);
+  border: 1px solid rgb(255 255 255 / 0.42);
   border-radius: 999px;
 }
 
@@ -443,7 +475,7 @@
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.02em;
-  color: rgb(255 255 255);
+  color: #06131f;
 }
 
 .docs-hero-title-line {
@@ -451,14 +483,14 @@
 }
 
 .docs-hero-title strong {
-  color: rgb(255 138 80);
+  color: #ff8a24;
   font-weight: 700;
 }
 
 .docs-hero-description {
   margin: 0 0 1.5rem;
   font-size: 1.05rem;
-  color: rgb(255 255 255 / 0.75);
+  color: rgb(6 19 31 / 0.72);
   line-height: 1.6;
 }
 
@@ -484,24 +516,24 @@
 }
 
 .docs-hero-btn-primary {
-  color: rgb(15 15 18);
-  background: rgb(255 138 80);
-  border: 1px solid rgb(255 138 80);
+  color: #fff7ee;
+  background: #ff8a24;
+  border: 1px solid #ff8a24;
 }
 
 .docs-hero-btn-primary:hover {
-  background: rgb(255 168 110);
-  border-color: rgb(255 168 110);
+  background: #ff9a3d;
+  border-color: #ff9a3d;
 }
 
 .docs-hero-btn-secondary {
-  color: rgb(255 255 255);
-  background: transparent;
-  border: 1px solid rgb(255 255 255 / 0.18);
+  color: #06131f;
+  background: rgb(255 255 255 / 0.28);
+  border: 1px solid rgb(255 255 255 / 0.38);
 }
 
 .docs-hero-btn-secondary:hover {
-  background: rgb(255 255 255 / 0.06);
+  background: rgb(255 255 255 / 0.16);
   border-color: rgb(255 255 255 / 0.3);
 }
 
@@ -515,10 +547,10 @@
   position: relative;
   display: block;
   padding: 1.25rem;
-  border-radius: 8px;
-  background: rgb(255 255 255 / 0.02);
-  border: 1px solid rgb(255 255 255 / 0.08);
-  color: rgb(255 255 255);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.58);
+  border: 1px solid rgb(6 19 31 / 0.1);
+  color: #06131f;
   text-decoration: none;
   overflow: hidden;
   transition:
@@ -575,13 +607,13 @@
 .docs-quickstart-title {
   font-weight: 600;
   font-size: 1rem;
-  color: rgb(255 255 255);
+  color: #06131f;
   margin-bottom: 0.25rem;
 }
 
 .docs-quickstart-desc {
   font-size: 0.85rem;
-  color: rgb(255 255 255 / 0.65);
+  color: rgb(6 19 31 / 0.66);
   line-height: 1.5;
 }
 
@@ -596,6 +628,50 @@
 
 .docs-quickstart-card:hover .docs-quickstart-arrow {
   transform: translateX(3px);
+}
+
+/* ─────────────────────────  Docs landing card groups  ───────────────────────── */
+
+.docs-feature-card,
+.docs-generation-card,
+.docs-api-card,
+.docs-resource-card,
+.docs-help-box {
+  display: block;
+  padding: 1rem;
+  border: 1px solid rgb(6 19 31 / 0.1);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.46);
+  color: #06131f;
+  text-decoration: none;
+}
+
+.docs-generation-card:hover,
+.docs-api-card:hover,
+.docs-resource-card:hover {
+  border-color: var(--card-accent-color, rgb(255 138 36 / 0.44));
+  background: rgb(255 255 255 / 0.62);
+}
+
+.docs-help-box .social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.docs-help-box .social-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #0c5f9e;
+  font-weight: 600;
+}
+
+.docs-help-box .social-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  max-width: 1.1rem;
+  flex: none;
 }
 
 /* ─────────────────────────  Status badges  ───────────────────────── */
@@ -635,20 +711,20 @@
 .docs-loading {
   padding: 3rem 0;
   text-align: center;
-  color: rgb(255 255 255 / 0.5);
+  color: rgb(6 19 31 / 0.58);
 }
 
 .docs-notfound,
 .docs-error {
   padding: 3rem 0;
-  color: rgb(255 255 255 / 0.7);
+  color: rgb(6 19 31 / 0.7);
 }
 
 .docs-notfound h1,
 .docs-error h1 {
   margin: 0 0 0.5rem;
   font-size: 1.5rem;
-  color: rgb(255 255 255);
+  color: #06131f;
 }
 
 .docs-error pre {

@@ -427,11 +427,11 @@ describe("assertManifestEvalsPassed (#7679 activation gate)", () => {
 
 	it("refuses activation when the manifest reports textEval.passed=false", () => {
 		const installed = makeInstalledModel(
-			"eliza-1-0_6b",
-			"/tmp/bundle/eliza-1-0_6b.gguf",
+			"eliza-1-0_8b",
+			"/tmp/bundle/eliza-1-0_8b.gguf",
 		);
 		const candidateManifest = makeStrictManifest({
-			id: "eliza-1-0_6b",
+			id: "eliza-1-0_8b",
 			tier: "0_8b", // candidate tier in the manifest
 			version: "1.0.0-candidate.1",
 			defaultEligible: false,
@@ -452,7 +452,7 @@ describe("assertManifestEvalsPassed (#7679 activation gate)", () => {
 
 		expect(caught).toBeInstanceOf(CandidateModelActivationError);
 		const e = caught as CandidateModelActivationError;
-		expect(e.modelId).toBe("eliza-1-0_6b");
+		expect(e.modelId).toBe("eliza-1-0_8b");
 		expect(e.manifestVersion).toBe("1.0.0-candidate.1");
 		expect(e.failedEvals).toContain("textEval");
 		expect(e.failedEvals).toContain("voiceRtf");
@@ -487,8 +487,8 @@ describe("assertManifestEvalsPassed (#7679 activation gate)", () => {
 
 	it("aggregates every failed eval slot into failedEvals (not just textEval)", () => {
 		const installed = makeInstalledModel(
-			"eliza-1-0_6b",
-			"/tmp/bundle/eliza-1-0_6b.gguf",
+			"eliza-1-0_8b",
+			"/tmp/bundle/eliza-1-0_8b.gguf",
 		);
 		const candidateManifest = makeStrictManifest({
 			version: "1.0.0-candidate.1",

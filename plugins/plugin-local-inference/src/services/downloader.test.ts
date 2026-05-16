@@ -274,11 +274,11 @@ describe("local inference downloader status", () => {
 			lineage: {
 				text: { base: "eliza-1-text", license: "test" },
 				voice: { base: "eliza-1-voice", license: "test" },
-					asr: { base: "eliza-1-asr", license: "test" },
-					vad: { base: "eliza-1-vad", license: "test" },
-					drafter: { base: "eliza-1-drafter", license: "test" },
-					vision: { base: "eliza-1-vision", license: "test" },
-				},
+				asr: { base: "eliza-1-asr", license: "test" },
+				vad: { base: "eliza-1-vad", license: "test" },
+				drafter: { base: "eliza-1-drafter", license: "test" },
+				vision: { base: "eliza-1-vision", license: "test" },
+			},
 			defaultEligible: true,
 			files: {
 				text: [
@@ -290,7 +290,7 @@ describe("local inference downloader status", () => {
 				],
 				voice: [{ path: voicePath, sha256: sha256(voice) }],
 				asr: [{ path: asrPath, sha256: sha256(asr) }],
-					vision: [{ path: visionPath, sha256: sha256(vision) }],
+				vision: [{ path: visionPath, sha256: sha256(vision) }],
 				dflash: [
 					{
 						path: drafterPath,
@@ -306,7 +306,13 @@ describe("local inference downloader status", () => {
 				vad: [{ path: vadPath, sha256: sha256(vad) }],
 			},
 			kernels: {
-				required: ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+				required: [
+					"turboquant_q4",
+					"qjl",
+					"polarquant",
+					"dflash",
+					"turbo3_tcq",
+				],
 				optional: [],
 				verifiedBackends: {
 					metal: {
@@ -353,12 +359,12 @@ describe("local inference downloader status", () => {
 				[bundleRemotePath(model, textPath), text],
 				[bundleRemotePath(model, voicePath), voice],
 				[bundleRemotePath(model, asrPath), asr],
-					[bundleRemotePath(model, vadPath), vad],
-					[bundleRemotePath(model, drafterPath), drafter],
-					[bundleRemotePath(model, cachePath), cache],
-					[bundleRemotePath(model, visionPath), vision],
-				]),
-			);
+				[bundleRemotePath(model, vadPath), vad],
+				[bundleRemotePath(model, drafterPath), drafter],
+				[bundleRemotePath(model, cachePath), cache],
+				[bundleRemotePath(model, visionPath), vision],
+			]),
+		);
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,

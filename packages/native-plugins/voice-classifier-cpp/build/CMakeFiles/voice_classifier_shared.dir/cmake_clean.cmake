@@ -19,8 +19,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/voice_classifier_shared.dir/src/voice_speaker.c.o.d"
   "CMakeFiles/voice_classifier_shared.dir/src/voice_speaker_distance.c.o"
   "CMakeFiles/voice_classifier_shared.dir/src/voice_speaker_distance.c.o.d"
+  "libvoice_classifier.dylib"
   "libvoice_classifier.pdb"
-  "libvoice_classifier.so"
 )
 
 # Per-language clean rules from dependency scanning.

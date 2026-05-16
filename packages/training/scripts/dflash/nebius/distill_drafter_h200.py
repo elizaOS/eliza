@@ -80,7 +80,6 @@ DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
     "4b": 1.5,
     "9b": 1.5,
     "27b": 3.0,
-    "27b-256k": 3.0,
 }
 
 CHECKPOINT_EVERY_STEPS: int = 500

@@ -9,7 +9,6 @@ export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
-export * from "./onboarding-presets.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 export * from "./cli/parse-duration.js";

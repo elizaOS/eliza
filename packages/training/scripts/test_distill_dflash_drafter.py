@@ -150,8 +150,8 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
-    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
-    assert DFLASH_DRAFTER_TIERS == ("2b", "4b", "9b", "27b", "27b-256k")
+    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b")
+    assert DFLASH_DRAFTER_TIERS == ("2b", "4b", "9b", "27b")
     assert TRAINING_SUPPORTED_TIERS == DFLASH_DRAFTER_TIERS
     assert "0_6b" not in DEFAULT_STUDENT_BASE
     assert "1_7b" not in DEFAULT_STUDENT_BASE

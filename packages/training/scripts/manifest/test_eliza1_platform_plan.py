@@ -60,19 +60,11 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "licenses/LICENSE.dflash" in small_plan.required_files
 
 
-def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
-    plan = build_plan()
-    assert "text/eliza-1-27b-256k.gguf" in plan["27b-256k"].required_files
-    assert "text/eliza-1-27b-256k-256k.gguf" not in plan["27b-256k"].required_files
-
-
-def test_text_contexts_use_128k_floor_or_256k_native_tier() -> None:
+def test_text_contexts_use_128k_floor() -> None:
     plan = build_plan()
     for tier in ("0_8b", "2b", "4b", "9b", "27b"):
         assert plan[tier].contexts == ("128k",)
         assert f"text/eliza-1-{tier}-128k.gguf" in plan[tier].required_files
-    assert plan["27b-256k"].contexts == ("256k",)
-    assert "text/eliza-1-27b-256k.gguf" in plan["27b-256k"].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:

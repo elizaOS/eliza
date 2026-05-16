@@ -314,7 +314,7 @@ function stripPrefilledPrefixFromGrammar(
 	const body = root.slice(rootPrefix.length);
 	if (body === escapedPrefix) {
 		return {
-			source: [rootPrefix + '""', ...lines.slice(1)].join("\n"),
+			source: [`${rootPrefix}""`, ...lines.slice(1)].join("\n"),
 			lazy: false,
 		};
 	}

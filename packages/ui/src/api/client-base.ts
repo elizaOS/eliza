@@ -15,6 +15,7 @@ import {
   type NetworkStatusChangeDetail,
 } from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
+import { isMobileLocalAgentIpcUrl } from "../onboarding/mobile-runtime-mode";
 import {
   clearElizaApiBase,
   clearElizaApiToken,
@@ -83,12 +84,7 @@ function isElizaCloudControlPlaneBase(
 function isLocalAgentIpcBase(value: string | null | undefined): boolean {
   const normalized = normalizeBaseUrl(value);
   if (!normalized) return false;
-  try {
-    const parsed = new URL(normalized);
-    return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
-  } catch {
-    return false;
-  }
+  return isMobileLocalAgentIpcUrl(normalized);
 }
 
 // ---------------------------------------------------------------------------

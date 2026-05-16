@@ -4,7 +4,9 @@ import {
   scoreOwnerConfidence,
 } from "../owner-confidence.ts";
 
-function input(overrides: Partial<OwnerConfidenceInput> = {}): OwnerConfidenceInput {
+function input(
+  overrides: Partial<OwnerConfidenceInput> = {},
+): OwnerConfidenceInput {
   return {
     voiceSimilarityToOwnerProfile: 0,
     deviceTrustLevel: "low",
@@ -41,7 +43,9 @@ describe("scoreOwnerConfidence", () => {
 
   it("device trust contributes the expected step", () => {
     const lo = scoreOwnerConfidence(input({ deviceTrustLevel: "low" })).score;
-    const mid = scoreOwnerConfidence(input({ deviceTrustLevel: "medium" })).score;
+    const mid = scoreOwnerConfidence(
+      input({ deviceTrustLevel: "medium" }),
+    ).score;
     const hi = scoreOwnerConfidence(input({ deviceTrustLevel: "high" })).score;
     expect(mid).toBeGreaterThan(lo);
     expect(hi).toBeGreaterThan(mid);

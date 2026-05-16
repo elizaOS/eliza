@@ -623,7 +623,7 @@ function makeGenerateHandler(
  * Exported for unit tests; production callers go through
  * `ensureAospLocalInferenceHandlers`.
  */
-export function makeCloudFallbackHandler(
+function makeCloudFallbackHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
   modelType: (typeof ModelType)[keyof typeof ModelType],

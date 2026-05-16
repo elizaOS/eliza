@@ -16,6 +16,7 @@ test("groups exact and family forbidden runtime imports", () => {
                  U _posix_spawnp
                  U _pthread_atfork
                  U _vm_protect
+                 U _mprotect
                  U _objc_msgSend
   `);
 
@@ -33,6 +34,7 @@ test("groups exact and family forbidden runtime imports", () => {
     "_posix_spawnp",
     "_pthread_atfork",
   ]);
+  assert.deepEqual(groups[2].symbols, ["_mprotect", "_vm_protect"]);
 });
 
 test("detects executable-memory string markers", () => {

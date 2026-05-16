@@ -2381,6 +2381,19 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- do not include internal reasoning",
 ].join("\n");
 
+const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
+	one: 1,
+	two: 2,
+	three: 3,
+	four: 4,
+	five: 5,
+	six: 6,
+	seven: 7,
+	eight: 8,
+	nine: 9,
+	ten: 10,
+};
+
 const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
 
 available_contexts:
@@ -2425,6 +2438,38 @@ function directReplyPromptForMessage(args: {
 		.join("\n");
 }
 
+function extractExactWordsReply(
+	text: string | null | undefined,
+): string | null {
+	const input = text?.trim();
+	if (!input) return null;
+	const match = input.match(
+		/\b(?:reply|respond|say|output|return)\s+with\s+exactly\s+(?:these\s+)?(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+)?words?\s*:\s*([\s\S]+?)\s*$/i,
+	);
+	if (!match) return null;
+	const expectedCountRaw = match[1]?.toLowerCase();
+	let reply = match[2]?.trim() ?? "";
+	reply = reply.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+	if (reply.endsWith(".") && !/[.!?]\s*["'“”‘’]$/.test(match[2] ?? "")) {
+		reply = reply.slice(0, -1).trim();
+	}
+	if (!reply) return null;
+	if (expectedCountRaw) {
+		const expectedCount = /^\d+$/.test(expectedCountRaw)
+			? Number.parseInt(expectedCountRaw, 10)
+			: EXACT_WORD_COUNT_BY_NAME[expectedCountRaw];
+		const actualCount = reply.split(/\s+/).filter(Boolean).length;
+		if (
+			Number.isFinite(expectedCount) &&
+			expectedCount > 0 &&
+			actualCount !== expectedCount
+		) {
+			return null;
+		}
+	}
+	return reply;
+}
+
 async function generateDirectReplyModel(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -2443,7 +2488,12 @@ async function generateDirectReplyModel(args: {
 		signal: args.signal,
 		providerOptions: { eliza: { thinking: "off" } },
 	})) as string | GenerateTextResult;
-	return { text: getV5ModelText(raw).trim(), raw, prompt };
+	const modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
+	return {
+		text: extractExactWordsReply(getUserMessageText(args.message)) ?? modelText,
+		raw,
+		prompt,
+	};
 }
 
 async function generateDirectReplyOnce(args: {
@@ -2458,7 +2508,7 @@ async function generateDirectReplyOnce(args: {
 function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
-	if (/^[\s{}\[\]":,]+$/.test(trimmed)) return true;
+	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
 	if (/(.)\1{4,}/u.test(trimmed)) return true;
 	if (/^[A-Z]{2,8}$/.test(trimmed)) {

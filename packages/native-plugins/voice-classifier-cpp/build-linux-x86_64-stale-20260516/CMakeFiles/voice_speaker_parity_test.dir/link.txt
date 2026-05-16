@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.o -o voice_speaker_parity_test  libvoice_classifier.a -lm 

@@ -68,6 +68,7 @@ const forbiddenRuntimeImportGroups = [
       /^_pthread_jit_write_protect_np$/,
       /^_mach_vm_protect$/,
       /^_vm_protect$/,
+      /^_mprotect$/,
     ],
     remediation:
       "compile JSC/Bun with no JIT, no MAP_JIT, and no executable-memory permission toggles",

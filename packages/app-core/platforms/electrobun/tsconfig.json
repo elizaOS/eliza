@@ -150,12 +150,19 @@
 			],
 			"@elizaos/plugin-registry/*": [
 				"../../../../plugins/plugin-registry/src/*"
+			],
+			"@elizaos/plugin-sql": [
+				"../../../../plugins/plugin-sql/src/index.node.ts"
+			],
+			"@elizaos/plugin-sql/*": [
+				"../../../../plugins/plugin-sql/src/*"
 			]
 		}
 	},
 	"include": [
 		"src/**/*.ts",
 		"scripts/**/*.ts",
+		"../../src/ambient-modules.d.ts",
 		"../../../agent/src/external-modules.d.ts"
 	],
 	"exclude": [

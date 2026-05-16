@@ -25,7 +25,7 @@ export default function LandingHeader() {
     <motion.header className="fixed top-0 left-0 z-[100] w-full pointer-events-auto bg-bg/70 backdrop-blur-md md:bg-transparent md:backdrop-blur-none">
       <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
-          <ElizaCloudLockup logoClassName="h-5 sm:h-6" />
+          <ElizaCloudLockup />
         </Link>
 
         <div className="flex items-center gap-3">
@@ -54,7 +54,7 @@ export default function LandingHeader() {
                 disabled={!ready}
                 className="font-[family-name:var(--font-body)]"
               >
-                Get started
+                Open Cloud
               </Button>
             </>
           )}

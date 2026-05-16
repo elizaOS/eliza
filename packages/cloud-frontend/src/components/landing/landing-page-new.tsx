@@ -6,6 +6,7 @@
 
 "use client";
 
+import { CloudSkyBackground } from "@elizaos/ui";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -73,35 +74,12 @@ export function LandingPage({ accessError }: LandingPageProps) {
 
   // Web: Show landing page for anonymous users
   return (
-    <div className="relative flex h-screen bg-bg">
-      {/* <BayerDitheringBackground /> */}
-
-      {/* Gradient background - Radial gradient version */}
-      <div
-        className="fixed inset-0 z-10"
-        style={{
-          backgroundColor: "var(--bg)",
-          backgroundImage: `
-            radial-gradient(at 72% 68%, rgba(var(--accent-rgb), 0.16) 0px, transparent 46%),
-            radial-gradient(at 50% 48%, rgba(var(--accent-rgb), 0.12) 0px, transparent 42%),
-            radial-gradient(at 98% 99%, rgba(255, 255, 255, 0.08) 0px, transparent 44%),
-            radial-gradient(at 14% 4%, rgba(var(--accent-rgb), 0.2) 0px, transparent 48%),
-            radial-gradient(at 34% 34%, rgba(var(--accent-rgb), 0.1) 0px, transparent 50%)
-          `,
-        }}
-      >
-        {/* Noise overlay */}
-        <div
-          style={{
-            mixBlendMode: "overlay",
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-            opacity: 1,
-          }}
-          className="pointer-events-none absolute inset-0 invert z-10"
-        />
-      </div>
-
-      <div className="relative z-30 flex w-full flex-col overflow-y-scroll sm:scrollbar-thin sm:scrollbar-thumb-accent sm:scrollbar-track-bg sm:scrollbar-thumb-rounded-full sm:scrollbar-track-rounded-full">
+    <CloudSkyBackground
+      className="flex h-screen"
+      contentClassName="flex w-full"
+      intensity="hero"
+    >
+      <div className="relative flex w-full flex-col overflow-y-scroll sm:scrollbar-thin sm:scrollbar-thumb-accent sm:scrollbar-track-bg sm:scrollbar-thumb-rounded-full sm:scrollbar-track-rounded-full">
         <LandingHeader />
 
         {/* Hero Chat Input - fills available viewport space above the footer */}
@@ -115,6 +93,6 @@ export function LandingPage({ accessError }: LandingPageProps) {
 
         <Footer />
       </div>
-    </div>
+    </CloudSkyBackground>
   );
 }

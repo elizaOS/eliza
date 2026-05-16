@@ -1,6 +1,6 @@
 /**
- * Agents section component displaying user's agents in a card grid layout.
- * Displays up to 4 agents on dashboard with a "View all" link if more exist.
+ * Agent section component displaying the user's cloud agent records.
+ * Displays up to 4 records on dashboard with a "View all" link if more exist.
  */
 
 "use client";
@@ -12,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@elizaos/ui";
-import { Info, MessageSquare } from "lucide-react";
+import { Info, Rocket } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardAgentStats as AgentStats } from "@/lib/types/dashboard-agent-stats";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,8 @@ interface AgentsSectionProps {
   className?: string;
 }
 
+const AGENT_SKELETON_IDS = ["agent-1", "agent-2", "agent-3", "agent-4"];
+
 export function AgentsSection({ agents, className }: AgentsSectionProps) {
   // Show max 4 agents on dashboard
   const displayAgents = agents.slice(0, 4);
@@ -49,7 +51,7 @@ export function AgentsSection({ agents, className }: AgentsSectionProps) {
               to="/dashboard/my-agents"
               className="text-xl font-semibold text-white transition-colors duration-200 hover:text-orange-500"
             >
-              Agents
+              My Agent
             </Link>
             <span className="text-base text-white/50">({agents.length})</span>
             <Tooltip>
@@ -65,7 +67,7 @@ export function AgentsSection({ agents, className }: AgentsSectionProps) {
                 side="right"
                 className="max-w-[180px] text-xs bg-zinc-900 text-white/80 border border-white/10"
               >
-                Your AI characters. Chat, deploy, or integrate via API.
+                Administer your cloud agent, deployment status, and API access.
               </TooltipContent>
             </Tooltip>
           </div>
@@ -77,7 +79,7 @@ export function AgentsSection({ agents, className }: AgentsSectionProps) {
             size="sm"
             className="h-8 text-xs"
           >
-            <Link to="/dashboard/my-agents">View All</Link>
+            <Link to="/dashboard/my-agents">Manage</Link>
           </BrandButton>
         )}
       </div>
@@ -112,16 +114,16 @@ export function AgentsSection({ agents, className }: AgentsSectionProps) {
 function AgentsEmptyState() {
   return (
     <EmptyState
-      title="No agents yet"
+      title="No cloud agent yet"
       className="min-h-[160px] md:min-h-[240px]"
       action={
         <BrandButton
           asChild
           className="h-9 md:h-10 bg-[#FF5800] text-white hover:bg-[#FF5800]/90 active:bg-[#FF5800]/80"
         >
-          <Link to="/dashboard/chat">
-            <MessageSquare className="h-4 w-4" />
-            Open Chat
+          <Link to="/dashboard/containers">
+            <Rocket className="h-4 w-4" />
+            Launch Instance
           </Link>
         </BrandButton>
       }
@@ -144,9 +146,9 @@ export function AgentsSectionSkeleton() {
 
       {/* Agents Grid Skeleton */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {[...Array(4)].map((_, index) => (
+        {AGENT_SKELETON_IDS.map((id) => (
           <div
-            key={index}
+            key={id}
             className="relative aspect-square w-full overflow-hidden rounded-xl bg-white/5"
           >
             {/* Top left badges skeleton */}

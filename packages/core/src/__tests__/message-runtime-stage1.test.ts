@@ -352,6 +352,34 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.responseSkeleton).toBeUndefined();
 	});
 
+	it("honors exact-word direct replies even when the small model emits thinking", async () => {
+		const runtime = makeRuntime([
+			`routing_thought: Direct private chat fast path.
+
+<think>
+I should follow the exact instruction.
+</think>
+android smoke model works`,
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "Reply with exactly these four words: android smoke model works.",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"android smoke model works",
+			);
+		}
+	});
+
 	it("keeps tool-like direct messages on the structured routing path", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

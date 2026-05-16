@@ -13,16 +13,16 @@
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {
+			"types": "./dist/*.d.ts",
 			"import": "./dist/*.js",
-			"default": "./dist/*.js",
-			"types": "./dist/*.d.ts"
+			"default": "./dist/*.js"
 		}
 	},
 	"files": [
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --clean",
+		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --clean && bun run build:views",
 		"dev": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --watch",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo",
@@ -30,7 +30,8 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"build:views": "vite build --config vite.config.views.ts"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
@@ -50,7 +51,8 @@
 		"@types/node": "24.12.2",
 		"tsup": "8.5.1",
 		"typescript": "^6.0.3",
-		"vitest": "4.1.6"
+		"vitest": "4.1.6",
+		"vite": "^8.0.0"
 	},
 	"publishConfig": {
 		"access": "public"

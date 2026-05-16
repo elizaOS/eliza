@@ -23,7 +23,7 @@ import type {
 	MmapRegionHandle,
 	RefCountedResource,
 } from "../../shared-resources";
-import { KokoroTtsBackend } from "../kokoro-backend";
+import type { KokoroTtsBackend } from "../kokoro-backend";
 import type { KokoroEngineDiscoveryResult } from "../kokoro-engine-discovery";
 
 function makeKokoroConfig(rootOverride?: string): KokoroEngineDiscoveryResult {

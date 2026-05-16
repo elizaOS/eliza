@@ -523,15 +523,15 @@ export class AppRegistryService extends Service {
 			sortedNamespaces.length === previousSorted.length &&
 			sortedNamespaces.every((ns, i) => ns === previousSorted[i]);
 
-			if (sortedNamespaces.length === 0) {
-				delete grants.grants[slug];
-			} else {
-				grants.grants[slug] = {
-					namespaces: sortedNamespaces,
-					grantedAt: previous?.grantedAt ?? now,
-					lastUpdatedAt: now,
-				};
-			}
+		if (sortedNamespaces.length === 0) {
+			delete grants.grants[slug];
+		} else {
+			grants.grants[slug] = {
+				namespaces: sortedNamespaces,
+				grantedAt: previous?.grantedAt ?? now,
+				lastUpdatedAt: now,
+			};
+		}
 		await writeGrantsAtomic(this.grantsPath, grants);
 
 		if (namespacesUnchanged) return grants;
@@ -562,12 +562,12 @@ export class AppRegistryService extends Service {
 		return grants;
 	}
 
-		private getWorkerHostService(): AppWorkerHostServiceLike | null {
-			if (typeof this.runtime.getService !== "function") {
-				return null;
-			}
-			return (
-				(this.runtime.getService("app-worker-host") as
+	private getWorkerHostService(): AppWorkerHostServiceLike | null {
+		if (typeof this.runtime.getService !== "function") {
+			return null;
+		}
+		return (
+			(this.runtime.getService("app-worker-host") as
 				| AppWorkerHostServiceLike
 				| null
 				| undefined) ?? null

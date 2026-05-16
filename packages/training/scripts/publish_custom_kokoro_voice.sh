@@ -26,7 +26,7 @@
 #       --tier 9b \
 #       --allow-gate-fail "tracked under <issue/PR url>"
 #
-# Tiers must match the Eliza-1 catalog set: 0_8b 2b 4b 9b 27b 27b-256k.
+# Tiers must match the Eliza-1 catalog set: 0_8b 2b 4b 9b 27b.
 
 set -euo pipefail
 
@@ -37,7 +37,7 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # `packages/shared/src/local-inference/catalog.ts` and with the manifest
 # module at `packages/training/scripts/manifest/eliza1_manifest.py:38-46`.
 # R7 §"side bugs" flagged the prior `4b` omission as a publish-blocking bug.
-readonly VALID_TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k")
+readonly VALID_TIERS=("0_8b" "2b" "4b" "9b" "27b")
 
 RELEASE_DIR=""
 BUNDLES_ROOT=""

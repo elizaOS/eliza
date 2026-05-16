@@ -12,24 +12,24 @@
 @import "@fontsource/dm-mono/400-italic.css";
 @import "@fontsource/dm-mono/500-italic.css";
 
-:root {
-  --font-dm-mono: "DM Mono", ui-monospace, monospace;
-  --font-inter: "Inter", system-ui, sans-serif;
-  --font-open-sans: "Open Sans", system-ui, sans-serif;
-}
-
 @import "tailwindcss";
 @import "@rainbow-me/rainbowkit/styles.css";
 @import "./styles/solana-wallet-adapter.css";
 @import "@stwd/react/styles.css";
+@import "tw-animate-css";
 /* Tailwind v4 auto-scans this package, so it does not see classes used in
  * neighboring workspace packages by default. Paths are resolved relative to
  * this CSS file (packages/cloud-frontend/src/globals.css).
  */
 @source "../../ui/src";
 @source "../cloud-shared/src";
-@import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+
+:root {
+  --font-dm-mono: "DM Mono", ui-monospace, monospace;
+  --font-inter: "Inter", system-ui, sans-serif;
+  --font-open-sans: "Open Sans", system-ui, sans-serif;
+}
 
 @plugin "tailwind-scrollbar" {
   nocompatible: true;
@@ -119,60 +119,64 @@
 }
 
 :root {
-  --bg: #050506;
-  --bg-accent: #0a0a0c;
-  --bg-elevated: #0d0d10;
-  --bg-hover: #141418;
-  --bg-muted: #0a0a0c;
-  --card: #0e0e11;
-  --card-foreground: #eaecef;
-  --surface: #121214;
-  --text: #eaecef;
-  --text-strong: #ffffff;
-  --chat-text: #eaecef;
+  --sky-0: #1d91e8;
+  --sky-1: #47b8ff;
+  --sky-2: #9bdcff;
+  --eliza-orange: #ff8a24;
+  --bg: #eef8ff;
+  --bg-accent: #dff2ff;
+  --bg-elevated: rgba(255, 255, 255, 0.86);
+  --bg-hover: rgba(255, 255, 255, 0.94);
+  --bg-muted: #d8efff;
+  --card: rgba(255, 255, 255, 0.88);
+  --card-foreground: #06131f;
+  --surface: rgba(255, 255, 255, 0.82);
+  --text: #06131f;
+  --text-strong: #07131f;
+  --chat-text: #06131f;
   --txt: var(--text);
-  --muted: #8a8a94;
-  --muted-strong: #b9b9c2;
-  --border: #232329;
-  --border-strong: #313136;
-  --border-hover: #f0b90b;
-  --input: #17171c;
-  --ring: #f0b90b;
-  --accent: #f0b90b;
-  --accent-rgb: 240, 185, 11;
-  --accent-hover: #f3ba2f;
-  --accent-muted: #d8a000;
-  --accent-subtle: rgba(240, 185, 11, 0.12);
-  --accent-foreground: #1a1f26;
-  --primary: #f0b90b;
-  --primary-foreground: #1a1f26;
+  --muted: rgba(6, 19, 31, 0.58);
+  --muted-strong: rgba(6, 19, 31, 0.74);
+  --border: rgba(6, 19, 31, 0.12);
+  --border-strong: rgba(6, 19, 31, 0.2);
+  --border-hover: #ff8a24;
+  --input: rgba(255, 255, 255, 0.9);
+  --ring: #ff8a24;
+  --accent: #ff8a24;
+  --accent-rgb: 255, 138, 36;
+  --accent-hover: #ff9a3d;
+  --accent-muted: #d95f16;
+  --accent-subtle: rgba(255, 138, 36, 0.18);
+  --accent-foreground: #fff7ee;
+  --primary: #ff8a24;
+  --primary-foreground: #fff7ee;
   --ok: hsl(142 76% 36%);
   --ok-muted: hsla(142 76% 36% / 0.7);
   --ok-subtle: hsla(142 76% 36% / 0.1);
   --destructive: hsl(0 84.2% 60.2%);
   --destructive-foreground: hsl(0 0% 100%);
   --destructive-subtle: hsla(0 84% 60% / 0.1);
-  --warn: #f0b90b;
-  --warn-muted: rgba(240, 185, 11, 0.7);
-  --warn-subtle: rgba(240, 185, 11, 0.12);
+  --warn: #ff8a24;
+  --warn-muted: rgba(255, 138, 36, 0.72);
+  --warn-subtle: rgba(255, 138, 36, 0.16);
   --danger: hsl(0 84.2% 60.2%);
-  --info: #f0b90b;
+  --info: #1d91e8;
   --status-success: var(--ok);
   --status-success-bg: var(--ok-subtle);
   --status-danger: var(--danger);
   --status-danger-bg: var(--destructive-subtle);
   --status-warning: var(--warn);
   --status-warning-bg: var(--warn-subtle);
-  --status-info: #60a5fa;
-  --status-info-bg: rgba(96, 165, 250, 0.12);
-  --focus: rgba(240, 185, 11, 0.18);
-  --focus-ring: 0 0 0 2px rgba(240, 185, 11, 0.44);
-  --header-bar-bg: #050506;
-  --header-bar-fg: #ffffff;
-  --section-bar-bg: #0a0a0c;
-  --section-bar-fg: #ffffff;
-  --link-color: var(--text);
-  --link-hover-color: #f0b90b;
+  --status-info: #1d91e8;
+  --status-info-bg: rgba(29, 145, 232, 0.12);
+  --focus: rgba(255, 138, 36, 0.18);
+  --focus-ring: 0 0 0 2px rgba(255, 138, 36, 0.42);
+  --header-bar-bg: rgba(255, 255, 255, 0.64);
+  --header-bar-fg: #06131f;
+  --section-bar-bg: rgba(255, 255, 255, 0.68);
+  --section-bar-fg: #06131f;
+  --link-color: #0c5f9e;
+  --link-hover-color: #d95f16;
   --background: var(--bg);
   --foreground: var(--text);
   --popover: var(--card);
@@ -214,7 +218,7 @@
   --font-chat:
     "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --mono: "Courier New", Courier, monospace;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 @layer base {

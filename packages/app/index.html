@@ -31,6 +31,141 @@
       self.GPUMapMode = Object.freeze({ READ: 1, WRITE: 2 });
     }
   </script>
+  <script>
+    (function () {
+      if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
+      if (window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__) return;
+
+      var originalFetch = window.fetch.bind(window);
+      var ipcProtocol = 'eliza-local-agent:';
+      var ipcHost = 'ipc';
+      var ipcBase = 'eliza-local-agent://ipc';
+      var ipcPathPrefix = '//' + ipcHost;
+
+      function rawUrl(input) {
+        try {
+          return input && typeof input === 'object' && 'url' in input ? input.url : String(input);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function ipcPath(raw) {
+        if (!raw) return null;
+        var trimmed = String(raw).trim();
+        if (!trimmed) return null;
+        var lower = trimmed.toLowerCase();
+        if (lower === ipcBase) return '/';
+        if (lower.indexOf(ipcBase + '/') === 0 || lower.indexOf(ipcBase + '?') === 0) {
+          var suffix = trimmed.slice(ipcBase.length);
+          return suffix.charAt(0) === '?' ? '/' + suffix : suffix || '/';
+        }
+        try {
+          var url = new URL(trimmed, window.location && window.location.href ? window.location.href : 'http://localhost');
+          if (url.protocol !== ipcProtocol) return null;
+          if (url.hostname === ipcHost) return (url.pathname || '/') + url.search;
+          if (url.pathname === ipcPathPrefix) return url.search ? '/' + url.search : '/';
+          if (url.pathname.indexOf(ipcPathPrefix + '/') === 0) {
+            return url.pathname.slice(ipcPathPrefix.length) + url.search;
+          }
+        } catch (_) {
+          return null;
+        }
+        return null;
+      }
+
+      function methodAllowsBody(method) {
+        var normalized = String(method || 'GET').toUpperCase();
+        return normalized !== 'GET' && normalized !== 'HEAD';
+      }
+
+      function headersToRecord(headers) {
+        var record = {};
+        if (!headers) return record;
+        new Headers(headers).forEach(function (value, key) {
+          record[key] = value;
+        });
+        return record;
+      }
+
+      function unavailable(message) {
+        return new Response(JSON.stringify({
+          error: 'native_agent_unavailable',
+          message: message
+        }), {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+
+      function bodyToString(body) {
+        if (body === null) return null;
+        if (body === undefined) return undefined;
+        if (typeof body === 'string') return body;
+        if (body instanceof URLSearchParams) return body.toString();
+        return undefined;
+      }
+
+      async function normalizeInit(input, init) {
+        var request = input instanceof Request ? input.clone() : null;
+        var method = String((init && init.method) || (request && request.method) || 'GET').toUpperCase();
+        var headers = (init && init.headers) || (request && request.headers);
+        if (!methodAllowsBody(method)) {
+          return { method: method, headers: headers };
+        }
+        if (init && 'body' in init) {
+          var explicitBody = bodyToString(init.body);
+          if (explicitBody === undefined && init.body != null) return null;
+          return { method: method, headers: headers, body: explicitBody || undefined };
+        }
+        if (!request) return { method: method, headers: headers };
+        var requestBody = await request.text();
+        return { method: method, headers: headers, body: requestBody || undefined };
+      }
+
+      function resolveAgentPlugin() {
+        try {
+          var cap = window.Capacitor;
+          if (!cap) return null;
+          var plugins = cap.Plugins || {};
+          return plugins.Agent || (typeof cap.registerPlugin === 'function' ? cap.registerPlugin('Agent') : null);
+        } catch (_) {
+          return null;
+        }
+      }
+
+      window.fetch = async function elizaAndroidIpcFetchBridge(input, init) {
+        var raw = rawUrl(input);
+        var path = ipcPath(raw);
+        if (path === null) return originalFetch(input, init);
+
+        var normalized = await normalizeInit(input, init);
+        if (!normalized) {
+          return unavailable('Android local-agent IPC only supports string request bodies');
+        }
+
+        var agent = resolveAgentPlugin();
+        if (!agent || typeof agent.request !== 'function') {
+          return unavailable('Android local-agent IPC is unavailable because the native Agent plugin is not registered');
+        }
+
+        var result = await agent.request({
+          method: normalized.method,
+          path: path,
+          headers: headersToRecord(normalized.headers),
+          body: methodAllowsBody(normalized.method) ? (normalized.body || null) : null
+        });
+        return new Response(result && result.body ? result.body : '', {
+          status: result && result.status ? result.status : 200,
+          statusText: result && result.statusText ? result.statusText : '',
+          headers: result && result.headers ? result.headers : undefined
+        });
+      };
+
+      window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__ = true;
+    })();
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />

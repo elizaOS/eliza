@@ -31,19 +31,19 @@ export default function RootLayout() {
       <Helmet>
         <html lang="en" />
         <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
-        <title>Eliza Cloud - Managed Hosting for AI Agents</title>
+        <title>eliza cloud - Your cloud agent dashboard</title>
         <meta
           name="description"
-          content="Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud."
+          content="Chat with your Eliza agent in the cloud, manage connected devices, account settings, billing, API access, and everything for your cloud agent."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
         <meta
           property="og:title"
-          content="Eliza Cloud - Managed Hosting for AI Agents"
+          content="eliza cloud - Your cloud agent dashboard"
         />
         <meta
           property="og:description"
-          content="Managed hosting, provisioning, billing, and deployment for AI agents"
+          content="Chat with your cloud agent and manage everything for it in one place."
         />
         <meta property="og:url" content={`${baseUrl}/`} />
         <meta property="og:site_name" content="Eliza Cloud" />
@@ -57,7 +57,7 @@ export default function RootLayout() {
         <meta name="twitter:title" content="Eliza Cloud" />
         <meta
           name="twitter:description"
-          content="Managed hosting, provisioning, billing, and deployment for AI agents"
+          content="Chat with your cloud agent and manage devices, billing, settings, and API access."
         />
         <meta name="twitter:image" content="/cloudlogo.png" />
         <link rel="icon" href="/favicon.ico" />
@@ -80,23 +80,23 @@ export default function RootLayout() {
         <CreditsProvider>
           <ThemeProvider
             attribute="class"
-            defaultTheme="system"
-            enableSystem
+            defaultTheme="light"
+            enableSystem={false}
             disableTransitionOnChange
           >
             <NavigationProgress />
             <Outlet />
             <Toaster
               richColors
-              theme="dark"
+              theme="light"
               position="top-right"
               toastOptions={{
                 style: {
-                  background: "rgba(0, 0, 0, 0.8)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "white",
+                  background: "rgba(255, 255, 255, 0.82)",
+                  border: "1px solid rgba(255, 255, 255, 0.34)",
+                  color: "#06131f",
                   backdropFilter: "blur(12px)",
-                  borderRadius: "0px",
+                  borderRadius: "18px",
                 },
                 className: "font-open-sans",
               }}

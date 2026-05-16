@@ -532,6 +532,59 @@ describe("DFlash draft CLI flag drift", () => {
 		expect(args).toEqual(["-fit", "off"]);
 	});
 
+	it("forces Flash Attention and CPU KV when experimental Metal compressed KV is allowed", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-safe-"));
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+		fs.chmodSync(binary, 0o755);
+		fs.writeFileSync(
+			path.join(root, "CAPABILITIES.json"),
+			JSON.stringify({
+				target: "darwin-arm64-metal-fused",
+				backend: "metal",
+				kernels: { dflash: true, qjl_full: true, turbo3: true },
+			}),
+			"utf8",
+		);
+		__setLlamaServerHelpTextForTests(binary, "-fit,  --fit [on|off]\n");
+		const args = ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"];
+
+		appendBackendSafeStartupFlags(args, binary);
+
+		expect(args).toEqual([
+			"--cache-type-k",
+			"qjl1_256",
+			"--cache-type-v",
+			"tbq3_0",
+			"-fit",
+			"off",
+			"-fa",
+			"on",
+			"--no-kv-offload",
+		]);
+	});
+
+	it("does not add compressed-KV safety flags for stock fallback cache types", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-stock-"));
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+		fs.chmodSync(binary, 0o755);
+		fs.writeFileSync(
+			path.join(root, "CAPABILITIES.json"),
+			JSON.stringify({
+				target: "darwin-arm64-metal-fused",
+				backend: "metal",
+				kernels: { dflash: true, qjl_full: true, turbo3: true },
+			}),
+			"utf8",
+		);
+		const args = ["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"];
+
+		appendBackendSafeStartupFlags(args, binary);
+
+		expect(args).toEqual(["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]);
+	});
+
 	for (const backend of ["metal", "vulkan"] as const) {
 		it(`downgrades fork-only compressed KV to q8_0 on ${backend} runtime graph dispatch`, () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), `${backend}-kv-`));

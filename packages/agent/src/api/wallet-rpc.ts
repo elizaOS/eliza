@@ -3,11 +3,11 @@ import {
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
+  resolveCloudApiBaseUrl,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-  resolveCloudApiBaseUrl,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 

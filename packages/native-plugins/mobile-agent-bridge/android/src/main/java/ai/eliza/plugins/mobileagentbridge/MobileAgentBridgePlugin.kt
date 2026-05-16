@@ -1,6 +1,7 @@
 package ai.eliza.plugins.mobileagentbridge
 
 import android.net.Uri
+import android.content.pm.PackageManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -233,11 +234,30 @@ class MobileAgentBridgePlugin : Plugin() {
             put("body", body ?: JSONObject.NULL)
             put("timeoutMs", timeoutMs)
         }
-        val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
+        val serviceClass = Class.forName(resolveAgentServiceClassName())
         val bridge = serviceClass.getMethod("requestLocalAgent", String::class.java)
         val raw = bridge.invoke(null, request.toString()) as? String
             ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
         return JSONObject(raw)
+    }
+
+    private fun resolveAgentServiceClassName(): String {
+        val ctx = context ?: throw IllegalStateException("Android context is unavailable")
+        val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            ctx.packageManager.getPackageInfo(
+                ctx.packageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.GET_SERVICES)
+        }
+        return packageInfo.services
+            ?.firstOrNull {
+                it.packageName == ctx.packageName && it.name.endsWith(".ElizaAgentService")
+            }
+            ?.name
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
     }
 
     private fun sendFrame(frame: JSONObject) {

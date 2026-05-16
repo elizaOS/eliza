@@ -15,7 +15,7 @@
 
 import { StringDecoder } from "node:string_decoder";
 
-export const SSE_TAIL_SIZE = 64;
+const SSE_TAIL_SIZE = 64;
 
 export type ReverseFn = (text: string) => string;
 

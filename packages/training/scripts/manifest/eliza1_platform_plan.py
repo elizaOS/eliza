@@ -49,7 +49,6 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
-    "27b-256k": "Q4_K_M",
 }
 
 TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
@@ -66,7 +65,6 @@ CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("128k",),
     "9b": ("128k",),
     "27b": ("128k",),
-    "27b-256k": ("256k",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -154,11 +152,6 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-vulkan",
         "linux-x64-cpu",
         "windows-x64-cpu",
-    ),
-    "27b-256k": (
-        "linux-x64-cuda",
-        "linux-x64-rocm",
-        "windows-x64-cuda",
     ),
 }
 
@@ -486,8 +479,7 @@ def render_readiness(
         "readiness path.",
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
         "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
-        "and Qwen3.6 27B (`27b`, "
-        "`27b-256k`). ASR and embedding are real Qwen3 upstream "
+        "and Qwen3.6 27B (`27b`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
         "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "

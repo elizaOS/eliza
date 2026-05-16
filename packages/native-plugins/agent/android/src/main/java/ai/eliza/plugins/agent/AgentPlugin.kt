@@ -78,7 +78,7 @@ class AgentPlugin : Plugin() {
     @PluginMethod
     fun request(call: PluginCall) {
         val path = call.getString("path")?.trim()
-        if (path == null || !path.startsWith("/") || path.startsWith("//")) {
+        if (path == null || !isSafeLocalPath(path)) {
             call.reject("Agent.request requires a local path that starts with /")
             return
         }
@@ -100,7 +100,7 @@ class AgentPlugin : Plugin() {
                 val result = forwardLocalRequest(path, method, headers, body, timeoutMs, token)
                 call.resolve(result)
             } catch (error: Exception) {
-                call.reject(error.message ?: "Local agent request failed")
+                call.resolve(localAgentUnavailableResponse(error.message ?: "Local agent request failed"))
             }
         }.start()
     }
@@ -119,6 +119,20 @@ class AgentPlugin : Plugin() {
         val serviceClass = Class.forName(resolveAgentServiceClassName())
         val method = serviceClass.getMethod(methodName, android.content.Context::class.java)
         method.invoke(null, context)
+    }
+
+    private fun localAgentUnavailableResponse(message: String): JSObject {
+        return JSObject().apply {
+            put("status", 503)
+            put("statusText", "Service Unavailable")
+            put("headers", JSObject().apply {
+                put("content-type", "application/json")
+            })
+            put("body", JSONObject().apply {
+                put("error", "local_agent_unavailable")
+                put("message", message)
+            }.toString())
+        }
     }
 
     private fun readLocalAgentToken(): String? {
@@ -165,6 +179,10 @@ class AgentPlugin : Plugin() {
         val method = serviceClass.getMethod("requestLocalAgent", String::class.java)
         return method.invoke(null, requestJson) as? String
             ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
+    }
+
+    private fun isSafeLocalPath(path: String): Boolean {
+        return path.startsWith("/") && !path.startsWith("//") && !path.contains("://")
     }
 
     private fun resolveAgentServiceClassName(): String {

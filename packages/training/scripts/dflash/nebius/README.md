@@ -30,7 +30,6 @@ drafter-enabled tier. `0_8b` is target-only and intentionally excluded.
 | 4b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
 | 9b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
 | 27b | 3B | Qwen/Qwen3.5-0.8B-Base |
-| 27b-256k | 3B | Qwen/Qwen3.5-0.8B-Base |
 
 ## Recommended instance type
 
@@ -39,7 +38,7 @@ drafter-enabled tier. `0_8b` is target-only and intentionally excluded.
 - **Region**: `eu-north1` or `us-east1` (check current availability)
 - **OS image**: Ubuntu 22.04 + CUDA 12.4 base, or the NVIDIA NGC PyTorch container
 
-For the 27b/27b-256k tiers, use a 2-GPU instance to fit both the
+For the 27b tier, use a 2-GPU instance to fit both the
 27B target and the 4B student in bf16 simultaneously.
 
 ## Container
@@ -66,9 +65,8 @@ Estimated wall times and cost per tier (1 GPU unless noted):
 | 4b | 12 h | ~$48 |
 | 9b | 24 h | ~$96 |
 | 27b | 72 h (2 GPU) | ~$576 |
-| 27b-256k | 72 h (2 GPU) | ~$576 |
 
-Total for all 5 drafter-enabled tiers: budget **~$1,336** (single-pass, no retries).
+Total for all 4 drafter-enabled tiers: budget **~$760** (single-pass, no retries).
 
 ## Quickstart
 
@@ -90,7 +88,7 @@ nebius compute instance create \
   --zone eu-north1-a
 ```
 
-For 27b/27b-256k, set `--gpus 2`.
+For 27b, set `--gpus 2`.
 
 ### 2. Copy scripts to the instance
 

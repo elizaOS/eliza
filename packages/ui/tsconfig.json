@@ -11,15 +11,19 @@
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
-      "@elizaos/plugin-steward-app": ["../../plugins/plugin-steward-app/src/index.ts"],
-      "@elizaos/plugin-shopify-ui": ["../../plugins/plugin-shopify-ui/src/index.ts"],
-      "@elizaos/plugin-training": ["../../plugins/plugin-training/src/index.ts"],
+      "@elizaos/plugin-steward-app": [
+        "../../plugins/plugin-steward-app/src/index.ts"
+      ],
+      "@elizaos/plugin-shopify-ui": [
+        "../../plugins/plugin-shopify-ui/src/index.ts"
+      ],
+      "@elizaos/plugin-training": [
+        "../../plugins/plugin-training/src/index.ts"
+      ],
       "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
       "@elizaos/plugin-lifeops-browser": [
         "../../plugins/plugin-lifeops-browser/src/index.ts"
@@ -34,6 +38,9 @@
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/src/index.ts"
+      ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
@@ -46,8 +53,12 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-companion": ["../../plugins/plugin-companion/src/index.ts"],
-      "@elizaos/plugin-elizamaker": ["../../plugins/plugin-elizamaker/src/index.ts"],
+      "@elizaos/plugin-companion": [
+        "../../plugins/plugin-companion/src/index.ts"
+      ],
+      "@elizaos/plugin-elizamaker": [
+        "../../plugins/plugin-elizamaker/src/index.ts"
+      ],
       "@capacitor/app": [
         "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],
@@ -69,7 +80,9 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
-      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": [
+        "../../plugins/plugin-wallet-ui/src/index.ts"
+      ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/cloud-sdk/cloud-setup-session": [
         "../cloud-sdk/src/cloud-setup-session/index.ts"

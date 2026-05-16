@@ -5,6 +5,7 @@ export * from "./components/icons";
 export * from "./components/image-gen";
 export * from "./components/layout";
 export * from "./components/monetization";
+export * from "./components/product-switcher";
 export * from "./components/primitives";
 export * from "./components/promotion/promote-app-dialog";
 export * from "./components/promotion/social-connection-hint";

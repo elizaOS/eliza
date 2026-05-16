@@ -306,8 +306,8 @@ export default function StewardLoginSection() {
   if (step === "success") {
     return (
       <div className="flex flex-col items-center gap-4 py-8">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF5800] border-t-transparent" />
-        <p className="text-sm text-neutral-400">Redirecting to dashboard...</p>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <p className="text-sm text-white/72">Redirecting to dashboard...</p>
       </div>
     );
   }
@@ -318,12 +318,12 @@ export default function StewardLoginSection() {
         <p className="text-white">
           Magic link sent to <strong>{email}</strong>
         </p>
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-white/72">
           Check your inbox and click the link to sign in.
         </p>
         <button
           type="button"
-          className="text-sm text-neutral-500 transition-colors hover:text-white"
+          className="text-sm text-white/68 transition-colors hover:text-white"
           onClick={() => {
             setStep("idle");
             setLoading(null);
@@ -343,8 +343,8 @@ export default function StewardLoginSection() {
         aria-busy="true"
         aria-label="Loading sign-in options"
       >
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF5800] border-t-transparent" />
-        <p className="text-sm text-neutral-400">Loading sign-in options...</p>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <p className="text-sm text-white/72">Loading sign-in options...</p>
       </div>
     );
   }
@@ -370,7 +370,7 @@ export default function StewardLoginSection() {
           if (e.key === "Enter") handlePasskey();
         }}
         disabled={isLoading}
-        className="w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-white placeholder:text-neutral-500 focus:border-[#FF5800]/50 focus:outline-none focus:ring-2 focus:ring-[#FF5800]/50 disabled:opacity-50"
+        className="w-full rounded-full border border-white/30 bg-white/90 px-4 py-3 text-[#06131f] placeholder:text-[#06131f]/45 shadow-sm outline-none transition focus:border-white focus:ring-2 focus:ring-white/50 disabled:opacity-50"
         autoComplete="email webauthn"
       />
 
@@ -380,7 +380,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#FF5800] px-4 py-3 font-medium text-white transition-colors hover:bg-[#FF5800]/90 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 py-3 font-semibold text-primary-fg shadow-[0_12px_32px_rgba(217,95,22,0.28)] transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />} Passkey
           </button>
@@ -390,7 +390,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-white/28 bg-white/18 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/28 disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />} Magic Link
           </button>
@@ -399,9 +399,9 @@ export default function StewardLoginSection() {
 
       {hasOAuthProviders && (
         <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-white/10" />
-          <span className="text-xs text-neutral-500">or continue with</span>
-          <div className="h-px flex-1 bg-white/10" />
+          <div className="h-px flex-1 bg-white/22" />
+          <span className="text-xs text-white/62">or continue with</span>
+          <div className="h-px flex-1 bg-white/22" />
         </div>
       )}
 
@@ -412,7 +412,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/28 bg-white/18 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/28 disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />} Google
             </button>
@@ -422,7 +422,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/28 bg-white/18 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/28 disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -437,7 +437,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50 sm:col-span-2"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/28 bg-white/18 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/28 disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -453,11 +453,11 @@ export default function StewardLoginSection() {
       {showWallets && (
         <>
           <div className="flex items-center gap-3">
-            <div className="h-px flex-1 bg-white/10" />
-            <span className="text-xs text-neutral-500">
+            <div className="h-px flex-1 bg-white/22" />
+            <span className="text-xs text-white/62">
               or sign in with a wallet
             </span>
-            <div className="h-px flex-1 bg-white/10" />
+            <div className="h-px flex-1 bg-white/22" />
           </div>
 
           <StewardWalletProviders>

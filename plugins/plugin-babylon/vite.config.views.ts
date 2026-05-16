@@ -6,5 +6,5 @@ export default createViewBundleConfig({
   entry: "./src/ui/BabylonOperatorSurface.tsx",
   outDir: "dist/views",
   componentExport: "BabylonOperatorSurface",
-  additionalExternals: ["@elizaos/app-core"],
+  additionalExternals: ["@elizaos/app-core", "@elizaos/ui"],
 });

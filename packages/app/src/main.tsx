@@ -37,6 +37,7 @@ import type {
 } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   App,
@@ -69,8 +70,8 @@ import {
   isDetachedWindowShell,
   isElectrobunRuntime,
   isElizaOS,
+  isMobileLocalAgentIpcUrl,
   loadUiTheme,
-  ANDROID_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
@@ -685,10 +686,7 @@ function normalizeIosFullBunSmokeReply(value: unknown): string {
     .trim();
 }
 
-function assertIosFullBunSmokeModelReply(
-  label: string,
-  value: unknown,
-): void {
+function assertIosFullBunSmokeModelReply(label: string, value: unknown): void {
   const text = String(value ?? "");
   if (
     normalizeIosFullBunSmokeReply(text) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||
@@ -1682,7 +1680,7 @@ function isNativeIosStoreBuild(): boolean {
 }
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
-  return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+  return isMobileLocalAgentIpcUrl(parsed);
 }
 
 function isPrivateOrLoopbackApiHost(host: string): boolean {
@@ -1871,16 +1869,16 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
       ? config.deviceBridgeUrl
       : null;
   }
-  // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
-  // Android local: the foreground agent service owns the loopback API and the
-  // WebView dials its device bridge for native llama.cpp calls.
-  // iOS local: requests are handled by the in-process ITTP route kernel, so a
-  // loopback WebSocket bridge is both unnecessary and unsafe in simulator runs
-  // where host-level adb port forwarding can expose another device's agent.
-  if (config.mode === "local" && isIOS) return null;
+  // Android local still needs the llama device bridge: the background agent
+  // service cannot call the Capacitor Llama plugin directly. Foreground API
+  // traffic uses Agent.request IPC; this WebSocket is only the native-model
+  // device bridge until that call path moves behind the same plugin surface.
   if (config.mode === "local" && isAndroid) {
     return apiBaseToDeviceBridgeUrl(MOBILE_LOCAL_AGENT_API_BASE);
   }
+  // iOS local uses the Bun/ITTP request bridge and must not open loopback.
+  if (config.mode === "local" && isIOS) return null;
+  // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
   if (config.mode !== "cloud-hybrid" && config.mode !== "local") return null;
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
@@ -2131,14 +2129,15 @@ function applyStoredDetachedShellTheme(): void {
 
 async function main(): Promise<void> {
   registerViewServiceWorker();
+  installAndroidNativeAgentFetchBridge();
 
-  const appWindowSlug =
-    window.location.pathname.startsWith("/apps/")
-      ? window.location.pathname.slice("/apps/".length).split("/")[0]
-      : resolveAppWindowSlug();
+  const appWindowSlug = window.location.pathname.startsWith("/apps/")
+    ? window.location.pathname.slice("/apps/".length).split("/")[0]
+    : resolveAppWindowSlug();
   if (appWindowSlug === "model-tester") {
-    await importSideEffectAppModule("@elizaos/app-model-tester", () =>
-      import("@elizaos/app-model-tester"),
+    await importSideEffectAppModule(
+      "@elizaos/app-model-tester",
+      () => import("@elizaos/app-model-tester"),
     );
     setupPlatformStyles();
     mountReactApp();
@@ -2184,7 +2183,6 @@ async function main(): Promise<void> {
     }
   } else if (isAndroid) {
     initializeCapacitorBridge();
-    installAndroidNativeAgentFetchBridge();
   }
   mountReactApp();
   await initializePlatform();

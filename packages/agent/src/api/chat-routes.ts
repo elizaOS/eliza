@@ -1757,7 +1757,9 @@ export async function generateChatResponse(
         () => createChatGenerationTimeoutError(generationTimeoutMs),
         () => {
           generationTimedOut = true;
-          abortGeneration(createChatGenerationTimeoutError(generationTimeoutMs));
+          abortGeneration(
+            createChatGenerationTimeoutError(generationTimeoutMs),
+          );
         },
       ),
     );
@@ -1995,7 +1997,9 @@ Title:`;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (isAbortLikeError(err)) {
-      logger.info(`[eliza] Conversation title generation cancelled: ${message}`);
+      logger.info(
+        `[eliza] Conversation title generation cancelled: ${message}`,
+      );
     } else {
       logger.warn(`[eliza] Failed to generate conversation title: ${message}`);
     }

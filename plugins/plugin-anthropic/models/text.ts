@@ -22,8 +22,8 @@ import {
   type ToolSet,
   type UserContent,
 } from "ai";
-import { createAnthropicClientWithTopPSupport } from "../providers";
-import type { ModelName, ModelSize, ProviderOptions, ProviderOptionValue } from "../types";
+import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
+import type { ModelName, ModelSize } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
 import {
   getActionPlannerModel,
@@ -41,6 +41,34 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { executeWithRetry, formatModelError } from "../utils/retry";
+
+type ProviderOptionValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ProviderOptionValue[]
+  | { [key: string]: ProviderOptionValue | undefined };
+
+interface ProviderOptions {
+  [key: string]: ProviderOptionValue | undefined;
+  readonly agentName?: string;
+  readonly anthropic?: AnthropicProviderOptions;
+}
+
+interface AnthropicProviderOptions {
+  [key: string]: ProviderOptionValue | undefined;
+  readonly thinking?: {
+    [key: string]: ProviderOptionValue | undefined;
+    readonly type: "enabled";
+    readonly budgetTokens: number;
+  };
+  readonly cacheControl?: {
+    [key: string]: ProviderOptionValue | undefined;
+    readonly type: "ephemeral";
+    readonly ttl?: "5m" | "1h";
+  };
+}
 
 type ChatAttachment = {
   data: string | Uint8Array | URL;

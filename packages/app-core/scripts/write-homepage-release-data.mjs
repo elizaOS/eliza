@@ -18,7 +18,7 @@ const OUTPUT_PATH = path.resolve(
 const RELEASES_URL = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=20`;
 const RELEASES_PAGE_URL = `https://github.com/${REPOSITORY}/releases`;
 
-const installBaseUrl = "https://eliza.ai";
+const installBaseUrl = "https://eliza.app";
 const scripts = {
   shell: {
     url: `${installBaseUrl}/install.sh`,
@@ -29,6 +29,49 @@ const scripts = {
     command: `irm ${installBaseUrl}/install.ps1 | iex`,
   },
 };
+
+const storeTargets = [
+  {
+    platform: "ios",
+    label: "iOS App Store",
+    artifact: "App Store",
+    status: "coming-soon",
+    reviewState: "not-submitted",
+    rolloutChannel: "TestFlight first",
+    fallbackArtifact: "TestFlight beta when approved",
+    url: null,
+  },
+  {
+    platform: "android",
+    label: "Google Play Store",
+    artifact: "Play Store",
+    status: "coming-soon",
+    reviewState: "not-submitted",
+    rolloutChannel: "APK bridge",
+    fallbackArtifact: "GitHub Release APK when signed",
+    url: null,
+  },
+  {
+    platform: "macos",
+    label: "Mac App Store",
+    artifact: "Mac App Store",
+    status: "coming-soon",
+    reviewState: "not-submitted",
+    rolloutChannel: "Signed DMG first",
+    fallbackArtifact: "macOS DMG",
+    url: null,
+  },
+  {
+    platform: "windows",
+    label: "Microsoft Store",
+    artifact: "Microsoft Store",
+    status: "coming-soon",
+    reviewState: "not-submitted",
+    rolloutChannel: "EXE first",
+    fallbackArtifact: "Windows EXE installer",
+    url: null,
+  },
+];
 
 const publishedAtFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -154,7 +197,7 @@ function pickAssetFromReleases(releases, matchers) {
   return null;
 }
 
-function buildRelease(release, allReleases = []) {
+function buildRelease(release) {
   if (!release) {
     return {
       tagName: "unavailable",
@@ -167,11 +210,7 @@ function buildRelease(release, allReleases = []) {
   }
 
   const assets = Array.isArray(release.assets) ? release.assets : [];
-  const releasesByRecency = sortReleasesByRecency(allReleases);
-  const prioritizedReleases = [
-    release,
-    ...releasesByRecency.filter((candidate) => candidate !== release),
-  ].filter(Boolean);
+  const prioritizedReleases = [release].filter(Boolean);
 
   const downloads = [
     {
@@ -198,6 +237,8 @@ function buildRelease(release, allReleases = []) {
       id: "windows-x64",
       label: "Windows",
       pick: pickAssetFromReleases(prioritizedReleases, [
+        (asset) =>
+          /ElizaOSApp-Setup/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /setup/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /win/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /win/i.test(asset.name) && /\.msix$/i.test(asset.name),
@@ -217,6 +258,14 @@ function buildRelease(release, allReleases = []) {
       pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /linux/i.test(asset.name) && /\.deb$/i.test(asset.name),
         (asset) => /\.deb$/i.test(asset.name),
+      ]),
+    },
+    {
+      id: "linux-rpm",
+      label: "Fedora / RHEL",
+      pick: pickAssetFromReleases(prioritizedReleases, [
+        (asset) => /linux/i.test(asset.name) && /\.rpm$/i.test(asset.name),
+        (asset) => /\.rpm$/i.test(asset.name),
       ]),
     },
   ]
@@ -250,16 +299,12 @@ function buildRelease(release, allReleases = []) {
   };
 }
 
-function buildPayload(
-  release,
-  allReleases = [],
-  canaryRelease = null,
-  stableRelease = release,
-) {
+function buildPayload(release, canaryRelease = null, stableRelease = release) {
   const tagName = release?.tag_name ?? "unavailable";
   return {
     generatedAt: new Date().toISOString(),
     scripts,
+    storeTargets,
     cdn: {
       tagName,
       appAssetBaseUrl:
@@ -277,11 +322,9 @@ function buildPayload(
               assetRoot: "packages/homepage/public",
             }),
     },
-    release: buildRelease(release, allReleases),
-    stableRelease: buildRelease(stableRelease, allReleases),
-    canaryRelease: canaryRelease
-      ? buildRelease(canaryRelease, allReleases)
-      : null,
+    release: buildRelease(release),
+    stableRelease: buildRelease(stableRelease),
+    canaryRelease: canaryRelease ? buildRelease(canaryRelease) : null,
   };
 }
 
@@ -320,6 +363,17 @@ export type ReleaseDataScripts = {
   powershell: { url: string; command: string };
 };
 
+export type ReleaseDataStoreTarget = {
+  platform: string;
+  label: string;
+  artifact: string;
+  status: "coming-soon" | "beta" | "available";
+  reviewState: string;
+  rolloutChannel: string;
+  fallbackArtifact: string;
+  url: string | null;
+};
+
 export type ReleaseDataCdn = {
   tagName: string;
   appAssetBaseUrl: string;
@@ -329,6 +383,7 @@ export type ReleaseDataCdn = {
 export type ReleaseDataPayload = {
   generatedAt: string;
   scripts: ReleaseDataScripts;
+  storeTargets: ReleaseDataStoreTarget[];
   cdn: ReleaseDataCdn;
   release: ReleaseDataRelease;
   stableRelease: ReleaseDataRelease;
@@ -390,7 +445,7 @@ async function main() {
     // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
     await writePayload(
-      buildPayload(primaryRelease, releases, canaryRelease, stableRelease),
+      buildPayload(primaryRelease, canaryRelease, stableRelease),
     );
     const tag = primaryRelease?.tag_name ?? "no published release";
     const canaryTag = canaryRelease?.tag_name;

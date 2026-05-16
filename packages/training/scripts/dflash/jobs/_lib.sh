@@ -6,7 +6,6 @@
 #   4b.sh      → eliza-1-4b
 #   9b.sh      → eliza-1-9b
 #   27b.sh     → eliza-1-27b
-#   27b-256k.sh → eliza-1-27b-256k
 # The 0_8b wrapper is deliberately disabled: eliza-1-0_8b is target-only and
 # ships with DFlash disabled.
 # Shared helpers for DFlash drafter distillation job scripts.

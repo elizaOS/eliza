@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Get started with elizaOS Cloud in 5 minutes. Deploy your first AI agent and start building.
+description: Get started with elizaOS Cloud in 5 minutes. Log in, deploy your first agent, and chat with it in Eliza.
 ---
 
 import { Steps, Tabs, Callout, Cards } from "@/docs/components";
@@ -20,7 +20,7 @@ Get your first AI agent running in 5 minutes with elizaOS Cloud.
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-6 mb-8">
   <a
-    href="#using-the-agent-creator"
+    href="#using-the-dashboard"
     className="docs-quickstart-card no-underline group"
     style={{ "--card-accent-color": "#ff5800" }}
   >
@@ -32,9 +32,9 @@ Get your first AI agent running in 5 minutes with elizaOS Cloud.
       <div className="docs-quickstart-icon" aria-hidden="true">
         🎨
       </div>
-      <div className="docs-quickstart-title">Visual Builder</div>
+      <div className="docs-quickstart-title">Dashboard Setup</div>
       <div className="docs-quickstart-desc">
-        Build agents with our no-code editor
+        Log in and deploy your agent
       </div>
       <div className="docs-quickstart-arrow" aria-hidden="true">
         →
@@ -42,7 +42,7 @@ Get your first AI agent running in 5 minutes with elizaOS Cloud.
     </div>
   </a>
   <a
-    href="#using-the-api"
+    href="#chat-in-eliza"
     className="docs-quickstart-card no-underline group"
     style={{ "--card-accent-color": "#0b35f1" }}
   >
@@ -54,15 +54,15 @@ Get your first AI agent running in 5 minutes with elizaOS Cloud.
       <div className="docs-quickstart-icon" aria-hidden="true">
         ⚡
       </div>
-      <div className="docs-quickstart-title">API Integration</div>
-      <div className="docs-quickstart-desc">Integrate via REST API</div>
+      <div className="docs-quickstart-title">Eliza App Chat</div>
+      <div className="docs-quickstart-desc">Connect and test in the app</div>
       <div className="docs-quickstart-arrow" aria-hidden="true">
         →
       </div>
     </div>
   </a>
   <a
-    href="#using-the-cli"
+    href="#using-the-api"
     className="docs-quickstart-card no-underline group"
     style={{ "--card-accent-color": "#22c55e" }}
   >
@@ -74,8 +74,8 @@ Get your first AI agent running in 5 minutes with elizaOS Cloud.
       <div className="docs-quickstart-icon" aria-hidden="true">
         💻
       </div>
-      <div className="docs-quickstart-title">CLI Deployment</div>
-      <div className="docs-quickstart-desc">Deploy with the elizaOS CLI</div>
+      <div className="docs-quickstart-title">API Integration</div>
+      <div className="docs-quickstart-desc">Use API keys and REST APIs</div>
       <div className="docs-quickstart-arrow" aria-hidden="true">
         →
       </div>
@@ -83,9 +83,9 @@ Get your first AI agent running in 5 minutes with elizaOS Cloud.
   </a>
 </div>
 
-## Using the Agent Creator
+## Using the Dashboard
 
-The fastest way to create an agent without writing code.
+The fastest way to create and deploy an agent without writing code.
 
 <Steps>
 ### Navigate to Agent Creator
@@ -115,7 +115,31 @@ Add bio and style information to shape your agent's responses:
 
 ### Deploy & Test
 
-Click "Deploy" to launch your agent. Test it in the built-in chat interface or via API.
+Click "Deploy" to launch your agent runtime. Test it in the dashboard, then
+connect it to the full Eliza app for day-to-day chat.
+
+</Steps>
+
+## Chat in Eliza
+
+Use the Eliza app when you want the complete chat experience for your deployed
+agent.
+
+<Steps>
+### Open Apps
+
+Go to [Dashboard → Apps](/dashboard/apps) and choose the app or device entry for
+your agent.
+
+### Connect Your Agent
+
+Select the deployed agent runtime you want the app to use. Confirm the app has
+the correct API key or session access.
+
+### Start a Chat
+
+Open Eliza, select your connected agent, and send a test message. The app chat
+uses the same hosted runtime you deployed from the dashboard.
 
 </Steps>
 
@@ -248,7 +272,7 @@ print(completion['choices'][0]['message']['content'])
   </Tabs.Tab>
 </Tabs>
 
-## Using the CLI
+## Local Development
 
 Create a local elizaOS project. Cloud deployment and hosted app registration use
 the dashboard, Cloud API, or SDK endpoints documented in the app and container

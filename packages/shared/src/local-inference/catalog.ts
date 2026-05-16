@@ -556,7 +556,9 @@ function textQuantizationMatrix(args: {
   return {
     defaultVariantId: "q4_k_m",
     variants: [
+      mk("q3_k_m", "3-bit", 0.76, 0.85, "planned"),
       mk("q4_k_m", "4-bit", 1, 1, "published"),
+      mk("q5_k_m", "5-bit", 1.22, 1.18, "planned"),
       mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
       mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
     ],

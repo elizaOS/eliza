@@ -46,7 +46,7 @@ log = logging.getLogger("prepare_distill_dataset")
 # Mirrors distill_dflash_drafter.TRAINING_SUPPORTED_TIERS. 0_8b is a
 # target-only bundle with DFlash disabled, so there is no drafter distillation
 # dataset for that tier.
-KNOWN_TIERS = ("2b", "4b", "9b", "27b", "27b-256k")
+KNOWN_TIERS = ("2b", "4b", "9b", "27b")
 
 
 def _sha256_file(path: Path) -> str:

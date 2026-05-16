@@ -19,7 +19,6 @@
     "@ai-sdk/gateway": "^3.0.37",
     "@ai-sdk/openai": "^3.0.54",
     "@cloudflare/workers-types": "^4.20260429.1",
-    "@elizaos/cloud-rtmp-relay": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",

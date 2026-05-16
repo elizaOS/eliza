@@ -90,6 +90,13 @@ jobs:
             git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
             git checkout -- . 2>/dev/null || true
 
+            # bun.lock became tracked at 4ae092dcda; the host's previous deploy
+            # may have left an untracked copy from `bun install` that pre-dates
+            # the tracking change. `git clean -fdx` *should* remove it but
+            # occasionally races with bun's lockfile rewrite, so force a delete
+            # before the fetch + branch-checkout below.
+            rm -f bun.lock
+
             # Use a refspec so a single-branch / shallow clone still creates
             # the remote-tracking ref for $DEPLOY_BRANCH on first deploy.
             #

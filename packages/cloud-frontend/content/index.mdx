@@ -147,9 +147,9 @@ import { Cards, Callout } from "@/docs/components";
       <div className="w-10 h-10 flex items-center justify-center bg-[#ff5800]/10 border border-[#ff5800]/20">
         <span className="text-[#ff5800] text-lg">🤖</span>
       </div>
-      <div className="font-bold text-white">Agent Runtime</div>
+      <div className="font-bold text-slate-950">Agent Runtime</div>
     </div>
-    <div className="text-white/50 text-sm leading-relaxed">
+    <div className="text-slate-700 text-sm leading-relaxed">
       Managed runtime with auto-scaling, zero-downtime deployments, and built-in
       monitoring.
     </div>
@@ -159,9 +159,9 @@ import { Cards, Callout } from "@/docs/components";
       <div className="w-10 h-10 flex items-center justify-center bg-[#0b35f1]/10 border border-[#0b35f1]/20">
         <span className="text-[#0b35f1] text-lg">💬</span>
       </div>
-      <div className="font-bold text-white">Chat Completions</div>
+      <div className="font-bold text-slate-950">Chat Completions</div>
     </div>
-    <div className="text-white/50 text-sm leading-relaxed">
+    <div className="text-slate-700 text-sm leading-relaxed">
       OpenAI-compatible API with streaming, function calling, and structured
       outputs.
     </div>
@@ -171,11 +171,11 @@ import { Cards, Callout } from "@/docs/components";
       <div className="w-10 h-10 flex items-center justify-center bg-[#22c55e]/10 border border-[#22c55e]/20">
         <span className="text-[#22c55e] text-lg">🧠</span>
       </div>
-      <div className="font-bold text-white">Model Gateway</div>
+      <div className="font-bold text-slate-950">Model Gateway</div>
     </div>
-    <div className="text-white/50 text-sm leading-relaxed">
-      Access configured text, image, video, and embedding providers through a
-      API interface.
+    <div className="text-slate-700 text-sm leading-relaxed">
+      Route agent requests through configured text and embedding providers from
+      one API interface.
     </div>
   </div>
   <div className="docs-feature-card">
@@ -183,9 +183,9 @@ import { Cards, Callout } from "@/docs/components";
       <div className="w-10 h-10 flex items-center justify-center bg-[#a855f7]/10 border border-[#a855f7]/20">
         <span className="text-[#a855f7] text-lg">📚</span>
       </div>
-      <div className="font-bold text-white">Knowledge Base</div>
+      <div className="font-bold text-slate-950">Knowledge Base</div>
     </div>
-    <div className="text-white/50 text-sm leading-relaxed">
+    <div className="text-slate-700 text-sm leading-relaxed">
       Vector storage for RAG-powered agents with automatic embedding and
       retrieval.
     </div>
@@ -195,9 +195,9 @@ import { Cards, Callout } from "@/docs/components";
       <div className="w-10 h-10 flex items-center justify-center bg-[#f97316]/10 border border-[#f97316]/20">
         <span className="text-[#f97316] text-lg">🔗</span>
       </div>
-      <div className="font-bold text-white">MCP Integration</div>
+      <div className="font-bold text-slate-950">MCP Integration</div>
     </div>
-    <div className="text-white/50 text-sm leading-relaxed">
+    <div className="text-slate-700 text-sm leading-relaxed">
       Connect to Model Context Protocol servers for tools and external data.
     </div>
   </div>
@@ -206,9 +206,9 @@ import { Cards, Callout } from "@/docs/components";
       <div className="w-10 h-10 flex items-center justify-center bg-[#06b6d4]/10 border border-[#06b6d4]/20">
         <span className="text-[#06b6d4] text-lg">📦</span>
       </div>
-      <div className="font-bold text-white">Containers</div>
+      <div className="font-bold text-slate-950">Containers</div>
     </div>
-    <div className="text-white/50 text-sm leading-relaxed">
+    <div className="text-slate-700 text-sm leading-relaxed">
       Deploy custom Docker containers with full control over your environment.
     </div>
   </div>
@@ -218,65 +218,66 @@ import { Cards, Callout } from "@/docs/components";
 
 <div className="docs-section">
 
-### Generation Studio
+### Manage Cloud
 
-<p className="text-white/50 mb-6">
-  Create rich media content with AI-powered generation tools.
+<p className="text-slate-700 mb-6">
+  Operate your hosted agent runtime, connect the full Eliza app, and manage
+  account access from the dashboard.
 </p>
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 mb-8">
   <a
-    href="/docs/image-generation"
+    href="/docs/agents"
     className="docs-generation-card no-underline group"
     style={{ "--card-accent-color": "#ff5800" }}
   >
     <div className="relative z-10">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[#ff5800] text-2xl">🖼️</span>
+        <span className="text-[#ff5800] text-2xl">🤖</span>
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff5800]/60 px-2 py-1 bg-[#ff5800]/10 border border-[#ff5800]/20">
-          FLUX • SD
+          Runtime
         </span>
       </div>
-      <div className="font-bold text-white mb-1 group-hover:text-[#ff5800] transition-colors">
-        Image Generation
+      <div className="font-bold text-slate-950 mb-1 group-hover:text-[#ff8a24] transition-colors">
+        Deploy Agents
       </div>
-      <div className="text-white/40 text-sm">Catalog-driven models</div>
+      <div className="text-slate-700 text-sm">Create, deploy, and monitor</div>
     </div>
   </a>
   <a
-    href="/docs/video-generation"
+    href="/docs/apps"
     className="docs-generation-card no-underline group"
     style={{ "--card-accent-color": "#0b35f1" }}
   >
     <div className="relative z-10">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[#0b35f1] text-2xl">🎬</span>
+        <span className="text-[#0b35f1] text-2xl">📱</span>
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#0b35f1]/60 px-2 py-1 bg-[#0b35f1]/10 border border-[#0b35f1]/20">
-          Video
+          App
         </span>
       </div>
-      <div className="font-bold text-white mb-1 group-hover:text-[#0b35f1] transition-colors">
-        Video Generation
+      <div className="font-bold text-slate-950 mb-1 group-hover:text-[#0b35f1] transition-colors">
+        Connect Devices
       </div>
-      <div className="text-white/40 text-sm">Text & image to video</div>
+      <div className="text-slate-700 text-sm">Use your agent in Eliza</div>
     </div>
   </a>
   <a
-    href="/docs/voice-cloning"
+    href="/docs/billing"
     className="docs-generation-card no-underline group"
     style={{ "--card-accent-color": "#22c55e" }}
   >
     <div className="relative z-10">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[#22c55e] text-2xl">🎙️</span>
+        <span className="text-[#22c55e] text-2xl">💳</span>
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#22c55e]/60 px-2 py-1 bg-[#22c55e]/10 border border-[#22c55e]/20">
-          ElevenLabs
+          Billing
         </span>
       </div>
-      <div className="font-bold text-white mb-1 group-hover:text-[#22c55e] transition-colors">
-        Voice Cloning
+      <div className="font-bold text-slate-950 mb-1 group-hover:text-[#22c55e] transition-colors">
+        Billing & Payments
       </div>
-      <div className="text-white/40 text-sm">Custom voice synthesis</div>
+      <div className="text-slate-700 text-sm">Credits, invoices, and usage</div>
     </div>
   </a>
 </div>
@@ -301,17 +302,17 @@ curl https://elizacloud.ai/api/v1/chat/completions \
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
   <a href="/docs/api" className="docs-api-card no-underline group">
-    <div className="font-semibold text-white text-sm group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 text-sm group-hover:text-[#ff8a24] transition-colors">
       REST API
     </div>
   </a>
   <a href="/docs/a2a" className="docs-api-card no-underline group">
-    <div className="font-semibold text-white text-sm group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 text-sm group-hover:text-[#ff8a24] transition-colors">
       A2A Protocol
     </div>
   </a>
   <a href="/docs/mcp" className="docs-api-card no-underline group">
-    <div className="font-semibold text-white text-sm group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 text-sm group-hover:text-[#ff8a24] transition-colors">
       MCP Protocol
     </div>
   </a>
@@ -326,28 +327,28 @@ curl https://elizacloud.ai/api/v1/chat/completions \
 
 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
   <a href="/docs/sdks" className="docs-resource-card no-underline group">
-    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 mb-0.5 group-hover:text-[#ff8a24] transition-colors">
       SDKs & Libraries
     </div>
-    <div className="text-white/40 text-sm">TypeScript, Python, and more</div>
+    <div className="text-slate-700 text-sm">TypeScript, Python, and more</div>
   </a>
   <a href="/docs/errors" className="docs-resource-card no-underline group">
-    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 mb-0.5 group-hover:text-[#ff8a24] transition-colors">
       Error Handling
     </div>
-    <div className="text-white/40 text-sm">Error codes and troubleshooting</div>
+    <div className="text-slate-700 text-sm">Error codes and troubleshooting</div>
   </a>
   <a href="/docs/rate-limits" className="docs-resource-card no-underline group">
-    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 mb-0.5 group-hover:text-[#ff8a24] transition-colors">
       Rate Limits
     </div>
-    <div className="text-white/40 text-sm">Usage quotas and limits</div>
+    <div className="text-slate-700 text-sm">Usage quotas and limits</div>
   </a>
   <a href="/docs/changelog" className="docs-resource-card no-underline group">
-    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+    <div className="font-semibold text-slate-950 mb-0.5 group-hover:text-[#ff8a24] transition-colors">
       Changelog
     </div>
-    <div className="text-white/40 text-sm">Latest updates and releases</div>
+    <div className="text-slate-700 text-sm">Latest updates and releases</div>
   </a>
 </div>
 
@@ -356,10 +357,10 @@ curl https://elizacloud.ai/api/v1/chat/completions \
 <div className="docs-section">
 
 <div className="docs-help-box">
-  <h3 className="!mt-0 !mb-4 !border-0 !text-base font-bold text-white !p-0">
+  <h3 className="!mt-0 !mb-4 !border-0 !text-base font-bold text-slate-950 !p-0">
     Need Help?
   </h3>
-  <p className="!mb-4 text-white/50 text-sm">
+  <p className="!mb-4 text-slate-700 text-sm">
     Join our community for support, share feedback, or contribute to the
     project.
   </p>

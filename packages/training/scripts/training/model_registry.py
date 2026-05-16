@@ -23,7 +23,7 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k`` alias)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
 cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
@@ -255,7 +255,6 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
     "eliza-1-4b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
-    "eliza-1-27b-256k": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 REGISTRY: dict[str, ModelEntry] = {
@@ -271,8 +270,8 @@ REGISTRY: dict[str, ModelEntry] = {
     # chunked CE is what keeps the listed seq_len inside the budget (the
     # 248k vocab makes this transient ~1.6× heavier than the older 152k
     # Qwen3 vocab; the seq_len defaults reflect that). Inference budgets
-    # here are modest local-tier windows; the runtime catalog ships
-    # 32k context for these tiers and applies its own KV quantization.
+    # here are modest local-tier windows; the runtime catalog ships a
+    # 128k release floor for these tiers and applies its own KV quantization.
     #
     # The legacy Qwen3 bases (Qwen/Qwen3-0.6B / Qwen/Qwen3-1.7B /
     # Qwen/Qwen3-4B) were dropped on 2026-05-12 — those models do not work
@@ -290,7 +289,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the instruct release —
     # same architecture/tokenizer, no chat-SFT pre-baked in.
     "qwen3.5-0.8b": _entry(
-        hf_id="Qwen/Qwen3.5-0.8B",
+        hf_id="Qwen/Qwen3.5-0.8B-Base",
         short_name="qwen3.5-0.8b",
         eliza_short_name="eliza-1-0_8b",
         eliza_repo_id="elizalabs/eliza-1",
@@ -313,15 +312,17 @@ REGISTRY: dict[str, ModelEntry] = {
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B "
+        notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B-Base "
         "backbone. "
         "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
         "whole train→quant→bench stack end-to-end in well under an "
-        "hour. Runtime catalog id: eliza-1-0_8b (32k context). Shares "
+        "hour. Runtime catalog id: eliza-1-0_8b (128k release floor). Shares "
         "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
         "the DFlash drafter base for those tiers (the -Base pretrain "
         "checkpoint, distilled to ~0.6B — see DFLASH_DRAFTER_BASE).",
@@ -356,7 +357,9 @@ REGISTRY: dict[str, ModelEntry] = {
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
@@ -387,7 +390,9 @@ REGISTRY: dict[str, ModelEntry] = {
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
@@ -420,44 +425,14 @@ REGISTRY: dict[str, ModelEntry] = {
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
         notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
         "and the 9B Qwen3.5 checkpoint.",
-    ),
-    "qwen3.5-27b": _entry(
-        hf_id="Qwen/Qwen3.5-27B",
-        short_name="qwen3.5-27b",
-        eliza_short_name="",
-        eliza_repo_id="",
-        abliteration_repo_id="",
-        params_billion=27.0,
-        tier=Tier.CLOUD,
-        seq_len=65536,
-        optimizer="apollo_mini",
-        optimizer_rank=512,
-        micro_batch=1,
-        grad_accum=8,
-        train_mem_gb_budget=190.0,
-        train_dtype="bf16",
-        infer_max_in=131072,
-        infer_max_out=16384,
-        infer_kv_layers=16,
-        infer_kv_heads=4,
-        infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
-        notes="Legacy 27B lookup retained for experiments only. The active "
-        "eliza-1 27B release family uses Qwen/Qwen3.6-27B.",
-        extra={"legacy": "true", "replaced_by": "qwen3.6-27b"},
     ),
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B",
@@ -483,13 +458,14 @@ REGISTRY: dict[str, ModelEntry] = {
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-        "27B backbone. Use this for the 27B and 27B-256k "
-        "release families.",
+        "27B backbone. Use this for the 27B release family.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
@@ -497,11 +473,6 @@ REGISTRY: dict[str, ModelEntry] = {
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
     "27b": "qwen3.6-27b",
-    "27b-256k": "qwen3.6-27b",
-    "qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen-qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen/qwen3.6-27b-256k": "qwen3.6-27b",
-    "eliza-1-27b-256k": "qwen3.6-27b",
 }
 
 QWEN36_LOWER_TIER_FALLBACK_ALIASES: dict[str, str] = {
@@ -540,6 +511,12 @@ def get(name: str) -> ModelEntry:
         "qwen3-4b": "qwen3.5-4b",
         "qwen-qwen3-4b": "qwen3.5-4b",
         "qwen/qwen3-4b": "qwen3.5-4b",
+        "qwen/qwen3.5-0.8b": "qwen3.5-0.8b",
+        "qwen-qwen3.5-0.8b": "qwen3.5-0.8b",
+        "qwen/qwen3.5-2b": "qwen3.5-2b",
+        "qwen-qwen3.5-2b": "qwen3.5-2b",
+        "qwen/qwen3.5-4b": "qwen3.5-4b",
+        "qwen-qwen3.5-4b": "qwen3.5-4b",
         **QWEN36_LOWER_TIER_FALLBACK_ALIASES,
         **ELIZA_1_27B_VARIANT_ALIASES,
     }

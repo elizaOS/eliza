@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { getAppSlug } from "./helpers";
-import { getAvailableOverlayApps } from "./overlay-app-registry";
 import type { OverlayApp } from "./overlay-app-api";
+import { getAvailableOverlayApps } from "./overlay-app-registry";
 
 export interface AppWindowRendererProps {
   slug: string;

@@ -5,8 +5,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Process;
 import android.util.Log;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 public class ElizaBootReceiver extends BroadcastReceiver {
@@ -74,6 +76,11 @@ public class ElizaBootReceiver extends BroadcastReceiver {
     }
 
     private static void allowUsageStatsAppOp(Context context) {
+        if (context.checkSelfPermission("android.permission.MANAGE_APP_OPS_MODES")
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.i(TAG, "MANAGE_APP_OPS_MODES not granted; usage-stats appop requires user/system grant.");
+            return;
+        }
         AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
         if (appOps == null) {
             return;
@@ -87,6 +94,14 @@ public class ElizaBootReceiver extends BroadcastReceiver {
                 Process.myUid(),
                 context.getPackageName(),
                 AppOpsManager.MODE_ALLOWED);
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof SecurityException) {
+                // Non-priv installs cannot setMode on themselves.
+                Log.i(TAG, "GET_USAGE_STATS appop grant denied; user/system grant required.");
+                return;
+            }
+            Log.w(TAG, "GET_USAGE_STATS appop reflective grant failed.", error);
         } catch (ReflectiveOperationException error) {
             // Method missing or hidden-api enforcement blocked the call.
             // The user can still grant via Settings → Special Access.

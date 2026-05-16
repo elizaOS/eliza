@@ -4,16 +4,16 @@ import type { OnboardingThemeConfig } from "../../config/branding";
 type OnboardingCssVars = CSSProperties & Record<`--${string}`, string>;
 
 const DEFAULT_ONBOARDING_THEME = {
-  background: "#c84d1f",
-  foreground: "#fffaf6",
-  mutedForeground: "rgba(255, 250, 246, 0.72)",
-  controlBackground: "rgba(255, 255, 255, 0.16)",
-  controlForeground: "#fffaf6",
-  buttonBackground: "#fffaf6",
-  buttonForeground: "#c84d1f",
-  buttonHighlightBackground: "#ffe7d9",
-  inputBackground: "#fffaf6",
-  inputForeground: "#9f3a18",
+  background: "#1d91e8",
+  foreground: "#ffffff",
+  mutedForeground: "rgba(255, 255, 255, 0.78)",
+  controlBackground: "rgba(255, 255, 255, 0.18)",
+  controlForeground: "#ffffff",
+  buttonBackground: "#ff8a24",
+  buttonForeground: "#fff7ee",
+  buttonHighlightBackground: "#fff7ee",
+  inputBackground: "rgba(255, 255, 255, 0.92)",
+  inputForeground: "#06131f",
   errorForeground: "#fff0e8",
 } satisfies Required<OnboardingThemeConfig>;
 

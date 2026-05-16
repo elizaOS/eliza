@@ -1,6 +1,6 @@
 export type {
-  AospVariantConfig,
   AndroidUserAgentMarker,
+  AospVariantConfig,
   AppAndroidConfig,
   AppConfig,
   AppDesktopConfig,

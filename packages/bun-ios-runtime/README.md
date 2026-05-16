@@ -197,8 +197,8 @@ Implemented in this repo:
   native IPC.
 - React/UI transport that uses the full Bun bridge when the Capacitor plugin is
   present, otherwise falls back to the JSContext ITTP compatibility kernel.
-- Runtime dynamic-loader ABI that can boot a full Bun engine when the framework
-  is present.
+- Runtime direct-link ABI that can boot a full Bun engine when the framework is
+  present.
 - Strict probes that prove current upstream Bun has no `bun-ios-*` compile
   target.
 

@@ -205,8 +205,7 @@ export async function createScenarioRuntime(
     enableAutonomy: false,
   });
 
-  const sqlPluginSpecifier = "@elizaos/plugin-sql" as string;
-  const { default: pluginSql } = (await import(sqlPluginSpecifier)) as {
+  const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
     default: Plugin;
   };
   await runtime.registerPlugin(pluginSql);
@@ -254,20 +253,12 @@ export async function createScenarioRuntime(
         "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
     );
   } else {
-    try {
-      const localInferenceSpecifier =
-        "@elizaos/plugin-local-inference" as string;
-      const localEmbedding = (await import(localInferenceSpecifier)) as {
-        default: Plugin;
-      };
-      await runtime.registerPlugin(localEmbedding.default);
-    } catch (err) {
-      logger.warn(
-        `[scenario-runner] local-embedding plugin unavailable: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
+    const localEmbedding = (await import(
+      "@elizaos/plugin-local-inference"
+    )) as {
+      default: Plugin;
+    };
+    await runtime.registerPlugin(localEmbedding.default);
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
@@ -286,62 +277,34 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(providerPlugin);
 
-  // Default-load @elizaos/plugin-agent-skills so scenarios that declare it in
-  // `requires.plugins` resolve without ad-hoc wiring. Graceful-degrade when the
-  // package cannot be resolved (fresh checkout, not yet installed).
-  try {
-    const agentSkillsSpecifier = "@elizaos/plugin-agent-skills" as string;
-    const agentSkillsModule = (await import(agentSkillsSpecifier)) as Record<
-      string,
-      unknown
-    >;
-    const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
-      "default",
-      "agentSkillsPlugin",
-    ]);
-    if (agentSkillsPlugin) {
-      await runtime.registerPlugin(agentSkillsPlugin);
-    } else {
-      logger.warn(
-        "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin; skipping",
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `[scenario-runner] @elizaos/plugin-agent-skills unavailable: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+  const agentSkillsModule = (await import(
+    "@elizaos/plugin-agent-skills"
+  )) as Record<string, unknown>;
+  const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
+    "default",
+    "agentSkillsPlugin",
+  ]);
+  if (!agentSkillsPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin",
     );
   }
+  await runtime.registerPlugin(agentSkillsPlugin);
 
-  // Default-load @elizaos/plugin-lifeops after agent-skills (LifeOps action
-  // routing depends on agent-skills). Graceful-degrade on resolution failure.
-  // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
-  // plugin to load — they only gate individual action execution at call time.
-  try {
-    const lifeOpsPluginSpecifier = "@elizaos/plugin-lifeops" as string;
-    const lifeOpsModule = (await import(lifeOpsPluginSpecifier)) as Record<
-      string,
-      unknown
-    >;
-    const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
-      "default",
-      "appLifeOpsPlugin",
-    ]);
-    if (lifeOpsPlugin) {
-      await runtime.registerPlugin(lifeOpsPlugin);
-    } else {
-      logger.warn(
-        "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin; skipping",
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      `[scenario-runner] @elizaos/plugin-lifeops unavailable: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+  const lifeOpsModule = (await import("@elizaos/plugin-lifeops")) as Record<
+    string,
+    unknown
+  >;
+  const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
+    "default",
+    "appLifeOpsPlugin",
+  ]);
+  if (!lifeOpsPlugin) {
+    throw new Error(
+      "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin",
     );
   }
+  await runtime.registerPlugin(lifeOpsPlugin);
 
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);

@@ -36,6 +36,7 @@ import type {
 	ElizaInferenceFfi,
 	ElizaInferenceRegion,
 } from "./voice/ffi-bindings";
+import { SAMANTHA_PLACEHOLDER_BYTE_LENGTH } from "./voice/samantha-preset-placeholder";
 import type {
 	AudioChunk,
 	OmniVoiceBackend,
@@ -45,9 +46,6 @@ import type {
 	TextToken,
 	VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
-import {
-	SAMANTHA_PLACEHOLDER_BYTE_LENGTH,
-} from "./voice/samantha-preset-placeholder";
 import {
 	VOICE_PRESET_MAGIC,
 	VOICE_PRESET_VERSION_V1,
@@ -156,7 +154,10 @@ function writeOmniVoiceBundleMarkers(root: string): void {
 		Buffer.alloc(4),
 	);
 	mkdirSync(path.join(root, "lib"), { recursive: true });
-	writeFileSync(path.join(root, "lib", "libelizainference.so"), Buffer.alloc(4));
+	writeFileSync(
+		path.join(root, "lib", "libelizainference.so"),
+		Buffer.alloc(4),
+	);
 }
 
 function writeKokoroModelRoot(root: string): void {

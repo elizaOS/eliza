@@ -52,6 +52,7 @@ function preloadAll(...preloads: PreloadFn[]): PreloadFn {
 }
 
 const Home = lazyWithPreload(() => import("./pages/page"));
+const ElizaOs = lazyWithPreload(() => import("./pages/os/page"));
 const TermsOfService = lazyWithPreload(
   () => import("./pages/terms-of-service/page"),
 );
@@ -144,7 +145,6 @@ const MyAgentsPage = lazyWithPreload(
 );
 const ApiKeysPage = lazyWithPreload(() => import("./dashboard/api-keys/Page"));
 const McpsPage = lazyWithPreload(() => import("./dashboard/mcps/Page"));
-const VoicesPage = lazyWithPreload(() => import("./dashboard/voices/Page"));
 const DocumentsPage = lazyWithPreload(
   () => import("./dashboard/documents/Page"),
 );
@@ -160,10 +160,6 @@ const InvoiceDetailPage = lazyWithPreload(
   () => import("./dashboard/invoices/[id]/Page"),
 );
 
-const ImagePage = lazyWithPreload(() => import("./dashboard/image/Page"));
-const VideoPage = lazyWithPreload(() => import("./dashboard/video/Page"));
-const GalleryPage = lazyWithPreload(() => import("./dashboard/gallery/Page"));
-
 const ContainersPage = lazyWithPreload(
   () => import("./dashboard/containers/Page"),
 );
@@ -173,11 +169,6 @@ const ContainerDetailPage = lazyWithPreload(
 const ContainerAgentDetailPage = lazyWithPreload(
   () => import("./dashboard/containers/agents/[id]/Page"),
 );
-
-const ChatBuildLayout = lazyWithPreload(
-  () => import("./dashboard/chat-build/Layout"),
-);
-const ChatPage = lazyWithPreload(() => import("./dashboard/chat/Page"));
 
 const ApiExplorerLayout = lazyWithPreload(
   () => import("./dashboard/api-explorer/Layout"),
@@ -270,14 +261,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, BillingPage.preload),
   },
   {
-    path: "/dashboard/chat",
-    preload: preloadAll(
-      DashboardLayout.preload,
-      ChatBuildLayout.preload,
-      ChatPage.preload,
-    ),
-  },
-  {
     path: "/dashboard/containers/agents/:id",
     preload: preloadAll(
       DashboardLayout.preload,
@@ -313,14 +296,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, EarningsPage.preload),
   },
   {
-    path: "/dashboard/gallery",
-    preload: preloadAll(DashboardLayout.preload, GalleryPage.preload),
-  },
-  {
-    path: "/dashboard/image",
-    preload: preloadAll(DashboardLayout.preload, ImagePage.preload),
-  },
-  {
     path: "/dashboard/invoices/:id",
     preload: preloadAll(DashboardLayout.preload, InvoiceDetailPage.preload),
   },
@@ -345,19 +320,12 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     preload: preloadAll(DashboardLayout.preload, AccountPage.preload),
   },
   {
-    path: "/dashboard/video",
-    preload: preloadAll(DashboardLayout.preload, VideoPage.preload),
-  },
-  {
-    path: "/dashboard/voices",
-    preload: preloadAll(DashboardLayout.preload, VoicesPage.preload),
-  },
-  {
     path: "/dashboard",
     preload: preloadAll(DashboardLayout.preload, DashboardIndex.preload),
   },
   { path: "/blog/:slug", preload: BlogPost.preload },
   { path: "/blog", preload: BlogIndex.preload },
+  { path: "/os", preload: ElizaOs.preload },
   { path: "/docs", preload: DocsRouter.preload },
   { path: "/docs/*", preload: DocsRouter.preload },
   {
@@ -561,7 +529,12 @@ function DashboardRouteElement() {
 
 function LegacyBuildRedirect() {
   const location = useLocation();
-  return <Navigate to={`/dashboard/chat${location.search}`} replace />;
+  return <Navigate to={`/dashboard/my-agents${location.search}`} replace />;
+}
+
+function DashboardRedirect({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}`} replace />;
 }
 
 function App() {
@@ -571,6 +544,7 @@ function App() {
     <Routes>
       <Route element={<RootLayout />}>
         <Route index element={<SuspenseRoute component={Home} />} />
+        <Route path="os" element={<SuspenseRoute component={ElizaOs} />} />
         <Route
           path="terms-of-service"
           element={<SuspenseRoute component={TermsOfService} />}
@@ -701,7 +675,6 @@ function App() {
           <Route path="my-agents" element={<MyAgentsPage />} />
           <Route path="api-keys" element={<ApiKeysPage />} />
           <Route path="mcps" element={<McpsPage />} />
-          <Route path="voices" element={<VoicesPage />} />
           <Route path="documents" element={<DocumentsPage />} />
 
           <Route path="analytics" element={<AnalyticsPage />} />
@@ -709,9 +682,26 @@ function App() {
           <Route path="affiliates" element={<AffiliatesPage />} />
           <Route path="invoices/:id" element={<InvoiceDetailPage />} />
 
-          <Route path="image" element={<ImagePage />} />
-          <Route path="video" element={<VideoPage />} />
-          <Route path="gallery" element={<GalleryPage />} />
+          <Route
+            path="chat"
+            element={<DashboardRedirect to="/dashboard/my-agents" />}
+          />
+          <Route
+            path="image"
+            element={<DashboardRedirect to="/dashboard/api-explorer" />}
+          />
+          <Route
+            path="video"
+            element={<DashboardRedirect to="/dashboard/api-explorer" />}
+          />
+          <Route
+            path="gallery"
+            element={<DashboardRedirect to="/dashboard/api-explorer" />}
+          />
+          <Route
+            path="voices"
+            element={<DashboardRedirect to="/dashboard/api-explorer" />}
+          />
 
           <Route path="containers" element={<ContainersPage />} />
           <Route path="containers/:id" element={<ContainerDetailPage />} />
@@ -719,10 +709,6 @@ function App() {
             path="containers/agents/:id"
             element={<ContainerAgentDetailPage />}
           />
-
-          <Route element={<ChatBuildLayout />}>
-            <Route path="chat" element={<ChatPage />} />
-          </Route>
 
           <Route path="api-explorer" element={<ApiExplorerLayout />}>
             <Route index element={<ApiExplorerPage />} />

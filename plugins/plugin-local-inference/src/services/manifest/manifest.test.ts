@@ -10,21 +10,8 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
-const DFLASH_TIERS = new Set<Eliza1Tier>([
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
-const VISION_TIERS = new Set<Eliza1Tier>([
-	"0_8b",
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
+const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b"]);
+const VISION_TIERS = new Set<Eliza1Tier>(["0_8b", "2b", "4b", "9b", "27b"]);
 
 function passingBackends() {
 	return {
@@ -45,9 +32,6 @@ function passingBackends() {
 }
 
 function textFileForTier(tier: Eliza1Tier): { path: string; ctx: number } {
-	if (tier === "27b-256k") {
-		return { path: "text/eliza-1-27b-256k.gguf", ctx: 262144 };
-	}
 	return { path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072 };
 }
 
@@ -129,14 +113,7 @@ describe("Eliza-1 manifest schema constants", () => {
 
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
 		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
-		expect(ELIZA_1_TIERS).toEqual([
-			"0_8b",
-			"2b",
-			"4b",
-			"9b",
-			"27b",
-			"27b-256k",
-		]);
+		expect(ELIZA_1_TIERS).toEqual(["0_8b", "2b", "4b", "9b", "27b"]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
 		);
@@ -220,9 +197,7 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
-		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).toContain(
-			"dflash",
-		);
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).toContain("dflash");
 		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).not.toContain(
 			"eagle3",
 		);
@@ -595,7 +570,7 @@ describe("canSetAsDefault", () => {
 	});
 
 	it("returns false when the device shares no passing backend with the tier", () => {
-		const m = baseManifest("27b-256k");
+		const m = baseManifest("27b");
 		m.kernels.verifiedBackends.metal = {
 			status: "fail",
 			atCommit: "abc1234",

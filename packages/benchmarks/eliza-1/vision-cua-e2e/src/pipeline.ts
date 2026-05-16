@@ -34,14 +34,11 @@ import { fileURLToPath } from "node:url";
 import { type FixtureId, loadFixture } from "./fixtures.ts";
 import { captureRealDisplays } from "./real-capture.ts";
 import {
+  type ControlledWindowHandle,
   RealDriver,
   spawnControlledWindow,
-  type ControlledWindowHandle,
 } from "./real-driver.ts";
-import {
-  discoverOcrProvider,
-  type RealOcrProvider,
-} from "./real-ocr.ts";
+import { discoverOcrProvider, type RealOcrProvider } from "./real-ocr.ts";
 import { discoverRuntimeAdapter } from "./real-runtime.ts";
 import { RealVlm } from "./real-vlm.ts";
 import {
@@ -676,9 +673,7 @@ export async function runRealPipeline(
     const trace: PipelineTrace = {
       run_id: runId,
       mode: "real",
-      fixture_id: `live:${capture.captures
-        .map((c) => c.display.id)
-        .join(",")}`,
+      fixture_id: `live:${capture.captures.map((c) => c.display.id).join(",")}`,
       started_at: startedAt.toISOString(),
       finished_at: finishedAt.toISOString(),
       duration_ms: finishedAt.getTime() - startedAt.getTime(),

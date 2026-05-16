@@ -126,23 +126,93 @@ download_to() {
   fi
 }
 
-# ----- Asset resolution -------------------------------------------------------
-
-# Echo the GitHub release base URL for the configured version.
-release_base_url() {
-  local version="${ELIZA_VERSION:-latest}"
-  if [[ "$version" == "latest" ]]; then
-    printf 'https://github.com/elizaOS/eliza/releases/latest/download'
+fetch_to() {
+  local url="$1" dest="$2"
+  if [[ "$FETCH_CMD" == "curl" ]]; then
+    curl -fsSL -H 'Accept: application/vnd.github+json' -H 'User-Agent: eliza-installer' -o "$dest" "$url"
   else
-    printf 'https://github.com/elizaOS/eliza/releases/download/%s' "$version"
+    wget -qO "$dest" --header='Accept: application/vnd.github+json' --user-agent='eliza-installer' "$url"
   fi
 }
 
-# Echo the asset filename appropriate for the detected platform.
-pick_macos_asset() {
+# ----- Asset resolution -------------------------------------------------------
+
+release_api_url() {
+  local version="${ELIZA_VERSION:-latest}"
+  if [[ "$version" == "latest" ]]; then
+    printf 'https://api.github.com/repos/elizaOS/eliza/releases/latest'
+  else
+    printf 'https://api.github.com/repos/elizaOS/eliza/releases/tags/%s' "$version"
+  fi
+}
+
+resolve_release_asset() {
+  local platform_label="$1"
+  shift
+
+  if ! command -v python3 &>/dev/null; then
+    error "python3 is required to inspect GitHub release assets."
+    error "Open https://github.com/elizaOS/eliza/releases and download the ${platform_label} installer manually."
+    exit 1
+  fi
+
+  local json_file
+  json_file="$(mktemp)"
+  if ! fetch_to "$(release_api_url)" "$json_file"; then
+    rm -f "$json_file"
+    error "Could not read the Eliza release metadata from GitHub."
+    error "Open https://github.com/elizaOS/eliza/releases and download the ${platform_label} installer manually."
+    exit 1
+  fi
+
+  local result
+  result="$(python3 - "$json_file" "$@" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+patterns = [re.compile(pattern, re.I) for pattern in sys.argv[2:]]
+
+with open(path, "r", encoding="utf-8") as f:
+    release = json.load(f)
+
+assets = release.get("assets") or []
+for pattern in patterns:
+    for asset in assets:
+        name = asset.get("name") or ""
+        url = asset.get("browser_download_url") or ""
+        if pattern.search(name) and url:
+            print(name)
+            print(url)
+            sys.exit(0)
+sys.exit(1)
+PY
+  )"
+  local status=$?
+  rm -f "$json_file"
+
+  if [[ $status -ne 0 || -z "$result" ]]; then
+    error "No ${platform_label} installer is attached to the selected Eliza release yet."
+    error "Open https://github.com/elizaOS/eliza/releases for the currently published assets."
+    exit 1
+  fi
+
+  printf '%s\n' "$result"
+}
+
+resolve_macos_asset() {
   case "$DETECTED_ARCH" in
-    arm64)  printf 'Eliza-mac-arm64.dmg' ;;
-    x64)    printf 'Eliza-mac-x64.dmg' ;;
+    arm64)
+      resolve_release_asset "macOS Apple Silicon" \
+        'macos[-_].*arm64.*\.dmg$' \
+        'arm64.*\.dmg$'
+      ;;
+    x64)
+      resolve_release_asset "macOS Intel" \
+        'macos[-_].*(x64|x86_64|amd64).*\.dmg$' \
+        'mac.*(x64|x86_64|amd64).*\.dmg$'
+      ;;
     *)
       error "Unsupported macOS arch: $DETECTED_ARCH"
       exit 1
@@ -150,9 +220,7 @@ pick_macos_asset() {
   esac
 }
 
-# Echo the Linux asset filename based on available package managers and
-# ELIZA_LINUX_FORMAT override.
-pick_linux_asset() {
+resolve_linux_asset() {
   local format="${ELIZA_LINUX_FORMAT:-}"
 
   if [[ -z "$format" ]]; then
@@ -166,9 +234,21 @@ pick_linux_asset() {
   fi
 
   case "$format" in
-    deb)      printf 'eliza_linux_amd64.deb' ;;
-    rpm)      printf 'eliza-linux-x86_64.rpm' ;;
-    appimage) printf 'Eliza-linux-x86_64.AppImage' ;;
+    deb)
+      resolve_release_asset "Debian / Ubuntu" \
+        'linux.*(x64|x86_64|amd64).*\.deb$' \
+        '\.deb$'
+      ;;
+    rpm)
+      resolve_release_asset "Fedora / RHEL" \
+        'linux.*(x64|x86_64|amd64).*\.rpm$' \
+        '\.rpm$'
+      ;;
+    appimage)
+      resolve_release_asset "Linux AppImage" \
+        'linux.*(x64|x86_64|amd64).*\.appimage$' \
+        '\.appimage$'
+      ;;
     *)
       error "Unknown ELIZA_LINUX_FORMAT: $format (expected deb|rpm|appimage)"
       exit 1
@@ -179,9 +259,10 @@ pick_linux_asset() {
 # ----- macOS install ----------------------------------------------------------
 
 install_macos() {
-  local asset
-  asset="$(pick_macos_asset)"
-  local url="$(release_base_url)/${asset}"
+  local resolved asset url
+  resolved="$(resolve_macos_asset)"
+  asset="$(printf '%s\n' "$resolved" | sed -n '1p')"
+  url="$(printf '%s\n' "$resolved" | sed -n '2p')"
   local tmpdir
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir"' EXIT
@@ -268,9 +349,10 @@ install_linux_appimage() {
 }
 
 install_linux() {
-  local asset
-  asset="$(pick_linux_asset)"
-  local url="$(release_base_url)/${asset}"
+  local resolved asset url
+  resolved="$(resolve_linux_asset)"
+  asset="$(printf '%s\n' "$resolved" | sed -n '1p')"
+  url="$(printf '%s\n' "$resolved" | sed -n '2p')"
   local tmpdir
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir"' EXIT

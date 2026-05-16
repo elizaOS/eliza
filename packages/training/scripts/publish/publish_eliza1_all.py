@@ -58,7 +58,7 @@ MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
 # by deprecation tooling, not by the current release publisher.
 BUNDLE_TIERS: Final[tuple[str, ...]] = tuple(
-    tier for tier in M.ELIZA_1_TIERS if tier != "27b-256k"
+    M.ELIZA_1_TIERS
 )
 
 # Where the staged bundles live on a dev box (see docs/eliza-1-pipeline/06-test-matrix.md). The path can

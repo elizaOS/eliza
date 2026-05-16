@@ -107,16 +107,6 @@ function getApiKeyOrPlaceholder(runtime: IAgentRuntime, useOAuth: boolean): stri
   return isBrowser() ? undefined : (getApiKeyOptional(runtime) ?? undefined);
 }
 
-export function createAnthropicClient(runtime: IAgentRuntime) {
-  const useOAuth = getAuthMode(runtime) === "oauth";
-
-  return createAnthropic({
-    apiKey: getApiKeyOrPlaceholder(runtime, useOAuth),
-    baseURL: getBaseURL(runtime),
-    ...(useOAuth ? { fetch: createOAuthFetch() } : {}),
-  });
-}
-
 export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
   const useOAuth = getAuthMode(runtime) === "oauth";
 

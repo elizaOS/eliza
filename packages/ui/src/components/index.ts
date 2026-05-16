@@ -1,6 +1,72 @@
 // Re-export primitives from local modules (avoid `from "@elizaos/ui"` here — it
 // creates a barrel cycle and breaks consumers' type resolution for the package root).
 
+export type {
+  BrandButtonProps,
+  KeyMetric,
+  LockOnButtonProps,
+  TabItem,
+} from "../cloud-ui/components/brand";
+export {
+  AgentCard,
+  BrandButton,
+  BrandCard,
+  BrandTabs,
+  BrandTabsContent,
+  BrandTabsList,
+  BrandTabsResponsive,
+  BrandTabsTrigger,
+  brandButtonVariants,
+  CloudSkyBackground,
+  CornerBrackets,
+  DashboardSection,
+  DashboardStatCard,
+  ElizaCloudLockup,
+  ElizaLogo,
+  HUDContainer,
+  KeyMetricsGrid,
+  LockOnButton,
+  MiniStatCard,
+  PromptCard,
+  PromptCardGrid,
+  SectionHeader,
+  SectionLabel,
+  SimpleBrandTabs,
+} from "../cloud-ui/components/brand";
+export { ApiRouteExplorer } from "../cloud-ui/components/docs/api-route-explorer";
+export { ApiRouteExplorerClient } from "../cloud-ui/components/docs/api-route-explorer-client";
+export {
+  DocsLayout,
+  type DocsLayoutProps,
+} from "../cloud-ui/components/docs/docs-layout";
+export type {
+  DocsFrontmatter,
+  MdxModule,
+  NavItem,
+} from "../cloud-ui/components/docs/docs-types";
+export { LlmsTxtBadge } from "../cloud-ui/components/docs/llms-txt-badge";
+export {
+  Callout,
+  type CalloutType,
+  Cards,
+  Steps,
+  Tabs as DocsTabs,
+} from "../cloud-ui/components/docs/mdx-components";
+export {
+  DashboardEndpointPending,
+  DashboardErrorState,
+  DashboardLoadingState,
+  DashboardPageContainer,
+  DashboardPageStack,
+  DashboardRouteError,
+  DashboardStatGrid,
+  DashboardToolbar,
+  formatDashboardRouteErrorMessage,
+  PageHeaderProvider,
+  PageTransition,
+  usePageHeader,
+  useSetPageHeader,
+} from "../cloud-ui/components/primitives";
 export * from "../utils/documents-upload-image";
 export * from "../utils/labels";
 export * from "../utils/trajectory-format";

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,9 +70,9 @@ const ANDROID_SMOKE_MODEL_ID =
   process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-0_8b";
 const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
   process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
-  "bundles/0_8b/text/eliza-1-0_8b-128k.gguf";
+  "bundles/0_8b/text/eliza-1-0_8b-32k.gguf";
 const ANDROID_SMOKE_MODEL_FILE =
-  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-0_8b-128k.gguf";
+  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-0_8b-32k.gguf";
 const ANDROID_SMOKE_MODEL_SIZE_BYTES = Number.parseInt(
   process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "556982432",
   10,
@@ -82,8 +82,9 @@ const ANDROID_SMOKE_MODEL_SHA256 =
   "9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581";
 const ANDROID_SMOKE_MODEL_URL =
   process.env.ANDROID_SMOKE_MODEL_URL?.trim() ||
-  `https://huggingface.co/elizalabs/eliza-1/resolve/main/${ANDROID_SMOKE_MODEL_RELATIVE_PATH
-    .split("/")
+  `https://huggingface.co/elizaos/eliza-1/resolve/main/${ANDROID_SMOKE_MODEL_RELATIVE_PATH.split(
+    "/",
+  )
     .map((segment) => encodeURIComponent(segment))
     .join("/")}?download=true`;
 const IOS_WAKE_POLL_ATTEMPTS = 30;
@@ -720,9 +721,13 @@ async function stageAndroidSmokeModel(context) {
     ["-s", context.serial, "push", source, tmpTarget],
     "Failed to push Android smoke model.",
   );
-  tryExec(context.adb, ["-s", context.serial, "shell", "chmod", "0644", tmpTarget], {
-    allowFailure: true,
-  });
+  tryExec(
+    context.adb,
+    ["-s", context.serial, "shell", "chmod", "0644", tmpTarget],
+    {
+      allowFailure: true,
+    },
+  );
   const copyScript = [
     `mkdir -p ${shellQuote(targetDir)}`,
     `cp ${shellQuote(tmpTarget)} ${shellQuote(targetFile)}`,
@@ -765,7 +770,11 @@ function writeAndroidSmokeModelManifest(context, targetDir) {
     `(printf %s ${encoded} | base64 -d > ${shellQuote(target)}) || (printf %s ${encoded} | toybox base64 -d > ${shellQuote(target)})`,
     `chmod 600 ${shellQuote(target)}`,
   ].join(" && ");
-  androidRunAs(context, script, "Failed to write Android smoke model manifest.");
+  androidRunAs(
+    context,
+    script,
+    "Failed to write Android smoke model manifest.",
+  );
 }
 
 function forceStopConflictingAndroidAgents(context) {
@@ -1220,7 +1229,9 @@ function assertIosFullBunSmokeSuccess(result) {
   if (
     !streamMessage.includes('"type":"done"') ||
     IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage) ||
-    !normalizeSmokeReply(streamMessage).includes(IOS_FULL_BUN_SMOKE_EXPECTED_REPLY)
+    !normalizeSmokeReply(streamMessage).includes(
+      IOS_FULL_BUN_SMOKE_EXPECTED_REPLY,
+    )
   ) {
     throw new Error(
       `iOS full Bun stream did not return the expected local model reply: ${streamMessage.slice(0, 500)}`,
@@ -1965,7 +1976,9 @@ async function runLocalInferenceApiSmoke(
   );
   const greetingConversationId = greetingCreated.conversation?.id;
   if (!greetingConversationId) {
-    throw new Error("Greeting smoke conversation creation did not return an id.");
+    throw new Error(
+      "Greeting smoke conversation creation did not return an id.",
+    );
   }
 
   const greeting = await requestJson(

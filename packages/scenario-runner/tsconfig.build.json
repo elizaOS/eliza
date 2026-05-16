@@ -26,7 +26,6 @@
     "src/**/*.test.ts",
     "src/__tests__/**/*",
     "src/executor.test.ts",
-    "src/runtime-factory.ts",
     "src/seeds.ts"
   ]
 }

@@ -8,7 +8,7 @@
  * verified on-device is the C↔Java boundary.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, mock } from "bun:test";
 
 import {
   type AospInferenceContextHandle,
@@ -27,13 +27,13 @@ import {
 /* -------------------------------------------------------------------- */
 
 interface MockSpies {
-  open: ReturnType<typeof vi.fn>;
-  prefill: ReturnType<typeof vi.fn>;
-  next: ReturnType<typeof vi.fn>;
-  cancel: ReturnType<typeof vi.fn>;
-  close: ReturnType<typeof vi.fn>;
-  saveSlot: ReturnType<typeof vi.fn>;
-  restoreSlot: ReturnType<typeof vi.fn>;
+  open: ReturnType<typeof mock>;
+  prefill: ReturnType<typeof mock>;
+  next: ReturnType<typeof mock>;
+  cancel: ReturnType<typeof mock>;
+  close: ReturnType<typeof mock>;
+  saveSlot: ReturnType<typeof mock>;
+  restoreSlot: ReturnType<typeof mock>;
 }
 
 function makeMockBinding(
@@ -51,9 +51,9 @@ function makeMockBinding(
 
   void ctxHandle;
 
-  const open = vi.fn().mockReturnValue(streamHandle);
-  const prefill = vi.fn();
-  const next = vi.fn(() => {
+  const open = mock(() => streamHandle);
+  const prefill = mock();
+  const next = mock(() => {
     if (cancelled) {
       // Surface a CANCELLED-shaped step the runner promotes to abort.
       return {
@@ -81,12 +81,12 @@ function makeMockBinding(
     }
     return steps[stepIdx++]!;
   });
-  const cancel = vi.fn(() => {
+  const cancel = mock(() => {
     cancelled = true;
   });
-  const close = vi.fn();
-  const saveSlot = vi.fn();
-  const restoreSlot = vi.fn();
+  const close = mock();
+  const saveSlot = mock();
+  const restoreSlot = mock();
 
   const binding: AospStreamingLlmBinding = {
     llmStreamSupported: () => options.supported !== false,

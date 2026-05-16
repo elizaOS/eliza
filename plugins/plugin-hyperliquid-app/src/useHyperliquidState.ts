@@ -1,9 +1,10 @@
 import { client } from "@elizaos/app-core";
 import { useCallback, useEffect, useState } from "react";
 import "./client";
+import type { HyperliquidClient } from "./client";
 import type {
-  HyperliquidMarketsResponse,
-  HyperliquidOrdersResponse,
+	HyperliquidMarketsResponse,
+	HyperliquidOrdersResponse,
   HyperliquidPositionsResponse,
   HyperliquidStatusResponse,
 } from "./hyperliquid-contracts";
@@ -29,25 +30,26 @@ export function useHyperliquidState(): HyperliquidState {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const nextStatus = await client.hyperliquidStatus();
-      setStatus(nextStatus);
+	const refresh = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		const hyperliquidClient = client as HyperliquidClient;
+		try {
+			const nextStatus = await hyperliquidClient.hyperliquidStatus();
+			setStatus(nextStatus);
 
-      if (!nextStatus.publicReadReady) {
+			if (!nextStatus.publicReadReady) {
         setMarkets(null);
         setPositions(null);
         setOrders(null);
         return;
       }
 
-      const [nextMarkets, nextPositions, nextOrders] = await Promise.all([
-        client.hyperliquidMarkets(),
-        client.hyperliquidPositions(),
-        client.hyperliquidOrders(),
-      ]);
+			const [nextMarkets, nextPositions, nextOrders] = await Promise.all([
+				hyperliquidClient.hyperliquidMarkets(),
+				hyperliquidClient.hyperliquidPositions(),
+				hyperliquidClient.hyperliquidOrders(),
+			]);
       setMarkets(nextMarkets);
       setPositions(nextPositions);
       setOrders(nextOrders);

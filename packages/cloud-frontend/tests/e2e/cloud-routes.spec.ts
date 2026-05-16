@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 const publicRoutes = [
   "/",
   "/login",
+  "/os",
   "/terms-of-service",
   "/privacy-policy",
   "/blog",

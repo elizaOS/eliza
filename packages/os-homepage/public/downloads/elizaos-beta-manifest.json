@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "product": "ElizaOS",
+  "channel": "beta",
+  "availableFrom": "2026-05-16",
+  "usbKeyPresale": {
+    "priceUsd": 49,
+    "estimatedShipMonth": "2026-10",
+    "description": "Branded ElizaOS USB installer key. Beta self-install downloads are available before hardware ships."
+  },
+  "artifacts": [
+    {
+      "id": "elizaos-live-beta-x86_64",
+      "label": "ElizaOS Linux live beta",
+      "kind": "raw-image",
+      "platform": "linux-bare-metal",
+      "architecture": "x86_64",
+      "url": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-live-beta-x86_64.img.zst",
+      "checksumUrl": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS"
+    },
+    {
+      "id": "elizaos-usb-installer-windows-x86_64",
+      "label": "ElizaOS USB installer for Windows",
+      "kind": "usb-installer",
+      "platform": "windows",
+      "architecture": "x86_64",
+      "url": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-usb-installer-beta-windows-x86_64.exe",
+      "checksumUrl": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS"
+    },
+    {
+      "id": "elizaos-vm-macos-silicon",
+      "label": "ElizaOS VM launcher for Apple Silicon",
+      "kind": "vm-bundle",
+      "platform": "macos",
+      "architecture": "arm64",
+      "url": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-vm-macos-silicon.zip",
+      "checksumUrl": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS"
+    },
+    {
+      "id": "elizaos-android-beta",
+      "label": "ElizaOS Android beta image bundle",
+      "kind": "android-image",
+      "platform": "android",
+      "architecture": "arm64",
+      "url": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-android-beta.zip",
+      "checksumUrl": "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS"
+    }
+  ]
+}

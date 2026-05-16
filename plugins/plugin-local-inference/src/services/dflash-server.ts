@@ -1073,6 +1073,17 @@ export function appendBackendSafeStartupFlags(
 		// model planner, so the server does not need llama.cpp to auto-fit them.
 		args.push("-fit", "off");
 	}
+	const cacheTypeK = findArgValue(args, "--cache-type-k");
+	const cacheTypeV = findArgValue(args, "--cache-type-v");
+	const usesCompressedKv =
+		isRuntimeCompressedKv(cacheTypeK) || isRuntimeCompressedKv(cacheTypeV);
+	if (!usesCompressedKv) return;
+	if (!hasAnyArg(args, ["-fa", "--flash-attn"])) {
+		args.push("-fa", "on");
+	}
+	if (!args.includes("--no-kv-offload")) {
+		args.push("--no-kv-offload");
+	}
 }
 
 const RUNTIME_COMPRESSED_KV_FALLBACK = "q8_0";
@@ -1084,6 +1095,29 @@ const runtimeCompressedKvWarnings = new Set<string>();
 
 function normalizedBackendName(backend: unknown): string | null {
 	return typeof backend === "string" ? backend.trim().toLowerCase() : null;
+}
+
+function isRuntimeCompressedKv(value: string | undefined): boolean {
+	return (
+		value !== undefined &&
+		RUNTIME_COMPRESSED_KV_UNSAFE.has(value.trim().toLowerCase())
+	);
+}
+
+function findArgValue(args: string[], flag: string): string | undefined {
+	for (let i = 0; i < args.length; i += 1) {
+		const value = args[i];
+		if (value === flag) return args[i + 1];
+		const prefix = `${flag}=`;
+		if (value?.startsWith(prefix)) return value.slice(prefix.length);
+	}
+	return undefined;
+}
+
+function hasAnyArg(args: string[], flags: readonly string[]): boolean {
+	return args.some((arg) =>
+		flags.some((flag) => arg === flag || arg.startsWith(`${flag}=`)),
+	);
 }
 
 function isCompressedKvGraphUnsafeBackend(backend: unknown): boolean {

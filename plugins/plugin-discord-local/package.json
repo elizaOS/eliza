@@ -22,15 +22,15 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "types": "./dist/src/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "types": "./dist/src/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "files": [

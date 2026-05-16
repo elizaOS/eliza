@@ -87,12 +87,7 @@ async function build() {
 	const dtsStart = Date.now();
 	console.log("📝 Generating TypeScript declarations...");
 	const { $ } = await import("bun");
-	const tscResult = await $`tsc --project tsconfig.build.json`.nothrow();
-	if (tscResult.exitCode !== 0) {
-		console.warn(
-			`⚠ tsc exited with code ${tscResult.exitCode}; declarations may be incomplete (continuing build)`,
-		);
-	}
+	await $`tsc --project tsconfig.build.json`;
 
 	const nodeDir = join(distDir, "node");
 	const browserDir = join(distDir, "browser");

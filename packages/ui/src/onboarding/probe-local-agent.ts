@@ -47,7 +47,6 @@ type NativeAgentProbePlugin = {
   }>;
 };
 
-const agentPluginId = "@elizaos/capacitor-agent";
 const agentPluginName = "Agent";
 
 function toNativeAgentProbePlugin(
@@ -87,17 +86,10 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentProbePlugin | null
     const agent = toNativeAgentProbePlugin(registeredAgent);
     if (agent) return agent;
   } catch {
-    // Fall through to the package import for browser/package-mode test builds.
-  }
-
-  try {
-    const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
-      Agent?: NativeAgentProbePlugin;
-    };
-    return toNativeAgentProbePlugin(mod.Agent);
-  } catch {
     return null;
   }
+
+  return null;
 }
 
 /** Reset the probe cache. Test-only. */

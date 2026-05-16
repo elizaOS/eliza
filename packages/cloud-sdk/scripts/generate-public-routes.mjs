@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   extractMethods,
@@ -17,11 +18,15 @@ function pascalCase(value) {
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join("");
+  return words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join("");
 }
 
 function methodNameFor(method, route, usedNames) {
-  const base = method.toLowerCase() + route.split("/").filter(Boolean).map(pascalCase).join("");
+  const base =
+    method.toLowerCase() +
+    route.split("/").filter(Boolean).map(pascalCase).join("");
 
   const existingRoute = usedNames.get(base);
   if (existingRoute) {
@@ -68,9 +73,11 @@ function pathParamTypeLine(endpoint) {
 function responseModeFor(method, route, source) {
   if (route.endsWith("/tts")) return "binary";
   if (source.includes('"Content-Type": "text/html')) return "text";
-  if (route.includes("/stream") || route.endsWith("/logs/stream")) return "stream";
+  if (route.includes("/stream") || route.endsWith("/logs/stream"))
+    return "stream";
   if (route.endsWith("/terminal") && method === "GET") return "stream";
-  if (source.includes("text/event-stream") || source.includes("SSE_HEADERS")) return "mixed";
+  if (source.includes("text/event-stream") || source.includes("SSE_HEADERS"))
+    return "mixed";
   return "json";
 }
 
@@ -120,16 +127,18 @@ const endpoints = [];
 
 for (const routeFile of routeFiles) {
   const source = await readFile(routeFile.fullPath, "utf8");
-  const methods = (await extractMethods(source, routeFile.fullPath, cloudRoot)).filter(
-    (method) => method !== "OPTIONS" && method !== "HEAD",
-  );
+  const methods = (
+    await extractMethods(source, routeFile.fullPath, cloudRoot)
+  ).filter((method) => method !== "OPTIONS" && method !== "HEAD");
   if (methods.length === 0) continue;
 
   const segments = routeFile.relativeSegments.map(segmentToRouteParam);
   const route = `/api/${segments.map((segment) => segment.routeSegment).join("/")}`;
   if (!isGeneratedPublicRoute(route)) continue;
 
-  const pathParams = segments.flatMap((segment) => (segment.paramName ? [segment.paramName] : []));
+  const pathParams = segments.flatMap((segment) =>
+    segment.paramName ? [segment.paramName] : [],
+  );
   const catchAllPathParams = segments.flatMap((segment) =>
     segment.paramName && segment.catchAll ? [segment.paramName] : [],
   );
@@ -310,21 +319,61 @@ ${endpoints.map(routeRawMethod).join("\n\n")}
 }
 `;
 
-const outputPath = path.join(cloudRoot, "packages", "sdk", "src", "public-routes.ts");
+async function firstExistingPath(paths) {
+  for (const candidate of paths) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {}
+  }
+  return paths[0];
+}
+
+const outputPath = await firstExistingPath([
+  path.join(cloudRoot, "packages", "cloud-sdk", "src", "public-routes.ts"),
+  path.join(cloudRoot, "packages", "sdk", "src", "public-routes.ts"),
+]);
+const biomeBin = path.join(
+  cloudRoot,
+  "node_modules",
+  ".bin",
+  process.platform === "win32" ? "biome.cmd" : "biome",
+);
+const formatResult = spawnSync(
+  biomeBin,
+  ["format", "--stdin-file-path", outputPath],
+  {
+    input: source,
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+  },
+);
+
+if (formatResult.status !== 0) {
+  throw new Error(
+    `Failed to format generated public routes with Biome: ${formatResult.stderr}`,
+  );
+}
+
+const formattedSource = formatResult.stdout;
 const relativeOutputPath = path.relative(cloudRoot, outputPath);
 
 if (process.argv.includes("--check")) {
   const currentSource = await readFile(outputPath, "utf8").catch(() => "");
-  if (currentSource !== source) {
+  if (currentSource !== formattedSource) {
     console.error(
       `${relativeOutputPath} is stale. Run \`bun run generate:routes\` from packages/sdk.`,
     );
     process.exitCode = 1;
   } else {
-    console.log(`${relativeOutputPath} is up to date (${endpoints.length} endpoints)`);
+    console.log(
+      `${relativeOutputPath} is up to date (${endpoints.length} endpoints)`,
+    );
   }
 } else {
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, source);
-  console.log(`Generated ${relativeOutputPath} (${endpoints.length} endpoints)`);
+  await writeFile(outputPath, formattedSource);
+  console.log(
+    `Generated ${relativeOutputPath} (${endpoints.length} endpoints)`,
+  );
 }

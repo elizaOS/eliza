@@ -1153,13 +1153,14 @@ function collectRoleLabeledPromptMessages(
 
 	const headerPattern = /(^|\n{2,})(system|user|assistant):\n/g;
 	const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
-	let match: RegExpExecArray | null;
-	while ((match = headerPattern.exec(prompt)) !== null) {
+	let match = headerPattern.exec(prompt);
+	while (match !== null) {
 		headers.push({
 			index: match.index,
 			role: match[2],
 			bodyStart: match.index + match[0].length,
 		});
+		match = headerPattern.exec(prompt);
 	}
 	if (headers.length === 0) return null;
 
@@ -1196,9 +1197,9 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 			// so this startup probe must not try to load the native model.
 			return new Array(resolveEmbeddingDimension()).fill(0);
 		}
-			let loadArgs: LocalInferenceLoadArgs | null =
-				resolveLocalLoadArgs("TEXT_EMBEDDING");
-			let modelPath = loadArgs?.modelPath ?? null;
+		let loadArgs: LocalInferenceLoadArgs | null =
+			resolveLocalLoadArgs("TEXT_EMBEDDING");
+		let modelPath = loadArgs?.modelPath ?? null;
 		if (!modelPath) {
 			if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
 				throw new Error(

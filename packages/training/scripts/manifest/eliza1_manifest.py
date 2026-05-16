@@ -42,7 +42,6 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "4b",
     "9b",
     "27b",
-    "27b-256k",
 )
 
 ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
@@ -84,6 +83,7 @@ MIN_TEXT_CONTEXT: Final[int] = 131_072
 # fine-tuned-v1 publish states retained for forward-compat.
 ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
     "local-standin",
+    "base-v1-candidate",
     "base-v1",
     "finetuned-v2",
     "upload-candidate",
@@ -92,6 +92,7 @@ ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
 # Release states the publish orchestrator + platform-plan blocker check
 # treat as a satisfiable release shape (not a hard publish-blocker).
 ELIZA_1_PUBLISHABLE_RELEASE_STATES: Final[tuple[str, ...]] = (
+    "base-v1-candidate",
     "base-v1",
     "upload-candidate",
     "final",
@@ -145,10 +146,6 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "Qwen/Qwen3.6-27B",
         "unsloth/Qwen3.6-27B-GGUF",
     ),
-    "27b-256k": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
-    ),
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -180,13 +177,6 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
-    "27b-256k": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -203,7 +193,6 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
 ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
@@ -217,7 +206,6 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",
-    "27b-256k": "Q8_0",
 }
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
@@ -231,7 +219,6 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
-    "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -240,7 +227,6 @@ VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("omnivoice", "kokoro"),
     "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
-    "27b-256k": ("omnivoice",),
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (

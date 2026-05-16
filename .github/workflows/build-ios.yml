@@ -197,15 +197,17 @@ jobs:
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
 
-      - name: Upload IPA to GitHub Release
+      - name: Confirm iOS distribution policy
         if: (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)) && env.IOS_CERTIFICATE_BASE64 != ''
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
-          files: ${{ runner.temp }}/export/*.ipa
-          fail_on_unmatched_files: false
+        run: |
+          {
+            echo "## iOS artifact policy"
+            echo ""
+            echo "Signed IPA files are kept as private workflow artifacts for TestFlight/App Store traceability."
+            echo "They are not uploaded to public GitHub Releases. Public iOS distribution must use TestFlight or the App Store."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Cleanup keychain
         if: always()

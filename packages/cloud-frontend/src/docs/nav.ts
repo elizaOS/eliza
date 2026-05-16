@@ -16,15 +16,14 @@ type MetaValue =
 
 type MetaModule = { default: Record<string, MetaValue> };
 
-const metaModules = import.meta.glob<MetaModule>(
-  "../../../content/**/_meta.ts",
-  { eager: true },
-);
+const metaModules = import.meta.glob<MetaModule>("../../content/**/_meta.ts", {
+  eager: true,
+});
 
-const mdxModules = import.meta.glob<MdxModule>("../../../content/**/*.mdx");
+const mdxModules = import.meta.glob<MdxModule>("../../content/**/*.mdx");
 
 function toDocsPath(globKey: string): string {
-  const rel = globKey.replace("../../../content/", "").replace(/\.mdx$/, "");
+  const rel = globKey.replace("../../content/", "").replace(/\.mdx$/, "");
   if (rel === "index") return "/docs";
   if (rel.endsWith("/index")) return `/docs/${rel.slice(0, -"/index".length)}`;
   return `/docs/${rel}`;
@@ -36,15 +35,13 @@ for (const [globKey, loader] of Object.entries(mdxModules)) {
 }
 
 function metaFor(dir: string): Record<string, MetaValue> | null {
-  const key = dir
-    ? `../../../content/${dir}/_meta.ts`
-    : "../../../content/_meta.ts";
+  const key = dir ? `../../content/${dir}/_meta.ts` : "../../content/_meta.ts";
   return metaModules[key]?.default ?? null;
 }
 
 function hasMetaForSubdir(dir: string, key: string): boolean {
   const sub = dir ? `${dir}/${key}` : key;
-  return Boolean(metaModules[`../../../content/${sub}/_meta.ts`]);
+  return Boolean(metaModules[`../../content/${sub}/_meta.ts`]);
 }
 
 function buildTree(dir: string, basePath: string): NavItem[] {

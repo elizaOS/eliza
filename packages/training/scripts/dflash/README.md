@@ -13,7 +13,7 @@ The catalog at `packages/shared/src/local-inference/catalog.ts`
 Today this is:
 
 ```
-0_8b, 2b, 4b, 9b, 27b, 27b-256k
+0_8b, 2b, 4b, 9b, 27b
 ```
 
 These IDs name the **target** text models — the bundles a user downloads from
@@ -22,7 +22,7 @@ These IDs name the **target** text models — the bundles a user downloads from
 DFlash drafter training is intentionally narrower:
 
 ```
-2b, 4b, 9b, 27b, 27b-256k
+2b, 4b, 9b, 27b
 ```
 
 `0_8b` is target-only by design. Its bundle metadata must keep DFlash disabled,
@@ -83,8 +83,7 @@ This is what CI exercises.
 
 ## Adding a new tier
 
-When the catalog adds a new tier (e.g. someone publishes
-`eliza-1-1m_5b`):
+When the catalog adds a new canonical tier:
 
 1. Add the tier ID to `ELIZA_1_TIERS` in
    `packages/training/scripts/manifest/eliza1_manifest.py`.
