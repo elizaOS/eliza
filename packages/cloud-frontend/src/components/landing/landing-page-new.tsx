@@ -66,16 +66,7 @@ export function LandingPage({ accessError }: LandingPageProps) {
   return (
     <div className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white">
       <LandingHeader />
-
       <HeroSection />
-
-      <section className="border-y border-white/14 bg-black px-6 py-10 sm:px-10 lg:px-16">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 text-sm font-medium text-white/64 sm:flex-row sm:items-center sm:justify-between">
-          <span>Always-on agents.</span>
-          <span>Your account. Your runtime.</span>
-          <span>Hardware preorder ready.</span>
-        </div>
-      </section>
     </div>
   );
 }

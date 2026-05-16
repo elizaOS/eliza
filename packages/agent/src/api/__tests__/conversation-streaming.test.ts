@@ -25,6 +25,8 @@ type RuntimeOverrides = Partial<AgentRuntime> & {
 };
 
 type MessageService = NonNullable<AgentRuntime["messageService"]>;
+type UseModel = NonNullable<AgentRuntime["useModel"]>;
+type UseModelMock = ReturnType<typeof vi.fn> & UseModel;
 
 function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
   const runtime = {
@@ -58,6 +60,12 @@ function createChatMessage(text: string) {
     entityId: stringToUuid("user"),
     content: { text, channelType: ChannelType.DM },
   });
+}
+
+function createUseModelMock(
+  impl: (modelType: unknown, params: unknown) => Promise<unknown>,
+): UseModelMock {
+  return vi.fn(impl) as unknown as UseModelMock;
 }
 
 function createStreamingMessageService(
@@ -166,16 +174,14 @@ describe("generateChatResponse token streaming", () => {
   it("streams cleaned snapshots from the Android local direct path", async () => {
     const chunks: string[] = [];
     const snapshots: string[] = [];
-    const useModel = vi.fn(
-      async (
-        _modelType: unknown,
-        params: { onStreamChunk?: (chunk: string) => Promise<void> | void },
-      ) => {
-        await params.onStreamChunk?.("Yes");
-        await params.onStreamChunk?.(", locally.");
-        return "Yes, locally.";
-      },
-    );
+    const useModel = createUseModelMock(async (_modelType, params) => {
+      const textParams = params as {
+        onStreamChunk?: (chunk: string) => Promise<void> | void;
+      };
+      await textParams.onStreamChunk?.("Yes");
+      await textParams.onStreamChunk?.(", locally.");
+      return "Yes, locally.";
+    });
     const runtime = createRuntime({
       getSetting: (key: string) => {
         const values: Record<string, string> = {
@@ -236,7 +242,7 @@ describe("generateChatResponse token streaming", () => {
   });
 
   it("keeps contextual Android local turns on the normal message runtime", async () => {
-    const useModel = vi.fn(async () => "generic local reply");
+    const useModel = createUseModelMock(async () => "generic local reply");
     const handleMessage = vi.fn(async () => ({
       didRespond: true,
       responseContent: { text: "You just told me your name is Ada." },
@@ -276,7 +282,7 @@ describe("generateChatResponse token streaming", () => {
   });
 
   it("keeps tool-like Android local turns on the normal message runtime", async () => {
-    const useModel = vi.fn(async () => "generic local reply");
+    const useModel = createUseModelMock(async () => "generic local reply");
     const handleMessage = vi.fn(async () => ({
       didRespond: true,
       responseContent: { text: "I need the normal runtime for that." },

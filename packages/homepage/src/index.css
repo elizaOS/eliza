@@ -1,9 +1,6 @@
 /* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
-@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/300.css";
 @import "@fontsource/poppins/500.css";
-@import "@fontsource/poppins/600.css";
-@import "@fontsource/poppins/700.css";
-@import "@fontsource/poppins/800.css";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
@@ -274,14 +271,15 @@ body {
 }
 
 .app-header {
-  position: sticky;
+  position: absolute;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1.25rem clamp(1.25rem, 4vw, 3rem);
-  background: var(--brand-orange);
   color: var(--brand-black);
 }
 
@@ -299,7 +297,7 @@ body {
   display: flex;
   align-items: center;
   gap: clamp(0.65rem, 2vw, 1.4rem);
-  font-weight: 600;
+  font-weight: 500;
   font-size: clamp(0.78rem, 1.5vw, 0.95rem);
   white-space: nowrap;
 }
@@ -312,13 +310,14 @@ body {
   background: var(--brand-black);
   color: var(--brand-white);
   padding: 0.55rem 0.95rem;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .app-hero {
-  min-height: calc(100vh - 4.5rem);
+  min-height: 100svh;
   display: flex;
   align-items: center;
+  padding-top: clamp(7rem, 10vw, 10rem);
 }
 
 .app-band-inner {
@@ -357,7 +356,7 @@ body {
 
 .app-kicker {
   font-size: clamp(0.95rem, 1.7vw, 1.125rem);
-  font-weight: 700;
+  font-weight: 500;
   margin: 0 0 1rem;
   color: var(--brand-black);
   letter-spacing: 0;
@@ -369,7 +368,7 @@ body {
 
 .app-display {
   font-size: clamp(4.5rem, 13vw, 12rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 0.86;
   margin: 0;
   letter-spacing: 0;
@@ -379,7 +378,7 @@ body {
 
 .app-h2 {
   font-size: clamp(2.7rem, 7vw, 6.5rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 0.92;
   margin: 0;
   letter-spacing: 0;
@@ -397,7 +396,7 @@ body {
 
 .app-lede {
   font-size: clamp(1.25rem, 2.3vw, 2rem);
-  font-weight: 600;
+  font-weight: 300;
   line-height: 1.2;
   margin: 1.5rem 0 0;
   max-width: 42rem;
@@ -416,7 +415,7 @@ body {
   gap: 0.5rem;
   min-height: 3.25rem;
   padding: 0 1.5rem;
-  font-weight: 700;
+  font-weight: 500;
   font-size: 1rem;
   transition:
     background 0.15s ease,
@@ -492,7 +491,6 @@ body {
   padding: 1rem 0;
   color: var(--brand-white);
   text-decoration: none;
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .app-download-row:hover {
@@ -500,7 +498,7 @@ body {
 }
 
 .app-download-row span:first-child {
-  font-weight: 700;
+  font-weight: 500;
   font-size: 1.125rem;
   flex: 1;
 }
@@ -551,7 +549,7 @@ body {
   max-width: 30rem;
   font-size: clamp(1.2rem, 2vw, 1.75rem);
   line-height: 1.25;
-  font-weight: 600;
+  font-weight: 300;
 }
 
 .app-cloud-video {
@@ -599,7 +597,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .app-footer-nav a:hover {

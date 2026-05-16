@@ -1,9 +1,6 @@
 /* Font imports are vendored via @fontsource so fonts load from the local bundle. */
-@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/300.css";
 @import "@fontsource/poppins/500.css";
-@import "@fontsource/poppins/600.css";
-@import "@fontsource/poppins/700.css";
-@import "@fontsource/poppins/800.css";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
 

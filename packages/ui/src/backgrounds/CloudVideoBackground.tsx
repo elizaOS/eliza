@@ -108,7 +108,7 @@ export function CloudVideoBackground({
         loop
         muted
         playsInline
-        preload="auto"
+        preload="metadata"
         poster={poster}
         style={{
           position: "absolute",

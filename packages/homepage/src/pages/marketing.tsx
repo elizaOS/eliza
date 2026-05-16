@@ -1,7 +1,7 @@
-import { ArrowRight, Download, ExternalLink } from "lucide-react";
+import { ArrowRight, Download } from "lucide-react";
 import { releaseData } from "@/generated/release-data";
 
-const cloudUrl = "https://www.elizacloud.ai/dashboard/my-agents";
+const cloudUrl = "https://elizacloud.ai/login?intent=launch";
 const osUrl = "https://elizaos.ai";
 const releaseFallbackUrl = "https://github.com/elizaOS/eliza/releases";
 
@@ -48,14 +48,10 @@ export default function MarketingPage() {
           />
         </a>
         <nav className="app-nav" aria-label="Eliza products">
-          <a href="/" aria-current="page">
-            Eliza App
-          </a>
-          <a href={osUrl}>ElizaOS</a>
-          <a href={cloudUrl}>Eliza Cloud</a>
           <a href="#download" className="app-nav-download">
             Download
           </a>
+          <a href={cloudUrl}>Eliza Cloud</a>
         </nav>
       </header>
 
@@ -63,26 +59,19 @@ export default function MarketingPage() {
         <section className="brand-section brand-section--orange app-hero">
           <div className="app-band-inner app-hero-grid">
             <div className="app-hero-copy">
-              <p className="app-kicker">Eliza App</p>
-              <h1 className="app-display">Download the app.</h1>
-              <p className="app-lede">
-                Your Eliza agent on desktop, mobile, and the web.
-              </p>
+              <h1 className="app-display">Your Eliza, everywhere.</h1>
+              <p className="app-lede">Download the app.</p>
               <div className="app-cta-row">
                 <a href="#download" className="app-cta app-cta--black">
                   <Download className="app-icon" aria-hidden="true" />
                   Download the app
                 </a>
-                <a href={osUrl} className="app-cta app-cta--orange-secondary">
-                  ElizaOS
-                  <ExternalLink className="app-icon" aria-hidden="true" />
-                </a>
                 <a
                   href={cloudUrl}
                   className="app-cta app-cta--orange-secondary"
                 >
-                  Eliza Cloud
-                  <ExternalLink className="app-icon" aria-hidden="true" />
+                  Launch Eliza
+                  <ArrowRight className="app-icon" aria-hidden="true" />
                 </a>
               </div>
             </div>
@@ -98,7 +87,7 @@ export default function MarketingPage() {
         <section id="download" className="brand-section brand-section--black">
           <div className="app-band-inner app-download-band">
             <div>
-              <h2 className="app-h2 app-h2--light">Install Eliza App.</h2>
+              <h2 className="app-h2 app-h2--light">Install.</h2>
             </div>
 
             <div className="app-download-list">
@@ -107,42 +96,16 @@ export default function MarketingPage() {
               ))}
             </div>
 
-            <div className="app-store-list">
-              {releaseData.storeTargets.map((store) => (
-                <div
-                  key={store.platform}
-                  className="app-store-row"
-                  aria-disabled="true"
-                >
-                  <span>{store.label}</span>
-                  <span>{store.reviewState}</span>
-                  <span>Coming soon</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="brand-section brand-section--white">
-          <div className="app-band-inner app-mini-grid">
-            <div>
-              <p className="app-kicker">App first</p>
-              <h2 className="app-h2">Chat. Voice. Automate.</h2>
-            </div>
-            <p className="app-side-copy">
-              One interface for your agent, local runtime, and cloud account.
-            </p>
           </div>
         </section>
 
         <section className="brand-section brand-section--blue">
           <div className="app-band-inner app-action-band">
             <div>
-              <p className="app-kicker app-kicker--light">Open source</p>
-              <h2 className="app-h2 app-h2--light">Build on ElizaOS.</h2>
+              <h2 className="app-h2 app-h2--light">Install the OS.</h2>
             </div>
             <a href={osUrl} className="app-cta app-cta--white">
-              Go to ElizaOS
+              ElizaOS
               <ArrowRight className="app-icon" aria-hidden="true" />
             </a>
           </div>
@@ -162,11 +125,10 @@ export default function MarketingPage() {
           </video>
           <div className="app-band-inner app-action-band app-action-band--cloud">
             <div>
-              <p className="app-kicker">Managed</p>
-              <h2 className="app-h2">Continue in Eliza Cloud.</h2>
+              <h2 className="app-h2">Run in cloud.</h2>
             </div>
             <a href={cloudUrl} className="app-cta app-cta--orange">
-              Try Eliza Cloud
+              Launch Eliza
               <ArrowRight className="app-icon" aria-hidden="true" />
             </a>
           </div>
@@ -184,7 +146,6 @@ export default function MarketingPage() {
           <nav className="app-footer-nav" aria-label="Footer">
             <a href={osUrl}>ElizaOS</a>
             <a href={cloudUrl}>Eliza Cloud</a>
-            <a href="https://github.com/elizaOS/eliza">GitHub</a>
           </nav>
         </div>
       </footer>

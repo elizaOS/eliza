@@ -1,10 +1,7 @@
 import { ArrowRight, Download, ShoppingBag } from "lucide-react";
 
 const appUrl = "https://eliza.app";
-const cloudUrl = "https://elizaos.ai/cloud";
-const discordUrl = "https://discord.gg/eliza";
-const twitterUrl = "https://x.com/elizaos";
-const githubUrl = "https://github.com/elizaOS/eliza";
+const cloudUrl = "https://elizacloud.ai/login?intent=launch";
 const checkoutBaseUrl = "https://elizaos.ai/checkout";
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
 
@@ -163,7 +160,7 @@ function ProductDetail({ product }: { product: Product }) {
                 </a>
               </div>
               <p className="detail-note">
-                Checkout stays on elizaos.ai. Beta downloads stay open.
+                Specialized OS build. Supported Mac hardware is limited.
               </p>
             </div>
             <ProductImage product={product} />
@@ -188,7 +185,6 @@ function Header() {
       <nav className="site-nav" aria-label="Product switcher">
         <a href="#downloads">Download</a>
         <a href="#hardware">Hardware</a>
-        <a href={githubUrl}>GitHub</a>
       </nav>
     </header>
   );
@@ -203,10 +199,8 @@ function Footer() {
         draggable={false}
       />
       <nav aria-label="Community">
-        <a href={githubUrl}>GitHub</a>
-        <a href={discordUrl}>Discord</a>
-        <a href={twitterUrl}>X</a>
         <a href={appUrl}>App</a>
+        <a href={cloudUrl}>Cloud</a>
       </nav>
     </footer>
   );
@@ -220,13 +214,13 @@ function HomePage() {
         <section className="band band-blue hero-band">
           <div className="band-inner hero-layout">
             <div>
-              <p className="section-kicker">elizaOS</p>
-              <h1>
+              <h1>Install elizaOS.</h1>
+              <p className="hero-copy">
                 The agentic operating system for devices that run themselves.
-              </h1>
+              </p>
               <div className="hero-actions">
                 <a href="#downloads" className="button">
-                  Download/install elizaOS
+                  Download installer
                   <Download className="icon" />
                 </a>
                 <a href="#hardware" className="button button-dark">
@@ -247,20 +241,20 @@ function HomePage() {
         <section id="downloads" className="band band-white">
           <div className="band-inner split-band">
             <div>
-              <h2>Choose the installer for your device.</h2>
+              <h2>Choose an installer.</h2>
             </div>
             <div className="download-stack">
               <a href={betaManifestUrl} className="download-line">
-                <span>Download ElizaOS</span>
-                <strong>Beta manifest</strong>
+                <span>Linux PC</span>
+                <strong>ISO + USB installer</strong>
               </a>
               <a href={appUrl} className="download-line">
-                <span>Download Eliza App</span>
-                <strong>iOS + Android</strong>
+                <span>VM launcher</span>
+                <strong>Mac, Windows, Linux</strong>
               </a>
               <a href={cloudUrl} className="download-line">
-                <span>Run in Eliza Cloud</span>
-                <strong>Managed runtime</strong>
+                <span>Android</span>
+                <strong>APK + AOSP image</strong>
               </a>
             </div>
           </div>
@@ -268,16 +262,18 @@ function HomePage() {
 
         <section className="band band-orange">
           <div className="band-inner punch-band">
-            <h2>Local first. Cloud when you want it.</h2>
-            <p>Supported Mac hardware is limited during beta.</p>
+            <h2>Local first.</h2>
+            <p>
+              Supported Mac hardware is limited. Apple Silicon support targets
+              selected M1/M2 devices.
+            </p>
           </div>
         </section>
 
         <section id="hardware" className="band band-black">
           <div className="band-inner">
             <div className="section-head">
-              <p className="section-kicker">Store</p>
-              <h2>Pre-order hardware on elizaos.ai.</h2>
+              <h2>Pre-order hardware.</h2>
               <a
                 href={`${checkoutBaseUrl}?collection=elizaos-hardware`}
                 className="button"

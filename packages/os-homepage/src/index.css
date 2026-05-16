@@ -1,8 +1,5 @@
-@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/300.css";
 @import "@fontsource/poppins/500.css";
-@import "@fontsource/poppins/600.css";
-@import "@fontsource/poppins/700.css";
-@import "@fontsource/poppins/800.css";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
@@ -60,15 +57,16 @@ img {
 }
 
 .site-header {
-  position: sticky;
+  position: absolute;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
   padding: 1rem clamp(1rem, 4vw, 3rem);
-  background: var(--brand-blue);
 }
 
 .brand img,
@@ -85,7 +83,7 @@ img {
   gap: clamp(0.9rem, 2.5vw, 1.8rem);
   align-items: center;
   font-size: 0.92rem;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .site-nav a,
@@ -133,7 +131,7 @@ img {
   display: flex;
   align-items: center;
   min-height: calc(100vh - 4rem);
-  padding-top: clamp(2rem, 5vw, 4.5rem);
+  padding-top: clamp(7rem, 10vw, 10rem);
   padding-bottom: clamp(2rem, 5vw, 4.5rem);
 }
 
@@ -155,7 +153,7 @@ img {
 .section-kicker {
   margin: 0 0 0.75rem;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -171,7 +169,7 @@ h1 {
   max-width: 22ch;
   margin-bottom: 1rem;
   font-size: clamp(2.8rem, 5vw, 4.6rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 0.94;
   letter-spacing: 0;
 }
@@ -180,7 +178,7 @@ h2 {
   max-width: 13ch;
   margin-bottom: 0;
   font-size: clamp(2.35rem, 6vw, 5rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 0.98;
   letter-spacing: 0;
 }
@@ -188,7 +186,7 @@ h2 {
 h3 {
   margin-bottom: 0.25rem;
   font-size: clamp(1.5rem, 3.2vw, 2.75rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
 }
@@ -197,7 +195,7 @@ h3 {
   max-width: 30rem;
   margin-bottom: 0;
   font-size: clamp(1.1rem, 1.8vw, 1.45rem);
-  font-weight: 500;
+  font-weight: 300;
   line-height: 1.4;
 }
 
@@ -218,7 +216,7 @@ h3 {
   background: var(--brand-white);
   color: var(--brand-blue);
   font-size: 0.96rem;
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1;
 }
 
@@ -283,7 +281,7 @@ h3 {
 }
 
 .download-line + .download-line {
-  box-shadow: 0 -1px 0 var(--brand-black);
+  margin-top: 1rem;
 }
 
 @media (min-width: 620px) {
@@ -295,14 +293,14 @@ h3 {
 
 .download-line span {
   font-size: clamp(1.35rem, 3vw, 2.25rem);
-  font-weight: 800;
+  font-weight: 500;
   line-height: 1.05;
 }
 
 .download-line strong {
   color: var(--brand-blue);
   font-size: 0.95rem;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .punch-band {
@@ -323,7 +321,7 @@ h3 {
   max-width: 24rem;
   margin-bottom: 0;
   font-size: 1.1rem;
-  font-weight: 700;
+  font-weight: 300;
   line-height: 1.35;
 }
 
@@ -350,7 +348,7 @@ h3 {
 }
 
 .product-row + .product-row {
-  box-shadow: 0 -1px 0 var(--brand-gray);
+  margin-top: clamp(1rem, 2vw, 1.5rem);
 }
 
 @media (min-width: 860px) {
@@ -373,7 +371,7 @@ h3 {
   margin-bottom: 0;
   color: var(--brand-gray);
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 300;
   line-height: 1.4;
 }
 
@@ -385,7 +383,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   color: var(--brand-gray);
-  font-weight: 800;
+  font-weight: 500;
 }
 
 @media (min-width: 860px) {
@@ -408,7 +406,7 @@ h3 {
   max-width: 34rem;
   margin-bottom: 0;
   font-size: clamp(1.05rem, 1.6vw, 1.3rem);
-  font-weight: 600;
+  font-weight: 300;
   line-height: 1.4;
 }
 
@@ -422,7 +420,7 @@ h3 {
   gap: 1rem;
   margin-top: 1.5rem;
   font-size: 1.2rem;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .detail-note {
@@ -434,7 +432,7 @@ h3 {
   display: inline-flex;
   margin-bottom: 1rem;
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 500;
   text-transform: uppercase;
 }
 
