@@ -7,17 +7,29 @@
  * orchestration; this test asserts the shell-owned surfaces this package
  * actually controls.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const here = import.meta.dirname;
 const root = join(here, "..");
+const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
 
 function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
+}
+
+function readGeneratedOrTemplate(rel: string): string {
+  const generatedPath = join(root, rel);
+  if (existsSync(generatedPath)) return readFileSync(generatedPath, "utf8");
+
+  const [platform, ...segments] = rel.split("/");
+  return readFileSync(
+    join(appCorePlatformsRoot, platform, ...segments),
+    "utf8",
+  );
 }
 
 describe("brand surfaces", () => {
@@ -36,18 +48,24 @@ describe("brand surfaces", () => {
   });
 
   it("Android colors.xml + styles.xml use brand orange for splash + status bar", () => {
-    const colors = read("android/app/src/main/res/values/colors.xml");
-    expect(colors).toContain("<color name=\"eliza_orange\">#FF5800</color>");
-    expect(colors).toContain("<color name=\"splash_background\">#FF5800</color>");
-    expect(colors).toContain("<color name=\"colorPrimary\">#FF5800</color>");
+    const colors = readGeneratedOrTemplate(
+      "android/app/src/main/res/values/colors.xml",
+    );
+    expect(colors).toContain('<color name="eliza_orange">#FF5800</color>');
+    expect(colors).toContain('<color name="splash_background">#FF5800</color>');
+    expect(colors).toContain('<color name="colorPrimary">#FF5800</color>');
 
-    const styles = read("android/app/src/main/res/values/styles.xml");
+    const styles = readGeneratedOrTemplate(
+      "android/app/src/main/res/values/styles.xml",
+    );
     expect(styles).toContain("@color/eliza_orange");
     expect(styles).toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
   });
 
   it("iOS LaunchScreen.storyboard backdrop is brand orange", () => {
-    const xml = read("ios/App/App/Base.lproj/LaunchScreen.storyboard");
+    const xml = readGeneratedOrTemplate(
+      "ios/App/App/Base.lproj/LaunchScreen.storyboard",
+    );
     // 1.0 / 0.345 / 0.0 is #FF5800 in sRGB to 3 decimals.
     expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
   });
@@ -57,7 +75,9 @@ describe("brand surfaces", () => {
     // Either pure black or the brand orange is acceptable. The previous
     // `#08080a` near-black is a slop value and should not regress.
     expect(html).not.toContain("#08080a");
-    expect(html).toMatch(/background-color:\s*var\(--bg,\s*(#000000|#FF5800)\)/);
+    expect(html).toMatch(
+      /background-color:\s*var\(--bg,\s*(#000000|#FF5800)\)/,
+    );
   });
 
   it("no rounded-lg/xl/2xl/3xl chunky rounding in app shell source", () => {

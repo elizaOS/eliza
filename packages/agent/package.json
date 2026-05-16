@@ -218,6 +218,7 @@
     "@elizaos/skills": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "@noble/curves": "2.2.0",
+    "@noble/hashes": "2.2.0",
     "@solana/web3.js": "1.98.4",
     "async-lock": "^1.4.1",
     "clean-git-ref": "^2.0.1",
