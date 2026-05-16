@@ -124,7 +124,7 @@
     "dev:cloud": "concurrently -n api,web -c blue,magenta \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
     "dev:cloud:api": "bun run --cwd packages/cloud-api dev",
     "dev:cloud:web": "bun run --cwd packages/cloud-frontend dev",
-    "dev:cloud:full": "concurrently -n db,api,web -c yellow,blue,magenta \"bun run db:cloud:pglite\" \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
+    "dev:cloud:full": "bun run dev:cloud",
     "build:cloud": "bun run --cwd packages/cloud-api build && bun run --cwd packages/cloud-frontend build",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",

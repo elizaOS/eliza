@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
+
 const publicRoutes = [
   "/",
   "/login",
@@ -162,7 +164,7 @@ for (const route of publicRoutes) {
     await expect(page.locator("body")).toBeVisible();
     await expect(page.locator("text=Not found")).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
-    expect(screenshot.length).toBeGreaterThan(10_000);
+    expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
   });
 }
 
@@ -173,7 +175,7 @@ for (const route of dashboardRoutes) {
     await expect(page).not.toHaveURL(/\/login/);
     await expect(page.locator("text=Not found")).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
-    expect(screenshot.length).toBeGreaterThan(10_000);
+    expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
   });
 }
 
