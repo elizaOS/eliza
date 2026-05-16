@@ -44,7 +44,7 @@ export default function LandingHeader() {
                 variant="ghost"
                 size="sm"
                 disabled={!ready}
-                className="text-base font-[family-name:var(--font-body)]"
+                className="text-base font-[family-name:var(--font-body)] text-white hover:bg-white/12 hover:text-white"
               >
                 <Link to="/login">Log in</Link>
               </Button>
@@ -52,7 +52,7 @@ export default function LandingHeader() {
                 size="sm"
                 onClick={handleGetStarted}
                 disabled={!ready}
-                className="font-[family-name:var(--font-body)]"
+                className="rounded-full border border-white/34 bg-white/12 font-[family-name:var(--font-body)] text-white shadow-[0_12px_36px_rgba(0,24,122,0.24)] backdrop-blur-xl hover:bg-white hover:text-[#0647ff]"
               >
                 Open Cloud
               </Button>

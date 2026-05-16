@@ -22,14 +22,7 @@ function resolveGitRepoRoot(startDir) {
 const REPO_ROOT = resolveGitRepoRoot(APP_CORE_ROOT);
 
 const releaseContractTests = [
-  "eliza/packages/app-core/scripts/asset-cdn.test.ts",
-  "eliza/packages/app-core/scripts/docker-contract.test.ts",
-  "eliza/packages/app-core/scripts/chrome-extension-release-surface.test.ts",
-  "eliza/packages/app-core/scripts/electrobun-release-workflow-drift.test.ts",
-  "eliza/packages/app-core/scripts/electrobun-test-workflow-drift.test.ts",
-  "eliza/packages/app-core/scripts/whisper-build-script-drift.test.ts",
-  "eliza/packages/app-core/scripts/release-check.test.ts",
-  "eliza/packages/app-core/scripts/static-asset-manifest.test.ts",
+  "eliza/packages/app-core/scripts/release-workflow-drift.test.ts",
 ];
 
 function resolveExistingRepoPath(relativePath) {

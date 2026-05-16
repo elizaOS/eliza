@@ -98,7 +98,7 @@ const requiredWorkflowSnippets = [
   // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub Actions expression
   "ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}",
   'ELIZA_VALIDATE_CDN: "1"',
-  "run: bun run release:check",
+  "bun run release:check",
   "build-browser-companions:",
   "name: Build Agent Browser Bridge companions",
   "if bun run browser-bridge:package:release; then",

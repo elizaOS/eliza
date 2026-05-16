@@ -4,11 +4,13 @@ import {
   Box,
   Check,
   CreditCard,
+  Loader2,
   PackageCheck,
   Palette,
   Smartphone,
   Usb,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
@@ -126,11 +128,48 @@ export default function CheckoutPage() {
   const sku = searchParams.get("sku");
   const collection = searchParams.get("collection");
   const product = getProduct(sku);
-  const checkoutTarget = session.authenticated
-    ? `/dashboard/billing?hardware_sku=${encodeURIComponent(product.sku)}`
-    : `/login?intent=signup&redirect=${encodeURIComponent(
-        `/checkout?sku=${product.sku}`,
-      )}`;
+  const [selectedColor, setSelectedColor] = useState(product.colors[0]);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const loginTarget = `/login?intent=signup&redirect=${encodeURIComponent(
+    `/checkout?sku=${product.sku}`,
+  )}`;
+
+  useEffect(() => {
+    setSelectedColor(product.colors[0]);
+    setCheckoutError(null);
+  }, [product]);
+
+  async function beginHardwareCheckout() {
+    setCheckoutError(null);
+    setIsStartingCheckout(true);
+
+    try {
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hardwareColor: selectedColor.name,
+          hardwareSku: product.sku,
+          returnUrl: "billing",
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || "Could not start hardware checkout.");
+      }
+
+      window.location.href = data.url;
+    } catch (error) {
+      setCheckoutError(
+        error instanceof Error
+          ? error.message
+          : "Could not start hardware checkout.",
+      );
+      setIsStartingCheckout(false);
+    }
+  }
 
   return (
     <CloudSkyBackground
@@ -190,18 +229,25 @@ export default function CheckoutPage() {
                 </div>
                 <div className="mt-5 flex flex-wrap gap-2">
                   {product.colors.map((color) => (
-                    <span
-                      className="size-7 rounded-full border border-black/20 shadow-[inset_0_0_0_2px_rgba(255,255,255,0.55)]"
+                    <button
+                      aria-label={`Select ${color.name}`}
+                      className={`size-7 rounded-full border shadow-[inset_0_0_0_2px_rgba(255,255,255,0.55)] ${
+                        selectedColor.id === color.id
+                          ? "border-[#111] ring-2 ring-[#FF5800]"
+                          : "border-black/20"
+                      }`}
                       key={color.id}
+                      onClick={() => setSelectedColor(color)}
                       style={{ backgroundColor: colorMap[color.name] }}
                       title={color.name}
+                      type="button"
                     />
                   ))}
                 </div>
                 <div className="mt-6 grid gap-2 rounded-lg bg-[#f7f5ef] p-4 text-sm text-[#5f5a53]">
                   <span className="flex items-center gap-2">
                     <Palette className="size-4 text-[#FF5800]" />
-                    Color choice is captured with the order.
+                    {selectedColor.name} is captured with the order.
                   </span>
                   <span className="flex items-center gap-2">
                     <PackageCheck className="size-4 text-[#FF5800]" />
@@ -211,17 +257,40 @@ export default function CheckoutPage() {
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-black/10 pt-4">
                 <strong className="text-xl">{product.price}</strong>
-                <Link
-                  to={checkoutTarget}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white"
-                >
-                  <CreditCard aria-hidden="true" className="size-4" />
-                  {session.authenticated
-                    ? "Continue to payment"
-                    : "Sign in to buy"}
-                  <ArrowRight aria-hidden="true" className="size-4" />
-                </Link>
+                {session.authenticated ? (
+                  <button
+                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isStartingCheckout}
+                    onClick={beginHardwareCheckout}
+                    type="button"
+                  >
+                    {isStartingCheckout ? (
+                      <Loader2
+                        aria-hidden="true"
+                        className="size-4 animate-spin"
+                      />
+                    ) : (
+                      <CreditCard aria-hidden="true" className="size-4" />
+                    )}
+                    Continue to payment
+                    <ArrowRight aria-hidden="true" className="size-4" />
+                  </button>
+                ) : (
+                  <Link
+                    to={loginTarget}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white"
+                  >
+                    <CreditCard aria-hidden="true" className="size-4" />
+                    Sign in to buy
+                    <ArrowRight aria-hidden="true" className="size-4" />
+                  </Link>
+                )}
               </div>
+              {checkoutError ? (
+                <p className="text-sm font-medium text-red-600">
+                  {checkoutError}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>

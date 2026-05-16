@@ -49,7 +49,7 @@ export default function HeroSection() {
       </div>
 
       <div className="pointer-events-none relative hidden min-h-[34rem] lg:block">
-        <div className="absolute inset-y-[-9rem] right-[-7rem] w-[43rem]">
+        <div className="absolute inset-y-[-4rem] right-[-5rem] w-[39rem] xl:right-[-7rem] xl:w-[43rem]">
           <img
             alt=""
             className="h-full w-full object-contain drop-shadow-[0_32px_90px_rgba(0,20,120,0.42)]"

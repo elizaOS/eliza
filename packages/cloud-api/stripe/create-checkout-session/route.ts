@@ -21,6 +21,29 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
+const HARDWARE_PRODUCTS = {
+  "elizaos-phone": {
+    amount: 499,
+    name: "ElizaOS Phone preorder deposit",
+    description: "Reserve first-party ElizaOS phone hardware.",
+  },
+  "elizaos-box": {
+    amount: 299,
+    name: "ElizaOS Box preorder deposit",
+    description: "Reserve the ElizaOS home/runtime box.",
+  },
+  "elizaos-usb-chibi": {
+    amount: 49,
+    name: "Chibi USB key preorder",
+    description: "Character ElizaOS USB installer key. Ships October 2026.",
+  },
+  "elizaos-usb-plastic": {
+    amount: 49,
+    name: "Branded USB key preorder",
+    description:
+      "Simple plastic ElizaOS USB installer key. Ships October 2026.",
+  },
+} as const;
 
 const checkoutRequestSchema = z
   .object({
@@ -37,10 +60,19 @@ const checkoutRequestSchema = z
       )
       .finite("Amount must be a valid number")
       .optional(),
+    hardwareSku: z
+      .enum([
+        "elizaos-phone",
+        "elizaos-box",
+        "elizaos-usb-chibi",
+        "elizaos-usb-plastic",
+      ])
+      .optional(),
+    hardwareColor: z.string().min(1).max(32).optional(),
     returnUrl: z.enum(["settings", "billing"]).optional().default("settings"),
   })
-  .refine((data) => data.creditPackId || data.amount, {
-    message: "Either creditPackId or amount must be provided",
+  .refine((data) => data.creditPackId || data.amount || data.hardwareSku, {
+    message: "Either creditPackId, amount, or hardwareSku must be provided",
   });
 
 const app = new Hono<AppEnv>();
@@ -68,7 +100,8 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: firstError }, 400);
     }
 
-    const { creditPackId, amount, returnUrl } = validationResult.data;
+    const { creditPackId, amount, hardwareColor, hardwareSku, returnUrl } =
+      validationResult.data;
     if (!isStripeConfigured()) {
       return c.json({ error: "Payment processing is not configured" }, 503);
     }
@@ -84,7 +117,30 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     const organizationId = user.organization_id;
 
-    if (creditPackId) {
+    if (hardwareSku) {
+      const hardware = HARDWARE_PRODUCTS[hardwareSku];
+      lineItems = [
+        {
+          price_data: {
+            currency: stripeCurrency,
+            product_data: {
+              name: hardware.name,
+              description: hardware.description,
+            },
+            unit_amount: Math.round(hardware.amount * 100),
+          },
+          quantity: 1,
+        },
+      ];
+      sessionMetadata = {
+        organization_id: organizationId,
+        user_id: user.id,
+        hardware_sku: hardwareSku,
+        hardware_color: hardwareColor ?? "unspecified",
+        preorder_amount: hardware.amount.toFixed(2),
+        type: "hardware_preorder",
+      };
+    } else if (creditPackId) {
       const creditPack = await creditsService.getCreditPackById(creditPackId);
       if (!creditPack?.is_active) {
         return c.json({ error: "Invalid or inactive credit pack" }, 404);
@@ -120,7 +176,9 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       };
     } else {
       return c.json(
-        { error: "Either creditPackId or amount must be provided" },
+        {
+          error: "Either creditPackId, amount, or hardwareSku must be provided",
+        },
         400,
       );
     }

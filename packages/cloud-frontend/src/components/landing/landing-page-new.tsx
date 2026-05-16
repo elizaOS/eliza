@@ -75,15 +75,14 @@ export function LandingPage({ accessError }: LandingPageProps) {
   // Web: Show landing page for anonymous users
   return (
     <CloudSkyBackground
-      className="flex h-screen"
-      contentClassName="flex w-full"
+      className="min-h-screen"
+      contentClassName="min-h-screen"
       intensity="hero"
     >
-      <div className="relative flex w-full flex-col overflow-y-scroll sm:scrollbar-thin sm:scrollbar-thumb-accent sm:scrollbar-track-bg sm:scrollbar-thumb-rounded-full sm:scrollbar-track-rounded-full">
+      <div className="relative flex min-h-screen w-full flex-col">
         <LandingHeader />
 
-        {/* Hero Chat Input - fills available viewport space above the footer */}
-        <div className="flex-1 flex items-center justify-center py-12">
+        <div className="flex min-h-screen items-center justify-center pt-20 pb-16">
           <HeroSection />
         </div>
 

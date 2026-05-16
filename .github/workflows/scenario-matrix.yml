@@ -221,7 +221,7 @@ jobs:
         # in a follow-up and update the command below.
         run: |
           set -f
-          bun run eliza-scenarios run \
+          bun packages/scenario-runner/bin/eliza-scenarios run \
             ${{ matrix.shard.root || 'eliza/test/scenarios' }} \
             --report-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
             --runId "${{ github.run_id }}-${{ matrix.shard.name }}" \
