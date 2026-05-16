@@ -11,13 +11,9 @@ import {
   getSmallModel,
 } from "../utils/config";
 
-function buildRuntime(
-  settings: Record<string, string | undefined>,
-): IAgentRuntime {
+function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
-    getSetting: vi.fn((key: string) =>
-      key in settings ? (settings[key] ?? null) : null,
-    ),
+    getSetting: vi.fn((key: string) => (key in settings ? (settings[key] ?? null) : null)),
   } as IAgentRuntime;
 }
 
