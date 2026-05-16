@@ -564,11 +564,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			],
 			handler: async () => {
 				saveCount++;
-				return {
-					success: true,
-					text: "saved",
-					data: { actionName: "CLIPBOARD_WRITE" },
-				};
+					return {
+						success: true,
+						text: "saved",
+						userFacingText: "saved",
+						data: { actionName: "CLIPBOARD_WRITE" },
+					};
 			},
 		});
 
@@ -935,10 +936,11 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					}),
 				},
 				// Single planner call enqueues BOTH tools
-				{
-					body: {
-						text: "Search then save.",
-						toolCalls: [
+					{
+						body: {
+							text: "Search then save.",
+							messageToUser: "Both done.",
+							toolCalls: [
 							{ id: "t1", name: "WEB_SEARCH", args: {} },
 							{ id: "t2", name: "CLIPBOARD_WRITE", args: { content: "x" } },
 						],

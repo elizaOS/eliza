@@ -43,6 +43,7 @@
     "@types/react": "^19.2.9",
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/three": "^0.184.0",
     "@vitejs/plugin-react": "^6.0.0",
     "buffer": "^6.0.3",
     "canvas-confetti": "^1.9.4",

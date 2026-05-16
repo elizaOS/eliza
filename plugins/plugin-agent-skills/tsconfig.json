@@ -16,6 +16,12 @@
     "paths": {
       "@elizaos/agent": [
         "./src/agent-runtime-shim.ts"
+      ],
+      "@elizaos/skills": [
+        "../../packages/skills/dist/index.d.ts"
+      ],
+      "@elizaos/skills/*": [
+        "../../packages/skills/dist/*"
       ]
     },
     "outDir": "./dist",

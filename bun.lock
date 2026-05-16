@@ -477,7 +477,9 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.4.14",
+        "@types/pg": "^8.16.0",
         "dotenv": "^17.4.2",
+        "pg": "^8.20.0",
         "typescript": "^6.0.3",
       },
     },
@@ -509,6 +511,7 @@
         "@types/react": "^19.2.9",
         "@types/react-dom": "^19.2.3",
         "@types/react-syntax-highlighter": "^15.5.13",
+        "@types/three": "^0.184.0",
         "@vitejs/plugin-react": "^6.0.0",
         "buffer": "^6.0.3",
         "canvas-confetti": "^1.9.4",
@@ -3765,6 +3768,8 @@
         "@xterm/addon-fit": "^0.10.0",
         "@xterm/xterm": "^5.5.0",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
