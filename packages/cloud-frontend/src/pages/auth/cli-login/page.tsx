@@ -112,12 +112,12 @@ function CliLoginPanel({
   const toneClasses = PANEL_TONE_CLASSES[tone];
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0A0A0A] p-4">
-      <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A] via-neutral-900/50 to-[#0A0A0A]" />
-      <div className="relative w-full max-w-md bg-neutral-900 border border-white/10 rounded-2xl p-8">
+    <div className="flex min-h-screen items-center justify-center bg-black p-4">
+      <div className="absolute inset-0 bg-black" />
+      <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <div
-            className={`flex h-14 w-14 items-center justify-center rounded-xl ${toneClasses.container}`}
+            className={`flex h-14 w-14 items-center justify-center  ${toneClasses.container}`}
           >
             <Icon
               className={`h-7 w-7 ${toneClasses.icon} ${iconClassName ?? ""}`}
@@ -254,7 +254,7 @@ function CliLoginContent() {
           <>
             {sessionId ? (
               <a href={signInHref} className="w-full">
-                <Button className="w-full h-11 rounded-xl bg-[#FF5800] hover:bg-[#FF5800]/80 text-white">
+                <Button className="w-full h-11  bg-[#FF5800] hover:bg-[#FF5800]/80 text-white">
                   Sign In Again
                 </Button>
               </a>
@@ -262,7 +262,7 @@ function CliLoginContent() {
             <Button
               onClick={() => window.close()}
               variant="outline"
-              className="w-full mt-2 rounded-xl border-white/10 hover:bg-white/10"
+              className="w-full mt-2  border-white/14 hover:bg-white/10"
             >
               Close Window
             </Button>
@@ -282,7 +282,7 @@ function CliLoginContent() {
         actions={
           <a href={signInHref} className="w-full">
             <Button
-              className="w-full h-11 rounded-xl bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+              className="w-full h-11  bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
               disabled={!ready}
             >
               {!ready ? (
@@ -329,7 +329,7 @@ function CliLoginContent() {
           <Button
             onClick={() => window.close()}
             variant="outline"
-            className="w-full rounded-xl border-white/10 hover:bg-white/10"
+            className="w-full  border-white/14 hover:bg-white/10"
           >
             Close Window
           </Button>
@@ -339,7 +339,7 @@ function CliLoginContent() {
         title="Authentication Complete!"
         tone="success"
       >
-        <div className="w-full rounded-xl bg-black/40 border border-white/10 p-4 space-y-3">
+        <div className="w-full  bg-black/40 border border-white/14 p-4 space-y-3">
           <p className="text-xs font-medium text-neutral-400">
             API Key Details
           </p>
@@ -357,7 +357,7 @@ function CliLoginContent() {
           </div>
         </div>
 
-        <div className="w-full rounded-xl border border-green-500/20 bg-green-500/5 p-4">
+        <div className="w-full  border border-green-500/20 bg-green-500/5 p-4">
           <p className="text-sm text-green-400 flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
             You can now close this window and return to your terminal
