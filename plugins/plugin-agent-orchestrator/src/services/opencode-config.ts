@@ -211,18 +211,29 @@ export function resolveVendoredOpencodeShim(): string | undefined {
       "bin",
       executable,
     );
-    const sourceEntry = path.join(
-      root,
-      "plugins",
-      "plugin-agent-orchestrator",
-      "vendor",
-      "opencode",
-      "packages",
-      "opencode",
-      "src",
-      "index.ts",
-    );
-    if (existsSync(shim) && existsSync(sourceEntry)) {
+    const sourceEntries = [
+      path.join(
+        root,
+        "plugins",
+        "plugin-agent-orchestrator",
+        "vendor",
+        "opencode",
+        "packages",
+        "opencode",
+        "src",
+        "index.ts",
+      ),
+      path.join(
+        root,
+        "vendor",
+        "opencode",
+        "packages",
+        "opencode",
+        "src",
+        "index.ts",
+      ),
+    ];
+    if (existsSync(shim) && sourceEntries.some((entry) => existsSync(entry))) {
       return path.dirname(shim);
     }
   }
