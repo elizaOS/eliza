@@ -9,6 +9,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./brand.css": "./src/brand.css",
     "./assets/*": "./assets/*",
     "./sync": "./scripts/sync-to-public.mjs"
   },

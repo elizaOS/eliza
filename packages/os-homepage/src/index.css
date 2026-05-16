@@ -130,11 +130,11 @@ img {
 }
 
 .hero-band {
-  min-height: calc(100vh - 4rem);
   display: flex;
   align-items: center;
-  padding-top: clamp(3rem, 7vw, 6rem);
-  padding-bottom: clamp(3rem, 7vw, 6rem);
+  min-height: calc(100vh - 4rem);
+  padding-top: clamp(2rem, 5vw, 4.5rem);
+  padding-bottom: clamp(2rem, 5vw, 4.5rem);
 }
 
 .hero-layout,
@@ -143,10 +143,6 @@ img {
   grid-template-columns: minmax(0, 1fr);
   gap: clamp(2rem, 5vw, 4rem);
   align-items: center;
-}
-
-.hero-layout {
-  min-height: min(42rem, calc(100vh - 10rem));
 }
 
 @media (min-width: 900px) {
@@ -174,7 +170,7 @@ p {
 h1 {
   max-width: 14ch;
   margin-bottom: 1.25rem;
-  font-size: clamp(3.25rem, 8vw, 7.5rem);
+  font-size: clamp(3.25rem, 7vw, 6.2rem);
   font-weight: 800;
   line-height: 0.94;
   letter-spacing: 0;

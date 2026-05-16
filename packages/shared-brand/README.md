@@ -7,7 +7,7 @@ Canonical brand assets shared across every elizaOS surface.
 - **Cloud backgrounds** (`assets/background/*`) — the source cloud loop exports, optimized variants, and still background from `~/Desktop/brand/background/`.
 - **Concept products** (`assets/concepts/*.jpg`) — product/concept imagery from `~/Desktop/brand/concepts/`.
 - **Favicons** (`assets/favicons/*`) — canonical web app icon files mirrored under `/brand/favicons`.
-- **Tokens** (`src/index.ts`) — brand colors, surface themes, font stack, asset URL constants, and the cloud-video manifest used by `<CloudVideoBackground>` in `@elizaos/ui`.
+- **Tokens** (`src/index.ts`, `src/brand.css`) — brand colors, surface themes, font stack, asset URL constants, CSS custom properties, and the cloud-video manifest used by `<CloudVideoBackground>` in `@elizaos/ui`.
 
 ## How consumers use this
 
@@ -51,4 +51,10 @@ import {
   FONT_STACK,
   SURFACE_THEMES,
 } from "@elizaos/shared-brand";
+```
+
+Import shared CSS custom properties with:
+
+```ts
+import "@elizaos/shared-brand/brand.css";
 ```
