@@ -54,9 +54,6 @@ on:
   push:
     tags:
       - "v*.*.*"
-    branches:
-      - main
-      - develop
   workflow_dispatch:
     inputs:
       version:
@@ -327,13 +324,36 @@ jobs:
 
   # ─────────────────────────────────────────────
   # 5. LINUX OS — ISO + .deb + VM image
+  #
+  # elizaos-os-full-release.yml does not accept
+  # workflow_call. Call the three leaf workflows
+  # directly, matching what the full-release
+  # orchestrator does internally.
   # ─────────────────────────────────────────────
-  linux-os:
-    name: Linux OS (ISO + deb + VM)
+  linux-os-iso:
+    name: Linux ISO
     needs: validate
     if: needs.validate.outputs.build_linux_os == 'true'
-    uses: ./.github/workflows/elizaos-os-full-release.yml
+    uses: ./.github/workflows/build-linux-iso.yml
     with:
+      channel: ${{ needs.validate.outputs.channel == 'stable' && 'stable' || 'beta' }}
+      publish: true
+    secrets: inherit
+
+  linux-os-deb:
+    name: Linux .deb package
+    needs: validate
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/build-debian-package.yml
+    secrets: inherit
+
+  linux-os-vm:
+    name: Linux VM image
+    needs: validate
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/build-vm-image.yml
+    with:
+      format: "ova"
       publish: true
     secrets: inherit
 
@@ -391,7 +411,7 @@ jobs:
   # ─────────────────────────────────────────────
   summary:
     name: Release Summary
-    needs: [validate, desktop, android, apple, linux-os, npm, snap-notify]
+    needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap-notify]
     if: always()
     runs-on: ubuntu-24.04
     env:
@@ -416,6 +436,16 @@ jobs:
             esac
           }
 
+          # Compute aggregate linux-os result
+          ISO_R="${{ needs.linux-os-iso.result }}"
+          DEB_R="${{ needs.linux-os-deb.result }}"
+          VM_R="${{ needs.linux-os-vm.result }}"
+          LINUX_RESULT="success"
+          for R in "$ISO_R" "$DEB_R" "$VM_R"; do
+            if [[ "$R" == "failure" ]]; then LINUX_RESULT="FAILURE"; fi
+            if [[ "$R" == "cancelled" && "$LINUX_RESULT" != "FAILURE" ]]; then LINUX_RESULT="cancelled"; fi
+          done
+
           {
             echo "## elizaOS Cross-Platform Release — $TAG"
             echo ""
@@ -423,12 +453,14 @@ jobs:
             echo ""
             echo "| Platform | Result |"
             echo "|----------|--------|"
-            echo "| Desktop (Electrobun) | $(result_icon '${{ needs.desktop.result }}') |"
-            echo "| Android              | $(result_icon '${{ needs.android.result }}') |"
-            echo "| Apple (iOS + macOS)  | $(result_icon '${{ needs.apple.result }}') |"
-            echo "| Linux OS             | $(result_icon '${{ needs.linux-os.result }}') |"
-            echo "| npm (auto-triggered) | $(result_icon '${{ needs.npm.result }}') |"
-            echo "| Snap (reminder)      | $(result_icon '${{ needs.snap-notify.result }}') |"
+            echo "| Desktop (Electrobun)   | $(result_icon '${{ needs.desktop.result }}') |"
+            echo "| Android                | $(result_icon '${{ needs.android.result }}') |"
+            echo "| Apple (iOS + macOS)    | $(result_icon '${{ needs.apple.result }}') |"
+            echo "| Linux ISO              | $(result_icon "$ISO_R") |"
+            echo "| Linux .deb             | $(result_icon "$DEB_R") |"
+            echo "| Linux VM image         | $(result_icon "$VM_R") |"
+            echo "| npm (auto-triggered)   | $(result_icon '${{ needs.npm.result }}') |"
+            echo "| Snap (manual reminder) | $(result_icon '${{ needs.snap-notify.result }}') |"
             echo ""
             echo "### Snap Store"
             echo "Run [snap-build-test.yml](https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml) manually and then publish to the Snap Store."
@@ -441,7 +473,9 @@ jobs:
           DESKTOP_RESULT="${{ needs.desktop.result }}"
           ANDROID_RESULT="${{ needs.android.result }}"
           APPLE_RESULT="${{ needs.apple.result }}"
-          LINUX_OS_RESULT="${{ needs.linux-os.result }}"
+          LINUX_ISO_RESULT="${{ needs.linux-os-iso.result }}"
+          LINUX_DEB_RESULT="${{ needs.linux-os-deb.result }}"
+          LINUX_VM_RESULT="${{ needs.linux-os-vm.result }}"
 
           BUILD_DESKTOP="${{ needs.validate.outputs.build_desktop }}"
           BUILD_ANDROID="${{ needs.validate.outputs.build_android }}"
@@ -459,10 +493,12 @@ jobs:
             fi
           }
 
-          check_result "$BUILD_DESKTOP"  "$DESKTOP_RESULT"  "Desktop"
-          check_result "$BUILD_ANDROID"  "$ANDROID_RESULT"  "Android"
-          check_result "$BUILD_APPLE"    "$APPLE_RESULT"    "Apple"
-          check_result "$BUILD_LINUX_OS" "$LINUX_OS_RESULT" "Linux OS"
+          check_result "$BUILD_DESKTOP"  "$DESKTOP_RESULT"      "Desktop"
+          check_result "$BUILD_ANDROID"  "$ANDROID_RESULT"      "Android"
+          check_result "$BUILD_APPLE"    "$APPLE_RESULT"        "Apple"
+          check_result "$BUILD_LINUX_OS" "$LINUX_ISO_RESULT"    "Linux ISO"
+          check_result "$BUILD_LINUX_OS" "$LINUX_DEB_RESULT"    "Linux .deb"
+          check_result "$BUILD_LINUX_OS" "$LINUX_VM_RESULT"     "Linux VM"
 
           if [[ "$FAILED" -eq 0 ]]; then
             echo "All enabled platform builds succeeded — publishing GitHub release $TAG..."
@@ -478,7 +514,9 @@ jobs:
           DESKTOP_RESULT="${{ needs.desktop.result }}"
           ANDROID_RESULT="${{ needs.android.result }}"
           APPLE_RESULT="${{ needs.apple.result }}"
-          LINUX_OS_RESULT="${{ needs.linux-os.result }}"
+          LINUX_ISO_RESULT="${{ needs.linux-os-iso.result }}"
+          LINUX_DEB_RESULT="${{ needs.linux-os-deb.result }}"
+          LINUX_VM_RESULT="${{ needs.linux-os-vm.result }}"
 
           BUILD_DESKTOP="${{ needs.validate.outputs.build_desktop }}"
           BUILD_ANDROID="${{ needs.validate.outputs.build_android }}"
@@ -499,9 +537,11 @@ jobs:
             fi
           }
 
-          check_result "$BUILD_DESKTOP"  "$DESKTOP_RESULT"  "Desktop"
-          check_result "$BUILD_ANDROID"  "$ANDROID_RESULT"  "Android"
-          check_result "$BUILD_APPLE"    "$APPLE_RESULT"    "Apple"
-          check_result "$BUILD_LINUX_OS" "$LINUX_OS_RESULT" "Linux OS"
+          check_result "$BUILD_DESKTOP"  "$DESKTOP_RESULT"      "Desktop"
+          check_result "$BUILD_ANDROID"  "$ANDROID_RESULT"      "Android"
+          check_result "$BUILD_APPLE"    "$APPLE_RESULT"        "Apple"
+          check_result "$BUILD_LINUX_OS" "$LINUX_ISO_RESULT"    "Linux ISO"
+          check_result "$BUILD_LINUX_OS" "$LINUX_DEB_RESULT"    "Linux .deb"
+          check_result "$BUILD_LINUX_OS" "$LINUX_VM_RESULT"     "Linux VM"
 
           exit "$FAILED"
