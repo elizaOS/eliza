@@ -275,8 +275,8 @@ export interface LocalRuntimeAcceleration {
     /** Catalog id of the hidden drafter GGUF companion. */
     drafterModelId: string;
     specType: "dflash";
-		/** llama-server context for the target model. */
-		contextSize: number;
+    /** llama-server context for the target model. */
+    contextSize: number;
     /** llama-server context for the drafter. */
     draftContextSize: number;
     /** Default draft range passed to llama-server. */

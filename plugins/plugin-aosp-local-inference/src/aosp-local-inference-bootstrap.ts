@@ -1329,6 +1329,7 @@ function wrapKokoroWebOrtModule(
 export async function loadAospKokoroOrt(): ReturnType<AospKokoroOrtLoader> {
   const spec = process.env.ELIZA_AOSP_KOKORO_ORT_MODULE?.trim();
   if (!spec || spec === DEFAULT_AOSP_KOKORO_ORT_MODULE) {
+    // @ts-expect-error onnxruntime-web exposes this runtime subpath without bundled declarations.
     const mod = await import("onnxruntime-web/wasm");
     return wrapKokoroWebOrtModule(mod);
   }
