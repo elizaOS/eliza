@@ -30,6 +30,8 @@
       "@elizaos/plugin-task-coordinator": [
         "../plugin-task-coordinator/src/api/coordinator-types.ts"
       ],
+      "@elizaos/plugin-workflow": ["../plugin-workflow/dist/index.d.ts"],
+      "@elizaos/plugin-workflow/*": ["../plugin-workflow/dist/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
