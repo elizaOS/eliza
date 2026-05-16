@@ -947,6 +947,18 @@ export class MessageManager {
 						}
 					}
 
+					// Commit-to-send flag: mark `responseEmitted` true now, before any
+					// `channel.send` / `user.send` / `sendMessageInChunks` awaits. If
+					// the discord-generation timer races against an in-flight Discord
+					// HTTP call, the catch handler now sees the commit and skips the
+					// "before I could send a Discord reply" failure note (the message
+					// is almost certainly already delivered, since the HTTP request
+					// is in flight by the time the await suspends). If the send
+					// genuinely fails, the underlying error still surfaces through
+					// the catch chain — the only behavior change is suppressing the
+					// duplicate user-facing failure note for the race case.
+					responseEmitted = true;
+
 					let messages: DiscordMessage[] = [];
 					if (draftStream?.isStarted() && !draftStream.isDone()) {
 						if (hasText || files.length === 0) {
