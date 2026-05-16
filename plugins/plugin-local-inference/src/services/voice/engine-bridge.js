@@ -36,6 +36,7 @@ import { localInferenceRoot } from "../paths";
 import { VoiceStartupError } from "./errors";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
 import { VoiceLifecycle, VoiceLifecycleError } from "./lifecycle";
+import { loadOnnxRuntime } from "./onnx-runtime";
 import {
 	DEFAULT_PHRASE_CACHE_SEED,
 	FIRST_AUDIO_FILLERS,
@@ -391,6 +392,7 @@ export function createKokoroTtsBackend(kokoro) {
 		onnx: {
 			layout: kokoro.layout,
 			expectedSha256: null,
+			loadOrt: loadOnnxRuntime,
 		},
 	});
 	console.info(

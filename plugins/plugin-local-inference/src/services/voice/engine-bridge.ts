@@ -59,6 +59,7 @@ import {
 	type OptimisticPolicyOptions,
 	resolvePowerSourceState,
 } from "./optimistic-policy";
+import { loadOnnxRuntime } from "./onnx-runtime";
 import {
 	type CachedPhraseAudio,
 	DEFAULT_PHRASE_CACHE_SEED,
@@ -683,6 +684,7 @@ export function createKokoroTtsBackend(
 		onnx: {
 			layout: kokoro.layout,
 			expectedSha256: null,
+			loadOrt: loadOnnxRuntime,
 		},
 	});
 	logger.info(

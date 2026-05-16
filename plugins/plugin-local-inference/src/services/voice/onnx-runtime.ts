@@ -24,20 +24,27 @@
 
 export interface OrtTensor {
 	readonly dims: readonly number[];
-	readonly data: Float32Array | BigInt64Array;
+	readonly data: Float32Array | Int32Array | BigInt64Array;
 }
 export type OrtTensorCtor = new (
-	type: "float32" | "int64",
-	data: Float32Array | BigInt64Array,
+	type: string,
+	data: Float32Array | Int32Array | BigInt64Array,
 	dims: readonly number[],
 ) => OrtTensor;
 export interface OrtInferenceSession {
 	readonly inputNames: readonly string[];
 	readonly outputNames: readonly string[];
+	readonly inputMetadata?:
+		| ReadonlyArray<{ name?: string; type?: string }>
+		| Readonly<Record<string, { name?: string; type?: string }>>;
 	run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
+	release?(): Promise<void>;
 }
 export interface OrtInferenceSessionStatic {
-	create(pathOrBuffer: string | Uint8Array): Promise<OrtInferenceSession>;
+	create(
+		pathOrBuffer: string | Uint8Array,
+		options?: Record<string, unknown>,
+	): Promise<OrtInferenceSession>;
 }
 export interface OrtModule {
 	InferenceSession: OrtInferenceSessionStatic;

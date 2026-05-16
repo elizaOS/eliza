@@ -556,6 +556,7 @@ export class LocalInferenceEngine {
 	 * a hard error.
 	 */
 	voiceBridge = null;
+	voiceBridgeActiveBundleRoot = null;
 	voiceReadyPromise = null;
 	/**
 	 * The general onload/offload coordinator (W10 / J5). One registry per
@@ -777,20 +778,24 @@ export class LocalInferenceEngine {
 			this.embeddingServer = null;
 		}
 		this.activeEliza1Bundle = null;
-		const bridge = this.voiceBridge;
-		if (bridge) {
-			// Drop voice resources before tearing down text. Disarm is a
-			// no-op when the lifecycle is already in voice-off, so this is
-			// safe even if the caller never called startVoice().
-			try {
-				await bridge.disarm();
-				await bridge.settle();
-			} finally {
-				bridge.dispose();
-				if (this.voiceBridge === bridge) this.voiceBridge = null;
+		await this.disposeVoiceBridge();
+		await this.dispatcher.unload();
+	}
+	async disposeVoiceBridge(bridge = this.voiceBridge) {
+		if (!bridge) return;
+		// Drop voice resources before tearing down or switching text. Disarm is
+		// a no-op when the lifecycle is already in voice-off, so this is safe
+		// even if the caller never explicitly armed voice.
+		try {
+			await bridge.disarm();
+			await bridge.settle();
+		} finally {
+			bridge.dispose();
+			if (this.voiceBridge === bridge) {
+				this.voiceBridge = null;
+				this.voiceBridgeActiveBundleRoot = null;
 			}
 		}
-		await this.dispatcher.unload();
 	}
 	async load(modelPath, resolved) {
 		const installed = await listInstalledModels();
@@ -801,7 +806,15 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it (the local embedding handler then falls
 		// through to the operator-configured provider).
-		this.activeEliza1Bundle = resolveActiveEliza1Bundle(target);
+		const nextActiveBundle = resolveActiveEliza1Bundle(target, catalog);
+		const nextVoiceRoot = nextActiveBundle?.root ?? null;
+		const currentVoiceRoot = this.voiceBridge
+			? this.voiceBridgeActiveBundleRoot
+			: null;
+		if (this.voiceBridge && currentVoiceRoot !== nextVoiceRoot) {
+			await this.disposeVoiceBridge();
+		}
+		this.activeEliza1Bundle = nextActiveBundle;
 		if (this.embeddingServer) {
 			void this.embeddingServer.stop();
 			this.embeddingServer = null;
@@ -1090,6 +1103,7 @@ export class LocalInferenceEngine {
 			...opts,
 			sharedResources: this.sharedResources,
 		});
+		this.voiceBridgeActiveBundleRoot = opts.bundleRoot || null;
 		return this.voiceBridge;
 	}
 	/**
@@ -1142,8 +1156,12 @@ export class LocalInferenceEngine {
 	}
 	async ensureActiveBundleVoiceReadyOnce() {
 		let bridge = this.voiceBridge;
+		const bundle = this.activeEliza1Bundle;
+		if (bridge && bundle && this.voiceBridgeActiveBundleRoot !== bundle.root) {
+			await this.disposeVoiceBridge(bridge);
+			bridge = null;
+		}
 		if (!bridge) {
-			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
 				const kokoro =
@@ -1229,6 +1247,9 @@ export class LocalInferenceEngine {
 					kokoroOnly: kokoro,
 				});
 			}
+		}
+		if (this.voiceBridge === bridge) {
+			this.voiceBridgeActiveBundleRoot = bundle?.root ?? null;
 		}
 		await bridge.arm();
 		return bridge;
@@ -1473,7 +1494,10 @@ export class LocalInferenceEngine {
 			await bridge.settle();
 		} finally {
 			bridge.dispose();
-			if (this.voiceBridge === bridge) this.voiceBridge = null;
+			if (this.voiceBridge === bridge) {
+				this.voiceBridge = null;
+				this.voiceBridgeActiveBundleRoot = null;
+			}
 		}
 	}
 	async synthesizeSpeech(text, signal) {
