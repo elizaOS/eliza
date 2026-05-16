@@ -6,13 +6,16 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./hetzner": "./src/hetzner/index.ts"
+    "./hetzner": "./src/hetzner/index.ts",
+    "./control-plane": "./src/control-plane/index.ts"
   },
   "bin": {
-    "hetzner-mock": "./bin/hetzner-mock.ts"
+    "hetzner-mock": "./bin/hetzner-mock.ts",
+    "control-plane-mock": "./bin/control-plane-mock.ts"
   },
   "scripts": {
     "start:hetzner": "bun run ./bin/hetzner-mock.ts",
+    "start:control-plane": "bun run ./bin/control-plane-mock.ts",
     "test": "bun test"
   },
   "dependencies": {
