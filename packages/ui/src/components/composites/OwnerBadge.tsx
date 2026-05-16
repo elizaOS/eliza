@@ -46,7 +46,7 @@ const SIZE_CLASS: Record<OwnerBadgeSize, string> = {
 const VARIANT_CLASS: Record<OwnerBadgeVariant, string> = {
   inline: "inline-flex items-center align-baseline",
   overlay:
-    "absolute -right-0.5 -top-0.5 inline-flex items-center justify-center rounded-full bg-bg/90 p-0.5 shadow",
+    "absolute -right-0.5 -top-0.5 inline-flex items-center justify-center rounded-sm bg-bg/90 p-0.5 shadow",
   card: "inline-flex items-center justify-center rounded-md bg-accent/15 px-2 py-1",
 };
 

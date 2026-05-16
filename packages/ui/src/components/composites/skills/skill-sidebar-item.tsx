@@ -60,7 +60,7 @@ export function SkillSidebarItem({
       </SidebarContent.ItemButton>
       <div className="flex shrink-0 flex-col items-end gap-2">
         <span
-          className={`rounded-full border px-2.5 py-1 text-2xs font-bold tracking-[0.16em] ${
+          className={`rounded-sm border px-2.5 py-1 text-2xs font-bold tracking-[0.16em] ${
             enabled
               ? "border-accent bg-accent text-accent-fg"
               : "border-border bg-transparent text-muted"
@@ -69,7 +69,7 @@ export function SkillSidebarItem({
           {enabled ? onLabel : offLabel}
         </span>
         {attentionLabel ? (
-          <span className="rounded-full border border-warn/30 bg-warn/12 px-2 py-0.5 text-3xs font-bold uppercase tracking-[0.14em] text-warn">
+          <span className="rounded-sm border border-warn/30 bg-warn/12 px-2 py-0.5 text-3xs font-bold uppercase tracking-[0.14em] text-warn">
             {attentionLabel}
           </span>
         ) : null}

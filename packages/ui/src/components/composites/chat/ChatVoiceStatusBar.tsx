@@ -120,7 +120,7 @@ export function ChatVoiceStatusBar({
 
       {speakerName ? (
         <span
-          className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-card/50 px-2 py-0.5"
+          className="inline-flex items-center gap-1 rounded-sm border border-border/40 bg-card/50 px-2 py-0.5"
           data-testid="chat-voice-speaker-pill"
         >
           {isOwnerSpeaking ? (

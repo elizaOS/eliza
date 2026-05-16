@@ -302,7 +302,7 @@ export function ChatConversationItem({
       ) : null}
 
       {isConfirmingDelete ? (
-        <div className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-danger/22 bg-[linear-gradient(180deg,rgba(239,68,68,0.1),rgba(239,68,68,0.04))] px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_16px_-16px_rgba(127,29,29,0.18)]">
+        <div className="flex flex-shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle px-2 py-1 shadow-xs">
           <span className="text-2xs font-medium text-danger">
             {labels.deleteConfirm ?? "Delete?"}
           </span>

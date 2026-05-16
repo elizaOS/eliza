@@ -139,8 +139,8 @@ export const ChatTranscript = memo(function ChatTranscript({
             >
               <ChatBubble
                 tone={isUser ? "user" : "assistant"}
-                className={`max-w-[min(85%,24rem)] rounded-2xl px-4 py-3 text-[15px] leading-relaxed backdrop-blur-md ${
-                  isUser ? "rounded-br-sm" : "rounded-bl-sm"
+                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-[15px] leading-relaxed ${
+                  isUser ? "rounded-br-none" : "rounded-bl-none"
                 }`}
               >
                 <div
@@ -166,8 +166,8 @@ export const ChatTranscript = memo(function ChatTranscript({
             >
               <ChatBubble
                 tone={isUser ? "user" : "assistant"}
-                className={`max-w-[min(85%,24rem)] rounded-2xl px-4 py-3 text-[15px] leading-relaxed backdrop-blur-md ${
-                  isUser ? "rounded-br-sm" : "rounded-bl-sm"
+                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-[15px] leading-relaxed ${
+                  isUser ? "rounded-br-none" : "rounded-bl-none"
                 }`}
               >
                 <div
