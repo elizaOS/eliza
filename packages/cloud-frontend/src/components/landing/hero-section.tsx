@@ -6,49 +6,51 @@ import { useNavigate } from "react-router-dom";
 
 export default function HeroSection() {
   const navigate = useNavigate();
+  const launchEliza = () => navigate("/login?intent=launch");
+  const openDashboard = () => navigate("/login?intent=dashboard");
 
   return (
     <CloudVideoBackground
       basePath="/clouds"
       speed="4x"
       poster="/clouds/poster.jpg"
-      scrim={0.72}
-      scrimColor="rgba(0,0,0,1)"
+      scrim={0.18}
+      scrimColor="rgba(255,255,255,1)"
       style={{ minHeight: "100vh" }}
     >
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-white sm:px-10 lg:px-16">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
         <img
-          src="/brand/logos/elizacloud_logotext.svg"
+          src="/brand/logos/elizacloud_logotext_black.svg"
           alt="eliza cloud"
-          className="mb-10 h-10 w-auto sm:h-12"
+          className="mb-10 h-9 w-auto sm:h-11"
           draggable={false}
         />
         <h1
-          className="max-w-4xl text-[clamp(4rem,14vw,10rem)] font-extrabold leading-[0.86] text-white"
+          className="max-w-4xl text-[clamp(4rem,14vw,10rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
-          Run in Cloud.
+          Launch Eliza.
         </h1>
-        <p className="mt-6 max-w-2xl text-xl font-medium leading-snug text-white/78 sm:text-2xl">
-          Sign in to launch your always-on Eliza agent.
+        <p className="mt-6 max-w-xl text-xl font-light leading-snug text-black/80 sm:text-2xl">
+          Your agent, always online.
         </p>
-        <div className="mt-10 flex flex-wrap items-center gap-3">
+        <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
           <button
             type="button"
-            onClick={() => navigate("/login?intent=signup")}
-            className="inline-flex min-h-14 items-center justify-center gap-2 bg-white px-8 py-4 text-base font-semibold text-black transition hover:bg-white/85 sm:text-lg"
-            style={{ borderRadius: 0 }}
+            onClick={launchEliza}
+            className="inline-flex min-h-14 items-center justify-center gap-2 bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[#0B35F1] sm:text-lg"
+            style={{ borderRadius: 2 }}
           >
-            Run in Cloud
+            Launch Eliza
             <ArrowRight className="h-5 w-5" />
           </button>
           <button
             type="button"
-            onClick={() => navigate("/checkout?collection=elizaos-hardware")}
-            className="inline-flex min-h-14 items-center justify-center border border-white/40 bg-transparent px-7 py-4 text-base font-semibold text-white transition hover:bg-white hover:text-black"
-            style={{ borderRadius: 0 }}
+            onClick={openDashboard}
+            className="inline-flex min-h-14 items-center justify-center bg-[#FF5800] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
+            style={{ borderRadius: 2 }}
           >
-            Preorder
+            Developer Dashboard
           </button>
         </div>
       </div>

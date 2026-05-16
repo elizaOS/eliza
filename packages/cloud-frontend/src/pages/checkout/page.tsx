@@ -360,9 +360,7 @@ export default function CheckoutPage() {
                   key={item.sku}
                   to={`/checkout?collection=elizaos-hardware&sku=${item.sku}`}
                 >
-                  <span className="text-sm font-semibold">
-                    {item.name}
-                  </span>
+                  <span className="text-sm font-semibold">{item.name}</span>
                   <span className="mt-1 block text-xs opacity-70">
                     {item.price}
                   </span>
