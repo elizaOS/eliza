@@ -315,6 +315,7 @@ jobs:
       - name: Release readiness checks
         env:
           ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          ELIZA_CDN_VALIDATION_REF: ${{ github.sha }}
           ELIZA_VALIDATE_CDN: "1"
         run: bun run release:check
 

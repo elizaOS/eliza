@@ -231,6 +231,7 @@ export function resolveValidationGitRef({
 export async function main({ cwd = repoRoot, env = process.env } = {}) {
   const releaseTag = resolveElizaReleaseTag({ env });
   const gitSha = resolveCurrentGitSha({ cwd, env });
+  const explicitValidationRef = env.ELIZA_CDN_VALIDATION_REF?.trim();
   const repository = resolveElizaAssetRepository({ env });
   if (!releaseTag && !gitSha) {
     throw new Error(
@@ -255,8 +256,12 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
   // commit SHA so we still verify the assets exist in the repo at this
   // commit. raw.githubusercontent.com resolves any git ref — branch, tag,
   // or full SHA — so the check is equivalent.
-  let effectiveRef = releaseTag || gitSha;
-  if (!releaseTag && gitSha) {
+  let effectiveRef = explicitValidationRef || releaseTag || gitSha;
+  if (explicitValidationRef) {
+    console.log(
+      `validate-cdn-assets: validating against explicit ref ${explicitValidationRef}${releaseTag ? ` for pending tag ${releaseTag}` : ""}.`,
+    );
+  } else if (!releaseTag && gitSha) {
     console.log(
       `validate-cdn-assets: no release tag provided, validating against commit SHA ${gitSha.slice(0, 12)}.`,
     );
