@@ -394,6 +394,12 @@ export interface OpenAIPluginConfig {
   /** Embedding dimensions */
   OPENAI_EMBEDDING_DIMENSIONS?: string;
 
+  /** Separate API key for image description */
+  OPENAI_IMAGE_DESCRIPTION_API_KEY?: string;
+
+  /** Separate base URL for image description */
+  OPENAI_IMAGE_DESCRIPTION_BASE_URL?: string;
+
   /** Image description model */
   OPENAI_IMAGE_DESCRIPTION_MODEL?: string;
 

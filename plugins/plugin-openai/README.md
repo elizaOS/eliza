@@ -24,6 +24,8 @@ The plugin requires these environment variables (can be set in .env file or char
   "OPENAI_EMBEDDING_API_KEY": "your_openai_api_key_for_embedding",
   "OPENAI_EMBEDDING_URL": "optional_custom_endpoint",
   "OPENAI_EMBEDDING_DIMENSIONS": "1536",
+  "OPENAI_IMAGE_DESCRIPTION_API_KEY": "your_openai_api_key_for_vision",
+  "OPENAI_IMAGE_DESCRIPTION_BASE_URL": "https://api.openai.com/v1",
   "OPENAI_IMAGE_DESCRIPTION_MODEL": "gpt-5-mini",
   "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": "8192",
   "OPENAI_EXPERIMENTAL_TELEMETRY": "false",
@@ -44,6 +46,8 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_EMBEDDING_API_KEY=your_openai_api_key_for_embedding
 OPENAI_EMBEDDING_URL=optional_custom_endpoint
 OPENAI_EMBEDDING_DIMENSIONS=1536
+OPENAI_IMAGE_DESCRIPTION_API_KEY=your_openai_api_key_for_vision
+OPENAI_IMAGE_DESCRIPTION_BASE_URL=https://api.openai.com/v1
 OPENAI_IMAGE_DESCRIPTION_MODEL=gpt-5-mini
 OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS=8192
 OPENAI_EXPERIMENTAL_TELEMETRY=false
@@ -62,6 +66,8 @@ OPENAI_BROWSER_EMBEDDING_URL=https://your-proxy.example.com/openai
 - `OPENAI_EMBEDDING_API_KEY`: Custom embedding api key (defaults to `OPENAI_API_KEY`)
 - `OPENAI_EMBEDDING_URL`: Custom embedding endpoint (defaults to `OPENAI_BASE_URL`)
 - `OPENAI_EMBEDDING_DIMENSIONS`: Defaults to 1536 (1536)
+- `OPENAI_IMAGE_DESCRIPTION_API_KEY`: Custom image-description API key (defaults to the general OpenAI API key)
+- `OPENAI_IMAGE_DESCRIPTION_BASE_URL`: Custom image-description endpoint (defaults to `OPENAI_BASE_URL`)
 - `OPENAI_IMAGE_DESCRIPTION_MODEL`: Model used for image description (default: "gpt-5-mini")
 - `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS`: Maximum tokens for image descriptions (default: 8192)
 - `OPENAI_EXPERIMENTAL_TELEMETRY`: Enable experimental telemetry features for enhanced debugging and usage analytics (default: false)
