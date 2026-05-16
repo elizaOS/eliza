@@ -57,7 +57,7 @@ function scoreState(scenario: Scenario, finalState: SimulatorState): AxisScore {
   // Scheduled tasks
   for (const expected of exp.scheduledTasks) {
     const ok = finalState.scheduledTasks.some((t) => {
-      const text = `${t.description ?? ""}`.toLowerCase();
+      const text = `${t.description}`.toLowerCase();
       const ownerOk = !expected.owner || t.owner === expected.owner;
       const containsOk = (expected.descriptionContains ?? []).every((s) =>
         text.includes(s.toLowerCase()),
@@ -332,7 +332,7 @@ function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
         if (e.detail?.type !== expectedOp.type) return false;
         if (
           expectedOp.workThreadId &&
-          e.detail?.workThreadId !== expectedOp.workThreadId
+          e.detail.workThreadId !== expectedOp.workThreadId
         )
           return false;
         return true;

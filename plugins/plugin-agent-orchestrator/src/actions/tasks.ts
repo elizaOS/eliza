@@ -354,7 +354,7 @@ async function runCreate(
     const agentType = parsed.agentType as AgentType;
     const label = baseLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
-    logger(runtime).error?.(
+    logger(runtime).error(
       `TASKS:create launch failed: ${JSON.stringify({
         error: msg,
         agentType,
@@ -624,7 +624,7 @@ async function runSpawnAgent(
     });
 
     setCurrentSession(state, session);
-    logger(runtime).info?.(
+    logger(runtime).info(
       `Spawned acpx task agent: ${JSON.stringify({
         sessionId: session.sessionId,
         agentType: session.agentType,
@@ -1991,7 +1991,7 @@ async function runManageIssues(
   const repo = (params.repo as string) ?? (content.repo as string);
 
   if (!repo) {
-    const urlMatch = text?.match(
+    const urlMatch = text.match(
       /(?:https?:\/\/github\.com\/)?([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)/,
     );
     if (!urlMatch) {

@@ -329,6 +329,36 @@ describe("NativeAcpClient permission requests", () => {
 });
 
 describe("NativeAcpClient workspace file actions", () => {
+  it("serves filesystem read and write requests over JSON-RPC", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "native-acp-"));
+    await writeFile(path.join(cwd, "notes.txt"), "line 1\nline 2\n", "utf8");
+    const { p } = await startClient({ cwd, approvalPreset: "autonomous" });
+
+    await expect(
+      request(p, "fs-read", "fs/read_text_file", {
+        path: "notes.txt",
+        line: 1,
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      id: "fs-read",
+      result: { content: "line 1" },
+    });
+
+    await expect(
+      request(p, "fs-write", "fs/write_text_file", {
+        path: "nested/out.txt",
+        content: "saved",
+      }),
+    ).resolves.toMatchObject({
+      id: "fs-write",
+      result: {},
+    });
+    await expect(
+      readFile(path.join(cwd, "nested/out.txt"), "utf8"),
+    ).resolves.toBe("saved");
+  });
+
   it("reads and writes relative paths inside the session cwd", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "native-acp-"));
     await writeFile(path.join(cwd, "notes.txt"), "line 1\nline 2\n", "utf8");

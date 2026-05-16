@@ -631,7 +631,7 @@ export class RuntimeDbSessionStore implements SessionStore {
       return row ? rowToSession(row) : null;
     }
     const [row] = await this.getMany(sql, params);
-    return row ?? null;
+    return row;
   }
 }
 

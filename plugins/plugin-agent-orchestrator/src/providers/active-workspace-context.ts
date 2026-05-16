@@ -151,7 +151,7 @@ export const activeWorkspaceContextProvider: Provider = {
                   .join(", ")
               : "no task agents";
           lines.push(
-            `  ${workspace.label ?? workspace.id.slice(0, 8)},${workspace.repo ?? "scratch"},${workspace.branch ?? "no branch"},${agentSummary}`,
+            `  ${workspace.label ?? workspace.id.slice(0, 8)},${workspace.repo},${workspace.branch},${agentSummary}`,
           );
         }
       }

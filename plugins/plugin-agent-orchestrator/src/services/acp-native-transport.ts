@@ -157,7 +157,9 @@ export class NativeAcpClient {
   }
 
   async closeSession(sessionId: string): Promise<void> {
-    await this.request("session/close", { sessionId }).catch(() => undefined);
+    await this.request("session/close", { sessionId }, 5_000).catch(
+      () => undefined,
+    );
   }
 
   async close(): Promise<void> {
@@ -175,7 +177,11 @@ export class NativeAcpClient {
     if (!proc) return;
     if (!proc.stdin.destroyed) proc.stdin.end();
     const exited = await waitForExit(proc, AGENT_CLOSE_TERM_GRACE_MS);
-    if (!exited && !proc.killed) proc.kill("SIGTERM");
+    if (exited) return;
+    if (!proc.killed) proc.kill("SIGTERM");
+    const terminated = await waitForExit(proc, AGENT_CLOSE_TERM_GRACE_MS);
+    if (!terminated) proc.kill("SIGKILL");
+    await waitForExit(proc, AGENT_CLOSE_TERM_GRACE_MS);
   }
 
   private request(
@@ -531,7 +537,7 @@ export class NativeAcpClient {
           signalTerminal(terminal.proc, "SIGKILL");
         }
       }, TERMINAL_KILL_GRACE_MS);
-      terminal.killTimer.unref?.();
+      terminal.killTimer.unref();
     }
   }
 }
@@ -761,7 +767,7 @@ async function withTimeout<T>(
       promise,
       new Promise<undefined>((resolve) => {
         timer = setTimeout(() => resolve(undefined), timeoutMs);
-        timer.unref?.();
+        timer.unref();
       }),
     ]);
   } finally {

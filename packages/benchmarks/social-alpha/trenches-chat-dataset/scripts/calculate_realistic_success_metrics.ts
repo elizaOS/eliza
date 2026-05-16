@@ -110,9 +110,9 @@ async function calculateRealisticMetrics() {
     // Process calls with price data
     if (
       call.priceData?.calledPrice !== undefined &&
-      call.priceData?.bestPrice !== undefined &&
-      call.priceData?.bestPriceTimestamp !== undefined &&
-      call.priceData?.calledPriceTimestamp !== undefined
+      call.priceData.bestPrice !== undefined &&
+      call.priceData.bestPriceTimestamp !== undefined &&
+      call.priceData.calledPriceTimestamp !== undefined
     ) {
       userMetrics.callsWithPriceData++;
 

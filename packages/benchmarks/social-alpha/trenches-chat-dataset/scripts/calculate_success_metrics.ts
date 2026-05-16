@@ -110,9 +110,9 @@ async function calculateSuccessMetrics() {
     // Process calls with price data
     if (
       call.price_data?.calledPrice !== undefined &&
-      call.price_data?.bestPrice !== undefined &&
-      call.price_data?.bestPriceTimestamp !== undefined &&
-      call.price_data?.calledPriceTimestamp !== undefined
+      call.price_data.bestPrice !== undefined &&
+      call.price_data.bestPriceTimestamp !== undefined &&
+      call.price_data.calledPriceTimestamp !== undefined
     ) {
       userMetrics.callsWithPriceData++;
 

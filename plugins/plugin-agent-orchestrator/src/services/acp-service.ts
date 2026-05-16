@@ -163,7 +163,7 @@ export class AcpService extends Service {
   constructor(runtime: IAgentRuntime, opts: { store?: SessionStore } = {}) {
     super(runtime);
     this.runtime = runtime as RuntimeLike;
-    this.logger = (this.runtime.logger ?? {}) as RuntimeLogger;
+    this.logger = (this.runtime.logger) as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     this.transportMode =
@@ -1089,7 +1089,7 @@ export class AcpService extends Service {
     client.setTimeoutMs(opts.timeoutMs ?? this.sessionTimeoutMs);
     try {
       const result = await client.prompt(protocolSessionId, text);
-      const stopReason = result.stopReason ?? eventStopReason ?? "end_turn";
+      const stopReason = result.stopReason;
       const cancelled =
         stopReason === "cancelled" ||
         this.nativeCancelledPromptSessionIds.has(session.id);
@@ -1435,7 +1435,7 @@ export class AcpService extends Service {
       if (opts.timeoutMs && opts.timeoutMs > 0) {
         setTimeout(() => {
           if (!proc.killed) this.terminateProcess(opts.sessionId ?? "", record);
-        }, opts.timeoutMs).unref?.();
+        }, opts.timeoutMs).unref();
       }
     });
   }
@@ -1587,8 +1587,8 @@ export class AcpService extends Service {
           ? (ub.locations as Array<{ path?: string; line?: number }>)
           : undefined;
         const toolCall: AcpToolCall = {
-          id: stringifyMaybe(updateBlock?.toolCallId ?? updateBlock?.id) ?? "",
-          title: stringifyMaybe(updateBlock?.title) ?? "",
+          id: stringifyMaybe(updateBlock?.toolCallId ?? updateBlock?.id),
+          title: stringifyMaybe(updateBlock?.title),
           status: (status as AcpToolCall["status"]) ?? "running",
           output: stringifyMaybe(toolOutput),
           kind: stringifyMaybe(ub.kind),
@@ -1799,7 +1799,7 @@ export class AcpService extends Service {
   }
 
   private setting(key: string): string | undefined {
-    const fromRuntime = this.runtime.getSetting?.(key);
+    const fromRuntime = this.runtime.getSetting(key);
     if (typeof fromRuntime === "string" && fromRuntime.length > 0)
       return fromRuntime;
     const fromEnv = process.env[key];
@@ -2141,7 +2141,7 @@ function createDefaultSessionStore(runtime: RuntimeLike): SessionStore {
     databaseAdapter: runtime.databaseAdapter,
     logger: runtime.logger,
     getSetting: (key: string) => {
-      const value = runtime.getSetting?.(key);
+      const value = runtime.getSetting(key);
       return typeof value === "string" ? value : undefined;
     },
   };

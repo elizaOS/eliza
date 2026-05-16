@@ -38,7 +38,7 @@ export const codingAgentExamplesProvider: Provider = {
       const userText =
         (typeof message.content === "string"
           ? message.content
-          : message.content?.text) ?? "";
+          : message.content.text) ?? "";
       const acpService = getAcpService(runtime);
       const frameworkState = await getTaskAgentFrameworkState(
         runtime,

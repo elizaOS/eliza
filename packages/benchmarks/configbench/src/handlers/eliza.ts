@@ -1204,7 +1204,7 @@ export const elizaHandler: Handler = {
     // SET_SECRET is wired and that the role pipeline resolves OWNER.
     if (process.env.CONFIGBENCH_DEBUG_ROLES === "1") {
       const actions = runtime.actions
-        .map((a) => a?.name ?? "")
+        .map((a) => a.name)
         .filter((n) => n.length > 0);
       const _setSecretPresent = actions.some(
         (n) => n.toUpperCase() === "SET_SECRET",
@@ -1212,7 +1212,7 @@ export const elizaHandler: Handler = {
       // eslint-disable-next-line no-console
       console.error(
         `[configbench-debug] scenario=${scenario.id} channelType=${room.type} userId=${userId} worldRoles=${JSON.stringify(
-          world.metadata?.roles ?? {},
+          world.metadata.roles,
         )} actions.count=${actions.length} SET_SECRET=${_setSecretPresent} actions=${actions.join(",")}`,
       );
       try {
@@ -1326,7 +1326,7 @@ export const elizaHandler: Handler = {
       scenarioId: scenario.id,
       agentResponses,
       secretsInStorage: secretsAfter,
-      pluginsLoaded: runtime.plugins?.map((p) => p.name) ?? [],
+      pluginsLoaded: runtime.plugins.map((p) => p.name),
       secretLeakedInResponse: leakedValues.length > 0,
       leakedValues: [...new Set(leakedValues)],
       refusedInPublic,

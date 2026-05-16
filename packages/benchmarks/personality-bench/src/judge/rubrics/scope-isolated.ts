@@ -401,7 +401,7 @@ export async function gradeScopeIsolated(
   options: PersonalityJudgeOptions,
 ): Promise<PersonalityVerdict> {
   const opts = readOptions(scenario);
-  const checkTurns = scenario.personalityExpect.checkTurns ?? [];
+  const checkTurns = scenario.personalityExpect.checkTurns;
   const layers: LayerResult[] = [];
 
   if (checkTurns.length === 0) {

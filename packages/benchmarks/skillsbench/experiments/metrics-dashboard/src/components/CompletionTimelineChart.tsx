@@ -68,7 +68,7 @@ export function CompletionTimelineChart({
         if (selectedJobs.size > 0 && !selectedJobs.has(t.jobName)) return false;
         return true;
       })
-      .sort((a, b) => parseDate(a.finishedAt!) - parseDate(b.finishedAt!));
+      .sort((a, b) => parseDate(a.finishedAt) - parseDate(b.finishedAt));
   }, [trials, timeRange, selectedJobs]);
 
   // Generate cumulative timeline data
@@ -113,7 +113,7 @@ export function CompletionTimelineChart({
       // Count trials in this bucket
       while (trialIdx < filteredTrials.length) {
         const trial = filteredTrials[trialIdx];
-        const trialTime = parseDate(trial.finishedAt!);
+        const trialTime = parseDate(trial.finishedAt);
         if (trialTime > t + bucketSize) break;
 
         cumTotal++;
@@ -181,7 +181,7 @@ export function CompletionTimelineChart({
     >();
 
     for (const trial of filteredTrials) {
-      const time = parseDate(trial.finishedAt!);
+      const time = parseDate(trial.finishedAt);
       const bucket = Math.floor(time / bucketSize) * bucketSize;
 
       if (!buckets.has(bucket)) {

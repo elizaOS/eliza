@@ -243,7 +243,7 @@ export async function gradeStrictSilence(
   scenario: PersonalityScenario,
   options: PersonalityJudgeOptions,
 ): Promise<PersonalityVerdict> {
-  const checkTurns = scenario.personalityExpect.checkTurns ?? [];
+  const checkTurns = scenario.personalityExpect.checkTurns;
   if (checkTurns.length === 0) {
     return combineVerdict(
       scenario,
