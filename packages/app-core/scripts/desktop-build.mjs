@@ -40,6 +40,11 @@ const RUNTIME_COPY_SCRIPT = fs.existsSync(
 )
   ? path.join(ROOT, "scripts", "copy-runtime-node-modules.ts")
   : path.join(SCRIPT_DIR, "copy-runtime-node-modules.ts");
+const WRITE_BUILD_INFO_SCRIPT = fs.existsSync(
+  path.join(ROOT, "scripts", "write-build-info.ts"),
+)
+  ? path.join(ROOT, "scripts", "write-build-info.ts")
+  : path.join(ROOT, "packages", "scripts", "write-build-info.ts");
 
 const argv = process.argv.slice(2);
 const command = argv[0] && !argv[0].startsWith("--") ? argv[0] : "build";
@@ -553,7 +558,7 @@ function stageDesktopBuild() {
 
   ensureRootRuntimeBundle();
 
-  runNode(["--import", "tsx", "scripts/write-build-info.ts"], {
+  runNode(["--import", "tsx", WRITE_BUILD_INFO_SCRIPT], {
     cwd: ROOT,
     label: "Writing build metadata",
   });
