@@ -125,7 +125,6 @@ parts:
         const path = require("path");
         if (!fs.existsSync("plugins")) process.exit(0);
         const keep = new Set([
-          "app-elizamaker",
           "app-lifeops",
           "app-task-coordinator",
           "app-training",
@@ -134,6 +133,7 @@ parts:
           "plugin-anthropic",
           "plugin-browser",
           "plugin-elizacloud",
+          "plugin-elizamaker",
           "plugin-imessage",
           "plugin-local-inference",
           "plugin-ollama",
@@ -479,13 +479,13 @@ parts:
         --filter=@elizaos/skills \
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \
-        --filter=@elizaos/app-elizamaker \
         --filter=@elizaos/app-lifeops \
         --filter=@elizaos/app-task-coordinator \
         --filter=@elizaos/app-training \
         --filter=@elizaos/app-wallet \
         --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser \
+        --filter=@elizaos/plugin-elizamaker \
         --filter=@elizaos/plugin-imessage \
         --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-ollama \
