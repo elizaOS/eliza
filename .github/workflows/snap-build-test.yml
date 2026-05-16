@@ -48,9 +48,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # Recursive picks up nested plugin submodules under plugins/
-          # which the snapcraft sandbox needs to satisfy workspace:* deps.
-          submodules: recursive
+          # Skip submodules entirely. The snap build uses
+          # `bun install --ignore-scripts` (see snapcraft.yaml) and
+          # `SKIP_NATIVE_PLUGINS=1`, so it never reads from any of the
+          # repo's git submodules (plugin-local-inference/native/llama.cpp,
+          # plugin-local-inference/native/omnivoice.cpp, vendor/opencode).
+          # Fetching them only risks "not our ref" failures when upstream
+          # branches are force-pushed and the pinned SHA is no longer
+          # reachable on the remote. The runtime closure under plugins/*/src
+          # ships from the main repo tree and is unaffected.
+          submodules: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
