@@ -164,6 +164,7 @@
       "outputs": ["chrome/dist/**", "safari/Chat with Webpage/**"]
     },
     "@elizaos/core#build": {
+      "dependsOn": ["@elizaos/contracts#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
