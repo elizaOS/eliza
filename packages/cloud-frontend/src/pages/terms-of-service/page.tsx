@@ -47,9 +47,7 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
             Use the materials for any commercial purpose or for any public
             display
           </li>
-          <li>
-            Attempt to reverse engineer any software contained on elizaOS
-          </li>
+          <li>Attempt to reverse engineer any software contained on elizaOS</li>
           <li>
             Remove any copyright or other proprietary notations from the
             materials
@@ -80,8 +78,8 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
       <p className="leading-relaxed text-white/80">
         Your use of the elizaOS API is subject to rate limits and usage quotas.
         You agree not to exceed these limits or attempt to circumvent them. We
-        reserve the right to modify, suspend, or discontinue the API at any
-        time with or without notice.
+        reserve the right to modify, suspend, or discontinue the API at any time
+        with or without notice.
       </p>
     ),
   },
@@ -90,8 +88,8 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
     body: (
       <p className="leading-relaxed text-white/80">
         You agree to pay all fees associated with your use of the Service. All
-        fees are non-refundable unless otherwise stated. We reserve the right
-        to change our pricing structure at any time with reasonable notice to
+        fees are non-refundable unless otherwise stated. We reserve the right to
+        change our pricing structure at any time with reasonable notice to
         users.
       </p>
     ),
@@ -100,8 +98,8 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
     title: "6. Prohibited Uses",
     body: (
       <p className="leading-relaxed text-white/80">
-        You may not use the Service for any illegal or unauthorized purpose.
-        You must not, in the use of the Service, violate any laws in your
+        You may not use the Service for any illegal or unauthorized purpose. You
+        must not, in the use of the Service, violate any laws in your
         jurisdiction including but not limited to copyright laws.
       </p>
     ),
@@ -114,8 +112,8 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
         elizaOS makes no warranties, expressed or implied, and hereby disclaims
         and negates all other warranties including, without limitation, implied
         warranties or conditions of merchantability, fitness for a particular
-        purpose, or non-infringement of intellectual property or other
-        violation of rights.
+        purpose, or non-infringement of intellectual property or other violation
+        of rights.
       </p>
     ),
   },
@@ -125,10 +123,10 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
       <p className="leading-relaxed text-white/80">
         In no event shall elizaOS or its suppliers be liable for any damages
         (including, without limitation, damages for loss of data or profit, or
-        due to business interruption) arising out of the use or inability to
-        use the materials on elizaOS, even if elizaOS or an authorized
-        representative has been notified orally or in writing of the
-        possibility of such damage.
+        due to business interruption) arising out of the use or inability to use
+        the materials on elizaOS, even if elizaOS or an authorized
+        representative has been notified orally or in writing of the possibility
+        of such damage.
       </p>
     ),
   },
@@ -136,8 +134,8 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
     title: "9. Modifications",
     body: (
       <p className="leading-relaxed text-white/80">
-        elizaOS may revise these terms of service at any time without notice.
-        By using this Service you are agreeing to be bound by the then current
+        elizaOS may revise these terms of service at any time without notice. By
+        using this Service you are agreeing to be bound by the then current
         version of these terms of service.
       </p>
     ),
