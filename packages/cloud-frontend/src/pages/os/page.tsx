@@ -280,8 +280,8 @@ write: ready for confirmation`}</pre>
                 })}
               </div>
 
-              <div className="mx-auto mt-8 max-w-7xl overflow-hidden rounded-lg border border-white/32 bg-white/24 text-white shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl">
-                <div className="grid grid-cols-3 gap-4 border-b border-white/24 bg-white/18 px-4 py-3 text-sm font-bold uppercase text-white/76">
+              <div className="mx-auto mt-8 max-w-7xl overflow-hidden border border-white/14 bg-black text-white">
+                <div className="grid grid-cols-3 gap-4 border-b border-white/14 bg-white/[0.04] px-4 py-3 text-sm font-bold uppercase text-white/70">
                   <span>Platform</span>
                   <span>Artifact</span>
                   <span>Architecture</span>
@@ -301,7 +301,7 @@ write: ready for confirmation`}</pre>
 
             <section id="usb" className="px-6 py-16 sm:px-8 lg:px-12">
               <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-                <div className="rounded-lg border border-white/32 bg-white/24 p-6 text-white shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl sm:p-8">
+                <div className="border border-white/14 bg-black p-6 text-white sm:p-8">
                   <p className="text-sm font-bold uppercase text-accent">
                     First-party USB setup
                   </p>
@@ -315,14 +315,14 @@ write: ready for confirmation`}</pre>
                     the boot media without third-party flashing tools.
                   </p>
                   <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-lg bg-white/16 p-4">
+                    <div className="border border-white/14 bg-white/[0.04] p-4">
                       <span className="text-sm text-white/70">Presale</span>
                       <strong className="mt-1 block text-3xl">$49</strong>
                       <p className="mt-2 text-sm text-white/74">
                         Branded ElizaOS USB installer key. Ships October 2026.
                       </p>
                     </div>
-                    <div className="rounded-lg bg-white/16 p-4">
+                    <div className="border border-white/14 bg-white/[0.04] p-4">
                       <span className="text-sm text-white/70">Beta path</span>
                       <strong className="mt-1 block text-3xl">DIY USB</strong>
                       <p className="mt-2 text-sm text-white/74">
