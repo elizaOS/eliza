@@ -28,7 +28,14 @@ Spawn surface. TASKS op=create records origin context in
 ```ts
 {
   messageId: message.id,    // parent message UUID
-  roomId:    message.roomId,
+  roomId:    taskRoomId,    // task-owner room, defaults to message.roomId
+  originRoomId: message.roomId,
+  taskRoomId,
+  worktreeRoomId,
+  swarmRooms: [
+    { roomId: taskRoomId, roles: ["task"] },
+    { roomId: worktreeRoomId, roles: ["worktree"] },
+  ],
   worldId:   message.worldId,
   userId:    message.entityId,
   label,
@@ -41,14 +48,14 @@ Spawn surface. TASKS op=create records origin context in
 Subscribes to `AcpService.onSessionEvent`. On `task_complete`, `error`, or
 `blocked` (boundary events only — not streaming chunks), it:
 
-1. Reads `session.metadata` for origin keys.
+1. Reads `session.metadata` for origin and swarm-room keys.
 2. Constructs a synthetic `Memory` with:
    - `entityId` = a deterministic per-session sub-agent UUID derived locally
      via SHA1 of `<runtime.agentId>:acpx:sub-agent:<sessionId>` (no runtime
      dependency on `@elizaos/core`'s `createUniqueUuid` so the router stays
      type-only on core),
    - `agentId`  = `runtime.agentId`,
-   - `roomId`   = origin `roomId`,
+   - `roomId`   = the selected swarm target room,
    - `content.source` = `"sub_agent"`,
    - `content.inReplyTo` = origin `messageId`,
    - `content.metadata.subAgent*` carries the structured event
@@ -56,12 +63,19 @@ Subscribes to `AcpService.onSessionEvent`. On `task_complete`, `error`, or
      `subAgentStatus`, `subAgentAgentType`, `subAgentRoundTrip`,
      `subAgentRoundTripCap`, `subAgentCapExceeded`, `originUserId`,
      `originMessageId`, `originSource`).
-3. Persists the memory via `runtime.createMemory(..., "messages")`.
-4. Delivers via `runtime.messageService.handleMessage(runtime, memory)`.
+   - `content.metadata.subAgentRoutingKind`,
+     `subAgentTargetRoomId`, `subAgentTargetRoomRole`,
+     `subAgentTargetRoomRoles`, `taskRoomId`, `worktreeRoomId`, and
+     `subAgentSwarmRooms` tell the main agent why this memory landed in
+     this room and which other swarm room(s) exist for the task.
+3. Delivers via `runtime.messageService.handleMessage(runtime, memory, callback)`,
+   which also persists the memory. If `messageService` is unavailable, it
+   falls back to `runtime.createMemory(..., "messages")` plus
+   `MESSAGE_RECEIVED`.
 
-The runtime's connector hooks (`outgoing_before_deliver`) handle delivery to
-Telegram/Discord/UI — same path a real user message would follow. There is
-no callback held by the router.
+For platform-originated tasks, the router builds a short-lived callback from
+`runtime.sendMessageToTarget` so the planner's answer can return to the same
+selected swarm room.
 
 #### Why only boundary events
 
@@ -77,6 +91,26 @@ Events are deduped in-memory by
 re-emitting the same `task_complete` payload posts once. A different
 response payload posts again — that's "the sub-agent did more work and
 reported a new state".
+
+Swarm target rooms are also normalized before posting. `taskRoomId` is first,
+`worktreeRoomId` is second, duplicate room IDs collapse into one target, and
+the collapsed target keeps both roles (`["task", "worktree"]`). That means a
+task room that is also the worktree coordination room gets one useful message
+rather than two identical messages with ambiguous purpose.
+
+#### Routing kinds
+
+Most terminal events use `subAgentRoutingKind: "TASK_STATUS"` and fan out to
+the normalized task/worktree swarm rooms. Two explicit coordination events are
+targeted:
+
+- `QUESTION_FOR_TASK_CREATOR` routes only to the task room and carries
+  `subAgentTargetRoomRole: "task"`.
+- `AGENT_COORDINATION` routes to the worktree room when present, otherwise the
+  task room, and carries the selected target role.
+
+`blocked` events default to `QUESTION_FOR_TASK_CREATOR` because the sub-agent
+is waiting on human or parent-agent input.
 
 #### Disable switch
 

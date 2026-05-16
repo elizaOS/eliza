@@ -10,6 +10,8 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 const spawnOptions = { parameters: { action: "spawn_agent" } };
+const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
+const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 
 describe("TASKS:spawn_agent", () => {
   it("does not expose lockWorkdir to planner-generated tool calls", () => {
@@ -82,6 +84,60 @@ describe("TASKS:spawn_agent", () => {
       workdir,
       status: "ready",
     });
+  });
+
+  it("stamps deterministic deduped task/worktree swarm room metadata", async () => {
+    const svc = serviceMock();
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({
+        task: "coordinate the swarm",
+        agentType: "codex",
+        taskRoomId: TASK_ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    const call = svc.spawnSession.mock.calls[0]?.[0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.metadata).toMatchObject({
+      roomId: TASK_ROOM,
+      originRoomId: "room1",
+      taskRoomId: TASK_ROOM,
+      worktreeRoomId: WORKTREE_ROOM,
+      swarmRooms: [
+        { roomId: TASK_ROOM, roles: ["task"] },
+        { roomId: WORKTREE_ROOM, roles: ["worktree"] },
+      ],
+    });
+  });
+
+  it("keeps both swarm roles when task room and worktree room are the same", async () => {
+    const svc = serviceMock();
+    await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({
+        task: "coordinate in one room",
+        agentType: "codex",
+        taskRoomId: TASK_ROOM,
+        worktreeRoomId: TASK_ROOM,
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    const call = svc.spawnSession.mock.calls[0]?.[0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.metadata?.swarmRooms).toEqual([
+      { roomId: TASK_ROOM, roles: ["task", "worktree"] },
+    ]);
   });
 
   it("suppresses the spawn acknowledgement when the user requested a deferred reply", async () => {

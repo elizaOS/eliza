@@ -287,6 +287,35 @@ describe("AcpService", () => {
     expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
   });
 
+  it("normalizes BENCHMARK_TASK_AGENT=elizaos to the OpenCode ACP adapter", async () => {
+    const reg = nextProc();
+    const service = new AcpService(
+      runtime({
+        BENCHMARK_TASK_AGENT: "elizaos",
+        CEREBRAS_API_KEY: "csk_test",
+        CEREBRAS_MODEL: "gpt-oss-120b",
+      }),
+    );
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "benchmark-elizaos",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    const session = await spawned;
+
+    expect(session.agentType).toBe("opencode");
+    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
+    expect(args).not.toContain("elizaos");
+
+    const env = spawnMock.mock.calls[0]?.[2]?.env as
+      | Record<string, string>
+      | undefined;
+    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
+  });
+
   it("uses an explicit OpenCode ACP command override when configured", async () => {
     const reg = nextProc();
     const service = new AcpService(

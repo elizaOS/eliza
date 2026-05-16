@@ -8,6 +8,7 @@ import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -118,9 +119,11 @@ export class AcpService extends Service {
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     this.defaultAgent =
-      this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
-      this.setting("ELIZA_DEFAULT_AGENT_TYPE") ??
-      "codex";
+      normalizeTaskAgentAdapter(
+        this.setting("BENCHMARK_TASK_AGENT") ??
+          this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
+          this.setting("ELIZA_DEFAULT_AGENT_TYPE"),
+      ) ?? "codex";
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
@@ -168,7 +171,9 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
-    const agentType = opts.agentType ?? this.defaultAgent;
+    const agentType =
+      normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
+      this.defaultAgent;
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     const workdir = resolve(
       opts.workdir ??
@@ -548,9 +553,12 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
+    const normalizedAgentType =
+      normalizeTaskAgentAdapter(agentType) ?? agentType;
+    if (normalizedAgentType !== "opencode")
+      return [normalizedAgentType, ...args];
     const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
+    if (!command) return [normalizedAgentType, ...args];
     return ["--agent", command, ...args];
   }
 

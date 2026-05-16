@@ -14,6 +14,34 @@ const KNOWN_ADAPTER_TYPES = new Set([
   "hermes",
 ]);
 
+export function normalizeTaskAgentAdapter(
+  value: string | undefined,
+): string | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/_/g, "-");
+  if (!normalized) return undefined;
+  switch (normalized) {
+    case "elizaos":
+    case "eliza-os":
+    case "pi-agent":
+    case "pi agent":
+    case "opencode":
+    case "open-code":
+    case "open code":
+      return "opencode";
+    case "claude":
+    case "claude-code":
+    case "claude code":
+      return "claude";
+    case "codex":
+    case "openai":
+    case "openai-codex":
+    case "openai codex":
+      return "codex";
+    default:
+      return normalized;
+  }
+}
+
 export interface WorkdirRoute {
   id: string;
   workdir: string;
@@ -53,7 +81,11 @@ export function resolvePinnedAdapter(
     .toLowerCase()
     .trim();
   if (strategy !== "fixed") return undefined;
-  const raw = getSetting("ELIZA_DEFAULT_AGENT_TYPE")?.trim().toLowerCase();
+  const raw = normalizeTaskAgentAdapter(
+    getSetting("BENCHMARK_TASK_AGENT") ??
+      getSetting("ELIZA_ACP_DEFAULT_AGENT") ??
+      getSetting("ELIZA_DEFAULT_AGENT_TYPE"),
+  );
   if (!raw) return undefined;
   return KNOWN_ADAPTER_TYPES.has(raw) ? raw : undefined;
 }
