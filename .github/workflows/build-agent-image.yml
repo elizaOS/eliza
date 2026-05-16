@@ -107,15 +107,20 @@ jobs:
         # `dist/*.d.ts` to exist; without this build, plugin-video's
         # DTS pass trips `TS2307: Cannot find module '@elizaos/core'`.
         # Build the same set docker-ci-smoke.sh builds before its
-        # per-plugin loop: core (Node-only), shared, cloud-sdk,
-        # cloud-routing, ui. Workspace symlinks already exist from
+        # per-plugin loop: contracts (required by core's
+        # tsconfig.declarations.json), core (Node-only), shared,
+        # cloud-sdk, ui. Workspace symlinks already exist from
         # `bun install`; we just need the dist artifacts each plugin's
         # tsup resolves through `exports`.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
+          # contracts must build BEFORE core: packages/core/tsconfig.declarations.json
+          # maps `@elizaos/contracts` to `../contracts/dist/index.d.ts` and the
+          # declarations tsc step fails with TS2307 if that file is missing.
+          (cd packages/contracts && bun run build)
           (cd packages/core && bun run build.ts --node-only)
-          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/ui; do
+          for pkg in packages/shared packages/cloud-sdk packages/ui; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
               echo "::group::Building $pkg"
               (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
