@@ -1674,11 +1674,13 @@ jobs:
           # installer, not the raw Electrobun bootstrap stub.
           find release-artifacts -type f \( \
             -name "*.dmg" -o \
+            -name "*.app.tar.gz" -o \
             -name "*.AppImage" -o \
             -name "*.deb" -o \
             -name "*.rpm" -o \
             -name "ElizaOSApp-Setup-*.exe" -o \
             -name "ElizaOSApp-Setup-*.exe.zip" -o \
+            -name "eliza-canary-windows-*.exe.zip" -o \
             -name "*Setup*.tar.gz" -o \
             -name "*.tar.zst" -o \
             -name "*.flatpak" -o \
@@ -1687,7 +1689,7 @@ jobs:
 
           # Decompress Windows .exe.zip back to .exe for end-user downloads
           # (zip was only used for inter-job artifact transfer to avoid SAS token timeout)
-          for f in release-files/*.exe.zip; do
+          for f in release-files/ElizaOSApp-Setup-*.exe.zip; do
             [ -f "$f" ] || continue
             echo "Decompressing $f"
             cd release-files && unzip -o "$(basename "$f")" && rm "$(basename "$f")" && cd ..
