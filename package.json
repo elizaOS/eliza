@@ -84,10 +84,12 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "clean": "turbo run clean --concurrency=100% && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",
-    "build:core": "turbo run build --filter=@elizaos/contracts --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-shared --filter=@elizaos/vault --filter=@elizaos/plugin-local-inference --filter=@elizaos/plugin-ollama --filter=@elizaos/plugin-commands --filter=@elizaos/plugin-shell --filter=@elizaos/plugin-coding-tools --filter=@elizaos/plugin-agent-orchestrator --filter=@elizaos/plugin-video --filter=@elizaos/plugin-background-runner --filter=@elizaos/plugin-mlx --filter=@elizaos/plugin-anthropic --filter=@elizaos/plugin-openai --filter=@elizaos/plugin-elizacloud --no-cache",
+    "build:core": "turbo run build --filter=@elizaos/contracts --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-shared --filter=@elizaos/vault --filter=@elizaos/app-core --filter=@elizaos/plugin-local-inference --filter=@elizaos/plugin-ollama --filter=@elizaos/plugin-commands --filter=@elizaos/plugin-shell --filter=@elizaos/plugin-coding-tools --filter=@elizaos/plugin-agent-orchestrator --filter=@elizaos/plugin-app-manager --filter=@elizaos/plugin-wallet --filter=@elizaos/plugin-video --filter=@elizaos/plugin-background-runner --filter=@elizaos/plugin-mlx --filter=@elizaos/plugin-anthropic --filter=@elizaos/plugin-openai --filter=@elizaos/plugin-elizacloud --no-cache",
     "build:server": "turbo run build --filter=@elizaos/agent --no-cache",
     "lint": "turbo run lint && node packages/scripts/run-examples-benchmarks.mjs lint",
     "lint:check": "turbo run lint:check",
+    "knip": "node scripts/knip-workspaces.mjs",
+    "knip:strict": "node scripts/knip-workspaces.mjs --fail-on-issues",
     "typecheck": "NODE_OPTIONS='--max-old-space-size=8192' turbo run typecheck --concurrency=1 --filter='!@elizaos/example-code' && node packages/scripts/run-examples-benchmarks.mjs typecheck",
     "lint:all": "bun run lint:check && bun run typecheck",
     "verify": "NODE_OPTIONS='--max-old-space-size=8192' turbo run typecheck lint --concurrency=1 --filter='!@elizaos/example-code'",
@@ -122,7 +124,7 @@
     "dev:cloud": "concurrently -n api,web -c blue,magenta \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
     "dev:cloud:api": "bun run --cwd packages/cloud-api dev",
     "dev:cloud:web": "bun run --cwd packages/cloud-frontend dev",
-    "dev:cloud:full": "concurrently -n db,api,web -c yellow,blue,magenta \"bun run db:cloud:pglite\" \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
+    "dev:cloud:full": "bun run dev:cloud",
     "build:cloud": "bun run --cwd packages/cloud-api build && bun run --cwd packages/cloud-frontend build",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
@@ -167,6 +169,7 @@
     "packages/benchmarks/lib",
     "packages/benchmarks/interrupt-bench",
     "packages/benchmarks/eliza-1",
+    "packages/benchmarks/eliza-1/vision-cua-e2e",
     "packages/benchmarks/three-agent-dialogue",
     "packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer",
     "packages/examples/*",
@@ -365,6 +368,13 @@
     "unrs-resolver",
     "utf-8-validate",
     "workerd"
+  ],
+  "bundledDependencies": [
+    "@elizaos/plugin-agent-orchestrator"
+  ],
+  "files": [
+    "dist",
+    "packages/app-core/scripts"
   ],
   "dependencies": {
     "@elizaos/plugin-agent-orchestrator": "workspace:*",

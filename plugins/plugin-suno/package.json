@@ -14,9 +14,9 @@
         },
         "./*.css": "./dist/*.css",
         "./*": {
+            "types": "./dist/*.d.ts",
             "import": "./dist/*.js",
-            "default": "./dist/*.js",
-            "types": "./dist/*.d.ts"
+            "default": "./dist/*.js"
         }
     },
     "files": [

@@ -21,8 +21,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect } from "vitest";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { req } from "../../../test/helpers/http.ts";
+import { itIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { req } from "../../../packages/test/helpers/http.ts";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import {
   createLifeOpsConnectorGrant,

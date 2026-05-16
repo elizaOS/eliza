@@ -47,7 +47,7 @@ DEFAULT_REPO_EN: Final[str] = "livekit/turn-detector"
 DEFAULT_REVISION_EN: Final[str] = "v1.2.2-en"
 DEFAULT_REVISION_INTL: Final[str] = "v0.4.1-intl"
 DEFAULT_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
-DEFAULT_ELIZA1_REPO: Final[str] = "elizaos/eliza-1"
+DEFAULT_ELIZA1_REPO: Final[str] = "elizalabs/eliza-1"
 
 # Supported teacher backends. `eliza-1-drafter` produces a GGUF LoRA
 # adapter the runtime layers onto the in-process drafter at voice
@@ -97,7 +97,7 @@ def default_revision_for_tier(tier: str) -> str:
     (`turnDetectorRevisionForTier`). Accepts both bare (``"4b"``) and
     prefixed (``"eliza-1-4b"``) tier ids.
     """
-    bare = tier[len("eliza-1-"):] if tier.startswith("eliza-1-") else tier
+    bare = tier[len("eliza-1-") :] if tier.startswith("eliza-1-") else tier
     if bare in ("0_8b", "2b"):
         return DEFAULT_REVISION_EN
     return DEFAULT_REVISION_INTL
@@ -345,9 +345,7 @@ def build_eou_prefix_corpus(
     try:
         from datasets import load_dataset  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise RuntimeError(
-            "build_eou_prefix_corpus requires `datasets`"
-        ) from exc
+        raise RuntimeError("build_eou_prefix_corpus requires `datasets`") from exc
 
     import random
 
@@ -431,18 +429,30 @@ OASST1_HF_REPO: Final[str] = "OpenAssistant/oasst1"
 # `pt-BR` which OASST1 uses for Brazilian Portuguese (we accept both
 # `pt` and `pt-BR` as Portuguese).
 LIVEKIT_INTL_LOCALES: Final[tuple[str, ...]] = (
-    "en", "es", "fr", "de", "it", "pt", "nl",
-    "ru", "zh", "ja", "ko", "tr", "id", "hi",
+    "en",
+    "es",
+    "fr",
+    "de",
+    "it",
+    "pt",
+    "nl",
+    "ru",
+    "zh",
+    "ja",
+    "ko",
+    "tr",
+    "id",
+    "hi",
 )
 
 
 _CJK_RANGES: Final[tuple[tuple[int, int], ...]] = (
-    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
-    (0x3040, 0x30FF),   # Hiragana + Katakana
-    (0x3400, 0x4DBF),   # CJK Unified Ideographs Extension A
-    (0xAC00, 0xD7AF),   # Hangul Syllables
-    (0xF900, 0xFAFF),   # CJK Compatibility Ideographs
-    (0xFF00, 0xFFEF),   # Halfwidth and Fullwidth Forms
+    (0x4E00, 0x9FFF),  # CJK Unified Ideographs
+    (0x3040, 0x30FF),  # Hiragana + Katakana
+    (0x3400, 0x4DBF),  # CJK Unified Ideographs Extension A
+    (0xAC00, 0xD7AF),  # Hangul Syllables
+    (0xF900, 0xFAFF),  # CJK Compatibility Ideographs
+    (0xFF00, 0xFFEF),  # Halfwidth and Fullwidth Forms
 )
 
 
@@ -514,7 +524,7 @@ def _split_into_utterances(text: str, max_words: int = 40) -> list[str]:
             char_cap = max_words * 2
             if len(sent) > char_cap:
                 for i in range(0, len(sent), char_cap):
-                    chunk = sent[i:i + char_cap].strip()
+                    chunk = sent[i : i + char_cap].strip()
                     if chunk:
                         out.append(chunk)
             else:
@@ -524,7 +534,7 @@ def _split_into_utterances(text: str, max_words: int = 40) -> list[str]:
                 continue
             if len(words) > max_words:
                 for i in range(0, len(words), max_words):
-                    chunk = " ".join(words[i:i + max_words])
+                    chunk = " ".join(words[i : i + max_words])
                     if chunk:
                         out.append(chunk)
             else:
@@ -567,9 +577,7 @@ def build_multilingual_eou_corpus(
     try:
         from datasets import load_dataset  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise RuntimeError(
-            "build_multilingual_eou_corpus requires `datasets`"
-        ) from exc
+        raise RuntimeError("build_multilingual_eou_corpus requires `datasets`") from exc
 
     import random
     import re
@@ -972,7 +980,8 @@ def train_step(
     # log p(im_end) - log p(other) = im_end_logit - logsumexp(other_logits)
     im_end_logit = last_logits[:, im_end_id]
     other_logits = torch.cat(
-        [last_logits[:, :im_end_id], last_logits[:, im_end_id + 1:]], dim=1,
+        [last_logits[:, :im_end_id], last_logits[:, im_end_id + 1 :]],
+        dim=1,
     )
     other_lse = torch.logsumexp(other_logits, dim=1)
     score = im_end_logit - other_lse  # binary logit for P(EOU)
@@ -998,7 +1007,9 @@ def _maintain_top_k(
     """
     candidate = {"step": step, "path": path, "f1": f1}
     combined = sorted(
-        [*top_k, candidate], key=lambda r: r["f1"], reverse=True,
+        [*top_k, candidate],
+        key=lambda r: r["f1"],
+        reverse=True,
     )
     new_top_k = combined[:keep]
     dropped = [r["path"] for r in combined[keep:]]
@@ -1108,12 +1119,15 @@ def train_lora(
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
 
     base_model = AutoModelForCausalLM.from_pretrained(
-        cfg.teacher_repo, revision=cfg.teacher_revision, dtype=dtype,
+        cfg.teacher_repo,
+        revision=cfg.teacher_revision,
+        dtype=dtype,
     )
     base_model.to(device)
     base_model.gradient_checkpointing_disable()
     tokenizer = AutoTokenizer.from_pretrained(
-        cfg.teacher_repo, revision=cfg.teacher_revision,
+        cfg.teacher_repo,
+        revision=cfg.teacher_revision,
     )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -1183,7 +1197,7 @@ def train_lora(
             break
         perm = torch.randperm(n, generator=rng)
         for start in range(0, n, batch_size):
-            sl = perm[start:start + batch_size]
+            sl = perm[start : start + batch_size]
             batch = (
                 input_ids_t[sl],
                 attention_mask_t[sl],
@@ -1220,7 +1234,11 @@ def train_lora(
                 )
                 ckpt_path_str = _save_checkpoint(step, f1)
                 top_k, dropped = _maintain_top_k(
-                    top_k, step=step, path=ckpt_path_str, f1=f1, keep=3,
+                    top_k,
+                    step=step,
+                    path=ckpt_path_str,
+                    f1=f1,
+                    keep=3,
                 )
                 for path in dropped:
                     try:
@@ -1320,13 +1338,16 @@ def export_onnx(
     fp32_path = out_path.with_suffix(".fp32.onnx")
 
     model = AutoModelForCausalLM.from_pretrained(
-        teacher_repo, revision=teacher_revision, dtype="float32",
+        teacher_repo,
+        revision=teacher_revision,
+        dtype="float32",
     )
     checkpoint = torch.load(checkpoint_path, weights_only=False, map_location="cpu")
     state_dict = checkpoint.get("state_dict", checkpoint)
     # state_dict may be from a bf16 model; cast keys to fp32 to match
-    state_dict = {k: v.to(torch.float32) if hasattr(v, "to") else v
-                  for k, v in state_dict.items()}
+    state_dict = {
+        k: v.to(torch.float32) if hasattr(v, "to") else v for k, v in state_dict.items()
+    }
     model.load_state_dict(state_dict, strict=False)
     model.eval()
     # Disable KV cache during export so the graph has a stable output.
@@ -1365,7 +1386,9 @@ def export_onnx(
 
 
 def export_tokenizer_artifacts(
-    teacher_repo: str, teacher_revision: str, out_dir: Path,
+    teacher_repo: str,
+    teacher_revision: str,
+    out_dir: Path,
 ) -> list[str]:
     """Snapshot-download the tokenizer + config sidecars next to the ONNX.
 
@@ -1468,9 +1491,7 @@ def stage_dailydialog_train_eval(
     with eval_path.open("w", encoding="utf-8") as fh:
         for r in eval_rows:
             fh.write(
-                json.dumps(
-                    {"transcript": r["utterance"], "label": int(r["eou_label"])}
-                )
+                json.dumps({"transcript": r["utterance"], "label": int(r["eou_label"])})
                 + "\n"
             )
     return train_path, eval_path
@@ -1605,16 +1626,11 @@ def _run_export_only(args: argparse.Namespace) -> int:
         teacher_revision = args.revision or cfg.teacher_revision
     else:
         import torch
+
         ckpt = torch.load(args.checkpoint, weights_only=False, map_location="cpu")
-        teacher_repo = (
-            args.base_model
-            or ckpt.get("teacher_repo")
-            or DEFAULT_REPO_EN
-        )
+        teacher_repo = args.base_model or ckpt.get("teacher_repo") or DEFAULT_REPO_EN
         teacher_revision = (
-            args.revision
-            or ckpt.get("teacher_revision")
-            or DEFAULT_REVISION_EN
+            args.revision or ckpt.get("teacher_revision") or DEFAULT_REVISION_EN
         )
     export_onnx(
         teacher_repo=teacher_repo,
@@ -1623,7 +1639,9 @@ def _run_export_only(args: argparse.Namespace) -> int:
         out_path=args.output,
     )
     export_tokenizer_artifacts(
-        teacher_repo, teacher_revision, args.output.parent,
+        teacher_repo,
+        teacher_revision,
+        args.output.parent,
     )
     return 0
 
@@ -1657,7 +1675,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.pretrain_corpus == "oasst1-intl":
         data_dir = run_dir / "data" / "turn"
         train_path, eval_path = stage_multilingual_train_eval(
-            out_dir=data_dir, per_lang_cap=args.per_lang_cap,
+            out_dir=data_dir,
+            per_lang_cap=args.per_lang_cap,
         )
         resolved = dataclasses.replace(
             resolved,
@@ -1725,7 +1744,9 @@ def main(argv: list[str] | None = None) -> int:
                 out_path=onnx_dir / "model_q8.onnx",
             )
             export_tokenizer_artifacts(
-                resolved.teacher_repo, resolved.teacher_revision, onnx_dir,
+                resolved.teacher_repo,
+                resolved.teacher_revision,
+                onnx_dir,
             )
     return 0
 

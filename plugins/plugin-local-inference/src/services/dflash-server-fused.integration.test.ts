@@ -32,6 +32,17 @@ function elizaStateDir(): string {
 
 function backendKey(): string {
 	if (process.platform === "darwin") return "metal";
+	for (const backend of ["cuda", "vulkan", "rocm"] as const) {
+		const candidate = path.join(
+			elizaStateDir(),
+			"local-inference",
+			"bin",
+			"dflash",
+			`${process.platform}-${process.arch}-${backend}-fused`,
+			process.platform === "win32" ? "llama-server.exe" : "llama-server",
+		);
+		if (existsSync(candidate)) return backend;
+	}
 	if (
 		process.env.CUDA_VISIBLE_DEVICES &&
 		process.env.CUDA_VISIBLE_DEVICES !== "-1"

@@ -1,1 +1,1 @@
-/usr/bin/cc -O3 -DNDEBUG CMakeFiles/voice_gguf_loader_test.dir/test/voice_gguf_loader_test.c.o -o voice_gguf_loader_test  libvoice_classifier.a -lm 
+/usr/bin/cc -O3 -DNDEBUG -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/voice_gguf_loader_test.dir/test/voice_gguf_loader_test.c.o -o voice_gguf_loader_test  libvoice_classifier.a -lm

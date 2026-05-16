@@ -23,23 +23,9 @@ const meta = {
     title: "Models",
   },
 
-  "-- generation": {
-    type: "separator",
-    title: "Generation",
-  },
-  images: {
-    title: "Image Generation",
-  },
-  video: {
-    title: "Video Generation",
-  },
-  voice: {
-    title: "Voice & TTS",
-  },
-
   "-- resources": {
     type: "separator",
-    title: "Resources",
+    title: "Platform APIs",
   },
   agents: {
     title: "Agents",
@@ -56,8 +42,22 @@ const meta = {
   mcps: {
     title: "MCPs",
   },
+
+  "-- media": {
+    type: "separator",
+    title: "Media APIs",
+  },
+  images: {
+    title: "Images API",
+  },
+  video: {
+    title: "Video API",
+  },
+  voice: {
+    title: "Voice API",
+  },
   gallery: {
-    title: "Gallery",
+    title: "Gallery API",
   },
 
   "-- account": {

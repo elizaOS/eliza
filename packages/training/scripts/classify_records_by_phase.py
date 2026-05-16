@@ -29,7 +29,7 @@ A streaming HF parquet input is also supported via ``--hf-stream`` for
 auditing the published dataset without re-downloading:
 
     uv run python scripts/classify_records_by_phase.py \
-        --hf-stream elizaos/eliza-1-training --split train \
+        --hf-stream elizalabs/eliza-1-training --split train \
         --sample 100000 --out previews/
 """
 
@@ -65,11 +65,15 @@ def iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:
                 log.warning("malformed JSON at %s:%d (%s) — skipped", path, line_no, e)
 
 
-def iter_hf_stream(repo_id: str, split: str, limit: int | None) -> Iterator[dict[str, Any]]:
+def iter_hf_stream(
+    repo_id: str, split: str, limit: int | None
+) -> Iterator[dict[str, Any]]:
     try:
         from datasets import load_dataset
     except ImportError:
-        sys.exit("--hf-stream requires `datasets`. Install with `uv pip install datasets`.")
+        sys.exit(
+            "--hf-stream requires `datasets`. Install with `uv pip install datasets`."
+        )
     ds = load_dataset(repo_id, split=split, streaming=True)
     for i, row in enumerate(ds):
         if limit is not None and i >= limit:
@@ -77,14 +81,18 @@ def iter_hf_stream(repo_id: str, split: str, limit: int | None) -> Iterator[dict
         yield row
 
 
-def iter_hf_raw(repo_id: str, filename: str, limit: int | None) -> Iterator[dict[str, Any]]:
+def iter_hf_raw(
+    repo_id: str, filename: str, limit: int | None
+) -> Iterator[dict[str, Any]]:
     """Stream a single JSONL file from an HF dataset repo line-by-line via the raw
     `huggingface_hub.hf_hub_download` resolver — bypasses the `datasets` library's
     schema enforcement. Use this when shards have inconsistent metadata schemas."""
     try:
         from huggingface_hub import hf_hub_url
     except ImportError:
-        sys.exit("--hf-raw requires `huggingface_hub`. Install with `uv pip install huggingface_hub`.")
+        sys.exit(
+            "--hf-raw requires `huggingface_hub`. Install with `uv pip install huggingface_hub`."
+        )
     import urllib.request
 
     url = hf_hub_url(repo_id, filename, repo_type="dataset")
@@ -111,7 +119,9 @@ def classify_corpus(
     oob_sample_per_source: int = 50,
 ) -> dict[str, Any]:
     phase_counts: dict[str, int] = collections.Counter()
-    by_task_type: dict[str, dict[str, int]] = collections.defaultdict(collections.Counter)
+    by_task_type: dict[str, dict[str, int]] = collections.defaultdict(
+        collections.Counter
+    )
     by_source: dict[str, dict[str, int]] = collections.defaultdict(collections.Counter)
     oob_samples: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
     total = 0
@@ -133,12 +143,18 @@ def classify_corpus(
         if phase == "OOB":
             bucket = oob_samples[source]
             if len(bucket) < oob_sample_per_source:
-                bucket.append({
-                    "task_type": task_type,
-                    "source_dataset": source,
-                    "currentMessage_excerpt": (row.get("currentMessage") or {}).get("content", "")[:200],
-                    "expectedResponse_excerpt": (row.get("expectedResponse") or "")[:200],
-                })
+                bucket.append(
+                    {
+                        "task_type": task_type,
+                        "source_dataset": source,
+                        "currentMessage_excerpt": (row.get("currentMessage") or {}).get(
+                            "content", ""
+                        )[:200],
+                        "expectedResponse_excerpt": (row.get("expectedResponse") or "")[
+                            :200
+                        ],
+                    }
+                )
 
     return {
         "total": total,
@@ -195,18 +211,22 @@ def render_markdown(report: dict[str, Any]) -> str:
     src_rows = []
     for src, counts in by_src.items():
         t = sum(counts.values())
-        src_rows.append((
-            src,
-            counts.get("1", 0),
-            counts.get("2", 0),
-            counts.get("3", 0),
-            counts.get("4", 0),
-            counts.get("OOB", 0),
-            t,
-        ))
+        src_rows.append(
+            (
+                src,
+                counts.get("1", 0),
+                counts.get("2", 0),
+                counts.get("3", 0),
+                counts.get("4", 0),
+                counts.get("OOB", 0),
+                t,
+            )
+        )
     src_rows.sort(key=lambda r: -r[6])
     for r in src_rows:
-        out.append(f"| `{r[0]}` | {r[1]:,} | {r[2]:,} | {r[3]:,} | {r[4]:,} | {r[5]:,} | {r[6]:,} |")
+        out.append(
+            f"| `{r[0]}` | {r[1]:,} | {r[2]:,} | {r[3]:,} | {r[4]:,} | {r[5]:,} | {r[6]:,} |"
+        )
     out.append("")
 
     if pc.get("OOB", 0):
@@ -227,13 +247,33 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Classify corpus records by runtime phase.")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--input", type=Path, help="path to local JSONL corpus")
-    src.add_argument("--hf-stream", type=str, help="HF repo id to stream via `datasets` library (schema-strict)")
-    src.add_argument("--hf-raw", type=str, help="HF repo id to stream a single file raw via huggingface_hub (schema-permissive)")
-    p.add_argument("--hf-file", default="train.jsonl", help="filename to fetch when using --hf-raw (default: train.jsonl)")
-    p.add_argument("--split", default="train", help="split name when streaming HF (default: train)")
-    p.add_argument("--sample", type=int, default=None, help="cap rows examined (default: all)")
-    p.add_argument("--out", type=Path, default=ROOT / "previews", help="output directory")
-    p.add_argument("--oob-sample", type=int, default=50, help="OOB samples to keep per source")
+    src.add_argument(
+        "--hf-stream",
+        type=str,
+        help="HF repo id to stream via `datasets` library (schema-strict)",
+    )
+    src.add_argument(
+        "--hf-raw",
+        type=str,
+        help="HF repo id to stream a single file raw via huggingface_hub (schema-permissive)",
+    )
+    p.add_argument(
+        "--hf-file",
+        default="train.jsonl",
+        help="filename to fetch when using --hf-raw (default: train.jsonl)",
+    )
+    p.add_argument(
+        "--split", default="train", help="split name when streaming HF (default: train)"
+    )
+    p.add_argument(
+        "--sample", type=int, default=None, help="cap rows examined (default: all)"
+    )
+    p.add_argument(
+        "--out", type=Path, default=ROOT / "previews", help="output directory"
+    )
+    p.add_argument(
+        "--oob-sample", type=int, default=50, help="OOB samples to keep per source"
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
@@ -254,14 +294,19 @@ def main() -> int:
     else:
         rows = iter_hf_raw(args.hf_raw, args.hf_file, args.sample)
 
-    report = classify_corpus(rows, sample=args.sample, oob_sample_per_source=args.oob_sample)
+    report = classify_corpus(
+        rows, sample=args.sample, oob_sample_per_source=args.oob_sample
+    )
 
     md_path = args.out / "PHASE_COVERAGE.md"
     json_path = args.out / "phase_coverage.json"
     oob_path = args.out / "OUT_OF_BAND_SAMPLES.jsonl"
 
     md_path.write_text(render_markdown(report), encoding="utf-8")
-    json_path.write_text(json.dumps({k: v for k, v in report.items() if k != "oob_samples"}, indent=2), encoding="utf-8")
+    json_path.write_text(
+        json.dumps({k: v for k, v in report.items() if k != "oob_samples"}, indent=2),
+        encoding="utf-8",
+    )
 
     with oob_path.open("w", encoding="utf-8") as f:
         for source, samples in report["oob_samples"].items():

@@ -74,36 +74,6 @@ const discordAuthSchema = z.object({
     .transform((s) => s?.trim() || undefined),
 });
 
-/**
- * Success response type
- */
-export interface AuthSuccessResponse {
-  success: true;
-  user: {
-    id: string;
-    discord_id: string;
-    discord_username: string | null;
-    discord_global_name: string | null;
-    phone_number: string | null;
-    name: string | null;
-    organization_id: string;
-  };
-  session: {
-    token: string;
-    expires_at: string;
-  };
-  is_new_user: boolean;
-}
-
-/**
- * Error response type
- */
-export interface AuthErrorResponse {
-  success: false;
-  error: string;
-  code: string;
-}
-
 async function handleDiscordAuth(request: Request): Promise<Response> {
   // Parse and validate request body
   let body: unknown;
@@ -237,7 +207,9 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
     );
   } else {
     // ---- STANDARD FLOW: Find or create user by Discord ID (with optional phone cross-linking) ----
-    let result;
+    let result: Awaited<
+      ReturnType<typeof elizaAppUserService.findOrCreateByDiscordId>
+    >;
     try {
       result = await elizaAppUserService.findOrCreateByDiscordId(
         discordUser.id,

@@ -40,7 +40,7 @@ try:
         KernelVerification,
         LineageEntry,
         build_manifest,
-        parse_text_ctx_from_filename,
+        text_context_for_manifest,
         validate_manifest,
         write_manifest,
     )
@@ -59,7 +59,7 @@ except ImportError:  # pragma: no cover - direct script execution path
         KernelVerification,
         LineageEntry,
         build_manifest,
-        parse_text_ctx_from_filename,
+        text_context_for_manifest,
         validate_manifest,
         write_manifest,
     )
@@ -95,7 +95,6 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "4b": (6000, 8000),
     "9b": (10000, 14000),
     "27b": (24000, 32000),
-    "27b-256k": (36000, 48000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "tts",
@@ -483,6 +482,7 @@ def _write_target_meta(
             "schemaVersion": 2,
             "tier": tier,
             "status": "local-standin",
+            "dflashEnabled": True,
             "publishEligible": False,
             "targetText": {
                 "path": str(
@@ -508,11 +508,29 @@ def _write_target_meta(
                 "sha256": drafter_file.sha256,
                 "provenance": drafter_file.provenance,
                 "finalElizaWeights": False,
+                "architecture": None,
+                "architectureSource": (
+                    "not validated; run scripts/dflash/validate_drafter.py "
+                    "against the final target and drafter GGUFs before publish"
+                ),
                 # sha256 of the text checkpoint this drafter was distilled
                 # against, copied from the drafter GGUF's
                 # `dflash-draft.target_checkpoint_sha256` metadata key.
                 "targetCheckpointSha256": drafter_target_sha,
                 "matchesTargetCheckpoint": drafter_matches_target,
+            },
+            "tokenizerCompatibility": {
+                "compatible": False,
+                "mismatches": [
+                    {
+                        "key": "tokenizer.ggml.*",
+                        "blockingReason": (
+                            "target/drafter tokenizer metadata has not been "
+                            "validated by scripts/dflash/validate_drafter.py"
+                        ),
+                    }
+                ],
+                "source": "not-yet-validated",
             },
             # Speculative-decode acceptance windows: [draftMin, draftMax]
             # tokens proposed per step plus the measured acceptance rate.
@@ -781,7 +799,7 @@ def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]
                 FileEntry(
                     path=str(path.relative_to(bundle_dir)),
                     sha256=sha256_file(path),
-                    ctx=parse_text_ctx_from_filename(path) if text else None,
+                    ctx=text_context_for_manifest(path) if text else None,
                 )
             )
         return out

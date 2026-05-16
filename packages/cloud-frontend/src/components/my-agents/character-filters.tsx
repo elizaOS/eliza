@@ -1,6 +1,6 @@
 /**
- * Character filters component providing search, view mode, and sort controls.
- * Displays character count and supports filtering and sorting options.
+ * Agent filters component providing search, view mode, and sort controls.
+ * Displays agent count and supports filtering and sorting options.
  *
  * @param props - Character filters configuration
  * @param props.searchQuery - Current search query
@@ -9,8 +9,8 @@
  * @param props.onViewModeChange - Callback when view mode changes
  * @param props.sortBy - Current sort option
  * @param props.onSortChange - Callback when sort changes
- * @param props.totalCount - Total number of characters
- * @param props.filteredCount - Number of characters after filtering
+ * @param props.totalCount - Total number of agents
+ * @param props.filteredCount - Number of agents after filtering
  */
 
 "use client";
@@ -52,17 +52,17 @@ export function CharacterFilters({
       {/* Left side - Search and count */}
       <div className="flex w-full flex-1 items-center gap-3 sm:w-auto">
         <div className="relative w-full flex-1 sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#06131f]/42" />
           <Input
             type="text"
-            placeholder="Search agents..."
+            placeholder="Search agent..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 h-9 md:h-10 rounded-lg border-white/10 bg-neutral-900 text-white text-sm placeholder:text-neutral-500 focus:ring-1 focus:ring-[#FF5800]/50 focus:border-[#FF5800]/50"
+            className="h-9 rounded-full border-white/42 bg-white/58 pl-9 text-sm text-[#06131f] placeholder:text-[#06131f]/42 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 md:h-10"
           />
         </div>
         {searchQuery && (
-          <span className="text-xs text-neutral-500 whitespace-nowrap">
+          <span className="whitespace-nowrap text-xs text-[#06131f]/52">
             {filteredCount}/{totalCount}
           </span>
         )}
@@ -75,26 +75,26 @@ export function CharacterFilters({
           value={sortBy}
           onValueChange={(v) => onSortChange(v as SortOption)}
         >
-          <SelectTrigger className="h-9 w-full rounded-lg border-white/10 bg-neutral-900 text-sm text-neutral-400 focus:ring-1 focus:ring-[#FF5800]/50 sm:w-[160px] md:h-10">
+          <SelectTrigger className="h-9 w-full rounded-full border-white/42 bg-white/58 text-sm text-[#06131f]/72 focus:ring-1 focus:ring-accent/50 sm:w-[160px] md:h-10">
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="rounded-lg">
-            <SelectItem value="modified">Last Modified</SelectItem>
+            <SelectItem value="modified">Last Updated</SelectItem>
             <SelectItem value="created">Created Date</SelectItem>
             <SelectItem value="name">Name (A-Z)</SelectItem>
-            <SelectItem value="recent">Recently Used</SelectItem>
+            <SelectItem value="recent">Recent Activity</SelectItem>
           </SelectContent>
         </Select>
 
         {/* View mode toggle */}
-        <div className="flex h-9 shrink-0 rounded-lg bg-neutral-900 p-1 md:h-10">
+        <div className="flex h-9 shrink-0 rounded-full border border-white/42 bg-white/48 p-1 md:h-10">
           <button
             type="button"
             onClick={() => onViewModeChange("grid")}
             className={`flex items-center justify-center w-8 md:w-9 rounded-md transition-colors ${
               viewMode === "grid"
-                ? "bg-white/10 text-white"
-                : "text-neutral-500 hover:text-neutral-300"
+                ? "bg-white text-[#0c4f8d] shadow-sm"
+                : "text-[#06131f]/50 hover:text-[#06131f]"
             }`}
           >
             <LayoutGrid className="h-4 w-4" />
@@ -104,8 +104,8 @@ export function CharacterFilters({
             onClick={() => onViewModeChange("list")}
             className={`flex items-center justify-center w-8 md:w-9 rounded-md transition-colors ${
               viewMode === "list"
-                ? "bg-white/10 text-white"
-                : "text-neutral-500 hover:text-neutral-300"
+                ? "bg-white text-[#0c4f8d] shadow-sm"
+                : "text-[#06131f]/50 hover:text-[#06131f]"
             }`}
           >
             <List className="h-4 w-4" />

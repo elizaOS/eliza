@@ -41,6 +41,7 @@ const ignoredDirectoryNames = new Set([
 	"test",
 	"test-results",
 	"tests",
+	"vendor",
 	"__tests__",
 ]);
 const ignoredFileFragments = [".d.ts", ".test.", ".spec."];

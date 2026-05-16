@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   labelledSetEvidenceFor,
   normalizeWavDirProvenance,
+  publishGateEligibilityFor,
 } from "./asr_bench";
 
 describe("asr_bench labelled-set provenance", () => {
@@ -55,6 +56,58 @@ describe("asr_bench labelled-set provenance", () => {
       publishGateEligible: true,
     });
     expect(normalizeWavDirProvenance("real-recorded")).toBe("real_recorded");
+  });
+
+  test("real recorded publish evidence requires the minimum utterance count", () => {
+    const evidence = labelledSetEvidenceFor({
+      source: "external_wav_txt",
+      realRecorded: true,
+    });
+
+    expect(
+      publishGateEligibilityFor({
+        evidence,
+        utteranceCount: 4,
+        minRealRecordedUtterances: 5,
+      }),
+    ).toMatchObject({
+      publishGateEligible: false,
+      meetsMinRealRecordedUtterances: false,
+      minRealRecordedUtterances: 5,
+    });
+
+    expect(
+      publishGateEligibilityFor({
+        evidence,
+        utteranceCount: 5,
+        minRealRecordedUtterances: 5,
+      }),
+    ).toMatchObject({
+      publishGateEligible: true,
+      meetsMinRealRecordedUtterances: true,
+      minRealRecordedUtterances: 5,
+      reason: null,
+    });
+  });
+
+  test("real recorded publish evidence honors corpus-level blockers", () => {
+    const evidence = labelledSetEvidenceFor({
+      source: "external_wav_txt",
+      realRecorded: true,
+    });
+
+    expect(
+      publishGateEligibilityFor({
+        evidence,
+        utteranceCount: 5,
+        minRealRecordedUtterances: 5,
+        corpusBlocker: "manifest declares publishGateEligible=false",
+      }),
+    ).toMatchObject({
+      publishGateEligible: false,
+      meetsMinRealRecordedUtterances: true,
+      reason: "manifest declares publishGateEligible=false",
+    });
   });
 
   test("rejects contradictory real-recorded and generated claims", () => {

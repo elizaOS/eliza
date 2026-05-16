@@ -54,12 +54,12 @@ import {
 	VoiceLifecycleError,
 	type VoiceLifecycleLoaders,
 } from "./lifecycle";
+import { loadOnnxRuntime } from "./onnx-runtime";
 import {
 	OptimisticGenerationPolicy,
 	type OptimisticPolicyOptions,
 	resolvePowerSourceState,
 } from "./optimistic-policy";
-import { loadOnnxRuntime } from "./onnx-runtime";
 import {
 	type CachedPhraseAudio,
 	DEFAULT_PHRASE_CACHE_SEED,
@@ -999,8 +999,7 @@ export class EngineVoiceBridge {
 					sampleRate,
 				});
 		} else {
-			backend =
-				opts.ttsBackendOverride ?? new StubOmniVoiceBackend(sampleRate);
+			backend = opts.ttsBackendOverride ?? new StubOmniVoiceBackend(sampleRate);
 		}
 
 		const config: SchedulerConfig = {
@@ -1482,8 +1481,9 @@ export class EngineVoiceBridge {
 	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
 	 *   fused `libelizainference` streaming ASR (final path, gated on a
 	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
-	 *   only the fused path; the whisper.cpp interim fallback has been removed.
+	 *   same bundled model → OpenVINO Whisper when its worker/model artifacts
+	 *   are present → `AsrUnavailableError`. The whisper.cpp interim fallback
+	 *   has been removed.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).

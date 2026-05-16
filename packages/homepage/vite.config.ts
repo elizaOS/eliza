@@ -30,6 +30,22 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@elizaos/ui/button": path.resolve(
+        __dirname,
+        "../ui/src/cloud-ui/components/button.tsx",
+      ),
+      "@elizaos/ui/dropdown-menu": path.resolve(
+        __dirname,
+        "../ui/src/cloud-ui/components/dropdown-menu.tsx",
+      ),
+      "@elizaos/ui/input": path.resolve(
+        __dirname,
+        "../ui/src/cloud-ui/components/input.tsx",
+      ),
+      "@elizaos/ui/product-switcher": path.resolve(
+        __dirname,
+        "../ui/src/cloud-ui/components/product-switcher.tsx",
+      ),
     },
   },
   server: {

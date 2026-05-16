@@ -3,14 +3,13 @@
 import { useContext, useEffect, useState } from "react";
 import { LocalStewardAuthContext } from "@/providers/StewardProvider";
 
-export type SessionAuthSource = "none" | "steward";
+type SessionAuthSource = "none" | "steward";
 
 export type StewardSessionUser = {
   id: string;
   email: string;
   walletAddress?: string;
 } | null;
-export type SessionUser = StewardSessionUser;
 
 /** Default state when StewardProvider is not mounted */
 const STEWARD_AUTH_FALLBACK = {

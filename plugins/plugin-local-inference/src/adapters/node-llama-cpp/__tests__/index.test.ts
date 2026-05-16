@@ -75,16 +75,16 @@ describe("Local AI Plugin", () => {
 		it("uses canonical 0_8b, 2b, and 4b local defaults", () => {
 			const parsed = configSchema.parse({});
 
-			expect(parsed.LOCAL_SMALL_MODEL).toBe("text/eliza-1-2b-32k.gguf");
-			expect(parsed.LOCAL_LARGE_MODEL).toBe("text/eliza-1-4b-64k.gguf");
-			expect(parsed.LOCAL_EMBEDDING_MODEL).toBe("text/eliza-1-0_8b-32k.gguf");
-			expect(MODEL_SPECS.small.name).toBe("text/eliza-1-2b-32k.gguf");
-			expect(MODEL_SPECS.medium.name).toBe("text/eliza-1-4b-64k.gguf");
-			expect(MODEL_SPECS.embedding.name).toBe("text/eliza-1-0_8b-32k.gguf");
+			expect(parsed.LOCAL_SMALL_MODEL).toBe("text/eliza-1-2b-128k.gguf");
+			expect(parsed.LOCAL_LARGE_MODEL).toBe("text/eliza-1-4b-128k.gguf");
+			expect(parsed.LOCAL_EMBEDDING_MODEL).toBe("text/eliza-1-0_8b-128k.gguf");
+			expect(MODEL_SPECS.small.name).toBe("text/eliza-1-2b-128k.gguf");
+			expect(MODEL_SPECS.medium.name).toBe("text/eliza-1-4b-128k.gguf");
+			expect(MODEL_SPECS.embedding.name).toBe("text/eliza-1-0_8b-128k.gguf");
 		});
 
 		it("defaults local TTS to the small-tier Kokoro bundle component", () => {
-			expect(MODEL_SPECS.tts.default.repo).toBe("elizaos/eliza-1");
+			expect(MODEL_SPECS.tts.default.repo).toBe("elizalabs/eliza-1");
 			expect(MODEL_SPECS.tts.default.name).toBe("tts/kokoro/model_q4.onnx");
 			expect(MODEL_SPECS.tts.default.tokenizer.name).toBe(
 				"tts/kokoro/tokenizer.json",

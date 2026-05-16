@@ -77,7 +77,7 @@ export function useOnboardingHardwareAdvice(
         setState({ advice: null, loading: false, error });
       });
     return () => controller.abort();
-  }, [model, provider, endpoint]);
+  }, [model?.sizeBytes, model?.ramGbRequired, provider, endpoint, model]);
 
   return state;
 }

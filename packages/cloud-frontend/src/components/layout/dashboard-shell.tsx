@@ -1,4 +1,5 @@
 import {
+  CloudSkyBackground,
   DashboardLoadingState,
   PageHeaderProvider,
   ScrollArea,
@@ -69,7 +70,11 @@ export function DashboardShell({
     <OnboardingProvider>
       <TooltipProvider>
         <PageHeaderProvider>
-          <div className="dashboard-theme flex h-dvh min-h-dvh w-full overflow-hidden bg-neutral-950">
+          <CloudSkyBackground
+            className="dashboard-theme h-dvh min-h-dvh w-full"
+            contentClassName="flex h-dvh min-h-dvh w-full overflow-hidden"
+            intensity="soft"
+          >
             <Sidebar isOpen={sidebarOpen} onToggle={handleToggleSidebar} />
 
             <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 md:gap-3 md:p-3 md:pl-0">
@@ -79,7 +84,7 @@ export function DashboardShell({
                 authGraceActive={headerAuthGraceActive}
               />
 
-              <ScrollArea className="min-w-0 flex-1 border border-white/10 bg-black/80">
+              <ScrollArea className="min-w-0 flex-1 rounded-[22px] border border-white/32 bg-white/30 shadow-[0_18px_54px_rgba(3,28,58,0.16)] backdrop-blur-2xl">
                 <main className="min-w-0 p-3 md:p-6">
                   <Suspense fallback={<DashboardLoadingState />}>
                     <Outlet />
@@ -87,7 +92,7 @@ export function DashboardShell({
                 </main>
               </ScrollArea>
             </div>
-          </div>
+          </CloudSkyBackground>
         </PageHeaderProvider>
       </TooltipProvider>
       <OnboardingOverlay />

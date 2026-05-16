@@ -14,7 +14,7 @@ interface ClaudeCliResult {
   modelUsage: Record<string, ClaudeCliModelUsage>;
 }
 
-export interface CliGenerateResult {
+interface CliGenerateResult {
   text: string;
   usage: {
     promptTokens: number;

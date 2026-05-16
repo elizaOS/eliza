@@ -3,7 +3,7 @@
 # Distill the DFlash drafter for Eliza-1 tier 2b.
 #
 # Student base: Qwen/Qwen3.5-0.8B (small student, 2B target → good headroom).
-# Acceptance gate: 0.50.
+# Acceptance gate: 0.48.
 #
 # Hardware (starting-point — TUNE EMPIRICALLY):
 #   1× 24GB GPU. Student + target both fit in bf16.

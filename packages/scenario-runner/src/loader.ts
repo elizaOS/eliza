@@ -8,8 +8,8 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import type { ScenarioDefinition } from "@elizaos/scenario-schema";
 import ts from "typescript";
-import type { ScenarioDefinition } from "./types.ts";
 
 async function walk(dir: string, out: string[]): Promise<void> {
   const entries = await readdir(dir);
@@ -40,7 +40,7 @@ function toPosixPath(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
-export function matchesScenarioFileGlobs(
+function matchesScenarioFileGlobs(
   file: string,
   fileGlobs: readonly string[],
 ): boolean {

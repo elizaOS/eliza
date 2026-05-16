@@ -314,6 +314,7 @@ for plugin in \
   plugin-sql \
   plugin-video \
   plugin-agent-skills \
+  plugin-app-manager \
   plugin-pdf \
   plugin-browser \
   plugin-capacitor-bridge \

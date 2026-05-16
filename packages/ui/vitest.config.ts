@@ -110,7 +110,10 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-wallet-ui$/,
-        replacement: resolve(monorepoRoot, "plugins/plugin-wallet-ui/src/index.ts"),
+        replacement: resolve(
+          monorepoRoot,
+          "plugins/plugin-wallet-ui/src/index.ts",
+        ),
       },
       {
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,

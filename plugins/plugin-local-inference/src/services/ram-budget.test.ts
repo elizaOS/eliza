@@ -237,28 +237,6 @@ describe("assessRamFit", () => {
 });
 
 describe("pickFittingContextVariant", () => {
-	it("picks the largest 27B context variant that fits the host", () => {
-		const m1 = findCatalogModel("eliza-1-27b-256k");
-		if (!m1) throw new Error("test setup");
-		// 40 GB host: 27b (32 GB floor) fits, 27b-256k (96 GB) does not.
-		// Picking from 27b-256k falls back to 27b.
-		const picked = pickFittingContextVariant(m1, 40 * 1024, {
-			manifestLoader: noopLoader,
-			reserveMb: 1536,
-		});
-		expect(picked?.id).toBe("eliza-1-27b");
-	});
-
-	it("picks the 256k variant when there's enough RAM for it", () => {
-		const m1 = findCatalogModel("eliza-1-27b-256k");
-		if (!m1) throw new Error("test setup");
-		const picked = pickFittingContextVariant(m1, 110 * 1024, {
-			manifestLoader: noopLoader,
-			reserveMb: 1536,
-		});
-		expect(picked?.id).toBe("eliza-1-27b-256k");
-	});
-
 	it("returns the model itself when it already fits", () => {
 		const m27 = findCatalogModel("eliza-1-27b");
 		if (!m27) throw new Error("test setup");
@@ -278,9 +256,9 @@ describe("pickFittingContextVariant", () => {
 	});
 
 	it("does not cross param-count lines (9b never picked from a 27b request)", () => {
-		const m27 = findCatalogModel("eliza-1-27b-256k");
+		const m27 = findCatalogModel("eliza-1-27b");
 		if (!m27) throw new Error("test setup");
-		// Enough for 9b (12 GB) but not any 27b variant.
+		// Enough for 9b (12 GB) but not the active 27b line.
 		const picked = pickFittingContextVariant(m27, 14 * 1024, {
 			manifestLoader: noopLoader,
 			reserveMb: 1536,

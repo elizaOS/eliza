@@ -1,9 +1,10 @@
 import { client } from "@elizaos/app-core";
 import { useCallback, useEffect, useState } from "react";
 import "./client";
+import type { PolymarketClient } from "./client";
 import type {
-  PolymarketMarket,
-  PolymarketStatusResponse,
+	PolymarketMarket,
+	PolymarketStatusResponse,
 } from "./polymarket-contracts";
 
 export function usePolymarketState() {
@@ -15,14 +16,15 @@ export function usePolymarketState() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [statusResponse, marketsResponse] = await Promise.all([
-        client.polymarketStatus(),
-        client.polymarketMarkets({ limit: 25 }),
-      ]);
+	const refresh = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		const polymarketClient = client as PolymarketClient;
+		try {
+			const [statusResponse, marketsResponse] = await Promise.all([
+				polymarketClient.polymarketStatus(),
+				polymarketClient.polymarketMarkets({ limit: 25 }),
+			]);
       setStatus(statusResponse);
       setMarkets(marketsResponse.markets);
       setSelectedMarket(marketsResponse.markets[0] ?? null);

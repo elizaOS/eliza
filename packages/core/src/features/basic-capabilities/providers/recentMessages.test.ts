@@ -201,14 +201,10 @@ describe("recentMessagesProvider", () => {
 				"client_chat",
 				4000,
 			),
-			makeMemory(
-				"msg-5",
-				AGENT_ID,
-				"Retrying...",
-				"client_chat",
-				5000,
-				{ elizaSyntheticFailure: true, chatFailureKind: "provider_issue" },
-			),
+			makeMemory("msg-5", AGENT_ID, "Retrying...", "client_chat", 5000, {
+				elizaSyntheticFailure: true,
+				chatFailureKind: "provider_issue",
+			}),
 		];
 
 		const result = await recentMessagesProvider.get(

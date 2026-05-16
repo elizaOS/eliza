@@ -1,6 +1,6 @@
 /**
- * Character library grid component displaying characters in grid or list view.
- * Shows empty state when no characters are available.
+ * Agent library grid component displaying agents in grid or list view.
+ * Shows empty state when no agents are available.
  * Supports both owned and saved agents with appropriate actions for each.
  */
 

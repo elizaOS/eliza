@@ -347,19 +347,6 @@ describe("Group H — GET /api/v1/apis/dexscreener/*", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// /api/v1/apis/streaming/sessions — stub relay mint
-// ─────────────────────────────────────────────────────────────────────────
-describe("Group H — POST /api/v1/apis/streaming/sessions", () => {
-  test("auth gate: missing credentials → 401", async () => {
-    if (!reachableOnly()) return;
-    const res = await api.post("/api/v1/apis/streaming/sessions", {
-      destinations: ["twitch"],
-    });
-    expect(res.status).toBe(401);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────
 // /api/cron/agent-billing — protected by CRON_SECRET (auth.ts public path)
 // ─────────────────────────────────────────────────────────────────────────
 describe("Group H — POST /api/cron/agent-billing", () => {

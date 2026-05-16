@@ -716,8 +716,8 @@ function hostRamMbFromProbe(probe: HardwareProbe): number {
  *   alone leaves a window where a candidate-only bundle can be flipped
  *   into the active model slot and silently emit `[unused]` tokens.
  *
- * See issue #7679 for the original symptom: the runtime activated the
- * `eliza-1-0_6b` `1.0.0-candidate.1` bundle whose every `evals.*.passed`
+ * See issue #7679 for the original symptom: the runtime activated an
+ * `eliza-1-0_8b` `1.0.0-candidate.1` bundle whose every `evals.*.passed`
  * was `false`, then served BERT/WordPiece reserved tokens (`[unused0..99]`
  * / `[PAD]`) as chat output with no actionable error.
  */

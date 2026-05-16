@@ -51,34 +51,14 @@ const meta = {
   },
 
   // ─────────────────────────────────────────────────────────────────────
-  // Generation Studio
-  // ─────────────────────────────────────────────────────────────────────
-  "-- generation-section": {
-    type: "separator",
-    title: "Generation Studio",
-  },
-  "image-generation": {
-    title: "Image Generation",
-  },
-  "video-generation": {
-    title: "Video Generation",
-  },
-  "voice-cloning": {
-    title: "Voice Cloning",
-  },
-  gallery: {
-    title: "Gallery",
-  },
-
-  // ─────────────────────────────────────────────────────────────────────
   // Infrastructure
   // ─────────────────────────────────────────────────────────────────────
   "-- infrastructure-section": {
     type: "separator",
-    title: "Infrastructure",
+    title: "Runtime & Apps",
   },
   apps: {
-    title: "Apps",
+    title: "App Devices",
   },
   "app-domains": {
     title: "App Domains",

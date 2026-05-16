@@ -212,11 +212,3 @@ export function useAdmin(): UseAdminResult {
 
   return { isAdmin, adminRole, isLoading, refetch };
 }
-
-/**
- * Clears the admin status cache.
- * Useful when admin permissions may have changed.
- */
-export function clearAdminCache(): void {
-  adminCache = null;
-}

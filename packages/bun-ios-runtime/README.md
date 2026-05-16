@@ -60,9 +60,11 @@ The exported Eliza ABI is documented in `BRIDGE_CONTRACT.md`:
 - `eliza_bun_engine_call`
 - `eliza_bun_engine_free`
 
-The Capacitor runtime loads this framework dynamically, so compatibility builds
-do not link or require the full engine. When the framework exists, `start()`
-defaults to `engine: "auto"` and will boot the full engine. Passing
+Full-engine builds link this framework directly through CocoaPods and the Swift
+module import, so production/App Store builds do not import dynamic-loader APIs.
+Compatibility/debug builds keep an optional loader path so the JSContext bridge
+can run without embedding the full engine framework. When the framework exists,
+`start()` defaults to `engine: "auto"` and will boot the full engine. Passing
 `engine: "bun"` requires the framework and returns an error if it is missing.
 
 ## App Store execution profile
@@ -86,6 +88,10 @@ data inputs to the signed in-process runtime, not executable payloads.
 ```bash
 # Verify the staged xcframework.
 bun run --cwd packages/bun-ios-runtime verify:app-store
+
+# Verify only the device slice. This must fail until the xcframework contains
+# ios-arm64 and the engine imports no dynamic-loader/process/JIT symbols.
+bun run --cwd packages/bun-ios-runtime verify:app-store -- --target=device
 
 # Verify a signed .app bundle and its embedded ElizaBunEngine framework.
 bun run --cwd packages/bun-ios-runtime verify:app-store -- --app=/path/to/App.app
@@ -125,6 +131,27 @@ ELIZA_BUN_IOS_WEBKIT_PATH=/path/to/staged-ios-webkit
 ELIZA_BUN_IOS_BUILD_BACKEND=cmake
 ELIZA_BUN_IOS_CMAKE_ARGS="-DWEBKIT_PATH=/path/to/staged-ios-webkit"
 ```
+
+The harness always passes the App Store runtime profile into the Bun fork:
+
+```text
+ELIZA_IOS_APP_STORE_LOCAL_EXECUTION=1
+ELIZA_IOS_NO_JIT=1
+ELIZA_IOS_DISABLE_DYNAMIC_LOADING=1
+ELIZA_IOS_DISABLE_PROCESS_SPAWN=1
+ELIZA_IOS_DISABLE_BUN_FFI=1
+ELIZA_IOS_DISABLE_BUN_SHELL=1
+ELIZA_IOS_DISABLE_BUN_SUBPROCESS=1
+JSC_useJIT=0
+BUN_JSC_useJIT=0
+```
+
+Fork builds should consume those as compile-time guards and compile out
+`Bun.ffi`, native extension loading, `Bun.spawn`, `node:child_process`, shell
+helpers, package install runners, and executable-memory/JIT permission paths for
+the `ios-arm64` slice. The verifier groups failures by imported symbol family so
+device builds fail on the source feature that remains, not just on a raw `nm`
+line.
 
 When the Bun fork emits `libbun-profile.a` or `CMakeFiles/bun-profile.dir/*.o`
 plus `bun-zig.o`, this package links those objects with
@@ -170,8 +197,8 @@ Implemented in this repo:
   native IPC.
 - React/UI transport that uses the full Bun bridge when the Capacitor plugin is
   present, otherwise falls back to the JSContext ITTP compatibility kernel.
-- Runtime dynamic-loader ABI that can boot a full Bun engine when the framework
-  is present.
+- Runtime direct-link ABI that can boot a full Bun engine when the framework is
+  present.
 - Strict probes that prove current upstream Bun has no `bun-ios-*` compile
   target.
 

@@ -1,0 +1,96 @@
+{
+	"imagegen": {
+		"perTier": {
+			"eliza-1-0_8b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 2200000000,
+					"license": "CreativeML Open RAIL-M",
+					"staged": true,
+					"buildPlan": {
+						"tool": "stable-diffusion.cpp",
+						"source": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
+						"command": "Build sd-1.5-Q5_0.gguf with the repository quantization pipeline before publishing."
+					}
+				},
+				"optional": []
+			},
+			"eliza-1-2b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 2200000000,
+					"license": "CreativeML Open RAIL-M",
+					"staged": true,
+					"buildPlan": {
+						"tool": "stable-diffusion.cpp",
+						"source": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
+						"command": "Build sd-1.5-Q5_0.gguf with the repository quantization pipeline before publishing."
+					}
+				},
+				"optional": []
+			},
+			"eliza-1-4b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 2200000000,
+					"license": "CreativeML Open RAIL-M",
+					"staged": true,
+					"buildPlan": {
+						"tool": "stable-diffusion.cpp",
+						"source": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
+						"command": "Build sd-1.5-Q5_0.gguf with the repository quantization pipeline before publishing."
+					}
+				},
+				"optional": []
+			},
+			"eliza-1-9b": {
+				"default": {
+					"id": "imagegen-z-image-turbo-q4_k_m",
+					"file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+					"estimatedSizeBytes": 6200000000,
+					"license": "Apache-2.0",
+					"staged": true,
+					"buildPlan": {
+						"tool": "stable-diffusion.cpp",
+						"source": "https://huggingface.co/THUDM/Z-Image-Turbo",
+						"command": "Build z-image-turbo-Q4_K_M.gguf with the repository quantization pipeline before publishing."
+					}
+				},
+				"optional": []
+			},
+			"eliza-1-27b": {
+				"default": {
+					"id": "imagegen-z-image-turbo-q4_k_m",
+					"file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+					"estimatedSizeBytes": 6200000000,
+					"license": "Apache-2.0",
+					"staged": true,
+					"buildPlan": {
+						"tool": "stable-diffusion.cpp",
+						"source": "https://huggingface.co/THUDM/Z-Image-Turbo",
+						"command": "Build z-image-turbo-Q4_K_M.gguf with the repository quantization pipeline before publishing."
+					}
+				},
+				"optional": []
+			},
+			"eliza-1-27b-256k": {
+				"default": {
+					"id": "imagegen-z-image-turbo-q4_k_m",
+					"file": "imagegen/z-image-turbo-Q4_K_M.gguf",
+					"estimatedSizeBytes": 6200000000,
+					"license": "Apache-2.0",
+					"staged": true,
+					"buildPlan": {
+						"tool": "stable-diffusion.cpp",
+						"source": "https://huggingface.co/THUDM/Z-Image-Turbo",
+						"command": "Build z-image-turbo-Q4_K_M.gguf with the repository quantization pipeline before publishing."
+					}
+				},
+				"optional": []
+			}
+		}
+	}
+}

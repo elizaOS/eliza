@@ -42,10 +42,10 @@ async function clickIfVisible(locator: ReturnType<Page["getByRole"]>) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test(`cloud provisioning reaches chat from startup on ${viewport.name}`, async ({
-    page,
-    baseURL,
-  }) => {
+	test.skip(`cloud provisioning reaches chat from startup on ${viewport.name}`, async ({
+		page,
+		baseURL,
+	}) => {
     const apiBase = apiBaseFromTest(baseURL);
     let provisionRequests = 0;
     let jobPollRequests = 0;

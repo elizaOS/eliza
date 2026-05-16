@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
-import { assertValidApiKey, createModelName } from "../types";
+import { createModelName } from "../types";
 
 const DEFAULT_SMALL_MODEL = "claude-haiku-4-5-20251001";
 const DEFAULT_LARGE_MODEL = "claude-opus-4-7";
@@ -34,12 +34,6 @@ function getRawSetting(runtime: IAgentRuntime, key: string): string | undefined 
   }
 
   return getEnvValue(key);
-}
-
-export function getApiKey(runtime: IAgentRuntime): ValidatedApiKey {
-  const apiKey = getRawSetting(runtime, "ANTHROPIC_API_KEY");
-  assertValidApiKey(apiKey);
-  return apiKey;
 }
 
 export function getApiKeyOptional(runtime: IAgentRuntime): ValidatedApiKey | null {
@@ -173,10 +167,4 @@ export function getReasoningLargeModel(runtime: IAgentRuntime): ModelName {
     getRawSetting(runtime, "REASONING_LARGE_MODEL") ??
     getLargeModel(runtime);
   return createModelName(model);
-}
-
-export function validateConfiguration(runtime: IAgentRuntime): void {
-  if (!isBrowser() && getAuthMode(runtime) !== "oauth") {
-    getApiKey(runtime);
-  }
 }

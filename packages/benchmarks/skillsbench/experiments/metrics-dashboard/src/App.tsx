@@ -21,6 +21,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
+import type { ReactElement } from "react";
 import { useMemo, useState } from "react";
 import { CompletionTimelineChart } from "./components/CompletionTimelineChart";
 import { HarborJobsPanel } from "./components/HarborJobsPanel";
@@ -1764,7 +1765,7 @@ function GlobalActivityFeed({
     );
   }, [recentTrials]);
 
-  const statusIcons: Record<string, JSX.Element> = {
+  const statusIcons: Record<string, ReactElement> = {
     pass: <CheckCircle className="w-3.5 h-3.5 text-green-500" />,
     fail: <XCircle className="w-3.5 h-3.5 text-red-500" />,
     error: <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />,

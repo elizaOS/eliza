@@ -48,14 +48,7 @@ export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — size-ordered across the active Eliza-1 bundles.
-export const ELIZA_1_TIERS = [
-	"0_8b",
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-] as const;
+export const ELIZA_1_TIERS = ["0_8b", "2b", "4b", "9b", "27b"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
@@ -138,7 +131,8 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
 // - All tiers require turboquant + qjl + polarquant.
-// - Every active tier requires DFlash.
+// - DFlash is required on 2B+ tiers; 0.8B currently has no production
+//   drafter companion/source and remains the low-memory non-DFlash tier.
 // - All current text GGUFs ship at the 128k half-context floor or the 262k
 //   native tier, so every tier requires `turbo3_tcq`. The validator also
 //   enforces the same requirement dynamically for any bundle that declares
@@ -150,12 +144,11 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
 	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -167,7 +160,6 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	"4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
-	"27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 };
 
 // ---------------------------------------------------------------------------

@@ -551,10 +551,15 @@ def _is_synthetic_agent(agent: str) -> bool:
     return agent_lc.endswith(SYNTHETIC_AGENT_SUFFIX)
 
 
+def _is_numeric_score(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _publication_quarantine_reason(
     *,
     status: str,
     agent: str,
+    score: Any,
     token_metrics: dict[str, Any] | None,
     metrics: dict[str, Any],
 ) -> str | None:
@@ -572,6 +577,8 @@ def _publication_quarantine_reason(
         return "incompatible_harness"
     if status != "succeeded":
         return "unsucceeded_run"
+    if not _is_numeric_score(score):
+        return "missing_score"
     return None
 
 
@@ -717,7 +724,11 @@ def _write_latest_result_snapshot(
     quarantine_reason = (
         None if is_synthetic
         else _publication_quarantine_reason(
-            status=status, agent=agent, token_metrics=token_metrics, metrics=metrics,
+            status=status,
+            agent=agent,
+            score=score,
+            token_metrics=token_metrics,
+            metrics=metrics,
         )
     )
     if is_synthetic:
@@ -1029,11 +1040,19 @@ def _rebuild_latest_result_snapshots(
         if _is_stale_compatibility_incompatible_row(row, adapters):
             continue
         is_synthetic = _is_synthetic_agent(agent)
-        if not is_synthetic and str(row.get("status") or "") != "succeeded":
-            key = (benchmark_id, agent)
-            if key not in quarantine_by_key:
-                quarantine_by_key[key] = row
-            continue
+        if not is_synthetic:
+            quarantine_reason = _publication_quarantine_reason(
+                status=str(row.get("status") or ""),
+                agent=agent,
+                score=row.get("score"),
+                token_metrics=row.get("token_metrics") or {},
+                metrics=row.get("metrics") or {},
+            )
+            if quarantine_reason is not None:
+                key = (benchmark_id, agent)
+                if key not in quarantine_by_key:
+                    quarantine_by_key[key] = row
+                continue
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
@@ -1071,7 +1090,9 @@ def _rebuild_latest_result_snapshots(
             continue
         if agent not in LATEST_SNAPSHOT_AGENTS or _is_synthetic_agent(agent):
             continue
-        if str(payload.get("status") or "") != "succeeded":
+        if str(payload.get("status") or "") != "succeeded" or not _is_numeric_score(
+            payload.get("score")
+        ):
             continue
         key = (benchmark_id, agent)
         if key in latest_by_key:
@@ -1113,6 +1134,7 @@ def _rebuild_latest_result_snapshots(
             quarantine_reason = _publication_quarantine_reason(
                 status=str(row.get("status") or ""),
                 agent=agent,
+                score=row.get("score"),
                 token_metrics=token_metrics,
                 metrics=metrics,
             )
@@ -1238,6 +1260,7 @@ def _rebuild_latest_result_snapshots(
         quarantine_reason = _publication_quarantine_reason(
             status=str(row.get("status") or ""),
             agent=agent,
+            score=row.get("score"),
             token_metrics=token_metrics,
             metrics=metrics,
         ) or "unsucceeded_run"
@@ -1597,6 +1620,7 @@ def run_benchmarks(
         ended_at=_utc_now(),
     )
     repair_nonzero_returncode_statuses(conn)
+    repair_nonpublishable_success_statuses(conn)
 
     repo_meta = _repo_meta(workspace_root)
     base_env = _default_env(workspace_root, request)

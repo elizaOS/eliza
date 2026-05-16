@@ -1,6 +1,6 @@
 import { GenericKind, RegisterKind } from "kubernetes-fluent-client";
 
-export interface AgentRef {
+interface AgentRef {
   agentId: string;
   characterRef: string;
 }

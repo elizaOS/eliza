@@ -25,14 +25,14 @@
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {
+			"types": "./dist/*.d.ts",
 			"eliza-source": {
 				"types": "./src/*.ts",
 				"import": "./src/*.ts",
 				"default": "./src/*.ts"
 			},
 			"import": "./dist/*.js",
-			"default": "./dist/*.js",
-			"types": "./dist/*.d.ts"
+			"default": "./dist/*.js"
 		}
 	},
 	"files": [

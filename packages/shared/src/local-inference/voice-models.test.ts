@@ -102,6 +102,21 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
       }
     }
   });
+
+  it("records the native Silero VAD GGUF with a verified checksum", () => {
+    const vad = latestVoiceModelVersion("vad");
+    expect(vad?.preferredBackend).toBe("ffi");
+    expect(vad?.ggufAssets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          filename: "voice/vad/silero-vad-v5.gguf",
+          sha256:
+            "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+          sizeBytes: 620_736,
+        }),
+      ]),
+    );
+  });
 });
 
 describe("versionsFor / latestVoiceModelVersion / findVoiceModelVersion", () => {

@@ -1,12 +1,13 @@
 # LifeOps Multi-Agent Benchmark Gate
 #
-# Runs the `bun run lifeops:full` runner per agent (eliza, hermes,
-# openclaw) on every PR that touches the lifeops surface area. Mockoon is
-# spun up by the runner itself; Cerebras gpt-oss-120b is the eval/judge.
+# Runs the `lifeops-bench` runner per agent (eliza, hermes, openclaw) on
+# every PR that touches the lifeops surface area. Cerebras gpt-oss-120b is
+# used by the model-backed agents.
 #
 # Local equivalent (run before pushing):
 #
-#     bun run lifeops:full
+#     cd packages/benchmarks/lifeops-bench && pip install -e .
+#     lifeops-bench --agent eliza --suite full --limit 25
 #
 # The per-job matrix uploads the per-agent run directory from
 # `~/.eliza/runs/lifeops/lifeops-multiagent-<ts>/<agent>/` (plus the
@@ -22,14 +23,13 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "plugins/app-lifeops/**"
-      - "plugins/app-training/**"
+      - "plugins/plugin-lifeops/**"
+      - "plugins/plugin-training/**"
       - "packages/scenario-runner/**"
       - "packages/benchmarks/lifeops-bench/**"
       - "packages/core/src/runtime/**"
       - "test/scenarios/lifeops.**"
       - "scripts/lifeops-*.mjs"
-      - "scripts/aggregate-lifeops-run.mjs"
       - ".github/workflows/lifeops-bench.yml"
   workflow_dispatch:
     inputs:
@@ -55,7 +55,7 @@ permissions:
 
 env:
   BUN_VERSION: "1.3.13"
-  NODE_VERSION: "22.20.0"
+  NODE_VERSION: "24.15.0"
   PYTHON_VERSION: "3.12"
 
 jobs:
@@ -119,8 +119,8 @@ jobs:
           set -e
           bun run --cwd packages/core typecheck
           bun run --cwd packages/scenario-runner typecheck
-          bunx tsc --noEmit -p plugins/app-lifeops/tsconfig.build.json
-          bunx tsc --noEmit -p plugins/app-training/tsconfig.json
+          bunx tsc --noEmit -p plugins/plugin-lifeops/tsconfig.build.json
+          bunx tsc --noEmit -p plugins/plugin-training/tsconfig.build.json
 
       - name: Verify Cerebras wiring
         if: steps.gate.outputs.skip != 'true'
@@ -137,12 +137,46 @@ jobs:
           ELIZA_BENCH_LIMIT: ${{ inputs.limit || '25' }}
         run: |
           set -e
-          bun run lifeops:full | tee lifeops-full.log
-          RUN_DIR=$(grep -oE 'RUN_DIR=[^ ]+' lifeops-full.log | tail -n1 | cut -d= -f2-)
-          if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
-            echo "[lifeops-bench] Could not resolve RUN_DIR from script output." >&2
+          RUN_DIR="${GITHUB_WORKSPACE}/runs/lifeops-${ELIZA_BENCH_AGENT}-${GITHUB_RUN_ID}"
+          mkdir -p "$RUN_DIR/${ELIZA_BENCH_AGENT}"
+          lifeops-bench \
+            --agent "$ELIZA_BENCH_AGENT" \
+            --suite full \
+            --limit "$ELIZA_BENCH_LIMIT" \
+            --seeds 1 \
+            --concurrency 2 \
+            --max-cost-usd 10.00 \
+            --per-scenario-timeout-s 300 \
+            --output-dir "$RUN_DIR/${ELIZA_BENCH_AGENT}" \
+            2>&1 | tee lifeops-full.log
+          echo "RUN_DIR=$RUN_DIR" | tee -a lifeops-full.log
+
+          RESULT_JSON=$(ls -t "$RUN_DIR/${ELIZA_BENCH_AGENT}"/lifeops_*.json 2>/dev/null | head -n1 || true)
+          if [ -z "$RESULT_JSON" ] || [ ! -f "$RESULT_JSON" ]; then
+            echo "[lifeops-bench] Could not resolve result JSON in $RUN_DIR." >&2
             exit 1
           fi
+          cp "$RESULT_JSON" "$RUN_DIR/report.json"
+          python - "$RUN_DIR/report.json" "$RUN_DIR/report.md" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path(sys.argv[1]).read_text())
+          scenarios = report.get("scenarios", [])
+          lines = [
+              "# LifeOps Benchmark",
+              "",
+              f"Model: {report.get('model_name', 'unknown')}",
+              f"Judge: {report.get('judge_model_name', 'unknown')}",
+              f"Scenarios: {len(scenarios)}",
+              f"pass@1: {report.get('pass_at_1', 0):.3f}",
+              f"pass@k: {report.get('pass_at_k', 0):.3f}",
+              f"Total cost: ${report.get('total_cost_usd', 0):.4f}",
+          ]
+          Path(sys.argv[2]).write_text("\n".join(lines) + "\n")
+          PY
+
           echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
           echo "run-id=$(basename "$RUN_DIR")" >> "$GITHUB_OUTPUT"
 

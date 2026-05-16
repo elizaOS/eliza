@@ -332,7 +332,7 @@ static void linear_per_step(const float *x, int T, int in_features,
  * branch-free on lookups. */
 static int diar_resolve_tensors(struct voice_diarizer_session *s) {
 #define RESOLVE(field, name) do {                                       \
-        const voice_gguf_tensor_t *t = voice_gguf_tensors_find(&s->tensors, name); \
+        const voice_gguf_weight_tensor_t *t = voice_gguf_tensors_find(&s->tensors, name); \
         if (!t) { fprintf(stderr, "[voice_diarizer] missing tensor: %s\n", name); return -EINVAL; } \
         s->field = t->data;                                             \
     } while (0)
@@ -360,13 +360,13 @@ static int diar_resolve_tensors(struct voice_diarizer_session *s) {
     for (int li = 0; li < DIAR_LSTM_LAYERS; ++li) {
         char name[64];
         snprintf(name, sizeof(name), "lstm.%d.W_ih", li);
-        const voice_gguf_tensor_t *t1 = voice_gguf_tensors_find(&s->tensors, name);
+        const voice_gguf_weight_tensor_t *t1 = voice_gguf_tensors_find(&s->tensors, name);
         snprintf(name, sizeof(name), "lstm.%d.W_hh", li);
-        const voice_gguf_tensor_t *t2 = voice_gguf_tensors_find(&s->tensors, name);
+        const voice_gguf_weight_tensor_t *t2 = voice_gguf_tensors_find(&s->tensors, name);
         snprintf(name, sizeof(name), "lstm.%d.b_ih", li);
-        const voice_gguf_tensor_t *t3 = voice_gguf_tensors_find(&s->tensors, name);
+        const voice_gguf_weight_tensor_t *t3 = voice_gguf_tensors_find(&s->tensors, name);
         snprintf(name, sizeof(name), "lstm.%d.b_hh", li);
-        const voice_gguf_tensor_t *t4 = voice_gguf_tensors_find(&s->tensors, name);
+        const voice_gguf_weight_tensor_t *t4 = voice_gguf_tensors_find(&s->tensors, name);
         if (!t1 || !t2 || !t3 || !t4) {
             fprintf(stderr, "[voice_diarizer] missing LSTM tensor at layer %d\n", li);
             return -EINVAL;

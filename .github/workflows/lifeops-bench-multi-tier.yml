@@ -1,7 +1,7 @@
 # LifeOps Multi-Tier Benchmark
 #
 # Separate from `.github/workflows/lifeops-bench.yml`. This workflow drives
-# `scripts/lifeops-multi-tier-bench.mjs` and runs LifeOpsBench against the
+# `lifeops-bench` CLI and runs LifeOpsBench against the
 # four-tier model registry (small / mid / large / frontier).
 #
 # Default PR cells: `--suite smoke --tiers large,frontier` (Cerebras
@@ -13,9 +13,9 @@
 # leave a SKIPPED row in the per-job summary and never turn the workflow red.
 #
 # Local equivalents:
-#   bun run lifeops:multi-tier:smoke
-#   bun run lifeops:multi-tier:core
-#   bun run lifeops:multi-tier:local-small
+#   cd packages/benchmarks/lifeops-bench && pip install -e .
+#   lifeops-bench --agent cerebras-direct --model-tier large --suite smoke
+#   lifeops-bench --agent hermes --model-tier frontier --suite smoke
 
 name: LifeOps Benchmark — Multi-Tier
 
@@ -24,9 +24,8 @@ on:
     branches: [main, develop]
     paths:
       - "packages/benchmarks/**"
-      - "scripts/lifeops-*.mjs"
-      - "scripts/aggregate-lifeops-run.mjs"
-      - "plugins/app-training/**"
+      - "plugins/plugin-training/**"
+      - "packages/benchmarks/lifeops-bench/**"
       - ".github/workflows/lifeops-bench-multi-tier.yml"
   workflow_dispatch:
     inputs:
@@ -55,7 +54,7 @@ permissions:
 
 env:
   BUN_VERSION: "1.3.13"
-  NODE_VERSION: "22.20.0"
+  NODE_VERSION: "24.15.0"
   PYTHON_VERSION: "3.12"
 
 jobs:
@@ -138,15 +137,19 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
           set -e
-          node scripts/lifeops-multi-tier-bench.mjs \
+          RUN_DIR="${{ github.workspace }}/runs/large"
+          mkdir -p "$RUN_DIR/large"
+          lifeops-bench \
+            --agent cerebras-direct \
+            --model-tier large \
             --suite "${{ needs.resolve-inputs.outputs.suite }}" \
-            --tiers large \
-            --run-dir "${{ github.workspace }}/runs/large" \
+            --output-dir "$RUN_DIR/large" \
             | tee multi-tier-large.log
-          RUN_DIR=$(grep -oE 'RUN_DIR=[^ ]+' multi-tier-large.log | tail -n1 | cut -d= -f2-)
-          if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
-            RUN_DIR="${{ github.workspace }}/runs/large"
+          RESULT_JSON=$(ls -t "$RUN_DIR/large"/lifeops_*.json 2>/dev/null | head -n1 || true)
+          if [ -n "$RESULT_JSON" ]; then
+            cp "$RESULT_JSON" "$RUN_DIR/large/report.json"
           fi
+          printf '# LifeOps Multi-Tier Benchmark\n\nTier: large\nSuite: %s\n' "${{ needs.resolve-inputs.outputs.suite }}" > "$RUN_DIR/SUMMARY.md"
           echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Upload large-tier artifacts
@@ -226,15 +229,19 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -e
-          node scripts/lifeops-multi-tier-bench.mjs \
+          RUN_DIR="${{ github.workspace }}/runs/frontier"
+          mkdir -p "$RUN_DIR/frontier"
+          lifeops-bench \
+            --agent hermes \
+            --model-tier frontier \
             --suite "${{ needs.resolve-inputs.outputs.suite }}" \
-            --tiers frontier \
-            --run-dir "${{ github.workspace }}/runs/frontier" \
+            --output-dir "$RUN_DIR/frontier" \
             | tee multi-tier-frontier.log
-          RUN_DIR=$(grep -oE 'RUN_DIR=[^ ]+' multi-tier-frontier.log | tail -n1 | cut -d= -f2-)
-          if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
-            RUN_DIR="${{ github.workspace }}/runs/frontier"
+          RESULT_JSON=$(ls -t "$RUN_DIR/frontier"/lifeops_*.json 2>/dev/null | head -n1 || true)
+          if [ -n "$RESULT_JSON" ]; then
+            cp "$RESULT_JSON" "$RUN_DIR/frontier/report.json"
           fi
+          printf '# LifeOps Multi-Tier Benchmark\n\nTier: frontier\nSuite: %s\n' "${{ needs.resolve-inputs.outputs.suite }}" > "$RUN_DIR/SUMMARY.md"
           echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Upload frontier-tier artifacts
@@ -316,15 +323,19 @@ jobs:
         id: run
         run: |
           set -e
-          node scripts/lifeops-multi-tier-bench.mjs \
+          RUN_DIR="${{ github.workspace }}/runs/small"
+          mkdir -p "$RUN_DIR/small"
+          lifeops-bench \
+            --agent perfect \
+            --model-tier small \
             --suite "${{ needs.resolve-inputs.outputs.suite }}" \
-            --tiers small \
-            --run-dir "${{ github.workspace }}/runs/small" \
+            --output-dir "$RUN_DIR/small" \
             | tee multi-tier-small.log
-          RUN_DIR=$(grep -oE 'RUN_DIR=[^ ]+' multi-tier-small.log | tail -n1 | cut -d= -f2-)
-          if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
-            RUN_DIR="${{ github.workspace }}/runs/small"
+          RESULT_JSON=$(ls -t "$RUN_DIR/small"/lifeops_*.json 2>/dev/null | head -n1 || true)
+          if [ -n "$RESULT_JSON" ]; then
+            cp "$RESULT_JSON" "$RUN_DIR/small/report.json"
           fi
+          printf '# LifeOps Multi-Tier Benchmark\n\nTier: small\nSuite: %s\n' "${{ needs.resolve-inputs.outputs.suite }}" > "$RUN_DIR/SUMMARY.md"
           echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Upload small-tier artifacts

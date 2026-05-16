@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 
-export interface Agent {
+interface Agent {
   id: string;
   name: string;
   status?: string;
@@ -35,19 +35,6 @@ export function useMyAgents() {
       const data = await api<AgentsListResponse>("/api/my-agents/characters");
       return data.data.characters;
     },
-    enabled: gate.enabled,
-  });
-}
-
-/**
- * GET /api/v1/agents/:agentId — agent detail.
- */
-export function useAgent(agentId: string | undefined) {
-  const gate = useAuthenticatedQueryGate(Boolean(agentId));
-  return useQuery({
-    queryKey: authenticatedQueryKey(["agent", agentId], gate),
-    queryFn: () =>
-      api<{ agent: Agent }>(`/api/v1/agents/${agentId}`).then((r) => r.agent),
     enabled: gate.enabled,
   });
 }

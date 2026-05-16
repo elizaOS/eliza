@@ -11,6 +11,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
+import type { ReactElement } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -238,7 +239,7 @@ export function JobTabbedPanel({
     return dataPoints;
   }, [timeFilteredTrials, timeRange]);
 
-  const statusIcons: Record<string, JSX.Element> = {
+  const statusIcons: Record<string, ReactElement> = {
     pass: <CheckCircle className="w-3 h-3 text-green-500" />,
     fail: <XCircle className="w-3 h-3 text-red-500" />,
     error: <AlertTriangle className="w-3 h-3 text-yellow-500" />,

@@ -5,17 +5,17 @@ import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
-import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../test/helpers/http";
+} from "../../../packages/test/helpers/http";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../test/helpers/live-provider";
-import { saveEnv } from "../../../test/helpers/test-utils";
+} from "../../../packages/test/helpers/live-provider";
+import { saveEnv } from "../../../packages/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,

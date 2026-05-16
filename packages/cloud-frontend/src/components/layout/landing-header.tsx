@@ -1,6 +1,6 @@
 /**
- * Landing header component for the landing page.
- * Displays different UI for authenticated vs unauthenticated users with navigation links.
+ * Landing header component for the cloud landing page.
+ * Keeps the nav quiet so the primary cloud CTA stays focused.
  */
 
 "use client";
@@ -25,7 +25,7 @@ export default function LandingHeader() {
     <motion.header className="fixed top-0 left-0 z-[100] w-full pointer-events-auto bg-bg/70 backdrop-blur-md md:bg-transparent md:backdrop-blur-none">
       <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
-          <ElizaCloudLockup logoClassName="h-5 sm:h-6" />
+          <ElizaCloudLockup />
         </Link>
 
         <div className="flex items-center gap-3">
@@ -44,7 +44,7 @@ export default function LandingHeader() {
                 variant="ghost"
                 size="sm"
                 disabled={!ready}
-                className="text-base font-[family-name:var(--font-body)]"
+                className="text-base font-[family-name:var(--font-body)] text-white hover:bg-white/12 hover:text-white"
               >
                 <Link to="/login">Log in</Link>
               </Button>
@@ -52,9 +52,9 @@ export default function LandingHeader() {
                 size="sm"
                 onClick={handleGetStarted}
                 disabled={!ready}
-                className="font-[family-name:var(--font-body)]"
+                className="rounded-full border border-white/34 bg-white/12 font-[family-name:var(--font-body)] text-white shadow-[0_12px_36px_rgba(0,24,122,0.24)] backdrop-blur-xl hover:bg-white hover:text-[#0647ff]"
               >
-                Get started
+                Open Cloud
               </Button>
             </>
           )}

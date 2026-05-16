@@ -11,13 +11,9 @@ import {
   getSmallModel,
 } from "../utils/config";
 
-function buildRuntime(
-  settings: Record<string, string | undefined>,
-): IAgentRuntime {
+function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
-    getSetting: vi.fn((key: string) =>
-      key in settings ? (settings[key] ?? null) : null,
-    ),
+    getSetting: vi.fn((key: string) => (key in settings ? (settings[key] ?? null) : null)),
   } as IAgentRuntime;
 }
 
@@ -28,6 +24,12 @@ const ENV_KEYS = [
   "CEREBRAS_BASE_URL",
   "CEREBRAS_MODEL",
   "OPENAI_API_KEY",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "OPENAI_RESPONSE_HANDLER_MODEL",
+  "OPENAI_SHOULD_RESPOND_MODEL",
+  "OPENAI_ACTION_PLANNER_MODEL",
+  "OPENAI_PLANNER_MODEL",
   "OPENAI_EMBEDDING_URL",
   "OPENAI_EMBEDDING_DIMENSIONS",
 ] as const;

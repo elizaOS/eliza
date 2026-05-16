@@ -76,9 +76,16 @@ describe("useVoiceChat local ASR", () => {
           "Content-Type": "audio/wav",
           Accept: "application/json",
         }),
-        body: new Uint8Array([1, 2, 3, 4]),
+        body: expect.any(ArrayBuffer),
       }),
     );
+    expect(
+      Array.from(
+        new Uint8Array(
+          fetchWithCsrfMock.mock.calls[0]?.[1]?.body as ArrayBuffer,
+        ),
+      ),
+    ).toEqual([1, 2, 3, 4]);
     expect(onTranscriptPreview).toHaveBeenCalledWith(
       "hello local voice",
       expect.objectContaining({ isFinal: true }),
@@ -92,6 +99,35 @@ describe("useVoiceChat local ASR", () => {
     );
   });
 
+  it("cancels local ASR capture without transcription when not submitting", async () => {
+    const stop = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4]));
+    const cancel = vi.fn();
+    startLocalAsrRecorderMock.mockResolvedValue({ stop, cancel });
+    const onTranscript = vi.fn();
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript,
+        voiceConfig: {
+          provider: "local-inference",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+    await act(async () => {
+      await result.current.stopListening({ submit: false });
+    });
+
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(stop).not.toHaveBeenCalled();
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(onTranscript).not.toHaveBeenCalled();
+  });
+
   it("does not wait forever for a blocked AudioContext resume", async () => {
     vi.useFakeTimers();
     const context = {
@@ -99,8 +135,10 @@ describe("useVoiceChat local ASR", () => {
       resume: vi.fn(() => new Promise<void>(() => {})),
     } as unknown as AudioContext;
 
-    const resumed =
-      __voiceChatInternals.resumeAudioContextForPlayback(context, 25);
+    const resumed = __voiceChatInternals.resumeAudioContextForPlayback(
+      context,
+      25,
+    );
     await vi.advanceTimersByTimeAsync(25);
 
     await expect(resumed).resolves.toBe(false);

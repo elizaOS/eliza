@@ -5,6 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  appStoreExecutionProfile,
+  appStoreRuntimeBuildSettingsText,
+  appStoreRuntimeCmakeArgs,
+  appStoreRuntimeCompilerDefines,
+  appStoreRuntimeEnv,
+  findForbiddenRuntimeImportGroups,
+  findForbiddenRuntimeStrings,
+  formatForbiddenRuntimeFindings,
+} from "./ios-app-store-runtime-policy.mjs";
 import { argValue, fail, run, runCapture } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,24 +50,6 @@ const requiredSymbols = [
   "_eliza_bun_engine_free",
 ];
 const allowedExportedSymbols = new Set(requiredSymbols);
-const appStoreExecutionProfile = "ios-app-store-nojit";
-const forbiddenRuntimeImports = [
-  "_dlopen",
-  "_dlsym",
-  "_posix_spawn",
-  "_fork",
-  "_execve",
-  "_system",
-  "_pthread_jit_write_protect_np",
-  "_mach_vm_protect",
-  "_vm_protect",
-];
-const forbiddenRuntimeStringPatterns = [
-  /\bMAP_JIT\b/i,
-  /\ballow-jit\b/i,
-  /\bdynamic-codesigning\b/i,
-  /\bunsigned-executable-memory\b/i,
-];
 
 function runMaybeCapture(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -260,28 +252,21 @@ function validateAppStoreRuntimeBinary(binary) {
       `failed to inspect imported symbols for ${binary}: ${importOutput.trim()}`,
     );
   }
-  const forbiddenImports = forbiddenRuntimeImports.filter((symbol) =>
-    new RegExp(
-      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-    ).test(importOutput),
-  );
-  if (forbiddenImports.length > 0) {
-    fail(
-      `${binary} imports App Store-sensitive runtime/code-loading symbols: ${forbiddenImports.join(", ")}`,
-    );
-  }
 
   const strings = runMaybeCapture("strings", [binary]);
   const stringOutput = `${strings.stdout}\n${strings.stderr}`;
   if (strings.status !== 0) {
     fail(`failed to inspect strings for ${binary}: ${stringOutput.trim()}`);
   }
-  const forbiddenStrings = forbiddenRuntimeStringPatterns
-    .filter((pattern) => pattern.test(stringOutput))
-    .map((pattern) => pattern.source);
-  if (forbiddenStrings.length > 0) {
+  const importGroups = findForbiddenRuntimeImportGroups(importOutput);
+  const stringPatterns = findForbiddenRuntimeStrings(stringOutput);
+  if (importGroups.length > 0 || stringPatterns.length > 0) {
     fail(
-      `${binary} contains App Store-sensitive executable-memory markers: ${forbiddenStrings.join(", ")}`,
+      formatForbiddenRuntimeFindings({
+        binary,
+        importGroups,
+        stringPatterns,
+      }),
     );
   }
 }
@@ -295,29 +280,27 @@ function warnAboutAppStoreRuntimeBinary(binary) {
     return;
   }
   const importOutput = `${imports.stdout}\n${imports.stderr}`;
-  const forbiddenImports = forbiddenRuntimeImports.filter((symbol) =>
-    new RegExp(
-      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-    ).test(importOutput),
-  );
-  if (forbiddenImports.length > 0) {
+  const importGroups = findForbiddenRuntimeImportGroups(importOutput);
+  if (importGroups.length > 0) {
     console.warn(
-      `[bun-ios-runtime] Simulator slice imports device/App Store-sensitive symbols: ${forbiddenImports.join(
-        ", ",
-      )}. Device builds remain strict; pass --strict-app-store-runtime to fail simulator builds on this.`,
+      `[bun-ios-runtime] Simulator slice imports device/App Store-sensitive symbol groups: ${importGroups
+        .map((group) => `${group.label} (${group.symbols.join(", ")})`)
+        .join(
+          "; ",
+        )}. Device builds remain strict; pass --strict-app-store-runtime to fail simulator builds on this.`,
     );
   }
 
   const strings = runMaybeCapture("strings", [binary]);
   if (strings.status !== 0) return;
-  const forbiddenStrings = forbiddenRuntimeStringPatterns
-    .filter((pattern) => pattern.test(`${strings.stdout}\n${strings.stderr}`))
-    .map((pattern) => pattern.source);
-  if (forbiddenStrings.length > 0) {
+  const stringPatterns = findForbiddenRuntimeStrings(
+    `${strings.stdout}\n${strings.stderr}`,
+  );
+  if (stringPatterns.length > 0) {
     console.warn(
-      `[bun-ios-runtime] Simulator slice contains device/App Store-sensitive executable-memory markers: ${forbiddenStrings.join(
+      `[bun-ios-runtime] Simulator slice contains device/App Store-sensitive executable-memory markers: ${stringPatterns.join(
         ", ",
-      )}. Device builds remain strict.`,
+      )}. Device builds remain strict; pass --strict-app-store-runtime to fail simulator builds on this.`,
     );
   }
 }
@@ -359,6 +342,78 @@ function validateNoNestedExecutablePayloads(frameworkDir, expectedBinary) {
   }
 }
 
+function libraryBinaryPath(root, library) {
+  const libraryPath =
+    typeof library?.LibraryPath === "string"
+      ? library.LibraryPath
+      : `${frameworkName}.framework`;
+  return path.join(
+    root,
+    library?.LibraryIdentifier ?? "missing-id",
+    libraryPath,
+    frameworkName,
+  );
+}
+
+function describeRuntimePolicyForBinary(binary) {
+  if (!fs.existsSync(binary)) return [`    binary missing: ${binary}`];
+  const lines = [];
+  const imports = runMaybeCapture("nm", ["-u", binary]);
+  if (imports.status === 0) {
+    const importGroups = findForbiddenRuntimeImportGroups(
+      `${imports.stdout}\n${imports.stderr}`,
+    );
+    if (importGroups.length > 0) {
+      lines.push("    forbidden imports:");
+      for (const group of importGroups) {
+        lines.push(`      - ${group.label}: ${group.symbols.join(", ")}`);
+      }
+    }
+  } else {
+    lines.push(`    nm -u failed: ${imports.stderr.trim()}`);
+  }
+  const strings = runMaybeCapture("strings", [binary]);
+  if (strings.status === 0) {
+    const stringPatterns = findForbiddenRuntimeStrings(
+      `${strings.stdout}\n${strings.stderr}`,
+    );
+    if (stringPatterns.length > 0) {
+      lines.push(
+        `    forbidden executable-memory markers: ${stringPatterns.join(", ")}`,
+      );
+    }
+  }
+  if (lines.length === 0) lines.push("    no forbidden runtime imports found");
+  return lines;
+}
+
+function describeAvailableLibraries(root, libraries) {
+  if (libraries.length === 0) return "  none";
+  return libraries
+    .map((entry) => {
+      const platform = `${entry?.SupportedPlatform ?? "unknown"}${
+        entry?.SupportedPlatformVariant
+          ? `-${entry.SupportedPlatformVariant}`
+          : ""
+      }`;
+      const binary = libraryBinaryPath(root, entry);
+      return [
+        `  - ${platform}/${entry?.LibraryIdentifier ?? "missing-id"}`,
+        `    binary: ${binary}`,
+        ...describeRuntimePolicyForBinary(binary),
+      ].join("\n");
+    })
+    .join("\n");
+}
+
+function libraryMatchesTarget(library, selectedTargetInfo = info) {
+  if (!library || library.SupportedPlatform !== "ios") return false;
+  const wantSimulator = selectedTargetInfo.sdk === "iphonesimulator";
+  return wantSimulator
+    ? library.SupportedPlatformVariant === "simulator"
+    : !library.SupportedPlatformVariant;
+}
+
 function resolveXcframeworkBinary(root, targetInfo = info) {
   const infoPlist = path.join(root, "Info.plist");
   if (!fs.existsSync(infoPlist)) {
@@ -369,38 +424,27 @@ function resolveXcframeworkBinary(root, targetInfo = info) {
     ? plist.AvailableLibraries
     : [];
   const wantSimulator = targetInfo.sdk === "iphonesimulator";
-  const library = libraries.find((entry) => {
-    if (!entry || entry.SupportedPlatform !== "ios") return false;
-    return wantSimulator
-      ? entry.SupportedPlatformVariant === "simulator"
-      : !entry.SupportedPlatformVariant;
-  });
+  const library = libraries.find((entry) =>
+    libraryMatchesTarget(entry, targetInfo),
+  );
   if (!library?.LibraryIdentifier) {
     const requested = wantSimulator ? "iOS Simulator" : "iOS device";
-    const available = libraries
-      .map(
-        (entry) =>
-          `${entry?.SupportedPlatform ?? "unknown"}${
-            entry?.SupportedPlatformVariant
-              ? `-${entry.SupportedPlatformVariant}`
-              : ""
-          }/${entry?.LibraryIdentifier ?? "missing-id"}`,
-      )
-      .join(", ");
     fail(
-      `${root} does not contain the requested ${requested} ${frameworkName} library. Available: ${available || "none"}`,
+      [
+        `${root} does not contain the requested ${requested} ${frameworkName} library.`,
+        `Requested library identifier: ${targetInfo.xcframeworkLibraryIdentifier}`,
+        "Available libraries:",
+        describeAvailableLibraries(root, libraries),
+        "",
+        "For production/device verification the xcframework must contain both:",
+        "  - ios-arm64/ElizaBunEngine.framework/ElizaBunEngine",
+        "  - ios-arm64-simulator/ElizaBunEngine.framework/ElizaBunEngine",
+        "",
+        appStoreRuntimeBuildSettingsText(),
+      ].join("\n"),
     );
   }
-  const libraryPath =
-    typeof library.LibraryPath === "string"
-      ? library.LibraryPath
-      : `${frameworkName}.framework`;
-  const binary = path.join(
-    root,
-    library.LibraryIdentifier,
-    libraryPath,
-    frameworkName,
-  );
+  const binary = libraryBinaryPath(root, library);
   const frameworkDir = path.dirname(binary);
   if (!fs.existsSync(binary)) {
     fail(
@@ -410,40 +454,48 @@ function resolveXcframeworkBinary(root, targetInfo = info) {
   return { binary, frameworkDir, libraryIdentifier: library.LibraryIdentifier };
 }
 
-function findFrameworkBinaries(root) {
-  if (!fs.existsSync(root)) return [];
-  const found = [];
-  const stack = [root];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    const entries = fs.readdirSync(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const p = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === `${frameworkName}.framework`) {
-          const binary = path.join(p, frameworkName);
-          if (fs.existsSync(binary)) found.push(binary);
-        }
-        stack.push(p);
-      }
-    }
+function targetInfoForXcframeworkLibrary(library, selectedTargetInfo = info) {
+  if (selectedTargetInfo.target === "simulator") {
+    return selectedTargetInfo;
   }
-  return found;
+  if (library?.SupportedPlatformVariant === "simulator") {
+    return targetInfo("simulator");
+  }
+  return targetInfo("device");
+}
+
+function allIosXcframeworkLibraries(root) {
+  const infoPlist = path.join(root, "Info.plist");
+  if (!fs.existsSync(infoPlist)) {
+    fail(`${root} is missing Info.plist`);
+  }
+  const plist = parsePlistJson(infoPlist);
+  return (
+    Array.isArray(plist.AvailableLibraries) ? plist.AvailableLibraries : []
+  ).filter((entry) => entry?.SupportedPlatform === "ios");
 }
 
 function validateXcframework(root, targetInfo = info) {
   const selected = resolveXcframeworkBinary(root, info);
-  validateEngineFrameworkMetadata(selected.frameworkDir);
-  validateEngineBinary(selected.binary, targetInfo);
-  const binaries = findFrameworkBinaries(root);
-  if (binaries.length === 0) {
+  const libraries = allIosXcframeworkLibraries(root);
+  if (libraries.length === 0) {
     fail(
       `${root} does not contain ${frameworkName}.framework/${frameworkName}`,
     );
   }
-  for (const binary of binaries) {
+  for (const library of libraries) {
+    const binary = libraryBinaryPath(root, library);
+    if (!fs.existsSync(binary)) {
+      fail(
+        `${root} lists ${library.LibraryIdentifier}, but ${binary} does not exist`,
+      );
+    }
+    const libraryTargetInfo = targetInfoForXcframeworkLibrary(
+      library,
+      targetInfo,
+    );
     validateEngineFrameworkMetadata(path.dirname(binary));
-    validateEngineBinary(binary, targetInfo);
+    validateEngineBinary(binary, libraryTargetInfo);
     validateNoNestedExecutablePayloads(path.dirname(binary), binary);
   }
   console.log(
@@ -452,9 +504,17 @@ function validateXcframework(root, targetInfo = info) {
 }
 
 if (fs.existsSync(artifact) && !rebuild) {
-  validateXcframework(artifact);
-  console.log(`[bun-ios-runtime] Found ${artifact}`);
-  process.exit(0);
+  const hasRequestedLibrary = allIosXcframeworkLibraries(artifact).some(
+    (entry) => libraryMatchesTarget(entry, info),
+  );
+  if (hasRequestedLibrary || verifyOnly) {
+    validateXcframework(artifact);
+    console.log(`[bun-ios-runtime] Found ${artifact}`);
+    process.exit(0);
+  }
+  console.warn(
+    `[bun-ios-runtime] Existing ${artifact} does not contain ${info.xcframeworkLibraryIdentifier}; attempting to build and merge the missing slice.`,
+  );
 }
 
 if (verifyOnly) {
@@ -470,7 +530,9 @@ if (!fs.existsSync(sourceDir)) {
       "Set ELIZA_BUN_IOS_SOURCE_DIR to an elizaos/bun checkout, or clone the fork there.",
       "The public https://github.com/elizaos/bun repository is not currently available,",
       "and upstream oven-sh/bun does not ship an iOS target.",
-    ].join(" "),
+      "",
+      appStoreRuntimeBuildSettingsText(),
+    ].join("\n"),
   );
 }
 
@@ -552,11 +614,7 @@ const env = {
   ELIZA_BUN_IOS_SDK: info.sdk,
   ELIZA_BUN_IOS_PLATFORM: info.platform,
   ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK: artifact,
-  ELIZA_IOS_APP_STORE_LOCAL_EXECUTION: "1",
-  ELIZA_IOS_NO_JIT: "1",
-  JSC_useJIT: "0",
-  JSC_jitPolicyScale: "0",
-  BUN_JSC_useJIT: "0",
+  ...appStoreRuntimeEnv,
 };
 
 function selectBackend() {
@@ -957,8 +1015,7 @@ function linkFramework({ buildDir, webkitPath, info }) {
     info.minVersionFlag,
     "-fapplication-extension",
     "-fvisibility=hidden",
-    "-DELIZA_IOS_APP_STORE_LOCAL_EXECUTION=1",
-    "-DELIZA_IOS_NO_JIT=1",
+    ...appStoreRuntimeCompilerDefines,
     "-I",
     path.join(sourceDir, "src", "ios"),
     "-I",
@@ -995,15 +1052,26 @@ function linkFramework({ buildDir, webkitPath, info }) {
 }
 
 function createXcframework(frameworkDir) {
-  fs.rmSync(artifact, { recursive: true, force: true });
+  const reusableFrameworks = [];
+  if (fs.existsSync(artifact)) {
+    for (const library of allIosXcframeworkLibraries(artifact)) {
+      if (libraryMatchesTarget(library, info)) continue;
+      const binary = libraryBinaryPath(artifact, library);
+      if (fs.existsSync(binary)) reusableFrameworks.push(path.dirname(binary));
+    }
+  }
+
+  const output = `${artifact}.tmp-${process.pid}`;
+  fs.rmSync(output, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(artifact), { recursive: true });
-  run("xcodebuild", [
-    "-create-xcframework",
-    "-framework",
-    frameworkDir,
-    "-output",
-    artifact,
-  ]);
+  const args = ["-create-xcframework", "-framework", frameworkDir];
+  for (const reusable of reusableFrameworks) {
+    args.push("-framework", reusable);
+  }
+  args.push("-output", output);
+  run("xcodebuild", args);
+  fs.rmSync(artifact, { recursive: true, force: true });
+  fs.renameSync(output, artifact);
   validateXcframework(artifact);
 }
 
@@ -1059,10 +1127,7 @@ function buildWithCmake() {
       `-DCMAKE_CXX_COMPILER_TARGET=${info.clangTarget}`,
       "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
       "-DENABLE_LLVM=OFF",
-      "-DENABLE_JIT=OFF",
-      "-DENABLE_DFG_JIT=OFF",
-      "-DENABLE_FTL_JIT=OFF",
-      "-DENABLE_WEBASSEMBLY_BBQJIT=OFF",
+      ...appStoreRuntimeCmakeArgs,
       `-DWEBKIT_PATH=${webkitPath}`,
       ...parseExtraArgs(process.env.ELIZA_BUN_IOS_CMAKE_ARGS),
     ],

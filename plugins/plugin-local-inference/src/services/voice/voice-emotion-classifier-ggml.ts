@@ -120,13 +120,23 @@ function loadBunFfi(): BunFfiModule {
 	const req: ((id: string) => unknown) | undefined = (
 		globalThis as { Bun?: { __require?: (id: string) => unknown } }
 	).Bun?.__require;
-	if (typeof req !== "function") {
+	if (typeof req === "function") {
+		return req("bun:ffi") as BunFfiModule;
+	}
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const mod = require("node:module") as {
+			createRequire: (filename: string) => (id: string) => unknown;
+		};
+		return mod.createRequire(import.meta.url)("bun:ffi") as BunFfiModule;
+	} catch (err) {
 		throw new VoiceEmotionGgmlUnavailableError(
 			"native-missing",
-			"[voice-emotion-ggml] bun:ffi is unavailable. The ggml-backed binding requires Bun (Electrobun / Capacitor bridge); plain Node cannot dlopen libvoice_classifier.",
+			`[voice-emotion-ggml] bun:ffi is unavailable. The ggml-backed binding requires Bun: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
 		);
 	}
-	return req("bun:ffi") as BunFfiModule;
 }
 
 /**

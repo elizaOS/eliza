@@ -99,7 +99,7 @@ export const KOKORO_VOICE_PACKS: ReadonlyArray<KokoroVoicePack> = [
 		tags: ["male", "british"],
 	},
 	// Eliza-1 fine-tuned voice — same (research-only, derivative of *Her* 2013).
-	// Voice pack lives at `elizaos/eliza-1` under `voice/kokoro/voices/af_same.bin`
+	// Voice pack lives at `elizalabs/eliza-1` under `voice/kokoro/voices/af_same.bin`
 	// (first push is private; do not promote to default without a public-release sign-off).
 	// Source corpus: `lalalune/ai_voices/sam` upstream subset, landed locally as
 	// `same` (58 clips, 3.51 min, research-only).

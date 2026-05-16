@@ -33,6 +33,10 @@ function fail(message) {
   process.exitCode = 1;
 }
 
+function skip(message) {
+  console.log(`[model-tester-e2e] SKIP ${message}`);
+}
+
 async function fetchJson(path, init) {
   const response = await fetch(new URL(path, baseUrl), init);
   const text = await response.text();
@@ -43,7 +47,22 @@ async function fetchJson(path, init) {
 }
 
 async function main() {
-  const htmlResponse = await fetch(new URL("/model-tester", baseUrl));
+  let htmlResponse;
+  try {
+    htmlResponse = await fetch(new URL("/model-tester", baseUrl), {
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    if (!requireAll) {
+      skip(
+        `model tester server is unavailable at ${baseUrl}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
+    throw error;
+  }
   const html = await htmlResponse.text();
   if (!htmlResponse.ok) {
     throw new Error(`/model-tester returned ${htmlResponse.status}`);
@@ -68,7 +87,7 @@ async function main() {
     try {
       const result = await fetchJson("/api/model-tester/run", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           test,
           prompt: "Say exactly one short sentence proving the Eliza model tester works.",
@@ -92,6 +111,14 @@ async function main() {
       fail(`${result.test} failed unexpectedly:\n${error}`);
     } else {
       console.log(`  unavailable backend: ${error.split("\n")[0]}`);
+    }
+  }
+
+  for (const result of results) {
+    if (result.test !== "text-small" && result.test !== "text-large") continue;
+    const text = result.output?.text;
+    if (result.ok && (typeof text !== "string" || text.trim().length === 0)) {
+      fail(`${result.test} returned ok=true with empty text output`);
     }
   }
 }

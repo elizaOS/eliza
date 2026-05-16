@@ -25,7 +25,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-0_6b.bundle",
+  "eliza-1-0_8b.bundle",
 );
 const DEFAULT_WAV = "/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav";
 const DEFAULT_REPORT = path.join(
@@ -48,6 +48,7 @@ function parseArgs(argv) {
     bundle: DEFAULT_BUNDLE,
     wav: DEFAULT_WAV,
     report: DEFAULT_REPORT,
+    lib: process.env.ELIZA_SILERO_VAD_LIB || null,
     json: false,
     requireWav: false,
   };
@@ -56,11 +57,13 @@ function parseArgs(argv) {
     if (arg === "--bundle") args.bundle = argv[++i] ?? args.bundle;
     else if (arg === "--wav") args.wav = argv[++i] ?? args.wav;
     else if (arg === "--report") args.report = argv[++i] ?? args.report;
+    else if (arg === "--lib" || arg === "--dylib")
+      args.lib = argv[++i] ?? args.lib;
     else if (arg === "--json") args.json = true;
     else if (arg === "--require-wav") args.requireWav = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: node speaker_imprint_diarization_harness.mjs [--bundle PATH] [--wav PATH] [--report PATH] [--json] [--require-wav]",
+        "Usage: node speaker_imprint_diarization_harness.mjs [--bundle PATH] [--wav PATH] [--report PATH] [--lib PATH] [--json] [--require-wav]",
       );
       process.exit(0);
     }
@@ -68,10 +71,22 @@ function parseArgs(argv) {
   args.bundle = path.resolve(args.bundle);
   args.wav = path.resolve(args.wav);
   args.report = path.resolve(args.report);
+  if (args.lib) args.lib = path.resolve(args.lib);
   return args;
 }
 
 function typescriptRunner() {
+  // The generated-voice VAD path dlopens libsilero_vad through bun:ffi, so
+  // prefer Bun even when a Node+tsx runner is available.
+  for (const cmd of [
+    "bun",
+    path.join(os.homedir(), ".bun", "bin", "bun"),
+    "/opt/homebrew/bin/bun",
+    "/usr/local/bin/bun",
+  ]) {
+    const probe = spawnSync(cmd, ["--version"], { encoding: "utf8" });
+    if (probe.status === 0) return { cmd, args: [] };
+  }
   if (fs.existsSync(path.join(REPO_ROOT, "node_modules", ".bin", "tsx"))) {
     for (const cmd of [
       "/opt/homebrew/bin/node",
@@ -82,15 +97,6 @@ function typescriptRunner() {
         return { cmd, args: ["--import", "tsx"] };
       }
     }
-  }
-  for (const cmd of [
-    "bun",
-    path.join(os.homedir(), ".bun", "bin", "bun"),
-    "/opt/homebrew/bin/bun",
-    "/usr/local/bin/bun",
-  ]) {
-    const probe = spawnSync(cmd, ["--version"], { encoding: "utf8" });
-    if (probe.status === 0) return { cmd, args: [] };
   }
   return null;
 }
@@ -130,12 +136,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { resolveSileroVadPath, resolveVadProvider, VadDetector } from ${JSON.stringify(vadUrl)};
+import { resolveSileroVadCppGgufPath, resolveVadProvider, VadDetector } from ${JSON.stringify(vadUrl)};
 import { attributeVoiceImprintObservations } from ${JSON.stringify(imprintUrl)};
 import { makeSpeechWithSilenceFixture } from ${JSON.stringify(fixtureUrl)};
 
 const bundleRoot = ${JSON.stringify(args.bundle)};
 const wavPath = ${JSON.stringify(args.wav)};
+const libraryPath = ${JSON.stringify(args.lib)};
 const requireWav = ${JSON.stringify(args.requireWav)};
 const SR = 16000;
 const FRAME = 512;
@@ -270,7 +277,7 @@ async function runVad() {
       wavPath,
     };
   }
-  const modelPath = resolveSileroVadPath({ bundleRoot });
+  const modelPath = resolveSileroVadCppGgufPath({ bundleRoot });
   if (!modelPath) {
     return {
       available: false,
@@ -281,17 +288,48 @@ async function runVad() {
   }
   const wav = readWavPcm16Mono(input.path);
   const pcm16k = resampleLinear(wav.pcm, wav.sampleRateHz, SR);
-  const provider = await resolveVadProvider({
-    modelPath,
-    bundleRoot,
-    config: {
-      sampleRate: SR,
-      onsetThreshold: 0.5,
-      pauseHangoverMs: 220,
-      endHangoverMs: 500,
-      minSpeechMs: 150,
-    },
-  });
+  let provider;
+  try {
+    provider = await resolveVadProvider({
+      sileroCppGgufPath: modelPath,
+      sileroCppLibraryPath: libraryPath || undefined,
+      bundleRoot,
+      config: {
+        sampleRate: SR,
+        onsetThreshold: 0.5,
+        pauseHangoverMs: 220,
+        endHangoverMs: 500,
+        minSpeechMs: 150,
+      },
+    });
+  } catch (err) {
+    return {
+      available: false,
+      reason: "VAD provider unavailable",
+      vadModelPath: modelPath,
+      libraryPath,
+      wavPath: input.path,
+      fixtureKind: input.fixtureKind,
+      expectedSpeechStartMs: input.speechStartMs ?? null,
+      expectedSpeechEndMs: input.speechEndMs ?? null,
+      wav: {
+        sampleRateHz: wav.sampleRateHz,
+        samples: wav.samples,
+        audioSeconds: wav.samples / wav.sampleRateHz,
+        sha256: wav.sha256,
+      },
+      resampled: {
+        sampleRateHz: SR,
+        samples: pcm16k.length,
+        audioSeconds: pcm16k.length / SR,
+      },
+      error: {
+        name: err?.name ?? null,
+        code: err?.code ?? null,
+        message: err instanceof Error ? err.message : String(err),
+      },
+    };
+  }
   const detector = new VadDetector(provider.vad, {
     sampleRate: SR,
     onsetThreshold: 0.5,

@@ -11,7 +11,7 @@
  *   - When a producer stalls past the time budget without punctuation, the
  *     in-flight phrase is force-flushed by the watchdog timer.
  */
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { PhraseChunkedTts, speakStreamingText } from "./phrase-chunked-tts";
 
 // PhraseChunker is loaded lazily from @elizaos/plugin-local-inference/services
@@ -189,20 +189,37 @@ describe("PhraseChunkedTts", () => {
   });
 
   it("force-flushes a stalled phrase via the time-budget watchdog", async () => {
-    const { tts, calls } = makeRecordingTts(() => performance.now());
+    // Use a virtual clock so the test is deterministic (no real setTimeout
+    // delivery jitter). The pipe and the recording-TTS both read from the
+    // same monotonic counter, advanced explicitly.
+    let now = 0;
+    const clock = () => now;
+    const { tts, calls } = makeRecordingTts(clock);
     const pipe = new PhraseChunkedTts(tts, {
       chunker: {
         chunkOn: "punctuation",
         maxAccumulationMs: 40,
       },
+      clock,
     });
 
-    // No punctuation, no max-token cap hit: only the time-budget can flush.
-    pipe.push("stalled words without a terminator");
-    // Wait past the 40 ms budget — the watchdog should fire.
-    await new Promise((r) => setTimeout(r, 80));
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.text).toBe("stalled words without a terminator");
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    try {
+      // No punctuation, no max-token cap hit: only the time-budget can flush.
+      pipe.push("stalled words without a terminator");
+      // Advance virtual time past the 40ms budget and run any scheduled
+      // timers; the watchdog setTimeout(40) should fire and the queued
+      // microtask should dispatch the phrase to TTS.
+      now = 60;
+      await vi.advanceTimersByTimeAsync(60);
+      // Drain microtasks (dispatchPhrase chains Promise.resolve().then(...)).
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.text).toBe("stalled words without a terminator");
+    } finally {
+      vi.useRealTimers();
+    }
 
     await pipe.finish();
     // No double-emit on finish.

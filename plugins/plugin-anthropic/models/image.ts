@@ -1,7 +1,7 @@
 import type { IAgentRuntime, ImageDescriptionParams, ImageDescriptionResult } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
-import { createAnthropicClientWithTopPSupport } from "../providers";
+import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
 import { getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { executeWithRetry, formatModelError, sanitizeUrlForLogs } from "../utils/retry";

@@ -32,7 +32,7 @@ export interface LoadResult {
  * Decode the JWT exp claim (in seconds) for diagnostics.
  * Returns 0 if not parseable.
  */
-export function jwtExpiresAt(token: string): number {
+function jwtExpiresAt(token: string): number {
 	try {
 		const parts = token.split(".");
 		if (parts.length < 2) return 0;

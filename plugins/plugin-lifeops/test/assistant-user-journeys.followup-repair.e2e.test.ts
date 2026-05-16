@@ -13,8 +13,8 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../test/helpers/conditional-tests.ts";
-import { saveEnv, withTimeout } from "../../../test/helpers/test-utils";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { saveEnv, withTimeout } from "../../../packages/test/helpers/test-utils";
 import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";

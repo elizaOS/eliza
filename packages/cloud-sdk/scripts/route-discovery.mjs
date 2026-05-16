@@ -1,15 +1,26 @@
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
+const HTTP_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+  "HEAD",
+]);
 const HONO_ALL_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const METHOD_RE =
   /export\s+(?:(?:async\s+)?function|const)\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\b/g;
 const METHOD_REEXPORT_RE = /export\s*\{\s*([^}]+)\s*\}\s*from\b/g;
-const DEFAULT_REEXPORT_RE = /export\s*\{\s*default\s*\}\s*from\s*["']([^"']+)["']/g;
-const HONO_APP_DECL_RE = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Hono\b/g;
+const DEFAULT_REEXPORT_RE =
+  /export\s*\{\s*default\s*\}\s*from\s*["']([^"']+)["']/g;
+const HONO_APP_DECL_RE =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+Hono\b/g;
 
-const API_ROOT_CANDIDATES = ["apps/api", "app/api"];
+const API_ROOT_CANDIDATES = ["packages/cloud-api", "apps/api", "app/api"];
 
 async function pathExists(candidate) {
   try {
@@ -63,16 +74,22 @@ export function routePathFromSegments(relativeSegments) {
 
 export function scopeForRoute(route) {
   if (route.startsWith("/api/internal/")) return "internal";
-  if (route.startsWith("/api/cron/") || route.startsWith("/api/v1/cron/")) return "cron";
-  if (route.startsWith("/api/v1/admin/") || route === "/api/v1/admin") return "admin";
+  if (route.startsWith("/api/cron/") || route.startsWith("/api/v1/cron/"))
+    return "cron";
+  if (route.startsWith("/api/v1/admin/") || route === "/api/v1/admin")
+    return "admin";
   if (route.startsWith("/api/admin/") || route === "/api/admin") return "admin";
-  if (route.startsWith("/api/v1/dashboard") || route === "/api/v1/api-keys/explorer") {
+  if (
+    route.startsWith("/api/v1/dashboard") ||
+    route === "/api/v1/api-keys/explorer"
+  ) {
     return "app-or-dashboard";
   }
   if (route.startsWith("/api/webhooks/")) return "webhook";
   if (route.includes("/webhook")) return "webhook";
   if (route.startsWith("/api/stripe/")) return "billing-webhook-or-checkout";
-  if (route.startsWith("/api/mcp") || route.startsWith("/api/mcps/")) return "mcp-transport";
+  if (route.startsWith("/api/mcp") || route.startsWith("/api/mcps/"))
+    return "mcp-transport";
   if (route.startsWith("/api/auth/")) return "auth";
   if (route.startsWith("/api/v1/") || route === "/api/v1") return "public";
   if (route.startsWith("/api/elevenlabs/")) return "public";
@@ -102,11 +119,21 @@ export async function walkRoutes(dir, relativeSegments = [], out = []) {
 }
 
 function resolveRouteReexport(specifier, fromFile, cloudRoot) {
-  const basePath = specifier.startsWith("@/api/")
-    ? path.join(cloudRoot, "apps", specifier.slice(2))
-    : specifier.startsWith(".")
-      ? path.resolve(path.dirname(fromFile), specifier)
-      : null;
+  let basePath = null;
+  if (specifier.startsWith("@/api/")) {
+    const routePath = specifier.slice("@/api/".length);
+    const candidates = [
+      path.join(cloudRoot, "packages", "cloud-api", routePath),
+      path.join(cloudRoot, "apps", "api", routePath),
+      path.join(cloudRoot, "app", "api", routePath),
+    ];
+    basePath = candidates.find(
+      (candidate) => existsSync(candidate) || existsSync(`${candidate}.ts`),
+    );
+  } else if (specifier.startsWith(".")) {
+    basePath = path.resolve(path.dirname(fromFile), specifier);
+  }
+
   if (!basePath) return null;
   return path.extname(basePath) ? basePath : `${basePath}.ts`;
 }
@@ -143,7 +170,12 @@ function extractHonoMethods(source) {
   return methods;
 }
 
-export async function extractMethods(source, filePath, cloudRoot, seen = new Set()) {
+export async function extractMethods(
+  source,
+  filePath,
+  cloudRoot,
+  seen = new Set(),
+) {
   if (seen.has(filePath)) return [];
   seen.add(filePath);
 
@@ -168,7 +200,12 @@ export async function extractMethods(source, filePath, cloudRoot, seen = new Set
     if (!targetPath) continue;
     const targetSource = await readFile(targetPath, "utf8").catch(() => null);
     if (!targetSource) continue;
-    for (const method of await extractMethods(targetSource, targetPath, cloudRoot, seen)) {
+    for (const method of await extractMethods(
+      targetSource,
+      targetPath,
+      cloudRoot,
+      seen,
+    )) {
       methods.add(method);
     }
   }

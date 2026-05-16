@@ -36,14 +36,28 @@ function joinUrl(base, pathname) {
   return `${base.replace(/\/+$/, "")}${pathname}`;
 }
 
+function isHttpUrlBase(base) {
+  if (!base || typeof base !== "string") return false;
+  return /^https?:\/\//i.test(base.trim());
+}
+
 function runDueUrl(config) {
   if (typeof config.runDueUrl === "string" && config.runDueUrl) {
     return config.runDueUrl;
   }
-  if (typeof config.localApiBase === "string" && config.localApiBase) {
+  if (
+    typeof config.localApiBase === "string" &&
+    config.localApiBase &&
+    isHttpUrlBase(config.localApiBase)
+  ) {
     return joinUrl(config.localApiBase, "/api/background/run-due-tasks");
   }
-  if (typeof config.apiBase === "string" && config.apiBase && config.mode !== "local") {
+  if (
+    typeof config.apiBase === "string" &&
+    config.apiBase &&
+    config.mode !== "local" &&
+    isHttpUrlBase(config.apiBase)
+  ) {
     return joinUrl(config.apiBase, "/api/background/run-due-tasks");
   }
   return null;
@@ -64,6 +78,15 @@ function isIosLocalBunHostIpcRunner(config) {
     config.mode === "local" &&
     config.platform === "ios" &&
     config.localRouteKernel === "bun-host-ipc"
+  );
+}
+
+function isAndroidLocalAgentServiceIpcRunner(config) {
+  return (
+    config &&
+    config.mode === "local" &&
+    config.platform === "android" &&
+    config.localRouteKernel === "agent-service-ipc"
   );
 }
 
@@ -98,6 +121,17 @@ async function runWake(args) {
       ok: true,
       skipped: true,
       reason: "ios_bun_host_ipc_unavailable_in_background_jscontext",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
+
+  if (!endpoint && isAndroidLocalAgentServiceIpcRunner(config)) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "android_agent_service_ipc_unavailable_in_background_jscontext",
     };
     kvSetJson(LAST_RESULT_KEY, skipped);
     return skipped;

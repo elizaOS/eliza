@@ -422,6 +422,210 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Checked.");
 	});
 
+	it("retries planner calls to tools that are not exposed this turn", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "bad-call",
+							name: "GET_PRICE",
+							arguments: { symbol: "BTC" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "SHELL",
+							arguments: { command: "curl -s https://example.com/btc" },
+						},
+					],
+				}),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "btc price",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "Checked.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "SHELL",
+					description: "Run a shell command.",
+				},
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(retryParams.messages?.[1]?.content).toContain(
+			"unavailable_tool_calls",
+		);
+		expect(retryParams.messages?.[1]?.content).toContain("GET_PRICE");
+		expect(retryParams.messages?.[1]?.content).toContain("SHELL");
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(executeToolCall).toHaveBeenCalledWith(
+			{
+				id: "call-1",
+				name: "SHELL",
+				params: { command: "curl -s https://example.com/btc" },
+			},
+			expect.objectContaining({ iteration: 2 }),
+		);
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				invalidToolCalls: ["GET_PRICE"],
+				iteration: 1,
+			}),
+			"Planner called unavailable tools; retrying without executing them",
+		);
+		expect(result.finalMessage).toBe("Checked.");
+	});
+
+	it("bounds repeated unavailable planner tool retries even without usage metadata", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "bad-call",
+						name: "GET_PRICE",
+						arguments: { symbol: "BTC" },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "should not execute",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "Done.",
+		}));
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [
+					{
+						name: "SHELL",
+						description: "Run a shell command.",
+					},
+				],
+				executeToolCall,
+				evaluate,
+				config: { maxUnavailableToolCallRetries: 1 },
+			}),
+		).rejects.toMatchObject({
+			kind: "unavailable_tool_calls",
+			max: 1,
+			observed: 2,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).not.toHaveBeenCalled();
+		expect(evaluate).not.toHaveBeenCalled();
+	});
+
+	it("replans once when a failed tool is finished without a user-visible message", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "SHELL",
+							arguments: { command: "curl https://stale.example.invalid" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-2",
+							name: "SHELL",
+							arguments: { command: "curl https://backup.example.com" },
+						},
+					],
+				}),
+		};
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: DNS lookup failed",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "backup source returned a result",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The first lookup failed, but I forgot to include a reply.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "The backup source returned a result.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(retryParams.messages?.[1]?.content).toContain(
+			"silent_failed_finish",
+		);
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenLastCalledWith(
+			{
+				id: "call-2",
+				name: "SHELL",
+				params: { command: "curl https://backup.example.com" },
+			},
+			expect.objectContaining({ iteration: 2 }),
+		);
+		expect(result.finalMessage).toBe("The backup source returned a result.");
+	});
+
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
 		let plannerCallCount = 0;
 		const runtime = {
@@ -599,6 +803,63 @@ describe("v5 planner loop skeleton", () => {
 				evaluate,
 			}),
 		).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
+	});
+
+	it("does not count different failed tool parameters as the same repeated failure", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "SHELL",
+							arguments: { command: "curl https://stale.example.invalid" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-2",
+							name: "SHELL",
+							arguments: { command: "curl https://backup.example.invalid" },
+						},
+					],
+				}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			error: "command_failed: command exited with code 1",
+		}));
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "Try a different source.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "No source worked.",
+				messageToUser: "I could not retrieve that from the available sources.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxRepeatedFailures: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe(
+			"I could not retrieve that from the available sources.",
+		);
 	});
 
 	it("compacts old assistant/tool suffixes when the planner input crosses the budget threshold", async () => {

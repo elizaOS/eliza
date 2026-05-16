@@ -121,12 +121,12 @@ export class VisionContextProvider extends Service {
 
   async getContext(): Promise<VisionContext> {
     const computerUse = this.runtime.getService("computeruse");
-		const source = isComputerUseContextSource(computerUse) ? computerUse : null;
-		const scene = await this.getScene(source);
-		const processNames = uniqueProcessNames();
-		const sceneAppNames = uniqueVisibleAppNames(scene);
-		return {
-			openApps: sceneAppNames.length > 0 ? sceneAppNames : processNames,
+    const source = isComputerUseContextSource(computerUse) ? computerUse : null;
+    const scene = await this.getScene(source);
+    const processNames = uniqueProcessNames();
+    const sceneAppNames = uniqueVisibleAppNames(scene);
+    return {
+      openApps: sceneAppNames.length > 0 ? sceneAppNames : processNames,
       focusedWindow: focusedWindowFromScene(scene) ?? focusedWindowFromPlatform(),
       recentActions: this.getRecentActions(source),
       currentTaskGoal: await this.getCurrentTaskGoal(),

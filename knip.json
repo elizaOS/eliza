@@ -54,6 +54,260 @@
       ],
       "ignore": ["dist/**", ".turbo/**"]
     },
+    "packages/cloud-api": {
+      "entry": [
+        "src/index.ts",
+        "src/_generate-router.mjs",
+        "src/stubs/**/*.ts",
+        "__tests__/**/*.ts",
+        "test/**/*.mjs",
+        "test/**/*.ts"
+      ],
+      "project": ["**/*.{ts,tsx}", "src/_generate-router.mjs", "test/**/*.mjs"],
+      "ignore": [".wrangler/**", "dist/**", ".turbo/**"],
+      "ignoreDependencies": ["wrangler"]
+    },
+    "packages/cloud-services/agent-server": {
+      "entry": ["src/index.ts", "src/**/*.ts", "__tests__/**/*.ts"],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"],
+      "ignoreDependencies": ["bun-types"]
+    },
+    "packages/cloud-services/gateway-discord": {
+      "entry": ["src/index.ts", "src/**/*.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"],
+      "ignoreDependencies": ["bun-types"]
+    },
+    "packages/cloud-services/gateway-webhook": {
+      "entry": ["src/index.ts", "src/**/*.ts", "__tests__/**/*.ts"],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"],
+      "ignoreDependencies": ["bun-types"]
+    },
+    "packages/cloud-services/operator": {
+      "entry": ["pepr.ts"],
+      "project": ["pepr.ts", "capabilities/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"],
+      "ignoreDependencies": ["@types/bun", "esbuild", "prettier", "uuid"]
+    },
+    "packages/cloud-frontend": {
+      "entry": [
+        "index.html",
+        "src/main.tsx",
+        "src/entry-server.tsx",
+        "src/**/*.test.{ts,tsx}",
+        "tests/**/*.spec.ts",
+        "functions/**/*.ts",
+        "scripts/**/*.mjs",
+        "content/**/*.{mdx,ts}",
+        "src/shims/*.{ts,cjs}",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "vitest.setup.ts",
+        "playwright.config.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,d.ts}",
+        "tests/**/*.ts",
+        "functions/**/*.ts",
+        "scripts/**/*.mjs",
+        "content/**/*.{mdx,ts}",
+        "src/shims/*.{ts,cjs}",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "vitest.setup.ts",
+        "playwright.config.ts"
+      ],
+      "ignore": ["dist/**", "dist-ssr/**", ".turbo/**"],
+      "ignoreDependencies": [
+        "@fontsource-variable/inter",
+        "@fontsource-variable/open-sans",
+        "@fontsource/dm-mono",
+        "@tailwindcss/typography",
+        "@types/mdx",
+        "buffer",
+        "browserify-sign",
+        "create-hash",
+        "create-hmac",
+        "hash-base",
+        "secp256k1",
+        "tailwind-scrollbar",
+        "tw-animate-css"
+      ]
+    },
+    "packages/cloud-shared": {
+      "entry": [
+        "src/index.ts",
+        "src/billing/index.ts",
+        "src/db/index.ts",
+        "src/lib/index.ts",
+        "src/routing/index.ts",
+        "src/types/index.ts",
+        "src/**/*.test.ts",
+        "drizzle.config.ts"
+      ],
+      "project": ["src/**/*.ts", "drizzle.config.ts"],
+      "ignore": ["dist/**", ".turbo/**"],
+      "ignoreDependencies": ["redis", "wadis"]
+    },
+    "packages/scenario-runner": {
+      "entry": [
+        "src/index.ts",
+        "src/cli.ts",
+        "src/runtime-factory.ts",
+        "src/**/*.test.ts",
+        "vitest.config.ts"
+      ],
+      "project": ["src/**/*.ts", "vitest.config.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "packages/os-homepage": {
+      "entry": [
+        "index.html",
+        "src/main.tsx",
+        "src/index.css",
+        "scripts/**/*.mjs",
+        "tests/**/*.ts",
+        "vite.config.ts",
+        "playwright.config.ts"
+      ],
+      "project": [
+        "src/**/*.{css,ts,tsx}",
+        "scripts/**/*.mjs",
+        "tests/**/*.ts",
+        "vite.config.ts",
+        "playwright.config.ts"
+      ],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "packages/os-usb-installer": {
+      "entry": [
+        "index.html",
+        "src/index.ts",
+        "src/main.tsx",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx",
+        "vite.config.ts",
+        "vitest.config.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts", "vitest.config.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "packages/shared": {
+      "entry": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
+      "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
+    },
+    "packages/skills": {
+      "entry": ["src/index.ts", "test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "packages/vault": {
+      "entry": ["src/index.ts", "test/**/*.test.ts", "vitest.config.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "packages/workflows": {
+      "entry": ["src/index.ts", "__tests__/**/*.test.ts"],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "plugins/plugin-2004scape": {
+      "entry": ["src/index.ts", "vite.config.views.ts"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.views.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "plugins/plugin-agent-skills": {
+      "entry": [
+        "src/index.ts",
+        "auto-enable.ts",
+        "src/**/*.test.ts",
+        "tsup.config.ts",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "auto-enable.ts",
+        "tsup.config.ts",
+        "vitest.config.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        ".turbo/**",
+        "src/**/*.js",
+        "src/**/*.js.map",
+        "src/**/*.d.ts",
+        "src/**/*.d.ts.map"
+      ]
+    },
+    "plugins/plugin-anthropic": {
+      "entry": [
+        "index.ts",
+        "index.node.ts",
+        "index.browser.ts",
+        "auto-enable.ts",
+        "build.ts",
+        "models/**/*.ts",
+        "__tests__/**/*.test.ts",
+        "vitest.config.ts",
+        "vitest.live.config.ts"
+      ],
+      "project": [
+        "**/*.ts",
+        "__tests__/**/*.test.ts",
+        "vitest.config.ts",
+        "vitest.live.config.ts"
+      ],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "plugins/plugin-anthropic-proxy": {
+      "entry": [
+        "index.ts",
+        "index.node.ts",
+        "index.browser.ts",
+        "auto-enable.ts",
+        "build.ts",
+        "__tests__/**/*.test.ts",
+        "vitest.config.ts"
+      ],
+      "project": ["**/*.ts", "__tests__/**/*.test.ts", "vitest.config.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "plugins/plugin-aosp-local-inference": {
+      "entry": [
+        "src/index.ts",
+        "src/aosp-dflash-adapter.ts",
+        "src/aosp-llama-streaming.ts",
+        "__tests__/**/*.test.ts"
+      ],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
+    "plugins/plugin-agent-orchestrator": {
+      "entry": [
+        "index.ts",
+        "index.node.ts",
+        "build.ts",
+        "src/index.ts",
+        "src/register-routes.ts",
+        "src/**/*.test.ts",
+        "__tests__/**/*.test.ts",
+        "tests/**/*.mjs",
+        "scripts/**/*.cjs",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "*.ts",
+        "src/**/*.ts",
+        "__tests__/**/*.ts",
+        "tests/**/*.mjs",
+        "scripts/**/*.cjs",
+        "vitest.config.ts"
+      ],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
     "packages/app": {
       "entry": [
         "src/**/*.{ts,tsx}",
@@ -159,6 +413,67 @@
         "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-workflow"
       ]
+    },
+    "packages/benchmarks/eliza-1": {
+      "entry": [
+        "src/index.ts",
+        "src/metrics.ts",
+        "src/report.ts",
+        "__tests__/**/*.ts",
+        "scripts/**/*.mjs"
+      ],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts", "scripts/**/*.mjs"],
+      "ignore": [".turbo/**"]
+    },
+    "packages/benchmarks/eliza-1/vision-cua-e2e": {
+      "entry": [
+        "src/pipeline.ts",
+        "*.e2e.test.ts",
+        "src/**/*.test.ts",
+        "src/**/*.e2e.test.ts",
+        "scripts/**/*.mjs",
+        "vitest.config.ts"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
+      "ignore": [".turbo/**"]
+    },
+    "packages/benchmarks/interrupt-bench": {
+      "entry": [
+        "src/index.ts",
+        "src/runner.ts",
+        "src/scorer.ts",
+        "scripts/**/*.ts",
+        "tests/**/*.ts"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+      "ignore": [".turbo/**"]
+    },
+    "packages/benchmarks/lib": {
+      "entry": [
+        "src/index.ts",
+        "src/metrics-schema.ts",
+        "src/model-tiers.ts",
+        "src/local-llama-cpp.ts",
+        "src/**/*.test.ts"
+      ],
+      "project": ["src/**/*.ts"],
+      "ignore": [".turbo/**", "__pycache__/**"]
+    },
+    "packages/benchmarks/three-agent-dialogue": {
+      "entry": [
+        "runner/run-dialogue.ts",
+        "runner/**/*.ts",
+        "verify/**/*.ts",
+        "__tests__/**/*.ts",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "runner/**/*.ts",
+        "verify/**/*.ts",
+        "__tests__/**/*.ts",
+        "vitest.config.ts"
+      ],
+      "ignore": [".turbo/**", "artifacts/**"]
     },
     "packages/contracts": {
       "entry": ["src/index.ts"],
@@ -321,9 +636,16 @@
         "src/main.tsx",
         "src/vite-env.d.ts",
         "src/types/**/*.d.ts",
-        "vite.config.ts"
+        "tests/**/*.spec.ts",
+        "vite.config.ts",
+        "playwright.config.ts"
       ],
-      "project": ["src/**/*.{ts,tsx,d.ts}", "vite.config.ts"],
+      "project": [
+        "src/**/*.{ts,tsx,d.ts}",
+        "tests/**/*.ts",
+        "vite.config.ts",
+        "playwright.config.ts"
+      ],
       "ignore": ["dist/**", ".turbo/**"],
       "ignoreDependencies": [
         "@fontsource-variable/geist",
@@ -453,8 +775,8 @@
       "project": ["src/**/*.ts"]
     },
     "packages/ui": {
-      "entry": ["src/**/*.{ts,tsx}", "vitest.config.ts"],
-      "project": ["src/**/*.{ts,tsx}", "vitest.config.ts"],
+      "entry": ["src/**/*.{css,ts,tsx}", "vitest.config.ts"],
+      "project": ["src/**/*.{css,ts,tsx}", "vitest.config.ts"],
       "ignoreDependencies": [
         "@elizaos/core",
         "@elizaos/plugin-browser",
@@ -502,6 +824,22 @@
         "tsc",
         "plugins/plugin-lifeops/scripts/work-thread-benchmark.ts"
       ]
+    },
+    "plugins/plugin-health": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts",
+        "test/**/*.test.ts",
+        "vitest.config.ts"
+      ],
+      "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+      "ignore": [
+        "dist/**",
+        "src/contracts/lifeops.ts",
+        "src/contracts/lifeops-connector-degradation.ts",
+        "src/contracts/permissions.ts"
+      ],
+      "ignoreBinaries": ["tsc", "tsup", "vitest", "bunx"]
     }
   }
 }

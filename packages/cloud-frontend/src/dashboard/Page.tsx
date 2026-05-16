@@ -58,15 +58,31 @@ export default function DashboardPage() {
   return (
     <>
       <Helmet>
-        <title>Dashboard</title>
+        <title>Eliza Cloud Console</title>
         <meta
           name="description"
-          content="Manage your AI agents, instances, credits, and platform resources from the Eliza Cloud dashboard."
+          content="Run your Eliza agent on the hosted runtime and manage runtime instances, API access, billing, connected devices, and monetization from the Eliza Cloud dashboard."
         />
       </Helmet>
       <DashboardPageWrapper userName={userName}>
         <DashboardPageContainer>
           <DashboardPageStack className="pt-4 md:pt-6">
+            <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div className="max-w-2xl">
+                <p className="text-sm font-medium uppercase tracking-normal text-[#FF5800]">
+                  ElizaOS Platform / Eliza Cloud
+                </p>
+                <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl">
+                  Run your Eliza agent on the hosted runtime
+                </h1>
+                <p className="mt-3 text-sm leading-6 text-white/60 md:text-base">
+                  Administer your live agent, connect app devices, manage API
+                  access, monitor runtime instances, and prepare apps for
+                  monetization from one dashboard.
+                </p>
+              </div>
+            </section>
+
             <section>
               {credits.isLoading ? (
                 <DashboardActionCardsSkeleton />

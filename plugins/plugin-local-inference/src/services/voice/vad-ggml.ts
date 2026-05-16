@@ -9,9 +9,8 @@
  * `silero-vad` Python `OnnxWrapper` (verified at ±0.02 by
  * `packages/native-plugins/silero-vad-cpp/test/silero_vad_parity_test.py`).
  *
- * The binding is wired into `./vad.ts`'s `vadProviderOrder` ahead of
- * the `silero-onnx` provider; the ONNX path stays as a fallback
- * until the ggml runtime has soaked in production.
+ * The binding is wired into `./vad.ts`'s `vadProviderOrder` ahead of the
+ * legacy fused libelizainference VAD ABI.
  *
  * Runtime: production runs under Bun (Electrobun shell, Capacitor
  * bridge). The loader uses `bun:ffi`. Calling this loader from a
@@ -130,10 +129,10 @@ export function resolveSileroVadGgmlLibrary(opts: {
 	);
 	const platformNames =
 		process.platform === "darwin"
-			? ["libsilero_vad.dylib", "libsilero_vad.so", "silero_vad.dll"]
+			? ["libsilero_vad.dylib"]
 			: process.platform === "win32"
 				? ["silero_vad.dll", "libsilero_vad.dll"]
-				: ["libsilero_vad.so", "libsilero_vad.dylib", "silero_vad.dll"];
+				: ["libsilero_vad.so"];
 	for (const name of platformNames) {
 		const candidate = path.join(buildDir, name);
 		if (existsSync(candidate)) return candidate;
@@ -171,8 +170,8 @@ async function dlopenLibrary(libraryPath: string): Promise<DlopenResult> {
  * 512-sample window at 16 kHz (the only window size the native graph
  * supports). `reset()` clears the state at utterance boundaries.
  *
- * Implements `VadLike` so `VadDetector` can drive it interchangeably
- * with `SileroVad` (ONNX) and `NativeSileroVad` (libelizainference).
+ * Implements `VadLike` so `VadDetector` can drive it interchangeably with
+ * toolkit adapters and the temporary fused libelizainference fallback.
  */
 export class SileroVadGgml implements VadLike {
 	readonly windowSamples = SILERO_VAD_GGML_WINDOW_SAMPLES;
@@ -187,12 +186,12 @@ export class SileroVadGgml implements VadLike {
 	) {
 		this.sampleRate = sampleRate;
 	}
+	private closed = false;
 
 	/**
 	 * Load the ggml-backed Silero VAD library and open a session against
-	 * `gguf_path`. Throws `VadGgmlUnavailableError` on any failure (no
-	 * silent fallback to ONNX — the resolver in `./vad.ts` owns that
-	 * fallback decision).
+	 * `gguf_path`. Throws `VadGgmlUnavailableError` on any failure; the resolver
+	 * in `./vad.ts` owns any fallback decision.
 	 */
 	static async load(opts: {
 		ggufPath: string;
@@ -275,6 +274,12 @@ export class SileroVadGgml implements VadLike {
 
 	/** Diagnostic — name of the active dispatch path inside the library. */
 	activeBackend(): string {
+		if (this.closed) {
+			throw new VadGgmlUnavailableError(
+				"abi-violation",
+				"[vad-ggml] activeBackend called after close().",
+			);
+		}
 		const cstr = this.lib.symbols.silero_vad_active_backend();
 		// bun:ffi with `returns: T.cstring` already hands back a CString;
 		// fall back to constructing one from a raw pointer if the
@@ -292,6 +297,12 @@ export class SileroVadGgml implements VadLike {
 
 	/** Clear the LSTM state. Call at the start of every new utterance. */
 	reset(): void {
+		if (this.closed) {
+			throw new VadGgmlUnavailableError(
+				"abi-violation",
+				"[vad-ggml] reset called after close().",
+			);
+		}
 		const rc = this.lib.symbols.silero_vad_reset_state(this.handle);
 		if (rc !== 0) {
 			throw new VadGgmlUnavailableError(
@@ -306,6 +317,12 @@ export class SileroVadGgml implements VadLike {
 	 * Returns the speech probability in `[0, 1]`.
 	 */
 	async process(window: Float32Array): Promise<number> {
+		if (this.closed) {
+			throw new VadGgmlUnavailableError(
+				"abi-violation",
+				"[vad-ggml] process called after close().",
+			);
+		}
 		if (window.length !== SILERO_VAD_GGML_WINDOW_SAMPLES) {
 			throw new VadGgmlUnavailableError(
 				"abi-violation",
@@ -330,6 +347,8 @@ export class SileroVadGgml implements VadLike {
 
 	/** Release the native session. Idempotent; safe to call multiple times. */
 	close(): void {
+		if (this.closed) return;
+		this.closed = true;
 		const rc = this.lib.symbols.silero_vad_close(this.handle);
 		if (rc !== 0) {
 			throw new VadGgmlUnavailableError(

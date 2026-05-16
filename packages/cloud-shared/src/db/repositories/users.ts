@@ -270,9 +270,17 @@ export class UsersRepository {
   ): Promise<ResolvedIdentity | null> {
     if (provider) {
       const identity = await this.findIdentityByProvider(provider, identifier);
-      if (!identity) return null;
-      const user = await this.findById(identity.user_id);
-      return user ? { user, identity } : null;
+      if (identity) {
+        const user = await this.findById(identity.user_id);
+        return user ? { user, identity } : null;
+      }
+
+      const user = await this.findCanonicalUserByProvider(provider, identifier);
+      if (!user) return null;
+      const projectedIdentity = await dbRead.query.userIdentities.findFirst({
+        where: eq(userIdentities.user_id, user.id),
+      });
+      return { user, identity: projectedIdentity };
     }
 
     let user: User | undefined;
@@ -456,6 +464,24 @@ export class UsersRepository {
     }
   }
 
+  private async findCanonicalUserByProvider(
+    provider: IdentityProvider,
+    identifier: string,
+  ): Promise<User | undefined> {
+    switch (provider) {
+      case "steward":
+        return this.findUserByPredicate(dbRead, eq(users.steward_user_id, identifier));
+      case "telegram":
+        return this.findUserByPredicate(dbRead, eq(users.telegram_id, identifier));
+      case "discord":
+        return this.findUserByPredicate(dbRead, eq(users.discord_id, identifier));
+      case "whatsapp":
+        return this.findUserByPredicate(dbRead, eq(users.whatsapp_id, identifier));
+      case "phone":
+        return this.findUserByPredicate(dbRead, eq(users.phone_number, identifier));
+    }
+  }
+
   private async findFirstIdentity(identifier: string): Promise<UserIdentity | undefined> {
     const providers: IdentityProvider[] = ["steward", "telegram", "discord", "whatsapp"];
     for (const provider of providers) {
@@ -586,6 +612,21 @@ export class UsersRepository {
       ON CONFLICT (user_id) DO UPDATE
       SET
         steward_user_id = EXCLUDED.steward_user_id,
+        is_anonymous = EXCLUDED.is_anonymous,
+        anonymous_session_id = EXCLUDED.anonymous_session_id,
+        expires_at = EXCLUDED.expires_at,
+        telegram_id = EXCLUDED.telegram_id,
+        telegram_username = EXCLUDED.telegram_username,
+        telegram_first_name = EXCLUDED.telegram_first_name,
+        telegram_photo_url = EXCLUDED.telegram_photo_url,
+        phone_number = EXCLUDED.phone_number,
+        phone_verified = EXCLUDED.phone_verified,
+        discord_id = EXCLUDED.discord_id,
+        discord_username = EXCLUDED.discord_username,
+        discord_global_name = EXCLUDED.discord_global_name,
+        discord_avatar_url = EXCLUDED.discord_avatar_url,
+        whatsapp_id = EXCLUDED.whatsapp_id,
+        whatsapp_name = EXCLUDED.whatsapp_name,
         updated_at = NOW()
       RETURNING *
     `,

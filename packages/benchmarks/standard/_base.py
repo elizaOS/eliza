@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import time
+from hashlib import sha256
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
@@ -254,6 +255,7 @@ class HarnessClient:
     def __init__(self, *, harness: str, endpoint: str, api_key: str) -> None:
         del endpoint, api_key
         self._harness = harness
+        self._turn_index = 0
         self._server_manager: object | None = None
         if harness == "hermes":
             from hermes_adapter.client import HermesClient  # noqa: WPS433
@@ -313,11 +315,23 @@ class HarnessClient:
         config: GenerationConfig,
     ) -> GenerationResult:
         serialized = [{"role": m.role, "content": m.content} for m in messages]
+        self._turn_index += 1
+        task_hash = sha256(
+            json.dumps(
+                {
+                    "messages": serialized,
+                    "turn_index": self._turn_index,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()[:16]
         user_text = next((m.content for m in reversed(messages) if m.role == "user"), "")
         system_prompt = next((m.content for m in messages if m.role == "system"), "")
         context: dict[str, object] = {
             "messages": serialized,
             "benchmark": "standard",
+            "task_id": f"standard-{self._harness}-{self._turn_index}-{task_hash}",
             "max_tokens": config.max_tokens,
             "tools": [dict(tool) for tool in config.tools],
             "tool_choice": config.tool_choice or "auto",

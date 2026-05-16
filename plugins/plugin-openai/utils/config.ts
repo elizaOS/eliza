@@ -150,10 +150,6 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   return baseURL;
 }
 
-function getCerebrasModel(runtime: IAgentRuntime): string | undefined {
-  return isCerebrasMode(runtime) ? getSetting(runtime, "CEREBRAS_MODEL") : undefined;
-}
-
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
   const embeddingURL = isBrowser()
     ? (getSetting(runtime, "OPENAI_BROWSER_EMBEDDING_URL") ??
@@ -167,6 +163,10 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
 
   logger.debug("[OpenAI] Falling back to general base URL for embeddings");
   return getBaseURL(runtime);
+}
+
+function getCerebrasModel(runtime: IAgentRuntime): string | undefined {
+  return isCerebrasMode(runtime) ? getSetting(runtime, "CEREBRAS_MODEL") : undefined;
 }
 
 export function getSmallModel(runtime: IAgentRuntime): string {
@@ -208,7 +208,6 @@ export function getLargeModel(runtime: IAgentRuntime): string {
 export function getMegaModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_MEGA_MODEL") ??
-    getCerebrasModel(runtime) ??
     getSetting(runtime, "MEGA_MODEL") ??
     getLargeModel(runtime)
   );

@@ -27,7 +27,7 @@ export function computeBillingFingerprint(firstUserText: string): string {
  * Extract first user message text from the raw body using string scanning.
  * Avoids JSON.parse to preserve raw body integrity.
  */
-export function extractFirstUserText(bodyStr: string): string {
+function extractFirstUserText(bodyStr: string): string {
 	// Find first "role":"user" in messages array
 	const msgsIdx = bodyStr.indexOf('"messages":[');
 	if (msgsIdx === -1) return "";

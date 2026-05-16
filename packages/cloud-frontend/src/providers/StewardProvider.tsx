@@ -70,7 +70,7 @@ export const LocalStewardAuthContext = createContext<ReturnType<
   typeof useStewardAuth
 > | null>(null);
 
-export function isLocalhostApiBase(value: string): boolean {
+function isLocalhostApiBase(value: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(
     value.trim(),
   );

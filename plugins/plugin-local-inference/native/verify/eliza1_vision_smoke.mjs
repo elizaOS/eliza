@@ -14,12 +14,14 @@ const MODELS_ROOT = path.join(
 );
 
 const VISION_TIER_LIST = [
+  "0_8b",
+  "2b",
   "4b",
   "9b",
   "27b",
   "27b-256k",
 ];
-const TEXT_VOICE_ONLY_TIER_LIST = ["0_8b", "2b"];
+const TEXT_VOICE_ONLY_TIER_LIST = [];
 const VISION_TIERS = new Set(VISION_TIER_LIST);
 const TEXT_VOICE_ONLY_TIERS = new Set(TEXT_VOICE_ONLY_TIER_LIST);
 
@@ -626,10 +628,10 @@ function buildReport(args) {
     report.status = "not-applicable";
     report.action = "mark-text-voice-only";
     report.reason =
-      `${tier} is text/voice-only by the Eliza-1 tier contract: 0_8B and 2B do not ship image-analysis mmproj files, ` +
+      `${tier} is text/voice-only by the Eliza-1 tier contract: this tier does not ship image-analysis mmproj files, ` +
       "packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, " +
       "and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; " +
-      "4B/9B/27B mmproj files are tied to their text backbones and are not compatible substitutes.";
+      "Eliza-1 vision mmproj files are tied to their text backbones and are not compatible substitutes.";
     report.imageAnalysis.reason = "skipped because manifest.files.vision is empty";
     report.evidence = {
       result: "not-applicable",

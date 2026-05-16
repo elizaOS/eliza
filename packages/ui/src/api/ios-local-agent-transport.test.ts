@@ -39,6 +39,56 @@ const kernelMock = vi.hoisted(() => ({
   startIosLocalAgentKernel: vi.fn(),
 }));
 
+function stubChromiumWebViewCustomSchemeUrlParser(): void {
+  const NativeUrl = globalThis.URL;
+  class ChromiumWebViewUrl {
+    private readonly inner: URL;
+    private readonly raw: string;
+    private readonly isIpc: boolean;
+
+    constructor(input: string | URL, base?: string | URL) {
+      this.raw = String(input);
+      this.inner = new NativeUrl(input, base);
+      this.isIpc = this.raw.toLowerCase().startsWith("eliza-local-agent://ipc");
+    }
+
+    get protocol(): string {
+      return this.isIpc ? "eliza-local-agent:" : this.inner.protocol;
+    }
+
+    get href(): string {
+      return this.toString();
+    }
+
+    get hostname(): string {
+      return this.isIpc ? "" : this.inner.hostname;
+    }
+
+    get port(): string {
+      return this.isIpc ? "" : this.inner.port;
+    }
+
+    get pathname(): string {
+      if (!this.isIpc) return this.inner.pathname;
+      const queryIndex = this.raw.indexOf("?");
+      const withoutQuery =
+        queryIndex === -1 ? this.raw : this.raw.slice(0, queryIndex);
+      const suffix = withoutQuery.slice("eliza-local-agent://ipc".length);
+      return `//ipc${suffix}`;
+    }
+
+    get search(): string {
+      return this.inner.search;
+    }
+
+    toString(): string {
+      return this.isIpc ? this.raw : this.inner.toString();
+    }
+  }
+
+  vi.stubGlobal("URL", ChromiumWebViewUrl);
+}
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: () => capacitorState.platform,
@@ -137,6 +187,41 @@ describe("iOS local agent transport bridge", () => {
       }),
       { timeoutMs: undefined },
     );
+  });
+
+  it("extracts IPC paths correctly under Chromium WebView custom-scheme URL parsing", async () => {
+    capacitorState.pluginAvailable = true;
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: '{"ok":true}',
+      },
+    }));
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { installIosLocalAgentFetchBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    stubChromiumWebViewCustomSchemeUrlParser();
+    installIosLocalAgentFetchBridge();
+
+    const response = await fetch(
+      "eliza-local-agent://ipc/api/auth/status?source=test",
+    );
+
+    expect(response.status).toBe(200);
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request",
+      args: expect.objectContaining({
+        path: "/api/auth/status?source=test",
+      }),
+    });
   });
 
   it("rejects loopback local-agent URLs in iOS store builds", async () => {

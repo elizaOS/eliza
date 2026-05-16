@@ -1,4 +1,5 @@
 {
+  "extends": "../../../tsconfig.dist-paths.json",
   "compilerOptions": {
     "declaration": false,
     "esModuleInterop": true,
@@ -6,9 +7,6 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true,
-    "paths": {
-      "@elizaos/core": ["./../../core/dist/index.node.d.ts"]
-    },
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,

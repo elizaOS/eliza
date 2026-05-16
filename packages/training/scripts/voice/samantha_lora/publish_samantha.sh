@@ -16,12 +16,12 @@
 #
 #   HF_TOKEN=hf_xxx ./publish_samantha.sh \
 #       --release-dir ~/eliza-training/samantha-lora-baseline/out \
-#       --hf-repo elizaos/eliza-1-voice-kokoro-samantha \
+#       --hf-repo elizalabs/eliza-1-voice-kokoro-samantha \
 #       --dry-run
 #
 #   HF_TOKEN=hf_xxx ./publish_samantha.sh \
 #       --release-dir ~/eliza-training/samantha-lora-baseline/out \
-#       --hf-repo elizaos/eliza-1-voice-kokoro-samantha \
+#       --hf-repo elizalabs/eliza-1-voice-kokoro-samantha \
 #       --push --private
 #
 # Flags:
@@ -32,7 +32,7 @@
 #                         af_same.bin artifact.
 #
 #   --hf-repo REPO        Target HF repo. Defaults to
-#                         elizaos/eliza-1-voice-kokoro-samantha. The
+#                         elizalabs/eliza-1-voice-kokoro-samantha. The
 #                         catalog (voice-models.ts) points here.
 #
 #   --dry-run             Validate everything; print what would be
@@ -60,7 +60,7 @@ TRAINING_ROOT="$(cd "${HERE}/../../.." && pwd)"
 PUSH_SCRIPT="${TRAINING_ROOT}/scripts/kokoro/push_voice_to_hf.py"
 
 RELEASE_DIR=""
-HF_REPO="elizaos/eliza-1-voice-kokoro-samantha"
+HF_REPO="elizalabs/eliza-1-voice-kokoro-samantha"
 DRY_RUN=1
 PUSH=0
 PRIVATE=0

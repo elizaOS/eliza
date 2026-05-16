@@ -82,6 +82,7 @@ import {
   type SpeechRecognitionResultEvent,
   TALKMODE_STOP_SETTLE_MS,
   toArrayBuffer,
+  type VoiceAssistantSpeechTelemetry,
   type VoiceCaptureMode,
   type VoiceChatOptions,
   type VoiceChatState,
@@ -391,14 +392,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   // ── Init ──────────────────────────────────────────────────────────
 
+  const localAsrProvider = effectiveVoiceConfig?.asr?.provider;
   useEffect(() => {
     let cancelled = false;
 
     const syncVoiceSupport = async () => {
       const browserSpeechSupported = !!getSpeechRecognitionCtor();
       const localAsrSupported =
-        shouldUseLocalInferenceAsr(voiceConfigRef.current) &&
-        isLocalAsrCaptureSupported();
+        localAsrProvider === "local-inference" && isLocalAsrCaptureSupported();
       if (localAsrSupported) {
         if (!cancelled) {
           setSupported(true);
@@ -434,7 +435,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     return () => {
       cancelled = true;
     };
-  }, [effectiveVoiceConfig?.asr?.provider]);
+  }, [localAsrProvider]);
 
   // ── Mouth animation loop ──────────────────────────────────────────
 
@@ -651,15 +652,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeLocalInferenceAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "audio/wav",
-          Accept: "application/json",
+      const res = await fetchWithCsrf(
+        resolveApiUrl("/api/asr/local-inference"),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "audio/wav",
+            Accept: "application/json",
+          },
+          body: new Uint8Array(audio).buffer,
+          signal,
         },
-        body: audio,
-        signal,
-      });
+      );
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         throw new Error(
@@ -920,6 +924,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const recorder = localAsrRecorderRef.current;
         localAsrRecorderRef.current = null;
         if (recorder) {
+          if (!submit) {
+            recorder.cancel();
+            finalizeRecognition(false);
+            return;
+          }
           try {
             const audio = await recorder.stop();
             const transcript = await transcribeLocalInferenceAudio(audio);

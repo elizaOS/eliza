@@ -149,21 +149,19 @@ function createOpenApiResponse(env: {
 }
 
 app.get("/", (c) => createOpenApiResponse(c.env));
-
-export function GET(): Response {
-  return createOpenApiResponse({});
-}
-
-export function OPTIONS(): Response {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
-      "Access-Control-Max-Age": "86400",
-    },
-  });
-}
+app.options(
+  "/",
+  () =>
+    new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers":
+          "Content-Type, Authorization, X-API-Key",
+        "Access-Control-Max-Age": "86400",
+      },
+    }),
+);
 
 export default app;

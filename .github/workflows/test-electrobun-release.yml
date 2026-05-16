@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           filter: blob:none
-          submodules: recursive
+          submodules: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -44,6 +44,7 @@ jobs:
           install-command: bun install --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "true"
+          init-submodules: "false"
 
       - name: Run regression matrix contract
         run: bun run test:regression-matrix:release-contract

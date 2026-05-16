@@ -32,12 +32,12 @@ from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CANDIDATE_ROOT = ROOT / "data" / "candidates" / "eliza1"
-DEFAULT_REPO_ID = "elizaos/eliza-1-training-candidates"
+DEFAULT_REPO_ID = "elizalabs/eliza-1-training-candidates"
 SCHEMA_VERSION = "eliza1.dataset_candidate.v1"
 ELIZA1_TRAJECTORY_RECORD_SCHEMA = "eliza.eliza1_trajectory_record.v1"
 PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
 PRIVACY_ATTESTATION_VERSION = 1
-PUBLIC_ELIZA1_DATASET = "elizaos/eliza-1-training"
+PUBLIC_ELIZA1_DATASET = "elizalabs/eliza-1-training"
 PUBLIC_ELIZA1_CONFIG = "default"
 PUBLIC_ELIZA1_COLUMNS = (
     "roomName",
@@ -231,9 +231,11 @@ def _privacy_attestation_reviewed(manifest: dict[str, Any]) -> bool:
     residual_count = _int_or_none(
         residual.get("count")
         if residual.get("count") is not None
-        else gate.get("residual_findings_count")
-        if gate.get("residual_findings_count") is not None
-        else manifest.get("residual_findings_count")
+        else (
+            gate.get("residual_findings_count")
+            if gate.get("residual_findings_count") is not None
+            else manifest.get("residual_findings_count")
+        )
     )
     input_count = _int_or_none(manifest.get("input_count"))
     output_count = _int_or_none(manifest.get("output_count"))
@@ -244,9 +246,11 @@ def _privacy_attestation_reviewed(manifest: dict[str, Any]) -> bool:
     backend_skipped = _int_or_none(
         gate.get("backend_skipped_too_long")
         if gate.get("backend_skipped_too_long") is not None
-        else manifest.get("backend_skipped_too_long")
-        if manifest.get("backend_skipped_too_long") is not None
-        else 0
+        else (
+            manifest.get("backend_skipped_too_long")
+            if manifest.get("backend_skipped_too_long") is not None
+            else 0
+        )
     )
 
     return all(
@@ -364,7 +368,9 @@ def _manifest_privacy_summary(
     return summary
 
 
-def _manifest_real_user_export(manifest: dict[str, Any], source_kind: str | None) -> bool:
+def _manifest_real_user_export(
+    manifest: dict[str, Any], source_kind: str | None
+) -> bool:
     privacy = _as_dict(manifest.get("privacy"))
     source = _as_dict(manifest.get("source"))
     sources = manifest.get("sources")
@@ -413,7 +419,9 @@ def load_source_manifest(path: Path) -> SourceManifestInfo:
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise CandidateError(f"{path}: invalid source manifest JSON: {exc.msg}") from exc
+        raise CandidateError(
+            f"{path}: invalid source manifest JSON: {exc.msg}"
+        ) from exc
     if not isinstance(manifest, dict):
         raise CandidateError(f"{path}: source manifest must be a JSON object")
 
@@ -425,7 +433,9 @@ def load_source_manifest(path: Path) -> SourceManifestInfo:
     return SourceManifestInfo(
         path=path.resolve(),
         sha256=_sha256_file(path),
-        schema=manifest.get("schema") if isinstance(manifest.get("schema"), str) else None,
+        schema=(
+            manifest.get("schema") if isinstance(manifest.get("schema"), str) else None
+        ),
         version=manifest.get("version"),
         source_kind=source_kind,
         privacy_reviewed=privacy_reviewed,
@@ -474,11 +484,15 @@ def _detect_schema(record: dict[str, Any]) -> str:
         return "eliza_record_v1"
 
     messages = record.get("messages")
-    if isinstance(messages, list) and messages and all(
-        isinstance(msg, dict)
-        and isinstance(msg.get("role"), str)
-        and "content" in msg
-        for msg in messages
+    if (
+        isinstance(messages, list)
+        and messages
+        and all(
+            isinstance(msg, dict)
+            and isinstance(msg.get("role"), str)
+            and "content" in msg
+            for msg in messages
+        )
     ):
         return "chat_messages_v1"
 
@@ -552,7 +566,9 @@ def _validate_public_eliza_record_shape(
 
     memory_entries = record.get("memoryEntries")
     if not isinstance(memory_entries, list):
-        raise CandidateError(f"{source}:{line_no}: ElizaRecord memoryEntries must be a list")
+        raise CandidateError(
+            f"{source}:{line_no}: ElizaRecord memoryEntries must be a list"
+        )
     for idx, entry in enumerate(memory_entries):
         if not isinstance(entry, dict):
             raise CandidateError(
@@ -566,10 +582,13 @@ def _validate_public_eliza_record_shape(
             )
 
     current_message = _as_dict(record.get("currentMessage"))
-    if not isinstance(current_message.get("content"), str) or not current_message[
-        "content"
-    ].strip():
-        raise CandidateError(f"{source}:{line_no}: ElizaRecord currentMessage.content is empty")
+    if (
+        not isinstance(current_message.get("content"), str)
+        or not current_message["content"].strip()
+    ):
+        raise CandidateError(
+            f"{source}:{line_no}: ElizaRecord currentMessage.content is empty"
+        )
 
     available_actions = record.get("availableActions")
     if not isinstance(available_actions, list) or not all(
@@ -581,13 +600,23 @@ def _validate_public_eliza_record_shape(
 
     metadata = record.get("metadata")
     if not isinstance(metadata, dict):
-        raise CandidateError(f"{source}:{line_no}: ElizaRecord metadata must be an object")
-    if not isinstance(metadata.get("task_type"), str) or not metadata["task_type"].strip():
-        raise CandidateError(f"{source}:{line_no}: ElizaRecord metadata.task_type is empty")
-    if not isinstance(metadata.get("source_dataset"), str) or not metadata[
-        "source_dataset"
-    ].strip():
-        raise CandidateError(f"{source}:{line_no}: ElizaRecord metadata.source_dataset is empty")
+        raise CandidateError(
+            f"{source}:{line_no}: ElizaRecord metadata must be an object"
+        )
+    if (
+        not isinstance(metadata.get("task_type"), str)
+        or not metadata["task_type"].strip()
+    ):
+        raise CandidateError(
+            f"{source}:{line_no}: ElizaRecord metadata.task_type is empty"
+        )
+    if (
+        not isinstance(metadata.get("source_dataset"), str)
+        or not metadata["source_dataset"].strip()
+    ):
+        raise CandidateError(
+            f"{source}:{line_no}: ElizaRecord metadata.source_dataset is empty"
+        )
 
 
 def _validate_chat_messages_shape(
@@ -602,14 +631,18 @@ def _validate_chat_messages_shape(
     has_user = False
     for idx, message in enumerate(messages):
         if not isinstance(message, dict):
-            raise CandidateError(f"{source}:{line_no}: messages[{idx}] must be an object")
+            raise CandidateError(
+                f"{source}:{line_no}: messages[{idx}] must be an object"
+            )
         role = message.get("role")
         if role == "user":
             has_user = True
         if not isinstance(role, str) or not role.strip():
             raise CandidateError(f"{source}:{line_no}: messages[{idx}].role is empty")
         if "content" in message and not isinstance(message.get("content"), str):
-            raise CandidateError(f"{source}:{line_no}: messages[{idx}].content must be a string")
+            raise CandidateError(
+                f"{source}:{line_no}: messages[{idx}].content must be a string"
+            )
     if not has_user:
         raise CandidateError(f"{source}:{line_no}: messages must include a user turn")
     last = messages[-1]
@@ -644,7 +677,9 @@ def _validate_trainable_record(
         if quality.get("success") is not True:
             raise CandidateError(f"{source}:{line_no}: quality.success must be true")
         if quality.get("requiresRepair") is not False:
-            raise CandidateError(f"{source}:{line_no}: quality.requiresRepair must be false")
+            raise CandidateError(
+                f"{source}:{line_no}: quality.requiresRepair must be false"
+            )
         if actual_split not in expected:
             raise CandidateError(
                 f"{source}:{line_no}: record split {actual_split!r} does not match "
@@ -652,7 +687,9 @@ def _validate_trainable_record(
             )
         target = _as_dict(record.get("target"))
         if target.get("sftFormat") != "messages":
-            raise CandidateError(f"{source}:{line_no}: target.sftFormat must be messages")
+            raise CandidateError(
+                f"{source}:{line_no}: target.sftFormat must be messages"
+            )
         return
 
     if schema == "eliza_native_v1":
@@ -714,7 +751,9 @@ def _iter_jsonl(path: Path) -> Iterable[tuple[int, dict[str, Any]]]:
             try:
                 value = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise CandidateError(f"{path}:{line_no}: invalid JSON: {exc.msg}") from exc
+                raise CandidateError(
+                    f"{path}:{line_no}: invalid JSON: {exc.msg}"
+                ) from exc
             if not isinstance(value, dict):
                 raise CandidateError(f"{path}:{line_no}: record must be a JSON object")
             yield line_no, value
@@ -745,7 +784,9 @@ def inspect_split(split: str, source: Path, candidate_dir: Path) -> SplitStats:
         real_user_export = real_user_export or _record_real_user_export(record)
         rows += 1
         if len(schemas) > 1:
-            raise CandidateError(f"{source}: mixed schemas inside one split: {sorted(schemas)}")
+            raise CandidateError(
+                f"{source}: mixed schemas inside one split: {sorted(schemas)}"
+            )
     if rows == 0:
         raise CandidateError(f"{source}: split has no records")
     if len(schemas) != 1:
@@ -805,7 +846,9 @@ def build_plan(
 ) -> CandidatePlan:
     candidate_id = _validate_candidate_id(candidate_id)
     if source_kind not in ALLOWED_SOURCE_KINDS:
-        raise CandidateError(f"source_kind must be one of {sorted(ALLOWED_SOURCE_KINDS)}")
+        raise CandidateError(
+            f"source_kind must be one of {sorted(ALLOWED_SOURCE_KINDS)}"
+        )
 
     candidate_root = candidate_root or DEFAULT_CANDIDATE_ROOT
     candidate_dir = (candidate_root / candidate_id).resolve()
@@ -814,7 +857,9 @@ def build_plan(
     split_sources = (train, validation, test)
     source_manifest_info: SourceManifestInfo | None = None
     source_manifest_review_applies = False
-    resolved_source_manifest = source_manifest or _candidate_source_manifest(split_sources)
+    resolved_source_manifest = source_manifest or _candidate_source_manifest(
+        split_sources
+    )
     if resolved_source_manifest is not None:
         source_manifest_info = load_source_manifest(resolved_source_manifest)
         if source_manifest_info.real_user_export and source_kind != "user_export":
@@ -865,9 +910,7 @@ def build_plan(
             "attestationSource": (
                 "source_manifest"
                 if source_manifest_info and source_manifest_review_applies
-                else "cli_flag"
-                if privacy_reviewed
-                else None
+                else "cli_flag" if privacy_reviewed else None
             ),
             "note": (
                 "Human privacy review attested before write/push."
@@ -987,9 +1030,10 @@ def _render_readme(manifest: dict[str, Any]) -> str:
 def _candidate_write_paths(plan: CandidatePlan) -> dict[Path, bytes | Path]:
     return {
         plan.candidate_dir / "README.md": plan.readme.encode("utf-8"),
-        plan.candidate_dir / "manifest.json": json.dumps(
-            plan.manifest, indent=2, sort_keys=True
-        ).encode("utf-8")
+        plan.candidate_dir
+        / "manifest.json": json.dumps(plan.manifest, indent=2, sort_keys=True).encode(
+            "utf-8"
+        )
         + b"\n",
         **{stat.target: stat.source for stat in plan.split_stats},
     }
@@ -1135,11 +1179,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     ap.add_argument("--privacy-reviewed", action="store_true")
     ap.add_argument("--repo-id", default=DEFAULT_REPO_ID)
-    ap.add_argument("--write", action="store_true", help="write the local candidate files")
-    ap.add_argument("--push", action="store_true", help="push the staged candidate to HF")
+    ap.add_argument(
+        "--write", action="store_true", help="write the local candidate files"
+    )
+    ap.add_argument(
+        "--push", action="store_true", help="push the staged candidate to HF"
+    )
     ap.add_argument("--allow-hf-push", action="store_true")
     ap.add_argument("--allow-user-export-push", action="store_true")
-    ap.add_argument("--public", action="store_true", help="create HF repo public if missing")
+    ap.add_argument(
+        "--public", action="store_true", help="create HF repo public if missing"
+    )
     return ap.parse_args(argv)
 
 
@@ -1161,7 +1211,9 @@ def main(argv: list[str] | None = None) -> int:
             print("dry-run: no files written and no HF calls made")
             return 0
         if args.push and not args.write:
-            raise CandidateError("--push requires --write so the staged files are auditable")
+            raise CandidateError(
+                "--push requires --write so the staged files are auditable"
+            )
         if args.push:
             validate_push_allowed(
                 plan,

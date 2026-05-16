@@ -18,7 +18,7 @@ import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { saveEnv } from "../../../test/helpers/test-utils";
+import { saveEnv } from "../../../packages/test/helpers/test-utils";
 import {
   createLifeOpsCalendarSyncState,
   createLifeOpsConnectorGrant,

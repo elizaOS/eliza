@@ -12,7 +12,7 @@ import { useProvisioningChat } from "../../hooks/useProvisioningChat";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
-const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
+const MONO_FONT = "'Open Sans', Arial, system-ui, sans-serif";
 
 export interface ProvisioningChatViewProps {
   agentId: string | null;

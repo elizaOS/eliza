@@ -10,7 +10,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src"
+    "test": "bun test src",
+    "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts"
   },
   "exports": {
     ".": {
@@ -22,6 +23,11 @@
       "types": "./dist/cloud-setup-session/index.d.ts",
       "import": "./dist/cloud-setup-session/index.js",
       "default": "./dist/cloud-setup-session/index.js"
+    },
+    "./cloud-setup-session/*": {
+      "types": "./dist/cloud-setup-session/*.d.ts",
+      "import": "./dist/cloud-setup-session/*.js",
+      "default": "./dist/cloud-setup-session/*.js"
     },
     "./package.json": "./package.json"
   }

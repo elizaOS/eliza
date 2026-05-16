@@ -88,7 +88,7 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
             "--release-dir",
             str(release),
             "--hf-repo",
-            "elizaos/eliza-1",
+            "elizalabs/eliza-1",
             "--dry-run",
             "--receipt",
             str(receipt),
@@ -99,7 +99,7 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
     assert body["kind"] == "kokoro-voice-hf-push-plan"
     assert body["dryRun"] is True
     assert body["private"] is True  # default per the same license decision
-    assert body["hfRepo"] == "elizaos/eliza-1"
+    assert body["hfRepo"] == "elizalabs/eliza-1"
     remotes = {entry["remote"] for entry in body["files"]}
     # README is rendered + included alongside the five required artifacts.
     assert remotes == {"README.md", "voice.bin", "kokoro.onnx", "voice-preset.json", "manifest-fragment.json", "eval.json"}
@@ -113,7 +113,7 @@ def test_failed_gate_blocks_publish(tmp_path: Path) -> None:
                 "--release-dir",
                 str(release),
                 "--hf-repo",
-                "elizaos/eliza-1",
+                "elizalabs/eliza-1",
                 "--dry-run",
             ]
         )
@@ -127,7 +127,7 @@ def test_allow_gate_fail_with_justification(tmp_path: Path) -> None:
             "--release-dir",
             str(release),
             "--hf-repo",
-            "elizaos/eliza-1",
+            "elizalabs/eliza-1",
             "--dry-run",
             "--allow-gate-fail",
             "tracked under issue #1234",
@@ -162,7 +162,7 @@ def test_comparison_not_beat_blocks_publish(tmp_path: Path) -> None:
                 "--release-dir",
                 str(release),
                 "--hf-repo",
-                "elizaos/eliza-1",
+                "elizalabs/eliza-1",
                 "--dry-run",
             ]
         )
@@ -176,7 +176,7 @@ def test_public_flag_flips_private(tmp_path: Path) -> None:
             "--release-dir",
             str(release),
             "--hf-repo",
-            "elizaos/eliza-1",
+            "elizalabs/eliza-1",
             "--dry-run",
             "--public",
             "--receipt",
@@ -197,7 +197,7 @@ def test_missing_artifact_fails_loud(tmp_path: Path) -> None:
                 "--release-dir",
                 str(release),
                 "--hf-repo",
-                "elizaos/eliza-1",
+                "elizalabs/eliza-1",
                 "--dry-run",
             ]
         )

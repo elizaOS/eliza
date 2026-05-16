@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#1d91e8" />
 
     <!-- Primary SEO. These are duplicated at runtime by react-helmet-async
          once the SPA mounts; they live here so server-side crawlers and the
          pre-hydration paint see real metadata. -->
-    <title>Eliza Cloud - Managed Hosting for AI Agents</title>
-    <meta name="description" content="Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud." />
+    <title>eliza cloud - Your cloud agent dashboard</title>
+    <meta name="description" content="Chat with your Eliza agent in the cloud, manage connected devices, account settings, billing, API access, and everything for your cloud agent." />
     <meta name="author" content="Eliza Cloud" />
     <meta name="creator" content="Eliza Cloud" />
     <meta name="publisher" content="Eliza Cloud" />
@@ -19,8 +19,8 @@
     <link rel="canonical" href="https://www.elizacloud.ai" />
 
     <!-- OpenGraph -->
-    <meta property="og:title" content="Eliza Cloud - Managed Hosting for AI Agents" />
-    <meta property="og:description" content="Managed hosting, provisioning, billing, and deployment for AI agents" />
+    <meta property="og:title" content="eliza cloud - Your cloud agent dashboard" />
+    <meta property="og:description" content="Chat with your cloud agent and manage devices, billing, settings, and API access." />
     <meta property="og:url" content="https://www.elizacloud.ai" />
     <meta property="og:site_name" content="Eliza Cloud" />
     <meta property="og:locale" content="en_US" />
@@ -33,7 +33,7 @@
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Eliza Cloud" />
-    <meta name="twitter:description" content="Managed hosting, provisioning, billing, and deployment for AI agents" />
+    <meta name="twitter:description" content="Chat with your cloud agent and manage devices, billing, settings, and API access." />
     <meta name="twitter:image" content="https://www.elizacloud.ai/cloudlogo.png" />
 
     <!-- Icons / manifest -->
@@ -45,13 +45,13 @@
     <!-- JSON-LD structured data. Mirrors what app/page.tsx emits via Helmet,
          but inlined so crawlers see it without executing JS. -->
     <script type="application/ld+json">
-      {"@context":"https://schema.org","@type":"Organization","name":"Eliza Cloud","description":"Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud.","url":"https://www.elizacloud.ai","logo":"https://www.elizacloud.ai/og/default.png","sameAs":["https://twitter.com/elizaos","https://github.com/elizaos"],"contactPoint":{"@type":"ContactPoint","contactType":"Customer Support","url":"https://www.elizacloud.ai/dashboard/account"}}
+      {"@context":"https://schema.org","@type":"Organization","name":"Eliza Cloud","description":"Chat with your Eliza agent in the cloud, manage connected devices, account settings, billing, API access, and everything for your cloud agent.","url":"https://www.elizacloud.ai","logo":"https://www.elizacloud.ai/cloudlogo.png","sameAs":["https://twitter.com/elizaos","https://github.com/elizaos"],"contactPoint":{"@type":"ContactPoint","contactType":"Customer Support","url":"https://www.elizacloud.ai/dashboard/account"}}
     </script>
     <script type="application/ld+json">
-      {"@context":"https://schema.org","@type":"WebApplication","name":"Eliza Cloud","description":"Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud.","url":"https://www.elizacloud.ai","applicationCategory":"DeveloperApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Pay-as-you-go credit system"},"featureList":["AI Text Generation","AI Image Generation","AI Video Generation","Voice Cloning","elizaOS Agent Runtime","Container Deployment","API Access"]}
+      {"@context":"https://schema.org","@type":"WebApplication","name":"Eliza Cloud","description":"Chat with your Eliza agent in the cloud, manage connected devices, account settings, billing, API access, and everything for your cloud agent.","url":"https://www.elizacloud.ai","applicationCategory":"LifestyleApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Cloud agent account"},"featureList":["Cloud agent chat","Agent dashboard","Connected devices","Account settings","Billing","API access"]}
     </script>
   </head>
-  <body class="antialiased selection:bg-[#FF5800] selection:text-white" style="background-color: #0a0a0a; color: #fafafa;">
+  <body class="antialiased selection:bg-[#FF5800] selection:text-white" style="background-color: #1d91e8; color: #ffffff;">
     <div id="root"></div>
     <script>
       (() => {
@@ -67,14 +67,14 @@
         root.dataset.prerenderMismatch = "true";
         if (!currentPath.startsWith("/dashboard")) {
           root.innerHTML = `
-            <div style="min-height:100vh;background:#0a0a0a;color:#fafafa;font-family:Inter,system-ui,sans-serif;padding:1.5rem;display:grid;gap:1.5rem;align-content:start;">
-              <div style="height:4rem;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.65);"></div>
+            <div style="min-height:100vh;background:linear-gradient(180deg,#1d91e8,#47b8ff 58%,#9bdcff);color:#fff;font-family:'Open Sans',Arial,system-ui,sans-serif;padding:1.5rem;display:grid;gap:1.5rem;align-content:start;">
+              <div style="height:4rem;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.18);backdrop-filter:blur(18px);border-radius:18px;"></div>
               <main style="display:grid;gap:1.5rem;max-width:72rem;width:100%;margin:0 auto;">
                 <div style="display:grid;gap:.5rem;">
-                  <div style="height:2rem;width:16rem;max-width:70%;background:rgba(255,255,255,.08);"></div>
-                  <div style="height:1rem;width:26rem;max-width:100%;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:2rem;width:16rem;max-width:70%;background:rgba(255,255,255,.3);border-radius:999px;"></div>
+                  <div style="height:1rem;width:26rem;max-width:100%;background:rgba(255,255,255,.2);border-radius:999px;"></div>
                 </div>
-                <div style="height:18rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);"></div>
+                <div style="height:18rem;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.24);backdrop-filter:blur(18px);border-radius:22px;"></div>
               </main>
             </div>
           `;
@@ -89,7 +89,7 @@
               .ec-preload-grid { grid-template-columns: 1fr !important; }
             }
           </style>
-          <div style="display:flex;height:100vh;width:100%;background:#0a0a0a;color:#fafafa;font-family:Inter,system-ui,sans-serif;">
+          <div style="display:flex;height:100vh;width:100%;background:#0a0a0a;color:#fafafa;font-family:'Open Sans',Arial,system-ui,sans-serif;">
             <div class="ec-preload-sidebar" style="width:18rem;border-right:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.45);padding:.375rem;flex:0 0 18rem;">
               <div style="height:3.5rem;margin:0 .75rem 1rem;border-bottom:1px solid rgba(255,255,255,.08);"></div>
               <div style="padding:1rem;display:grid;gap:.75rem;">

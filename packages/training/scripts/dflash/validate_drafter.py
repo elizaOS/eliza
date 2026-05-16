@@ -512,7 +512,16 @@ def _run_real(args: argparse.Namespace) -> int:
     drafter_meta = _read_gguf_metadata(drafter_path)
     target_meta = _read_gguf_metadata(target_path)
 
-    hash_pass, hash_detail = _hash_or_metadata_check(drafter_meta, target_path)
+    metadata_only = bool(getattr(args, "metadata_only", False))
+    if metadata_only:
+        hash_pass = False
+        hash_detail = (
+            "skipped (--metadata-only); release validation requires "
+            "dflash-draft.target_checkpoint_sha256 to equal the full target "
+            "GGUF sha256"
+        )
+    else:
+        hash_pass, hash_detail = _hash_or_metadata_check(drafter_meta, target_path)
     arch_pass, arch_detail = _architecture_check(
         drafter_meta,
         target_meta,
@@ -599,6 +608,7 @@ def _run_real(args: argparse.Namespace) -> int:
         "tier": args.tier,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "synthetic": False,
+        "metadataOnly": metadata_only,
         "drafter": drafter_meta,
         "target": target_meta,
         "checks": {
@@ -649,6 +659,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-acceptance-rollout",
         action="store_true",
         help="Static checks only (hash + vocab + size). No GPU/inference required.",
+    )
+    p.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help=(
+            "Read GGUF metadata and compare target/drafter tokenizer fields "
+            "without full-file target hashing or inference. This mode is "
+            "fail-closed and cannot produce a passing release-valid report."
+        ),
     )
     p.add_argument(
         "--allow-dflash-draft-architecture",

@@ -11,6 +11,7 @@ export interface PcmAudioStats {
 type AudioContextConstructor = typeof AudioContext;
 
 type WindowWithAudioContext = Window & {
+  AudioContext?: AudioContextConstructor;
   webkitAudioContext?: AudioContextConstructor;
 };
 

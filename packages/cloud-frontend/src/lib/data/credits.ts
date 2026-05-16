@@ -3,16 +3,6 @@ import type { CreditBalanceResponse } from "@/lib/types/cloud-api";
 import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 
-export type CreditsBalance = CreditBalanceResponse;
-
-export interface CreditTransaction {
-  id: string;
-  amount: number;
-  type: string;
-  created_at: string;
-  [key: string]: unknown;
-}
-
 /**
  * GET /api/credits/balance — cached for 30s by default. Pass `fresh: true` to
  * bypass the server-side cache (matches the legacy `?fresh=true` query).
@@ -28,22 +18,6 @@ export function useCreditsBalance(opts: { fresh?: boolean } = {}) {
       api<CreditBalanceResponse>(
         opts.fresh ? "/api/credits/balance?fresh=true" : "/api/credits/balance",
       ),
-    enabled: gate.enabled,
-  });
-}
-
-/**
- * GET /api/credits/transactions — recent credit ledger. `hours` defaults to
- * 24 to match the dashboard usage tab.
- */
-export function useCreditTransactions(hours = 24) {
-  const gate = useAuthenticatedQueryGate();
-  return useQuery({
-    queryKey: authenticatedQueryKey(["credits", "transactions", hours], gate),
-    queryFn: () =>
-      api<{ transactions: CreditTransaction[] }>(
-        `/api/credits/transactions?hours=${hours}`,
-      ).then((r) => r.transactions),
     enabled: gate.enabled,
   });
 }

@@ -44,13 +44,6 @@
       "default_vast_gpu": "h200",
       "default_nebius_preset": "gpu-h200x2",
       "notes": "27B fp16 SFT needs 141GB+ for activations + optimizer state. H200 141GB single, or 2x H100 80GB with FSDP. Nebius 8x H200 preset is the no-fuss path; expensive."
-    },
-    "27b-256k": {
-      "min_vram_gb": 200,
-      "recommended_provider": "nebius",
-      "default_vast_gpu": "b200",
-      "default_nebius_preset": "gpu-h200x2",
-      "notes": "27B at 256k context needs 200GB+ for KV cache. B200 192GB single or H200x2/8 with sequence-parallel attention. Heavy."
     }
   }
 }

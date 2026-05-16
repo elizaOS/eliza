@@ -31,7 +31,7 @@
 The canonical tier set lives in
 `packages/shared/src/local-inference/catalog.ts:20-28` —
 `ELIZA_1_TIER_IDS = ["eliza-1-0_8b","eliza-1-2b","eliza-1-4b",
-"eliza-1-9b","eliza-1-27b","eliza-1-27b-256k","eliza-1-27b-1m"]`.
+"eliza-1-9b","eliza-1-27b","eliza-1-27b-256k"]`.
 `FIRST_RUN_DEFAULT_MODEL_ID = "eliza-1-2b"`
 (`catalog.ts:35`).
 
@@ -40,7 +40,7 @@ Per-tier component spec is in `catalog.ts::TIER_SPECS`
 `sourceModelForTier` (`catalog.ts:337-361`). Voice backend per tier:
 `ELIZA_1_VOICE_BACKENDS` (`catalog.ts:127-138`) — `0_8b`/`2b`/`4b`
 ship **Kokoro only**, `9b` ships both with Kokoro first,
-`27b`/`27b-256k`/`27b-1m` ship OmniVoice only.
+`27b`/`27b-256k` ship OmniVoice only.
 
 Asset sources (frozen in `elizaos/eliza-1-assets`):
 - ASR: `ggml-org/Qwen3-ASR-0.6B-GGUF` (≤9b) or
@@ -107,20 +107,16 @@ llamacpp_integrated | fused_binary | apollo_eligible`.
 | 27b | VAD/Wake | same family pattern (Wake STUB) | same | same | same | same | n/a |
 | 27b-256k | text | **same backbone** as 27b (`qwen3.6-27b`); registry has NO separate entry — long-context is a quant/runtime variant, not a separate SFT | no SFT yet | Q4_K_M body @ 256k ctx | yes | yes | YES (same as 27b) |
 | 27b-256k | all other components | same as 27b family pattern; vision retained (`catalog.ts:267`) | same | same | same | same | same |
-| 27b-1m | text | **same backbone** as 27b (`qwen3.6-27b`); no separate registry entry | no SFT yet | Q4_K_M body @ 1M ctx | yes | yes | YES |
-| 27b-1m | all other components | same as 27b family; vision retained for server/workstation use (`catalog.ts:288`) | same | same | same | same | same |
-
 **Key gap that the brief over-specifies:** the brief asks per-tier text
-models for `27b-256k` and `27b-1m`. In the codebase, those are the
+models for `27b-256k`. In the codebase, that is the
 **same `qwen3.6-27b` SFT** quantized at a different KV/context
-configuration — they do **not** have separate `model_registry.py`
+configuration — it does **not** have a separate `model_registry.py`
 entries (`packages/training/scripts/training/model_registry.py:407-433`
 is the only 27b entry; the legacy `qwen3.5-27b` at line 386 is a
 resolver-only alias). The smoke pipeline therefore only needs to run
 SFT on 5 backbones (`qwen3.5-0.8b`, `qwen3.5-2b`, `qwen3.5-4b`,
 `qwen3.5-9b`, `qwen3.6-27b`) and then re-quantize the 27b checkpoint
-three times (`27b` @ 128k, `27b-256k` @ 256k, `27b-1m` @ 1M) for the
-last three tiers.
+twice (`27b` @ 128k, `27b-256k` @ 256k) for the last two tiers.
 
 ---
 
@@ -405,7 +401,6 @@ Assumptions:
 | 9b | 2 min | 5 min | 50 × 110 s = ~92 min | 4 min | 12 min | **~115 min** |
 | 27b (Q3.6-27B, single H200, `apollo_mini` rank-512) | 2 min | 8 min | 50 × 320 s = ~267 min — **DOES NOT FIT**: per the 27b note in `train_nebius.sh:21-25`, 27b on Nebius needs `gpu-h200x2` (8×H200) | — | — | **N/A on 1×H200** |
 | 27b-256k | (same backbone as 27b — long-context re-quant only) | — | n/a | — | 10 min | **~10 min** (post-27b) |
-| 27b-1m | (same backbone) | — | n/a | — | 12 min | **~12 min** (post-27b) |
 
 **Brutal honest summary**: the smoke sequence fits on a **single
 1×H200** only for `0_8b → 2b → 4b → 9b` (sum ≈ 4 h). The 27b SFT
@@ -413,7 +408,7 @@ genuinely needs `gpu-h200x2` (8×H200), which violates "single H200"
 in the brief. Two viable paths:
 
 - **(A)** Run 27b SFT on a separate Vast.ai box (any 2× or 4× H200/B200)
-  and only the post-quant for `27b`/`27b-256k`/`27b-1m` on the same
+  and only the post-quant for `27b`/`27b-256k` on the same
   Nebius 1×H200 (a no-train re-quant pass on the published `eliza-1-27b`
   HF candidate — uses `run_pipeline.py --skip-finetune --skip-base-bench`).
 - **(B)** Accept that the 27b row "passes smoke" via "ingest published
@@ -432,8 +427,7 @@ the right call. Total wall-clock estimate under (B):
 | 9b smoke SFT+pipeline | 115 min |
 | 27b skip-finetune, re-quant + bundle | 15 min |
 | 27b-256k re-quant + bundle (long ctx) | 10 min |
-| 27b-1m re-quant + bundle (long ctx) | 12 min |
-| **total (sequential, single 1×H200)** | **~4h 46m** |
+| **total (sequential, single 1×H200)** | **~4h 34m** |
 
 Add provisioning (~3 min), code rsync (~2 min), teardown (~1 min) for
 a **~4h 52m end-to-end on a single 1×H200**. Comfortable margin under
@@ -584,15 +578,15 @@ Cases:
 
 ### 6.2 Multi-tier smoke wrapper sketch
 
-For "provision once → for each tier in 0_8b, 2b, 4b, 9b, 27b, 27b-256k,
-27b-1m: smoke → fetch incrementally → final teardown":
+For "provision once → for each tier in 0_8b, 2b, 4b, 9b, 27b, 27b-256k:
+smoke → fetch incrementally → final teardown":
 
 ```sh
 #!/usr/bin/env bash
 # scripts/smoke_all_tiers_nebius.sh
 set -euo pipefail
 TIERS=(qwen3.5-0.8b qwen3.5-2b qwen3.5-4b qwen3.5-9b)
-QUANT_ONLY_TIERS=(qwen3.6-27b qwen3.6-27b-256k qwen3.6-27b-1m)  # all from same checkpoint
+QUANT_ONLY_TIERS=(qwen3.6-27b qwen3.6-27b-256k)  # all from same checkpoint
 SMOKE_RUN_BASE="eliza-1-smoke-all-$(date +%s)"
 
 cleanup() {
@@ -740,8 +734,8 @@ uv run --extra train python scripts/run_pipeline.py \
 ### 7.3 Orchestration loop
 
 `scripts/smoke_all_tiers_nebius.sh` (sketch in §6.2). Single
-provision → 4 sequential SFT smoke runs (0_8b → 2b → 4b → 9b) → 3
-quant-only passes (27b → 27b-256k → 27b-1m) → final teardown via
+provision → 4 sequential SFT smoke runs (0_8b → 2b → 4b → 9b) → 2
+quant-only passes (27b → 27b-256k) → final teardown via
 EXIT trap. Per-tier `fetch` between iterations so failure of a later
 tier doesn't lose earlier artifacts.
 
@@ -777,9 +771,9 @@ Prioritized:
    call silently registers nothing — confirm `apollo_torch ==
    {pinned version}` and the module path are unchanged on the H200.
 
-### 7.5 Wall-clock estimate for the full 7-tier sequence
+### 7.5 Wall-clock estimate for the full 6-tier sequence
 
-Per §4.6, the full 7-tier sequence on one 1×H200 SXM:
+Per §4.6, the full 6-tier sequence on one 1×H200 SXM:
 
 | segment | time |
 |---|---|
@@ -796,10 +790,9 @@ Per §4.6, the full 7-tier sequence on one 1×H200 SXM:
 | Per-tier fetch | 1 min |
 | 27b quant-only (skip-finetune, re-quant pre-published Q4_K_M) | 15 min |
 | 27b-256k re-quant + bundle (long ctx) | 10 min |
-| 27b-1m re-quant + bundle (long ctx) | 12 min |
-| Final fetch (sweep all 7 run dirs) | 5 min |
+| Final fetch (sweep all 6 run dirs) | 5 min |
 | Teardown (instance delete + boot disk delete) | 1 min |
-| **TOTAL** | **~5h 4m** |
+| **TOTAL** | **~4h 52m** |
 
 Buffer for ssh hiccups / first-time cu128 torch swap on the box
 (~10 min) → **plan for ~6h end-to-end**. Comfortable inside the 12h

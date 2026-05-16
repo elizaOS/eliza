@@ -51,6 +51,8 @@ const publicPathPrefixes = [
   "/api/stripe/credit-packs",
   "/api/stripe/webhook",
   "/api/crypto/webhook",
+  "/api/crypto/status",
+  "/api/crypto/direct-payments/config",
   "/api/cron",
   "/api/v1/cron",
   "/api/mcps",

@@ -218,6 +218,41 @@ def test_rebuild_latest_preserves_valid_snapshots_missing_from_partial_db(
     assert index["latest"]["webshop::eliza"]["run_id"] == "run_webshop_old"
 
 
+def test_rebuild_latest_repairs_zero_sample_hermes_successes(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["humaneval"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="humaneval",
+        agent="hermes",
+        run_id="run_empty_hermes",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.0,
+        metrics={"score": 0.0, "n": 0, "passed": 0},
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"humaneval": _adapter("humaneval")})
+
+    assert not (tmp_path / "latest" / "humaneval__hermes.json").exists()
+    quarantine = json.loads(
+        (tmp_path / "quarantine" / "humaneval__hermes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert quarantine["status"] == "failed"
+    assert "zero-sample success artifact" in quarantine["error"]
+
+
 def test_rebuild_latest_is_byte_stable_when_inputs_do_not_change(
     tmp_path: Path,
 ) -> None:
@@ -820,6 +855,109 @@ def test_rebuild_latest_preserves_snapshot_when_only_failed_db_row_exists(
         index["matrix_contract"]["benchmarks"]["woobench"]["cells"]["eliza"]["state"]
         == "succeeded"
     )
+
+
+def test_rebuild_latest_quarantines_scoreless_success_without_replacing_latest(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_scored_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="succeeded",
+        score=0.95,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_scoreless_success",
+        started_at="2026-05-12T00:10:00+00:00",
+        status="succeeded",
+        score=None,
+        metrics={"reason": "empty_result"},
+        token_metrics={},
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    latest_payload = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    quarantine_payload = json.loads(
+        (tmp_path / "quarantine" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+
+    assert latest_payload["run_id"] == "run_scored_success"
+    assert quarantine_payload["run_id"] == "run_scoreless_success"
+    assert quarantine_payload["quarantine_reason"] == "missing_score"
+    assert index["latest"]["woobench::eliza"]["run_id"] == "run_scored_success"
+
+
+def test_rebuild_latest_prunes_scoreless_preserved_snapshot_from_partial_db(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_bfcl",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+    fake_latest = tmp_path / "latest" / "webshop__eliza.json"
+    fake_latest.parent.mkdir(parents=True, exist_ok=True)
+    fake_latest.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "webshop",
+                "benchmark_directory": "webshop",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": None,
+                "run_id": "fake_webshop",
+                "run_group_id": "rg_old",
+                "signature": "sig-fake",
+                "comparison_signature": "cmp-fake",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"bfcl": _adapter("bfcl"), "webshop": _adapter("webshop")},
+    )
+
+    assert (tmp_path / "latest" / "bfcl__eliza.json").exists()
+    assert not fake_latest.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert set(index["latest"]) == {"bfcl::eliza"}
 
 
 def test_rebuild_latest_repairs_succeeded_nonzero_return_code(

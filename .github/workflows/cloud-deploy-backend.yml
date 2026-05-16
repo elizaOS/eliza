@@ -76,12 +76,12 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --no-save --verbose && git diff --exit-code -- bun.lock && exit 0
+              bun install --frozen-lockfile --ignore-scripts --verbose && exit 0
             else
-              bun install --no-save && git diff --exit-code -- bun.lock && exit 0
+              bun install --frozen-lockfile --ignore-scripts && exit 0
             fi
 
-            echo "bun install attempt $attempt failed or changed bun.lock; retrying in 10s..."
+            echo "bun install attempt $attempt failed; retrying in 10s..."
             sleep 10
           done
 
@@ -148,19 +148,19 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --no-save --verbose && git diff --exit-code -- bun.lock && exit 0
+              bun install --frozen-lockfile --ignore-scripts --verbose && exit 0
             else
-              bun install --no-save && git diff --exit-code -- bun.lock && exit 0
+              bun install --frozen-lockfile --ignore-scripts && exit 0
             fi
 
-            echo "bun install attempt $attempt failed or changed bun.lock; retrying in 10s..."
+            echo "bun install attempt $attempt failed; retrying in 10s..."
             sleep 10
           done
 
           exit 1
 
       - name: Build backend artifact
-        run: bun run build:deploy
+        run: bun run --cwd packages/cloud-api build
 
       - name: Prepare SSH access
         run: |
@@ -294,7 +294,7 @@ jobs:
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
             for attempt in 1 2 3; do
-              if bun install --frozen-lockfile; then
+              if bun install --frozen-lockfile --ignore-scripts; then
                 break
               fi
 

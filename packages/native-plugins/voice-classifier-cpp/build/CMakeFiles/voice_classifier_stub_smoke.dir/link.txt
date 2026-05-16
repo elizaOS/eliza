@@ -1,1 +1,1 @@
-/usr/bin/cc -O3 -DNDEBUG CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.o -o voice_classifier_stub_smoke  libvoice_classifier.a -lm 
+/usr/bin/cc -O3 -DNDEBUG -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.o -o voice_classifier_stub_smoke  libvoice_classifier.a -lm

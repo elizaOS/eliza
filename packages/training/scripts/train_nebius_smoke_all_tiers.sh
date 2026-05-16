@@ -6,7 +6,7 @@
 # `full` provisions+trains+fetches+tears-down ONE tier per VM lifecycle, this
 # driver loops over EVERY eliza-1 tier on a SINGLE VM lifecycle (~$30-40 on H200
 # at ~10h end-to-end) so a single billing window validates the full
-# 0.8B → 27B-256k chain on a small smoke corpus.
+# 0.8B → 27B chain on a small smoke corpus.
 #
 # CONTROL FLOW (5 lines, matches the EXIT-trap pattern at line 615 of train_nebius.sh):
 #   1) provision (or reuse) ONE Nebius H200 VM
@@ -33,7 +33,7 @@
 #                                  (auto-detected at startup, snapshotted into
 #                                  REUSE_EXISTING_VM for the EXIT trap).
 #   TIERS                        space-separated tier list. Default:
-#                                  "0_8b 2b 4b 9b 27b 27b-256k"
+#                                  "0_8b 2b 4b 9b 27b"
 #                                  Each token maps to a registry key + optional
 #                                  --max-seq-len override:
 #                                    0_8b      → qwen3.5-0.8b   (registry seq_len)
@@ -41,8 +41,6 @@
 #                                    4b        → qwen3.5-4b
 #                                    9b        → qwen3.5-9b
 #                                    27b       → qwen3.6-27b
-#                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
-#                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
 #                                  Use a smaller list to test a subset:
 #                                    TIERS="0_8b 2b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
@@ -83,10 +81,16 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 NEBIUS_SCRIPT="$ROOT/scripts/train_nebius.sh"
+cmd="${1:-help}"
+
+if [ "$cmd" = "help" ] || [ "$cmd" = "-h" ] || [ "$cmd" = "--help" ]; then
+  sed -n '1,110p' "$0"
+  exit 0
+fi
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
 : "${NEBIUS_VM_NAME:=eliza-train-h200-smoke-all}"
-: "${TIERS:=0_8b 2b 4b 9b 27b 27b-256k}"
+: "${TIERS:=0_8b 2b 4b 9b 27b}"
 : "${SMOKE_MAX_STEPS:=50}"
 : "${SMOKE_DATA_DIR:=data/final-eliza1-smoke}"
 : "${ELIZA_SMOKE_RUN_TAG:=smoke-all-$(date +%s)}"
@@ -114,26 +118,25 @@ export REUSE_EXISTING_VM
 # sync with packages/training/scripts/training/model_registry.py.
 _tier_args() {
   # Active Eliza-1 policy: 0_8b/2b/4b/9b use Qwen3.5, while the 27B release
-  # family uses Qwen3.6. The 27b SFT smoke is still memory-tight on a single
+  # tier uses Qwen3.6. The 27b SFT smoke is still memory-tight on a single
   # H200 (190 GB train budget vs 141 GB H200 RAM) so SKIP_FINETUNE_TIERS below
-  # carves out the 27B variants by default — the smoke still exercises
-  # base-bench + quant + bundle + publish for those tiers.
+  # carves out the 27B tier by default — the smoke still exercises
+  # base-bench + quant + bundle + publish for that tier.
   case "$1" in
     0_8b)     echo "qwen3.5-0.8b" ;;
     2b)       echo "qwen3.5-2b" ;;
     4b)       echo "qwen3.5-4b" ;;
     9b)       echo "qwen3.5-9b" ;;
     27b)      echo "qwen3.6-27b" ;;
-    27b-256k) echo "qwen3.6-27b --max-seq-len 262144" ;;
     *) return 1 ;;
   esac
 }
 
-# Tiers that skip --finetune by default (pipeline-only smoke). 27B variants
+# Tiers that skip --finetune by default (pipeline-only smoke). 27B
 # exceed the 141 GB H200 SXM single-GPU RAM budget for an apollo_mini SFT load
 # (190 GB needed per registry). Override with SKIP_FINETUNE_TIERS="" to attempt
-# real SFT on all tiers (will OOM on the 27B variants).
-: "${SKIP_FINETUNE_TIERS:=27b 27b-256k}"
+# real SFT on all tiers (will OOM on the 27B tier).
+: "${SKIP_FINETUNE_TIERS:=27b}"
 _tier_skip_finetune() {
   local tier="$1" t
   for t in $SKIP_FINETUNE_TIERS; do
@@ -164,8 +167,7 @@ _remote() {
 # --- per-tier launch / poll / fetch -----------------------------------------
 
 _tier_run_name() {
-  # Tier-stable, tag-scoped run name. Eliza public name comes from the registry
-  # lookup so 27b/27b-256k don't collide (all map to qwen3.6-27b).
+  # Tier-stable, tag-scoped run name. Eliza public name comes from the registry.
   local tier="$1" pub="$2"
   echo "${pub}-${ELIZA_SMOKE_RUN_TAG}-${tier}"
 }
@@ -460,7 +462,6 @@ smoke_all() {
 
 # --- entrypoints ------------------------------------------------------------
 
-cmd="${1:-help}"
 case "$cmd" in
   smoke-all) smoke_all ;;
   fetch)

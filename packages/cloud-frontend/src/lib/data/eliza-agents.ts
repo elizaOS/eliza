@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
-  AgentDetailDto,
   AgentListItemDto,
   AgentResponse,
   AgentsResponse,
@@ -9,7 +8,6 @@ import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 
 export type AgentListItem = AgentListItemDto;
-export type AgentDetail = AgentDetailDto;
 
 /** GET /api/v1/eliza/agents — list of Eliza agents in the org. */
 export function useAgents() {

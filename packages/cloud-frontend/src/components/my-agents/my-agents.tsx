@@ -1,9 +1,18 @@
 "use client";
 
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui";
-import { Loader2 } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  CreditCard,
+  KeyRound,
+  Loader2,
+  MessageCircle,
+  MonitorSmartphone,
+  Server,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
 import { CharacterFilters } from "./character-filters";
@@ -26,8 +35,158 @@ interface SavedAgent {
   last_interaction_time?: string;
 }
 
+const ADMIN_SECTIONS = [
+  {
+    title: "Runtime",
+    description: "Monitor the hosted process, logs, health, and deployments.",
+    to: "/dashboard/containers",
+    icon: Server,
+  },
+  {
+    title: "API keys",
+    description: "Create and rotate keys for programmatic access.",
+    to: "/dashboard/api-keys",
+    icon: KeyRound,
+  },
+  {
+    title: "Billing",
+    description: "Review credits, payment methods, and usage controls.",
+    to: "/dashboard/billing",
+    icon: CreditCard,
+  },
+  {
+    title: "App devices",
+    description: "Manage connected apps and device-facing integrations.",
+    to: "/dashboard/apps",
+    icon: MonitorSmartphone,
+  },
+  {
+    title: "Docs",
+    description: "Read setup guides, APIs, MCP, apps, and runtime docs.",
+    to: "/docs",
+    icon: BookOpen,
+  },
+] as const;
+
+function getAgentChatPath(agent: AgentWithOwnership | null): string {
+  if (!agent) return "/dashboard/containers";
+  return agent.username ? `/chat/@${agent.username}` : `/chat/${agent.id}`;
+}
+
+function AgentConsoleOverview({
+  agents,
+  onCreateNew,
+}: {
+  agents: AgentWithOwnership[];
+  onCreateNew: () => void;
+}) {
+  const ownedAgents = agents.filter((agent) => agent.isOwned !== false);
+  const primaryAgent = ownedAgents[0] ?? agents[0] ?? null;
+  const runningCount = ownedAgents.filter(
+    (agent) => agent.stats?.deploymentStatus === "deployed",
+  ).length;
+  const chatPath = getAgentChatPath(primaryAgent);
+
+  return (
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+      <div className="rounded-2xl border border-white/36 bg-white/58 p-5 shadow-[0_18px_54px_rgba(3,28,58,0.12)] backdrop-blur-2xl">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-normal text-accent">
+              Agent console
+            </p>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-normal text-[#06131f] md:text-3xl">
+                Administer and enter your running agent
+              </h1>
+              <p className="text-sm leading-6 text-[#06131f]/68">
+                Use this page as the control room for your hosted Eliza agent:
+                open the live chat, inspect runtime state, manage API access,
+                connect app devices, and keep billing in view.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
+            <Link
+              to={chatPath}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-accent bg-primary px-4 text-sm font-medium text-primary-fg shadow-[0_12px_32px_rgba(217,95,22,0.24)] transition-colors hover:bg-accent-hover"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {primaryAgent ? "Open agent chat" : "Go to my agent"}
+            </Link>
+            <button
+              type="button"
+              onClick={onCreateNew}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/42 bg-white/36 px-4 text-sm font-medium text-[#06131f]/78 transition-colors hover:bg-white/58 hover:text-[#06131f]"
+            >
+              <Server className="h-4 w-4" />
+              Runtime admin
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-px overflow-hidden rounded-2xl border border-white/42 bg-white/42 sm:grid-cols-3">
+          <div className="bg-white/44 p-4">
+            <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
+              Owned agents
+            </p>
+            <p className="mt-1 text-2xl font-semibold text-[#06131f]">
+              {ownedAgents.length}
+            </p>
+          </div>
+          <div className="bg-white/44 p-4">
+            <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
+              Running
+            </p>
+            <p className="mt-1 text-2xl font-semibold text-[#06131f]">
+              {runningCount}
+            </p>
+          </div>
+          <div className="bg-white/44 p-4">
+            <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
+              Chat target
+            </p>
+            <p className="mt-1 truncate text-sm font-medium text-[#06131f]">
+              {primaryAgent?.name ?? "Create or deploy an agent"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+        {ADMIN_SECTIONS.map((section) => {
+          const Icon = section.icon;
+          return (
+            <Link
+              key={section.title}
+              to={section.to}
+              className="group flex items-start gap-3 rounded-2xl border border-white/36 bg-white/50 p-4 shadow-[0_14px_42px_rgba(3,28,58,0.1)] backdrop-blur-2xl transition-colors hover:border-accent/40 hover:bg-white/68"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/48 bg-white/52 text-accent">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-[#06131f]">
+                    {section.title}
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-[#06131f]/34 transition-colors group-hover:text-accent" />
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-[#06131f]/62">
+                  {section.description}
+                </span>
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /**
- * My Agents client component that handles character listing, filtering, and management.
+ * My Agent client component that handles agent listing, filtering, and management.
  * Fetches both owned and saved agents client-side to enable real-time updates.
  */
 export function MyAgentsClient() {
@@ -199,7 +358,7 @@ export function MyAgentsClient() {
   });
 
   const handleCreateNew = useCallback(() => {
-    navigate("/dashboard/chat");
+    navigate("/dashboard/containers");
   }, [navigate]);
 
   // Handler for removing saved agents from the list
@@ -209,8 +368,8 @@ export function MyAgentsClient() {
 
   useSetPageHeader(
     {
-      title: "My Agents",
-      description: "Manage your AI agents",
+      title: "My Agent",
+      description: "Administer your running cloud agent",
     },
     [],
   );
@@ -226,6 +385,11 @@ export function MyAgentsClient() {
   return (
     <DashboardPageContainer>
       <div className="flex flex-col h-full gap-6">
+        <AgentConsoleOverview
+          agents={characters}
+          onCreateNew={handleCreateNew}
+        />
+
         <CharacterFilters
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}

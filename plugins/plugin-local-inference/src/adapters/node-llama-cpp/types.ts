@@ -59,36 +59,36 @@ export interface ModelSpecs {
 
 export const MODEL_SPECS: ModelSpecs = {
 	small: {
-		name: "text/eliza-1-2b-32k.gguf",
-		repo: "elizaos/eliza-1",
+		name: "text/eliza-1-2b-128k.gguf",
+		repo: "elizalabs/eliza-1",
 		size: "2B",
 		quantization: "fused GGUF",
-		contextSize: 32768,
+		contextSize: 131072,
 		tokenizer: {
-			name: "elizaos/eliza-1",
+			name: "elizalabs/eliza-1",
 			type: "eliza1",
 		},
 	},
 	medium: {
-		name: "text/eliza-1-4b-64k.gguf",
-		repo: "elizaos/eliza-1",
+		name: "text/eliza-1-4b-128k.gguf",
+		repo: "elizalabs/eliza-1",
 		size: "4B",
 		quantization: "fused GGUF",
-		contextSize: 65536,
+		contextSize: 131072,
 		tokenizer: {
-			name: "elizaos/eliza-1",
+			name: "elizalabs/eliza-1",
 			type: "eliza1",
 		},
 	},
 	embedding: {
-		name: "text/eliza-1-0_8b-32k.gguf",
-		repo: "elizaos/eliza-1",
+		name: "text/eliza-1-0_8b-128k.gguf",
+		repo: "elizalabs/eliza-1",
 		size: "512 MB",
 		quantization: "fused GGUF",
-		contextSize: 32768,
+		contextSize: 131072,
 		dimensions: 1024,
 		tokenizer: {
-			name: "elizaos/eliza-1",
+			name: "elizalabs/eliza-1",
 			type: "eliza1",
 		},
 	},
@@ -131,7 +131,7 @@ export const MODEL_SPECS: ModelSpecs = {
 	tts: {
 		default: {
 			name: "tts/kokoro/model_q4.onnx",
-			repo: "elizaos/eliza-1",
+			repo: "elizalabs/eliza-1",
 			size: "bundle component",
 			quantization: "onnx-int8",
 			speakers: ["af_same", "af_bella"],

@@ -1,8 +1,8 @@
 # ProGuard rules for @elizaos/capacitor-bun-runtime Android plugin.
 #
-# The plugin communicates exclusively via loopback HTTP to the ElizaAgentService
-# at 127.0.0.1:31337. No reflection-sensitive serialization is used; only
-# Capacitor's standard plugin interface requires keeping.
+# The plugin routes local-agent calls through ElizaAgentService's app-owned
+# request bridge. Capacitor's standard plugin interface is the only surface
+# that requires keeping here.
 
 -keep class ai.elizaos.plugins.bunruntime.** { *; }
 

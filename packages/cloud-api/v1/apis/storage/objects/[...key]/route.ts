@@ -323,9 +323,3 @@ app.delete("/*", async (c) => {
 });
 
 export default app;
-
-/**
- * Test-only export. Direct unit tests for the key validator avoid the
- * URL parser collapsing `%2E%2E` segments before the handler runs.
- */
-export const validateUserKeyForTest = validateUserKey;

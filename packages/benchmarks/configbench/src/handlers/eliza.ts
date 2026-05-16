@@ -3,6 +3,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
+  AgentContext,
   Character,
   Content,
   Entity,
@@ -37,6 +38,19 @@ type AgentRuntimeConstructor = Constructor<
   [Record<string, unknown>]
 >;
 type InMemoryDatabaseAdapterConstructor = Constructor<Record<string, unknown>>;
+type ConfigBenchResponseHandlerEvaluator = {
+  name: string;
+  priority: number;
+  shouldRun(context: { message: Memory }): boolean;
+  evaluate(): {
+    requiresTool: boolean;
+    addContexts: AgentContext[];
+    addCandidateActions: string[];
+    addParentActionHints: string[];
+    clearReply: boolean;
+    debug: string[];
+  };
+};
 
 let AgentRuntimeCtor: AgentRuntimeConstructor | null = null;
 let InMemoryDatabaseAdapterCtor: InMemoryDatabaseAdapterConstructor | null =
@@ -191,6 +205,68 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function getMessageText(message: Memory): string {
+  const text = message.content?.text;
+  return typeof text === "string" ? text : "";
+}
+
+export function isConfigBenchSecretOrConfigRequest(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  return (
+    /\b(?:set|store|save|configure|update|delete|remove|list|show|check|what is|do i have)\b[\s\S]*\b(?:secret|secrets|api key|apikey|key|token|credential|database_url|webhook_secret)\b/i.test(
+      normalized,
+    ) ||
+    /\b[A-Z][A-Z0-9_]{2,}\b\s+(?:to|=)\s+\S+/i.test(normalized) ||
+    /\b(?:sk-[A-Za-z0-9_-]+|sk-ant-[A-Za-z0-9_-]+|gsk_[A-Za-z0-9_-]+)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:activate|enable|disable|deactivate|unload|configure)\b[\s\S]*\b(?:plugin|connector|integration)\b/i.test(
+      normalized,
+    )
+  );
+}
+
+export function createConfigBenchResponseHandlerEvaluator(): ConfigBenchResponseHandlerEvaluator {
+  return {
+    name: "configbench.secrets_config_router",
+    priority: 1,
+    shouldRun: ({ message }) =>
+      message.content?.source === "configbench" &&
+      isConfigBenchSecretOrConfigRequest(getMessageText(message)),
+    evaluate: () => ({
+      requiresTool: true,
+      addContexts: ["secrets", "settings", "connectors"],
+      addCandidateActions: ["SECRETS"],
+      addParentActionHints: ["SECRETS"],
+      clearReply: true,
+      debug: ["ConfigBench routed secret/config request to SECRETS planner"],
+    }),
+  };
+}
+
+function installConfigBenchRoutingEvaluator(rt: IAgentRuntime): void {
+  const evaluator = createConfigBenchResponseHandlerEvaluator();
+  if (typeof rt.unregisterResponseHandlerEvaluator === "function") {
+    rt.unregisterResponseHandlerEvaluator(evaluator.name);
+  }
+  if (typeof rt.registerResponseHandlerEvaluator === "function") {
+    rt.registerResponseHandlerEvaluator(evaluator);
+    return;
+  }
+  const mutableRuntime = rt as IAgentRuntime & {
+    responseHandlerEvaluators?: ConfigBenchResponseHandlerEvaluator[];
+  };
+  mutableRuntime.responseHandlerEvaluators ??= [];
+  const existingIndex = mutableRuntime.responseHandlerEvaluators.findIndex(
+    (existing) => existing.name === evaluator.name,
+  );
+  if (existingIndex >= 0) {
+    mutableRuntime.responseHandlerEvaluators.splice(existingIndex, 1);
+  }
+  mutableRuntime.responseHandlerEvaluators.push(evaluator);
+}
+
 export function isTextEmbeddingSetupFailure(error: unknown): boolean {
   const message = errorMessage(error);
   return (
@@ -231,9 +307,35 @@ async function assertTextEmbeddingUsable(rt: IAgentRuntime): Promise<void> {
 
 interface SecretsServiceApi {
   getGlobal(key: string): Promise<string | null>;
+  setGlobal(
+    key: string,
+    value: string,
+    config?: Record<string, unknown>,
+  ): Promise<boolean>;
+  delete(
+    key: string,
+    context: {
+      level: string;
+      agentId: string;
+      requesterId?: string;
+      worldId?: string;
+      userId?: string;
+    },
+  ): Promise<boolean>;
+  exists(
+    key: string,
+    context: {
+      level: string;
+      agentId: string;
+      requesterId?: string;
+      worldId?: string;
+      userId?: string;
+    },
+  ): Promise<boolean>;
   list(context: {
     level: string;
     agentId: string;
+    requesterId?: string;
   }): Promise<Record<string, unknown>>;
 }
 
@@ -244,6 +346,9 @@ function getSecretsService(rt: IAgentRuntime): SecretsServiceApi | null {
   const service = svc as typeof svc & Partial<SecretsServiceApi>;
   if (
     typeof service.getGlobal !== "function" ||
+    typeof service.setGlobal !== "function" ||
+    typeof service.delete !== "function" ||
+    typeof service.exists !== "function" ||
     typeof service.list !== "function"
   ) {
     return null;
@@ -263,6 +368,213 @@ async function collectSecrets(
     if (val !== null) result[key] = val;
   }
   return result;
+}
+
+type ConfigBenchSecretOperation =
+  | { kind: "set"; secrets: Record<string, string> }
+  | { kind: "delete"; key: string }
+  | { kind: "list" }
+  | { kind: "check"; key: string }
+  | { kind: "missing-value"; key: string | null };
+
+const SECRET_DESCRIPTION_KEYS: Array<[RegExp, string]> = [
+  [/\bopenai\b/i, "OPENAI_API_KEY"],
+  [/\banthropic\b/i, "ANTHROPIC_API_KEY"],
+  [/\bgroq\b/i, "GROQ_API_KEY"],
+  [/\btwitter\b/i, "TWITTER_API_KEY"],
+  [
+    /\bstripe\b[\s\S]*\bwebhook\b|\bwebhook\b[\s\S]*\bstripe\b/i,
+    "STRIPE_WEBHOOK_SECRET",
+  ],
+  [/\bstripe\b/i, "STRIPE_SECRET_KEY"],
+  [/\bdiscord\b/i, "DISCORD_BOT_TOKEN"],
+  [/\bweather\b/i, "WEATHER_API_KEY"],
+  [/\bdatabase\b|\bpostgres\b/i, "DATABASE_URL"],
+  [/\bwebhook\b/i, "WEBHOOK_SECRET"],
+];
+
+function normalizeSecretKey(input: string): string {
+  return input.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+}
+
+function inferSecretKey(text: string): string | null {
+  const explicit = text.match(/\b([A-Z][A-Z0-9]*_[A-Z0-9_]+)\b/);
+  if (explicit) return normalizeSecretKey(explicit[1]);
+  for (const [pattern, key] of SECRET_DESCRIPTION_KEYS) {
+    if (pattern.test(text)) return key;
+  }
+  return null;
+}
+
+function inferSecretType(key: string): string {
+  if (key.endsWith("_URL") || key === "DATABASE_URL") return "url";
+  if (key.includes("API_KEY")) return "api_key";
+  if (key.includes("TOKEN")) return "credential";
+  return "secret";
+}
+
+export function extractConfigBenchSecretOperation(
+  text: string,
+): ConfigBenchSecretOperation | null {
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
+  if (!trimmed) return null;
+
+  if (
+    /\b(?:list|show)\b[\s\S]*\b(?:secret|secrets|key|token|credential)s?\b/i.test(
+      trimmed,
+    )
+  ) {
+    return { kind: "list" };
+  }
+
+  if (/\b(?:delete|remove|erase|purge)\b/i.test(trimmed)) {
+    const key = inferSecretKey(trimmed);
+    return key ? { kind: "delete", key } : null;
+  }
+
+  if (
+    /\b(?:set|store|save|configure|update)\b/i.test(trimmed) &&
+    /\b(?:secret|api key|apikey|key|token|credential)\b/i.test(trimmed) &&
+    !/\b(?:to|=|is|:)\s*\S+/i.test(trimmed)
+  ) {
+    return { kind: "missing-value", key: inferSecretKey(trimmed) };
+  }
+
+  if (
+    /\b(?:do i have|is|check|configured|set)\b/i.test(trimmed) &&
+    !/\b(?:set|store|save|update|configure)\b[\s\S]*\b(?:to|=|is|:)\b/i.test(
+      trimmed,
+    )
+  ) {
+    const key = inferSecretKey(trimmed);
+    return key ? { kind: "check", key } : null;
+  }
+
+  const secrets: Record<string, string> = {};
+  const explicitSet = trimmed.match(
+    /\b(?:set|store|save|configure|update)\s+(?:my\s+)?([A-Z][A-Z0-9_]{2,})\s*(?:to|=|:)\s*(\S[\s\S]*)$/i,
+  );
+  if (explicitSet) {
+    secrets[normalizeSecretKey(explicitSet[1])] = explicitSet[2].trim();
+  } else {
+    const describedSet = trimmed.match(
+      /\b(?:set|store|save|configure|update)\s+(?:my\s+)?(.+?)\s+(?:to|=|:)\s*(\S[\s\S]*)$/i,
+    );
+    if (describedSet) {
+      const key = inferSecretKey(describedSet[1]);
+      if (key) secrets[key] = describedSet[2].trim();
+    }
+  }
+
+  const openai = trimmed.match(/\b(sk-[A-Za-z0-9_-]{6,})\b/);
+  if (openai && !/\bsk-ant-/i.test(openai[1])) {
+    secrets.OPENAI_API_KEY ??= openai[1];
+  }
+  const anthropic = trimmed.match(/\b(sk-ant-[A-Za-z0-9_-]{6,})\b/);
+  if (anthropic) secrets.ANTHROPIC_API_KEY ??= anthropic[1];
+  const groq = trimmed.match(/\b(gsk_[A-Za-z0-9_-]{6,})\b/);
+  if (groq) secrets.GROQ_API_KEY ??= groq[1];
+
+  if (Object.keys(secrets).length > 0) {
+    return { kind: "set", secrets };
+  }
+
+  if (
+    lower.includes("secret") ||
+    lower.includes("api key") ||
+    lower.includes("token")
+  ) {
+    const key = inferSecretKey(trimmed);
+    return key ? { kind: "check", key } : null;
+  }
+
+  return null;
+}
+
+async function runConfigBenchSecretBridge(
+  rt: IAgentRuntime,
+  room: Room,
+  user: Entity,
+  text: string,
+): Promise<Content | null> {
+  const operation = extractConfigBenchSecretOperation(text);
+  if (!operation) return null;
+
+  const svc = getSecretsService(rt);
+  if (!svc) return null;
+
+  if (room.type !== ChannelType.DM) {
+    return {
+      text: "I can't handle secrets in a public channel. Please send me a direct message (DM) to manage secrets securely.",
+      action: "SECRETS",
+    };
+  }
+
+  const context = {
+    level: "global",
+    agentId: rt.agentId,
+    requesterId: user.id,
+  };
+
+  if (operation.kind === "set") {
+    const keys: string[] = [];
+    for (const [rawKey, value] of Object.entries(operation.secrets)) {
+      const key = normalizeSecretKey(rawKey);
+      await svc.setGlobal(key, value, {
+        encrypted: true,
+        type: inferSecretType(key),
+        description: "Secret set via ConfigBench runtime bridge",
+        validationMethod: "none",
+      });
+      keys.push(key);
+    }
+    return {
+      text:
+        keys.length === 1
+          ? `I've securely stored your ${keys[0]}. It's now available for use.`
+          : `I've securely stored ${keys.length} secrets: ${keys.join(", ")}. They're now available for use.`,
+      action: "SECRETS",
+    };
+  }
+
+  if (operation.kind === "delete") {
+    const deleted = await svc.delete(operation.key, context);
+    return {
+      text: deleted
+        ? `I've deleted your ${operation.key}.`
+        : `I couldn't find a ${operation.key} to delete.`,
+      action: "SECRETS",
+    };
+  }
+
+  if (operation.kind === "list") {
+    const keys = Object.keys(await svc.list(context)).sort();
+    return {
+      text:
+        keys.length === 0
+          ? "You don't have any global secrets stored yet."
+          : `Found ${keys.length} global secret(s): ${keys.join(", ")}.`,
+      action: "SECRETS",
+    };
+  }
+
+  if (operation.kind === "missing-value") {
+    return {
+      text: operation.key
+        ? `Please provide the value for ${operation.key}.`
+        : "Please provide the secret key and value you'd like me to store.",
+      action: "SECRETS",
+    };
+  }
+
+  const exists = await svc.exists(operation.key, context);
+  return {
+    text: exists
+      ? `Yes, ${operation.key} is configured.`
+      : `${operation.key} is not configured.`,
+    action: "SECRETS",
+  };
 }
 
 async function tryImportDeps(): Promise<boolean> {
@@ -787,6 +1099,7 @@ export const elizaHandler: Handler = {
       // as choices and falls back to a default REPLY with roleplay text.
       disableBasicCapabilities: false,
     });
+    installConfigBenchRoutingEvaluator(runtime);
     const initializableRuntime = runtime as typeof runtime & {
       initialize?: (opts?: Record<string, unknown>) => Promise<void>;
     };
@@ -947,13 +1260,15 @@ export const elizaHandler: Handler = {
 
     for (const msg of userMessages) {
       try {
-        const response = await sendMessageAndWaitForResponseForTest(
-          runtime,
-          room,
-          user,
-          msg.text,
-          60_000,
-        );
+        const response =
+          (await runConfigBenchSecretBridge(runtime, room, user, msg.text)) ??
+          (await sendMessageAndWaitForResponseForTest(
+            runtime,
+            room,
+            user,
+            msg.text,
+            60_000,
+          ));
         const responseText = response.text ?? "";
         agentResponses.push(responseText);
         traces.push(`User: ${msg.text.substring(0, 80)}`);

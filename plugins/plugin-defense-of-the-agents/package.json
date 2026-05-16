@@ -13,9 +13,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "homepage": "https://www.defenseoftheagents.com/",
@@ -25,9 +25,10 @@
   },
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
-    "build": "bun run build:js && bun run build:types",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "keywords": [
@@ -81,6 +82,7 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vite": "^8.0.0"
   }
 }

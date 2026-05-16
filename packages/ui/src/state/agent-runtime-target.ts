@@ -1,5 +1,6 @@
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentIpcUrl,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
   type MobileRuntimeMode,
@@ -25,11 +26,9 @@ export function isLocalAgentApiBase(value: string | null | undefined): boolean {
   if (!apiBase) return false;
   if (apiBase === MOBILE_LOCAL_AGENT_API_BASE) return true;
   if (apiBase === IOS_LOCAL_AGENT_IPC_BASE) return true;
+  if (isMobileLocalAgentIpcUrl(apiBase)) return true;
   try {
     const url = new URL(apiBase);
-    if (url.protocol === "eliza-local-agent:" && url.hostname === "ipc") {
-      return true;
-    }
     const hostname = url.hostname.toLowerCase();
     return (
       hostname === "localhost" ||

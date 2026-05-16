@@ -36,7 +36,7 @@ export interface ProcessBodyConfig {
 }
 
 // Generated once at module load — matches proxy.js's per-process identifiers.
-export const DEVICE_ID = randomBytes(32).toString("hex");
+const DEVICE_ID = randomBytes(32).toString("hex");
 export const INSTANCE_SESSION_ID = randomUUID();
 
 export interface ProcessBodyResult {

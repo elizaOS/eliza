@@ -206,7 +206,7 @@ function defaultTierBudgetBytes(
  * local TTS, so transient = 0.
  *
  * The figures are MEASURED on-disk (Q4_K_M GGUFs in
- * `~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle/`) plus
+ * `~/.eliza/local-inference/models/eliza-1-{0_8b,2b}.bundle/`) plus
  * model-card sizes for VAD, wake-word, turn-detector, emotion, speaker-id.
  * See R9 §2.1 + §2.2 + §2.3 for the per-component breakdown.
  */

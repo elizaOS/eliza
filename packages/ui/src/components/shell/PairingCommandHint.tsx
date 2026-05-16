@@ -143,7 +143,7 @@ function CommandLine({
         <div className="min-w-0">
           <p
             style={{
-              fontFamily: "'Courier New', 'Courier', 'Monaco', monospace",
+              fontFamily: "'Open Sans', Arial, system-ui, sans-serif",
             }}
             className="text-[10px] font-semibold uppercase text-muted"
           >

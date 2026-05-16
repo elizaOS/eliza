@@ -210,7 +210,7 @@ export async function runDflashDoctor(): Promise<DflashDoctorReport> {
 					label: `${target.displayName} drafter↔target checkpoint`,
 					detail:
 						"No dflash/target-meta.json in the installed bundle — cannot verify the drafter was distilled against this text checkpoint.",
-					fix: "Reinstall the bundle from elizaos/eliza-1 (publish writes target-meta.json).",
+					fix: "Reinstall the bundle from elizalabs/eliza-1 (publish writes target-meta.json).",
 				});
 			} else if (meta.drafter?.matchesTargetCheckpoint === true) {
 				checks.push({

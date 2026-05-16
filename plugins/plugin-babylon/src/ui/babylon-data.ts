@@ -4,7 +4,13 @@ import type {
   BabylonChatMessage,
   BabylonTeamAgent,
 } from "@elizaos/app-core";
-import { asRecord } from "@elizaos/shared";
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
 
 export interface BabylonTeamSummaryTotals {
   walletBalance: number;

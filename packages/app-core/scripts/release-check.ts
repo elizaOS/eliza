@@ -53,6 +53,11 @@ const homepageReleaseDataPathCandidates = [
   "packages/homepage/src/generated/release-data.ts",
   "apps/homepage/src/generated/release-data.ts",
 ] as const;
+const cdnValidationScriptPathCandidates = [
+  "packages/app-core/scripts/validate-cdn-assets.mjs",
+  "scripts/validate-cdn-assets.mjs",
+  "eliza/packages/app-core/scripts/validate-cdn-assets.mjs",
+] as const;
 const patchedElectrobunCliHelperPathCandidates = [
   "packages/app-core/scripts/build-patched-electrobun-cli.mjs",
   "eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs",
@@ -98,7 +103,7 @@ const requiredWorkflowSnippets = [
   // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub Actions expression
   "ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}",
   'ELIZA_VALIDATE_CDN: "1"',
-  "run: bun run release:check",
+  "bun run release:check",
   "build-browser-companions:",
   "name: Build Agent Browser Bridge companions",
   "if bun run browser-bridge:package:release; then",
@@ -1387,7 +1392,17 @@ function maybeValidateCdnAssets() {
     return;
   }
 
-  execSync("node scripts/validate-cdn-assets.mjs", {
+  const cdnValidationScriptPath = resolveExistingPath(
+    cdnValidationScriptPathCandidates,
+  );
+  if (!cdnValidationScriptPath) {
+    console.error(
+      `release-check: CDN validation script is missing. Checked: ${cdnValidationScriptPathCandidates.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
+  execSync(`node ${JSON.stringify(cdnValidationScriptPath)}`, {
     stdio: "inherit",
     env: process.env,
   });

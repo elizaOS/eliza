@@ -3,32 +3,21 @@
  * CSS custom properties (--font-dm-mono, --font-inter, --font-open-sans)
  * match what we apply on the `<body>` via RootLayout className.
  */
-@import "@fontsource-variable/inter";
 @import "@fontsource-variable/open-sans";
-@import "@fontsource/dm-mono/300.css";
-@import "@fontsource/dm-mono/400.css";
-@import "@fontsource/dm-mono/500.css";
-@import "@fontsource/dm-mono/300-italic.css";
-@import "@fontsource/dm-mono/400-italic.css";
-@import "@fontsource/dm-mono/500-italic.css";
-
-:root {
-  --font-dm-mono: "DM Mono", ui-monospace, monospace;
-  --font-inter: "Inter", system-ui, sans-serif;
-  --font-open-sans: "Open Sans", system-ui, sans-serif;
-}
+@import "../../ui/src/styles/base.css";
+@import "../../ui/src/styles/tailwind-theme.css";
 
 @import "tailwindcss";
 @import "@rainbow-me/rainbowkit/styles.css";
 @import "./styles/solana-wallet-adapter.css";
 @import "@stwd/react/styles.css";
+@import "tw-animate-css";
 /* Tailwind v4 auto-scans this package, so it does not see classes used in
  * neighboring workspace packages by default. Paths are resolved relative to
  * this CSS file (packages/cloud-frontend/src/globals.css).
  */
 @source "../../ui/src";
 @source "../cloud-shared/src";
-@import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
 @plugin "tailwind-scrollbar" {
@@ -38,141 +27,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-body);
-  --font-mono: var(--mono);
-  --font-heading: var(--font-display);
-  --font-body: var(--font-body);
-  --font-display: var(--font-display);
-  --font-chat: var(--font-chat);
-  --color-bg: var(--bg);
-  --color-bg-accent: var(--bg-accent);
-  --color-bg-elevated: var(--bg-elevated);
-  --color-bg-hover: var(--bg-hover);
-  --color-bg-muted: var(--bg-muted);
-  --color-surface: var(--surface);
-  --color-txt: var(--text);
-  --color-txt-strong: var(--text-strong);
-  --color-txt-chat: var(--chat-text);
-  --color-muted-strong: var(--muted-strong);
-  --color-border-strong: var(--border-strong);
-  --color-border-hover: var(--border-hover);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-muted: var(--accent-muted);
-  --color-accent-subtle: var(--accent-subtle);
-  --color-accent-fg: var(--accent-foreground);
-  --color-primary-fg: var(--primary-foreground);
-  --color-ok: var(--ok);
-  --color-ok-muted: var(--ok-muted);
-  --color-ok-subtle: var(--ok-subtle);
-  --color-warn: var(--warn);
-  --color-warn-muted: var(--warn-muted);
-  --color-warn-subtle: var(--warn-subtle);
-  --color-danger: var(--danger);
-  --color-destructive-fg: var(--destructive-foreground);
-  --color-destructive-subtle: var(--destructive-subtle);
-  --color-header-bg: var(--header-bar-bg);
-  --color-header-fg: var(--header-bar-fg);
-  --font-dm-mono: var(--font-dm-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-
-  /* Brand aliases kept for existing Cloud call sites; values come from Eliza. */
-  --color-brand-orange: var(--accent);
-  --color-brand-blue: var(--status-info);
-  --color-brand-bg: var(--bg);
-  --color-brand-surface: var(--surface);
-  --color-brand-border: var(--border);
-}
-
 :root {
-  --bg: #050506;
-  --bg-accent: #0a0a0c;
-  --bg-elevated: #0d0d10;
-  --bg-hover: #141418;
-  --bg-muted: #0a0a0c;
-  --card: #0e0e11;
-  --card-foreground: #eaecef;
-  --surface: #121214;
-  --text: #eaecef;
-  --text-strong: #ffffff;
-  --chat-text: #eaecef;
-  --txt: var(--text);
-  --muted: #8a8a94;
-  --muted-strong: #b9b9c2;
-  --border: #232329;
-  --border-strong: #313136;
-  --border-hover: #f0b90b;
-  --input: #17171c;
-  --ring: #f0b90b;
-  --accent: #f0b90b;
-  --accent-rgb: 240, 185, 11;
-  --accent-hover: #f3ba2f;
-  --accent-muted: #d8a000;
-  --accent-subtle: rgba(240, 185, 11, 0.12);
-  --accent-foreground: #1a1f26;
-  --primary: #f0b90b;
-  --primary-foreground: #1a1f26;
-  --ok: hsl(142 76% 36%);
-  --ok-muted: hsla(142 76% 36% / 0.7);
-  --ok-subtle: hsla(142 76% 36% / 0.1);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --destructive-subtle: hsla(0 84% 60% / 0.1);
-  --warn: #f0b90b;
-  --warn-muted: rgba(240, 185, 11, 0.7);
-  --warn-subtle: rgba(240, 185, 11, 0.12);
-  --danger: hsl(0 84.2% 60.2%);
-  --info: #f0b90b;
-  --status-success: var(--ok);
-  --status-success-bg: var(--ok-subtle);
-  --status-danger: var(--danger);
-  --status-danger-bg: var(--destructive-subtle);
-  --status-warning: var(--warn);
-  --status-warning-bg: var(--warn-subtle);
-  --status-info: #60a5fa;
-  --status-info-bg: rgba(96, 165, 250, 0.12);
-  --focus: rgba(240, 185, 11, 0.18);
-  --focus-ring: 0 0 0 2px rgba(240, 185, 11, 0.44);
-  --header-bar-bg: #050506;
-  --header-bar-fg: #ffffff;
-  --section-bar-bg: #0a0a0c;
-  --section-bar-fg: #ffffff;
-  --link-color: var(--text);
-  --link-hover-color: #f0b90b;
+  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-dm-mono: var(--font-open-sans);
+  --font-inter: var(--font-open-sans);
+  --font-roboto-mono: var(--font-open-sans);
+
   --background: var(--bg);
   --foreground: var(--text);
   --popover: var(--card);
@@ -180,11 +40,13 @@
   --secondary: var(--bg-accent);
   --secondary-foreground: var(--text);
   --muted-foreground: var(--muted);
+
   --chart-1: var(--accent);
   --chart-2: var(--ok);
   --chart-3: var(--status-info);
   --chart-4: var(--warn);
   --chart-5: var(--danger);
+
   --sidebar: var(--bg-accent);
   --sidebar-foreground: var(--text);
   --sidebar-primary: var(--primary);
@@ -193,28 +55,6 @@
   --sidebar-accent-foreground: var(--text);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.06);
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg:
-    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 50px -12px rgb(0 0 0 / 0.3);
-  --shadow-2xl: 0 25px 60px -15px rgb(0 0 0 / 0.4);
-  --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 0.04);
-  --radius: 0.5rem;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-2xl: 1.25rem;
-  --radius-3xl: 1.5rem;
-  --font-body:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
-  --font-display: var(--font-body);
-  --font-chat:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --mono: "Courier New", Courier, monospace;
-  color-scheme: dark;
 }
 
 @layer base {
@@ -1958,4 +1798,75 @@ button:not(:disabled),
 .stwd-eliza-login .stwd-login__btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.checkout-visual {
+  align-items: center;
+  aspect-ratio: 1 / 1;
+  background: #0057ff;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 18px;
+  display: grid;
+  justify-items: center;
+  min-height: 18rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.checkout-visual.phone {
+  border: 8px solid #050505;
+  border-radius: 2rem;
+}
+
+.checkout-visual.usb {
+  aspect-ratio: 1.65 / 1;
+  min-height: 12rem;
+}
+
+.checkout-visual.usb::after {
+  background: linear-gradient(90deg, #d6d6d1, #fff);
+  border: 1px solid rgba(17, 17, 17, 0.18);
+  border-radius: 0.25rem;
+  content: "";
+  height: 42%;
+  position: absolute;
+  right: -0.5rem;
+  top: 29%;
+  width: 18%;
+}
+
+.checkout-visual.box {
+  background: #df9038;
+}
+
+.checkout-visual.chibi {
+  background: #fff;
+}
+
+.checkout-visual > img {
+  display: block;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: cover;
+}
+
+.checkout-visual.phone > img,
+.checkout-visual.usb > img {
+  width: 44%;
+}
+
+.checkout-visual.box > img,
+.checkout-visual.chibi > img {
+  height: 100%;
+  width: 100%;
+}
+
+.checkout-visual span {
+  bottom: 1.25rem;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 760;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
 }

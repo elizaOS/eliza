@@ -237,7 +237,14 @@ export default defineConfig(({ mode }) => {
       ],
     },
     resolve: {
-      dedupe: ["react", "react-dom", "lucide-react"],
+      dedupe: [
+        "react",
+        "react-dom",
+        "lucide-react",
+        "react-router",
+        "react-router-dom",
+        "@tanstack/react-query",
+      ],
       alias: [
         // The upstream `inherits` package's main entry tries
         // `require('util').inherits` first and falls back to

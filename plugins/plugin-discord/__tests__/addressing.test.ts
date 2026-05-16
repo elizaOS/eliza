@@ -31,6 +31,17 @@ describe("isDiscordUserAddressed", () => {
 		).toBe(true);
 	});
 
+	it("lets an explicit mention of another user override reply-to-bot context", () => {
+		expect(
+			isDiscordUserAddressed({
+				text: "<@456> make your move",
+				userId: "123",
+				hasMessageReference: true,
+				repliedUserId: "123",
+			}),
+		).toBe(false);
+	});
+
 	it("supports Discord's nickname mention form", () => {
 		expect(
 			isDiscordUserAddressed({

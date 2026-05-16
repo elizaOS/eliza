@@ -1,7 +1,7 @@
 # DFlash drafter production — status, blockers, launch plan (2026-05-14)
 
 > **TL;DR.** Zero new Qwen3.5 drafter GGUFs were produced this run.
-> Every tier that needs a drafter (`eliza-1-{2b,4b,9b,27b,27b-256k,27b-1m}`)
+> Every tier that needs a drafter (`eliza-1-{2b,4b,9b,27b,27b-256k}`)
 > is blocked on an upstream prerequisite — there is no SFT'd target text
 > checkpoint anywhere in the repo, and the distillation script
 > (`packages/training/scripts/distill_dflash_drafter.py`) is fail-closed
@@ -30,10 +30,9 @@ near lines 84-121).
 | `eliza-1-9b`      | YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/9b`                                | same                                                | 0.52 | `drafter-9b.gguf`  |
 | `eliza-1-27b`     | YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/27b`                               | same                                                | 0.52 | `drafter-27b.gguf` |
 | `eliza-1-27b-256k`| YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/27b-256k`                          | same                                                | 0.52 | `drafter-27b-256k.gguf` |
-| `eliza-1-27b-1m`  | YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/27b-1m`                            | same                                                | 0.52 | `drafter-27b-1m.gguf` |
 
-Every drafter is a single 0.8B Qwen3.5 student. The 27b/27b-256k/27b-1m
-share an SFT but require three distinct re-distills against their
+Every drafter is a single 0.8B Qwen3.5 student. The 27b/27b-256k
+share an SFT but require distinct re-distills against their
 respective long-context target GGUFs so each drafter's recorded
 `dflash-draft.target_checkpoint_sha256` matches the bytes it ships
 with (the publish gate refuses a mismatch).
@@ -62,7 +61,7 @@ $ ls packages/training/checkpoints/
 eliza-1-0_6b-apollo-*       # legacy Qwen3
 eliza-1-1_7b-apollo-*       # legacy Qwen3
 eliza-1-0_8b-apollo-fullcorpus-h200-v5-resume-*  # has environment.json + instrumentation.jsonl only — crashed before any model.safetensors was written (per .swarm/STATUS.md v4-v5)
-eliza-1-{0_8b,2b,4b,9b,27b,27b-256k,27b-1m}-smoke-1778741959-*   # smoke benchmark dirs only, no model weights
+eliza-1-{0_8b,2b,4b,9b,27b,27b-256k}-smoke-1778741959-*   # smoke benchmark dirs only, no model weights
 ```
 
 Per the 2026-05-14 audit (§1.1 per-tier matrix), every active-tier SFT
@@ -238,9 +237,9 @@ H200x2 territory:
 |--------------:|-----:|-----------------------:|----------------------:|
 |          27B  | 2048 | ~1.6 s                  | ~9 h |
 
-Three sequential distills (27b @ 128k, 27b-256k @ 256k, 27b-1m @ 1M
+Two sequential distills (27b @ 128k, 27b-256k @ 256k
 context — same student, different target GGUFs to stamp against)
-need ~27 GPU-h on H200x2 (~$80-110 each at 2× $4/GPU-h ≈ $250-330
+need ~18 GPU-h on H200x2 (~$80-110 each at 2× $4/GPU-h ≈ $160-220
 total). **Defer until 0_8b/2b/4b/9b drafters land — those four cover
 ~95% of the local-tier user surface.**
 

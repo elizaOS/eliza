@@ -111,11 +111,11 @@ export function SidebarNavigationSection({
   if (isComingSoon) {
     return (
       <div className="w-full mb-3 px-3 flex items-center opacity-50 select-none cursor-default">
-        <h3 className="flex-1 text-sm font-mono text-white/50 text-left whitespace-nowrap">
+        <h3 className="flex-1 whitespace-nowrap text-left font-mono text-sm text-white/62">
           {section.title}
         </h3>
         <span
-          className="text-[10px] font-medium uppercase tracking-wider text-white/40 bg-white/10 px-1.5 py-0.5 rounded"
+          className="rounded bg-white/18 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/58"
           style={{
             fontFamily: "var(--font-roboto-mono)",
           }}
@@ -128,13 +128,13 @@ export function SidebarNavigationSection({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger className="group w-full mb-3 px-3 flex items-center hover:opacity-80 transition-opacity">
-        <h3 className="flex-1 text-sm font-mono text-white/50 text-left whitespace-nowrap">
+      <CollapsibleTrigger className="group mb-3 flex w-full items-center px-3 transition-opacity hover:opacity-80">
+        <h3 className="flex-1 whitespace-nowrap text-left font-mono text-sm text-white/62">
           {section.title}
         </h3>
         <ChevronDown
           className={cn(
-            "h-3.5 w-3.5 text-white/40 transition-transform duration-200",
+            "h-3.5 w-3.5 text-white/54 transition-transform duration-200",
             isOpen && "rotate-180",
           )}
         />

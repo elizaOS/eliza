@@ -93,9 +93,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node ../app-core/scripts/write-homepage-release-data.mjs
 
+      - name: Check homepage release data
+        working-directory: packages/homepage
+        run: bun run check:release-data
+
       - name: Build homepage
         working-directory: packages/homepage
         run: bun run build
+
+      - name: Install homepage browser
+        working-directory: packages/homepage
+        run: ../../node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Test homepage downloads
+        working-directory: packages/homepage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run test:e2e
 
       - name: Write CNAME and .nojekyll
         run: |
@@ -112,6 +126,10 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.event_name }}" = "workflow_call" ]; then
+              echo "::error::HOMEPAGE_DEPLOY_KEY secret not configured. Release-triggered homepage deploys must fail closed instead of silently skipping publication."
+              exit 1
+            fi
             echo "::warning::HOMEPAGE_DEPLOY_KEY secret not configured. Skipping deploy step. The site was built successfully but will not be published. To enable publishing, register an SSH deploy key on elizaOS/elizaos.github.io and add the private key as HOMEPAGE_DEPLOY_KEY on this repo (see workflow header for details)."
           fi
 

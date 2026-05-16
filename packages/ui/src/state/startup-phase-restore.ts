@@ -22,6 +22,7 @@ import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentUrl,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
@@ -108,22 +109,7 @@ export interface RestoringSessionCtx {
 }
 
 function isMobileLocalAgentApiBase(value: string | undefined): boolean {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc") {
-      return true;
-    }
-    return (
-      parsed.protocol === "http:" &&
-      parsed.port === "31337" &&
-      (parsed.hostname === "127.0.0.1" ||
-        parsed.hostname === "localhost" ||
-        parsed.hostname === "::1")
-    );
-  } catch {
-    return false;
-  }
+  return isMobileLocalAgentUrl(value);
 }
 
 function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
@@ -157,17 +143,47 @@ function reconcilePersistedApiBaseWithLive(
   }
 }
 
-function mobileLocalActiveServer(): PersistedActiveServer {
+type MobileNativePlatform = "android" | "ios";
+
+function mobileLocalActiveServer(
+  platform: MobileNativePlatform = isAndroid ? "android" : "ios",
+): PersistedActiveServer {
+  const android = platform === "android";
   return {
-    id: isAndroid
-      ? ANDROID_LOCAL_AGENT_SERVER_ID
-      : MOBILE_LOCAL_AGENT_SERVER_ID,
+    id: android ? ANDROID_LOCAL_AGENT_SERVER_ID : MOBILE_LOCAL_AGENT_SERVER_ID,
     kind: "remote",
-    label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
-    apiBase: isAndroid
-      ? ANDROID_LOCAL_AGENT_IPC_BASE
-      : IOS_LOCAL_AGENT_IPC_BASE,
+    label: android ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
+    apiBase: android ? ANDROID_LOCAL_AGENT_IPC_BASE : IOS_LOCAL_AGENT_IPC_BASE,
   };
+}
+
+export function reconcileMobileRestoredActiveServer(args: {
+  server: PersistedActiveServer;
+  mobileRuntimeMode: ReturnType<typeof readPersistedMobileRuntimeMode>;
+  platform: MobileNativePlatform;
+}): PersistedActiveServer | null | undefined {
+  const { server, mobileRuntimeMode, platform } = args;
+  const mobileLocal = isMobileLocalActiveServer(server);
+  if (mobileLocal && mobileRuntimeMode !== "local") {
+    return null;
+  }
+
+  const expectedMobileIpcBase =
+    platform === "android"
+      ? ANDROID_LOCAL_AGENT_IPC_BASE
+      : IOS_LOCAL_AGENT_IPC_BASE;
+  if (
+    server.kind === "local" ||
+    (mobileLocal && server.apiBase !== expectedMobileIpcBase)
+  ) {
+    return mobileLocalActiveServer(platform);
+  }
+
+  if (!server.apiBase) {
+    return null;
+  }
+
+  return undefined;
 }
 
 function restoredLocalApiBase(): string | null {
@@ -322,33 +338,22 @@ export async function runRestoringSession(
     persistedActiveServer ?? (probed ? probed.activeServer : null);
 
   if ((isAndroid || isIOS) && restoredActiveServer) {
-    const mobileRuntimeMode = readPersistedMobileRuntimeMode();
-    if (
-      isMobileLocalActiveServer(restoredActiveServer) &&
-      mobileRuntimeMode !== "local"
-    ) {
+    const reconciledMobileServer = reconcileMobileRestoredActiveServer({
+      server: restoredActiveServer,
+      mobileRuntimeMode: readPersistedMobileRuntimeMode(),
+      platform: isAndroid ? "android" : "ios",
+    });
+    if (reconciledMobileServer === null) {
       clearPersistedActiveServer();
       savePersistedOnboardingComplete(false);
       persistedActiveServer = null;
       restoredActiveServer = null;
       hadPrior = false;
       deps.onboardingCompletionCommittedRef.current = false;
-    } else if (
-      restoredActiveServer.kind === "local" ||
-      (isAndroid &&
-        isMobileLocalActiveServer(restoredActiveServer) &&
-        restoredActiveServer.apiBase !== ANDROID_LOCAL_AGENT_IPC_BASE)
-    ) {
-      restoredActiveServer = mobileLocalActiveServer();
+    } else if (reconciledMobileServer) {
+      restoredActiveServer = reconciledMobileServer;
       persistedActiveServer = restoredActiveServer;
       savePersistedActiveServer(restoredActiveServer);
-    } else if (!restoredActiveServer.apiBase) {
-      clearPersistedActiveServer();
-      savePersistedOnboardingComplete(false);
-      persistedActiveServer = null;
-      restoredActiveServer = null;
-      hadPrior = false;
-      deps.onboardingCompletionCommittedRef.current = false;
     }
   }
 

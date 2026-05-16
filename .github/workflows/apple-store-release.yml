@@ -74,7 +74,7 @@ concurrency:
 
 env:
   BUN_VERSION: "1.3.13"
-  NODE_VERSION: "22"
+  NODE_VERSION: "24.15.0"
   LANG: en_US.UTF-8
   LC_ALL: en_US.UTF-8
 
@@ -243,6 +243,10 @@ jobs:
           echo "APP_IDENTIFIER=$APP_ID" >> "$GITHUB_ENV"
           echo "APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA" >> "$GITHUB_ENV"
           echo "Resolved: APP_IDENTIFIER=$APP_ID, APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA"
+
+      - name: Run iOS store preflight
+        working-directory: packages/app
+        run: bun run preflight:ios:store
 
       - name: Build and upload
         working-directory: packages/app/ios

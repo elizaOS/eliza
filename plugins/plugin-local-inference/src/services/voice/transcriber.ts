@@ -24,11 +24,12 @@
  *      Selected whenever a `libelizainference` handle + bundled ASR model are
  *      present (which is always true when the fused build is loaded).
  *
- * If neither is available, `createStreamingTranscriber()` throws
- * `AsrUnavailableError` — a real failure, never a silent empty-transcript
- * degrade (AGENTS.md §3 + §9). There is no whisper.cpp fallback path: that
- * dependency vendored a second GGML, mismatched the Qwen2-BPE vocab, and is
- * not the local-inference contract we ship.
+ * If neither fused ASR nor OpenVINO Whisper is available,
+ * `createStreamingTranscriber()` throws `AsrUnavailableError` — a real
+ * failure, never a silent empty-transcript degrade (AGENTS.md §3 + §9).
+ * There is no whisper.cpp fallback path: that dependency vendored a second
+ * GGML, mismatched the Qwen2-BPE vocab, and is not the local-inference
+ * contract we ship.
  */
 
 import type {
@@ -800,8 +801,9 @@ export interface CreateStreamingTranscriberOptions {
 	prefer?: AsrBackendPreference;
 	/**
 	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
-	 * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
-	 * to keep the OpenVINO Whisper tier when the fused build is unavailable.
+	 * unless `ELIZA_LOCAL_ASR_ALLOW_OPENVINO=1` is set. Set explicitly to
+	 * `true` to keep the OpenVINO Whisper tier when fused ASR is unavailable,
+	 * or use `prefer: "openvino-whisper"` to require OpenVINO.
 	 */
 	allowOpenVinoWhisper?: boolean;
 }
@@ -813,9 +815,8 @@ export interface CreateStreamingTranscriberOptions {
  *   2. fused batch (interim) — windowed `eliza_inference_asr_transcribe` (ABI
  *      v1); contract-clean (one ggml, shared text vocab) and available now,
  *   3. OpenVINO Whisper — Intel NPU→CPU autoprobe via the persistent Python
- *      worker (`scripts/openvino-whisper-asr-worker.py`). Off by default
- *      (`allowOpenVinoWhisper: true` to opt in). Selected only when the
- *      OpenVINO runtime + Whisper IR are present on disk.
+ *      worker (`scripts/openvino-whisper-asr-worker.py`). Selected only when
+ *      enabled and the OpenVINO runtime + Whisper IR are present on disk.
  *
  * No silent fallback to an empty transcript — if nothing is available the
  * caller gets a hard, actionable failure (AGENTS.md §3 + §9). The whisper.cpp

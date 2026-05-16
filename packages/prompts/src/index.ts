@@ -687,7 +687,7 @@ simple shortcut: choose contexts=["simple"] when the user is asking for a direct
 - answer unchanged by checking current info/world state/memory
 - uncertain => planning
 
-For simple requests, replyText is the final answer itself, not a description of what the user asked for and not an internal plan.
+For simple requests, replyText is the final answer itself, not a description of what the user asked for and not an internal plan. Write a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 
 Platform mention/reply target/channel/room/connector alone can still be simple when only chat reply needed.
 

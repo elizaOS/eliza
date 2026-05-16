@@ -386,4 +386,32 @@ describe("ensureLocalInferenceHandler", () => {
 			}),
 		);
 	});
+
+	it("threads eliza thinking provider options into local engine args", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.RESPONSE_HANDLER,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<string>)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		await handler?.(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			providerOptions: { eliza: { thinking: "off" } },
+		});
+
+		expect(engineState.generate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				thinking: "off",
+			}),
+		);
+	});
 });

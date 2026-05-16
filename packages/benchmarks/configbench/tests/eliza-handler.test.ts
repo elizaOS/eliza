@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   collectConfigBenchProviderSettings,
+  createConfigBenchResponseHandlerEvaluator,
+  extractConfigBenchSecretOperation,
   isCerebrasBaseUrl,
+  isConfigBenchSecretOrConfigRequest,
   isTextEmbeddingSetupFailure,
   loadModelProviderPlugin,
   normalizeConfigBenchProviderName,
@@ -95,5 +98,69 @@ describe("Eliza handler setup helpers", () => {
 
     expect(response.text).toContain("OPENAI_API_KEY");
     expect(response.actions).toEqual(["SECRETS"]);
+  });
+
+  it("recognizes ConfigBench secret/config turns without matching fixed answers", () => {
+    expect(
+      isConfigBenchSecretOrConfigRequest(
+        "Set my OPENAI_API_KEY to sk-test-abc123def456ghi789",
+      ),
+    ).toBe(true);
+    expect(
+      isConfigBenchSecretOrConfigRequest(
+        "Please configure the payment plugin for me",
+      ),
+    ).toBe(true);
+    expect(isConfigBenchSecretOrConfigRequest("Tell me a short joke")).toBe(
+      false,
+    );
+  });
+
+  it("routes ConfigBench secret turns to the SECRETS planner capability", () => {
+    const evaluator = createConfigBenchResponseHandlerEvaluator();
+    const message = {
+      content: {
+        source: "configbench",
+        text: "Set my OPENAI_API_KEY to sk-test-abc123def456ghi789",
+      },
+    };
+
+    expect(evaluator.shouldRun({ message } as never)).toBe(true);
+    expect(evaluator.evaluate()).toMatchObject({
+      requiresTool: true,
+      addContexts: ["secrets", "settings", "connectors"],
+      addCandidateActions: ["SECRETS"],
+      addParentActionHints: ["SECRETS"],
+      clearReply: true,
+    });
+  });
+
+  it("extracts generic secret storage operations for the runtime bridge", () => {
+    expect(
+      extractConfigBenchSecretOperation(
+        "Set my OPENAI_API_KEY to sk-test-abc123def456ghi789",
+      ),
+    ).toEqual({
+      kind: "set",
+      secrets: { OPENAI_API_KEY: "sk-test-abc123def456ghi789" },
+    });
+    expect(
+      extractConfigBenchSecretOperation(
+        "Use this Anthropic key: sk-ant-testkey123456789abcdef",
+      ),
+    ).toEqual({
+      kind: "set",
+      secrets: { ANTHROPIC_API_KEY: "sk-ant-testkey123456789abcdef" },
+    });
+    expect(
+      extractConfigBenchSecretOperation("Delete my Twitter API key"),
+    ).toEqual({
+      kind: "delete",
+      key: "TWITTER_API_KEY",
+    });
+    expect(extractConfigBenchSecretOperation("Set my OpenAI API key")).toEqual({
+      kind: "missing-value",
+      key: "OPENAI_API_KEY",
+    });
   });
 });
