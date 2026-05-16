@@ -101,6 +101,8 @@ struct ContentView: View {
             AutomationsView(model: model)
         case .approvals:
             ApprovalsView(model: model)
+        case .wallets:
+            WalletsView(model: model)
         case .vault:
             VaultView(model: model)
         case .browser:

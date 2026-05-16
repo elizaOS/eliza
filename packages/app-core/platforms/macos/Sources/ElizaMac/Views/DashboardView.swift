@@ -33,7 +33,7 @@ struct DashboardView: View {
                             .font(.headline)
 
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
-                            ForEach([AppSection.chat, .plugins, .heartbeats, .lifeOps, .health, .browser, .cloud]) { section in
+                            ForEach([AppSection.chat, .plugins, .heartbeats, .lifeOps, .health, .wallets, .browser, .cloud]) { section in
                                 Button {
                                     model.openSurface(section)
                                 } label: {

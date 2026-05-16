@@ -61,6 +61,8 @@ public struct VaultItem: Identifiable, Equatable, Sendable {
     public static let defaults: [VaultItem] = [
         VaultItem(id: "keychain", title: "Keychain", detail: "Native macOS credential storage", systemImage: "key"),
         VaultItem(id: "providers", title: "Provider Keys", detail: "Model and connector credentials", systemImage: "lock.rectangle.stack"),
-        VaultItem(id: "tokens", title: "Session Tokens", detail: "Local runtime auth material", systemImage: "person.badge.key")
+        VaultItem(id: "tokens", title: "Session Tokens", detail: "Local runtime auth material", systemImage: "person.badge.key"),
+        VaultItem(id: "wallets", title: "Wallets", detail: "EVM, Solana, RPC, signing, and execution readiness", systemImage: "wallet.pass"),
+        VaultItem(id: "steward", title: "Steward Vault", detail: "Policy-gated wallet signing and approval queue", systemImage: "lock.shield")
     ]
 }

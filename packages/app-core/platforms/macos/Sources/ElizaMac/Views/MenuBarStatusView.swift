@@ -61,6 +61,7 @@ struct MenuBarStatusView: View {
             CompactMetric(title: "Models", value: "\(model.modelRoutes.count)", detail: "\(model.modelRoutes.filter { $0.state == .preferred }.count) preferred")
             CompactMetric(title: "LifeOps", value: "\(model.lifeOpsFeatures.count)", detail: "tasks")
             CompactMetric(title: "Health", value: "\(model.healthFeatures.count)", detail: "registries")
+            CompactMetric(title: "Wallets", value: walletValue, detail: walletDetail)
             CompactMetric(title: "Logs", value: "\(model.runtimeLogEntries.count)", detail: model.runtimeSnapshot == nil ? "local" : "runtime")
             CompactMetric(title: "Uptime", value: uptimeValue, detail: "API")
         }
@@ -151,6 +152,9 @@ struct MenuBarStatusView: View {
                 QuickActionRow(title: "Approvals", systemImage: "checklist.checked") {
                     model.openSurface(.approvals)
                 }
+                QuickActionRow(title: "Wallets", systemImage: "wallet.pass") {
+                    model.openWallets()
+                }
                 QuickActionRow(title: "Diagnostics", systemImage: "waveform.path.ecg") {
                     model.openSurface(.diagnostics)
                 }
@@ -217,6 +221,29 @@ struct MenuBarStatusView: View {
         }
 
         return "\(uptime)s"
+    }
+
+    private var walletValue: String {
+        guard let snapshot = model.walletSnapshot else {
+            return "-"
+        }
+
+        return [
+            snapshot.addresses.evmAddress?.isEmpty == false,
+            snapshot.addresses.solanaAddress?.isEmpty == false
+        ].filter { $0 }.count.description
+    }
+
+    private var walletDetail: String {
+        guard let snapshot = model.walletSnapshot else {
+            return "runtime"
+        }
+
+        if snapshot.config.executionReady == true {
+            return "ready"
+        }
+
+        return snapshot.config.walletSource ?? "review"
     }
 }
 

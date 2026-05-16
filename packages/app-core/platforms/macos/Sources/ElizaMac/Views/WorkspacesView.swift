@@ -28,7 +28,24 @@ struct WorkspacesView: View {
                                     .truncationMode(.middle)
                             }
                             Spacer()
-                            StatusPill(title: workspace.state.title, systemImage: "circle.fill", tint: workspace.state == .active ? theme.primaryTint : theme.secondaryTint)
+                            VStack(alignment: .trailing, spacing: 10) {
+                                StatusPill(title: workspace.state.title, systemImage: "circle.fill", tint: workspace.state == .active ? theme.primaryTint : theme.secondaryTint)
+                                HStack(spacing: 8) {
+                                    Button {
+                                        model.revealRepositoryInFinder()
+                                    } label: {
+                                        Label("Finder", systemImage: "folder")
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    Button {
+                                        model.openRepositoryInTerminal()
+                                    } label: {
+                                        Label("Terminal", systemImage: "terminal")
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
                         }
                     }
                 }

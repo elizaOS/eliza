@@ -70,6 +70,94 @@ final class RuntimeAPIClientTests: XCTestCase {
         }
     }
 
+    func testFetchWalletSnapshotReadsRuntimeWalletRoutes() async throws {
+        RuntimeURLProtocolStub.responses = [
+            "/api/wallet/config": (200, """
+            {
+              "evmAddress": "0x1234",
+              "solanaAddress": "So111",
+              "selectedRpcProviders": { "evm": "eliza-cloud", "bsc": "alchemy", "solana": "helius-birdeye" },
+              "walletNetwork": "mainnet",
+              "legacyCustomChains": ["evm"],
+              "alchemyKeySet": true,
+              "infuraKeySet": false,
+              "ankrKeySet": false,
+              "heliusKeySet": true,
+              "birdeyeKeySet": true,
+              "evmChains": ["ethereum", "base"],
+              "walletSource": "local",
+              "automationMode": "full",
+              "pluginEvmLoaded": true,
+              "pluginEvmRequired": true,
+              "executionReady": true,
+              "executionBlockedReason": null,
+              "evmSigningCapability": "local",
+              "evmSigningReason": "local signer available",
+              "solanaSigningAvailable": true,
+              "wallets": [
+                { "source": "local", "chain": "evm", "address": "0x1234", "provider": "local", "primary": true }
+              ],
+              "primary": { "evm": "local", "solana": "local" }
+            }
+            """),
+            "/api/wallet/addresses": (200, """
+            {
+              "evmAddress": "0x1234",
+              "solanaAddress": "So111"
+            }
+            """),
+            "/api/wallet/balances": (200, """
+            {
+              "evm": {
+                "address": "0x1234",
+                "chains": [
+                  {
+                    "chain": "ethereum",
+                    "chainId": 1,
+                    "nativeBalance": "1.5",
+                    "nativeSymbol": "ETH",
+                    "nativeValueUsd": "4800",
+                    "tokens": [],
+                    "error": null
+                  }
+                ]
+              },
+              "solana": {
+                "address": "So111",
+                "solBalance": "2.25",
+                "solValueUsd": "400",
+                "tokens": []
+              }
+            }
+            """),
+            "/api/wallet/steward-status": (200, """
+            {
+              "configured": true,
+              "available": true,
+              "connected": true,
+              "baseUrl": "http://127.0.0.1:8765",
+              "agentId": "agent-main",
+              "evmAddress": "0x1234",
+              "walletAddresses": { "evm": "0x1234", "solana": "So111" },
+              "agentName": "Eliza",
+              "vaultHealth": "ok"
+            }
+            """)
+        ]
+
+        let snapshot = try await RuntimeAPIClient(baseURL: runtimeBaseURL, session: stubbedSession).fetchWalletSnapshot()
+
+        XCTAssertEqual(snapshot.config.evmAddress, "0x1234")
+        XCTAssertEqual(snapshot.config.selectedRpcProviders?.bsc, "alchemy")
+        XCTAssertEqual(snapshot.addresses.solanaAddress, "So111")
+        XCTAssertEqual(snapshot.balances.evm?.chains.first?.nativeSymbol, "ETH")
+        XCTAssertEqual(snapshot.steward.vaultHealth, "ok")
+        XCTAssertEqual(
+            Set(RuntimeURLProtocolStub.requestedPaths),
+            ["/api/wallet/config", "/api/wallet/addresses", "/api/wallet/balances", "/api/wallet/steward-status"]
+        )
+    }
+
     private var runtimeBaseURL: URL {
         URL(string: "http://127.0.0.1:31337")!
     }

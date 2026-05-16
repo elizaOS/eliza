@@ -29,8 +29,12 @@ final class AppModel: ObservableObject {
     @Published var runtimeEvents: [String]
     @Published var runtimeLogEntries: [RuntimeLogEntry]
     @Published var runtimeSnapshot: RuntimeSnapshot?
+    @Published var walletSnapshot: WalletRuntimeSnapshot?
     @Published var isRefreshingRuntime: Bool
+    @Published var isRefreshingWallet: Bool
     @Published var lastRuntimeProbeError: String?
+    @Published var lastWalletProbeError: String?
+    @Published var lastNativeActionResult: String?
     @Published var consoleURL: URL
     @Published var consoleTitle: String
     @Published var consoleDetail: String
@@ -49,6 +53,8 @@ final class AppModel: ObservableObject {
     }
 
     private let runtimeController: RuntimeController
+    private let notificationService = MacNotificationService()
+    private let automationService = MacAutomationService()
 
     init(
         selection: AppSection? = .dashboard,
@@ -77,8 +83,12 @@ final class AppModel: ObservableObject {
         runtimeEvents: [String] = [],
         runtimeLogEntries: [RuntimeLogEntry] = [],
         runtimeSnapshot: RuntimeSnapshot? = nil,
+        walletSnapshot: WalletRuntimeSnapshot? = nil,
         isRefreshingRuntime: Bool = false,
+        isRefreshingWallet: Bool = false,
         lastRuntimeProbeError: String? = nil,
+        lastWalletProbeError: String? = nil,
+        lastNativeActionResult: String? = nil,
         consoleTitle: String = "Renderer Home",
         consoleDetail: String = "Base renderer target for the current elizaOS runtime.",
         settingsSelection: SettingsPane = .account,
@@ -120,8 +130,12 @@ final class AppModel: ObservableObject {
         self.runtimeEvents = runtimeEvents.isEmpty ? ["Swift shell initialized."] : runtimeEvents
         self.runtimeLogEntries = runtimeLogEntries
         self.runtimeSnapshot = runtimeSnapshot
+        self.walletSnapshot = walletSnapshot
         self.isRefreshingRuntime = isRefreshingRuntime
+        self.isRefreshingWallet = isRefreshingWallet
         self.lastRuntimeProbeError = lastRuntimeProbeError
+        self.lastWalletProbeError = lastWalletProbeError
+        self.lastNativeActionResult = lastNativeActionResult
         self.consoleURL = resolvedConfiguration.rendererURL
         self.consoleTitle = consoleTitle
         self.consoleDetail = consoleDetail
@@ -152,6 +166,7 @@ final class AppModel: ObservableObject {
             ShellMetric(id: "lifeops", title: "LifeOps", value: "\(lifeOpsFeatures.count)", detail: "ScheduledTask", systemImage: "heart.text.square"),
             ShellMetric(id: "health", title: "Health", value: "\(healthFeatures.count)", detail: "registries", systemImage: "heart.text.square.fill"),
             ShellMetric(id: "approvals", title: "Approvals", value: "\(approvals.count)", detail: approvals.isEmpty ? "queue empty" : "pending", systemImage: "checklist.checked"),
+            ShellMetric(id: "wallets", title: "Wallets", value: walletMetricValue, detail: walletMetricDetail, systemImage: "wallet.pass"),
             ShellMetric(id: "vault", title: "Vault", value: "\(vaultItems.count)", detail: "secure stores", systemImage: "lock.rectangle.stack")
         ]
 
@@ -179,6 +194,32 @@ final class AppModel: ObservableObject {
         return items
     }
 
+    private var walletMetricValue: String {
+        guard let walletSnapshot else {
+            return "-"
+        }
+
+        let evmReady = walletSnapshot.addresses.evmAddress?.isEmpty == false
+        let solanaReady = walletSnapshot.addresses.solanaAddress?.isEmpty == false
+        return "\([evmReady, solanaReady].filter { $0 }.count)"
+    }
+
+    private var walletMetricDetail: String {
+        guard let walletSnapshot else {
+            return "runtime"
+        }
+
+        if walletSnapshot.config.executionReady == true {
+            return "execution ready"
+        }
+
+        if let source = walletSnapshot.config.walletSource {
+            return source
+        }
+
+        return "connected"
+    }
+
     var filteredSections: [AppSection] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
@@ -196,6 +237,7 @@ final class AppModel: ObservableObject {
             status = runtimeController.status
             appendRuntimeEvent("Runtime started at \(configuration.apiBaseURL.absoluteString).")
             refreshRuntimeSnapshot(after: 1_500_000_000)
+            refreshWalletSnapshot(after: 1_800_000_000)
         } catch {
             status = .failed(message: error.localizedDescription)
             appendRuntimeEvent("Runtime failed: \(error.localizedDescription)")
@@ -207,7 +249,9 @@ final class AppModel: ObservableObject {
         status = runtimeController.status
         runtimeSnapshot = nil
         runtimeLogEntries = []
+        walletSnapshot = nil
         lastRuntimeProbeError = nil
+        lastWalletProbeError = nil
         appendRuntimeEvent("Runtime stopped.")
     }
 
@@ -330,6 +374,32 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func refreshWalletSnapshot() {
+        guard !isRefreshingWallet else {
+            return
+        }
+
+        isRefreshingWallet = true
+        let apiBase = configuration.apiBaseURL
+
+        Task {
+            defer {
+                isRefreshingWallet = false
+            }
+
+            do {
+                let snapshot = try await RuntimeAPIClient(baseURL: apiBase).fetchWalletSnapshot()
+                applyWalletSnapshot(snapshot)
+            } catch {
+                let message = error.localizedDescription
+                lastWalletProbeError = message
+                walletSnapshot = nil
+                diagnostics = diagnosticsAfterWalletProbeFailure(message)
+                appendRuntimeEvent("Wallet probe failed: \(message)")
+            }
+        }
+    }
+
     private func refreshRuntimeSnapshot(after delay: UInt64) {
         Task {
             do {
@@ -338,6 +408,17 @@ final class AppModel: ObservableObject {
                 return
             }
             refreshRuntimeSnapshot()
+        }
+    }
+
+    private func refreshWalletSnapshot(after delay: UInt64) {
+        Task {
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            refreshWalletSnapshot()
         }
     }
 
@@ -446,6 +527,8 @@ final class AppModel: ObservableObject {
             openSurface(.workspaces)
         case "screen", "calendar", "notifications":
             openSurface(.permissions)
+        case "wallet", "wallets", "steward":
+            openSurface(.wallets)
         default:
             openSurface(.connectors)
         }
@@ -460,6 +543,8 @@ final class AppModel: ObservableObject {
             openSurface(.models)
         case "tokens":
             openSurface(.runtime)
+        case "wallets", "steward":
+            openSurface(.wallets)
         default:
             openSurface(.vault)
         }
@@ -489,6 +574,91 @@ final class AppModel: ObservableObject {
         appendRuntimeEvent("Display name reset.")
     }
 
+    func openWallets() {
+        openSurface(.wallets)
+        if walletSnapshot == nil {
+            refreshWalletSnapshot()
+        }
+    }
+
+    func openWalletRenderer() {
+        openRendererTab("inventory", title: "Wallets")
+    }
+
+    func openStewardApp() {
+        openRendererAppRoute("/apps/inventory", title: "Steward")
+    }
+
+    func revealRepositoryInFinder() {
+        automationService.revealInFinder(path: configuration.repositoryRoot)
+        lastNativeActionResult = "Repository revealed in Finder."
+        appendRuntimeEvent("Repository revealed in Finder.")
+    }
+
+    func openRepositoryInTerminal() {
+        do {
+            try automationService.openTerminal(at: configuration.repositoryRoot)
+            lastNativeActionResult = "Repository opened in Terminal."
+            appendRuntimeEvent("Repository opened in Terminal.")
+        } catch {
+            lastNativeActionResult = error.localizedDescription
+            appendRuntimeEvent("Terminal AppleScript failed: \(error.localizedDescription)")
+        }
+    }
+
+    func runFinderAutomationProbe() {
+        do {
+            try automationService.activateFinder()
+            lastNativeActionResult = "Finder automation succeeded."
+            appendRuntimeEvent("Finder automation succeeded.")
+        } catch {
+            lastNativeActionResult = error.localizedDescription
+            appendRuntimeEvent("Finder automation failed: \(error.localizedDescription)")
+        }
+    }
+
+    func requestNotificationAuthorization() {
+        Task {
+            do {
+                let granted = try await notificationService.requestAuthorization()
+                let message = granted ? "Notification permission granted." : "Notification permission denied."
+                lastNativeActionResult = message
+                updateCapability("notifications", state: granted ? .ready : .needsSetup)
+                appendRuntimeEvent(message)
+            } catch {
+                lastNativeActionResult = error.localizedDescription
+                appendRuntimeEvent("Notification permission failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func sendTestNotification() {
+        Task {
+            do {
+                try await notificationService.deliver(
+                    title: "Eliza",
+                    body: "Native macOS notifications are connected for \(userDisplayName)."
+                )
+                lastNativeActionResult = "Test notification delivered."
+                updateCapability("notifications", state: .ready)
+                appendRuntimeEvent("Test notification delivered.")
+            } catch {
+                lastNativeActionResult = error.localizedDescription
+                appendRuntimeEvent("Test notification failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func updateCapability(_ id: String, state: CapabilityState) {
+        capabilities = capabilities.map { capability in
+            var next = capability
+            if capability.id == id {
+                next.state = state
+            }
+            return next
+        }
+    }
+
     private func applyRuntimeSnapshot(_ snapshot: RuntimeSnapshot, apiBase: URL) {
         runtimeSnapshot = snapshot
         runtimeLogEntries = Array(snapshot.logs.entries.suffix(80).reversed())
@@ -511,6 +681,17 @@ final class AppModel: ObservableObject {
         connectors = connectorProfiles(from: snapshot.health.connectors)
         diagnostics = diagnostics(from: snapshot, apiBase: apiBase)
         appendRuntimeEvent("Runtime probe refreshed: \(snapshot.health.plugins.loaded) plugins, \(snapshot.logs.entries.count) logs.")
+
+        if snapshot.health.ready && walletSnapshot == nil && !isRefreshingWallet {
+            refreshWalletSnapshot()
+        }
+    }
+
+    private func applyWalletSnapshot(_ snapshot: WalletRuntimeSnapshot) {
+        walletSnapshot = snapshot
+        lastWalletProbeError = nil
+        diagnostics = diagnosticsAfterWalletProbe(snapshot)
+        appendRuntimeEvent("Wallet probe refreshed: \(walletSummary(from: snapshot)).")
     }
 
     private func diagnostics(from snapshot: RuntimeSnapshot, apiBase: URL) -> [DiagnosticItem] {
@@ -569,9 +750,59 @@ final class AppModel: ObservableObject {
             DiagnosticItem(
                 id: "permissions",
                 title: "Permissions",
-                detail: "Screen Recording, Calendar, Notifications, and Files remain user-controlled native grants.",
+                detail: "Screen Recording, Calendar, Notifications, Automation, and Files remain user-controlled native grants.",
                 systemImage: "hand.raised",
                 severity: .warning
+            )
+        )
+
+        return items
+    }
+
+    private func diagnosticsAfterWalletProbe(_ snapshot: WalletRuntimeSnapshot) -> [DiagnosticItem] {
+        var items = diagnostics
+
+        items.removeAll { item in
+            item.id == "wallets" || item.id == "steward"
+        }
+
+        items.append(
+            DiagnosticItem(
+                id: "wallets",
+                title: "Wallets",
+                detail: walletSummary(from: snapshot),
+                systemImage: "wallet.pass",
+                severity: snapshot.config.executionReady == false ? .warning : .info
+            )
+        )
+
+        items.append(
+            DiagnosticItem(
+                id: "steward",
+                title: "Steward",
+                detail: snapshot.steward.connected ? "Connected to Steward vault" : snapshot.steward.error ?? "Steward is not connected.",
+                systemImage: "lock.shield",
+                severity: snapshot.steward.connected ? .info : .warning
+            )
+        )
+
+        return items
+    }
+
+    private func diagnosticsAfterWalletProbeFailure(_ message: String) -> [DiagnosticItem] {
+        var items = diagnostics
+
+        items.removeAll { item in
+            item.id == "wallets"
+        }
+
+        items.append(
+            DiagnosticItem(
+                id: "wallets",
+                title: "Wallets",
+                detail: message,
+                systemImage: "wallet.pass",
+                severity: .critical
             )
         )
 
@@ -591,11 +822,32 @@ final class AppModel: ObservableObject {
             DiagnosticItem(
                 id: "permissions",
                 title: "Permissions",
-                detail: "Screen Recording, Calendar, Notifications, and Files remain user-controlled native grants.",
+                detail: "Screen Recording, Calendar, Notifications, Automation, and Files remain user-controlled native grants.",
                 systemImage: "hand.raised",
                 severity: .warning
             )
         ]
+    }
+
+    private func walletSummary(from snapshot: WalletRuntimeSnapshot) -> String {
+        if snapshot.config.executionReady == true {
+            return "Execution ready with \(snapshot.config.walletSource ?? "runtime") wallet source."
+        }
+
+        if let blocked = snapshot.config.executionBlockedReason, !blocked.isEmpty {
+            return blocked
+        }
+
+        let chains = [
+            snapshot.addresses.evmAddress?.isEmpty == false ? "EVM" : nil,
+            snapshot.addresses.solanaAddress?.isEmpty == false ? "Solana" : nil
+        ].compactMap { $0 }
+
+        if !chains.isEmpty {
+            return "\(chains.joined(separator: " + ")) addresses available."
+        }
+
+        return "Runtime wallet routes responded without active addresses."
     }
 
     private func repositoryDiagnostic() -> DiagnosticItem {

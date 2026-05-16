@@ -35,6 +35,18 @@ struct ElizaMacApp: App {
                 }
                 .keyboardShortcut(".", modifiers: [.command])
                 .disabled(!model.status.isRunning)
+
+                Divider()
+
+                Button("Refresh Runtime Telemetry") {
+                    model.refreshRuntimeSnapshot()
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+
+                Button("Refresh Wallet Telemetry") {
+                    model.refreshWalletSnapshot()
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
             }
 
             CommandMenu("Display") {
@@ -42,6 +54,39 @@ struct ElizaMacApp: App {
                     model.toggleInspector()
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
+            }
+
+            CommandMenu("Mac") {
+                Button("Reveal Repository in Finder") {
+                    model.revealRepositoryInFinder()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .option])
+
+                Button("Open Repository in Terminal") {
+                    model.openRepositoryInTerminal()
+                }
+                .keyboardShortcut("t", modifiers: [.command, .option])
+
+                Divider()
+
+                Button("Request Notifications") {
+                    model.requestNotificationAuthorization()
+                }
+
+                Button("Send Test Notification") {
+                    model.sendTestNotification()
+                }
+
+                Button("Test Finder Automation") {
+                    model.runFinderAutomationProbe()
+                }
+
+                Divider()
+
+                Button("Open Wallets") {
+                    model.openWallets()
+                }
+                .keyboardShortcut("w", modifiers: [.command, .option])
             }
         }
 

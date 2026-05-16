@@ -41,6 +41,21 @@ public final class RuntimeAPIClient {
         )
     }
 
+    public func fetchWalletSnapshot() async throws -> WalletRuntimeSnapshot {
+        async let config = fetchWalletConfig()
+        async let addresses = fetchWalletAddresses()
+        async let balances = fetchWalletBalances()
+        async let steward = fetchStewardStatus()
+
+        return try await WalletRuntimeSnapshot(
+            config: config,
+            addresses: addresses,
+            balances: balances,
+            steward: steward,
+            fetchedAt: Date()
+        )
+    }
+
     public func fetchHealth() async throws -> RuntimeHealthSnapshot {
         try await request(RuntimeHealthSnapshot.self, path: "/api/health")
     }
@@ -52,6 +67,22 @@ public final class RuntimeAPIClient {
 
     public func fetchLogs() async throws -> RuntimeLogsResponse {
         try await request(RuntimeLogsResponse.self, path: "/api/logs")
+    }
+
+    public func fetchWalletConfig() async throws -> WalletConfigSnapshot {
+        try await request(WalletConfigSnapshot.self, path: "/api/wallet/config")
+    }
+
+    public func fetchWalletAddresses() async throws -> WalletAddressesSnapshot {
+        try await request(WalletAddressesSnapshot.self, path: "/api/wallet/addresses")
+    }
+
+    public func fetchWalletBalances() async throws -> WalletBalancesSnapshot {
+        try await request(WalletBalancesSnapshot.self, path: "/api/wallet/balances")
+    }
+
+    public func fetchStewardStatus() async throws -> StewardStatusSnapshot {
+        try await request(StewardStatusSnapshot.self, path: "/api/wallet/steward-status")
     }
 
     private func request<Response: Decodable>(_ responseType: Response.Type, path: String) async throws -> Response {

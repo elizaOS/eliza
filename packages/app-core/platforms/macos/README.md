@@ -23,6 +23,8 @@ packages/app-core/platforms/macos/
         AppDelegate.swift
         ElizaMacApp.swift
       Services/
+        MacAutomationService.swift
+        MacNotificationService.swift
         ProfilePreferences.swift
         ThemePreferences.swift
       Stores/
@@ -60,6 +62,7 @@ packages/app-core/platforms/macos/
         ThemeCustomizationView.swift
         UpdatesView.swift
         VaultView.swift
+        WalletsView.swift
         WelcomeView.swift
         WebConsoleView.swift
         WorkspacesView.swift
@@ -128,7 +131,7 @@ The shell targets macOS 26 through SwiftPM tools 6.2 and uses 2026 SwiftUI struc
 - `Window("Diagnostics", id: "diagnostics")` for a dedicated utility window.
 - `MenuBarExtra` for quick runtime controls.
 
-The current sections are Welcome, Dashboard, Chat, Workspaces, Runtime, Agents, Plugins, Connectors, Models, Memory, Heartbeats, LifeOps, Health, Automations, Approvals, Vault, Browser, Cloud, Release, Console, Permissions, Diagnostics, Logs, Updates, and Settings.
+The current sections are Welcome, Dashboard, Chat, Workspaces, Runtime, Agents, Plugins, Connectors, Models, Memory, Heartbeats, LifeOps, Health, Automations, Approvals, Wallets, Vault, Browser, Cloud, Release, Console, Permissions, Diagnostics, Logs, Updates, and Settings.
 
 The native surface map mirrors the core elizaOS desktop flows:
 
@@ -137,6 +140,7 @@ The native surface map mirrors the core elizaOS desktop flows:
 - Heartbeats: triggers, watchers, cadence, outputs, and global pause readiness.
 - LifeOps: `ScheduledTask` runner, default packs, approvals, outputs, and auditable task behavior.
 - Health: separate `@elizaos/plugin-health` registries for connectors, anchors, bus families, and packs.
+- Wallets: native status for EVM, Solana, RPC providers, balances, Steward, and signing readiness.
 - Browser: web context, explicit browsing actions, snapshots, and chat handoff.
 - Cloud: Eliza Cloud auth, sync, hosted connectors, and external runtime targets.
 - Release: channel, app-bundle health, signing, notarization, and distribution gates.
@@ -149,15 +153,28 @@ The Plugins surface includes the current internal and registry app catalog expos
 
 On first launch the main window switches into a transparent AppKit-backed mode and shows the Eliza name prompt over animated glowing orbs. The saved profile name is reused across Dashboard, Welcome, Runtime, Settings, the menu bar dashboard, and runtime launch environment variables.
 
-The menu bar extra uses `.menuBarExtraStyle(.window)` so it can render a compact custom dashboard with Swift Charts instead of a plain menu. Its current graph surfaces are runtime activity bars, model-route capacity lines, feature metrics, and quick actions for Dashboard, Chat, Plugins, Agents, LifeOps, Health, Approvals, and Diagnostics.
+The menu bar extra uses `.menuBarExtraStyle(.window)` so it can render a compact custom dashboard with Swift Charts instead of a plain menu. Its current graph surfaces are runtime activity bars, model-route capacity lines, feature metrics, wallet readiness, and quick actions for Dashboard, Chat, Plugins, Agents, LifeOps, Health, Approvals, Wallets, and Diagnostics.
 
 The shell now includes a native runtime probe client for:
 
 - `GET /api/health`
 - `GET /api/agents`
 - `GET /api/logs`
+- `GET /api/wallet/config`
+- `GET /api/wallet/addresses`
+- `GET /api/wallet/balances`
+- `GET /api/wallet/steward-status`
 
-Runtime refresh updates the native Dashboard, Runtime, Diagnostics, Logs, Connectors, Agents, and menu bar graph surfaces with the live runtime readiness, plugin load/failure counts, connector statuses, active agent metadata, uptime, and recent log entries. Probe failures are surfaced as critical diagnostics instead of being hidden behind static defaults.
+Runtime refresh updates the native Dashboard, Runtime, Diagnostics, Logs, Connectors, Agents, Wallets, and menu bar graph surfaces with the live runtime readiness, plugin load/failure counts, connector statuses, active agent metadata, uptime, recent log entries, wallet source, balance readiness, signing status, and Steward vault status. Probe failures are surfaced as critical diagnostics instead of being hidden behind static defaults.
+
+## Native macOS Hooks
+
+The Swift shell exposes deliberate macOS actions instead of background prompts:
+
+- Notifications use `UNUserNotificationCenter` with explicit Request and Test actions.
+- Apple Events are scoped to user-triggered Finder and Terminal actions.
+- Workspaces can be revealed in Finder or opened in Terminal from the native UI.
+- Permissions mirrors the elizaOS macOS capability set: Accessibility, Screen Recording, Microphone, Camera, Shell, Website Blocking, Location, Reminders, Calendar, Health, Screen Time, Contacts, Notes, Notifications, Full Disk Access, and Automation.
 
 Appearance customization is centralized in `ThemeSettings` and surfaced through `ThemeCustomizationView`. Users can change:
 

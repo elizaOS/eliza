@@ -14,6 +14,7 @@ public enum AppSection: String, CaseIterable, Hashable, Identifiable, Sendable {
     case health
     case automations
     case approvals
+    case wallets
     case vault
     case browser
     case cloud
@@ -61,6 +62,8 @@ public enum AppSection: String, CaseIterable, Hashable, Identifiable, Sendable {
             "Automations"
         case .approvals:
             "Approvals"
+        case .wallets:
+            "Wallets"
         case .vault:
             "Vault"
         case .browser:
@@ -116,6 +119,8 @@ public enum AppSection: String, CaseIterable, Hashable, Identifiable, Sendable {
             "Tasks"
         case .approvals:
             "Queue"
+        case .wallets:
+            "Signing"
         case .vault:
             "Secrets"
         case .browser:
@@ -171,6 +176,8 @@ public enum AppSection: String, CaseIterable, Hashable, Identifiable, Sendable {
             "calendar.badge.clock"
         case .approvals:
             "checklist.checked"
+        case .wallets:
+            "wallet.pass"
         case .vault:
             "lock.rectangle.stack"
         case .browser:

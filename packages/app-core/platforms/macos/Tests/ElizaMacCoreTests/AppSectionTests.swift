@@ -11,6 +11,7 @@ final class AppSectionTests: XCTestCase {
         XCTAssertTrue(AppSection.allCases.contains(.heartbeats))
         XCTAssertTrue(AppSection.allCases.contains(.lifeOps))
         XCTAssertTrue(AppSection.allCases.contains(.health))
+        XCTAssertTrue(AppSection.allCases.contains(.wallets))
         XCTAssertTrue(AppSection.allCases.contains(.browser))
         XCTAssertTrue(AppSection.allCases.contains(.cloud))
         XCTAssertTrue(AppSection.allCases.contains(.release))
