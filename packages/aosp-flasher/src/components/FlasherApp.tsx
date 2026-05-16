@@ -132,7 +132,7 @@ export function FlasherApp({ backend }: FlasherAppProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [backend],
+    [backend, selectedSerial, selectedBuildId, builds.length, builds],
   );
 
   useEffect(() => {
@@ -170,9 +170,7 @@ export function FlasherApp({ backend }: FlasherAppProps) {
     !executing;
 
   const canPreview =
-    selectedDevice !== undefined &&
-    selectedBuild !== undefined &&
-    !executing;
+    selectedDevice !== undefined && selectedBuild !== undefined && !executing;
 
   // -------------------------------------------------------------------------
   // Preview flash plan (dry-run visualization)
@@ -217,15 +215,15 @@ export function FlasherApp({ backend }: FlasherAppProps) {
       });
       setPlan(newPlan);
       // Initialise step list from plan
-      setSteps(newPlan.steps.map((s) => ({ ...s, status: "pending" as const })));
+      setSteps(
+        newPlan.steps.map((s) => ({ ...s, status: "pending" as const })),
+      );
 
       await backend.executeFlashPlan(
         newPlan,
         (stepId: FlashStepId, status: FlashStepStatus, detail: string) => {
           setSteps((prev) =>
-            prev.map((s) =>
-              s.id === stepId ? { ...s, status, detail } : s,
-            ),
+            prev.map((s) => (s.id === stepId ? { ...s, status, detail } : s)),
           );
         },
       );
@@ -285,7 +283,11 @@ export function FlasherApp({ backend }: FlasherAppProps) {
               No devices found — enable USB debugging and connect your Pixel
             </p>
           ) : (
-            <div className="device-list" role="radiogroup" aria-label="Target device">
+            <div
+              className="device-list"
+              role="radiogroup"
+              aria-label="Target device"
+            >
               {devices.map((device) => (
                 <label
                   key={device.serial}
@@ -436,7 +438,11 @@ export function FlasherApp({ backend }: FlasherAppProps) {
         {(steps.length > 0 || executing) && (
           <div className="panel progress-panel">
             <h2>
-              {executing ? "Flashing in progress..." : plan?.steps && !executing ? "Flash plan" : "Progress"}
+              {executing
+                ? "Flashing in progress..."
+                : plan?.steps && !executing
+                  ? "Flash plan"
+                  : "Progress"}
             </h2>
             <ol className="step-list">
               {steps.map((step) => (

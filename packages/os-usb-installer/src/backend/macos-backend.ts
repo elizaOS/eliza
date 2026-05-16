@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
-import * as https from "node:https";
 import * as http from "node:http";
+import * as https from "node:https";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_ELIZAOS_IMAGES } from "./dry-run-backend";
@@ -54,7 +54,10 @@ interface DiskUtilInfoPlist {
 
 // Minimal plist parser for the flat dict structure diskutil emits.
 // Handles <key>, <string>, <integer>, <true/>, <false/>, nested <dict> and <array>.
-function parsePlistValue(xml: string, pos: number): { value: unknown; end: number } {
+function parsePlistValue(
+  xml: string,
+  pos: number,
+): { value: unknown; end: number } {
   // skip whitespace
   while (pos < xml.length && /\s/.test(xml[pos] ?? "")) pos++;
 
@@ -90,7 +93,10 @@ function parsePlistValue(xml: string, pos: number): { value: unknown; end: numbe
   return { value: null, end: tagEnd + 1 };
 }
 
-function parsePlistDict(xml: string, pos: number): { value: Record<string, unknown>; end: number } {
+function parsePlistDict(
+  xml: string,
+  pos: number,
+): { value: Record<string, unknown>; end: number } {
   // consume <dict>
   pos = xml.indexOf("<dict>", pos) + 6;
   const out: Record<string, unknown> = {};
@@ -114,7 +120,10 @@ function parsePlistDict(xml: string, pos: number): { value: Record<string, unkno
   return { value: out, end: pos };
 }
 
-function parsePlistArray(xml: string, pos: number): { value: unknown[]; end: number } {
+function parsePlistArray(
+  xml: string,
+  pos: number,
+): { value: unknown[]; end: number } {
   pos = xml.indexOf("<array>", pos) + 7;
   const out: unknown[] = [];
   while (pos < xml.length) {
@@ -140,7 +149,9 @@ async function getDiskUtilList(): Promise<DiskUtilListPlist> {
   return parsePlist(stdout) as DiskUtilListPlist;
 }
 
-async function getDiskUtilInfo(deviceIdentifier: string): Promise<DiskUtilInfoPlist> {
+async function getDiskUtilInfo(
+  deviceIdentifier: string,
+): Promise<DiskUtilInfoPlist> {
   try {
     const { stdout } = await execFileAsync("diskutil", [
       "info",
@@ -179,8 +190,11 @@ async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
             for (const release of releases) {
               for (const asset of release.assets) {
                 if (!asset.name.endsWith(".iso")) continue;
-                const arch: ElizaOsImage["architecture"] =
-                  asset.name.includes("arm64") ? "arm64" : "x86_64";
+                const arch: ElizaOsImage["architecture"] = asset.name.includes(
+                  "arm64",
+                )
+                  ? "arm64"
+                  : "x86_64";
                 const channel: ElizaOsImage["channel"] = release.prerelease
                   ? "nightly"
                   : "stable";
@@ -223,37 +237,51 @@ async function downloadFile(
   return new Promise((resolve, reject) => {
     function doRequest(requestUrl: string): void {
       const protocol = requestUrl.startsWith("https://") ? https : http;
-      protocol.get(requestUrl, { headers: { "User-Agent": "elizaos-usb-installer/1.0" } }, (res) => {
-        if (
-          res.statusCode === 301 ||
-          res.statusCode === 302 ||
-          res.statusCode === 307 ||
-          res.statusCode === 308
-        ) {
-          const location = res.headers.location;
-          if (!location) {
-            reject(new Error(`Redirect with no location header from ${requestUrl}`));
-            return;
-          }
-          doRequest(location);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode ?? "?"} downloading ${requestUrl}`));
-          return;
-        }
-        const total = Number(res.headers["content-length"] ?? 0);
-        let received = 0;
-        const writeStream = require("node:fs").createWriteStream(destPath);
-        res.on("data", (chunk: Buffer) => {
-          received += chunk.length;
-          onProgress(received, total);
-        });
-        res.pipe(writeStream);
-        writeStream.on("finish", resolve);
-        writeStream.on("error", reject);
-        res.on("error", reject);
-      }).on("error", reject);
+      protocol
+        .get(
+          requestUrl,
+          { headers: { "User-Agent": "elizaos-usb-installer/1.0" } },
+          (res) => {
+            if (
+              res.statusCode === 301 ||
+              res.statusCode === 302 ||
+              res.statusCode === 307 ||
+              res.statusCode === 308
+            ) {
+              const location = res.headers.location;
+              if (!location) {
+                reject(
+                  new Error(
+                    `Redirect with no location header from ${requestUrl}`,
+                  ),
+                );
+                return;
+              }
+              doRequest(location);
+              return;
+            }
+            if (res.statusCode !== 200) {
+              reject(
+                new Error(
+                  `HTTP ${res.statusCode ?? "?"} downloading ${requestUrl}`,
+                ),
+              );
+              return;
+            }
+            const total = Number(res.headers["content-length"] ?? 0);
+            let received = 0;
+            const writeStream = require("node:fs").createWriteStream(destPath);
+            res.on("data", (chunk: Buffer) => {
+              received += chunk.length;
+              onProgress(received, total);
+            });
+            res.pipe(writeStream);
+            writeStream.on("finish", resolve);
+            writeStream.on("error", reject);
+            res.on("error", reject);
+          },
+        )
+        .on("error", reject);
     }
     doRequest(url);
   });
@@ -303,9 +331,7 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
       }
 
       const name =
-        info.MediaName ??
-        info.IORegistryEntryName ??
-        `Disk ${deviceId}`;
+        info.MediaName ?? info.IORegistryEntryName ?? `Disk ${deviceId}`;
 
       const bus: RemovableDrive["bus"] = isUsb
         ? "usb"

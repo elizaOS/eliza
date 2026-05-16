@@ -11,14 +11,14 @@ export type {
   WriteRequest,
 } from "./backend";
 export {
+  createPlatformBackend,
   DEFAULT_ELIZAOS_IMAGES,
   DryRunUsbInstallerBackend,
   detectPlatformId,
+  LinuxUsbInstallerBackend,
+  MacOsUsbInstallerBackend,
   MOCK_REMOVABLE_DRIVES,
   PLATFORM_NOTES,
-  createPlatformBackend,
-  MacOsUsbInstallerBackend,
-  LinuxUsbInstallerBackend,
   WindowsUsbInstallerBackend,
 } from "./backend";
 export { InstallerApp } from "./components/InstallerApp";

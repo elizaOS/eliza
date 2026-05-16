@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { MOCK_BUILDS } from "../backend/adb-backend";
-import type {
-  AospFlasherBackend,
-  ConnectedDevice,
-} from "../backend/types";
+import type { AospFlasherBackend, ConnectedDevice } from "../backend/types";
 
 // ---------------------------------------------------------------------------
 // Minimal mock backend — avoids spawning real adb/fastboot in CI
@@ -243,8 +240,8 @@ describe("createFlashPlan with mock device", () => {
       dryRun: true,
     });
 
-    const commandSteps = plan.steps.filter((s) =>
-      s.detail.includes("adb") || s.detail.includes("fastboot"),
+    const commandSteps = plan.steps.filter(
+      (s) => s.detail.includes("adb") || s.detail.includes("fastboot"),
     );
 
     for (const step of commandSteps) {

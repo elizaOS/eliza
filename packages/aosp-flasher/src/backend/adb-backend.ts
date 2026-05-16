@@ -18,8 +18,8 @@ import type {
 
 function findAdb(): string {
   const candidates: string[] = [
-    process.env["ANDROID_HOME"]
-      ? join(process.env["ANDROID_HOME"], "platform-tools", "adb")
+    process.env.ANDROID_HOME
+      ? join(process.env.ANDROID_HOME, "platform-tools", "adb")
       : "",
     "/opt/homebrew/bin/adb",
     "/usr/local/bin/adb",
@@ -36,8 +36,8 @@ function findAdb(): string {
 
 function findFastboot(): string {
   const candidates: string[] = [
-    process.env["ANDROID_HOME"]
-      ? join(process.env["ANDROID_HOME"], "platform-tools", "fastboot")
+    process.env.ANDROID_HOME
+      ? join(process.env.ANDROID_HOME, "platform-tools", "fastboot")
       : "",
     "/opt/homebrew/bin/fastboot",
     "/usr/local/bin/fastboot",
@@ -199,7 +199,9 @@ export class AdbFlasherBackend implements AospFlasherBackend {
           "unlocked",
         ]);
         // fastboot getvar unlocked writes to stderr
-        const output = (unlockResult.stdout + unlockResult.stderr).toLowerCase();
+        const output = (
+          unlockResult.stdout + unlockResult.stderr
+        ).toLowerCase();
         if (output.includes("unlocked: yes")) bootloaderUnlocked = true;
         else if (output.includes("unlocked: no")) bootloaderUnlocked = false;
       }
@@ -216,9 +218,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     return connected;
   }
 
-  private normalizeAdbState(
-    raw: string,
-  ): ConnectedDevice["state"] {
+  private normalizeAdbState(raw: string): ConnectedDevice["state"] {
     switch (raw) {
       case "device":
         return "device";
@@ -486,7 +486,11 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       "running",
       `adb -s ${serial} reboot bootloader`,
     );
-    const rebootResult = run(this.adb, ["-s", serial, "reboot", "bootloader"], 15_000);
+    const rebootResult = run(
+      this.adb,
+      ["-s", serial, "reboot", "bootloader"],
+      15_000,
+    );
     if (rebootResult.status !== 0) {
       onProgress(
         "reboot-bootloader",
@@ -507,7 +511,11 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       }
     }
     if (!inFastboot) {
-      onProgress("reboot-bootloader", "failed", "Timed out waiting for fastboot");
+      onProgress(
+        "reboot-bootloader",
+        "failed",
+        "Timed out waiting for fastboot",
+      );
       throw new Error("Device did not enter fastboot within 60 seconds");
     }
     onProgress("reboot-bootloader", "complete", "Device in fastboot mode");
@@ -659,11 +667,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     onProgress("flash-partitions", "complete", "Partitions flashed");
 
     // 8. reboot-android
-    onProgress(
-      "reboot-android",
-      "running",
-      `fastboot -s ${serial} reboot`,
-    );
+    onProgress("reboot-android", "running", `fastboot -s ${serial} reboot`);
     run(this.fastboot, ["-s", serial, "reboot"], 30_000);
     onProgress("reboot-android", "complete", "Reboot command sent");
 

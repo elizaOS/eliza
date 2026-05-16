@@ -42,9 +42,13 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState(false);
-  const [stepProgress, setStepProgress] = useState<Partial<Record<InstallerStepId, number>>>({});
+  const [stepProgress, setStepProgress] = useState<
+    Partial<Record<InstallerStepId, number>>
+  >({});
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [pendingWriteMode, setPendingWriteMode] = useState<WriteMode | null>(null);
+  const [pendingWriteMode, setPendingWriteMode] = useState<WriteMode | null>(
+    null,
+  );
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -156,17 +160,37 @@ export function InstallerApp({ backend }: InstallerAppProps) {
     <main className="installer-shell">
       {showConfirmModal && selectedDrive && selectedImage ? (
         <div className="modal-overlay">
-          <div className="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+          >
             <h2 id="modal-title">Confirm destructive write</h2>
             <p>
-              <strong>All data on {selectedDrive.name} ({selectedDrive.devicePath}) will be permanently erased.</strong>
+              <strong>
+                All data on {selectedDrive.name} ({selectedDrive.devicePath})
+                will be permanently erased.
+              </strong>
             </p>
             <p>
-              The image <strong>{selectedImage.label} {selectedImage.version}</strong> ({formatBytes(selectedImage.sizeBytes)}) will be written to this drive.
+              The image{" "}
+              <strong>
+                {selectedImage.label} {selectedImage.version}
+              </strong>{" "}
+              ({formatBytes(selectedImage.sizeBytes)}) will be written to this
+              drive.
             </p>
-            <p className="muted">This cannot be undone. Make sure you have selected the correct drive.</p>
+            <p className="muted">
+              This cannot be undone. Make sure you have selected the correct
+              drive.
+            </p>
             <div className="modal-actions">
-              <button type="button" className="btn-danger" onClick={() => void confirmRealWrite()}>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => void confirmRealWrite()}
+              >
                 Yes, erase and write
               </button>
               <button type="button" onClick={cancelRealWrite}>
@@ -337,17 +361,27 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                 return (
                   <li
                     key={step.id}
-                    className={isDone ? "complete" : isRunning ? "running" : step.status}
+                    className={
+                      isDone ? "complete" : isRunning ? "running" : step.status
+                    }
                   >
                     <strong>{step.label}</strong>
                     <span>{step.detail}</span>
                     {isRunning ? (
-                      <div className="progress-bar" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100}>
+                      <div
+                        className="progress-bar"
+                        role="progressbar"
+                        aria-valuenow={Math.round(progress * 100)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
                         <div
                           className="progress-fill"
                           style={{ width: `${Math.round(progress * 100)}%` }}
                         />
-                        <span className="progress-label">{Math.round(progress * 100)}%</span>
+                        <span className="progress-label">
+                          {Math.round(progress * 100)}%
+                        </span>
                       </div>
                     ) : null}
                   </li>

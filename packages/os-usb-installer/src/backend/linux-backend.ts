@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
-import * as https from "node:https";
 import * as http from "node:http";
+import * as https from "node:https";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_ELIZAOS_IMAGES } from "./dry-run-backend";
@@ -79,8 +79,11 @@ async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
             for (const release of releases) {
               for (const asset of release.assets) {
                 if (!asset.name.endsWith(".iso")) continue;
-                const arch: ElizaOsImage["architecture"] =
-                  asset.name.includes("arm64") ? "arm64" : "x86_64";
+                const arch: ElizaOsImage["architecture"] = asset.name.includes(
+                  "arm64",
+                )
+                  ? "arm64"
+                  : "x86_64";
                 const channel: ElizaOsImage["channel"] = release.prerelease
                   ? "nightly"
                   : "stable";
@@ -123,37 +126,51 @@ async function downloadFile(
   return new Promise((resolve, reject) => {
     function doRequest(requestUrl: string): void {
       const protocol = requestUrl.startsWith("https://") ? https : http;
-      protocol.get(requestUrl, { headers: { "User-Agent": "elizaos-usb-installer/1.0" } }, (res) => {
-        if (
-          res.statusCode === 301 ||
-          res.statusCode === 302 ||
-          res.statusCode === 307 ||
-          res.statusCode === 308
-        ) {
-          const location = res.headers.location;
-          if (!location) {
-            reject(new Error(`Redirect with no location header from ${requestUrl}`));
-            return;
-          }
-          doRequest(location);
-          return;
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode ?? "?"} downloading ${requestUrl}`));
-          return;
-        }
-        const total = Number(res.headers["content-length"] ?? 0);
-        let received = 0;
-        const writeStream = require("node:fs").createWriteStream(destPath);
-        res.on("data", (chunk: Buffer) => {
-          received += chunk.length;
-          onProgress(received, total);
-        });
-        res.pipe(writeStream);
-        writeStream.on("finish", resolve);
-        writeStream.on("error", reject);
-        res.on("error", reject);
-      }).on("error", reject);
+      protocol
+        .get(
+          requestUrl,
+          { headers: { "User-Agent": "elizaos-usb-installer/1.0" } },
+          (res) => {
+            if (
+              res.statusCode === 301 ||
+              res.statusCode === 302 ||
+              res.statusCode === 307 ||
+              res.statusCode === 308
+            ) {
+              const location = res.headers.location;
+              if (!location) {
+                reject(
+                  new Error(
+                    `Redirect with no location header from ${requestUrl}`,
+                  ),
+                );
+                return;
+              }
+              doRequest(location);
+              return;
+            }
+            if (res.statusCode !== 200) {
+              reject(
+                new Error(
+                  `HTTP ${res.statusCode ?? "?"} downloading ${requestUrl}`,
+                ),
+              );
+              return;
+            }
+            const total = Number(res.headers["content-length"] ?? 0);
+            let received = 0;
+            const writeStream = require("node:fs").createWriteStream(destPath);
+            res.on("data", (chunk: Buffer) => {
+              received += chunk.length;
+              onProgress(received, total);
+            });
+            res.pipe(writeStream);
+            writeStream.on("finish", resolve);
+            writeStream.on("error", reject);
+            res.on("error", reject);
+          },
+        )
+        .on("error", reject);
     }
     doRequest(url);
   });
@@ -328,7 +345,10 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         drive.devicePath,
       ]);
       const lsblkData = JSON.parse(stdout) as {
-        blockdevices: Array<{ name: string; children?: Array<{ name: string; mountpoint?: string }> }>;
+        blockdevices: Array<{
+          name: string;
+          children?: Array<{ name: string; mountpoint?: string }>;
+        }>;
       };
       const device = lsblkData.blockdevices[0];
       if (device?.children) {

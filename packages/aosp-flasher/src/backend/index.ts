@@ -1,3 +1,4 @@
+export { AdbFlasherBackend, MOCK_BUILDS } from "./adb-backend";
 export type {
   AospBuild,
   AospFlasherBackend,
@@ -8,4 +9,3 @@ export type {
   FlashStepId,
   FlashStepStatus,
 } from "./types";
-export { AdbFlasherBackend, MOCK_BUILDS } from "./adb-backend";
