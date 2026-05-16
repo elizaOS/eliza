@@ -14,6 +14,7 @@ import {
   agentSandboxesRepository,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import {
   type AgentBackupStateData,
@@ -28,6 +29,7 @@ import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import {
+  reusesExistingElizaCharacter,
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
@@ -599,6 +601,76 @@ export class ElizaSandboxService {
         ? ({ success: true, deletedSandbox } as const)
         : ({ success: false, error: "Agent not found" } as const);
     });
+  }
+
+  /**
+   * Async-path counterpart to `deleteAgent`, invoked by the provisioning
+   * worker daemon when it picks up an `agent_delete` job. Returns a
+   * structured outcome the daemon stores in the job result so observers can
+   * tell apart "container survived stop" (ops needed) from "row delete
+   * failed" (probably retried by next attempt).
+   *
+   * Wraps `deleteAgent` so the SSH/Neon/DB sequence stays in one place,
+   * but maps the return shape to what the queue handler expects and
+   * tracks whether the container actually went down before the row was
+   * removed. The row delete happens iff `stop` either succeeded or the
+   * container was already gone — both are observable in the `deleteAgent`
+   * success path (`isIgnorableSandboxStopError` swallows "no such
+   * container" specifically).
+   */
+  async executeDeletion(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    containerStopped: boolean;
+    error?: string;
+  }> {
+    const result = await this.deleteAgent(agentId, orgId);
+    if (!result.success) {
+      // If the row is already gone, treat as success. This covers the retry
+      // case where a prior attempt deleted the row but failed before updating
+      // the job status to "completed", causing the runner to retry.
+      if (result.error === "Agent not found") {
+        return { success: true, containerStopped: true };
+      }
+      return {
+        success: false,
+        containerStopped: false,
+        error: result.error,
+      };
+    }
+
+    // Character cleanup used to live in the HTTP DELETE handler. Now that
+    // delete is async via the queue, the daemon owns this step so orphan
+    // characters do not pile up when the deletion completes outside of an
+    // HTTP request context. Best-effort: a failure here leaves an orphan
+    // row but does not un-delete the (already gone) sandbox.
+    const characterId = result.deletedSandbox.character_id;
+    if (characterId && !reusesExistingElizaCharacter(result.deletedSandbox.agent_config)) {
+      try {
+        await userCharactersRepository.delete(characterId);
+        logger.info("[agent-sandbox] Cleaned up linked character after delete", {
+          agentId,
+          characterId,
+        });
+      } catch (charErr) {
+        logger.warn("[agent-sandbox] Linked character cleanup failed after delete", {
+          agentId,
+          characterId,
+          error: charErr instanceof Error ? charErr.message : String(charErr),
+        });
+      }
+    }
+
+    return {
+      success: true,
+      // If we got past the stop step at all, by the time we returned success
+      // the container was either stopped or was never there. Either way it
+      // is no longer running, which is what the daemon needs to know to
+      // mark the job complete.
+      containerStopped: true,
+    };
   }
 
   // Provision

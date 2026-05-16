@@ -54,7 +54,21 @@ export type AgentSandboxStatus =
   | "running"
   | "stopped"
   | "disconnected"
-  | "error";
+  | "error"
+  /**
+   * Row is queued for async deletion. An `agent_delete` job has been
+   * enqueued in `jobs`; the provisioning worker will SSH the core, stop
+   * the container, and then DELETE the row. UI must treat this as
+   * "soon-to-be-gone" — no mutations should be accepted while in this
+   * state.
+   */
+  | "deletion_pending"
+  /**
+   * Async deletion exhausted retries (e.g. SSH unreachable for the core
+   * hosting this sandbox). The container may still be running on the
+   * core; ops must investigate. Row stays so the failure is visible.
+   */
+  | "deletion_failed";
 
 export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_pending" | "exempt";
 
