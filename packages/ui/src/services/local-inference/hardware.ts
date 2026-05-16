@@ -370,13 +370,13 @@ function diskReason(
 ): string | null {
   const freeGb = Math.max(
     0,
-    Math.round((probe.freeBytes / (1024 ** 3)) * 10) / 10,
+    Math.round((probe.freeBytes / 1024 ** 3) * 10) / 10,
   );
   if (disk === "critical-disk") {
     return `Only ${freeGb} GB free disk space — not enough to download this model`;
   }
   if (disk === "low-disk") {
-    const modelGb = Math.round((modelSizeBytes / (1024 ** 3)) * 10) / 10;
+    const modelGb = Math.round((modelSizeBytes / 1024 ** 3) * 10) / 10;
     return `Low free disk space (${freeGb} GB) for a ${modelGb} GB model plus safety margin`;
   }
   return null;
@@ -396,7 +396,7 @@ export async function assessOnboardingHardware(
   opts: OnboardingHardwareOptions = {},
 ): Promise<OnboardingHardwareAdvice> {
   const probe = await probeHardware();
-  const modelSizeGb = model.sizeBytes / (1024 ** 3);
+  const modelSizeGb = model.sizeBytes / 1024 ** 3;
   const memory = assessFit(probe, modelSizeGb, model.ramGbRequired);
   const workspacePath = opts.workspacePath ?? os.homedir();
   const diskProbe = await probeDiskSpace(workspacePath);

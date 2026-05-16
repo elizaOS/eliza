@@ -473,9 +473,9 @@ describe("RuntimeGate onboarding choices", () => {
       label: "On-device agent",
       apiBase: "http://127.0.0.1:31337",
     });
-    expect(autoDownloadRecommendedLocalModelInBackgroundMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:31337",
-    );
+    expect(
+      autoDownloadRecommendedLocalModelInBackgroundMock,
+    ).toHaveBeenCalledWith("http://127.0.0.1:31337");
     expect(completeOnboardingMock).toHaveBeenCalled();
   });
 

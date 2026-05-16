@@ -1,7 +1,10 @@
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import type { StreamVisualSettings } from "@elizaos/plugin-streaming";
-import { isMobilePlatform, normalizeDeploymentTargetConfig } from "@elizaos/shared";
+import {
+  isMobilePlatform,
+  normalizeDeploymentTargetConfig,
+} from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.ts";
 
 type StreamingSettingsModule = {
@@ -167,8 +170,7 @@ function getRuntimeModeFallbackSnapshot(): {
     deploymentRuntime,
     isRemoteController: deploymentRuntime === "remote",
     remoteApiBaseConfigured: Boolean(
-      deploymentRuntime === "remote" &&
-        deploymentTarget?.remoteApiBase?.trim(),
+      deploymentRuntime === "remote" && deploymentTarget?.remoteApiBase?.trim(),
     ),
   };
 }
@@ -239,7 +241,11 @@ export async function handleMobileOptionalRoutes(
         | { mode?: unknown }
         | undefined;
       if (body?.mode !== undefined && body.mode !== "off") {
-        sendJsonError(res, "Mobile fallback only supports approval mode off", 400);
+        sendJsonError(
+          res,
+          "Mobile fallback only supports approval mode off",
+          400,
+        );
         return true;
       }
     } catch (err) {

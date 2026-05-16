@@ -14,9 +14,10 @@ test("homepage exposes downloads and Eliza Cloud web app entrypoints", async ({
   await expect(
     page.getByRole("link", { name: /^Open in Cloud$/ }),
   ).toHaveAttribute("href", /^https:\/\/www\.elizacloud\.ai\/?$/);
-  await expect(
-    page.getByRole("link", { name: /^Download$/ }),
-  ).toHaveAttribute("href", "#download");
+  await expect(page.getByRole("link", { name: /^Download$/ })).toHaveAttribute(
+    "href",
+    "#download",
+  );
 
   await expect(
     page.getByRole("heading", { name: /^Eliza Cloud$/ }),
@@ -38,8 +39,9 @@ test("homepage exposes downloads and Eliza Cloud web app entrypoints", async ({
     "href",
     /releases\/latest\/download|github\.com/,
   );
-  await expect(page.getByRole("link", { name: /AppImage|Tarball/i }).first())
-    .toHaveAttribute("href", /releases\/latest\/download|github\.com/);
+  await expect(
+    page.getByRole("link", { name: /AppImage|Tarball/i }).first(),
+  ).toHaveAttribute("href", /releases\/latest\/download|github\.com/);
 
   if (releaseData.release.downloads.length > 0) {
     for (const download of releaseData.release.downloads) {

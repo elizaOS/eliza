@@ -39,10 +39,7 @@ describe("MockAmbientAudioService", () => {
 
   it("silentTrace honors window", () => {
     const svc = new MockAmbientAudioService({
-      syntheticSilentTrace: [
-        seg("s1", 0, 100),
-        seg("s2", 10_000, 10_100),
-      ],
+      syntheticSilentTrace: [seg("s1", 0, 100), seg("s2", 10_000, 10_100)],
     });
     const out = svc.silentTrace(5);
     expect(out.map((s) => s.id)).toEqual(["s2"]);

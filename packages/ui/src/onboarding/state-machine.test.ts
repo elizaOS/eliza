@@ -186,7 +186,9 @@ describe("onboarding/state-machine", () => {
       memory: "tight" as const,
       disk: "fits" as const,
       recommended: "local-with-warning" as const,
-      reasons: ["Memory is close to the model requirement; performance may suffer"],
+      reasons: [
+        "Memory is close to the model requirement; performance may suffer",
+      ],
     };
     const state = reduce(initialState, {
       type: "LOCAL_HARDWARE_ADVICE",

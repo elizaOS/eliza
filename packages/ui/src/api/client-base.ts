@@ -85,7 +85,9 @@ function isLocalAgentIpcBase(value: string | null | undefined): boolean {
   if (!normalized) return false;
   try {
     const parsed = new URL(normalized);
-    return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+    return (
+      parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc"
+    );
   } catch {
     return false;
   }

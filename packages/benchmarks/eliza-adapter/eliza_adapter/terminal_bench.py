@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -45,12 +46,56 @@ _BASH_FENCE_RE = re.compile(r"```(?:bash|sh)?\s*\n(.*?)```", re.DOTALL | re.IGNO
 def _extract_command(text: str) -> Optional[str]:
     if not text:
         return None
-    m = _COMMAND_RE.search(text)
-    if m:
-        return m.group(1).strip()
+    command_matches = [
+        _clean_xml_command_body(match.group(1))
+        for match in _COMMAND_RE.finditer(text)
+        if _clean_xml_command_body(match.group(1))
+    ]
+    if command_matches:
+        return command_matches[-1]
     m = _BASH_FENCE_RE.search(text)
     if m:
         return m.group(1).strip()
+    command = _extract_json_command(text)
+    if command:
+        return command
+    return None
+
+
+def _clean_xml_command_body(body: str) -> str:
+    cleaned = body.strip()
+    if "<command" in cleaned.lower():
+        cleaned = re.split(r"<command[^>]*>", cleaned, flags=re.IGNORECASE)[-1].strip()
+    return cleaned
+
+
+def _extract_json_command(text: str) -> Optional[str]:
+    for match in re.finditer(r"\{[\s\S]*?\}", text):
+        raw = match.group(0)
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        command = _command_from_json_obj(obj)
+        if command:
+            return command
+    return None
+
+
+def _command_from_json_obj(obj: object) -> Optional[str]:
+    if not isinstance(obj, dict):
+        return None
+    raw = obj.get("command")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    raw = obj.get("cmd")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    if isinstance(raw, list) and raw:
+        if all(isinstance(part, str) for part in raw):
+            if len(raw) >= 3 and raw[0] in {"bash", "sh"} and raw[1] == "-lc":
+                return raw[2].strip()
+            return " ".join(raw).strip()
     return None
 
 

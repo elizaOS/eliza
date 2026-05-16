@@ -15,9 +15,10 @@
  * installed, `available()` returns false and callers surface a clear error
  * instead of crashing the process.
  */
+
+import path from "node:path";
 import { ResponseSkeletonStreamExtractor } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
-import path from "node:path";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
 import { ELIZA_1_PLACEHOLDER_IDS, findCatalogModel } from "./catalog";
 import { conversationRegistry } from "./conversation-registry";

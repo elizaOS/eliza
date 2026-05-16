@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompanionBar } from "../../companion/desktop-bar/CompanionBar";
 
@@ -71,9 +77,7 @@ describe("CompanionBar — desktop tray behaviour", () => {
 
   it("spacebar inside a text input does NOT fire push-to-talk", () => {
     const onPushToTalkDown = vi.fn();
-    render(
-      <CompanionBar mode="expanded" hooks={{ onPushToTalkDown }} />,
-    );
+    render(<CompanionBar mode="expanded" hooks={{ onPushToTalkDown }} />);
     const input = screen.getByLabelText(/message eliza/i);
 
     act(() => {

@@ -49,7 +49,6 @@ vi.mock("@upstash/redis", () => {
   }
 
   class FakeRedis {
-    constructor(_config: { url: string; token: string }) {}
     pipeline(): FakePipeline {
       const willThrow = mocks.nextPipelineFails;
       mocks.nextPipelineFails = false;

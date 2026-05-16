@@ -478,12 +478,16 @@ parts:
       # `bun run build` also builds examples and release helpers, which are not
       # part of the snap payload and depend on workspaces intentionally removed
       # above.
+      # @elizaos/cloud-routing was migrated to packages/cloud-shared/src/routing
+      # in a62685d708 — the orphan packages/cloud-routing/ workspace stub
+      # (package.json only, no src, dist gitignored) can't build cleanly in
+      # fresh CI checkouts, and nothing currently imports it. Omit it from
+      # the snap closure until the source-of-truth migration is finished.
       bunx turbo run build \
         --filter=@elizaos/core \
         --filter=@elizaos/shared \
         --filter=@elizaos/ui \
         --filter=@elizaos/vault \
-        --filter=@elizaos/cloud-routing \
         --filter=@elizaos/skills \
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \

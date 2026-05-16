@@ -2,8 +2,6 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
-import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import {
   AgentRuntime,
   type Content,
@@ -15,6 +13,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
+import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
   LifeOpsBenchHandler,
@@ -143,7 +143,7 @@ function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
 
-function isTauBenchmarkName(benchmark: string): boolean {
+function _isTauBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "tau_bench" || normalized === "tau-bench";
 }
@@ -220,7 +220,7 @@ function normalizeBfclNativeMessages(
   ];
 }
 
-function normalizeTauNativeMessages(
+function _normalizeTauNativeMessages(
   text: string,
   context: Record<string, unknown>,
 ): Array<Record<string, unknown>> {

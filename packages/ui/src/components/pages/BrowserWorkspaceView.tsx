@@ -10,14 +10,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import {
-  type JSX as ReactJSX,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type BrowserBridgeCompanionPackageStatus,
   type BrowserBridgeCompanionStatus,

@@ -2676,16 +2676,10 @@ export function applyGpuProfile(args: string[], profile: GpuProfile): string[] {
 	if (profile.kvSpillToCpu && !args.includes("--no-kv-offload")) {
 		args.push("--no-kv-offload");
 	}
-	if (
-		!args.includes("--spec-draft-n-min") &&
-		!args.includes("--draft-min")
-	) {
+	if (!args.includes("--spec-draft-n-min") && !args.includes("--draft-min")) {
 		args.push("--spec-draft-n-min", String(profile.dflashDraftMin));
 	}
-	if (
-		!args.includes("--spec-draft-n-max") &&
-		!args.includes("--draft-max")
-	) {
+	if (!args.includes("--spec-draft-n-max") && !args.includes("--draft-max")) {
 		args.push("--spec-draft-n-max", String(profile.dflashDraftMax));
 	}
 	return args;

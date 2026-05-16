@@ -744,8 +744,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     benchmark === "loca_bench" || benchmark === "loca-bench";
   const isWebShopBenchmark =
     benchmark === "webshop" || benchmark === "web-shop";
-  const isTauBenchmark =
-    benchmark === "tau_bench" || benchmark === "tau-bench";
+  const isTauBenchmark = benchmark === "tau_bench" || benchmark === "tau-bench";
   const isConversationalBenchmark = new Set([
     "woobench",
     "woo-bench",
@@ -1205,7 +1204,8 @@ const LIFEOPS_BENCHMARK_TOOL_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "details",
-    description: "Nested LifeOps action details. Prefer top-level fields when the tool manifest asks for them.",
+    description:
+      "Nested LifeOps action details. Prefer top-level fields when the tool manifest asks for them.",
     required: false,
     schema: {
       type: "object",

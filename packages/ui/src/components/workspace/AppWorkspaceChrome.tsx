@@ -7,7 +7,6 @@ import {
 import type React from "react";
 import {
   createContext,
-  type JSX,
   type ReactNode,
   useCallback,
   useContext,

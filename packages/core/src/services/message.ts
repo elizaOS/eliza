@@ -2418,7 +2418,9 @@ function directReplyPromptForMessage(args: {
 		contextText ? "" : "",
 		`user_message: ${latestText}`,
 		`routing_thought: ${args.messageHandler.thought}`,
-	].filter((line) => line.length > 0).join("\n");
+	]
+		.filter((line) => line.length > 0)
+		.join("\n");
 }
 
 async function generateDirectReplyModel(args: {
@@ -2427,7 +2429,11 @@ async function generateDirectReplyModel(args: {
 	state: State;
 	messageHandler: MessageHandlerResult;
 	signal?: AbortSignal;
-}): Promise<{ text: string; raw: string | GenerateTextResult; prompt: string }> {
+}): Promise<{
+	text: string;
+	raw: string | GenerateTextResult;
+	prompt: string;
+}> {
 	const prompt = directReplyPromptForMessage(args);
 	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
@@ -3114,7 +3120,9 @@ function shouldUseDirectReplyFastPath(args: {
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
-	if (inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0) {
+	if (
+		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
+	) {
 		return false;
 	}
 	if (/https?:\/\//iu.test(text)) return false;
@@ -3724,7 +3732,8 @@ async function executeV5PlannedToolCall(
 		(candidate) => candidate.name === toolCall.name,
 	);
 
-	const hasDispatcherActionParameter = plannerToolCallHasActionParameter(toolCall);
+	const hasDispatcherActionParameter =
+		plannerToolCallHasActionParameter(toolCall);
 	if (action && actionHasSubActions(action) && !hasDispatcherActionParameter) {
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,

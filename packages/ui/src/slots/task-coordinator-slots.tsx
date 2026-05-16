@@ -13,7 +13,7 @@
  * the task-coordinator slot-registration module).
  */
 
-import type { ComponentType, JSX } from "react";
+import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud.js";
 
 export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<

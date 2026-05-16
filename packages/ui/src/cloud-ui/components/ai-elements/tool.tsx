@@ -14,7 +14,7 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
-import type { ComponentProps, JSX, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 import { cn } from "../../lib/utils";
 import { Badge } from "../badge";

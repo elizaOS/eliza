@@ -26,7 +26,6 @@
     "types": ["bun"],
 
     "paths": {
-      "@elizaos/core": ["../../../core/src/index.node.ts"],
       "@elizaos/agent": ["../../../agent/src/index.ts"],
       "@elizaos/agent/*": ["../../../agent/src/*"]
     }
