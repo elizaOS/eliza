@@ -19,6 +19,17 @@ const PORT = Number(process.env.PORT ?? 3000);
 const POD_NAME =
   process.env.POD_NAME ?? process.env.HOSTNAME ?? "webhook-local";
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
+
+const ELIZA_CLOUD_URL = requireEnv("ELIZA_CLOUD_URL");
+const GATEWAY_BOOTSTRAP_SECRET = requireEnv("GATEWAY_BOOTSTRAP_SECRET");
+
 const adapters: Record<Platform, PlatformAdapter> = {
   telegram: telegramAdapter,
   blooio: blooioAdapter,
@@ -76,7 +87,7 @@ app.get("/webhook/:project/whatsapp/:agentId", async (c) => {
 
   const config = await resolveWebhookConfig(
     redis,
-    process.env.ELIZA_CLOUD_URL!,
+    ELIZA_CLOUD_URL,
     getAuthHeader(),
     "whatsapp",
     c.req.param("project"),
@@ -108,7 +119,7 @@ app.post("/webhook/:project/:platform", async (c) => {
     adapter,
     {
       redis,
-      cloudBaseUrl: process.env.ELIZA_CLOUD_URL!,
+      cloudBaseUrl: ELIZA_CLOUD_URL,
       getAuthHeader,
     },
     c.req.param("project"),
@@ -128,7 +139,7 @@ app.post("/webhook/:project/:platform/:agentId", async (c) => {
     adapter,
     {
       redis,
-      cloudBaseUrl: process.env.ELIZA_CLOUD_URL!,
+      cloudBaseUrl: ELIZA_CLOUD_URL,
       getAuthHeader,
     },
     c.req.param("project"),
@@ -141,8 +152,8 @@ async function start() {
 
   await initProjectConfig();
   await initAuth({
-    cloudUrl: process.env.ELIZA_CLOUD_URL!,
-    bootstrapSecret: process.env.GATEWAY_BOOTSTRAP_SECRET!,
+    cloudUrl: ELIZA_CLOUD_URL,
+    bootstrapSecret: GATEWAY_BOOTSTRAP_SECRET,
     podName: POD_NAME,
   });
 

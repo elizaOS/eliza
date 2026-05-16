@@ -31,18 +31,6 @@ async function handleGET(
   );
 }
 
-async function GET(
-  request: Request,
-  context: { params: Promise<{ chain: string; address: string }> },
-) {
-  const response = await handleGET(request, context);
-  response.headers.set(
-    "X-RateLimit-Limit",
-    String(PUBLIC_MARKET_PRICE_RATE_LIMIT.maxRequests),
-  );
-  return response;
-}
-
 const ROUTE_PARAM_SPEC = [
   { name: "chain", splat: false },
   { name: "address", splat: false },
@@ -57,5 +45,3 @@ honoRouter.get("/", rateLimit(PUBLIC_MARKET_PRICE_RATE_LIMIT), async (c) => {
   }
 });
 export default honoRouter;
-
-export { GET };

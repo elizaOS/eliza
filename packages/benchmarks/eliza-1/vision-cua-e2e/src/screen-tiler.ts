@@ -41,8 +41,8 @@ export interface TileScreenshotOptions {
   readonly overlapFraction: number;
 }
 
-export const DEFAULT_MAX_EDGE = 1280;
-export const DEFAULT_OVERLAP_FRACTION = 0.12;
+const DEFAULT_MAX_EDGE = 1280;
+const DEFAULT_OVERLAP_FRACTION = 0.12;
 
 export async function tileScreenshot(
   input: TileScreenshotInput,

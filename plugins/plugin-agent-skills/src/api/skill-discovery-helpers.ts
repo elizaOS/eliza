@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+import { getSkillsDir } from "@elizaos/skills";
 import type { ElizaConfig, SkillEntry } from "./skills-routes";
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
@@ -325,24 +326,12 @@ export async function discoverSkills(
   // ── Fallback: filesystem scanning ───────────────────────────────────────
   const skillsDirs = new Set<string>();
 
-  // Bundled skills from the @elizaos/skills package
-  try {
-    const skillsPackage = "@elizaos/skills";
-    const skillsPkg = (await import(/* @vite-ignore */ skillsPackage)) as {
-      getSkillsDir: () => string;
-    };
-    const bundledDir = skillsPkg.getSkillsDir();
-    if (bundledDir && fs.existsSync(bundledDir)) {
-      skillsDirs.add(bundledDir);
-    }
-  } catch {
-    logger.debug(
-      "[eliza-api] @elizaos/skills not available for skill discovery",
-    );
+  const bundledDir = getSkillsDir();
+  if (bundledDir && fs.existsSync(bundledDir)) {
+    skillsDirs.add(bundledDir);
   }
 
-  // Runtime-provided skill directories (works even when @elizaos/skills is not installed
-  // as a direct dependency and AgentSkillsService catalog sync is degraded).
+  // Runtime-provided skill directories.
   if (runtime && typeof runtime.getSetting === "function") {
     for (const dir of parseSkillDirsSetting(
       runtime.getSetting("BUNDLED_SKILLS_DIRS"),

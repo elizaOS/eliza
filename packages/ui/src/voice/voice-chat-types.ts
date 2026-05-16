@@ -238,7 +238,10 @@ export interface VoiceChatState {
   /** End voice capture and optionally submit the transcript */
   stopListening: (options?: { submit?: boolean }) => Promise<void>;
   /** Speak text aloud with mouth animation */
-  speak: (text: string, options?: { append?: boolean }) => void;
+  speak: (
+    text: string,
+    options?: { append?: boolean; telemetry?: VoiceAssistantSpeechTelemetry },
+  ) => void;
   /** Progressively speak an assistant message while it streams */
   queueAssistantSpeech: (
     messageId: string,

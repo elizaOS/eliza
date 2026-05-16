@@ -13,3 +13,5 @@ verify/bench_results/
 verify/hardware-results/
 verify/reports/
 verify/android-vulkan-smoke/
+verify/asr_bench_real_recorded_*.json
+verify/vision-smoke-*-rpath-*.json

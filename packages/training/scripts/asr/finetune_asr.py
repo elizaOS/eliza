@@ -61,7 +61,7 @@ Usage
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \\
         --hf-push-if beats-baseline \\
-        --hf-repo elizaos/eliza-1-asr-same-v01 \\
+        --hf-repo elizalabs/eliza-1-asr-same-v01 \\
         --operator-sign-off
 
 Outputs
@@ -920,7 +920,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-same-v01).",
+        help="HuggingFace repo id to push to (e.g. elizalabs/eliza-1-asr-same-v01).",
     )
     parser.add_argument(
         "--hf-push-if",

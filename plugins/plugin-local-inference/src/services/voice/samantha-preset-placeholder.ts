@@ -145,4 +145,4 @@ export const SAMANTHA_REFERENCE_TRANSCRIPT =
  * the same surface. Pinned for deterministic regeneration.
  */
 export const SAMANTHA_INSTRUCT =
-	"voice=samantha;style=warm-conversational;tempo=medium;pitch=mid-soprano";
+	"female, american accent, young adult, moderate pitch";

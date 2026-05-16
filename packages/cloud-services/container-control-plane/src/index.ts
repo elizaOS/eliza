@@ -1,12 +1,12 @@
 import { type Context, Hono } from "hono";
-import { userCharactersRepository } from "@/db/repositories/characters";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
-import type { DockerNode } from "@/db/schemas/docker-nodes";
-import { envelope, errorEnvelope, toCompatOpResult } from "@/lib/api/compat-envelope";
-import { containersEnv } from "@/lib/config/containers-env";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import { WarmPoolManager } from "@/lib/services/containers/agent-warm-pool";
-import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-warm-pool-creator";
+import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
+import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import type { DockerNode } from "@elizaos/cloud-shared/db/schemas/docker-nodes";
+import { envelope, errorEnvelope, toCompatOpResult } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { WarmPoolManager } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool";
+import { getHetznerPoolContainerCreator } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator";
 import {
   type ContainerBootstrapFile,
   type ContainerBootstrapSource,
@@ -14,13 +14,13 @@ import {
   type CreateContainerInput,
   getHetznerContainersClient,
   HetznerClientError,
-} from "@/lib/services/containers/hetzner-client";
-import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
-import { dockerNodeManager } from "@/lib/services/docker-node-manager";
-import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
-import { type BridgeRequest, elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
-import { logger } from "@/lib/utils/logger";
+} from "@elizaos/cloud-shared/lib/services/containers/hetzner-client";
+import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
+import { dockerNodeManager } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
+import { reusesExistingElizaCharacter } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
+import { type BridgeRequest, elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {

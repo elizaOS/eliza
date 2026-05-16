@@ -2,13 +2,14 @@
 /**
  * VAD quality + latency harness.
  *
- * This drives the real app-core VAD implementation through Bun so the TS
- * runtime, Silero model loader, and VadDetector state machine are measured
- * together. It records hard metrics for publish gates when a VAD model is
- * present, and records an explicit unavailable/needs-data report otherwise.
+ * This drives the real plugin-local-inference VAD implementation through Bun
+ * so the TS runtime, Silero model loader, and VadDetector state machine are
+ * measured together. It records hard metrics for publish gates when a VAD
+ * model is present, and records an explicit unavailable/needs-data report
+ * otherwise.
  *
  * Usage:
- *   node packages/inference/verify/vad_quality_harness.mjs [--bundle PATH] [--dylib PATH] [--report PATH] [--json]
+ *   node plugins/plugin-local-inference/native/verify/vad_quality_harness.mjs [--bundle PATH] [--dylib PATH] [--report PATH] [--json]
  */
 
 import { spawnSync } from "node:child_process";
@@ -36,13 +37,18 @@ function timestamp() {
 }
 
 function parseArgs(argv) {
-  const args = { bundle: null, dylib: null, report: DEFAULT_REPORT, json: false };
+  const args = {
+    bundle: null,
+    dylib: process.env.ELIZA_SILERO_VAD_LIB || null,
+    report: DEFAULT_REPORT,
+    json: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--bundle") {
       i += 1;
       args.bundle = argv[i] ?? null;
-    } else if (a === "--dylib") {
+    } else if (a === "--dylib" || a === "--lib") {
       i += 1;
       args.dylib = argv[i] ?? null;
     } else if (a === "--report") {
@@ -57,6 +63,9 @@ function parseArgs(argv) {
       process.exit(0);
     }
   }
+  if (args.bundle) args.bundle = path.resolve(args.bundle);
+  if (args.dylib) args.dylib = path.resolve(args.dylib);
+  args.report = path.resolve(args.report);
   return args;
 }
 
@@ -150,7 +159,7 @@ function makeRunnerSource(bundleRoot, dylibPath) {
       "vad.ts",
     ),
   ).href;
-  const ffiUrl = pathToFileURL(
+  const vadGgmlUrl = pathToFileURL(
     path.join(
       REPO_ROOT,
       "plugins",
@@ -158,7 +167,7 @@ function makeRunnerSource(bundleRoot, dylibPath) {
       "src",
       "services",
       "voice",
-      "ffi-bindings.ts",
+      "vad-ggml.ts",
     ),
   ).href;
   const fixtureUrl = pathToFileURL(
@@ -176,16 +185,16 @@ function makeRunnerSource(bundleRoot, dylibPath) {
 
   return `
 import { performance } from "node:perf_hooks";
-import { createSileroVadDetector, resolveSileroVadPath, GgmlSileroVad } from ${JSON.stringify(vadUrl)};
-import { loadElizaInferenceFfi } from ${JSON.stringify(ffiUrl)};
+import { createSileroVadDetector, resolveSileroVadCppGgufPath } from ${JSON.stringify(vadUrl)};
+import { SileroVadGgml } from ${JSON.stringify(vadGgmlUrl)};
 import { makeSpeechWithSilenceFixture } from ${JSON.stringify(fixtureUrl)};
 
 const SR = 16000;
 const WINDOW = 512;
 const bundleRoot = ${JSON.stringify(bundleRoot)};
 const dylibPath = ${JSON.stringify(dylibPath)};
-const modelPath = process.env.ELIZA_VAD_MODEL_PATH || undefined;
-const resolved = resolveSileroVadPath({ modelPath, bundleRoot });
+const modelPath = process.env.ELIZA_SILERO_VAD_GGUF || undefined;
+const resolved = resolveSileroVadCppGgufPath({ modelPath, bundleRoot });
 if (!resolved) {
   console.log(JSON.stringify({ available: false, reason: "no Silero VAD model found" }));
   process.exit(0);
@@ -194,34 +203,10 @@ if (!dylibPath) {
   console.log(JSON.stringify({
     available: false,
     modelPath: resolved,
-    reason: "native VAD requires --dylib pointing at a fused libelizainference build",
+    reason: "native VAD requires --dylib pointing at libsilero_vad",
   }));
   process.exit(0);
 }
-
-const ffi = loadElizaInferenceFfi(dylibPath);
-let ctx = null;
-if (!GgmlSileroVad.isSupported(ffi)) {
-  console.log(JSON.stringify({
-    available: false,
-    modelPath: resolved,
-    dylibPath,
-    reason: "fused libelizainference does not support native GGML VAD (vadSupported=false)",
-  }));
-  ffi.close?.();
-  process.exit(0);
-}
-if (!bundleRoot) {
-  console.log(JSON.stringify({
-    available: false,
-    modelPath: resolved,
-    dylibPath,
-    reason: "native VAD requires --bundle so the fused context can resolve VAD assets",
-  }));
-  ffi.close?.();
-  process.exit(0);
-}
-ctx = ffi.create(bundleRoot);
 
 function median(xs) {
   if (!xs.length) return null;
@@ -245,7 +230,7 @@ function makeNoiseFrame(seed) {
   return pcm;
 }
 
-const vad = await GgmlSileroVad.load({ ffi, ctx, sampleRate: SR });
+const vad = await SileroVadGgml.load({ ggufPath: resolved, libraryPath: dylibPath, sampleRate: SR });
 const silence = new Float32Array(WINDOW);
 const computeMs = [];
 vad.reset();
@@ -258,11 +243,10 @@ for (let i = 0; i < 80; i += 1) {
 const fixtureRows = [];
 for (const speechSec of [0.35, 0.6, 1.2, 2.4]) {
   const det = await createSileroVadDetector({
-    modelPath: resolved,
+    sileroCppGgufPath: resolved,
+    sileroCppLibraryPath: dylibPath,
     bundleRoot,
-    ffi,
-    ctx,
-    prefer: "silero-ggml",
+    prefer: "silero-cpp",
     config: {
       onsetThreshold: 0.5,
       pauseHangoverMs: 220,
@@ -306,11 +290,10 @@ for (const speechSec of [0.35, 0.6, 1.2, 2.4]) {
 }
 
 const silenceDet = await createSileroVadDetector({
-  modelPath: resolved,
+  sileroCppGgufPath: resolved,
+  sileroCppLibraryPath: dylibPath,
   bundleRoot,
-  ffi,
-  ctx,
-  prefer: "silero-ggml",
+  prefer: "silero-cpp",
   config: {
     onsetThreshold: 0.5,
     pauseHangoverMs: 220,
@@ -350,8 +333,6 @@ console.log(JSON.stringify({
   },
 }));
 vad.close();
-ffi.destroy(ctx);
-ffi.close?.();
 `;
 }
 
@@ -401,6 +382,8 @@ function main() {
   if (!payload.available) {
     unavailable(args, payload.reason ?? "VAD model unavailable", {
       runner: path.relative(process.cwd(), runner),
+      modelPath: payload.modelPath ?? null,
+      dylibPath: payload.dylibPath ?? args.dylib ?? null,
     });
     return;
   }
@@ -411,6 +394,7 @@ function main() {
     ...bundleInfo(args.bundle),
     available: true,
     modelPath: payload.modelPath,
+    dylibPath: payload.dylibPath ?? args.dylib ?? null,
     fixtures: payload.fixtures,
     summary: payload.summary,
   });

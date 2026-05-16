@@ -51,12 +51,12 @@ or "pick the TTS" — that is a runtime concern, not a user concern.
 
 Backbones (do not change without explicit human approval):
 
-- **Text/vision:** Qwen3.5 family only for the current release line:
-  0.6B, 1.7B, and 4B. Larger historical 9B/27B hardware tiers are hidden
-  placeholders until final Eliza-1 weights and evidence exist. We
-  do not name these as "Qwen" in any user-facing string. Internally,
-  manifests record the upstream lineage and license; the UI shows
-  "Eliza-1 <tier>".
+- **Text/vision:** Qwen3.5 family for the current 0.8B/2B/4B/9B
+  release tiers, with Qwen3.6 for the active 27B family. Every active
+  Eliza-1 tier is vision-capable when its tier-matched `vision/mmproj-<tier>.gguf`
+  is present and validated. We do not name these as "Qwen" in any
+  user-facing string. Internally, manifests record the upstream lineage and
+  license; the UI shows "Eliza-1 <tier>".
 - **Voice (TTS):** Tier-aware. The active backend per tier is declared
   in `ELIZA_1_VOICE_BACKENDS`
   (`packages/shared/src/local-inference/catalog.ts`) and is read by the
@@ -64,8 +64,8 @@ Backbones (do not change without explicit human approval):
 
   | Tier                  | Backend(s)              | Default  |
   | --------------------- | ----------------------- | -------- |
-  | `0_8b` / `2b` / `4b`  | Kokoro only             | Kokoro   |
-  | `9b`                  | Kokoro **and** OmniVoice| Kokoro   |
+  | `0_8b` / `2b` / `4b`  | OmniVoice **and** Kokoro| OmniVoice|
+  | `9b`                  | OmniVoice **and** Kokoro| OmniVoice|
   | `27b` / `27b-256k` | OmniVoice only  | OmniVoice|
 
   - **Kokoro** = Kokoro-82M ONNX (`onnx-community/Kokoro-82M-v1.0-ONNX`,
@@ -146,15 +146,17 @@ Backbones (do not change without explicit human approval):
   bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
 - **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
   only. Hidden in cloud mode per three-mode hide-not-disable.
-- **Embedding:** `0_6b` and `1_7b` reuse the active text backbone with
+- **Embedding:** `0_8b` and `2b` reuse the active text backbone with
   `--pooling last` — no duplicate weights in the mobile/default tiers.
   Larger tiers may ship a dedicated `embedding/` artifact (1024-dim
   Matryoshka, 32k ctx) when the manifest records a real source artifact and
   evidence. Do not fabricate embedding source repos, and do not silently
   fall back on larger tiers when the manifest says a dedicated region is
   required.
-- **Drafter:** DFlash. Always present in the bundle. Always wired in.
-  Speculative decoding is mandatory, not optional (see §3).
+- **Drafter:** DFlash ships on 2B and larger tiers. The 0.8B tier is the
+  low-memory non-DFlash path until a real drafter companion and evidence exist.
+  Where DFlash is present, speculative decoding is mandatory, not optional
+  (see §3).
 
 Three runtime modes — every code path must work in all three:
 
@@ -187,17 +189,17 @@ modes where it does not belong.
 
 Eliza-1 ships as **one logical bundle per tier**. The user sees one
 download. Internally a bundle is a manifest plus several files, all
-hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
+hosted under the `elizalabs` HuggingFace org under `eliza-1`.
 
 ### Tier matrix (binding)
 
 | Tier            | Tagline                       | Text  | Voice           | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | --------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_8b`       | low-RAM phones, CPU fallback   | 0.8B  | Kokoro          | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `2b`         | modern phones                  | 2B    | Kokoro          | no     | 32k      | yes    | TurboQuant Q4 + QJL K-cache     |
-| `4b`         | flagship phones, small desktops| 4B    | Kokoro          | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
-| `9b`         | desktop / midrange GPU          | 9B    | Kokoro + OmniVoice | mmproj | 64k   | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar TCQ |
+| `0_8b`       | low-RAM phones, CPU fallback   | 0.8B  | OmniVoice + Kokoro | mmproj | 128k  | no     | TurboQuant Q4 + QJL + Polar     |
+| `2b`         | modern phones                  | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
+| `9b`         | desktop / midrange GPU          | 9B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 128k     | yes    | TurboQuant Q4 + QJL + Polar TCQ |
 | `27b-256k`  | long-context flagship            | 27B   | OmniVoice       | mmproj | 256k     | yes    | + turbo3_tcq                    |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
@@ -207,26 +209,26 @@ the device's RAM budget at activation time.
 
 ### Bundle layout (binding)
 
-All tiers ship in a single HuggingFace mono-repo `elizaos/eliza-1`, with
+All tiers ship in a single HuggingFace mono-repo `elizalabs/eliza-1`, with
 each tier living under `bundles/<tier>/`. The manifest is the source of
 truth; never derive contents from filenames.
 
 ```
-elizaos/eliza-1/
+elizalabs/eliza-1/
   bundles/<tier>/
     eliza-1.manifest.json          # canonical schema, see §6
     text/
       eliza-1-<tier>-<ctx>.gguf    # text (+ inline vision where supported)
     tts/
-      # Kokoro shipped on 0_8b/2b/4b/9b:
+      # Kokoro fallback shipped on 0_8b/2b/4b/9b:
       kokoro/model_q4.onnx
       kokoro/tokenizer.json
       kokoro/voices/<voice>.bin
-      # OmniVoice shipped on 9b/27b/27b-256k. Default install
-      # stages a single quant (VOICE_QUANT_BY_TIER); --include-voice-ladder
-      # at stage time emits the full ladder (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K,
-      # Q8_0) so the downloader can pick the level matching the host's
-      # RAM/SoC class at install time. See `voiceQuantLadderForTier()` in
+      # OmniVoice shipped on every active tier. Default install stages a
+      # single quant (VOICE_QUANT_BY_TIER); --include-voice-ladder at stage
+      # time emits the tier ladder so the downloader can pick the level
+      # matching the host's RAM/SoC class at install time. See
+      # `voiceQuantLadderForTier()` in
       # packages/shared/src/local-inference/catalog.ts and
       # docs/inference/voice-quant-matrix.md.
       omnivoice-base-<quant>.gguf
@@ -235,9 +237,9 @@ elizaos/eliza-1/
       eliza-1-asr.gguf             # Qwen3-ASR text head, every tier
       eliza-1-asr-mmproj.gguf      # mmproj audio projector sidecar, every tier
     vad/
-      silero-vad-v5.1.2.ggml.bin   # every tier
+      silero-vad-v5.gguf           # native silero-vad-cpp, every tier
     vision/
-      mmproj-<tier>.gguf           # 4b/9b/27b/27b-256k
+      mmproj-<tier>.gguf           # 0_8b/2b/4b/9b/27b/27b-256k
     dflash/
       drafter-<tier>.gguf
       target-meta.json             # acceptance windows, kernel caps
@@ -272,8 +274,9 @@ The **publish ladder** per tier (every level that gets staged when
 `--include-voice-ladder` is passed) is the value returned by
 `voiceQuantLadderForTier()`:
 
-- Mobile tiers (`0_8b/2b/4b`) ship Kokoro only — empty OmniVoice ladder.
-- All OmniVoice-shipping tiers (`9b/27b/27b-256k`) publish
+- Mobile tiers (`0_8b/2b/4b`) publish the narrow OmniVoice ladder
+  `Q3_K_M, Q4_K_M, Q5_K_M`.
+- Larger OmniVoice-shipping tiers (`9b/27b/27b-256k`) publish
   `Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0`.
 
 The downloader picks the level matching the host's memory class at
@@ -506,12 +509,12 @@ catalogs drift from it — generate them.
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
     "text": { "base": "qwen3.5-4b", "license": "..." },
-    "voice": { "base": "omnivoice-1_7b", "license": "..." },
+    "voice": { "base": "omnivoice-base-Q4_K_M", "license": "..." },
     "drafter": { "base": "dflash-4b-drafter", "license": "..." }
   },
   "files": {
-    "text":    [{ "path": "text/eliza-1-4b-64k.gguf", "ctx": 65536, "sha256": "..." }],
-    "voice":   [{ "path": "tts/omnivoice-1_7b.gguf",          "sha256": "..." }],
+    "text":    [{ "path": "text/eliza-1-4b-128k.gguf", "ctx": 131072, "sha256": "..." }],
+    "voice":   [{ "path": "tts/omnivoice-base-Q4_K_M.gguf",   "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
     "vision":  [{ "path": "vision/mmproj-4b.gguf",    "sha256": "..." }],
     "dflash":  [{ "path": "dflash/drafter-4b.gguf",   "sha256": "..." }],
@@ -544,7 +547,7 @@ catalogs drift from it — generate them.
   required kernel is verified on every supported backend for that tier
   AND every eval has `passed: true`. The recommendation engine MUST
   refuse to surface a bundle with `defaultEligible: false` as a default.
-- HF-search results from outside `elizaos/eliza-1-*` MUST never set
+- HF-search results from outside `elizalabs/eliza-1` MUST never set
   `defaultEligible: true`. They are user-installed customs only.
 - The runtime MUST validate the manifest against `kernels.required`
   before activating the bundle. A capability mismatch is a hard error.
@@ -684,7 +687,7 @@ deprecated and will be removed from the runtime path once all native ports land.
 | Model | Path | Status |
 |---|---|---|
 | OmniVoice TTS | fork FFI `libelizainference` (`tools/omnivoice/`) | DONE (W3-3) |
-| Silero VAD | fork FFI `eliza_inference_vad_*` | DONE (I1/K7 verified) — vad.ts imports zero onnxruntime-node |
+| Silero VAD | standalone `silero-vad-cpp` FFI `libsilero_vad` + `vad/silero-vad-v5.gguf` | DONE (I1/K7 verified) — vad.ts imports zero onnxruntime-node |
 | hey-eliza wakeword | fork FFI `eliza_inference_wakeword_*` | DONE (I1/K7 verified) — wake-word.ts imports zero onnxruntime-node |
 | ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | DONE (T-asr) |
 | DFlash speculative decoding | fork `llama-server` `--spec-type dflash` | DONE |

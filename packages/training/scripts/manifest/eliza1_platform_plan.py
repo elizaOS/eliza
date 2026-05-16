@@ -49,7 +49,6 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
-    "27b-256k": "Q4_K_M",
 }
 
 TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
@@ -66,7 +65,6 @@ CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("128k",),
     "9b": ("128k",),
     "27b": ("128k",),
-    "27b-256k": ("256k",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -74,7 +72,7 @@ ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     for tier in ELIZA_1_TIERS
 }
 
-VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
+VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.gguf",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
@@ -154,11 +152,6 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-vulkan",
         "linux-x64-cpu",
         "windows-x64-cpu",
-    ),
-    "27b-256k": (
-        "linux-x64-cuda",
-        "linux-x64-rocm",
-        "windows-x64-cuda",
     ),
 }
 
@@ -476,18 +469,17 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, DFlash, vision mmproj, and OmniVoice TTS payloads are "
-        "GGUF artifacts when a tier ships them. 0.8B/2B/4B use Kokoro only; "
-        "9B carries Kokoro plus OmniVoice; Kokoro is ONNX by design. "
+        "GGUF artifacts when a tier ships them. 0.8B/2B/4B/9B carry Kokoro "
+        "plus OmniVoice; Kokoro is ONNX by design. "
         "27B-class tiers ship OmniVoice GGUF only.",
-        "- VAD is a native GGML artifact at "
-        "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
+        "- VAD is a native silero-vad-cpp GGUF artifact at "
+        "`vad/silero-vad-v5.gguf`. "
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
         "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
-        "and Qwen3.6 27B (`27b`, "
-        "`27b-256k`). ASR and embedding are real Qwen3 upstream "
+        "and Qwen3.6 27B (`27b`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
         "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "

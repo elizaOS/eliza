@@ -11,7 +11,7 @@ Pipeline:
   2. Merge with augmented real same corpus (≥80% distilled, ≤20% real)
   3. Train full-FT for 8000 steps (APOLLO, RTX 5080)
   4. Eval vs baseline
-  5. If beatsBaseline → push to HF elizaos/eliza-1 under voice/kokoro/voices/
+  5. If beatsBaseline → push to HF elizalabs/eliza-1 under voice/kokoro/voices/
 
 Usage::
 
@@ -47,7 +47,7 @@ KOKORO_SCRIPTS = Path(__file__).resolve().parent
 DISTILLED_RATIO_TARGET = 0.80   # ≥80% OmniVoice-same-distilled
 REAL_RATIO_MAX = 0.20           # ≤20% augmented real
 
-HF_REPO = "elizaos/eliza-1"
+HF_REPO = "elizalabs/eliza-1"
 
 
 def run(cmd: list[str], *, env: dict | None = None, check: bool = True) -> subprocess.CompletedProcess:
@@ -346,7 +346,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 shutil.copy2(eval_out, staging_dir / "eval.json")
             # Write model card
             (staging_dir / "README.md").write_text(
-                "# elizaos/eliza-1 voice/kokoro/voices/af_same\n\n"
+                "# elizalabs/eliza-1 voice/kokoro/voices/af_same\n\n"
                 "Kokoro-82M fine-tuned on the `same` voice (AI Voices / Her-derived).\n"
                 "G3 training: OmniVoice same teacher distillation (60 min) + augmented real (≤20%).\n"
                 f"Generated: {datetime.now(timezone.utc).isoformat()}\n"

@@ -1881,6 +1881,64 @@ def test_action_calling_score_accepts_native_metrics() -> None:
     assert score.metrics["generation_source"] == "captured_action"
 
 
+def test_public_score_extractors_reject_zero_sample_artifacts() -> None:
+    entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
+
+    zero_sample_payloads = {
+        "abliteration-robustness": {
+            "metrics": {"score": 0.0, "refusal_rate": 0.0, "n": 0, "n_refused": 0}
+        },
+        "gaia_orchestrated": {
+            "metrics": {
+                "overall_accuracy": 0.0,
+                "total_questions": 0,
+                "correct_answers": 0,
+            }
+        },
+        "humaneval": {"metrics": {"score": 0.0, "pass@1": 0.0, "passed": 0, "n": 0}},
+        "lifeops_bench": {
+            "pass_at_1": 0.0,
+            "pass_at_k": 0.0,
+            "seeds": 1,
+            "scenarios": [],
+        },
+        "mmlu": {"metrics": {"score": 0.0, "accuracy": 0.0, "correct": 0, "n": 0}},
+    }
+
+    for benchmark_id, payload in zero_sample_payloads.items():
+        with pytest.raises(ValueError):
+            entries[benchmark_id].extract_score(payload)
+
+
+def test_public_score_extractors_allow_true_zero_scores_with_samples() -> None:
+    entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
+
+    scored_payloads = {
+        "abliteration-robustness": {
+            "metrics": {"score": 0.0, "refusal_rate": 1.0, "n": 2, "n_refused": 2}
+        },
+        "gaia_orchestrated": {
+            "metrics": {
+                "overall_accuracy": 0.0,
+                "total_questions": 2,
+                "correct_answers": 0,
+            }
+        },
+        "humaneval": {"metrics": {"score": 0.0, "pass@1": 0.0, "passed": 0, "n": 2}},
+        "lifeops_bench": {
+            "pass_at_1": 0.0,
+            "pass_at_k": 0.0,
+            "seeds": 1,
+            "scenarios": [{"scenario_id": "smoke_static_calendar_01"}],
+        },
+        "mmlu": {"metrics": {"score": 0.0, "accuracy": 0.0, "correct": 0, "n": 2}},
+    }
+
+    for benchmark_id, payload in scored_payloads.items():
+        score = entries[benchmark_id].extract_score(payload)
+        assert score.score == 0.0
+
+
 def test_action_calling_registry_command_forwards_tool_choice(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "action-calling"

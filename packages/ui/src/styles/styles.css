@@ -1,5 +1,7 @@
+@import "@fontsource-variable/open-sans";
 @import "tailwindcss";
 @import "./base.css";
+@import "./tailwind-theme.css";
 @import "./electrobun-mac-window-drag.css";
 /* React Flow base styles — required for @xyflow/react canvas to render correctly */
 @import "@xyflow/react/dist/style.css";
@@ -28,115 +30,6 @@ electrobun-wgpu {
 @source "..";
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
-
-/*
- * Map the existing theme CSS custom properties to Tailwind theme tokens.
- * Using @theme inline so Tailwind inlines var() references rather than
- * generating duplicate CSS variables. This lets the [data-theme="..."]
- * selectors in base.css drive all visual changes at runtime.
- */
-@theme inline {
-  /* Colors — surfaces */
-  --color-bg: var(--bg);
-  --color-bg-accent: var(--bg-accent);
-  --color-bg-elevated: var(--bg-elevated);
-  --color-bg-hover: var(--bg-hover);
-  --color-bg-muted: var(--bg-muted);
-  --color-card: var(--card);
-  --color-card-fg: var(--card-foreground);
-  --color-surface: var(--surface);
-
-  /* Colors — text */
-  --color-txt: var(--text);
-  --color-txt-strong: var(--text-strong);
-  --color-txt-chat: var(--chat-text);
-  --color-muted: var(--muted);
-  --color-muted-strong: var(--muted-strong);
-
-  /* Colors — border */
-  --color-border: var(--border);
-  --color-border-strong: var(--border-strong);
-  --color-border-hover: var(--border-hover);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-
-  /* Colors — accent */
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-muted: var(--accent-muted);
-  --color-accent-subtle: var(--accent-subtle);
-  --color-accent-fg: var(--accent-foreground);
-  --color-primary: var(--primary);
-  --color-primary-fg: var(--primary-foreground);
-
-  /* Colors — status */
-  --color-ok: var(--ok);
-  --color-ok-muted: var(--ok-muted);
-  --color-ok-subtle: var(--ok-subtle);
-  --color-warn: var(--warn);
-  --color-warn-muted: var(--warn-muted);
-  --color-warn-subtle: var(--warn-subtle);
-  --color-danger: var(--danger);
-  --color-destructive: var(--destructive);
-  --color-destructive-fg: var(--destructive-foreground);
-  --color-destructive-subtle: var(--destructive-subtle);
-  --color-muted-strong: var(--muted-strong);
-  --color-status-success: var(--status-success);
-  --color-status-success-bg: var(--status-success-bg);
-  --color-status-danger: var(--status-danger);
-  --color-status-danger-bg: var(--status-danger-bg);
-  --color-status-warning: var(--status-warning);
-  --color-status-warning-bg: var(--status-warning-bg);
-  --color-status-info: var(--status-info);
-  --color-status-info-bg: var(--status-info-bg);
-
-  /* Colors — header */
-  --color-header-bg: var(--header-bar-bg);
-  --color-header-fg: var(--header-bar-fg);
-
-  /* Colors — chain icons */
-  --color-chain-eth: #627eea;
-  --color-chain-base: #0052ff;
-  --color-chain-arb: #28a0f0;
-  --color-chain-op: #ff0420;
-  --color-chain-pol: #8247e5;
-  --color-chain-sol: #9945ff;
-  --color-chain-bsc: #f0b90b;
-
-  /* Fonts */
-  --font-body: var(--font-body);
-  --font-mono: var(--mono);
-  --font-display: var(--font-display);
-  --font-chat: var(--font-chat);
-
-  /* Shadows */
-  --shadow-xs: var(--shadow-xs);
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-lg: var(--shadow-lg);
-  --shadow-xl: var(--shadow-xl);
-  --shadow-2xl: var(--shadow-2xl);
-  --shadow-inset: var(--shadow-inset);
-
-  /* Radius */
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --radius-2xl: var(--radius-2xl);
-  --radius-3xl: var(--radius-3xl);
-
-  /* Compact text sizes — replaces text-[9px] / text-[10px] / text-[11px] arbitraries */
-  --font-size-3xs: var(--text-3xs);
-  --font-size-3xs--line-height: 0.75rem;
-  --font-size-2xs: var(--text-2xs);
-  --font-size-2xs--line-height: 1rem;
-  --font-size-xs-tight: var(--text-xs-tight);
-  --font-size-xs-tight--line-height: 1rem;
-
-  /* Touch target */
-  --spacing-touch: var(--min-touch-target);
-}
 
 /* ── Global resets ──────────────────────────────────────────────────── */
 

@@ -209,7 +209,7 @@ export function measureBubbleHeight(text: string): number {
   const canvas = document.createElement("canvas");
   const ctx = get2dContext(canvas);
   const msgFontSize = s(16);
-  ctx.font = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
+  ctx.font = `400 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
   const padX = s(14);
   const padY = s(10);
@@ -239,7 +239,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
   const statusY = topInset - s(36);
   const now = new Date();
   ctx.fillStyle = "#000";
-  ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
+  ctx.font = `700 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   const statusBarTime = now.toLocaleTimeString([], {
@@ -348,7 +348,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
 function drawBackButton(ctx: CanvasRenderingContext2D, label: string) {
   const topInset = s(59);
   const navY = topInset;
-  const backBtnFont = `700 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
+  const backBtnFont = `700 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
   ctx.font = backBtnFont;
   const backLabelW = ctx.measureText(label).width;
   const backH = s(40);
@@ -417,7 +417,7 @@ function renderLoginCard(
   // Title text just below the back button
   const textY = s(59) + s(15) + s(20) + s(60);
   ctx.fillStyle = "#000";
-  ctx.font = `600 ${s(22)}px Inter, -apple-system, system-ui, sans-serif`;
+  ctx.font = `600 ${s(22)}px "Open Sans", Arial, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText(title, W / 2, textY);
@@ -425,7 +425,7 @@ function renderLoginCard(
   // Subtitle below title
   if (subtitle) {
     ctx.fillStyle = "#8e8e93";
-    ctx.font = `400 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
+    ctx.font = `400 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.fillText(subtitle, W / 2, textY + s(42));
   }
 
@@ -600,7 +600,7 @@ export function renderChatToCanvas(
     const isTGDate = currentRenderPlatform === "telegram";
     const dateText = isTGDate ? "Today" : `Today ${statusTime}`;
     const dateFontSize = s(13);
-    ctx.font = `400 ${dateFontSize}px Inter, -apple-system, system-ui, sans-serif`;
+    ctx.font = `400 ${dateFontSize}px "Open Sans", Arial, system-ui, sans-serif`;
     const dateY =
       sepY + s(20) - scrollOffset + dateSlide - (isTGDate ? s(65) : 0);
     ctx.textAlign = "center";
@@ -642,7 +642,7 @@ export function renderChatToCanvas(
   const isTGMsg = currentRenderPlatform === "telegram";
   let msgY = sepY + s(32) - scrollOffset - (isTGMsg ? s(60) : 0);
   const msgFontSize = s(16);
-  const msgFont = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
+  const msgFont = `400 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
   const padX = s(14);
   const padY = s(10);
@@ -729,7 +729,7 @@ export function renderChatToCanvas(
     ctx.fillStyle = isUser ? (isTG ? "#000000" : "#ffffff") : "#000000";
     ctx.font =
       isUser && !isTG
-        ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
+        ? `200 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`
         : msgFont;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(
@@ -884,7 +884,7 @@ export function renderChatToCanvas(
       ctx.fillStyle = isUser ? (isTG2 ? "#000000" : "#ffffff") : "#000000";
       ctx.font =
         isUser && !isTG2
-          ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
+          ? `200 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`
           : msgFont;
       for (let i = 0; i < lines.length; i++) {
         ctx.fillText(
@@ -939,7 +939,7 @@ export function renderChatToCanvas(
     ctx.lineJoin = "miter";
 
     ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
+    ctx.font = `400 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillText("Log In", s(36), chevCy + s(2));
@@ -947,14 +947,14 @@ export function renderChatToCanvas(
 
     // Centered name "Eliza"
     ctx.fillStyle = "#000";
-    ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
+    ctx.font = `700 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("Eliza", W / 2, chevCy - s(12));
 
     // "online" subtitle centered (blue)
     ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(13)}px Inter, -apple-system, system-ui, sans-serif`;
+    ctx.font = `400 ${s(13)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("online", W / 2, chevCy + s(8));
@@ -993,7 +993,7 @@ export function renderChatToCanvas(
   } else {
     // ── iMessage-style header ──
     // Back button — pill with chevron + "Log In"
-    const backBtnFont = `700 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
+    const backBtnFont = `700 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.font = backBtnFont;
     const backLabel = "Log In";
     const backLabelW = ctx.measureText(backLabel).width;
@@ -1076,7 +1076,7 @@ export function renderChatToCanvas(
     const avatarR = s(26);
 
     // Name with background pill and shadow
-    ctx.font = `800 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
+    ctx.font = `800 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
     const nameText = "Eliza";
     const nameTextW = ctx.measureText(nameText).width;
     const namePadX = s(16);
@@ -1187,7 +1187,7 @@ export function renderChatToCanvas(
   ctx.stroke();
 
   ctx.fillStyle = "#c7c7cc";
-  ctx.font = `400 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
+  ctx.font = `400 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
   ctx.textAlign = "left";
   ctx.fillText("iMessage", inputX + s(16), inputFieldY + s(23));
 

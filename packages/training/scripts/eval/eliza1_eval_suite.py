@@ -70,7 +70,7 @@ SCHEMA_VERSION = 1
 #
 # Source of truth: the eliza-1 training dataset's held-out test split at
 # ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` (also published as
-# ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
+# ``elizalabs/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
 # extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
 # uses that concatenation as the perplexity corpus.
 #
@@ -935,18 +935,9 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "bundle VAD artifact is a local stand-in / missing",
         }
-    try:
-        import onnxruntime  # noqa: F401
-    except ImportError:
-        return {
-            **base,
-            "status": "not-run",
-            "median": None,
-            "passed": None,
-            "reason": "onnxruntime not installed; cannot run the Silero VAD model",
-        }
-    # A real VAD eval streams a labelled-segment audio set through the ONNX
-    # Silero model and measures speech-onset latency + segment precision/recall.
+    # A real VAD eval streams a labelled-segment audio set through the native
+    # silero-vad-cpp GGUF model and measures speech-onset latency plus segment
+    # precision/recall.
     # The labelled audio set is not staged on this host. Coordinated with the
     # E3/voice-vad sibling's VAD impl (packages/app-core/scripts/voice-vad-smoke.ts):
     # when that lands a labelled corpus, point --vad-corpus at it.
@@ -958,7 +949,7 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
         "recall": None,
         "passed": None,
         "reason": (
-            "VAD ONNX model present and onnxruntime available, but no labelled "
+            "VAD GGUF model present, but no labelled "
             "speech-segment corpus on this host (see voice-vad-smoke.ts — wire "
             "--vad-corpus when the sibling ships the labelled set)"
         ),

@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const externalDeps = ["@ai-sdk/anthropic", "@elizaos/core", "ai", "jsonrepair"];
+const externalDeps = ["@ai-sdk/anthropic", "@elizaos/core", "ai"];
 
 async function build() {
   const totalStart = Date.now();
@@ -81,18 +81,7 @@ async function build() {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");
-  // Use `.nothrow()` so a tsc resolution failure (most often the CI-only
-  // case where @elizaos/core's dist/index.node.d.ts isn't visible to the
-  // plugin's tsconfig paths) doesn't fail the JS bundle build. The
-  // declaration emit still runs and writes whatever .d.ts files it can —
-  // downstream consumers fall back to `any` only for the unresolved
-  // references, not the whole package.
-  const tscResult = await $`tsc --project tsconfig.build.json`.nothrow();
-  if (tscResult.exitCode !== 0) {
-    console.warn(
-      `⚠ tsc exited with code ${tscResult.exitCode}; declarations may be incomplete (continuing build)`
-    );
-  }
+  await $`tsc --project tsconfig.build.json`;
 
   // Ensure directories exist
   const nodeDir = join(distDir, "node");

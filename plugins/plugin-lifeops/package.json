@@ -26,9 +26,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "scripts": {
@@ -42,9 +42,10 @@
     "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
     "bench:work-threads": "cd ../.. && bun plugins/plugin-lifeops/scripts/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
-    "build": "bun run build:js && bun run build:types",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "bun run clean && tsup --config tsup.config.ts",
+    "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
@@ -81,7 +82,8 @@
     "json5": "^2.2.3",
     "ts-morph": "28.0.0",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "vite": "^8.0.0"
   },
   "peerDependencies": {
     "react": "*"

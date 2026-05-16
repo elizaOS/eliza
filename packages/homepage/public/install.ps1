@@ -61,15 +61,66 @@ if ($arch -ne "x64") {
     exit 1
 }
 
-# ----- Resolve release URL ----------------------------------------------------
+# ----- Resolve release asset --------------------------------------------------
 
-$AssetName = "Eliza-win-x64.exe"
-$ReleaseBase = if ($Version -eq "latest") {
-    "https://github.com/elizaOS/eliza/releases/latest/download"
-} else {
-    "https://github.com/elizaOS/eliza/releases/download/$Version"
+function Get-ElizaRelease {
+    $releaseApi = if ($Version -eq "latest") {
+        "https://api.github.com/repos/elizaOS/eliza/releases/latest"
+    } else {
+        "https://api.github.com/repos/elizaOS/eliza/releases/tags/$Version"
+    }
+
+    try {
+        return Invoke-RestMethod -Uri $releaseApi -Headers @{
+            "Accept" = "application/vnd.github+json"
+            "User-Agent" = "eliza-installer"
+        } -UseBasicParsing
+    } catch {
+        Write-Err "Could not read Eliza release metadata from GitHub."
+        Write-Err "Open https://github.com/elizaOS/eliza/releases and download the Windows installer manually."
+        Write-Err $_.Exception.Message
+        exit 1
+    }
 }
-$Url = "$ReleaseBase/$AssetName"
+
+function Find-ElizaWindowsAsset {
+    param([object]$Release)
+
+    $patterns = @(
+        "ElizaOSApp-Setup.*\.exe$",
+        "Setup.*\.exe$",
+        "win.*\.exe$",
+        "windows.*\.exe$",
+        "win.*\.msix$",
+        "windows.*\.msix$"
+    )
+
+    foreach ($pattern in $patterns) {
+        foreach ($asset in @($Release.assets)) {
+            if ($asset.name -match $pattern -and $asset.browser_download_url) {
+                return $asset
+            }
+        }
+    }
+
+    return $null
+}
+
+$Release = Get-ElizaRelease
+$Asset = Find-ElizaWindowsAsset -Release $Release
+
+if (-not $Asset) {
+    Write-Err "No Windows x64 installer is attached to the selected Eliza release yet."
+    Write-Err "Open https://github.com/elizaOS/eliza/releases for the currently published assets."
+    exit 1
+}
+
+$AssetName = $Asset.name
+$Url = $Asset.browser_download_url
+
+if ($AssetName -match "\.msix$") {
+    Write-Warn "The selected release exposes an MSIX package instead of an EXE installer."
+}
 
 # ----- Download ---------------------------------------------------------------
 
@@ -92,24 +143,28 @@ Write-Ok "Downloaded to $ExePath"
 
 Write-Step "Running installer"
 
-$ProcArgs = @{
-    FilePath = $ExePath
-    Wait     = $true
-    PassThru = $true
-}
+if ($AssetName -match "\.msix$") {
+    Add-AppxPackage -Path $ExePath
+} else {
+    $ProcArgs = @{
+        FilePath = $ExePath
+        Wait     = $true
+        PassThru = $true
+    }
 
-if ($Silent) {
-    # /S is the standard NSIS silent-install flag; harmless if the installer
-    # uses a different toolkit but is the convention for Electrobun/electron.
-    $ProcArgs["ArgumentList"] = "/S"
-}
+    if ($Silent) {
+        # /S is the standard NSIS silent-install flag; harmless if the installer
+        # uses a different toolkit but is the convention for Electrobun/electron.
+        $ProcArgs["ArgumentList"] = "/S"
+    }
 
-$proc = Start-Process @ProcArgs
+    $proc = Start-Process @ProcArgs
 
-if ($proc.ExitCode -ne 0) {
-    Write-Err "Installer exited with code $($proc.ExitCode)"
-    Remove-Item $Tmp -Recurse -ErrorAction SilentlyContinue
-    exit $proc.ExitCode
+    if ($proc.ExitCode -ne 0) {
+        Write-Err "Installer exited with code $($proc.ExitCode)"
+        Remove-Item $Tmp -Recurse -ErrorAction SilentlyContinue
+        exit $proc.ExitCode
+    }
 }
 
 Remove-Item $Tmp -Recurse -ErrorAction SilentlyContinue

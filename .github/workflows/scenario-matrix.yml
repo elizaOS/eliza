@@ -43,7 +43,7 @@ concurrency:
 env:
   CI: "true"
   BUN_VERSION: "1.3.13"
-  NODE_VERSION: "22.20.0"
+  NODE_VERSION: "24.15.0"
   NODE_OPTIONS: "--max-old-space-size=8192"
   ELIZA_LIVE_TEST: "1"
   ELIZA_LIVE_SCENARIO_TEST: "1"
@@ -94,7 +94,7 @@ jobs:
             globs: "eliza/test/scenarios/cross-cutting/**/*.scenario.ts eliza/test/scenarios/gateway/**/*.scenario.ts eliza/test/scenarios/remote/**/*.scenario.ts eliza/test/scenarios/lifeops.*/**/*.scenario.ts eliza/test/scenarios/goals/**/*.scenario.ts eliza/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
             runs-on: ubuntu-24.04
-            root: plugins/app-lifeops/test/scenarios
+            root: plugins/plugin-lifeops/test/scenarios
             globs: "**/*.scenario.ts"
     runs-on: ${{ matrix.shard.runs-on }}
     timeout-minutes: 60
@@ -221,7 +221,7 @@ jobs:
         # in a follow-up and update the command below.
         run: |
           set -f
-          bun run eliza-scenarios run \
+          bun packages/scenario-runner/bin/eliza-scenarios run \
             ${{ matrix.shard.root || 'eliza/test/scenarios' }} \
             --report-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
             --runId "${{ github.run_id }}-${{ matrix.shard.name }}" \

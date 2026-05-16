@@ -2421,8 +2421,8 @@ ElizaClient.prototype.streamSecurityAudit = async function (
 
   const token = this.apiToken;
   const qs = buildSecurityAuditParams(filter, true).toString();
-  const res = await fetch(
-    `${this.baseUrl}/api/security/audit${qs ? `?${qs}` : ""}`,
+  const res = await this.rawRequest(
+    `/api/security/audit${qs ? `?${qs}` : ""}`,
     {
       method: "GET",
       headers: {
@@ -2431,6 +2431,7 @@ ElizaClient.prototype.streamSecurityAudit = async function (
       },
       signal,
     },
+    { allowNonOk: true },
   );
 
   if (!res.ok) {

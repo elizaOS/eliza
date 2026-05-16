@@ -1,8 +1,3 @@
-// Sibling primitive mirrored at cloud/packages/ui/src/components/empty-state.tsx. The two
-// workspaces (Eliza-UI and Cloud-UI) cannot depend on each other today, so
-// these files are intentional siblings. When changing behavior, props, or
-// visual semantics, update both — or extract to a shared package per
-// docs/frontend-cleanup-2026-05-12/15-cloud-eliza-primitive-dedup.md.
 import * as React from "react";
 import { cn } from "../../lib/utils";
 
@@ -15,30 +10,56 @@ export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   description?: string;
   /** Primary action button or element */
   action?: React.ReactNode;
+  /** Visual density and framing. */
+  variant?: "default" | "dashed" | "minimal";
 }
 
 export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
   (
-    { icon, title, description, action, className, children, ...props },
+    {
+      icon,
+      title,
+      description,
+      action,
+      variant = "default",
+      className,
+      children,
+      ...props
+    },
     ref,
   ) => (
     <div
       ref={ref}
+      data-slot="empty-state"
+      data-variant={variant}
       className={cn(
-        "flex flex-1 flex-col items-center justify-center p-6 text-center",
+        "flex flex-col items-center justify-center text-center",
+        variant === "default" && "min-h-[400px] flex-1 gap-4 p-6",
+        variant === "dashed" &&
+          "gap-4 border border-dashed border-border bg-bg/40 p-8 transition-colors hover:border-accent/40",
+        variant === "minimal" && "gap-3 px-4 py-8",
         className,
       )}
       {...props}
     >
       {icon && (
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10 text-accent">
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
           {icon}
         </div>
       )}
-      <h3 className="mb-2 text-lg font-semibold">{title}</h3>
-      {description && (
-        <p className="mb-6 max-w-sm text-sm text-muted">{description}</p>
-      )}
+      <div className="space-y-2">
+        <h3
+          className={cn(
+            "font-semibold text-txt-strong",
+            variant === "dashed" ? "text-sm" : "text-lg",
+          )}
+        >
+          {title}
+        </h3>
+        {description && (
+          <p className="max-w-sm text-sm text-muted">{description}</p>
+        )}
+      </div>
       {action}
       {children}
     </div>

@@ -1,31 +1,30 @@
 /**
- * Empty state component for my agents page when no agents exist.
+ * Empty state component for My Agent when no cloud agent exists.
  */
 "use client";
 
 import { BrandButton, EmptyState } from "@elizaos/ui";
-import { MessageSquare } from "lucide-react";
+import { Server } from "lucide-react";
 
 interface EmptyStateProps {
   onCreateNew: () => void;
 }
 
-export function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
+function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
   return (
     <EmptyState
-      title="No agents yet"
+      title="No cloud agent yet"
       action={
         <BrandButton
           onClick={onCreateNew}
-          className="bg-[#FF5800] text-white hover:bg-[#FF5800]/90 active:bg-[#FF5800]/80"
+          className="bg-primary text-primary-fg hover:bg-accent-hover active:bg-accent-hover"
         >
-          <MessageSquare className="h-4 w-4" />
-          Open Chat
+          <Server className="h-4 w-4" />
+          Open runtime admin
         </BrandButton>
       }
     />
   );
 }
 
-// Keep backward-compatible export
 export { AgentsEmptyState as EmptyState };

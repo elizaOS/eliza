@@ -1,79 +1,84 @@
 /**
- * Footer component for the landing page.
- * Displays navigation links, social links, and branding with decorative background image.
+ * Footer component for the cloud landing page.
+ * Keeps cross-product CTAs available without turning them into primary nav.
  */
 
 "use client";
 
-import { ElizaCloudLockup, Image } from "@elizaos/ui";
+import { ElizaCloudLockup } from "@elizaos/ui";
 import { Link } from "react-router-dom";
 
 export default function Footer() {
   return (
     <footer
-      className="relative border-t border-neutral-800 bg-black"
+      className="relative border-t border-white/18 bg-[#0647ff]/72 backdrop-blur-xl"
       style={{ flexShrink: 0 }}
     >
-      <div className="container mx-auto px-6 py-8 md:py-16 relative z-10">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 items-start">
-          {/* 1. Left section (Text/Copyright) */}
+      <div className="container mx-auto px-6 py-8 relative z-10">
+        <div className="grid grid-cols-2 items-start gap-8">
           <div className="flex flex-col gap-8">
             <div className="relative mr-auto flex flex-col gap-3">
-              <ElizaCloudLockup logoClassName="h-5 sm:h-6" />
-              <p className="max-w-[16rem] text-xs uppercase tracking-[0.28em] text-white/35">
-                Agent infrastructure, billing, and deployment
+              <ElizaCloudLockup />
+              <p className="max-w-[14rem] text-sm leading-relaxed text-white/74">
+                Eliza, everywhere.
               </p>
             </div>
-            <p className="text-sm text-white/60 whitespace-nowrap">
-              © 2026 ELIZA CLOUD · USA
+            <p className="text-sm text-white/80 whitespace-nowrap">
+              © 2026 eliza cloud · USA
             </p>
           </div>
 
-          <div className="hidden md:flex justify-center">
-            <Image
-              src="/eliza-footer.png"
-              alt="Footer Decorative Image"
-              height={160}
-              width={160}
-              className="w-40 h-auto"
-              draggable={false}
-            />
-          </div>
-
-          {/* 3. Right section (Navigation/Social Icons) */}
           <div className="flex flex-col gap-1 md:gap-2 items-end">
-            {/* Navigation */}
-            <nav className="flex flex-col gap-1.5 md:gap-2.5 text-right relative">
+            <div className="flex flex-col gap-1.5 text-right relative">
+              <a
+                href="https://eliza.app"
+                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+              >
+                Get App
+              </a>
+              <a
+                href="https://elizaos.ai"
+                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+              >
+                Install OS
+              </a>
+            </div>
+
+            <nav
+              aria-label="Footer"
+              className="mt-4 flex flex-col gap-1.5 md:gap-2.5 text-right relative"
+            >
               <Link
                 to="/docs"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[#FF8A24]"
               >
                 Docs
               </Link>
               <a
                 href="/privacy-policy"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[#FF8A24]"
               >
                 Privacy
               </a>
               <a
                 href="/terms-of-service"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[#FF8A24]"
               >
                 Terms
               </a>
             </nav>
 
-            {/* Social icons */}
             <div className="mt-8 flex items-center gap-2.5 md:gap-5">
               <a
                 href="https://github.com/elizaos"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white transition-colors hover:text-[#FF5800]"
+                className="text-white transition-colors hover:text-[#FF8A24]"
                 aria-label="GitHub"
               >
+                <span className="sr-only">GitHub</span>
                 <svg
+                  aria-hidden="true"
                   className="size-6 md:size-7"
                   fill="currentColor"
                   viewBox="0 0 24 24"
@@ -89,10 +94,12 @@ export default function Footer() {
                 href="https://discord.gg/mPsBnEXJuA"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white transition-colors hover:text-[#FF5800]"
+                className="text-white transition-colors hover:text-[#FF8A24]"
                 aria-label="Discord"
               >
+                <span className="sr-only">Discord</span>
                 <svg
+                  aria-hidden="true"
                   className="size-6 md:size-7"
                   fill="currentColor"
                   viewBox="0 0 24 24"
@@ -104,10 +111,12 @@ export default function Footer() {
                 href="https://x.com/elizaos"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white transition-colors hover:text-[#FF5800]"
+                className="text-white transition-colors hover:text-[#FF8A24]"
                 aria-label="X (Twitter)"
               >
+                <span className="sr-only">X</span>
                 <svg
+                  aria-hidden="true"
                   className="size-6 md:size-7"
                   fill="currentColor"
                   viewBox="0 0 50 50"

@@ -5,8 +5,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Process;
 import android.util.Log;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 public class ElizaBootReceiver extends BroadcastReceiver {
@@ -26,12 +28,16 @@ public class ElizaBootReceiver extends BroadcastReceiver {
             return;
         }
         // PACKAGE_USAGE_STATS has both a manifest permission (granted via
-        // privapp-permissions whitelist) and an appop. The privapp grant
-        // covers the permission; the appop must be flipped to ALLOWED
-        // separately. AppOpsManager#setMode(String, int, String, int)
-        // is hidden API, so we invoke via reflection — visible to system
-        // apps at runtime, no-ops cleanly otherwise.
-        allowUsageStatsAppOp(context);
+        // privapp-permissions whitelist) and an appop. Only the privileged
+        // AOSP/system image is allowed to flip the appop itself; stock APK
+        // installs must not try hidden AppOpsManager#setMode because Android
+        // will reject it with MANAGE_APP_OPS_MODES and log a scary startup
+        // warning even though local chat/voice still work.
+        if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
+            allowUsageStatsAppOp(context);
+        } else {
+            Log.i(TAG, "Skipping GET_USAGE_STATS appop auto-grant on non-privileged APK install.");
+        }
         GatewayConnectionService.start(context);
         // Only auto-start the on-device agent on branded devices (AOSP /
         // ElizaOS) or when the user has opted into Local runtime mode.
@@ -74,6 +80,11 @@ public class ElizaBootReceiver extends BroadcastReceiver {
     }
 
     private static void allowUsageStatsAppOp(Context context) {
+        if (context.checkSelfPermission("android.permission.MANAGE_APP_OPS_MODES")
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.i(TAG, "MANAGE_APP_OPS_MODES not granted; usage-stats appop requires user/system grant.");
+            return;
+        }
         AppOpsManager appOps = (AppOpsManager) context.getSystemService(Context.APP_OPS_SERVICE);
         if (appOps == null) {
             return;
@@ -87,6 +98,14 @@ public class ElizaBootReceiver extends BroadcastReceiver {
                 Process.myUid(),
                 context.getPackageName(),
                 AppOpsManager.MODE_ALLOWED);
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof SecurityException) {
+                // Non-priv installs cannot setMode on themselves.
+                Log.i(TAG, "GET_USAGE_STATS appop grant denied; user/system grant required.");
+                return;
+            }
+            Log.w(TAG, "GET_USAGE_STATS appop reflective grant failed.", error);
         } catch (ReflectiveOperationException error) {
             // Method missing or hidden-api enforcement blocked the call.
             // The user can still grant via Settings → Special Access.
@@ -94,6 +113,22 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         } catch (SecurityException error) {
             // Non-priv installs cannot setMode on themselves.
             Log.w(TAG, "GET_USAGE_STATS appop grant denied; user grant required.", error);
+        }
+    }
+
+    private static boolean isBrandedDevice() {
+        return !readSystemProperty("ro.elizaos.product").isEmpty();
+    }
+
+    private static String readSystemProperty(String key) {
+        try {
+            Class<?> systemProperties = Class.forName("android.os.SystemProperties");
+            Method get = systemProperties.getMethod("get", String.class, String.class);
+            Object value = get.invoke(null, key, "");
+            return value instanceof String ? (String) value : "";
+        } catch (Exception error) {
+            Log.d(TAG, "SystemProperties reflection unavailable while reading " + key, error);
+            return "";
         }
     }
 }

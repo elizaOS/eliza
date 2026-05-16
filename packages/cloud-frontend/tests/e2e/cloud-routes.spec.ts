@@ -5,6 +5,7 @@ const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 const publicRoutes = [
   "/",
   "/login",
+  "/os",
   "/terms-of-service",
   "/privacy-policy",
   "/blog",

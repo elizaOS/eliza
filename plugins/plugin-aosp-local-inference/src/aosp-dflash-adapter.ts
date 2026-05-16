@@ -213,6 +213,43 @@ async function waitForHealth(
   );
 }
 
+export function buildDflashServerArgv(
+  args: DflashLoadOptions,
+  port: number,
+  host: string = DFLASH_HOST,
+): string[] {
+  const argv = [
+    "--model",
+    args.modelPath,
+    "--model-draft",
+    args.draftModelPath,
+    "--spec-type",
+    "dflash",
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "--ctx-size",
+    String(args.contextSize ?? 4096),
+    "--spec-draft-n-min",
+    String(args.draftMin ?? 4),
+    "--spec-draft-n-max",
+    String(args.draftMax ?? 16),
+    "--n-gpu-layers",
+    "0",
+    "--n-gpu-layers-draft",
+    "0",
+    "--metrics",
+    "--jinja",
+  ];
+  if (args.disableThinking) {
+    argv.push("--reasoning", "off");
+  }
+  if (args.cacheTypeK) argv.push("--cache-type-k", args.cacheTypeK);
+  if (args.cacheTypeV) argv.push("--cache-type-v", args.cacheTypeV);
+  return argv;
+}
+
 class AospDflashAdapter implements DflashAdapter {
   private child: ChildProcess | null = null;
   private baseUrl: string | null = null;
@@ -261,37 +298,7 @@ class AospDflashAdapter implements DflashAdapter {
     const port = await findFreePort();
     const baseUrl = `http://${DFLASH_HOST}:${port}`;
 
-    const argv = [
-      "--model",
-      args.modelPath,
-      "--model-draft",
-      args.draftModelPath,
-      "--spec-type",
-      "dflash",
-      "--host",
-      DFLASH_HOST,
-      "--port",
-      String(port),
-      "--ctx-size",
-      String(args.contextSize ?? 4096),
-      "--ctx-size-draft",
-      String(args.draftContextSize ?? args.contextSize ?? 4096),
-      "--draft-min",
-      String(args.draftMin ?? 4),
-      "--draft-max",
-      String(args.draftMax ?? 16),
-      "--n-gpu-layers",
-      "0",
-      "--n-gpu-layers-draft",
-      "0",
-      "--metrics",
-      "--jinja",
-    ];
-    if (args.disableThinking) {
-      argv.push("--reasoning", "off");
-    }
-    if (args.cacheTypeK) argv.push("--cache-type-k", args.cacheTypeK);
-    if (args.cacheTypeV) argv.push("--cache-type-v", args.cacheTypeV);
+    const argv = buildDflashServerArgv(args, port, DFLASH_HOST);
 
     logger.info(
       `[aosp-dflash] Spawning llama-server: ${this.llamaServerPath} ${argv.join(" ")}`,

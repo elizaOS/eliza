@@ -149,17 +149,45 @@ const rendererDistDir = path.relative(
 		? path.join(repoRoot, "packages/app/dist")
 		: path.join(repoRoot, "apps/app/dist"),
 );
+function hasBrokenSymlink(filePath: string): boolean {
+	try {
+		return fs.lstatSync(filePath).isSymbolicLink() && !fs.existsSync(filePath);
+	} catch {
+		return false;
+	}
+}
+
+function resolveRuntimeBundleSourcePath(rootDir: string): string {
+	const runtimeDistPath = path.join(rootDir, "dist");
+	const runtimeNodeModulesPath = path.join(runtimeDistPath, "node_modules");
+	if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
+		return runtimeDistPath;
+	}
+
+	const sanitizedDistPath = path.join(electrobunDir, ".generated", "runtime-dist");
+	fs.rmSync(sanitizedDistPath, { recursive: true, force: true });
+	fs.mkdirSync(sanitizedDistPath, { recursive: true });
+	for (const entry of fs.readdirSync(runtimeDistPath)) {
+		if (entry === "node_modules") continue;
+		fs.cpSync(path.join(runtimeDistPath, entry), path.join(sanitizedDistPath, entry), {
+			recursive: true,
+			dereference: false,
+		});
+	}
+	return sanitizedDistPath;
+}
+
+const runtimeBundleSourcePath = resolveRuntimeBundleSourcePath(repoRoot);
 const runtimeBundleDistDir = path.relative(
 	electrobunDir,
-	path.join(repoRoot, "dist"),
+	runtimeBundleSourcePath,
 );
 const runtimeBundleNodeModulesDir = path.join(
 	runtimeBundleDistDir,
 	"node_modules",
 );
 const runtimeBundleNodeModulesPath = path.join(
-	repoRoot,
-	"dist",
+	runtimeBundleSourcePath,
 	"node_modules",
 );
 const repoPluginsJsonPath = path.relative(

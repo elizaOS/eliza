@@ -1,6 +1,6 @@
 :root {
-  --font-sans: "DM Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", "Courier New", monospace;
+  --font-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-mono: var(--font-sans);
 
   --jet-black: #050506;
   --rich-black: #0a0a0c;

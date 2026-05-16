@@ -488,14 +488,6 @@ function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
   return output;
 }
 
-export const __nativeToolingTestHooks = {
-  convertToModelMessagesFromOpenAI,
-  convertTools,
-  mapToolChoice,
-  mapResponseFormat,
-  formatOpenAIUsage,
-};
-
 function formatOpenAIUsage(
   billing: { inputTokens: number; outputTokens: number; totalTokens: number },
   usage: unknown,

@@ -80,9 +80,9 @@ test.describe("local app to cloud authentication", () => {
   });
 
   async function expectDashboardRendered(page: Page) {
-    await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible(
-      { timeout: 15_000 },
-    );
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Dashboard" }),
+    ).toBeVisible({ timeout: 15_000 });
     await expect(
       page.getByText("Something went wrong", { exact: false }),
     ).toHaveCount(0);

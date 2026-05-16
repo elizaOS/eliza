@@ -6,6 +6,8 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -18,7 +20,15 @@
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@elizaos/ui/button": ["../ui/src/cloud-ui/components/button.tsx"],
+      "@elizaos/ui/dropdown-menu": [
+        "../ui/src/cloud-ui/components/dropdown-menu.tsx"
+      ],
+      "@elizaos/ui/input": ["../ui/src/cloud-ui/components/input.tsx"],
+      "@elizaos/ui/product-switcher": [
+        "../ui/src/cloud-ui/components/product-switcher.tsx"
+      ]
     },
     "types": ["vite/client"]
   },

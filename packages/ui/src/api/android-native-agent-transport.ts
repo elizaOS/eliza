@@ -1,6 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
 import { isAndroidLocalAgentUrl } from "../onboarding/local-agent-token";
+import {
+  ANDROID_LOCAL_AGENT_IPC_BASE,
+  mobileLocalAgentPathFromUrl,
+} from "../onboarding/mobile-runtime-mode";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 export interface NativeAgentRequestOptions {
@@ -27,9 +31,7 @@ type NativeAgentPlugin = {
   ) => Promise<NativeAgentRequestResult>;
 };
 
-const agentPluginId = "@elizaos/capacitor-agent";
 const agentPluginName = "Agent";
-const androidLocalAgentIpcBase = "eliza-local-agent://ipc";
 
 let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
 let globalFetchBridgeInstalled = false;
@@ -60,12 +62,32 @@ function toNativeAgentPlugin(
 
 function isNativeAndroid(): boolean {
   try {
-    return (
-      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
-    );
+    return Capacitor.getPlatform() === "android";
   } catch {
     return false;
   }
+}
+
+function isNativeIos(): boolean {
+  try {
+    return Capacitor.getPlatform() === "ios";
+  } catch {
+    return false;
+  }
+}
+
+function isLocalAgentIpcUrl(value: string): boolean {
+  return localAgentPathFromUrl(value) !== null;
+}
+
+function localAgentPathFromUrl(value: string): string | null {
+  return mobileLocalAgentPathFromUrl(value);
+}
+
+function shouldAttemptNativeAgentTransport(url: string): boolean {
+  if (!isAndroidLocalAgentUrl(url)) return false;
+  if (isNativeAndroid()) return true;
+  return isLocalAgentIpcUrl(url) && !isNativeIos();
 }
 
 function readRuntimeMode(): string | null {
@@ -114,17 +136,10 @@ async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
     const agent = toNativeAgentPlugin(registeredAgent);
     if (agent) return agent;
   } catch {
-    // Fall through to the package import for browser/package-mode test builds.
-  }
-
-  try {
-    const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
-      Agent?: NativeAgentPlugin;
-    };
-    return toNativeAgentPlugin(mod.Agent);
-  } catch {
     return null;
   }
+
+  return null;
 }
 
 function headersToRecord(
@@ -153,16 +168,35 @@ function bodyToString(
   return undefined;
 }
 
-function shouldBridgeFetchUrl(url: URL): boolean {
+function shouldBridgeFetchUrl(url: URL, rawUrl: string): boolean {
+  if (
+    (isLocalAgentIpcUrl(rawUrl) || isLocalAgentIpcUrl(url.toString())) &&
+    !isNativeIos()
+  ) {
+    return true;
+  }
   if (!isNativeAndroid()) return false;
-  if (isAndroidLocalAgentUrl(url.toString())) return true;
+  if (
+    isAndroidLocalAgentUrl(rawUrl) ||
+    isAndroidLocalAgentUrl(url.toString())
+  ) {
+    return true;
+  }
   if (!url.pathname.startsWith("/api/")) return false;
   return readRuntimeMode() === "local" || configuredApiBaseIsAndroidLocal();
 }
 
-function localAgentUrlForFetch(url: URL): string {
+function localAgentUrlForFetch(url: URL, rawUrl: string): string {
+  if (isAndroidLocalAgentUrl(rawUrl)) return rawUrl;
   if (isAndroidLocalAgentUrl(url.toString())) return url.toString();
-  return `${androidLocalAgentIpcBase}${url.pathname}${url.search}`;
+  return `${ANDROID_LOCAL_AGENT_IPC_BASE}${url.pathname}${url.search}`;
+}
+
+function localAgentRequestPath(url: string): string {
+  const ipcPath = localAgentPathFromUrl(url);
+  if (ipcPath !== null) return ipcPath;
+  const parsed = new URL(url);
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 async function normalizeFetchBridgeInit(
@@ -221,10 +255,11 @@ export function createAndroidNativeAgentTransport(
       }
       const request = agent.request;
       if (!request) {
-        return fetchAgentTransport.request(url, init);
+        return createNativeAgentUnavailableResponse(
+          "Android local-agent IPC is unavailable because Agent.request is not registered",
+        );
       }
 
-      const parsed = new URL(url);
       const method = init.method ?? "GET";
       const rawBody = init.body;
       const body = bodyToString(init.body);
@@ -233,12 +268,14 @@ export function createAndroidNativeAgentTransport(
         (body === undefined && rawBody != null) ||
         (!methodAllowsBody(method) && body != null)
       ) {
-        return fetchAgentTransport.request(url, init);
+        return createNativeAgentUnavailableResponse(
+          "Android local-agent IPC only supports string request bodies",
+        );
       }
 
       const result = await request({
         method,
-        path: `${parsed.pathname}${parsed.search}`,
+        path: localAgentRequestPath(url),
         headers: headersToRecord(init.headers),
         body: methodAllowsBody(method) ? (body ?? null) : null,
         timeoutMs: context?.timeoutMs,
@@ -253,23 +290,48 @@ export function createAndroidNativeAgentTransport(
   };
 }
 
+function createNativeAgentUnavailableResponse(message: string): Response {
+  return new Response(
+    JSON.stringify({
+      error: "native_agent_unavailable",
+      message,
+    }),
+    {
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { "content-type": "application/json" },
+    },
+  );
+}
+
 export async function androidNativeAgentLifecycleForUrl(
   url: string | null | undefined,
 ): Promise<NativeAgentPlugin | null> {
-  if (!url || !isAndroidLocalAgentUrl(url) || !isNativeAndroid()) return null;
+  if (!url || !shouldAttemptNativeAgentTransport(url)) return null;
   return resolveNativeAgentPlugin();
 }
 
 export async function androidNativeAgentTransportForUrl(
   url: string,
 ): Promise<AgentRequestTransport | null> {
-  if (!isAndroidLocalAgentUrl(url) || !isNativeAndroid()) return null;
+  if (!shouldAttemptNativeAgentTransport(url)) return null;
 
   nativeTransportPromise ??= resolveNativeAgentPlugin()
-    .then((agent) => (agent ? createAndroidNativeAgentTransport(agent) : null))
+    .then((agent) =>
+      agent?.request ? createAndroidNativeAgentTransport(agent) : null,
+    )
     .catch(() => null);
 
-  return nativeTransportPromise;
+  const transport = await nativeTransportPromise;
+  if (transport) return transport;
+  nativeTransportPromise = null;
+  if (!isLocalAgentIpcUrl(url)) return null;
+  return {
+    request: async () =>
+      createNativeAgentUnavailableResponse(
+        "Android local-agent IPC is unavailable because the native Agent plugin is not registered",
+      ),
+  };
 }
 
 export function installAndroidNativeAgentFetchBridge(): void {
@@ -298,14 +360,26 @@ export function installAndroidNativeAgentFetchBridge(): void {
       return original(input, init);
     }
 
-    if (!shouldBridgeFetchUrl(url)) return original(input, init);
+    if (!shouldBridgeFetchUrl(url, rawUrl)) return original(input, init);
 
-    const bridgedUrl = localAgentUrlForFetch(url);
+    const bridgedUrl = localAgentUrlForFetch(url, rawUrl);
     const bridgedInit = await normalizeFetchBridgeInit(input, init);
-    if (!bridgedInit) return original(input, init);
+    if (!bridgedInit) {
+      return isLocalAgentIpcUrl(bridgedUrl)
+        ? createNativeAgentUnavailableResponse(
+            "Android local-agent IPC only supports string request bodies",
+          )
+        : original(input, init);
+    }
 
     const transport = await androidNativeAgentTransportForUrl(bridgedUrl);
-    if (!transport) return original(input, init);
+    if (!transport) {
+      return isLocalAgentIpcUrl(bridgedUrl)
+        ? createNativeAgentUnavailableResponse(
+            "Android local-agent IPC is unavailable because the native Agent transport is not registered",
+          )
+        : original(input, init);
+    }
     return transport.request(bridgedUrl, bridgedInit);
   }) as typeof fetch;
 

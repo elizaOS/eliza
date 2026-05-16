@@ -43,7 +43,9 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
+    "./docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles": "./dist/styles.js",
+    "./styles/docs.css": "./dist/cloud-ui/styles/docs.css",
     "./styles/*.css": "./dist/styles/*.css",
     "./cloud-ui": {
       "types": "./dist/cloud-ui/index.d.ts",
@@ -57,6 +59,26 @@
       "types": "./dist/cloud-ui/*.d.ts",
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
+    },
+    "./button": {
+      "types": "./dist/cloud-ui/components/button.d.ts",
+      "import": "./dist/cloud-ui/components/button.js",
+      "default": "./dist/cloud-ui/components/button.js"
+    },
+    "./card": {
+      "types": "./dist/components/ui/card.d.ts",
+      "import": "./dist/components/ui/card.js",
+      "default": "./dist/components/ui/card.js"
+    },
+    "./dropdown-menu": {
+      "types": "./dist/cloud-ui/components/dropdown-menu.d.ts",
+      "import": "./dist/cloud-ui/components/dropdown-menu.js",
+      "default": "./dist/cloud-ui/components/dropdown-menu.js"
+    },
+    "./input": {
+      "types": "./dist/cloud-ui/components/input.d.ts",
+      "import": "./dist/cloud-ui/components/input.js",
+      "default": "./dist/cloud-ui/components/input.js"
     },
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
@@ -82,6 +104,11 @@
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js",
       "default": "./dist/components/index.js"
+    },
+    "./components/*": {
+      "types": "./dist/components/*.d.ts",
+      "import": "./dist/components/*.js",
+      "default": "./dist/components/*.js"
     },
     "./config": {
       "types": "./dist/config/index.d.ts",
@@ -128,6 +155,11 @@
       "import": "./dist/platform/index.js",
       "default": "./dist/platform/index.js"
     },
+    "./platform/*": {
+      "types": "./dist/platform/*.d.ts",
+      "import": "./dist/platform/*.js",
+      "default": "./dist/platform/*.js"
+    },
     "./providers": {
       "types": "./dist/providers/index.d.ts",
       "import": "./dist/providers/index.js",
@@ -137,6 +169,16 @@
       "types": "./dist/state/index.d.ts",
       "import": "./dist/state/index.js",
       "default": "./dist/state/index.js"
+    },
+    "./state/*": {
+      "types": "./dist/state/*.d.ts",
+      "import": "./dist/state/*.js",
+      "default": "./dist/state/*.js"
+    },
+    "./slots/*": {
+      "types": "./dist/slots/*.d.ts",
+      "import": "./dist/slots/*.js",
+      "default": "./dist/slots/*.js"
     },
     "./types": {
       "types": "./dist/types/index.d.ts",
@@ -176,6 +218,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@fontsource-variable/open-sans": "^5.2.7",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -192,7 +235,6 @@
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slider": "^1.3.6",
     "@radix-ui/react-slot": "^1.2.4",
-    "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.8",
@@ -207,7 +249,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
-    "drizzle-orm": "0.45.2",
     "embla-carousel-react": "^8.6.0",
     "lucide-react": "^1.0.0",
     "motion": "^12.38.0",

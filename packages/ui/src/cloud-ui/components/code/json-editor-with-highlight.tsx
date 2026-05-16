@@ -1,5 +1,7 @@
 "use client";
 
+/// <reference path="../../types/react-syntax-highlighter.d.ts" />
+
 import { useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 
@@ -21,7 +23,7 @@ export function JsonEditorWithHighlight({
     'code[class*="language-"]': {
       color: "#D4D4D4",
       background: "transparent",
-      fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
+      fontFamily: "var(--font-mono)",
       fontSize: "13px",
       lineHeight: "1.6",
       textAlign: "left" as const,
@@ -35,7 +37,7 @@ export function JsonEditorWithHighlight({
     'pre[class*="language-"]': {
       color: "#D4D4D4",
       background: "transparent",
-      fontFamily: '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
+      fontFamily: "var(--font-mono)",
       fontSize: "13px",
       lineHeight: "1.6",
       textAlign: "left" as const,
@@ -106,8 +108,7 @@ export function JsonEditorWithHighlight({
             }}
             codeTagProps={{
               style: {
-                fontFamily:
-                  '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
+                fontFamily: "var(--font-mono)",
                 fontSize: "13px",
               },
             }}
@@ -127,8 +128,7 @@ export function JsonEditorWithHighlight({
           }`}
           style={{
             color: "#D4D4D4",
-            fontFamily:
-              '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
+            fontFamily: "var(--font-mono)",
             fontSize: "13px",
             lineHeight: "1.6",
             whiteSpace: "pre",

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	diffSnapshots,
 	fetchMetricsSnapshot,
@@ -93,6 +93,7 @@ describe("fetchMetricsSnapshot", () => {
 	const originalFetch = globalThis.fetch;
 
 	afterEach(() => {
+		vi.useRealTimers();
 		globalThis.fetch = originalFetch;
 	});
 
@@ -105,6 +106,36 @@ describe("fetchMetricsSnapshot", () => {
 		expect(snapshot.scrapeOk).toBe(false);
 		expect(snapshot.hasGenerationCounters).toBe(false);
 		expect(snapshot.draftedTotal).toBe(0);
+	});
+
+	it("times out metrics scrapes so observability cannot hold generation open", async () => {
+		let observedAbort = false;
+		globalThis.fetch = ((_input, init) =>
+			new Promise<Response>((_resolve, reject) => {
+				const safetyTimer = setTimeout(
+					() => reject(new Error("mock metrics scrape did not observe abort")),
+					250,
+				);
+				init?.signal?.addEventListener(
+					"abort",
+					() => {
+						clearTimeout(safetyTimer);
+						observedAbort = true;
+						reject(init.signal?.reason ?? new Error("aborted"));
+					},
+					{ once: true },
+				);
+			})) as unknown as typeof fetch;
+
+		const snapshot = await fetchMetricsSnapshot(
+			"http://127.0.0.1:9999",
+			undefined,
+			10,
+		);
+
+		expect(observedAbort).toBe(true);
+		expect(snapshot.scrapeOk).toBe(false);
+		expect(snapshot.hasGenerationCounters).toBe(false);
 	});
 });
 

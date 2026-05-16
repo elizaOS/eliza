@@ -33,16 +33,3 @@ export function useApiKeys() {
     staleTime: API_KEY_STALE_MS,
   });
 }
-
-export function useApiKey(id: string | undefined) {
-  const gate = useAuthenticatedQueryGate(Boolean(id));
-  return useQuery({
-    queryKey: authenticatedQueryKey(["api-key", id], gate),
-    queryFn: () =>
-      api<{ apiKey: ApiKeyRecord }>(`/api/v1/api-keys/${id}`).then(
-        (r) => r.apiKey,
-      ),
-    enabled: gate.enabled,
-    staleTime: API_KEY_STALE_MS,
-  });
-}

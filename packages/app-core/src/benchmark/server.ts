@@ -163,6 +163,11 @@ function isVisualWebBenchmarkName(benchmark: string): boolean {
   return normalized === "visualwebbench" || normalized === "visual-web-bench";
 }
 
+function isWebShopBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "webshop" || normalized === "web-shop";
+}
+
 function isOsworldBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "osworld" || normalized === "os-world";
@@ -194,6 +199,238 @@ function normalizeActionCallingNativeMessages(
       content: text,
     },
   ];
+}
+
+function normalizeActionCallingOpenAiMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const rawMessages = Array.isArray(context.messages) ? context.messages : [];
+  const messages = rawMessages
+    .map((message) =>
+      message && typeof message === "object" && !Array.isArray(message)
+        ? { ...(message as Record<string, unknown>) }
+        : null,
+    )
+    .filter((message): message is Record<string, unknown> => message !== null)
+    .filter((message) => typeof message.role === "string");
+  const systemMessage = {
+    role: "system",
+    content:
+      "Use native function/tool calls for any requested operation. If several operations are required, call every required tool; after a tool result, continue with the remaining required tool calls. Do not serialize tool calls in text, XML, markdown, or JSON. Return assistant text only when no tool call is needed.",
+  };
+  if (messages.length > 0 && messages[0]?.role === "system") {
+    messages[0] = systemMessage;
+  } else {
+    messages.unshift(systemMessage);
+  }
+  if (messages.some((message) => message.role === "user")) {
+    return messages;
+  }
+  messages.push({ role: "user", content: text });
+  return messages;
+}
+
+function resolveOpenAiCompatibleActionCallingConfig(): {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  provider: string;
+} | null {
+  const provider = (
+    process.env.BENCHMARK_MODEL_PROVIDER ||
+    process.env.ELIZA_PROVIDER ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  const model =
+    process.env.BENCHMARK_MODEL_NAME?.trim() ||
+    process.env.OPENAI_LARGE_MODEL?.trim() ||
+    process.env.LARGE_MODEL?.trim() ||
+    process.env.CEREBRAS_MODEL?.trim() ||
+    "";
+  const baseUrl =
+    process.env.OPENAI_BASE_URL?.trim() ||
+    process.env.CEREBRAS_BASE_URL?.trim() ||
+    (provider === "cerebras" ? "https://api.cerebras.ai/v1" : "");
+  const baseUrlIsCerebras = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
+  const apiKey =
+    baseUrlIsCerebras || provider === "cerebras"
+      ? process.env.CEREBRAS_API_KEY?.trim() ||
+        process.env.OPENAI_API_KEY?.trim() ||
+        ""
+      : process.env.OPENAI_API_KEY?.trim() || "";
+  if (!model || !baseUrl || !apiKey) return null;
+  return {
+    baseUrl,
+    apiKey,
+    model,
+    provider: provider || (baseUrlIsCerebras ? "cerebras" : "openai"),
+  };
+}
+
+function chatCompletionsUrl(baseUrl: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  return trimmed.endsWith("/chat/completions")
+    ? trimmed
+    : `${trimmed}/chat/completions`;
+}
+
+function pickUsageNumber(
+  source: Record<string, unknown> | undefined,
+  ...keys: string[]
+): number | undefined {
+  if (!source) return undefined;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function normalizeOpenAiCompatibleUsage(
+  usage: unknown,
+  provider: string,
+): BenchmarkLlmCallUsage | null {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return null;
+  }
+  const record = usage as Record<string, unknown>;
+  const promptDetails =
+    record.prompt_tokens_details &&
+    typeof record.prompt_tokens_details === "object" &&
+    !Array.isArray(record.prompt_tokens_details)
+      ? (record.prompt_tokens_details as Record<string, unknown>)
+      : undefined;
+  const inputDetails =
+    record.input_tokens_details &&
+    typeof record.input_tokens_details === "object" &&
+    !Array.isArray(record.input_tokens_details)
+      ? (record.input_tokens_details as Record<string, unknown>)
+      : undefined;
+  const promptTokens =
+    pickUsageNumber(record, "prompt_tokens", "input_tokens", "promptTokens") ??
+    0;
+  const completionTokens =
+    pickUsageNumber(
+      record,
+      "completion_tokens",
+      "output_tokens",
+      "completionTokens",
+    ) ?? 0;
+  const totalTokens =
+    pickUsageNumber(record, "total_tokens", "totalTokens") ??
+    promptTokens + completionTokens;
+  const cacheReadInputTokens =
+    pickUsageNumber(
+      record,
+      "cache_read_input_tokens",
+      "cached_tokens",
+      "cachedInputTokens",
+      "cacheReadInputTokens",
+    ) ??
+    pickUsageNumber(
+      promptDetails,
+      "cached_tokens",
+      "cache_read_input_tokens",
+    ) ??
+    pickUsageNumber(inputDetails, "cached_tokens", "cache_read_input_tokens");
+  const cacheCreationInputTokens =
+    pickUsageNumber(
+      record,
+      "cache_creation_input_tokens",
+      "cacheCreationInputTokens",
+    ) ??
+    pickUsageNumber(
+      promptDetails,
+      "cache_creation_input_tokens",
+      "cacheCreationInputTokens",
+    ) ??
+    pickUsageNumber(
+      inputDetails,
+      "cache_creation_input_tokens",
+      "cacheCreationInputTokens",
+    );
+
+  return {
+    modelType: ModelType.TEXT_LARGE,
+    provider,
+    source: "openai-compatible-chat-completions",
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(cacheReadInputTokens !== undefined
+      ? { cachedTokens: cacheReadInputTokens, cacheReadInputTokens }
+      : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
+  };
+}
+
+async function callOpenAiCompatibleActionCalling(params: {
+  messages: Array<Record<string, unknown>>;
+  tools: unknown[];
+  toolChoice: unknown;
+  maxTokens: number;
+  temperature: number;
+}): Promise<{
+  text: string;
+  toolCalls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+  usage: BenchmarkLlmCallUsage | null;
+} | null> {
+  const config = resolveOpenAiCompatibleActionCallingConfig();
+  if (!config) return null;
+  const response = await fetch(chatCompletionsUrl(config.baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: params.messages,
+      tools: params.tools,
+      tool_choice:
+        params.toolChoice === "none"
+          ? "none"
+          : params.toolChoice === "auto"
+            ? "required"
+            : params.toolChoice || "required",
+      max_tokens: params.maxTokens,
+      temperature: params.temperature,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `OpenAI-compatible action-calling request failed (${response.status}): ${body.slice(0, 500)}`,
+    );
+  }
+  const payload = (await response.json()) as Record<string, unknown>;
+  const choice = Array.isArray(payload.choices)
+    ? (payload.choices[0] as Record<string, unknown> | undefined)
+    : undefined;
+  const message =
+    choice?.message &&
+    typeof choice.message === "object" &&
+    !Array.isArray(choice.message)
+      ? (choice.message as Record<string, unknown>)
+      : {};
+  return {
+    text: typeof message.content === "string" ? message.content : "",
+    toolCalls: normalizeLocaNativeToolCalls(message.tool_calls),
+    usage: normalizeOpenAiCompatibleUsage(payload.usage, config.provider),
+  };
 }
 
 function normalizeBfclNativeMessages(
@@ -451,6 +688,39 @@ function bfclBenchmarkActionFromToolCalls(
     calls,
     arguments: { calls },
   };
+}
+
+function webshopBenchmarkActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  for (const call of toolCalls) {
+    const name = call.function.name.toLowerCase();
+    if (name !== "webshop_action" && name !== "benchmark_action") {
+      continue;
+    }
+    let args: unknown = {};
+    try {
+      args = JSON.parse(call.function.arguments || "{}");
+    } catch {
+      args = { _raw: call.function.arguments };
+    }
+    if (!args || typeof args !== "object" || Array.isArray(args)) {
+      continue;
+    }
+    const record = args as Record<string, unknown>;
+    const command =
+      typeof record.command === "string"
+        ? record.command.trim()
+        : typeof record.action === "string"
+          ? record.action.trim()
+          : "";
+    if (command) {
+      return { command };
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1878,29 +2148,54 @@ export async function startBenchmarkServer() {
             Array.isArray(benchmarkContext.tools) &&
             benchmarkContext.tools.length > 0
           ) {
+            const nativeMessages = normalizeActionCallingNativeMessages(
+              text,
+              benchmarkContext,
+            );
+            const openAiMessages = normalizeActionCallingOpenAiMessages(
+              text,
+              benchmarkContext,
+            );
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 2048;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
+            const toolChoice =
+              typeof benchmarkContext.tool_choice === "string"
+                ? benchmarkContext.tool_choice
+                : "required";
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
             activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
             try {
-              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeActionCallingNativeMessages(
-                  text,
-                  benchmarkContext,
-                ),
+              const directResult = await callOpenAiCompatibleActionCalling({
+                messages: openAiMessages,
                 tools: benchmarkContext.tools,
-                toolChoice:
-                  typeof benchmarkContext.tool_choice === "string"
-                    ? benchmarkContext.tool_choice
-                    : "required",
-                maxTokens:
-                  typeof benchmarkContext.max_tokens === "number"
-                    ? benchmarkContext.max_tokens
-                    : 2048,
-                temperature:
-                  typeof benchmarkContext.temperature === "number"
-                    ? benchmarkContext.temperature
-                    : 0,
+                toolChoice,
+                maxTokens,
+                temperature,
               });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = {
+                  text: directResult.text,
+                  toolCalls: directResult.toolCalls,
+                };
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  messages: nativeMessages,
+                  tools: benchmarkContext.tools,
+                  toolChoice,
+                  maxTokens,
+                  temperature,
+                });
+              }
             } finally {
               activeUsageBuffer = null;
             }
@@ -2074,24 +2369,53 @@ export async function startBenchmarkServer() {
             Array.isArray(benchmarkContext.tools) &&
             benchmarkContext.tools.length > 0
           ) {
+            const messages = normalizeBfclNativeMessages(
+              text,
+              benchmarkContext,
+            );
+            const toolChoice =
+              benchmarkContext.is_relevant === false ? "none" : "required";
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 2048;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
             activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
             try {
-              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeBfclNativeMessages(text, benchmarkContext),
+              const directResult = await callOpenAiCompatibleActionCalling({
+                messages,
                 tools: benchmarkContext.tools,
-                toolChoice:
-                  benchmarkContext.is_relevant === false ? "none" : "required",
-                maxTokens:
-                  typeof benchmarkContext.max_tokens === "number"
-                    ? benchmarkContext.max_tokens
-                    : 2048,
-                temperature:
-                  typeof benchmarkContext.temperature === "number"
-                    ? benchmarkContext.temperature
-                    : 0,
+                toolChoice,
+                maxTokens,
+                temperature,
+              }).catch((err: unknown) => {
+                elizaLogger.warn(
+                  `[bench] BFCL direct native tool call failed; falling back to runtime model path: ${formatUnknownError(err)}`,
+                );
+                return null;
               });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = {
+                  text: directResult.text,
+                  toolCalls: directResult.toolCalls,
+                };
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  messages,
+                  tools: benchmarkContext.tools,
+                  toolChoice,
+                  maxTokens,
+                  temperature,
+                });
+              }
             } finally {
               activeUsageBuffer = null;
             }
@@ -2117,6 +2441,130 @@ export async function startBenchmarkServer() {
             }
             const actions =
               toolCalls.length > 0
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (
+            isWebShopBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const messages = [
+              {
+                role: "system",
+                content:
+                  "You are running WebShop through the Eliza benchmark server. Use the webshop_action tool exactly once with command set to one valid command from the current available actions. Do not answer in prose.",
+              },
+              { role: "user", content: text },
+            ];
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              const directResult = await callOpenAiCompatibleActionCalling({
+                messages,
+                tools: benchmarkContext.tools,
+                toolChoice: "required",
+                maxTokens: 256,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              }).catch((err: unknown) => {
+                elizaLogger.warn(
+                  `[bench] WebShop direct native tool call failed; falling back to runtime model path: ${formatUnknownError(err)}`,
+                );
+                return null;
+              });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = {
+                  text: directResult.text,
+                  toolCalls: directResult.toolCalls,
+                };
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  messages,
+                  tools: benchmarkContext.tools,
+                  toolChoice: "required",
+                  maxTokens: 256,
+                  temperature:
+                    typeof benchmarkContext.temperature === "number"
+                      ? benchmarkContext.temperature
+                      : 0,
+                });
+              }
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction =
+              webshopBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              benchmarkAction !== null
                 ? ["BENCHMARK_ACTION"]
                 : responseText.trim()
                   ? ["REPLY"]

@@ -478,7 +478,7 @@ function missingBlocker(key, requiredFor, expected, blocker) {
 	return { key, requiredFor, expected, blocker };
 }
 
-function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
+export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 	const manifestPath = resolve(bundleRoot, "eliza-1.manifest.json");
 	const manifest = loadJson(manifestPath);
 	const manifestFiles = flattenManifestFiles(manifest);
@@ -508,7 +508,7 @@ function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 	const asrMmproj = asrModel.filter((entry) => /mmproj/i.test(entry.path));
 	const vad = hasManifestPath(
 		manifestFiles,
-		(p) => /vad\/.*(silero|vad).*\.(onnx|ggml\.bin|bin)$/i.test(p),
+		(p) => /vad\/.*(silero|vad).*\.(onnx|gguf|ggml\.bin|bin)$/i.test(p),
 	);
 	const emotion = hasManifestPath(manifestFiles, (p) =>
 		/(emotion|wav2small|msp-dim).*\.(onnx|gguf|bin)$/i.test(p),
@@ -542,7 +542,7 @@ function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 		{
 			key: "sileroVad",
 			status: vad.some((entry) => fileExists(entry.path)) ? "present" : "missing",
-			expected: "vad/silero-vad-int8.onnx or vad/silero-vad-v5.1.2.ggml.bin",
+			expected: "vad/silero-vad-v5.gguf (legacy fallback: vad/silero-vad-int8.onnx)",
 			found: vad.map((entry) => entry.path),
 			requiredFor: "local VAD and barge-in gating",
 		},
@@ -898,6 +898,84 @@ function ttsSummary(path) {
 	};
 }
 
+function e2eLoopSummary(path) {
+	const j = loadJson(path);
+	if (!j) return { status: "missing", path };
+	const summary = j.summary ?? {};
+	const firstTurn = Array.isArray(j.turns) ? j.turns[0] : null;
+	const asrWerMean = Number.isFinite(Number(summary.asrWerMean))
+		? Number(summary.asrWerMean)
+		: null;
+	const ttsRtfMedian = Number.isFinite(Number(summary.ttsRtfMedian))
+		? Number(summary.ttsRtfMedian)
+		: null;
+	const asrLatencyMsMedian = Number.isFinite(Number(summary.asrLatencyMsMedian))
+		? Number(summary.asrLatencyMsMedian)
+		: null;
+	const firstAudioFromMicMsMedian = Number.isFinite(
+		Number(summary.firstAudioFromMicMsMedian),
+	)
+		? Number(summary.firstAudioFromMicMsMedian)
+		: null;
+	const turns = Array.isArray(j.turns) ? j.turns : [];
+	const ttsChunks = turns.reduce(
+		(sum, turn) => sum + Number(turn.tts?.chunks ?? 0),
+		0,
+	);
+	const responseAudioSeconds = turns.reduce(
+		(sum, turn) => sum + Number(turn.tts?.audioSec ?? 0),
+		0,
+	);
+	const meanTtsWallMs =
+		turns.length > 0
+			? turns.reduce((sum, turn) => sum + Number(turn.tts?.wallMs ?? 0), 0) /
+				turns.length
+			: null;
+	const streamingTtsActive =
+		j.requiredOptimizations?.streamingTtsActive === true ||
+		summary.requiredOptimizations?.streamingTtsActive === true;
+	const pass =
+		j.status === "ok" &&
+		j.e2eLoopOk === true &&
+		j.flowCompletedOk === true &&
+		asrWerMean !== null &&
+		asrWerMean <= 0.1 &&
+		ttsRtfMedian !== null &&
+		ttsRtfMedian <= 0.5 &&
+		streamingTtsActive;
+	return {
+		status: pass ? "pass" : "fail",
+		path,
+		ok: j.status === "ok",
+		e2eLoopOk: j.e2eLoopOk === true,
+		thirtyTurnOk: j.thirtyTurnOk === true,
+		flowCompletedOk: j.flowCompletedOk === true,
+		optimizationReadyOk: j.optimizationReadyOk === true,
+		turns: Number.isFinite(Number(summary.turns)) ? Number(summary.turns) : null,
+		asrWerMean,
+		asrLatencyMsMedian,
+		ttsRtfMedian,
+		firstAudioFromMicMsMedian,
+		streamingTtsActive,
+		backend: j.voiceLoop?.backend ?? "kokoro",
+		voiceId: j.voiceLoop?.voiceId ?? null,
+		transcript: firstTurn?.asr?.transcript ?? null,
+		expected: firstTurn?.mic?.refText ?? null,
+		text: firstTurn?.tts?.text ?? firstTurn?.gen?.content ?? null,
+		referenceWav:
+			firstTurn?.mic?.nativeFile ??
+			firstTurn?.mic?.file ??
+			firstTurn?.tts?.audioPath ??
+			null,
+		ttsChunks,
+		responseAudioSeconds: responseAudioSeconds || null,
+		meanTtsWallMs,
+		reason: pass
+			? "local e2e loop passed ASR WER, streaming TTS, and RTF gates"
+			: j.reason ?? "e2e loop report did not satisfy product readiness gates",
+	};
+}
+
 function walkJsonReports(root, maxDepth = 6) {
 	const out = [];
 	function walk(dir, depth) {
@@ -955,8 +1033,57 @@ function reportPath(entry) {
 }
 
 function buildDefaultStreamingTtsRoundTrip({ tier }) {
-	const localE2e = resolve(reportsRoot, "local-e2e");
-	const defaultTtsEntry = newestJsonReportWhere([localE2e], ({ name, data }) => {
+	const localE2eRoots = [
+		resolve(reportsRoot, "local-e2e"),
+		resolve(verifyReportsRoot, "local-e2e"),
+	];
+	const isKokoroE2eForTier = ({ name, data }) => {
+		const lower = name.toLowerCase();
+		return (
+			(lower.startsWith("e2e-loop-kokoro") ||
+				lower.startsWith("kokoro-e2e-loop")) &&
+			data?.status === "ok" &&
+			matchesTier(data, name, tier)
+		);
+	};
+	const passingE2eEntry = newestJsonReportWhere(localE2eRoots, (entry) => {
+		if (!isKokoroE2eForTier(entry)) return false;
+		return e2eLoopSummary(reportPath(entry)).status === "pass";
+	});
+	const e2eEntry =
+		passingE2eEntry ?? newestJsonReportWhere(localE2eRoots, isKokoroE2eForTier);
+	const e2e = e2eLoopSummary(reportPath(e2eEntry));
+	const e2eAvailable = e2e.status !== "missing";
+	const e2eTts = {
+		status:
+			e2eAvailable && e2e.flowCompletedOk === true && e2e.streamingTtsActive === true
+				? "pass"
+				: "fail",
+		path: e2e.path,
+		backend: e2e.backend,
+		voiceId: e2e.voiceId,
+		streamSupported: e2e.streamingTtsActive,
+		rtf: e2e.ttsRtfMedian,
+		text: e2e.text,
+		chunks: e2e.ttsChunks,
+		audioSeconds: e2e.responseAudioSeconds,
+		synthMs: e2e.meanTtsWallMs,
+		wavOut: e2e.referenceWav,
+		wavSha256: e2e.referenceWav ? sha256(e2e.referenceWav) : null,
+	};
+	const e2eAsr = {
+		status: e2e.status === "pass" ? "pass" : "fail",
+		path: e2e.path,
+		ok: e2e.ok,
+		transcript: e2e.transcript,
+		expected: e2e.expected,
+		wer: e2e.asrWerMean,
+		transcribeMs: e2e.asrLatencyMsMedian,
+		totalMs: e2e.firstAudioFromMicMsMedian,
+		nativeEmotion: detectAsrNativeEmotionEvidence(e2eEntry?.data),
+		reason: e2e.reason,
+	};
+	const defaultTtsEntry = newestJsonReportWhere(localE2eRoots, ({ name, data }) => {
 		const lower = name.toLowerCase();
 		return (
 			(lower.startsWith("tts-kokoro-smoke") ||
@@ -968,7 +1095,7 @@ function buildDefaultStreamingTtsRoundTrip({ tier }) {
 	const defaultTts = ttsSummary(reportPath(defaultTtsEntry));
 	const defaultAsrEntry =
 		defaultTts.wavOut
-			? newestJsonReportWhere([localE2e], ({ name, data }) => {
+			? newestJsonReportWhere(localE2eRoots, ({ name, data }) => {
 					const lower = name.toLowerCase();
 					return (
 						(lower.startsWith("asr-tts-kokoro-loopback") ||
@@ -978,7 +1105,7 @@ function buildDefaultStreamingTtsRoundTrip({ tier }) {
 					);
 				})
 			: null;
-	const latestAsrEntry = newestJsonReportWhere([localE2e], ({ name, data }) => {
+	const latestAsrEntry = newestJsonReportWhere(localE2eRoots, ({ name, data }) => {
 		const lower = name.toLowerCase();
 		return (
 			(lower.startsWith("asr-tts-kokoro-loopback") ||
@@ -986,7 +1113,7 @@ function buildDefaultStreamingTtsRoundTrip({ tier }) {
 			matchesTier(data, name, tier)
 		);
 	});
-	const compatibleAsrEntry = newestJsonReportWhere([localE2e], ({ name, data }) => {
+	const compatibleAsrEntry = newestJsonReportWhere(localE2eRoots, ({ name, data }) => {
 		const lower = name.toLowerCase();
 		return (
 			(lower.startsWith("asr-tts-kokoro-loopback") ||
@@ -1002,22 +1129,47 @@ function buildDefaultStreamingTtsRoundTrip({ tier }) {
 		reportPath(compatibleAsrEntry),
 	);
 	const directPass = defaultTts.status === "pass" && defaultAsr.status === "pass";
-	const status = directPass
+	const e2ePass = e2e.status === "pass";
+	const preferE2e =
+		e2eAvailable &&
+		(e2eEntry?.mtimeMs ?? 0) >
+			Math.max(
+				defaultTtsEntry?.mtimeMs ?? 0,
+				defaultAsrEntry?.mtimeMs ?? 0,
+				latestAsrEntry?.mtimeMs ?? 0,
+			);
+	const currentDirectPass = !preferE2e && directPass;
+	const status = currentDirectPass
 		? "pass"
+		: e2ePass
+			? "pass"
 		: compatibleExistingTtsLoopback.status === "pass"
 			? "fail_default_kokoro_asr_loopback"
 			: "fail";
 
 	return {
 		status,
-		evidenceMode: directPass
+		evidenceMode: currentDirectPass
 			? "default_tts_asr_loopback"
+			: e2ePass
+				? "kokoro_e2e_loop"
+			: e2eAvailable
+				? "kokoro_e2e_loop_failed"
 			: compatibleExistingTtsLoopback.status === "pass"
 				? "compatible_existing_tts_loopback_only"
 				: "missing_or_failed",
-		productReady: directPass,
-		tts: defaultTts,
-		asr: defaultAsr,
+		productReady: currentDirectPass || e2ePass,
+		tts: currentDirectPass
+			? defaultTts
+			: e2eAvailable
+				? e2eTts
+				: defaultTts,
+		asr: currentDirectPass
+			? defaultAsr
+			: e2eAvailable
+				? e2eAsr
+				: defaultAsr,
+		e2e,
 		compatibleExistingTtsLoopback,
 		compatibleExistingTtsLoopbackProductReady: false,
 		compatibleExistingTtsLoopbackReason:
@@ -1064,10 +1216,10 @@ export function deriveReferenceVoiceProfileProductStatus({
 	return profileStatus;
 }
 
-function buildReferenceVoiceProfileProbe({ readiness, defaultRoundTrip }) {
+function buildReferenceVoiceProfileProbe({ readiness, defaultRoundTrip, tier }) {
 	const referenceWav =
-		defaultRoundTrip.compatibleExistingTtsLoopback?.wav ??
 		defaultRoundTrip.tts?.wavOut ??
+		defaultRoundTrip.compatibleExistingTtsLoopback?.wav ??
 		null;
 	const profileArtifact = deterministicVoiceProfileStatus({
 		wavPath: referenceWav,
@@ -1081,8 +1233,29 @@ function buildReferenceVoiceProfileProbe({ readiness, defaultRoundTrip }) {
 	const referenceBlockers = readiness.missingNativeFeatureBlockers.filter(
 		(blocker) => blocker.key === "referenceCloneEncodeAbi",
 	);
+	const localE2eRoots = [
+		resolve(reportsRoot, "local-e2e"),
+		resolve(verifyReportsRoot, "local-e2e"),
+	];
+	const refCloneTtsEntry = newestJsonReportWhere(
+		localE2eRoots,
+		({ name, data }) =>
+			name.toLowerCase().startsWith("tts-refclone") &&
+			data?.ok === true &&
+			matchesTier(data, name, tier),
+	);
+	const refCloneAsrEntry = newestJsonReportWhere(
+		localE2eRoots,
+		({ name, data }) =>
+			name.toLowerCase().startsWith("asr-tts-refclone") &&
+			data?.ok === true &&
+			matchesTier(data, name, tier),
+	);
+	const refCloneTts = ttsSummary(reportPath(refCloneTtsEntry));
+	const refCloneAsr = asrSummary(reportPath(refCloneAsrEntry));
 	const nativeReferenceClonePass =
-		referenceBlockers.length === 0 && asrSummary(refCloneAsrPath).status === "pass";
+		referenceBlockers.length === 0 && refCloneAsr.status === "pass";
+	const outputWav = refCloneTts.wavOut ?? refCloneAsr.wav ?? refCloneWavPath;
 	return {
 		status: deriveReferenceVoiceProfileProductStatus({
 			profileStatus: profileArtifact.status,
@@ -1096,10 +1269,11 @@ function buildReferenceVoiceProfileProbe({ readiness, defaultRoundTrip }) {
 		nativeReferenceCloneRoundTrip: {
 			status: nativeReferenceClonePass ? "pass" : "fail",
 			nativeBlockers: referenceBlockers,
-			outputWav: refCloneWavPath,
-			outputWavInfo: wavSize(refCloneWavPath),
-			outputSha256: sha256(refCloneWavPath),
-			asr: asrSummary(refCloneAsrPath),
+			tts: refCloneTts,
+			outputWav,
+			outputWavInfo: wavSize(outputWav),
+			outputSha256: sha256(outputWav),
+			asr: refCloneAsr,
 		},
 	};
 }
@@ -1263,6 +1437,7 @@ export function buildVoiceProfileEmotionReport(opts) {
 	const referenceVoiceProfileProbe = buildReferenceVoiceProfileProbe({
 		readiness,
 		defaultRoundTrip,
+		tier,
 	});
 	const emotionAwareAsrAssessment = buildEmotionAwareAsrAssessment({
 		readiness,

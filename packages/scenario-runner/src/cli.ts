@@ -148,7 +148,6 @@ async function main(): Promise<number> {
   }
 
   const liveProviderSpecifier = "@elizaos/core" as string;
-  const runtimeFactorySpecifier: string = "./runtime-factory.ts";
   const [
     { availableProviderNames },
     { runScenario },
@@ -167,7 +166,7 @@ async function main(): Promise<number> {
     import(liveProviderSpecifier),
     import("./executor.ts"),
     import("./reporter.ts"),
-    import(runtimeFactorySpecifier),
+    import("./runtime-factory.ts"),
     import("./native-export.ts"),
   ]);
 

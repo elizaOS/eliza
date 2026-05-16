@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Push fine-tuned turn-detector artifacts to ``elizaos/eliza-1``.
+"""Push fine-tuned turn-detector artifacts to ``elizalabs/eliza-1``.
 
 Uploads (per locale):
 
@@ -30,7 +30,7 @@ CLI::
     python3 push_to_hf.py \
         --bundle packages/training/out/turn-detector-en-v1/onnx \
         --locale en \
-        --repo elizaos/eliza-1 \
+        --repo elizalabs/eliza-1 \
         --version 0.2.0 \
         --base-model livekit/turn-detector \
         --base-revision v1.2.2-en \
@@ -58,12 +58,16 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-_EN_TRAINING_BLOCK: Final[str] = """- Dataset: `OpenRL/daily_dialog` (Apache-2.0 mirror of DailyDialog).
+_EN_TRAINING_BLOCK: Final[
+    str
+] = """- Dataset: `OpenRL/daily_dialog` (Apache-2.0 mirror of DailyDialog).
 - Prefix augmentation: for each utterance ≥ 3 words, emit a randomly
   truncated prefix (with trailing punctuation stripped) as a negative.
   Resulting train ratio: ≈ 50/50 EOU/non-EOU on ≈ 170 k examples."""
 
-_INTL_TRAINING_BLOCK: Final[str] = """- Dataset: `OpenAssistant/oasst1` (Apache-2.0), `role=prompter` rows
+_INTL_TRAINING_BLOCK: Final[
+    str
+] = """- Dataset: `OpenAssistant/oasst1` (Apache-2.0), `role=prompter` rows
   filtered to the 14 LiveKit v0.4.1-intl locales (en, es, fr, de, it,
   pt, nl, ru, zh, ja, ko, tr, id, hi).
 - Per-language cap (default 6 000 utterances) so the corpus isn't 70%
@@ -115,9 +119,7 @@ def _render_model_card(
             "(language-stratified `f1ByLang` map for the supported locales)."
         )
     else:
-        arch_note = (
-            "The model is a 4-layer SmolLM2-135M LLaMA-style causal LM."
-        )
+        arch_note = "The model is a 4-layer SmolLM2-135M LLaMA-style causal LM."
         training_block = _EN_TRAINING_BLOCK
         files_block = (
             "- `onnx/model_q8.onnx` — INT8 dynamic-quantised English ONNX.\n"
@@ -218,7 +220,7 @@ commercial use is permitted under Apache-2.0.
   title = {{Eliza-1 Voice Turn Detector v{version}}},
   author = {{Eliza Labs}},
   year = {{2026}},
-  howpublished = {{\\url{{https://huggingface.co/elizaos/eliza-1/tree/main/voice/turn-detector}}}}
+  howpublished = {{\\url{{https://huggingface.co/elizalabs/eliza-1/tree/main/voice/turn-detector}}}}
 }}
 ```
 """
@@ -326,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     ap.add_argument("--locale", choices=("en", "intl"), required=True)
-    ap.add_argument("--repo", default="elizaos/eliza-1")
+    ap.add_argument("--repo", default="elizalabs/eliza-1")
     ap.add_argument("--path-in-repo", default="voice/turn-detector")
     ap.add_argument("--version", required=True)
     ap.add_argument("--base-model", default="livekit/turn-detector")
@@ -429,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
     stage_root = args.bundle.parent / f"_hf-stage-{args.locale}"
     if stage_root.exists():
         import shutil
+
         shutil.rmtree(stage_root)
     stage_root.mkdir(parents=True)
     sub = "onnx" if args.locale == "en" else "intl"
@@ -437,6 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     # the sub-directory. Use rename via hardlink-then-copy fallback so
     # we never alter the original bundle.
     import shutil
+
     for child in args.bundle.iterdir():
         if child.is_file():
             shutil.copy2(child, stage_root / sub / child.name)
@@ -461,14 +465,20 @@ def main(argv: list[str] | None = None) -> int:
     (stage_root / "README.md").write_text(card, encoding="utf-8")
 
     if args.dry_run:
-        print(json.dumps({
-            "stage_root": str(stage_root),
-            "manifest_preview": merged,
-            "onnx_sha": onnx_sha,
-            "onnx_size": onnx_size,
-            "gguf_sha": gguf_sha,
-            "gguf_size": gguf_size,
-        }, indent=2, sort_keys=False))
+        print(
+            json.dumps(
+                {
+                    "stage_root": str(stage_root),
+                    "manifest_preview": merged,
+                    "onnx_sha": onnx_sha,
+                    "onnx_size": onnx_size,
+                    "gguf_sha": gguf_sha,
+                    "gguf_size": gguf_size,
+                },
+                indent=2,
+                sort_keys=False,
+            )
+        )
         return 0
 
     commit_info = upload_folder(

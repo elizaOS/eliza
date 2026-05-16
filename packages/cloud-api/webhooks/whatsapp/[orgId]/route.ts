@@ -75,7 +75,7 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
       }
     }
 
-    let payload;
+    let payload: ReturnType<typeof parseWhatsAppWebhookPayload>;
     try {
       const rawPayload = JSON.parse(rawBody);
       payload = parseWhatsAppWebhookPayload(rawPayload);

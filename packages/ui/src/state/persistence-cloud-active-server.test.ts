@@ -9,6 +9,7 @@ import {
 import {
   applyRestoredConnection,
   canRestoreActiveServer,
+  reconcileMobileRestoredActiveServer,
 } from "./startup-phase-restore";
 
 describe("Cloud active server persistence", () => {
@@ -103,5 +104,25 @@ describe("Cloud active server persistence", () => {
     expect(setBaseUrl).toHaveBeenCalledWith("http://127.0.0.1:31337");
     expect(setToken).not.toHaveBeenCalled();
     expect(startLocalRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it("rewrites persisted iOS loopback local agents to the IPC identity", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "ios",
+        mobileRuntimeMode: "local",
+        server: {
+          id: "remote:http://127.0.0.1:31337",
+          kind: "remote",
+          label: "127.0.0.1:31337",
+          apiBase: "http://127.0.0.1:31337",
+        },
+      }),
+    ).toEqual({
+      id: "local:mobile",
+      kind: "remote",
+      label: "On-device agent",
+      apiBase: "eliza-local-agent://ipc",
+    });
   });
 });

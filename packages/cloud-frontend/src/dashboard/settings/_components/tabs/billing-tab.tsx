@@ -21,10 +21,12 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
 import { AutoTopUpCard } from "../../../billing/_components/auto-top-up-card";
+import { DirectCryptoCreditCard } from "../../../billing/_components/direct-crypto-credit-card";
 import { PayAsYouGoCard } from "../../../billing/_components/pay-as-you-go-card";
 
 export interface BillingUser {
   organization_id: string | null;
+  wallet_address?: string | null;
   organization: {
     credit_balance: string | number;
   } | null;
@@ -125,6 +127,11 @@ export function BillingTab({ user }: BillingTabProps) {
     // to avoid inflated metrics from failed API calls
 
     setIsProcessingCheckout(true);
+
+    if (paymentMethod === "crypto" && cryptoStatus?.directWallet?.enabled) {
+      setIsProcessingCheckout(false);
+      return;
+    }
 
     if (paymentMethod === "crypto") {
       try {
@@ -295,36 +302,38 @@ export function BillingTab({ user }: BillingTabProps) {
                     />
                   </div>
 
-                  {/* Buy Credits Button */}
-                  <button
-                    type="button"
-                    onClick={handleBuyCredits}
-                    disabled={!isValidAmount || isProcessingCheckout}
-                    className="relative bg-[#e1e1e1] px-6 py-2.5 overflow-hidden hover:bg-white transition-colors w-full sm:w-auto flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <div
-                      className="absolute inset-0 opacity-20 bg-repeat pointer-events-none"
-                      style={{
-                        backgroundImage: `url(/assets/settings/pattern-6px-flip.png)`,
-                        backgroundSize:
-                          "2.915576934814453px 2.915576934814453px",
-                      }}
-                    />
-                    {isProcessingCheckout ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin text-black relative z-10" />
+                  {(paymentMethod !== "crypto" ||
+                    !cryptoStatus?.directWallet?.enabled) && (
+                    <button
+                      type="button"
+                      onClick={handleBuyCredits}
+                      disabled={!isValidAmount || isProcessingCheckout}
+                      className="relative bg-[#e1e1e1] px-6 py-2.5 overflow-hidden hover:bg-white transition-colors w-full sm:w-auto flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <div
+                        className="absolute inset-0 opacity-20 bg-repeat pointer-events-none"
+                        style={{
+                          backgroundImage: `url(/assets/settings/pattern-6px-flip.png)`,
+                          backgroundSize:
+                            "2.915576934814453px 2.915576934814453px",
+                        }}
+                      />
+                      {isProcessingCheckout ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-black relative z-10" />
+                          <span className="relative z-10 text-black font-mono font-medium text-base whitespace-nowrap">
+                            Redirecting...
+                          </span>
+                        </>
+                      ) : (
                         <span className="relative z-10 text-black font-mono font-medium text-base whitespace-nowrap">
-                          Redirecting...
+                          {paymentMethod === "crypto"
+                            ? "Pay with Crypto"
+                            : "Buy credits"}
                         </span>
-                      </>
-                    ) : (
-                      <span className="relative z-10 text-black font-mono font-medium text-base whitespace-nowrap">
-                        {paymentMethod === "crypto"
-                          ? "Pay with Crypto"
-                          : "Buy credits"}
-                      </span>
-                    )}
-                  </button>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {/* Amount validation feedback */}
@@ -347,6 +356,19 @@ export function BillingTab({ user }: BillingTabProps) {
                     </span>
                   </div>
                 )}
+
+                {paymentMethod === "crypto" &&
+                  cryptoStatus?.directWallet?.enabled && (
+                    <DirectCryptoCreditCard
+                      amount={amountValue}
+                      status={cryptoStatus}
+                      accountWalletAddress={user.wallet_address ?? null}
+                      onSuccess={async () => {
+                        await fetchBalance(true);
+                        await fetchInvoices();
+                      }}
+                    />
+                  )}
               </div>
             </div>
           </div>

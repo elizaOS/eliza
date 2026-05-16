@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 
-import { fetchHonoRoot } from "@/lib/api/hono-root-request";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const PLATFORM_MESSAGES: Record<string, string> = {
@@ -205,5 +204,3 @@ app.get("/", (c) => {
 });
 
 export default app;
-
-export const GET = (request: Request) => fetchHonoRoot(app, request);

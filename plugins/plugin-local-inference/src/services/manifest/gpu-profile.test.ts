@@ -2,13 +2,13 @@ import { findCatalogModel, GPU_PROFILES } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 
 describe("catalog gpuProfile wiring", () => {
-	it("eliza-1-27b-256k demands the long-context kernel set (turbo3_tcq)", () => {
-		const bundle = findCatalogModel("eliza-1-27b-256k");
+	it("eliza-1-27b demands the active long-context kernel set (turbo3_tcq)", () => {
+		const bundle = findCatalogModel("eliza-1-27b");
 		expect(bundle).toBeDefined();
 		if (!bundle) return;
-		expect(bundle.contextLength).toBe(262144);
+		expect(bundle.contextLength).toBe(131072);
 		const required = bundle.runtime?.optimizations?.requiresKernel ?? [];
-		// Every kernel needed for 256k-context quantized KV.
+		// Every kernel needed for the active 128k-context quantized KV tier.
 		for (const k of [
 			"dflash",
 			"turbo3",
@@ -19,11 +19,6 @@ describe("catalog gpuProfile wiring", () => {
 		]) {
 			expect(required).toContain(k);
 		}
-	});
-
-	it("eliza-1-27b-256k maps to the rtx-5090 profile", () => {
-		const bundle = findCatalogModel("eliza-1-27b-256k");
-		expect(bundle?.gpuProfile).toBe("rtx-5090");
 	});
 
 	it("eliza-1-27b maps to the rtx-4090 profile", () => {

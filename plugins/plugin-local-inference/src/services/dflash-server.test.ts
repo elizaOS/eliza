@@ -532,6 +532,59 @@ describe("DFlash draft CLI flag drift", () => {
 		expect(args).toEqual(["-fit", "off"]);
 	});
 
+	it("forces Flash Attention and CPU KV when experimental Metal compressed KV is allowed", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-safe-"));
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+		fs.chmodSync(binary, 0o755);
+		fs.writeFileSync(
+			path.join(root, "CAPABILITIES.json"),
+			JSON.stringify({
+				target: "darwin-arm64-metal-fused",
+				backend: "metal",
+				kernels: { dflash: true, qjl_full: true, turbo3: true },
+			}),
+			"utf8",
+		);
+		__setLlamaServerHelpTextForTests(binary, "-fit,  --fit [on|off]\n");
+		const args = ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"];
+
+		appendBackendSafeStartupFlags(args, binary);
+
+		expect(args).toEqual([
+			"--cache-type-k",
+			"qjl1_256",
+			"--cache-type-v",
+			"tbq3_0",
+			"-fit",
+			"off",
+			"-fa",
+			"on",
+			"--no-kv-offload",
+		]);
+	});
+
+	it("does not add compressed-KV safety flags for stock fallback cache types", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-stock-"));
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+		fs.chmodSync(binary, 0o755);
+		fs.writeFileSync(
+			path.join(root, "CAPABILITIES.json"),
+			JSON.stringify({
+				target: "darwin-arm64-metal-fused",
+				backend: "metal",
+				kernels: { dflash: true, qjl_full: true, turbo3: true },
+			}),
+			"utf8",
+		);
+		const args = ["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"];
+
+		appendBackendSafeStartupFlags(args, binary);
+
+		expect(args).toEqual(["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]);
+	});
+
 	for (const backend of ["metal", "vulkan"] as const) {
 		it(`downgrades fork-only compressed KV to q8_0 on ${backend} runtime graph dispatch`, () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), `${backend}-kv-`));
@@ -1203,6 +1256,51 @@ describe("DFlash streaming callbacks", () => {
 				{ index: 0, text: "Hel" },
 				{ index: 1, text: "lo" },
 			]);
+		} finally {
+			target.baseUrl = previous.baseUrl;
+			target.cacheParallel = previous.cacheParallel;
+		}
+	});
+
+	it("cancels the streaming response body when SSE parsing fails", async () => {
+		let cancelled = false;
+		installDflashFetchMock((url) => {
+			if (url.pathname === "/metrics") return metricsResponse();
+			if (url.pathname === "/v1/chat/completions") {
+				const encoder = new TextEncoder();
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(encoder.encode("data: {not-json}\n\n"));
+						},
+						cancel() {
+							cancelled = true;
+						},
+					}),
+					{ status: 200, headers: { "content-type": "text/event-stream" } },
+				);
+			}
+			return notFoundResponse();
+		});
+		const target = dflashLlamaServer as unknown as {
+			baseUrl: string | null;
+			cacheParallel: number;
+		};
+		const previous = {
+			baseUrl: target.baseUrl,
+			cacheParallel: target.cacheParallel,
+		};
+		target.baseUrl = "http://dflash.test";
+		target.cacheParallel = 4;
+		try {
+			await expect(
+				dflashLlamaServer.generateWithUsage({
+					prompt: "say hello",
+					onTextChunk: () => {},
+				}),
+			).rejects.toThrow();
+
+			expect(cancelled).toBe(true);
 		} finally {
 			target.baseUrl = previous.baseUrl;
 			target.cacheParallel = previous.cacheParallel;

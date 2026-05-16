@@ -33,7 +33,6 @@ import type * as React from "react";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useChatStore } from "@/lib/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { ensureAvatarUrl, isBuiltInAvatar } from "@/lib/utils/default-avatar";
 
@@ -80,7 +79,6 @@ export function AgentCard({
   onRemoveSaved,
 }: AgentCardProps) {
   const navigate = useNavigate();
-  const { loadRooms, rooms } = useChatStore();
 
   const bioText = Array.isArray(agent.bio) ? agent.bio[0] : agent.bio;
   const avatarUrl = agent.avatarUrl || agent.avatar_url;
@@ -118,7 +116,7 @@ export function AgentCard({
           const data = await response.json();
           toast.success(`Created "${data.data.character.name}"`);
           window.dispatchEvent(new Event("characters-updated"));
-          navigate(`/dashboard/chat?characterId=${data.data.character.id}`);
+          navigate("/dashboard/my-agents");
         } else {
           const error = await response.json();
           toast.error(error.error || "Failed to duplicate agent");
@@ -261,25 +259,9 @@ export function AgentCard({
     [agent.id, agent.name, onRemoveSaved],
   );
 
-  const openAgentChat = useCallback(async () => {
-    // Ensure rooms are loaded
-    if (rooms.length === 0) {
-      await loadRooms();
-    }
-
-    const currentRooms = useChatStore.getState().rooms;
-    const characterRooms = currentRooms
-      .filter((r) => r.characterId === agent.id)
-      .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
-
-    if (characterRooms.length > 0) {
-      navigate(
-        `/dashboard/chat?characterId=${agent.id}&roomId=${characterRooms[0].id}`,
-      );
-    } else {
-      navigate(`/dashboard/chat?characterId=${agent.id}`);
-    }
-  }, [rooms.length, loadRooms, agent.id, navigate]);
+  const openAgentAdmin = useCallback(() => {
+    navigate("/dashboard/containers");
+  }, [navigate]);
 
   const handleCardClick = useCallback(
     (e: React.MouseEvent) => {
@@ -289,9 +271,9 @@ export function AgentCard({
       }
 
       e.preventDefault();
-      void openAgentChat();
+      openAgentAdmin();
     },
-    [showDeleteConfirm, openAgentChat],
+    [showDeleteConfirm, openAgentAdmin],
   );
 
   const handleCardKeyDown = useCallback(
@@ -299,11 +281,11 @@ export function AgentCard({
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         if (!showDeleteConfirm) {
-          void openAgentChat();
+          openAgentAdmin();
         }
       }
     },
-    [showDeleteConfirm, openAgentChat],
+    [showDeleteConfirm, openAgentAdmin],
   );
 
   const isListView = viewMode === "list";

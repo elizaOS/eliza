@@ -7,7 +7,7 @@ import { decrypt, encrypt } from "./crypto.js";
 import { assertKey, optsCaller } from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
-import { emptyStore, readStore, type StoreData } from "./store.js";
+import { readStore, type StoreData } from "./store.js";
 import type {
   PasswordManagerReference,
   StoredEntry,
@@ -481,6 +481,3 @@ function toMillis(value: string | number): number {
   if (typeof value === "number") return value;
   return Number.parseInt(value, 10);
 }
-
-// Re-export emptyStore for callers that previously imported it via vault.ts.
-export { emptyStore };

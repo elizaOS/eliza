@@ -160,7 +160,7 @@ app.post("/", async (c) => {
       }
     }
 
-    let character;
+    let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
       character = await charactersService.create({
         name,

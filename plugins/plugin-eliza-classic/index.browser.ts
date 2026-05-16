@@ -1,13 +1,4 @@
-import elizaClassicPlugin, {
-  generateElizaResponse,
-  getElizaGreeting,
-  plugin,
-} from "./index";
+import elizaClassicPlugin from "./index";
 
-export {
-  elizaClassicPlugin,
-  generateElizaResponse,
-  getElizaGreeting,
-  plugin,
-};
+export * from "./index";
 export default elizaClassicPlugin;

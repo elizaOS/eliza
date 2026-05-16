@@ -265,7 +265,7 @@ export async function sendStreamingMessage({
  * Parse a single SSE message block and invoke appropriate callbacks.
  * Handles proper SSE format with multi-line data support.
  */
-export function processSSEMessage(
+function processSSEMessage(
   message: string,
   onMessage: (message: StreamingMessage) => void,
   onChunk?: (chunk: StreamChunkData) => void,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,6 +9,7 @@ import {
 	deriveNativeEmotionStatus,
 	deriveReferenceVoiceProfileProductStatus,
 	detectAsrNativeEmotionEvidence,
+	inspectBundleAssets,
 	inspectVoicePresetDefault,
 } from "./voice_profile_emotion_status.mjs";
 
@@ -32,6 +33,38 @@ test("detects the narrow Samantha zero-filled placeholder preset", () => {
 		assert.equal(result.status, "placeholder");
 		assert.equal(result.placeholderDetected, true);
 		assert.equal(result.referenceCloneSeeded, false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("bundle asset inspection accepts the canonical Silero GGUF VAD artifact", () => {
+	const dir = mkdtempSync(join(tmpdir(), "voice-profile-status-"));
+	try {
+		mkdirSync(join(dir, "vad"), { recursive: true });
+		writeFileSync(join(dir, "vad", "silero-vad-v5.gguf"), "vad");
+		writeFileSync(
+			join(dir, "eliza-1.manifest.json"),
+			`${JSON.stringify({
+				files: {
+					vad: [
+						{
+							path: "vad/silero-vad-v5.gguf",
+							sha256:
+								"d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+						},
+					],
+				},
+			})}\n`,
+		);
+		const result = inspectBundleAssets({
+			bundleRoot: dir,
+			tier: "0_8b",
+			runtimePath: join(dir, "lib", "libelizainference.dylib"),
+		});
+		const vad = result.requirements.find((req) => req.key === "sileroVad");
+		assert.equal(vad?.status, "present");
+		assert.deepEqual(vad?.found, ["vad/silero-vad-v5.gguf"]);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

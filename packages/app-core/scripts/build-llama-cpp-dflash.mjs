@@ -2088,6 +2088,122 @@ function ensureCheckout(cacheDir, ref) {
   return head;
 }
 
+function patchOmnivoiceCodecCpuFallback(cacheDir, { dryRun = false } = {}) {
+  const codecPath = path.join(
+    cacheDir,
+    "tools",
+    "omnivoice",
+    "src",
+    "pipeline-codec.cpp",
+  );
+  if (!fs.existsSync(codecPath)) {
+    if (dryRun) {
+      console.log(
+        `[dflash-build] (dry-run) OmniVoice codec CPU fallback skipped; missing ${path.relative(cacheDir, codecPath)}`,
+      );
+    }
+    return;
+  }
+
+  let src = fs.readFileSync(codecPath, "utf8");
+  const marker = "static BackendPair codec_backend_pair(BackendPair bp)";
+  let changed = false;
+
+  if (!src.includes(marker)) {
+    const includeNeedle = "#include <cstring>\n";
+    const helper = `
+static bool codec_backend_is_metal(ggml_backend_t backend) {
+    const char * name = backend ? ggml_backend_name(backend) : "";
+    return name && (std::strncmp(name, "MTL", 3) == 0 || std::strstr(name, "Metal") != nullptr);
+}
+
+static bool codec_backend_env_is(const char * value) {
+    const char * env = std::getenv("ELIZA_OMNIVOICE_CODEC_BACKEND");
+    return env && std::strcmp(env, value) == 0;
+}
+
+static BackendPair codec_backend_pair(BackendPair bp) {
+    if (!bp.cpu_backend || bp.backend == bp.cpu_backend) {
+        return bp;
+    }
+    if (codec_backend_env_is("gpu") || codec_backend_env_is("metal")) {
+        return bp;
+    }
+    if (codec_backend_env_is("cpu") || codec_backend_is_metal(bp.backend)) {
+        BackendPair cpu_bp = {};
+        cpu_bp.backend = bp.cpu_backend;
+        cpu_bp.cpu_backend = bp.cpu_backend;
+        cpu_bp.has_gpu = false;
+        ov_log(OV_LOG_INFO,
+               "[PipelineCodec] using CPU codec backend while LM backend remains %s%s",
+               ggml_backend_name(bp.backend),
+               codec_backend_is_metal(bp.backend) ? " (Metal DAC decode fallback)" : "");
+        return cpu_bp;
+    }
+    return bp;
+}
+`;
+    if (!src.includes(includeNeedle)) {
+      throw new Error(
+        `[dflash-build] cannot patch OmniVoice codec fallback: include anchor missing in ${codecPath}`,
+      );
+    }
+    src = src.replace(includeNeedle, `${includeNeedle}${helper}`);
+    changed = true;
+  }
+
+  const oldHeader = `bool pipeline_codec_load(PipelineCodec * pc, const char * gguf_path, BackendPair bp) {
+    *pc                    = {};
+    pc->bp                 = bp;
+    pc->backend            = bp.backend;
+    ggml_backend_t backend = bp.backend;
+`;
+  const newHeader = `bool pipeline_codec_load(PipelineCodec * pc, const char * gguf_path, BackendPair bp) {
+    BackendPair codec_bp = codec_backend_pair(bp);
+    *pc                    = {};
+    pc->bp                 = codec_bp;
+    pc->backend            = codec_bp.backend;
+    ggml_backend_t backend = codec_bp.backend;
+`;
+  if (src.includes(oldHeader)) {
+    src = src.replace(oldHeader, newHeader);
+    changed = true;
+  } else if (!src.includes("BackendPair codec_bp = codec_backend_pair(bp);")) {
+    throw new Error(
+      `[dflash-build] cannot patch OmniVoice codec fallback: pipeline_codec_load prologue anchor missing in ${codecPath}`,
+    );
+  }
+
+  if (src.includes("pc->sched = backend_sched_new(bp, 4096);")) {
+    src = src.replace(
+      "pc->sched = backend_sched_new(bp, 4096);",
+      "pc->sched = backend_sched_new(codec_bp, 4096);",
+    );
+    changed = true;
+  } else if (!src.includes("pc->sched = backend_sched_new(codec_bp, 4096);")) {
+    throw new Error(
+      `[dflash-build] cannot patch OmniVoice codec fallback: scheduler anchor missing in ${codecPath}`,
+    );
+  }
+
+  if (changed) {
+    if (dryRun) {
+      console.log(
+        "[dflash-build] (dry-run) would patch OmniVoice Metal DAC decode CPU fallback",
+      );
+    } else {
+      fs.writeFileSync(codecPath, src);
+      console.log(
+        "[dflash-build] patched OmniVoice Metal DAC decode CPU fallback",
+      );
+    }
+  } else {
+    console.log(
+      "[dflash-build] OmniVoice Metal DAC decode CPU fallback already present",
+    );
+  }
+}
+
 // Real patch hooks: the v0.4.0-eliza decorative log no-ops have been replaced
 // with kernel-patches/{metal,vulkan}-kernels.mjs implementations that actually
 // (a) copy the verified standalone shaders from packages/inference/{metal,vulkan}/
@@ -2121,6 +2237,7 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchOmnivoiceCodecCpuFallback(cacheDir, { dryRun });
   patchOmnivoiceCmakeConflictArtifact(cacheDir, { dryRun });
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });

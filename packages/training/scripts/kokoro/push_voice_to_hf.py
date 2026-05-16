@@ -4,7 +4,7 @@
 Sibling to `publish_custom_kokoro_voice.sh` (which stages a release-dir into
 a per-tier Eliza-1 bundle on local disk). This script handles the OTHER half
 of the publish path: uploading the same release-dir to a HuggingFace repo
-under the unified `elizaos/eliza-1` repo at `voice/kokoro/voices/<voice>/`.
+under the unified `elizalabs/eliza-1` repo at `voice/kokoro/voices/<voice>/`.
 
 The release-dir is the output of `package_voice_for_release.py`:
 
@@ -37,13 +37,13 @@ Usage:
 
     python3 push_voice_to_hf.py \\
         --release-dir /tmp/kokoro-runs/same/release/af_same \\
-        --hf-repo elizaos/eliza-1
+        --hf-repo elizalabs/eliza-1
 
     # Dry run — exercises every gate + assembles the upload plan but does
     # not call the HF API.
     python3 push_voice_to_hf.py \\
         --release-dir /tmp/kokoro-runs/same/release/af_same \\
-        --hf-repo elizaos/eliza-1 \\
+        --hf-repo elizalabs/eliza-1 \\
         --dry-run
 """
 
@@ -362,7 +362,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--release-dir", type=Path, required=True)
-    p.add_argument("--hf-repo", default="elizaos/eliza-1")
+    p.add_argument("--hf-repo", default="elizalabs/eliza-1")
     p.add_argument("--path-prefix", default="voice/kokoro/voices")
     p.add_argument(
         "--public",

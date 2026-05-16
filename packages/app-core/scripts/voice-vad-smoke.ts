@@ -3,7 +3,7 @@
  * VAD / wake-word smoke harness.
  *
  * Feeds a `silence + synthesized-speech + silence` PCM fixture through the
- * native GGML Silero VAD backend (`GgmlSileroVad` + `VadDetector`) and
+ * native GGUF Silero VAD backend (`SileroVadGgml` + `VadDetector`) and
  * asserts it detects exactly one speech segment whose boundaries land inside
  * the voiced region — i.e. the leading/trailing silence is gated out.
  *
@@ -15,7 +15,7 @@
  * Usage:
  *   bun packages/app-core/scripts/voice-vad-smoke.ts \
  *     --bundle /path/to/eliza-1-0_8b.bundle \
- *     --dylib /path/to/libelizainference.dylib
+ *     --lib /path/to/libsilero_vad.dylib
  *
  * Exit code: 0 on pass, 1 on any assertion failure or unavailable runtime.
  */
@@ -26,12 +26,12 @@ import process from "node:process";
 
 const SR = 16_000;
 const WINDOW = 512;
-const SILERO_VAD_REL = path.join("vad", "silero-vad-v5.1.2.ggml.bin");
+const SILERO_VAD_REL = path.join("vad", "silero-vad-v5.gguf");
 const WAKE_WORD_REL = path.join("wake", "openwakeword.gguf");
 
 function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+	const i = process.argv.indexOf(name);
+	return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
 function fail(msg: string): never {
@@ -46,7 +46,7 @@ function resolveVadPath(opts: {
 	const candidates = [
 		opts.modelPath,
 		opts.bundleRoot ? path.join(opts.bundleRoot, SILERO_VAD_REL) : undefined,
-		process.env.ELIZA_VAD_MODEL_PATH?.trim() || undefined,
+		process.env.ELIZA_SILERO_VAD_GGUF?.trim() || undefined,
 	].filter((candidate): candidate is string => Boolean(candidate));
 	for (const candidate of candidates) {
 		if (existsSync(candidate)) return path.resolve(candidate);
@@ -58,34 +58,36 @@ async function main(): Promise<void> {
 	const { makeSpeechWithSilenceFixture } = await import(
 		"../../../plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech"
 	);
-	const { loadElizaInferenceFfi } = await import(
-		"../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings"
+	const { SileroVadGgml } = await import(
+		"../../../plugins/plugin-local-inference/src/services/voice/vad-ggml"
 	);
 	const bundleRoot = arg("--bundle");
-	const dylibPath = arg("--dylib") ?? process.env.ELIZA_INFERENCE_DYLIB_PATH;
-	const modelPath = process.env.ELIZA_VAD_MODEL_PATH;
+	const libraryPath =
+		arg("--lib") ??
+		arg("--dylib") ??
+		process.env.ELIZA_SILERO_VAD_LIB ??
+		process.env.ELIZA_INFERENCE_DYLIB_PATH;
+	const modelPath = process.env.ELIZA_SILERO_VAD_GGUF;
 	const resolved = resolveVadPath({ modelPath, bundleRoot });
 	if (!resolved) {
 		fail(
-			"no Silero VAD model found. Stage vad/silero-vad-v5.1.2.ggml.bin into a bundle (--bundle) or set ELIZA_VAD_MODEL_PATH.",
-    );
-  }
-  if (!bundleRoot) fail("--bundle is required for native GGML VAD");
-  if (!dylibPath) fail("--dylib or ELIZA_INFERENCE_DYLIB_PATH is required");
+			"no Silero VAD GGUF found. Stage vad/silero-vad-v5.gguf into a bundle (--bundle) or set ELIZA_SILERO_VAD_GGUF.",
+		);
+	}
+	if (!libraryPath) fail("--lib/--dylib or ELIZA_SILERO_VAD_LIB is required");
 	console.log(`[voice-vad-smoke] Silero VAD model: ${resolved}`);
 
-	const ffi = loadElizaInferenceFfi(dylibPath);
-	if (!ffi.vadSupported?.()) {
-		fail("native GGML VAD is unavailable in this libelizainference build");
-	}
-	const ctx = ffi.create(bundleRoot);
-	let vad: ReturnType<typeof ffi.vadOpen> | null = null;
+	let vad: InstanceType<typeof SileroVadGgml> | null = null;
 	try {
-		vad = ffi.vadOpen({ ctx, sampleRateHz: SR });
+		vad = await SileroVadGgml.load({
+			ggufPath: resolved,
+			libraryPath,
+			sampleRate: SR,
+		});
 
 		// Sanity: pure silence reads low.
-		ffi.vadReset(vad);
-		const pSilence = ffi.vadProcess({ vad, pcm: new Float32Array(WINDOW) });
+		vad.reset();
+		const pSilence = await vad.process(new Float32Array(WINDOW));
 		console.log(
 			`[voice-vad-smoke] P(speech | silence) = ${pSilence.toFixed(3)}`,
 		);
@@ -100,14 +102,11 @@ async function main(): Promise<void> {
 		const speechStartMs = (fx.speechStartSample / SR) * 1000;
 		const speechEndMs = (fx.speechEndSample / SR) * 1000;
 
-		ffi.vadReset(vad);
+		vad.reset();
 		const probs: number[] = [];
 		for (let i = 0; (i + 1) * WINDOW <= fx.pcm.length; i++) {
 			probs.push(
-				ffi.vadProcess({
-					vad,
-					pcm: fx.pcm.slice(i * WINDOW, (i + 1) * WINDOW),
-				}),
+				await vad.process(fx.pcm.slice(i * WINDOW, (i + 1) * WINDOW)),
 			);
 		}
 		const speechStartWindow = Math.floor(fx.speechStartSample / WINDOW);
@@ -138,12 +137,10 @@ async function main(): Promise<void> {
 			);
 		}
 		console.log(
-			`[voice-vad-smoke] PASS: native GGML VAD crossed onset at ${onsetMs.toFixed(0)} ms (voiced region ${speechStartMs.toFixed(0)}-${speechEndMs.toFixed(0)} ms)`,
+			`[voice-vad-smoke] PASS: native GGUF VAD crossed onset at ${onsetMs.toFixed(0)} ms (voiced region ${speechStartMs.toFixed(0)}-${speechEndMs.toFixed(0)} ms)`,
 		);
 	} finally {
-		if (vad) ffi.vadClose(vad);
-		ffi.destroy(ctx);
-		ffi.close?.();
+		vad?.close();
 	}
 
 	// Wake-word: report bundled GGUF presence only. Runtime inference is
@@ -162,6 +159,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[voice-vad-smoke] error:", err);
-  process.exit(1);
+	console.error("[voice-vad-smoke] error:", err);
+	process.exit(1);
 });

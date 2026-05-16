@@ -1,0 +1,33 @@
+{
+  "collection": "elizaos-hardware",
+  "checkoutBaseUrl": "https://elizacloud.ai/checkout",
+  "products": [
+    {
+      "sku": "elizaos-phone",
+      "name": "ElizaOS Phone",
+      "colors": ["orange", "blue", "white", "blue"],
+      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-phone"
+    },
+    {
+      "sku": "elizaos-box",
+      "name": "ElizaOS Box",
+      "colors": ["orange", "blue", "white", "black"],
+      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-box"
+    },
+    {
+      "sku": "elizaos-usb-chibi",
+      "name": "Chibi ElizaOS USB key",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-usb-chibi"
+    },
+    {
+      "sku": "elizaos-usb-plastic",
+      "name": "Branded ElizaOS USB key",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "colors": ["orange", "blue", "white", "black"],
+      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-usb-plastic"
+    }
+  ]
+}

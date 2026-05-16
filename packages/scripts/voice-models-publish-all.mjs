@@ -19,8 +19,8 @@
  * Re-runs are idempotent: upload overwrites files with the same path.
  *
  * Coordination:
- *   - The split `elizaos/eliza-1-voice-*` repos have been deleted as of
- *     2026-05-15; the unified `elizaos/eliza-1` repo is the only target.
+ *   - The split `elizalabs/eliza-1-voice-*` repos have been deleted as of
+ *     2026-05-15; the unified `elizalabs/eliza-1` repo is the only target.
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const STAGING_BASE = join(REPO_ROOT, "artifacts", "voice-sub-model-staging");
-const TARGET_REPO = process.env.ELIZA_1_HF_REPO ?? "elizaos/eliza-1";
+const TARGET_REPO = process.env.ELIZA_1_HF_REPO ?? "elizalabs/eliza-1";
 
 // Canonical voice payload manifest.
 // id: local staging dir name
@@ -66,7 +66,8 @@ const VOICE_MODELS = [
   {
     id: "vad",
     path: "voice/vad",
-    description: "Silero VAD v5.1.2",
+    description: "Silero VAD v5 GGUF",
+    requiredFiles: ["silero-vad-v5.gguf"],
   },
   {
     id: "wakeword",
@@ -163,6 +164,17 @@ function publishModel(model) {
       success: true,
       skipped: true,
       reason: `no binary payloads found in ${stagingDir}`,
+    };
+  }
+
+  const missingRequired = (model.requiredFiles ?? []).filter(
+    (rel) => !existsSync(join(stagingDir, rel)),
+  );
+  if (missingRequired.length > 0) {
+    return {
+      success: false,
+      skipped: false,
+      reason: `missing required staging file(s): ${missingRequired.join(", ")}`,
     };
   }
 

@@ -25,7 +25,7 @@
 
 import type { OcrCoordResult } from "./types.ts";
 
-export interface RealOcrInput {
+interface RealOcrInput {
   readonly displayId: string;
   readonly sourceX: number;
   readonly sourceY: number;
@@ -74,7 +74,7 @@ export async function discoverOcrProvider(): Promise<DiscoverOcrResult> {
   let module: PluginVisionOcrCoordsModule;
   try {
     module = (await import(
-      "../../../../plugins/plugin-vision/src/ocr-with-coords.ts" as string
+      "../../../../../plugins/plugin-vision/src/ocr-with-coords.ts" as string
     )) as PluginVisionOcrCoordsModule;
   } catch (err) {
     return {

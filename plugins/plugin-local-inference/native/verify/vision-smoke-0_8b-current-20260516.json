@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "metric": "vision_smoke",
+  "generatedAt": "2026-05-16T04:40:57.593Z",
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle",
+  "tier": "0_8b",
+  "expectedVisionTier": true,
+  "textVoiceOnlyTier": false,
+  "supported": true,
+  "passed": true,
+  "status": "pass",
+  "action": "vision-smoke-passed",
+  "tierContract": {
+    "visionTiers": [
+      "0_8b",
+      "2b",
+      "4b",
+      "9b",
+      "27b",
+      "27b-256k"
+    ],
+    "textVoiceOnlyTiers": []
+  },
+  "smokeConfig": {
+    "image": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
+    "ctxSize": 2048,
+    "batchSize": 2048,
+    "nPredict": 16,
+    "gpuLayers": "auto",
+    "timeoutMs": 600000
+  },
+  "manifest": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/eliza-1.manifest.json",
+    "filesText": [
+      {
+        "path": "text/eliza-1-0_8b-128k.gguf",
+        "sha256": "9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581",
+        "ctx": 262144,
+        "sizeBytes": 556982432,
+        "sizeGiB": 0.519
+      }
+    ],
+    "filesVision": [
+      {
+        "path": "vision/mmproj-0_8b.gguf",
+        "sha256": "9e09874ff413043a6f013afe09cdb1916d0d16bf5c1db91cc45165922722b4ff",
+        "sizeBytes": 74759008,
+        "sizeGiB": 0.07
+      }
+    ],
+    "lineageVisionPresent": true
+  },
+  "mtmdCli": {
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "candidates": [
+      {
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": ""
+      }
+    ],
+    "buildCommands": [
+      "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+      "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+    ]
+  },
+  "visionAssetCommands": {
+    "stageSource": "python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier 0_8b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle --link-mode hardlink",
+    "consolidateLocalBundle": "python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier 0_8b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle --force"
+  },
+  "inventory": {
+    "visionFiles": [
+      "vision/mmproj-0_8b.gguf"
+    ],
+    "sourceVisionFiles": [],
+    "asrMmprojFiles": [
+      "asr/eliza-1-asr-mmproj.gguf"
+    ],
+    "visionMmprojCandidates": [
+      {
+        "source": "manifest.files.vision",
+        "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/vision/mmproj-0_8b.gguf",
+        "relPath": "vision/mmproj-0_8b.gguf",
+        "exists": true,
+        "tierMatch": true,
+        "mmprojLike": true,
+        "rank": 0
+      }
+    ],
+    "borrowedVisionArtifactsSeen": [
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/vision/mmproj-27b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/vision/mmproj-27b-256k.gguf"
+    ]
+  },
+  "appCorePath": {
+    "spawnArg": "--mmproj",
+    "envOverride": "ELIZA_LOCAL_MMPROJ",
+    "optimizationField": "runtime.optimizations.mmproj",
+    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+  },
+  "memoryImplications": {
+    "largestTextBytes": 556982432,
+    "largestVisionBytes": 74759008,
+    "largestTextGiB": 0.519,
+    "largestVisionGiB": 0.07,
+    "minimumMappedWeightsGiB": 0.588,
+    "note": "Smoke uses a small --ctx-size, so KV cache allocation is much smaller than the tier's long-context runtime budget. Operational RAM still needs text weights + mmproj + KV cache + Metal/CPU working buffers."
+  },
+  "imageAnalysis": {
+    "attempted": true,
+    "status": "pass",
+    "startedAt": "2026-05-16T04:40:57.633Z",
+    "command": [
+      "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "--mmproj",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/vision/mmproj-0_8b.gguf",
+      "--image",
+      "plugins/plugin-vision/test/fixtures/sample-scene.png",
+      "-c",
+      "2048",
+      "-b",
+      "2048",
+      "--image-min-tokens",
+      "1024",
+      "-p",
+      "Describe this image in one short sentence.",
+      "-n",
+      "16"
+    ],
+    "timeoutMs": 600000,
+    "exitCode": 0,
+    "signal": null,
+    "detection": {
+      "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "candidates": [
+        {
+          "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+          "exists": true,
+          "executable": true,
+          "helpExitCode": 0,
+          "compatible": true,
+          "helpSignals": {
+            "mmproj": true,
+            "image": true,
+            "mtmd": true,
+            "metal": true
+          },
+          "stderrTail": ""
+        }
+      ],
+      "buildCommands": [
+        "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+        "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+      ]
+    },
+    "timings": {
+      "loadMs": null,
+      "promptEvalMs": null,
+      "promptTokens": null,
+      "promptTokPerSec": null,
+      "evalMs": null,
+      "evalRuns": null,
+      "evalTokPerSec": null,
+      "totalMs": null,
+      "imageEncodeMs": null,
+      "imageDecodeMs": null
+    },
+    "stdoutTail": "\n<think>\n\n</think>\n\nA red square with the word \"hello\" in black text\n\n",
+    "stderrTail": "0.00.040.147 I common_init_result: fitting params to device memory ...\n0.00.040.149 I common_init_result: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)\n0.00.719.120 W llama_context: n_ctx_seq (2048) < n_ctx_train (262144) -- the full capacity of the model will not be utilized\n0.00.740.014 W common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)\n0.00.776.991 I mtmd_cli_context: chat template example:\n<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi there<|im_end|>\n<|im_start|>user\nHow are you?<|im_end|>\n<|im_start|>assistant\n\n0.00.804.973 I main: loading model: /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf\n0.00.804.981 W WARN: This is an experimental CLI for testing multimodal capability.\n0.00.804.981 W       For normal use cases, please use the standard llama-cli\n0.00.984.869 W find_slot: non-consecutive token position 4 after 3 for sequence 0 with 512 new tokens\n0.00.984.877 W find_slot: non-consecutive token position 4 after 4 for sequence 0 with 512 new tokens\n0.00.985.402 W find_slot: non-consecutive token position 4 after 3 for sequence 0 with 512 new tokens\n0.00.989.744 W find_slot: non-consecutive token position 4 after 4 for sequence 0 with 512 new tokens\n0.01.057.516 W find_slot: non-consecutive token position 49 after 4 for sequence 0 with 14 new tokens\n0.01.057.536 W find_slot: non-consecutive token position 49 after 4 for sequence 0 with 14 new tokens\n"
+  },
+  "evidence": {
+    "result": "pass",
+    "passRecordable": true,
+    "status": "pass",
+    "blockers": []
+  },
+  "mmproj": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/vision/mmproj-0_8b.gguf",
+    "relPath": "vision/mmproj-0_8b.gguf",
+    "source": "manifest.files.vision",
+    "sha256": "9e09874ff413043a6f013afe09cdb1916d0d16bf5c1db91cc45165922722b4ff",
+    "sizeBytes": 74759008
+  },
+  "textModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+  "reason": "tier-compatible mmproj loaded and image analysis command completed"
+}

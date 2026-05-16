@@ -4,13 +4,20 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  appStoreExecutionProfile,
+  appStoreRuntimeBuildSettingsText,
+  findForbiddenRuntimeImportGroups,
+  findForbiddenRuntimeStrings,
+  formatForbiddenRuntimeFindings,
+} from "./ios-app-store-runtime-policy.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 const frameworkName = "ElizaBunEngine";
 const runtimePluginFrameworkName = "ElizaosCapacitorBunRuntime";
 const expectedAbiVersion = "3";
-const expectedProfile = "ios-app-store-nojit";
+const expectedProfile = appStoreExecutionProfile;
 const defaultXcframework = path.join(
   packageRoot,
   "artifacts",
@@ -26,29 +33,12 @@ const requiredSymbols = [
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
 ];
-const forbiddenRuntimeImports = [
-  "_dlopen",
-  "_dlsym",
-  "_posix_spawn",
-  "_fork",
-  "_execve",
-  "_system",
-  "_pthread_jit_write_protect_np",
-  "_mach_vm_protect",
-  "_vm_protect",
-];
 const forbiddenEntitlements = [
   "com.apple.security.cs.allow-jit",
   "com.apple.security.cs.allow-unsigned-executable-memory",
   "com.apple.security.cs.allow-dyld-environment-variables",
   "com.apple.security.cs.disable-library-validation",
   "com.apple.security.cs.debugger",
-];
-const forbiddenStrings = [
-  /\bMAP_JIT\b/i,
-  /\ballow-jit\b/i,
-  /\bdynamic-codesigning\b/i,
-  /\bunsigned-executable-memory\b/i,
 ];
 const networkPolicyTextExtensions = new Set([
   ".html",
@@ -109,6 +99,70 @@ function frameworkBinary(frameworkDir) {
   return path.join(frameworkDir, frameworkName);
 }
 
+function libraryBinaryPath(root, entry) {
+  const rel =
+    typeof entry?.LibraryPath === "string"
+      ? entry.LibraryPath
+      : `${frameworkName}.framework`;
+  return path.join(
+    root,
+    entry?.LibraryIdentifier ?? "missing-id",
+    rel,
+    frameworkName,
+  );
+}
+
+function describeRuntimePolicyForBinary(binary) {
+  if (!fs.existsSync(binary)) return [`    binary missing: ${binary}`];
+  const lines = [];
+  const imports = run("nm", ["-u", binary]);
+  if (imports.status === 0) {
+    const importGroups = findForbiddenRuntimeImportGroups(
+      `${imports.stdout}\n${imports.stderr}`,
+    );
+    if (importGroups.length > 0) {
+      lines.push("    forbidden imports:");
+      for (const group of importGroups) {
+        lines.push(`      - ${group.label}: ${group.symbols.join(", ")}`);
+      }
+    }
+  } else {
+    lines.push(`    nm -u failed: ${imports.stderr.trim()}`);
+  }
+  const strings = run("strings", [binary]);
+  if (strings.status === 0) {
+    const stringPatterns = findForbiddenRuntimeStrings(
+      `${strings.stdout}\n${strings.stderr}`,
+    );
+    if (stringPatterns.length > 0) {
+      lines.push(
+        `    forbidden executable-memory markers: ${stringPatterns.join(", ")}`,
+      );
+    }
+  }
+  if (lines.length === 0) lines.push("    no forbidden runtime imports found");
+  return lines;
+}
+
+function describeAvailableLibraries(root, libraries) {
+  if (libraries.length === 0) return "  none";
+  return libraries
+    .map((entry) => {
+      const platform = `${entry?.SupportedPlatform ?? "unknown"}${
+        entry?.SupportedPlatformVariant
+          ? `-${entry.SupportedPlatformVariant}`
+          : ""
+      }`;
+      const binary = libraryBinaryPath(root, entry);
+      return [
+        `  - ${platform}/${entry?.LibraryIdentifier ?? "missing-id"}`,
+        `    binary: ${binary}`,
+        ...describeRuntimePolicyForBinary(binary),
+      ].join("\n");
+    })
+    .join("\n");
+}
+
 function selectXcframeworkLibraries(root, { target = "device" } = {}) {
   const info = parsePlist(path.join(root, "Info.plist"));
   const libraries = Array.isArray(info.AvailableLibraries)
@@ -122,30 +176,29 @@ function selectXcframeworkLibraries(root, { target = "device" } = {}) {
     return !variant;
   });
   if (selected.length === 0) {
-    const available = libraries
-      .map(
-        (entry) =>
-          `${entry?.SupportedPlatform ?? "unknown"}${
-            entry?.SupportedPlatformVariant
-              ? `-${entry.SupportedPlatformVariant}`
-              : ""
-          }/${entry?.LibraryIdentifier ?? "missing-id"}`,
-      )
-      .join(", ");
     fail(
-      `${root} does not contain an iOS ${target} ElizaBunEngine library. Available: ${
-        available || "none"
-      }`,
+      [
+        `${root} does not contain an iOS ${target} ElizaBunEngine library.`,
+        target === "device"
+          ? "Requested library identifier: ios-arm64"
+          : target === "simulator"
+            ? "Requested library identifier: ios-arm64-simulator"
+            : "Requested library identifier: all iOS slices",
+        "Available libraries:",
+        describeAvailableLibraries(root, libraries),
+        "",
+        "For production/device verification the xcframework must contain both:",
+        "  - ios-arm64/ElizaBunEngine.framework/ElizaBunEngine",
+        "  - ios-arm64-simulator/ElizaBunEngine.framework/ElizaBunEngine",
+        "",
+        appStoreRuntimeBuildSettingsText(),
+      ].join("\n"),
     );
   }
   return selected.map((entry) => {
-    const rel =
-      typeof entry.LibraryPath === "string"
-        ? entry.LibraryPath
-        : `${frameworkName}.framework`;
     return {
       id: entry.LibraryIdentifier,
-      frameworkDir: path.join(root, entry.LibraryIdentifier, rel),
+      frameworkDir: path.dirname(libraryBinaryPath(root, entry)),
     };
   });
 }
@@ -171,24 +224,20 @@ function validateUnsafeRuntimeBinary(binary) {
   if (imports.status !== 0)
     fail(`nm -u failed for ${binary}: ${imports.stderr.trim()}`);
   const importOutput = `${imports.stdout}\n${imports.stderr}`;
-  const badImports = forbiddenRuntimeImports.filter((symbol) =>
-    new RegExp(
-      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-    ).test(importOutput),
-  );
-  if (badImports.length > 0) {
-    fail(
-      `${binary} imports App Store-sensitive symbols: ${badImports.join(", ")}`,
-    );
-  }
+  const importGroups = findForbiddenRuntimeImportGroups(importOutput);
 
-  const stringOutput = run("strings", [binary]).stdout;
-  const badStrings = forbiddenStrings
-    .filter((pattern) => pattern.test(stringOutput))
-    .map((pattern) => pattern.source);
-  if (badStrings.length > 0) {
+  const strings = run("strings", [binary]);
+  if (strings.status !== 0)
+    fail(`strings failed for ${binary}: ${strings.stderr.trim()}`);
+  const stringOutput = `${strings.stdout}\n${strings.stderr}`;
+  const stringPatterns = findForbiddenRuntimeStrings(stringOutput);
+  if (importGroups.length > 0 || stringPatterns.length > 0) {
     fail(
-      `${binary} contains executable-memory markers: ${badStrings.join(", ")}`,
+      formatForbiddenRuntimeFindings({
+        binary,
+        importGroups,
+        stringPatterns,
+      }),
     );
   }
 }

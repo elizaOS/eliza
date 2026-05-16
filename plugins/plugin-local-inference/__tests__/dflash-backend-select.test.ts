@@ -1,20 +1,18 @@
 /**
  * DFlash backend selection per Eliza-1 tier.
  *
- * Every Eliza-1 tier declares `runtime.preferredBackend = "llama-server"`
- * and `runtime.optimizations.requiresKernel` includes "dflash". The dispatcher
- * MUST honour both: the speculative-decoding fork ships in llama-server, not
- * in the in-process node-llama-cpp binding. Mis-selecting `node-llama-cpp`
- * here would silently lose DFlash and the TurboQuant / QJL / PolarQuant KV
- * kernels — every Eliza-1 turn would run on stock f16 with no draft model.
+ * Every Eliza-1 tier declares `runtime.preferredBackend = "llama-server"`.
+ * Tiers with a distilled DFlash companion additionally require the `dflash`
+ * kernel. The dispatcher MUST honour both: the speculative-decoding fork ships
+ * in llama-server, not in the in-process node-llama-cpp binding.
  *
  * This test proves the catalog → dispatcher round-trip per tier:
  *   - catalog tier resolves to a catalog entry,
  *   - `decideBackend(...)` picks "llama-server",
- *   - the reason is "kernel-required" (the dflash kernel is in
+ *   - the reason is "kernel-required" (Eliza runtime kernels are in
  *     `requiresKernel`), NOT "preferred-backend" (the soft hint),
- *   - the dflash drafter config is present and points back to the
- *     companion drafter id.
+ *   - DFlash-enabled tiers expose a drafter config pointing back to the
+ *     companion drafter id; 0.8B intentionally does not.
  *
  * Together with the existing `backend.test.ts` (which covers the decision
  * function with synthetic catalogs) and `catalog.test.ts` (which pins the
@@ -26,8 +24,13 @@ import {
 	decideBackend,
 	type BackendDecision,
 } from "../src/services/backend.ts";
-import { findCatalogModel } from "../src/services/catalog.ts";
-import { ELIZA_1_TIER_IDS } from "../src/services/catalog.ts";
+import {
+	ELIZA_1_DFLASH_TIER_IDS,
+	ELIZA_1_TIER_IDS,
+	findCatalogModel,
+} from "../src/services/catalog.ts";
+
+const DFLASH_TIERS: ReadonlySet<string> = new Set(ELIZA_1_DFLASH_TIER_IDS);
 
 function decideForTier(
 	tierId: string,
@@ -57,11 +60,17 @@ describe("DFlash backend selection (catalog tiers → dispatcher)", () => {
 				expect(findCatalogModel(tierId)).toBeTruthy();
 			});
 
-			it("decides llama-server with reason=kernel-required (dflash kernel is hard-required)", () => {
+			it("decides llama-server with reason=kernel-required", () => {
 				const decision = decideForTier(tierId);
 				expect(decision.backend, `${tierId} backend`).toBe("llama-server");
 				expect(decision.reason, `${tierId} reason`).toBe("kernel-required");
-				expect(decision.kernels, `${tierId} kernels`).toContain("dflash");
+				if (DFLASH_TIERS.has(tierId)) {
+					expect(decision.kernels, `${tierId} kernels`).toContain("dflash");
+				} else {
+					expect(decision.kernels, `${tierId} kernels`).not.toContain(
+						"dflash",
+					);
+				}
 			});
 
 			it("decides llama-server even when llama-server binary appears unavailable (dflashRequired wins)", () => {
@@ -77,8 +86,14 @@ describe("DFlash backend selection (catalog tiers → dispatcher)", () => {
 				expect(decision.backend).toBe("llama-server");
 			});
 
-			it("pairs with a drafter that lives in the same catalog under id `${tier}-drafter`", () => {
+			it("pairs with a drafter that lives in the same catalog when DFlash is enabled", () => {
 				const target = findCatalogModel(tierId);
+				if (!DFLASH_TIERS.has(tierId)) {
+					expect(target?.runtime?.dflash).toBeUndefined();
+					expect(target?.companionModelIds).toBeUndefined();
+					expect(findCatalogModel(`${tierId}-drafter`)).toBeUndefined();
+					return;
+				}
 				expect(target?.runtime?.dflash?.drafterModelId).toBe(
 					`${tierId}-drafter`,
 				);
@@ -89,11 +104,15 @@ describe("DFlash backend selection (catalog tiers → dispatcher)", () => {
 				expect(drafter?.runtimeRole).toBe("dflash-drafter");
 			});
 
-			it("flags unsatisfied kernels when CAPABILITIES.json says dflash is false", () => {
+			it("flags unsatisfied dflash only when that tier requires it", () => {
 				const decision = decideForTier(tierId, {
 					binaryKernels: { dflash: false, turbo3: true },
 				});
-				expect(decision.unsatisfiedKernels).toContain("dflash");
+				if (DFLASH_TIERS.has(tierId)) {
+					expect(decision.unsatisfiedKernels).toContain("dflash");
+				} else {
+					expect(decision.unsatisfiedKernels).not.toContain("dflash");
+				}
 				// Still routes to llama-server — silently falling back is what
 				// would hide the missing kernel from the operator.
 				expect(decision.backend).toBe("llama-server");

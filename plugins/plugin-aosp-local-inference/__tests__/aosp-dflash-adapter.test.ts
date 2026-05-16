@@ -1,10 +1,11 @@
+import { describe, expect, it } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
 
 import {
   buildDflashAdapter,
+  buildDflashServerArgv,
   shouldRouteViaDflash,
 } from "../src/aosp-dflash-adapter";
 
@@ -44,6 +45,35 @@ function mkExecutableServerDir(): string {
   chmodSync(server, 0o755);
   return root;
 }
+
+describe("buildDflashServerArgv", () => {
+  it("uses current llama.cpp speculative draft flags", () => {
+    const argv = buildDflashServerArgv(
+      {
+        modelPath: "/models/target.gguf",
+        draftModelPath: "/models/drafter.gguf",
+        contextSize: 2048,
+        draftContextSize: 512,
+        draftMin: 2,
+        draftMax: 6,
+        cacheTypeK: "q8_0",
+        cacheTypeV: "q4_0",
+        disableThinking: true,
+      },
+      18081,
+    );
+
+    expect(argv).toContain("--spec-draft-n-min");
+    expect(argv).toContain("--spec-draft-n-max");
+    expect(argv).not.toContain("--draft-min");
+    expect(argv).not.toContain("--draft-max");
+    expect(argv).not.toContain("--ctx-size-draft");
+    expect(argv).toContain("--reasoning");
+    expect(argv).toContain("off");
+    expect(argv).toContain("--cache-type-k");
+    expect(argv).toContain("q8_0");
+  });
+});
 
 describe("legacy DFlash server-spawn gate", () => {
   it("does not treat ELIZA_DFLASH as permission to spawn llama-server", () => {

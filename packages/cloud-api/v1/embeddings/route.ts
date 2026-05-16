@@ -146,7 +146,7 @@ app.post("/", async (c) => {
       : request.input;
     const estimatedInputTokens = estimateTokens(inputText);
 
-    let reservation;
+    let reservation: Awaited<ReturnType<typeof reserveCredits>>;
     try {
       reservation = await reserveCredits(
         {

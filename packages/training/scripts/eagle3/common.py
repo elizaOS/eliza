@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
+ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b")
 MANIFEST_SCHEMA_VERSION = 1
 FAIL_CLOSED_EXIT = 3
 ENVIRONMENT_EXIT = 4

@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.local/schemas/android-release-manifest.schema.json",
+  "title": "ElizaOS Android Release Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "releaseId",
+    "generatedAt",
+    "buildFingerprint",
+    "supportedDevices",
+    "artifacts",
+    "validation"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "releaseId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "buildFingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "buildType": {
+      "type": "string",
+      "enum": ["user", "userdebug", "eng", "unknown"]
+    },
+    "supportedDevices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["codename", "tier", "slots", "dynamicPartitions", "rollbackSupported"],
+        "properties": {
+          "codename": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "marketingName": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string",
+            "enum": ["lab-validated", "candidate", "manual", "blocked"]
+          },
+          "minBootloader": {
+            "type": "string"
+          },
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["a", "b", "none"]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "dynamicPartitions": {
+            "type": "boolean"
+          },
+          "rollbackSupported": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["partition", "filename", "sha256", "sizeBytes", "required", "fastbootMode"],
+        "properties": {
+          "partition": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "filename": {
+            "type": "string",
+            "pattern": "^[^/\\\\]+\\.img$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "fastbootMode": {
+            "type": "string",
+            "enum": ["bootloader", "fastbootd"]
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootTimeoutSeconds", "properties"],
+      "properties": {
+        "bootTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 30
+        },
+        "expectedFingerprintPrefix": {
+          "type": "string"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "ro.product.device": {
+              "type": "string"
+            },
+            "sys.boot_completed": {
+              "type": "string",
+              "enum": ["1"]
+            }
+          }
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "previousReleaseId": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

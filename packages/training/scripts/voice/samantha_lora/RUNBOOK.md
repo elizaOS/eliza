@@ -71,13 +71,13 @@ python3 packages/training/scripts/voice/samantha_lora/eval_voice.py \
 # 6. Dry-run publish (sanity-checks the bundle without uploading).
 HF_TOKEN=hf_xxx packages/training/scripts/voice/samantha_lora/publish_samantha.sh \
     --release-dir "$RUN/out" \
-    --hf-repo elizaos/eliza-1-voice-kokoro-samantha \
+    --hf-repo elizalabs/eliza-1-voice-kokoro-samantha \
     --dry-run
 
 # 7. Real push (only when step 5 was green).
 HF_TOKEN=hf_xxx packages/training/scripts/voice/samantha_lora/publish_samantha.sh \
     --release-dir "$RUN/out" \
-    --hf-repo elizaos/eliza-1-voice-kokoro-samantha \
+    --hf-repo elizalabs/eliza-1-voice-kokoro-samantha \
     --push --private --update-catalog
 ```
 
@@ -141,7 +141,7 @@ to push without a real token — no half-pushed states.
 
 ## After a successful push
 
-1. Verify the HF repo is live: `huggingface-cli download elizaos/eliza-1-voice-kokoro-samantha`
+1. Verify the HF repo is live: `huggingface-cli download elizalabs/eliza-1-voice-kokoro-samantha`
 2. Bump the catalog (`packages/shared/src/local-inference/voice-models.ts`)
    if `--update-catalog` was not passed: refresh `sha256` + `sizeBytes`
    from the new release. (The runtime auto-update checker reads this.)

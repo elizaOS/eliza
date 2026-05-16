@@ -200,7 +200,8 @@ int voice_gguf_tensors_open(const char *path, voice_gguf_tensors_t *out) {
     }
 
     /* Tensor descriptors. */
-    voice_gguf_tensor_t *tensors = (voice_gguf_tensor_t *)calloc((size_t)n_tensors, sizeof(*tensors));
+    voice_gguf_weight_tensor_t *tensors =
+        (voice_gguf_weight_tensor_t *)calloc((size_t)n_tensors, sizeof(*tensors));
     if (!tensors) {
         munmap(map, map_size);
         return -ENOMEM;
@@ -272,7 +273,7 @@ int voice_gguf_tensors_open(const char *path, voice_gguf_tensors_t *out) {
     return 0;
 }
 
-const voice_gguf_tensor_t *voice_gguf_tensors_find(
+const voice_gguf_weight_tensor_t *voice_gguf_tensors_find(
     const voice_gguf_tensors_t *t, const char *name) {
     if (!t || !name) return NULL;
     for (size_t i = 0; i < t->n_tensors; ++i) {

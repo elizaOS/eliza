@@ -1,7 +1,7 @@
 import { K8s, kind, Log } from "pepr";
 import { ServerCRD } from "./source/server.crd";
 
-export function RegisterCRD() {
+function RegisterCRD() {
   K8s(kind.CustomResourceDefinition)
     .Apply(ServerCRD, { force: true })
     .then(() => Log.info("Server CRD registered"))

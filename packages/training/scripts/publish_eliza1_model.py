@@ -1,19 +1,19 @@
-"""Publish a fused-kernel "eliza-1-optimized" GGUF to the elizaos org.
+"""Publish a fused-kernel "eliza-1-optimized" GGUF to the elizalabs org.
 
 This is the wrapper around `huggingface_hub` that takes a directory
 produced by W5-Pipeline (a fully-optimized GGUF + manifest.json + a
-README.md) and ships it to `elizaos/<base>-optimized` (or the
+README.md) and ships it to `elizalabs/<base>-optimized` (or the
 sibling drafter repo). It is distinct from `push_model_to_hf.py`, which
 publishes the *base* eliza-1 fine-tunes in stock GGUF / fp8 / polarquant
-flavors under the `elizaos/*` org — those repos contain one optimization
-at a time. The elizaos repos contain the **fused** stack
+flavors under the `elizalabs/*` org — those repos contain one optimization
+at a time. The elizalabs repos contain the **fused** stack
 (Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
 
 Refuses to ship stock-format GGUFs: every file the script publishes must
 declare `Q4_POLAR`, `qjl1_256`, and a TurboQuant V-cache type (`tbq3_0` or
 `tbq4_0`) in its GGUF tensor type table.
 This is the safety rail that keeps an accidentally-mislabeled K-quant
-out of the elizaos org.
+out of the elizalabs org.
 
 Idempotency: after a successful upload the script writes
 `published.json` next to the GGUF with the canonical resolve URL,
@@ -27,13 +27,13 @@ Usage::
     # GGUF metadata, refuses to continue if Q4_POLAR/QJL1_256 are missing.
     uv run python scripts/publish_eliza1_model.py \\
         --model-dir /path/to/qwen3.5-4b-optimized \\
-        --repo-id elizaos/qwen3.5-4b-optimized \\
+        --repo-id elizalabs/qwen3.5-4b-optimized \\
         --dry-run
 
     # Real push.
     HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_model.py \\
         --model-dir /path/to/qwen3.5-4b-optimized \\
-        --repo-id elizaos/qwen3.5-4b-optimized
+        --repo-id elizalabs/qwen3.5-4b-optimized
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ REQUIRED_GGUF_MARKERS: tuple[bytes, ...] = (b"q4_polar", b"qjl1_256")
 REQUIRED_GGUF_MARKER_ALTERNATIVES: tuple[tuple[bytes, ...], ...] = (
     (b"tbq3_0", b"tbq4_0"),
 )
-ELIZA_1_HF_ORG = "elizaos"
+ELIZA_1_HF_ORG = "elizalabs"
 
 # How many bytes of the GGUF header to scan. The tensor type table lives
 # near the start of the file — 4 MB is generous and avoids loading a
@@ -142,9 +142,7 @@ def _find_gguf(model_dir: Path) -> Path:
 
 def _all_marker_needles() -> tuple[bytes, ...]:
     return REQUIRED_GGUF_MARKERS + tuple(
-        marker
-        for group in REQUIRED_GGUF_MARKER_ALTERNATIVES
-        for marker in group
+        marker for group in REQUIRED_GGUF_MARKER_ALTERNATIVES for marker in group
     )
 
 
@@ -334,8 +332,11 @@ def publish(config: PublishConfig) -> int:
     log.info("repo_id=%s", config.repo_id)
     log.info("gguf=%s (%.2f MB)", gguf.name, size / 1e6)
     log.info("sha256=%s", local_sha)
-    log.info("manifest.kind=%s manifest.modelId=%s",
-             manifest.get("kind"), manifest.get("modelId"))
+    log.info(
+        "manifest.kind=%s manifest.modelId=%s",
+        manifest.get("kind"),
+        manifest.get("modelId"),
+    )
 
     if config.dry_run:
         log.info("dry-run: would upload %s + manifest.json + README.md", gguf.name)
@@ -357,8 +358,11 @@ def publish(config: PublishConfig) -> int:
         api.repo_info(config.repo_id, repo_type="model")
         log.info("repo %s already exists", config.repo_id)
     except RepositoryNotFoundError:
-        log.info("repo %s does not exist — creating (private=%s)",
-                 config.repo_id, not config.public)
+        log.info(
+            "repo %s does not exist — creating (private=%s)",
+            config.repo_id,
+            not config.public,
+        )
         api.create_repo(
             repo_id=config.repo_id,
             repo_type="model",
@@ -424,21 +428,40 @@ def publish(config: PublishConfig) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--model-dir", type=Path, required=True,
-                    help="Directory containing the optimized GGUF + manifest.json + README.md.")
-    ap.add_argument("--repo-id", required=True,
-                    help=f"Destination HF repo, e.g. {ELIZA_1_HF_ORG}/qwen3.5-4b-optimized.")
-    ap.add_argument("--public", action="store_true", default=True,
-                    help="Create the repo as public (default).")
-    ap.add_argument("--no-public", dest="public", action="store_false",
-                    help="Create the repo as private (staging).")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Validate inputs and print the plan; no network calls.")
     ap.add_argument(
-        "--skip-marker-check", action="store_true",
+        "--model-dir",
+        type=Path,
+        required=True,
+        help="Directory containing the optimized GGUF + manifest.json + README.md.",
+    )
+    ap.add_argument(
+        "--repo-id",
+        required=True,
+        help=f"Destination HF repo, e.g. {ELIZA_1_HF_ORG}/qwen3.5-4b-optimized.",
+    )
+    ap.add_argument(
+        "--public",
+        action="store_true",
+        default=True,
+        help="Create the repo as public (default).",
+    )
+    ap.add_argument(
+        "--no-public",
+        dest="public",
+        action="store_false",
+        help="Create the repo as private (staging).",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate inputs and print the plan; no network calls.",
+    )
+    ap.add_argument(
+        "--skip-marker-check",
+        action="store_true",
         help="Skip the Q4_POLAR/QJL1_256 GGUF marker scan. Use only when "
-             "you have independently verified the file is fused-kernel "
-             "optimized. Logs a warning regardless.",
+        "you have independently verified the file is fused-kernel "
+        "optimized. Logs a warning regardless.",
     )
     args = ap.parse_args(argv)
 

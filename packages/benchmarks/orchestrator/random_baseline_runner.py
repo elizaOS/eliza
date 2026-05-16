@@ -327,6 +327,28 @@ def _loca_payload(score: float) -> dict[str, Any]:
     }
 
 
+def _lifeops_payload(score: float) -> dict[str, Any]:
+    return {
+        "pass_at_1": score,
+        "pass_at_k": score,
+        "seeds": 1,
+        "scenarios": [
+            {
+                "id": "synthetic-calibration",
+                "domain": "calibration",
+                "score": score,
+                "passed": score >= 1.0,
+            }
+        ],
+        "total_cost_usd": 0,
+        "agent_cost_usd": 0,
+        "eval_cost_usd": 0,
+        "total_latency_ms": 0,
+        "model_name": "synthetic-calibration",
+        "judge_model_name": "synthetic-calibration",
+    }
+
+
 def _mind2web_payload(score: float) -> dict[str, Any]:
     total = 2
     return {
@@ -670,7 +692,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "hyperliquid_bench": ("hyperliquid_bench-random_v1.json", _hyperliquid_payload),
     "hyperliquidbench": ("hyperliquid_bench-random_v1.json", _hyperliquid_payload),
     "interrupt_bench": ("report.json", _interrupt_payload),
-    "lifeops_bench": ("lifeops-bench-random_v1.json", lambda score: {"pass_at_1": score, "pass_at_k": score, "seeds": 1}),
+    "lifeops_bench": ("lifeops-bench-random_v1.json", _lifeops_payload),
     "loca_bench": ("loca-output/eliza_loca_audit.json", _loca_payload),
     "mind2web": ("mind2web-results.json", _mind2web_payload),
     "mint": ("mint-benchmark-results.json", _mint_payload),

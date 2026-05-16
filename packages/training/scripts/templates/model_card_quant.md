@@ -43,7 +43,7 @@ tags:
 - Calibration data (where applicable): held-out validation split of
   [`elizaos/eliza-native-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-native-v1-sft).
 - Training pipeline + quantization scripts:
-  [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline)
+  [`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline)
   (`scripts/quantization/`).
 
 ## Evaluation

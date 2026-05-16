@@ -50,13 +50,8 @@
       "max_parallel": 12
     },
     "eliza-1-27b": {
-      "ctx_size": 65536,
-      "max_parallel": 4
-    },
-    "eliza-1-27b-256k": {
-      "ctx_size": 262144,
-      "max_parallel": 1,
-      "no_kv_offload": true
+      "ctx_size": 131072,
+      "max_parallel": 1
     }
   },
   "expected_metrics": {
@@ -68,8 +63,7 @@
   },
   "known_limits": [
     "sm_120 kernel coverage in llama.cpp is early; QJL/Polar requires CAPABILITIES.json probe",
-    "flash-attn-3 supported but tuned for sm_90 (Hopper) first",
-    "27B-256k is single-slot only and requires kvSpillToCpu opt-in"
+    "flash-attn-3 supported but tuned for sm_90 (Hopper) first"
   ],
   "_provenance": "extrapolated; numbers derived from VRAM + mem-bw math in SPECS.md"
 }

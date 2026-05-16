@@ -52,6 +52,7 @@ public class ElizaTasksWorker extends Worker {
     private static final String KEY_AGENT_BASE = "eliza:agent-base";
 
     private static final String DEFAULT_AGENT_BASE = "http://127.0.0.1:31337";
+    private static final String IPC_AGENT_BASE = "eliza-local-agent://ipc";
     private static final String WAKE_PATH = "/api/internal/wake";
 
     // Hard worker budget. The OS gives WorkManager more, but the wake handler
@@ -84,8 +85,6 @@ public class ElizaTasksWorker extends Worker {
         if (agentBase == null || agentBase.isEmpty()) {
             agentBase = DEFAULT_AGENT_BASE;
         }
-        String endpoint = trimTrailingSlash(agentBase) + WAKE_PATH;
-
         long deadlineMs = System.currentTimeMillis() + DEADLINE_MS;
         String body;
         try {
@@ -100,6 +99,11 @@ public class ElizaTasksWorker extends Worker {
             return Result.failure();
         }
 
+        if (isLocalAgentBase(agentBase)) {
+            return deliverWakeViaAgentService(deviceSecret, body);
+        }
+
+        String endpoint = trimTrailingSlash(agentBase) + WAKE_PATH;
         HttpURLConnection conn = null;
         try {
             URL url = new URL(endpoint);
@@ -146,5 +150,45 @@ public class ElizaTasksWorker extends Worker {
             end--;
         }
         return value.substring(0, end);
+    }
+
+    private static boolean isLocalAgentBase(String value) {
+        if (value == null) return true;
+        String normalized = trimTrailingSlash(value.trim()).toLowerCase(java.util.Locale.US);
+        return normalized.isEmpty()
+            || IPC_AGENT_BASE.equals(normalized)
+            || "http://127.0.0.1:31337".equals(normalized)
+            || "http://localhost:31337".equals(normalized);
+    }
+
+    private static Result deliverWakeViaAgentService(String deviceSecret, String body) {
+        try {
+            JSONObject headers = new JSONObject();
+            headers.put("Content-Type", "application/json");
+            headers.put("Authorization", "Bearer " + deviceSecret);
+            JSONObject request = new JSONObject();
+            request.put("method", "POST");
+            request.put("path", WAKE_PATH);
+            request.put("headers", headers);
+            request.put("body", body);
+            request.put("timeoutMs", READ_TIMEOUT_MS);
+
+            JSONObject response = new JSONObject(ElizaAgentService.requestLocalAgent(request.toString()));
+            int status = response.optInt("status", 0);
+            if (status >= 200 && status < 300) {
+                Log.i(TAG, "wake delivered via agent-service IPC status=" + status);
+                return Result.success();
+            }
+            if (status == HttpURLConnection.HTTP_UNAUTHORIZED
+                || (status >= 400 && status < 500 && status != HttpURLConnection.HTTP_CLIENT_TIMEOUT)) {
+                Log.w(TAG, "wake rejected via agent-service IPC with permanent status=" + status + "; not retrying");
+                return Result.failure();
+            }
+            Log.w(TAG, "wake transient agent-service IPC failure status=" + status + "; will retry");
+            return Result.retry();
+        } catch (Exception e) {
+            Log.w(TAG, "wake agent-service IPC failure; will retry", e);
+            return Result.retry();
+        }
     }
 }

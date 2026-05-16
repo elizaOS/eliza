@@ -1,8 +1,6 @@
-export const DEFAULT_LOGIN_RETURN_TO = "/dashboard/agents";
-export const OAUTH_LOGIN_PENDING_STORAGE_KEY = "oauth_login_pending";
-export const OAUTH_LOGIN_RETURN_TO_STORAGE_KEY = "oauth_login_return_to";
+const DEFAULT_LOGIN_RETURN_TO = "/dashboard/agents";
 
-export function sanitizeLoginReturnTo(
+function sanitizeLoginReturnTo(
   value: string | null | undefined,
 ): string | null {
   return value?.startsWith("/") && !value.startsWith("//") ? value : null;

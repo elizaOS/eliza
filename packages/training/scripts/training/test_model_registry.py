@@ -24,7 +24,6 @@ VERIFIED_KEYS = (
     "qwen3.5-2b",
     "qwen3.5-4b",
     "qwen3.5-9b",
-    "qwen3.5-27b",
     "qwen3.6-27b",
 )
 VERIFIED_PUBLIC_NAMES = (
@@ -37,8 +36,7 @@ VERIFIED_PUBLIC_NAMES = (
 
 
 # The eliza-1 fused-model line uses Qwen3.5 for active 0.8B/2B/4B/9B text
-# tiers and Qwen3.6 for the active 27B tier. The legacy Qwen3.5 27B lookup is
-# retained for experiments but is not publish/default eligible.
+# tiers and Qwen3.6 for the active 27B tier.
 SMALL_KEYS = ("qwen3.5-0.8b",)
 SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
 LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.6-27b")
@@ -64,7 +62,7 @@ def test_every_entry_has_publish_metadata() -> None:
     for key, public in zip(active_public_keys, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
-        assert e.eliza_repo_id == "elizaos/eliza-1"
+        assert e.eliza_repo_id == "elizalabs/eliza-1"
         assert e.abliteration_repo_id == ""
 
 
@@ -85,7 +83,6 @@ def test_tier_assignments() -> None:
     assert get("qwen3.5-2b").tier == Tier.LOCAL
     assert get("qwen3.5-4b").tier == Tier.LOCAL
     assert get("qwen3.5-9b").tier == Tier.WORKSTATION
-    assert get("qwen3.5-27b").tier == Tier.CLOUD
     assert get("qwen3.6-27b").tier == Tier.CLOUD
 
 
@@ -94,9 +91,9 @@ def test_by_tier_partitions_the_ladder() -> None:
     assert len(by_tier(Tier.LOCAL)) == 3
     # WORKSTATION: qwen3.5-9b
     assert len(by_tier(Tier.WORKSTATION)) == 1
-    # CLOUD: canonical qwen3.6-27b; qwen3.5-27b is legacy unless requested.
+    # CLOUD: canonical qwen3.6-27b.
     assert len(by_tier(Tier.CLOUD)) == 1
-    assert len(by_tier(Tier.CLOUD, include_legacy=True)) == 2
+    assert len(by_tier(Tier.CLOUD, include_legacy=True)) == 1
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
@@ -106,15 +103,10 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
     assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
     assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
-    assert get("qwen3.5-27b").short_name == "qwen3.5-27b"
     assert get("qwen3.6-27b").short_name == "qwen3.6-27b"
     assert get("Qwen/Qwen3.6-27B").short_name == "qwen3.6-27b"
     assert get("eliza-1-27b").short_name == "qwen3.6-27b"
     assert get("27b").short_name == "qwen3.6-27b"
-    assert get("27b-256k").short_name == "qwen3.6-27b"
-    assert get("qwen3.6-27b-256k").short_name == "qwen3.6-27b"
-    assert get("Qwen/Qwen3.6-27B-256K").short_name == "qwen3.6-27b"
-    assert get("eliza-1-27b-256k").short_name == "qwen3.6-27b"
 
 
 def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
@@ -142,7 +134,6 @@ def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
         "eliza-1-4b",
         "eliza-1-9b",
         "eliza-1-27b",
-        "eliza-1-27b-256k",
     ):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
     # Deprecated Qwen3 tiers have no drafter entries.
@@ -205,12 +196,13 @@ def test_summary_table_includes_every_entry() -> None:
     for public_name in VERIFIED_PUBLIC_NAMES:
         assert public_name in table
     assert "Qwen/Qwen3.6-27B" in table or "eliza-1-27b" in table
-    assert "qwen3.5-27b" not in table
 
 
 def test_quantization_matrix_includes_gguf_q4_q6_q8() -> None:
     for key in VERIFIED_KEYS:
         e = get(key)
+        assert "gguf-q3_k_m" in e.quantization_after
         assert "gguf-q4_k_m" in e.quantization_after
+        assert "gguf-q5_k_m" in e.quantization_after
         assert "gguf-q6_k" in e.quantization_after
         assert "gguf-q8_0" in e.quantization_after

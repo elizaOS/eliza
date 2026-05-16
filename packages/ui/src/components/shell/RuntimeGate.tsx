@@ -82,7 +82,7 @@ import { Spinner } from "../ui/spinner";
 import { TooltipHint } from "../ui/tooltip";
 import { ProvisioningChatView } from "./ProvisioningChatView";
 
-const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
+const MONO_FONT = "'Open Sans', Arial, system-ui, sans-serif";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 

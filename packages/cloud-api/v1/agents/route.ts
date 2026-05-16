@@ -118,7 +118,7 @@ app.post("/", async (c) => {
       );
     }
 
-    let character;
+    let character: Awaited<ReturnType<typeof charactersService.create>>;
     try {
       character = await charactersService.create({
         name: agentName,
@@ -152,7 +152,7 @@ app.post("/", async (c) => {
       throw error;
     }
 
-    let agent;
+    let agent: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
     try {
       agent = await elizaSandboxService.createAgent({
         organizationId: identity.organizationId,
@@ -235,7 +235,9 @@ app.post("/", async (c) => {
       );
     }
 
-    let job;
+    let job: Awaited<
+      ReturnType<typeof provisioningJobService.enqueueAgentProvision>
+    >;
     try {
       job = await provisioningJobService.enqueueAgentProvision({
         agentId: agent.id,

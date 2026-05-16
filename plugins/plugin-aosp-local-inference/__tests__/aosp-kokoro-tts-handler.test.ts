@@ -2,7 +2,7 @@ import {
   type KokoroEngineDiscoveryResult,
   KokoroMockRuntime,
 } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { makeKokoroTextToSpeechHandler } from "../src/aosp-local-inference-bootstrap";
 
 function kokoroDiscovery(): KokoroEngineDiscoveryResult {

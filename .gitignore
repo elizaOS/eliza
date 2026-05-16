@@ -6,6 +6,7 @@ node_modules
 
 .env
 .env.production
+.env.crypto-wallets.generated
 .env.local
 .env.bak
 .env_main
@@ -57,6 +58,12 @@ plugins/plugin-discord/**/*.d.ts.map
 # Accidental JS/sourcemap emit next to TS in @elizaos/core (build output is dist/)
 packages/core/src/**/*.js
 packages/core/src/**/*.js.map
+
+# Accidental test-helper emit next to TS in plugin-lifeops (build output is dist/)
+plugins/plugin-lifeops/test/helpers/*.d.ts
+plugins/plugin-lifeops/test/helpers/*.d.ts.map
+plugins/plugin-lifeops/test/helpers/*.js
+plugins/plugin-lifeops/test/helpers/*.js.map
 
 # Accidental declaration emit next to TS in @elizaos/contracts (build output is dist/)
 packages/contracts/src/**/*.d.ts

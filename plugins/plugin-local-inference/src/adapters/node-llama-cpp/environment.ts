@@ -1,9 +1,9 @@
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-32k.gguf";
-const DEFAULT_LARGE_MODEL = "text/eliza-1-4b-64k.gguf";
-const DEFAULT_EMBEDDING_MODEL = "text/eliza-1-0_8b-32k.gguf";
+const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-128k.gguf";
+const DEFAULT_LARGE_MODEL = "text/eliza-1-4b-128k.gguf";
+const DEFAULT_EMBEDDING_MODEL = "text/eliza-1-0_8b-128k.gguf";
 
 export const configSchema = z.object({
 	LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),

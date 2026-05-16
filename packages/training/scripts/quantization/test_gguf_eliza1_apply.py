@@ -118,6 +118,17 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
         "fused_turboquant.json"
     )
     assert ext["fused_turboquant"]["bits"] == 4
+    assert ext["polarquant"] == {
+        "bits": 4,
+        "block_size": 128,
+        "use_qjl": True,
+        "n_layers_quantized": None,
+        "average_block_mse": None,
+    }
+    assert ext["qjl"]["projection_dim_per_head"] == 256
+    assert ext["qjl"]["key_bits"] == 1
+    assert ext["qjl"]["value_bits"] == 4
+    assert ext["turboquant"]["nbits"] == 4
     assert set(ext["recipeManifest"]) == {
         "polar_q4",
         "qjl1_256",

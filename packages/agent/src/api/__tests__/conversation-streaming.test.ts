@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   generateChatResponse,
   generateConversationTitle,
+  markSyntheticChatFailureContent,
   normalizeChatResponseText,
 } from "../chat-routes.js";
 
@@ -303,6 +304,20 @@ describe("normalizeChatResponseText", () => {
     expect(normalizeChatResponseText("Plain chat reply.", [])).toBe(
       "Plain chat reply.",
     );
+  });
+
+  it("marks synthetic failure replies so they do not become prompt context", () => {
+    expect(
+      markSyntheticChatFailureContent({
+        text: "Sorry, I'm having a provider issue",
+        source: "client_chat",
+      }),
+    ).toMatchObject({
+      metadata: {
+        elizaSyntheticFailure: true,
+        chatFailureKind: "provider_issue",
+      },
+    });
   });
 });
 

@@ -41,10 +41,12 @@ const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
-  "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-32k.gguf";
+  "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf";
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
-const IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE = /in one short sentence/i;
+const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
+const IOS_FULL_BUN_SMOKE_FAILURE_RE =
+  /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
 const ANDROID_HEALTH_ATTEMPTS = 240;
 const ANDROID_FULL_TURN_TIMEOUT_MS = 10 * 60_000;
 const ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = Number.parseInt(
@@ -379,7 +381,7 @@ function stageIosFullBunSmokeModel(udid, id) {
     );
   if (!fs.existsSync(source)) {
     throw new Error(
-      `iOS full-Bun smoke model is missing: ${source}. Set ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH to a Qwen3.5 GGUF file.`,
+      `iOS full-Bun smoke model is missing: ${source}. Set ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH to an Eliza-1 GGUF file.`,
     );
   }
   const sourceStats = fs.statSync(source);
@@ -401,7 +403,7 @@ function stageIosFullBunSmokeModel(udid, id) {
     models: [
       {
         id: IOS_FULL_BUN_SMOKE_MODEL_ID,
-        displayName: "Eliza-1 0.8B Qwen3.5",
+        displayName: "eliza-1-0.8B",
         path: modelPath,
         sizeBytes: sourceStats.size,
         installedAt: now,
@@ -853,7 +855,7 @@ function cleanupAndroidAgentForwards(context, reason) {
   context.localAgentForward = null;
   if (forwardedPorts.length > 0) {
     console.log(
-      `[local-chat-smoke] Removed Android adb forward(s) for tcp:31337 (${reason}): ${forwardedPorts.join(", ")}.`,
+      `[local-chat-smoke] Removed Android harness adb forward(s) for tcp:31337 (${reason}): ${forwardedPorts.join(", ")}.`,
     );
   }
 }
@@ -888,7 +890,7 @@ async function waitForAndroidApi(context) {
         context.localAgentForward = `tcp:${forwardedPort.trim()}`;
         forwardedApiBase = `http://127.0.0.1:${forwardedPort.trim()}`;
         console.log(
-          `[local-chat-smoke] Android local-agent forwarded to ${forwardedApiBase}.`,
+          `[local-chat-smoke] Android smoke harness forwarded local-agent diagnostics to ${forwardedApiBase}; the app remains preseeded with ${ANDROID_LOCAL_AGENT_IPC_BASE}.`,
         );
       }
       try {
@@ -1065,6 +1067,13 @@ function assertObject(value, label) {
   return value;
 }
 
+function normalizeSmokeReply(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function assertArray(value, label) {
   if (!Array.isArray(value)) {
     throw new Error(`${label} was not an array.`);
@@ -1209,24 +1218,23 @@ function assertIosFullBunSmokeSuccess(result) {
   );
   const reply = String(sendMessage.text ?? sendMessage.reply ?? "");
   if (
-    !reply.trim() ||
-    /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(reply) ||
-    IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE.test(reply)
+    normalizeSmokeReply(reply) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||
+    IOS_FULL_BUN_SMOKE_FAILURE_RE.test(reply)
   ) {
     throw new Error(
-      `iOS full Bun sendMessage did not return a usable reply: ${JSON.stringify(sendMessage)}`,
+      `iOS full Bun sendMessage did not return the expected local model reply: ${JSON.stringify(sendMessage)}`,
     );
   }
   const streamMessage = String(result.streamMessage ?? "");
   if (
     !streamMessage.includes('"type":"done"') ||
-    /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
-      streamMessage,
-    ) ||
-    IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE.test(streamMessage)
+    IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage) ||
+    !normalizeSmokeReply(streamMessage).includes(
+      IOS_FULL_BUN_SMOKE_EXPECTED_REPLY,
+    )
   ) {
     throw new Error(
-      `iOS full Bun stream did not return usable SSE: ${streamMessage.slice(0, 500)}`,
+      `iOS full Bun stream did not return the expected local model reply: ${streamMessage.slice(0, 500)}`,
     );
   }
 }
@@ -1957,6 +1965,33 @@ async function runLocalInferenceApiSmoke(
   );
   await requestJson("GET", "/api/health", undefined, baseUrl, authToken);
   const readiness = await requireLocalInferenceReady(baseUrl, authToken);
+  const greetingCreated = await requestJson(
+    "POST",
+    "/api/conversations",
+    {
+      title: "Simulator local chat greeting smoke",
+    },
+    baseUrl,
+    authToken,
+  );
+  const greetingConversationId = greetingCreated.conversation?.id;
+  if (!greetingConversationId) {
+    throw new Error(
+      "Greeting smoke conversation creation did not return an id.",
+    );
+  }
+
+  const greeting = await requestJson(
+    "POST",
+    `/api/conversations/${encodeURIComponent(greetingConversationId)}/greeting`,
+    undefined,
+    baseUrl,
+    authToken,
+  );
+  if (String(greeting.text ?? "").includes("I'm running locally")) {
+    throw new Error("Stale local-mode greeting is still present.");
+  }
+
   const created = await requestJson(
     "POST",
     "/api/conversations",
@@ -1969,17 +2004,6 @@ async function runLocalInferenceApiSmoke(
   const conversationId = created.conversation?.id;
   if (!conversationId) {
     throw new Error("Conversation creation did not return an id.");
-  }
-
-  const greeting = await requestJson(
-    "POST",
-    `/api/conversations/${encodeURIComponent(conversationId)}/greeting`,
-    undefined,
-    baseUrl,
-    authToken,
-  );
-  if (String(greeting.text ?? "").includes("I'm running locally")) {
-    throw new Error("Stale local-mode greeting is still present.");
   }
 
   const streamText = await requestTextResponse(

@@ -12,8 +12,11 @@
  * cleans up LM Studio models we don't show stale ghosts.
  */
 
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { findCatalogModel } from "./catalog";
 import { scanExternalModels } from "./external-scanner";
 import { isWithinElizaRoot, localInferenceRoot, registryPath } from "./paths";
 import type { InstalledModel } from "./types";
@@ -21,6 +24,19 @@ import type { InstalledModel } from "./types";
 interface RegistryFile {
 	version: 1;
 	models: InstalledModel[];
+}
+
+interface BundleManifestFileEntry {
+	path: string;
+	sha256: string;
+}
+
+interface BundleManifest {
+	id: string;
+	version?: string;
+	files?: {
+		dflash?: BundleManifestFileEntry[];
+	};
 }
 
 async function ensureRootDir(): Promise<void> {
@@ -51,16 +67,156 @@ async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
 	await fs.rename(tmp, registryPath());
 }
 
+function resolveBundleFilePath(
+	bundleRoot: string,
+	relativePath: string,
+): string | null {
+	if (
+		!relativePath ||
+		path.isAbsolute(relativePath) ||
+		/^[a-zA-Z]:[\\/]/.test(relativePath)
+	) {
+		return null;
+	}
+
+	const resolvedRoot = path.resolve(bundleRoot);
+	const resolvedFile = path.resolve(resolvedRoot, relativePath);
+	if (
+		resolvedFile !== resolvedRoot &&
+		!resolvedFile.startsWith(`${resolvedRoot}${path.sep}`)
+	) {
+		return null;
+	}
+	return resolvedFile;
+}
+
+function hashFile(filePath: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const hash = createHash("sha256");
+		const stream = createReadStream(filePath);
+		stream.on("data", (chunk) => hash.update(chunk));
+		stream.on("error", reject);
+		stream.on("end", () => resolve(hash.digest("hex")));
+	});
+}
+
+async function tryReadBundleManifest(
+	model: InstalledModel,
+): Promise<BundleManifest | null> {
+	if (!model.manifestPath || !model.bundleRoot) return null;
+	if (!isWithinElizaRoot(model.manifestPath)) return null;
+	try {
+		const raw = JSON.parse(
+			await fs.readFile(model.manifestPath, "utf8"),
+		) as BundleManifest;
+		if (!raw || raw.id !== model.id || !raw.files) return null;
+		return raw;
+	} catch {
+		return null;
+	}
+}
+
+async function maybeRecoverDflashCompanion(
+	model: InstalledModel,
+): Promise<InstalledModel | null> {
+	if (model.runtimeRole && model.runtimeRole !== "chat") return null;
+	if (!model.bundleRoot || !isWithinElizaRoot(model.bundleRoot)) return null;
+
+	const catalog = findCatalogModel(model.id);
+	const dflash = catalog?.runtime?.dflash;
+	if (!dflash) return null;
+
+	const companion = findCatalogModel(dflash.drafterModelId);
+	if (!companion) return null;
+
+	const manifest = await tryReadBundleManifest(model);
+	const drafterEntry = manifest?.files?.dflash?.find(
+		(entry) => entry.path === companion.ggufFile,
+	);
+	if (
+		!manifest ||
+		!drafterEntry ||
+		!/^[a-f0-9]{64}$/.test(drafterEntry.sha256)
+	) {
+		return null;
+	}
+
+	const drafterPath = resolveBundleFilePath(
+		model.bundleRoot,
+		drafterEntry.path,
+	);
+	if (!drafterPath || !isWithinElizaRoot(drafterPath)) return null;
+
+	try {
+		const [stat, sha256] = await Promise.all([
+			fs.stat(drafterPath),
+			hashFile(drafterPath),
+		]);
+		if (!stat.isFile() || sha256 !== drafterEntry.sha256) return null;
+		const now = new Date().toISOString();
+		return {
+			id: companion.id,
+			displayName: companion.displayName,
+			path: drafterPath,
+			sizeBytes: stat.size,
+			hfRepo: companion.hfRepo ?? model.hfRepo,
+			installedAt: model.installedAt,
+			lastUsedAt: null,
+			source: "eliza-download",
+			sha256,
+			lastVerifiedAt: now,
+			runtimeRole: "dflash-drafter",
+			companionFor: model.id,
+			bundleRoot: model.bundleRoot,
+			manifestPath: model.manifestPath,
+			manifestSha256: model.manifestSha256,
+			bundleVersion: manifest.version ?? model.bundleVersion,
+			bundleSizeBytes: model.bundleSizeBytes,
+		};
+	} catch {
+		return null;
+	}
+}
+
+async function recoverDflashCompanions(
+	owned: InstalledModel[],
+): Promise<InstalledModel[]> {
+	const byId = new Map(owned.map((model) => [model.id, model]));
+	let changed = false;
+
+	for (const model of owned) {
+		const catalog = findCatalogModel(model.id);
+		const drafterId = catalog?.runtime?.dflash?.drafterModelId;
+		if (!drafterId || byId.has(drafterId)) continue;
+
+		const companion = await maybeRecoverDflashCompanion(model);
+		if (!companion || byId.has(companion.id)) continue;
+		byId.set(companion.id, companion);
+		changed = true;
+	}
+
+	if (!changed) return owned;
+	const recovered = [...byId.values()];
+	try {
+		await writeElizaOwned(recovered);
+	} catch {
+		// Listing should stay usable even if a read-only state dir prevents
+		// persisting the repaired companion entry.
+	}
+	return recovered;
+}
+
 /**
  * Return all models currently usable: persisted Eliza downloads plus a
  * fresh external-tool scan. External duplicates of Eliza-owned files are
  * filtered out by path.
  */
 export async function listInstalledModels(): Promise<InstalledModel[]> {
-	const [owned, external] = await Promise.all([
+	const [ownedRaw, external] = await Promise.all([
 		readElizaOwned(),
 		scanExternalModels(),
 	]);
+	const owned = await recoverDflashCompanions(ownedRaw);
 
 	// Filter out Eliza-owned files that also survived a reboot of the local
 	// file and got re-detected by the scanner.

@@ -266,6 +266,7 @@ export class DeviceBridgeClient {
     }
     this.socket = ws;
     let timedOut = false;
+    let opened = false;
     const connectTimeout = setTimeout(() => {
       if (
         this.stopped ||
@@ -287,6 +288,7 @@ export class DeviceBridgeClient {
 
     ws.onopen = () => {
       clearTimeout(connectTimeout);
+      opened = true;
       this.reconnectAttempt = 0;
       void this.sendRegister(ws);
     };
@@ -302,6 +304,7 @@ export class DeviceBridgeClient {
     };
 
     ws.onerror = () => {
+      if (!opened) return;
       this.config.onStateChange?.("error", "websocket error");
     };
 

@@ -54,6 +54,7 @@ import {
 	VoiceLifecycleError,
 	type VoiceLifecycleLoaders,
 } from "./lifecycle";
+import { loadOnnxRuntime } from "./onnx-runtime";
 import {
 	OptimisticGenerationPolicy,
 	type OptimisticPolicyOptions,
@@ -91,7 +92,12 @@ import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
-import { AsrUnavailableError, createStreamingTranscriber } from "./transcriber";
+import {
+	ASR_SAMPLE_RATE,
+	AsrUnavailableError,
+	createStreamingTranscriber,
+	resampleLinear,
+} from "./transcriber";
 import type {
 	AudioChunk,
 	AudioSink,
@@ -569,6 +575,14 @@ export interface EngineVoiceBridgeOptions {
 	 */
 	backendOverride?: OmniVoiceBackend;
 	/**
+	 * Override only the TTS backend while keeping the fused bundle lifecycle
+	 * and ASR FFI loaded. Used when a bundle falls back from OmniVoice speech
+	 * to Kokoro speech but still needs bundled Qwen3-ASR for mic input.
+	 */
+	ttsBackendOverride?: OmniVoiceBackend;
+	/** Optional speaker preset paired with `ttsBackendOverride`. */
+	speakerPresetOverride?: SpeakerPreset;
+	/**
 	 * Optional shared resource registry. When the bridge is created
 	 * inside an engine that already owns one (text + voice on the same
 	 * tokenizer / mmap regions), the engine passes its registry in so
@@ -649,6 +663,48 @@ export interface EngineVoiceBridgeOptions {
 	 * Has no effect when `runtime` is unset (no coordinator is constructed).
 	 */
 	slotAbort?: (slotId: number, reason: VoiceCancellationReason) => void;
+}
+
+export function createKokoroTtsBackend(
+	kokoro: KokoroEngineDiscoveryResult,
+): KokoroTtsBackend {
+	const forkUrl =
+		process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
+		process.env.ELIZA_GATEWAY_URL?.trim() ||
+		"http://127.0.0.1:18789";
+	const forkModelId =
+		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
+	const decision = pickKokoroRuntimeBackend({
+		defaultBackend: kokoro.runtimeKind === "onnx" ? "onnx" : "fork",
+		fork: {
+			serverUrl: forkUrl,
+			modelId: forkModelId,
+			sampleRate: kokoro.layout.sampleRate,
+		},
+		onnx: {
+			layout: kokoro.layout,
+			expectedSha256: null,
+			loadOrt: loadOnnxRuntime,
+		},
+	});
+	logger.info(
+		`[voice/kokoro] runtime backend=${decision.backend} reason="${decision.reason}"`,
+	);
+	return new KokoroTtsBackend({
+		layout: kokoro.layout,
+		runtime: decision.runtime,
+		defaultVoiceId: kokoro.defaultVoiceId,
+	});
+}
+
+export function createKokoroSpeakerPreset(
+	kokoro: KokoroEngineDiscoveryResult,
+): SpeakerPreset {
+	return {
+		voiceId: kokoro.defaultVoiceId,
+		embedding: new Float32Array(0),
+		bytes: new Uint8Array(0),
+	};
 }
 
 /**
@@ -872,6 +928,7 @@ export class EngineVoiceBridge {
 		const { preset, phrases: seedPhrases } = presetCache.loadFromBundle({
 			bundleRoot: opts.bundleRoot,
 		});
+		const schedulerPreset = opts.speakerPresetOverride ?? preset;
 
 		const phraseCache = new PhraseCache();
 		phraseCache.seed(seedPhrases);
@@ -893,6 +950,12 @@ export class EngineVoiceBridge {
 		const asrAvailable = bundleHasRegularFile(
 			path.join(opts.bundleRoot, "asr"),
 		);
+		if (opts.backendOverride && opts.ttsBackendOverride) {
+			throw new VoiceStartupError(
+				"invalid-options",
+				"[voice] backendOverride and ttsBackendOverride are mutually exclusive.",
+			);
+		}
 		if (opts.backendOverride && opts.useFfiBackend) {
 			throw new VoiceStartupError(
 				"missing-fused-build",
@@ -926,13 +989,15 @@ export class EngineVoiceBridge {
 				},
 			};
 			ffiContextRef = contextRef;
-			backend = new FfiOmniVoiceBackend({
-				ffi: ffiHandle,
-				getContext: contextRef.ensure,
-				sampleRate,
-			});
+			backend =
+				opts.ttsBackendOverride ??
+				new FfiOmniVoiceBackend({
+					ffi: ffiHandle,
+					getContext: contextRef.ensure,
+					sampleRate,
+				});
 		} else {
-			backend = new StubOmniVoiceBackend(sampleRate);
+			backend = opts.ttsBackendOverride ?? new StubOmniVoiceBackend(sampleRate);
 		}
 
 		const config: SchedulerConfig = {
@@ -942,7 +1007,7 @@ export class EngineVoiceBridge {
 					readPositiveIntEnv("ELIZA_VOICE_MAX_TOKENS_PER_PHRASE") ??
 					PHRASE_MAX_TOKENS_DEFAULT,
 			},
-			preset,
+			preset: schedulerPreset,
 			ringBufferCapacity:
 				opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
 			sampleRate,
@@ -1067,43 +1132,9 @@ export class EngineVoiceBridge {
 		// Synthesize a minimal preset. Kokoro's `resolveVoice(preset)` looks
 		// up `preset.voiceId` against `KOKORO_VOICE_PACKS`; the embedding +
 		// bytes fields are ignored on this path (voice cloning is OmniVoice-only).
-		const preset: SpeakerPreset = {
-			voiceId: kokoro.defaultVoiceId,
-			embedding: new Float32Array(0),
-			bytes: new Uint8Array(0),
-		};
+		const preset = createKokoroSpeakerPreset(kokoro);
 
-		// J2 (2026-05-15): default to the fork-side llama-server path. The
-		// llama-server URL is read from ELIZA_KOKORO_FORK_URL (falling back to
-		// the standard 127.0.0.1:18789 the rest of the runtime uses), and the
-		// model id from ELIZA_KOKORO_FORK_MODEL_ID. Setting KOKORO_BACKEND=onnx
-		// flips back to the legacy ONNX path during the deprecation runway.
-		const forkUrl =
-			process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
-			process.env.ELIZA_GATEWAY_URL?.trim() ||
-			"http://127.0.0.1:18789";
-		const forkModelId =
-			process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
-		const decision = pickKokoroRuntimeBackend({
-			defaultBackend: kokoro.runtimeKind === "onnx" ? "onnx" : "fork",
-			fork: {
-				serverUrl: forkUrl,
-				modelId: forkModelId,
-				sampleRate: kokoro.layout.sampleRate,
-			},
-			onnx: {
-				layout: kokoro.layout,
-				expectedSha256: null,
-			},
-		});
-		logger.info(
-			`[voice/kokoro] runtime backend=${decision.backend} reason="${decision.reason}"`,
-		);
-		const backend = new KokoroTtsBackend({
-			layout: kokoro.layout,
-			runtime: decision.runtime,
-			defaultVoiceId: kokoro.defaultVoiceId,
-		});
+		const backend = createKokoroTtsBackend(kokoro);
 
 		const phraseCache = new PhraseCache();
 		for (const entry of opts.prewarmedPhrases ?? []) {
@@ -1448,8 +1479,9 @@ export class EngineVoiceBridge {
 	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
 	 *   fused `libelizainference` streaming ASR (final path, gated on a
 	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
-	 *   only the fused path; the whisper.cpp interim fallback has been removed.
+	 *   same bundled model → OpenVINO Whisper when its worker/model artifacts
+	 *   are present → `AsrUnavailableError`. The whisper.cpp interim fallback
+	 *   has been removed.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1491,6 +1523,30 @@ export class EngineVoiceBridge {
 		};
 		if (typeof backendBatch.transcribe === "function") {
 			const transcript = await backendBatch.transcribe(args);
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return transcript;
+		}
+		if (
+			this.ffi &&
+			this.ffiContextRef &&
+			this.asrAvailable &&
+			typeof this.ffi.asrTranscribe === "function"
+		) {
+			const pcm =
+				args.sampleRate === ASR_SAMPLE_RATE
+					? args.pcm
+					: resampleLinear(args.pcm, args.sampleRate, ASR_SAMPLE_RATE);
+			const transcript = this.ffi
+				.asrTranscribe({
+					ctx: this.ffiContextRef.ensure(),
+					pcm,
+					sampleRateHz: ASR_SAMPLE_RATE,
+				})
+				.trim();
 			if (signal?.aborted) {
 				throw signal.reason instanceof Error
 					? signal.reason

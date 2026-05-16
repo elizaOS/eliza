@@ -115,8 +115,7 @@ plugins/plugin-anthropic-proxy/
 │   │   ├── constants.ts               # Bit-for-bit constants from proxy.js
 │   │   ├── billing-fingerprint.ts     # Layer 1: SHA256 fingerprint
 │   │   ├── sanitize.ts                # Layer 2: string sanitize
-│   │   ├── tool-rename.ts             # Layer 3: tool name renames
-│   │   ├── property-rename.ts         # Layer 6: prop renames (re-export)
+│   │   ├── tool-rename.ts             # Layer 3/6: quoted name renames
 │   │   ├── system-prompt.ts           # Layer 4: system strip + paraphrase
 │   │   ├── cc-tool-stubs.ts           # Layer 5: description strip + stubs
 │   │   ├── sse-rewrite.ts             # Tail-buffer SSE reverse map

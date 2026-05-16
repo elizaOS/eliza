@@ -29,7 +29,7 @@ app.use("*", rateLimit(RateLimitPresets.CRITICAL));
 
 app.post("/", async (c) => {
   try {
-    let user;
+    let user: Awaited<ReturnType<typeof requireUserWithOrg>>;
     try {
       user = await requireUserWithOrg(c);
     } catch (error) {

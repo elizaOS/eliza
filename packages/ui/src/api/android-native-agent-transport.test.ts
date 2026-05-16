@@ -21,6 +21,56 @@ const { capacitorState, agentRequestMock, registerPluginMock } = vi.hoisted(
   },
 );
 
+function stubChromiumWebViewCustomSchemeUrlParser(): void {
+  const NativeUrl = globalThis.URL;
+  class ChromiumWebViewUrl {
+    private readonly inner: URL;
+    private readonly raw: string;
+    private readonly isIpc: boolean;
+
+    constructor(input: string | URL, base?: string | URL) {
+      this.raw = String(input);
+      this.inner = new NativeUrl(input, base);
+      this.isIpc = this.raw.toLowerCase().startsWith("eliza-local-agent://ipc");
+    }
+
+    get protocol(): string {
+      return this.isIpc ? "eliza-local-agent:" : this.inner.protocol;
+    }
+
+    get href(): string {
+      return this.toString();
+    }
+
+    get hostname(): string {
+      return this.isIpc ? "" : this.inner.hostname;
+    }
+
+    get port(): string {
+      return this.isIpc ? "" : this.inner.port;
+    }
+
+    get pathname(): string {
+      if (!this.isIpc) return this.inner.pathname;
+      const queryIndex = this.raw.indexOf("?");
+      const withoutQuery =
+        queryIndex === -1 ? this.raw : this.raw.slice(0, queryIndex);
+      const suffix = withoutQuery.slice("eliza-local-agent://ipc".length);
+      return `//ipc${suffix}`;
+    }
+
+    get search(): string {
+      return this.isIpc ? this.inner.search : this.inner.search;
+    }
+
+    toString(): string {
+      return this.isIpc ? this.raw : this.inner.toString();
+    }
+  }
+
+  vi.stubGlobal("URL", ChromiumWebViewUrl);
+}
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     get Plugins() {
@@ -113,11 +163,41 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     await expect(response?.json()).resolves.toEqual({ ready: true });
   });
 
+  it("extracts IPC paths correctly under Chromium WebView custom-scheme URL parsing", async () => {
+    stubChromiumWebViewCustomSchemeUrlParser();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const transport = createAndroidNativeAgentTransport({
+      request: agentRequestMock,
+    });
+
+    const response = await transport.request(
+      "eliza-local-agent://ipc/api/status?source=test",
+      { method: "GET" },
+      { timeoutMs: 12_345 },
+    );
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/status?source=test",
+      headers: {},
+      body: null,
+      timeoutMs: 12_345,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response?.json()).resolves.toEqual({ ready: true });
+  });
+
   it("does not install the Android local-agent transport on iOS", async () => {
     capacitorState.platform = "ios";
 
     await expect(
       androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
+    ).resolves.toBeNull();
+    await expect(
+      androidNativeAgentTransportForUrl(
+        "eliza-local-agent://ipc/api/auth/status",
+      ),
     ).resolves.toBeNull();
   });
 
@@ -153,5 +233,119 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("bridges direct /api fetches when the configured Android base is IPC", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      location: { href: "http://localhost/" },
+      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
+    });
+
+    installAndroidNativeAgentFetchBridge();
+
+    const response = await fetch("/api/health", { method: "GET" });
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/health",
+      headers: {},
+      body: null,
+      timeoutMs: undefined,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("bridges the IPC URL when Capacitor reports android but isNativePlatform is false", async () => {
+    capacitorState.isNative = false;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    installAndroidNativeAgentFetchBridge();
+
+    const response = await fetch("eliza-local-agent://ipc/api/auth/status", {
+      method: "GET",
+    });
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/auth/status",
+      headers: {},
+      body: null,
+      timeoutMs: undefined,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("bridges IPC fetches under Chromium WebView custom-scheme URL parsing", async () => {
+    stubChromiumWebViewCustomSchemeUrlParser();
+    capacitorState.isNative = false;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    installAndroidNativeAgentFetchBridge();
+
+    const response = await fetch("eliza-local-agent://ipc/api/auth/status", {
+      method: "GET",
+    });
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/auth/status",
+      headers: {},
+      body: null,
+      timeoutMs: undefined,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("bridges the IPC URL through the Agent plugin before Capacitor reports the Android platform", async () => {
+    capacitorState.isNative = false;
+    capacitorState.platform = "web";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const transport = await androidNativeAgentTransportForUrl(
+      "eliza-local-agent://ipc/api/auth/status",
+    );
+    expect(transport).toBeTruthy();
+    const response = await transport?.request(
+      "eliza-local-agent://ipc/api/auth/status",
+      { method: "GET" },
+    );
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/auth/status",
+      headers: {},
+      body: null,
+      timeoutMs: undefined,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response?.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("returns a structured 503 for IPC fetches when the native Agent request bridge is unavailable", async () => {
+    capacitorState.isNative = false;
+    capacitorState.platform = "web";
+    delete capacitorState.plugins.Agent;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    installAndroidNativeAgentFetchBridge();
+
+    const response = await fetch("eliza-local-agent://ipc/api/auth/status", {
+      method: "GET",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "native_agent_unavailable",
+    });
   });
 });

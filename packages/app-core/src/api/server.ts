@@ -672,9 +672,13 @@ async function handleCompatRoute(
   // Local-inference compat routes — loaded via lazy getter to avoid a static
   // boundary violation (app-core must not statically import plugin packages).
   {
-    const { handleLocalInferenceCompatRoutes, handleLocalInferenceTtsRoute } =
-      await getLocalInferenceRoutes();
+    const {
+      handleLocalInferenceAsrRoute,
+      handleLocalInferenceCompatRoutes,
+      handleLocalInferenceTtsRoute,
+    } = await getLocalInferenceRoutes();
     if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
+    if (await handleLocalInferenceAsrRoute(req, res, state)) return true;
     if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
   }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;

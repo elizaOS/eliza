@@ -38,7 +38,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-2b-32k.gguf",
+      "default": "text/eliza-1-2b-128k.gguf",
       "label": "Small Model",
       "help": "Filename of the small local model (TEXT_SMALL handler).",
       "advanced": false
@@ -47,7 +47,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-4b-64k.gguf",
+      "default": "text/eliza-1-4b-128k.gguf",
       "label": "Large Model",
       "help": "Filename of the large local model (TEXT_LARGE handler).",
       "advanced": false
@@ -56,7 +56,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-0_8b-32k.gguf",
+      "default": "text/eliza-1-0_8b-128k.gguf",
       "label": "Embedding Model",
       "help": "Filename of the embedding model used for vector embeddings.",
       "advanced": false

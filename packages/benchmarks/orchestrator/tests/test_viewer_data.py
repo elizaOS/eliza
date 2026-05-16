@@ -103,6 +103,41 @@ def test_viewer_dataset_uses_stable_generation_time_and_terminal_latest(
     assert first["latest_scores"][0]["run_id"] == "run_success"
 
 
+def test_viewer_latest_scores_ignore_scoreless_succeeded_rows(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_scored_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_scoreless_success",
+        started_at="2026-05-12T00:01:00+00:00",
+        status="succeeded",
+        score=None,
+    )
+
+    data = build_viewer_dataset(conn)
+
+    assert data["latest_scores"][0]["run_id"] == "run_scored_success"
+    assert data["latest_scores"][0]["score"] == 0.75
+
+
 def test_viewer_calibration_summary_uses_terminal_latest(tmp_path: Path) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)

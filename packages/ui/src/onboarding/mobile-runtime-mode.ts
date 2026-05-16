@@ -17,11 +17,118 @@ export const MOBILE_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 export const IOS_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const MOBILE_LOCAL_AGENT_SERVER_ID = "local:mobile";
 export const MOBILE_LOCAL_AGENT_LABEL = "On-device agent";
+export const MOBILE_LOCAL_AGENT_PORT = "31337";
 
 export const ANDROID_LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
 export const ANDROID_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const ANDROID_LOCAL_AGENT_SERVER_ID = "local:android";
 export const ANDROID_LOCAL_AGENT_LABEL = MOBILE_LOCAL_AGENT_LABEL;
+
+const MOBILE_LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+const MOBILE_LOCAL_AGENT_IPC_PROTOCOL = "eliza-local-agent:";
+const MOBILE_LOCAL_AGENT_IPC_HOST = "ipc";
+
+export function isMobileLocalAgentIpcUrl(
+  value: string | URL | null | undefined,
+): boolean {
+  if (!value) return false;
+  const trimmed = value.toString().trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === MOBILE_LOCAL_AGENT_IPC_BASE ||
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}/`) ||
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}?`)
+  ) {
+    return true;
+  }
+
+  try {
+    const parsed = value instanceof URL ? value : new URL(trimmed);
+    if (parsed.protocol !== MOBILE_LOCAL_AGENT_IPC_PROTOCOL) return false;
+    if (parsed.hostname === MOBILE_LOCAL_AGENT_IPC_HOST) return true;
+
+    // Chromium WebView treats non-special URL authorities as path data:
+    // eliza-local-agent://ipc/api/status -> pathname "//ipc/api/status".
+    const pathname = parsed.pathname || "";
+    return (
+      pathname === `//${MOBILE_LOCAL_AGENT_IPC_HOST}` ||
+      pathname.startsWith(`//${MOBILE_LOCAL_AGENT_IPC_HOST}/`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function mobileLocalAgentPathFromUrl(
+  value: string | URL | null | undefined,
+): string | null {
+  if (!value) return null;
+  const trimmed = value.toString().trim();
+  if (!trimmed) return null;
+
+  const lower = trimmed.toLowerCase();
+  if (lower === MOBILE_LOCAL_AGENT_IPC_BASE) return "/";
+  if (
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}/`) ||
+    lower.startsWith(`${MOBILE_LOCAL_AGENT_IPC_BASE}?`)
+  ) {
+    const suffix = trimmed.slice(MOBILE_LOCAL_AGENT_IPC_BASE.length);
+    return suffix.startsWith("?") ? `/${suffix}` : suffix || "/";
+  }
+
+  let parsed: URL;
+  try {
+    parsed = value instanceof URL ? value : new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol === MOBILE_LOCAL_AGENT_IPC_PROTOCOL) {
+    if (parsed.hostname === MOBILE_LOCAL_AGENT_IPC_HOST) {
+      return `${parsed.pathname || "/"}${parsed.search}`;
+    }
+    const pathname = parsed.pathname || "";
+    const ipcPathPrefix = `//${MOBILE_LOCAL_AGENT_IPC_HOST}`;
+    if (pathname === ipcPathPrefix) {
+      return parsed.search ? `/${parsed.search}` : "/";
+    }
+    if (pathname.startsWith(`${ipcPathPrefix}/`)) {
+      return `${pathname.slice(ipcPathPrefix.length)}${parsed.search}`;
+    }
+    return null;
+  }
+
+  if (
+    parsed.protocol === "http:" &&
+    parsed.port === MOBILE_LOCAL_AGENT_PORT &&
+    MOBILE_LOCAL_AGENT_HOSTS.has(parsed.hostname)
+  ) {
+    return `${parsed.pathname || "/"}${parsed.search}`;
+  }
+
+  return null;
+}
+
+export function isMobileLocalAgentUrl(
+  value: string | URL | null | undefined,
+): boolean {
+  if (!value) return false;
+  if (isMobileLocalAgentIpcUrl(value)) return true;
+
+  let parsed: URL;
+  try {
+    parsed = value instanceof URL ? value : new URL(value.toString());
+  } catch {
+    return false;
+  }
+  return (
+    parsed.protocol === "http:" &&
+    parsed.port === MOBILE_LOCAL_AGENT_PORT &&
+    MOBILE_LOCAL_AGENT_HOSTS.has(parsed.hostname)
+  );
+}
 
 export type MobileRuntimeMode =
   | "remote-mac"

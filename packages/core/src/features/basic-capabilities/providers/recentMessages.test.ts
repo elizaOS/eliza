@@ -171,6 +171,56 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain(".next/static/chunks");
 	});
 
+	it("omits synthetic assistant failure replies from dialogue history", async () => {
+		const memories = [
+			makeMemory(
+				"msg-1",
+				USER_ID,
+				"I saw a provider issue in the UI",
+				"client_chat",
+				1000,
+			),
+			makeMemory(
+				"msg-2",
+				AGENT_ID,
+				"Sorry, I'm having a provider issue",
+				"client_chat",
+				2000,
+			),
+			makeMemory(
+				"msg-3",
+				AGENT_ID,
+				"Something went wrong on my end. Please try again.",
+				"client_chat",
+				3000,
+			),
+			makeMemory(
+				"msg-4",
+				AGENT_ID,
+				"I can help with the next step.",
+				"client_chat",
+				4000,
+			),
+			makeMemory("msg-5", AGENT_ID, "Retrying...", "client_chat", 5000, {
+				elizaSyntheticFailure: true,
+				chatFailureKind: "provider_issue",
+			}),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "next task", "client_chat", 6000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.data?.recentMessages).toHaveLength(2);
+		expect(result.text).toContain("User: I saw a provider issue in the UI");
+		expect(result.text).toContain("Agent: I can help with the next step.");
+		expect(result.text).not.toContain("Agent: Sorry");
+		expect(result.text).not.toContain("Something went wrong");
+		expect(result.text).not.toContain("Retrying...");
+	});
+
 	it("dedupes repeated assistant messages within one assistant run", async () => {
 		const memories = [
 			makeMemory("msg-1", USER_ID, "build app one", "discord", 1000),

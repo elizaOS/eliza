@@ -214,6 +214,33 @@ function additionalSessionMetadata(
   };
 }
 
+function pickRecordString(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+function originConnectorMessageId(
+  message: Memory,
+  content: Record<string, unknown>,
+): string | undefined {
+  const messageMetadata = objectValue(message.metadata);
+  const contentMetadata = objectValue(content.metadata);
+  return (
+    pickRecordString(contentMetadata, "originConnectorMessageId") ??
+    pickRecordString(contentMetadata, "connectorMessageId") ??
+    pickRecordString(contentMetadata, "platformMessageId") ??
+    pickRecordString(contentMetadata, "discordMessageId") ??
+    pickRecordString(messageMetadata, "originConnectorMessageId") ??
+    pickRecordString(messageMetadata, "connectorMessageId") ??
+    pickRecordString(messageMetadata, "platformMessageId") ??
+    pickRecordString(messageMetadata, "discordMessageId") ??
+    pickRecordString(messageMetadata, "messageId")
+  );
+}
+
 function pickRoutingString(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -376,6 +403,7 @@ async function runCreate(
   const timeoutMs = getTimeoutMs(params, content);
   const baseLabel = pickString(params, content, "label");
   const extraMetadata = additionalSessionMetadata(params, content);
+  const connectorMessageId = originConnectorMessageId(message, content);
   const swarmRoomMetadata = buildSwarmRoomMetadata(
     message,
     params,
@@ -413,6 +441,9 @@ async function runCreate(
           ...extraMetadata,
           requestedType: baseAgentType,
           messageId: message.id,
+          ...(connectorMessageId
+            ? { originConnectorMessageId: connectorMessageId }
+            : {}),
           roomId: swarmRoomMetadata.taskRoomId,
           ...swarmRoomMetadata,
           worldId: message.worldId,
@@ -574,6 +605,7 @@ async function runSpawnAgent(
     // level by reading the upstream `originSource` the router stamps onto
     // its synthetic inbound's metadata, so nested spawns inherit the
     // real user-facing platform.
+    const connectorMessageId = originConnectorMessageId(message, content);
     const inboundOriginSource =
       typeof content.metadata === "object" &&
       content.metadata !== null &&
@@ -601,6 +633,9 @@ async function runSpawnAgent(
         ...extraMetadata,
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
+        ...(connectorMessageId
+          ? { originConnectorMessageId: connectorMessageId }
+          : {}),
         roomId: swarmRoomMetadata.taskRoomId,
         ...swarmRoomMetadata,
         worldId: message.worldId,

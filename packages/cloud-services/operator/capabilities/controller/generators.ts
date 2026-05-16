@@ -4,8 +4,7 @@ import type { Server } from "../crd/generated/server-v1alpha1";
 
 const MANAGED_BY = "server-operator";
 
-// KEDA ScaledObject type for KFC
-export class ScaledObject extends GenericKind {}
+class ScaledObject extends GenericKind {}
 RegisterKind(ScaledObject, {
   group: "keda.sh",
   version: "v1alpha1",
@@ -79,7 +78,7 @@ function getRedisAddress(): string {
   return "redis.eliza-infra.svc:6379";
 }
 
-export function generateDeployment(server: Server) {
+function generateDeployment(server: Server) {
   const { name, namespace: ns } = serverMetadata(server);
 
   return {
@@ -166,7 +165,7 @@ export function generateDeployment(server: Server) {
   };
 }
 
-export function generateService(server: Server) {
+function generateService(server: Server) {
   const { name, namespace: ns } = serverMetadata(server);
 
   return {
@@ -186,7 +185,7 @@ export function generateService(server: Server) {
   };
 }
 
-export function generateScaledObject(server: Server) {
+function generateScaledObject(server: Server) {
   const { name, namespace: ns } = serverMetadata(server);
 
   return {

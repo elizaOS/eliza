@@ -268,5 +268,3 @@ __hono_app.post("/", async (c) =>
   }),
 );
 export default __hono_app;
-
-export { __hono_POST as POST };

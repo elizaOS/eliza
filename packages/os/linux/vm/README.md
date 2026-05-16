@@ -13,16 +13,59 @@ vm/
 ├── disk-base/
 │   ├── mmdebstrap.recipe        # declarative base image build
 │   └── overlay/                 # files copied in (sway config, systemd units, eliza binaries)
+├── quickstarts/
+│   ├── qemu.md                  # canonical QEMU/KVM flow
+│   ├── utm.md                   # macOS UTM import notes
+│   └── virtualbox.md            # VirtualBox conversion/import notes
 ├── scripts/
 │   ├── build-base.sh            # produces disk-base.qcow2 via mmdebstrap (slow; cached locally + nightly in CI)
 │   ├── boot.sh                  # qemu-system-x86_64 -snapshot -enable-kvm -display none ...
 │   ├── deploy.sh                # rsync current build artifacts into a running VM (dev only)
+│   ├── generate-bundle-metadata.py # writes manifest/package metadata, even without images
 │   ├── inject.py                # virtio-serial input + QMP screenshot capture + assertion DSL
+│   ├── package-metadata.sh      # wrapper for metadata generation and optional metadata tarball
 │   ├── run-tests.sh             # ties boot+inject together for `just vm-test`
 │   └── teardown.sh
 ├── snapshots/                   # gitignored; created by `vm-up`
+├── output/                      # gitignored; generated metadata and converted VM artifacts
+├── tests/                       # metadata tests that do not boot a VM
 └── README.md                    # this file
 ```
+
+## Bundle metadata
+
+The VM bundle metadata path is intentionally image-optional. This lets CI and
+release automation validate the manifest shape before a slow qcow2, UTM, or
+VirtualBox appliance exists.
+
+```bash
+cd packages/os/linux
+vm/scripts/package-metadata.sh
+python3 -m unittest discover -s vm/tests
+```
+
+Generated files land in `vm/output/bundle-metadata/` by default:
+
+- `manifest.json` — selected VM targets, artifact paths, sizes/checksums when
+  files exist, hardware requirements, and quickstart links.
+- `package-metadata.json` — metadata files and image files expected in a
+  distributable bundle.
+
+Use `--require-images` only in release jobs that should fail when the selected
+VM image artifacts are missing:
+
+```bash
+cd packages/os/linux
+vm/scripts/package-metadata.sh -- --target qemu --require-images
+```
+
+Platform-specific quickstarts:
+
+- [QEMU](quickstarts/qemu.md) — canonical Linux x86_64 QEMU/KVM harness.
+- [UTM](quickstarts/utm.md) — macOS import path; Intel Mac is the practical
+  x86_64 virtualization target, Apple Silicon is emulation-only for this image.
+- [VirtualBox](quickstarts/virtualbox.md) — x86_64 host with VT-x/AMD-V and a
+  converted disk or future OVA.
 
 ## Determinism rules
 

@@ -507,7 +507,7 @@ function renderViewerHtml(): string {
 <title>Screen Share</title>
 <style>
 :root{color-scheme:dark;--bg:#0b0d0f;--panel:#15181c;--line:#2a3036;--txt:#edf1f4;--muted:#9aa7ae;--accent:#d4b45e;--ok:#70d6a7;--danger:#f17a7a}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 "Open Sans",Arial,system-ui,sans-serif}
 main{display:grid;grid-template-rows:auto 1fr auto;min-height:100vh}
 .bar{display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line);background:var(--panel);padding:10px 12px}
 .status{display:inline-flex;align-items:center;gap:8px;min-width:0;white-space:nowrap}.dot{width:8px;height:8px;border-radius:999px;background:var(--muted)}.dot.live{background:var(--ok)}.dot.err{background:var(--danger)}

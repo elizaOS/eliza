@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK' (build|kernel-verify|bench|train)" ;; esac
-case "$TIER" in 0_8b|2b|4b|9b|27b|27b-256k) ;; *) die "unknown tier '$TIER' (0_8b|2b|4b|9b|27b|27b-256k)" ;; esac
+case "$TIER" in 0_8b|2b|4b|9b|27b) ;; *) die "unknown tier '$TIER' (0_8b|2b|4b|9b|27b)" ;; esac
 
 # --- tier -> defaults from tier-routing.json ----------------------------------
 read_tier_field() {
@@ -80,7 +80,7 @@ DEFAULT_PRESET="$(read_tier_field default_nebius_preset)"
 tier_to_preset() {
   case "$1" in
     0_8b|2b|4b|9b)  echo "${DEFAULT_PRESET:-gpu-h200x1}" ;;
-    27b|27b-256k)    echo "${DEFAULT_PRESET:-gpu-h200x2}" ;;
+    27b)             echo "${DEFAULT_PRESET:-gpu-h200x2}" ;;
   esac
 }
 NEBIUS_VM_PRESET="$(tier_to_preset "$TIER")"
@@ -92,7 +92,7 @@ tier_to_registry_key() {
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;
-    27b|27b-256k) echo qwen3.6-27b ;;
+    27b) echo qwen3.6-27b ;;
   esac
 }
 
@@ -122,7 +122,7 @@ if [[ "$TASK" == "train" ]]; then
   fi
   [[ "$PAY" == 1 ]] || die "refusing to provision without --yes-i-will-pay (train runs cost real money -- 8xH200 is ~\$240+/hr; see ../train_nebius.sh)"
   [[ -n "${NEBIUS_PROJECT_ID:-}" ]] || die "NEBIUS_PROJECT_ID not set -- fail-closed"
-  if [[ "$TIER" == "27b" || "$TIER" == "27b-256k" ]]; then
+  if [[ "$TIER" == "27b" ]]; then
     log "WARNING: $TIER on Nebius rents 8x H200 (~\$240+/hr). Prefer dispatch-vast for 2-4 GPU configurations."
   fi
   exec env NEBIUS_VM_PRESET="$NEBIUS_VM_PRESET" REGISTRY_KEY="$REG_KEY" "${CMD[@]}"
