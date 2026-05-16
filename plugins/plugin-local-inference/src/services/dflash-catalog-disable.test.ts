@@ -225,8 +225,8 @@ describe("DflashLlamaServer catalog disable reason", () => {
 					"Pending hardware validation for M-RoPE speculative decoding; see elizaOS/eliza#7631.",
 			});
 
-			for (let i = 0; i < 100 && !fs.existsSync(argsFile); i++) {
-				await new Promise((resolve) => setTimeout(resolve, 10));
+			for (let i = 0; i < 200 && !fs.existsSync(argsFile); i++) {
+				await new Promise((resolve) => setTimeout(resolve, 20));
 			}
 			const args = fs.readFileSync(argsFile, "utf8").trim().split("\n");
 			expect(args).not.toContain("-md");

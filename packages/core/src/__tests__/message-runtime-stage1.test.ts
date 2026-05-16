@@ -873,14 +873,14 @@ android smoke model works`,
 			"",
 			{
 				thought: "A coding task should be delegated.",
-					toolCalls: [
-						{
-							id: "spawn-app-builder",
-							name: "TASKS_SPAWN_AGENT",
-							args: { task: "Write a random tweet app." },
-						},
-					],
-				},
+				toolCalls: [
+					{
+						id: "spawn-app-builder",
+						name: "TASKS_SPAWN_AGENT",
+						args: { task: "Write a random tweet app." },
+					},
+				],
+			},
 			JSON.stringify({
 				success: true,
 				decision: "FINISH",
@@ -923,13 +923,13 @@ android smoke model works`,
 				validate: async () => true,
 				handler: taskHandler,
 			},
-			] as never;
-			const message = makeMessage();
-			message.content = {
-				...message.content,
-				text: "write me a tweet app",
-				mentionContext: { isMention: true },
-			};
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "write me a tweet app",
+			mentionContext: { isMention: true },
+		};
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,

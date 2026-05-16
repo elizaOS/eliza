@@ -120,7 +120,8 @@ function isTrustedLocalOrigin(raw: string): boolean {
 			parsed.protocol === "tauri:" ||
 			parsed.protocol === "capacitor:" ||
 			parsed.protocol === "capacitor-electron:" ||
-			parsed.protocol === "electrobun:"
+			parsed.protocol === "electrobun:" ||
+			parsed.protocol === "views:"
 		) {
 			return true;
 		}
