@@ -8,7 +8,9 @@ export interface StateDeviceModeProps {
   onContinue: () => void;
 }
 
-export function StateDeviceMode(props: StateDeviceModeProps): React.JSX.Element {
+export function StateDeviceMode(
+  props: StateDeviceModeProps,
+): React.JSX.Element {
   const {
     devicePath,
     onChoose,

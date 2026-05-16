@@ -357,7 +357,7 @@ function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
 		},
 		files: {
 			text: [
-					{ path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072, sha256: SHA },
+				{ path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072, sha256: SHA },
 			],
 			voice: [{ path: "tts/omnivoice-0.6b.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],

@@ -10,7 +10,6 @@
  */
 
 import { Plus, X } from "lucide-react";
-import type { JSX } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import type { DesktopTab } from "../../hooks/useDesktopTabs";
 

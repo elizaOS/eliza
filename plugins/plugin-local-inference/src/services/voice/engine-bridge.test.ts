@@ -167,7 +167,7 @@ describe("FfiOmniVoiceBackend — streaming TTS routing", () => {
 			cancelSignal: { cancelled: false },
 		});
 
-			expect(speakerIds).toEqual(["default"]);
+		expect(speakerIds).toEqual(["default"]);
 	});
 
 	it("preserves non-default speaker preset ids for multi-voice bundles", async () => {

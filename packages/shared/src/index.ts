@@ -9,7 +9,6 @@ export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
-export * from "./onboarding-presets.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 export * from "./cli/parse-duration.js";
@@ -225,6 +224,7 @@ export * from "./format-error.js";
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";
 export * from "./onboarding-presets.characters.js";
+export * from "./onboarding-presets.js";
 export * from "./onboarding-presets.js";
 export * from "./platform/is-native-server.js";
 export * from "./recent-messages-state.js";

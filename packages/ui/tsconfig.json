@@ -42,6 +42,7 @@
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"

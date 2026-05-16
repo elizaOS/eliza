@@ -32,14 +32,14 @@ export default defineConfig({
 		// device-tier, active-model co-locate `.test.ts` siblings). Keep the
 		// `__tests__/**` glob for legacy suites and ALSO pick up co-located
 		// `.test.ts` files under `src/` so they actually run via
-			// `bun --filter @elizaos/plugin-local-inference verify`.
-			include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
-			exclude: [
-				"dist/**",
-				"node_modules/**",
-				"**/*.e2e.test.ts",
-				"**/*.live.test.ts",
-				"**/*.real.test.ts",
-			],
-		},
-	});
+		// `bun --filter @elizaos/plugin-local-inference verify`.
+		include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+		exclude: [
+			"dist/**",
+			"node_modules/**",
+			"**/*.e2e.test.ts",
+			"**/*.live.test.ts",
+			"**/*.real.test.ts",
+		],
+	},
+});

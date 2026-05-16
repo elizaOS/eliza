@@ -28,10 +28,8 @@ const e2eEnv = {
   TEST_SERVER_SCRIPT: process.env.TEST_SERVER_SCRIPT || "dev",
   PLAYWRIGHT_TEST_AUTH: process.env.PLAYWRIGHT_TEST_AUTH || "true",
   PLAYWRIGHT_TEST_AUTH_SECRET:
-    process.env.PLAYWRIGHT_TEST_AUTH_SECRET ||
-    "playwright-local-auth-secret",
-  AGENT_TEST_BOOTSTRAP_ADMIN:
-    process.env.AGENT_TEST_BOOTSTRAP_ADMIN || "true",
+    process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret",
+  AGENT_TEST_BOOTSTRAP_ADMIN: process.env.AGENT_TEST_BOOTSTRAP_ADMIN || "true",
   PAYOUT_STATUS_SKIP_LIVE_BALANCE:
     process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
   CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",

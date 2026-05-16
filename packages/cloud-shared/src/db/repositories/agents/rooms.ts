@@ -115,7 +115,7 @@ export class RoomsRepository {
    * Note: source and type are required in the database (notNull, no defaults).
    */
   async create(input: CreateRoomInput): Promise<Room> {
-    const [roomResult] = await dbWrite
+    const roomResults = (await dbWrite
       .insert(roomTable)
       .values({
         id: input.id,
@@ -129,7 +129,8 @@ export class RoomsRepository {
         metadata: input.metadata,
         createdAt: new Date(),
       } as typeof roomTable.$inferInsert)
-      .returning();
+      .returning()) as (typeof roomTable.$inferSelect)[];
+    const [roomResult] = roomResults;
 
     return roomResult as Room;
   }

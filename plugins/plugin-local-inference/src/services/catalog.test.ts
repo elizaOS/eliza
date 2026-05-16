@@ -91,14 +91,14 @@ describe("local inference catalog", () => {
 	});
 
 	it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-			const expected: Record<string, number> = {
-				"eliza-1-0_8b": 131072,
-				"eliza-1-2b": 131072,
-				"eliza-1-4b": 131072,
-				"eliza-1-9b": 131072,
-				"eliza-1-27b": 131072,
-				"eliza-1-27b-256k": 262144,
-			};
+		const expected: Record<string, number> = {
+			"eliza-1-0_8b": 131072,
+			"eliza-1-2b": 131072,
+			"eliza-1-4b": 131072,
+			"eliza-1-9b": 131072,
+			"eliza-1-27b": 131072,
+			"eliza-1-27b-256k": 262144,
+		};
 		for (const [id, expectedLength] of Object.entries(expected)) {
 			const model = findCatalogModel(id);
 			expect(model, `${id} missing from catalog`).toBeTruthy();

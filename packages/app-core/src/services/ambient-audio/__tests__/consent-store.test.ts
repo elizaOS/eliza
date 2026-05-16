@@ -9,7 +9,7 @@ describe("ConsentStore", () => {
   });
 
   it("grant transitions to capturing and records consent", () => {
-    let t = 1000;
+    const t = 1000;
     const s = new ConsentStore(() => t);
     const rec = s.grant("household");
     expect(s.currentMode()).toBe("capturing");

@@ -632,11 +632,10 @@ export async function sendMessageAndWaitForResponseForTest(
   const work = (async () => {
     if (messageService && typeof messageService.handleMessage === "function") {
       const result = await messageService.handleMessage(rt, message, callback);
-      const responseContent = (
+      const responseContent =
         result && typeof result === "object"
           ? (result as { responseContent?: unknown }).responseContent
-          : undefined
-      );
+          : undefined;
       if (
         responseContent &&
         typeof responseContent === "object" &&

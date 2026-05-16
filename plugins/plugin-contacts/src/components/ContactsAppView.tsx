@@ -280,7 +280,9 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
               value={query}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                setQuery(e.target.value)
+              }
               placeholder={t("contacts.search", {
                 defaultValue: "Search contacts",
               })}

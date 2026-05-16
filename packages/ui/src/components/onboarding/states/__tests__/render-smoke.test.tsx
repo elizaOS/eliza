@@ -57,9 +57,7 @@ describe("onboarding state components — render smoke", () => {
   });
 
   it("StateCloudChat mounts with no progress prop", () => {
-    expect(() =>
-      render(<StateCloudChat onEnterChat={noop} />),
-    ).not.toThrow();
+    expect(() => render(<StateCloudChat onEnterChat={noop} />)).not.toThrow();
   });
 
   it("StateCloudChat mounts with running progress", () => {
@@ -129,9 +127,7 @@ describe("onboarding state components — render smoke", () => {
   });
 
   it("StateProfileName mounts", () => {
-    expect(() =>
-      render(<StateProfileName onContinue={noop} />),
-    ).not.toThrow();
+    expect(() => render(<StateProfileName onContinue={noop} />)).not.toThrow();
   });
 
   it("StateProfileLocation mounts", () => {
@@ -143,10 +139,7 @@ describe("onboarding state components — render smoke", () => {
   it("StateTutorialSettings mounts", () => {
     expect(() =>
       render(
-        <StateTutorialSettings
-          onHasSubscriptions={noop}
-          onContinue={noop}
-        />,
+        <StateTutorialSettings onHasSubscriptions={noop} onContinue={noop} />,
       ),
     ).not.toThrow();
   });

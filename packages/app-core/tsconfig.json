@@ -25,6 +25,7 @@
         "../../plugins/plugin-registry/src/index.ts"
       ],
       "@elizaos/app-core": ["./src/index.ts"],
+      "@elizaos/app-core/*": ["./src/*"],
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-training": ["../../plugins/plugin-training/src/index.ts"],
@@ -36,6 +37,7 @@
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../cloud-sdk/src/*"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],

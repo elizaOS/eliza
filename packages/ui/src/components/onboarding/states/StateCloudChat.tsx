@@ -93,7 +93,9 @@ function LiveTranscript(props: {
   });
   if (error) {
     return (
-      <div className="eliza-ob-transcript">Setup agent error: {error.message}</div>
+      <div className="eliza-ob-transcript">
+        Setup agent error: {error.message}
+      </div>
     );
   }
   const latest = transcript[transcript.length - 1];

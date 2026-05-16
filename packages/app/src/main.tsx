@@ -2100,13 +2100,13 @@ function applyStoredDetachedShellTheme(): void {
 async function main(): Promise<void> {
   registerViewServiceWorker();
 
-  const appWindowSlug =
-    window.location.pathname.startsWith("/apps/")
-      ? window.location.pathname.slice("/apps/".length).split("/")[0]
-      : resolveAppWindowSlug();
+  const appWindowSlug = window.location.pathname.startsWith("/apps/")
+    ? window.location.pathname.slice("/apps/".length).split("/")[0]
+    : resolveAppWindowSlug();
   if (appWindowSlug === "model-tester") {
-    await importSideEffectAppModule("@elizaos/app-model-tester", () =>
-      import("@elizaos/app-model-tester"),
+    await importSideEffectAppModule(
+      "@elizaos/app-model-tester",
+      () => import("@elizaos/app-model-tester"),
     );
     setupPlatformStyles();
     mountReactApp();

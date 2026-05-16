@@ -351,13 +351,19 @@ describe("benchmark plugin LifeOps tool capture", () => {
     const provider = plugin.providers?.find(
       (candidate) => candidate.name === "ELIZA_BENCHMARK",
     );
-    const rendered = await provider?.get?.({} as never, {} as never, {} as never);
+    const rendered = await provider?.get?.(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
 
     expect(rendered?.text).toContain(
       "You have access to the benchmark's fake LifeOps calendar and inbox",
     );
     expect(rendered?.text).toContain("CALENDAR_CHECK_AVAILABILITY");
-    expect(rendered?.text).toContain("MEMORY is not a LifeOpsBench executor tool");
+    expect(rendered?.text).toContain(
+      "MEMORY is not a LifeOpsBench executor tool",
+    );
     expect(rendered?.text).toContain("ARCHIVE_THREAD with threadId");
 
     setBenchmarkContext(null);

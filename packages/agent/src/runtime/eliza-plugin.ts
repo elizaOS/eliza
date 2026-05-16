@@ -7,12 +7,12 @@
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import type { CommandDefinition } from "@elizaos/plugin-commands";
 import {
   AgentEventService,
   logger,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
