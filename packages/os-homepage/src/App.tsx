@@ -606,7 +606,243 @@ function CheckoutPage() {
   );
 }
 
+// Maps a manifest artifact to an OsArtifact for the downloads section.
+function manifestToOsArtifacts(manifest: unknown): OsArtifact[] {
+  if (!manifest || typeof manifest !== "object") return [];
+  const m = manifest as Record<string, unknown>;
+  const release = m.release as Record<string, string> | undefined;
+  const channel =
+    (release?.channel as OsArtifact["channel"] | undefined) ?? "beta";
+  const version = release?.version ?? "0.0.0";
+  const artifacts = Array.isArray(m.artifacts) ? m.artifacts : [];
+  return artifacts.map(
+    (artifact: Record<string, unknown>): OsArtifact => {
+      const target = artifact.target as Record<string, string> | null;
+      const platform = (() => {
+        const p = target?.platform ?? "";
+        if (/android|cuttlefish/i.test(p)) return "android" as const;
+        if (/macos|apple/i.test(p)) return "macos" as const;
+        if (/windows|win/i.test(p)) return "windows" as const;
+        return "linux" as const;
+      })();
+      const kind = (() => {
+        const k = String(artifact.kind ?? "");
+        if (k === "raw-image") return "iso" as const;
+        if (k === "vm-image") return "ova" as const;
+        if (k === "android-image") return "apk" as const;
+        if (k === "usb-installer") return "desktop-app" as const;
+        return "iso" as const;
+      })();
+      return {
+        id: String(artifact.id ?? ""),
+        label: String(artifact.filename ?? "").replace(/\.zst$|\.zip$/, ""),
+        description: String(artifact.notes ?? ""),
+        platform,
+        kind,
+        channel,
+        version,
+        downloadUrl: typeof artifact.downloadUrl === "string" ? artifact.downloadUrl : null,
+        checksumUrl: null,
+        sizeBytes: typeof artifact.sizeBytes === "number" ? artifact.sizeBytes : null,
+        sha256: typeof artifact.sha256 === "string" ? artifact.sha256 : null,
+        releaseNotesUrl: null,
+      };
+    },
+  );
+}
+
+// Static OS artifacts for distribution channels not yet in the manifest.
+function staticOsArtifacts(channel: OsArtifact["channel"], version: string): OsArtifact[] {
+  return [
+    {
+      id: `elizaos-linux-live-${channel}`,
+      label: "elizaOS Linux Live ISO",
+      description:
+        "Bootable ISO for USB flashing and bare-metal installs. Flash to an 8 GB+ USB drive with the USB Installer app.",
+      platform: "linux",
+      kind: "iso",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-debian-package",
+      label: "elizaOS Debian / Ubuntu package",
+      description: "Install elizaOS on an existing Debian or Ubuntu system via apt.",
+      platform: "linux",
+      kind: "deb",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+    },
+    {
+      id: "elizaos-vm-ova",
+      label: "elizaOS VM (OVA)",
+      description:
+        "OVA image for VirtualBox, VMware Fusion, and UTM. Import directly — no flashing required.",
+      platform: "cross-platform",
+      kind: "ova",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+    },
+    {
+      id: "elizaos-android-apk",
+      label: "elizaOS Android APK",
+      description:
+        "Sideload elizaOS onto any Android device without AOSP flashing. No unlocked bootloader required.",
+      platform: "android",
+      kind: "apk",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+    },
+    {
+      id: "elizaos-usb-installer-macos",
+      label: "USB Installer — macOS",
+      description:
+        "Desktop app for macOS that writes the elizaOS ISO to a USB drive using diskutil and dd with native authorization.",
+      platform: "macos",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-usb-installer-linux",
+      label: "USB Installer — Linux",
+      description:
+        "Desktop app for Linux that writes the elizaOS ISO to a USB drive using lsblk and dd via pkexec.",
+      platform: "linux",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-usb-installer-windows",
+      label: "USB Installer — Windows",
+      description:
+        "Desktop app for Windows that writes the elizaOS ISO to a USB drive using PowerShell disk management.",
+      platform: "windows",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-aosp-flasher-macos",
+      label: "AOSP Flasher — macOS",
+      description:
+        "GUI tool for macOS that detects a connected Pixel via ADB and guides through bootloader unlock and flashing.",
+      platform: "macos",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "Android device with unlocked bootloader",
+    },
+    {
+      id: "elizaos-aosp-flasher-linux",
+      label: "AOSP Flasher — Linux",
+      description:
+        "GUI tool for Linux that detects a connected Pixel via ADB and guides through bootloader unlock and flashing.",
+      platform: "linux",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "Android device with unlocked bootloader",
+    },
+    {
+      id: "elizaos-aosp-flasher-windows",
+      label: "AOSP Flasher — Windows",
+      description:
+        "GUI tool for Windows that detects a connected Pixel via ADB and guides through bootloader unlock and flashing.",
+      platform: "windows",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "Android device with unlocked bootloader",
+    },
+  ];
+}
+
+function useOsArtifacts(manifestUrl: string): OsArtifact[] {
+  const [artifacts, setArtifacts] = useState<OsArtifact[]>([]);
+
+  useEffect(() => {
+    fetch(manifestUrl)
+      .then((res) => res.json())
+      .then((manifest: unknown) => {
+        const fromManifest = manifestToOsArtifacts(manifest);
+        const m = manifest as Record<string, unknown> | null;
+        const release = m?.release as Record<string, string> | undefined;
+        const channel =
+          (release?.channel as OsArtifact["channel"] | undefined) ?? "beta";
+        const version = release?.version ?? "0.0.0";
+        const manifestIds = new Set(fromManifest.map((a) => a.id));
+        const extra = staticOsArtifacts(channel, version).filter(
+          (a) => !manifestIds.has(a.id),
+        );
+        setArtifacts([...fromManifest, ...extra]);
+      })
+      .catch(() => {
+        // Manifest unavailable; show static artifacts.
+        setArtifacts(staticOsArtifacts("beta", "2.0.0-beta.2-os.20260516"));
+      });
+  }, [manifestUrl]);
+
+  return artifacts;
+}
+
 function HomePage() {
+  const osArtifacts = useOsArtifacts(betaManifestUrl);
   return (
     <div className="os-shell">
       <Header />
@@ -677,6 +913,8 @@ function HomePage() {
             </p>
           </div>
         </section>
+
+        <OsDownloads artifacts={osArtifacts} />
 
         <section id="hardware" className="band band-blue">
           <div className="band-inner">
