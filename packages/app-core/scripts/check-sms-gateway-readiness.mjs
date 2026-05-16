@@ -6,6 +6,7 @@
  * Android, BlueBubbles, or cloud state.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +16,14 @@ const adbPath = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb
 const bridgeUrl = "http://127.0.0.1:8795";
 const cloudSmokeUrl =
   "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles";
+const localBridgeEnvPath = path.resolve(
+  scriptDir,
+  "..",
+  "..",
+  "..",
+  ".eliza-local",
+  "bluebubbles-bridge.env",
+);
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -53,7 +62,29 @@ function printBridgeState() {
   );
 }
 
+function readLocalEnvValue(filePath, key) {
+  if (!fs.existsSync(filePath)) return null;
+  const line = fs
+    .readFileSync(filePath, "utf8")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(`${key}=`));
+  if (!line) return null;
+  return line.slice(key.length + 1).trim().replace(/^['"]|['"]$/g, "") || null;
+}
+
 function printCloudSmoke() {
+  const gatewaySecret =
+    process.env.BLUEBUBBLES_GATEWAY_SECRET ||
+    readLocalEnvValue(localBridgeEnvPath, "BLUEBUBBLES_GATEWAY_SECRET");
+  if (!gatewaySecret) {
+    printSection("production cloud smoke", {
+      status: 1,
+      stdout: "",
+      stderr:
+        "BLUEBUBBLES_GATEWAY_SECRET is not available locally; cannot authenticate smoke request.",
+    });
+    return;
+  }
   const sender = `+1415555${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
   const payload = JSON.stringify({
     type: "message",
@@ -73,6 +104,8 @@ function printCloudSmoke() {
       cloudSmokeUrl,
       "-H",
       "content-type: application/json",
+      "-H",
+      `x-gateway-secret: ${gatewaySecret}`,
       "--data",
       payload,
     ]),
