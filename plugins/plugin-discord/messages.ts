@@ -560,6 +560,7 @@ export class MessageManager {
 		try {
 			let { processedContent, attachments } =
 				await this.processMessage(message);
+			const currentMessageText = processedContent;
 			// Audio attachments already processed in processMessage via attachmentManager
 
 			if (this.envelopeEnabled && processedContent) {
@@ -592,6 +593,7 @@ export class MessageManager {
 					processedContent,
 					processedAttachments: attachments,
 					extraContent: {
+						currentMessageText,
 						mentionContext: {
 							isMention: isBotPlatformMentioned && isBotAddressed,
 							isReply: isReplyToBot,

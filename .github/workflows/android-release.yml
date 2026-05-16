@@ -190,12 +190,16 @@ jobs:
           fi
           echo "AAB size: $(du -h "$AAB_PATH" | cut -f1)"
           file "$AAB_PATH"
+          sha256sum "$AAB_PATH" > packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt
+          cat packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v7
         with:
           name: eliza-release-aab
-          path: packages/app/android/app/build/outputs/bundle/release/app-release.aab
+          path: |
+            packages/app/android/app/build/outputs/bundle/release/app-release.aab
+            packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt
           retention-days: 90
 
       - name: Attach AAB to GitHub Release
@@ -210,7 +214,9 @@ jobs:
           fi
           cp packages/app/android/app/build/outputs/bundle/release/app-release.aab \
              "Eliza-${VERSION}.aab"
-          gh release upload "$TAG" "Eliza-${VERSION}.aab" --clobber
+          cp packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt \
+             "Eliza-${VERSION}.aab.SHA256SUMS.txt"
+          gh release upload "$TAG" "Eliza-${VERSION}.aab" "Eliza-${VERSION}.aab.SHA256SUMS.txt" --clobber
 
       - name: Clean up keystore
         if: always()

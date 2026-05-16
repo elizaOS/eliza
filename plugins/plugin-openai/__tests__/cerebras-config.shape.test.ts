@@ -2,7 +2,14 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleTextEmbedding } from "../models/embedding";
-import { getApiKey, getBaseURL } from "../utils/config";
+import {
+  getActionPlannerModel,
+  getApiKey,
+  getBaseURL,
+  getLargeModel,
+  getResponseHandlerModel,
+  getSmallModel,
+} from "../utils/config";
 
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
@@ -14,6 +21,8 @@ const ENV_KEYS = [
   "ELIZA_PROVIDER",
   "OPENAI_BASE_URL",
   "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
   "OPENAI_API_KEY",
   "OPENAI_EMBEDDING_URL",
   "OPENAI_EMBEDDING_DIMENSIONS",
@@ -80,6 +89,17 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getApiKey(runtime)).toBe("sk-openai-fake");
   });
 
+  it("auto-detects Cerebras mode when only CEREBRAS_API_KEY is present", () => {
+    const runtime = buildRuntime({
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      CEREBRAS_BASE_URL: "https://api.cerebras.ai/v1",
+      OPENAI_API_KEY: undefined,
+      OPENAI_BASE_URL: undefined,
+    });
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+  });
+
   it("treats ELIZA_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {
     const runtime = buildRuntime({
       ELIZA_PROVIDER: "cerebras",
@@ -88,6 +108,21 @@ describe("plugin-openai Cerebras config (pure)", () => {
       OPENAI_API_KEY: "sk-openai-fake",
     });
     expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+  });
+
+  it("uses CEREBRAS_MODEL as the OpenAI model fallback in Cerebras mode", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_MODEL: "gpt-oss-120b",
+      SMALL_MODEL: "stale-small",
+      LARGE_MODEL: "stale-large",
+      ACTION_PLANNER_MODEL: "stale-planner",
+      RESPONSE_HANDLER_MODEL: "stale-response",
+    });
+    expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
+    expect(getLargeModel(runtime)).toBe("gpt-oss-120b");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-oss-120b");
+    expect(getActionPlannerModel(runtime)).toBe("gpt-oss-120b");
   });
 
   it("respects an explicit OPENAI_BASE_URL for OpenAI-compatible non-Cerebras endpoints", () => {
@@ -110,8 +145,12 @@ describe("plugin-openai Cerebras config (pure)", () => {
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("remote embeddings should not be called"));
 
-    const first = await handleTextEmbedding(runtime, { text: "remember the launch code" });
-    const second = await handleTextEmbedding(runtime, { text: "remember the launch code" });
+    const first = await handleTextEmbedding(runtime, {
+      text: "remember the launch code",
+    });
+    const second = await handleTextEmbedding(runtime, {
+      text: "remember the launch code",
+    });
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(first).toHaveLength(1536);

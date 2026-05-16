@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
-const repoRoot = path.resolve(appRoot, "..", "..");
 
 const args = new Set(process.argv.slice(2));
 const platformArg = process.argv.find((arg) => arg.startsWith("--platform="));
@@ -85,7 +84,11 @@ function checkIos() {
       : null;
   addCheck(
     "App scheme",
-    Boolean(workspaceList && workspaceList.status === 0 && /\bApp\b/.test(workspaceList.stdout)),
+    Boolean(
+      workspaceList &&
+        workspaceList.status === 0 &&
+        /\bApp\b/.test(workspaceList.stdout),
+    ),
     "App scheme is visible to xcodebuild",
     "Open the workspace in Xcode and mark the App scheme as shared.",
   );
@@ -172,7 +175,9 @@ function checkAndroid() {
 }
 
 if (!["ios", "android"].includes(platform)) {
-  console.error("Usage: mobile-release-preflight.mjs --platform=ios|android [--sideload|--store]");
+  console.error(
+    "Usage: mobile-release-preflight.mjs --platform=ios|android [--sideload|--store]",
+  );
   process.exit(1);
 }
 

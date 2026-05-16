@@ -1,7 +1,11 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveSpawnWorkdir } from "../../src/services/task-agent-routing.js";
+import {
+  normalizeTaskAgentAdapter,
+  resolvePinnedAdapter,
+  resolveSpawnWorkdir,
+} from "../../src/services/task-agent-routing.js";
 
 // `task` / `userRequest` are deliberately chosen so they match no configured
 // `TASK_AGENT_WORKDIR_ROUTES` route — these tests exercise the explicit-workdir
@@ -49,5 +53,36 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
         lockWorkdir: true,
       }),
     ).toEqual({ workdir: process.cwd() });
+  });
+});
+
+describe("task-agent adapter aliases", () => {
+  it("keeps benchmark elizaOS aliases as first-class adapters", () => {
+    expect(normalizeTaskAgentAdapter("elizaos")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("eliza")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("pi-agent")).toBe("pi-agent");
+    expect(normalizeTaskAgentAdapter("pi")).toBe("pi-agent");
+    expect(normalizeTaskAgentAdapter("claude-code")).toBe("claude");
+    expect(normalizeTaskAgentAdapter("openai-codex")).toBe("codex");
+  });
+
+  it("uses BENCHMARK_TASK_AGENT as a fixed orchestrator pin", () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "BENCHMARK_TASK_AGENT" ? "elizaos" : undefined,
+    };
+    expect(resolvePinnedAdapter(runtime as never)).toBe("elizaos");
+  });
+
+  it("lets BENCHMARK_TASK_AGENT override stale default-agent settings", () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "BENCHMARK_TASK_AGENT"
+          ? "elizaos"
+          : key === "ELIZA_DEFAULT_AGENT_TYPE"
+            ? "codex"
+            : undefined,
+    };
+    expect(resolvePinnedAdapter(runtime as never)).toBe("elizaos");
   });
 });

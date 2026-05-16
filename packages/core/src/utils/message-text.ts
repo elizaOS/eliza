@@ -19,12 +19,19 @@ export function extractUserText(raw: string): string {
 export function getUserMessageText(
 	message: Pick<Memory, "content"> | null | undefined,
 ): string {
+	const content = message?.content;
+	const contentObject =
+		content && typeof content === "object"
+			? (content as { currentMessageText?: unknown; text?: unknown })
+			: null;
 	const raw =
-		typeof message?.content === "string"
-			? message.content
-			: typeof message?.content?.text === "string"
-				? message.content.text
-				: "";
+		typeof content === "string"
+			? content
+			: typeof contentObject?.currentMessageText === "string"
+				? contentObject.currentMessageText
+				: typeof contentObject?.text === "string"
+					? contentObject.text
+					: "";
 	return extractUserText(raw);
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
   "version": "2.0.0-beta.2",
-  "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via the Agent Client Protocol (acpx) — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
+  "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via native Agent Client Protocol transports — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -51,7 +51,6 @@
   "keywords": [
     "elizaos",
     "plugin",
-    "acpx",
     "agent-client-protocol",
     "coding-agent",
     "subagent",
@@ -106,27 +105,34 @@
     "pluginParameters": {
       "ELIZA_ACP_CLI": {
         "type": "string",
-        "description": "Path or command name for the acpx CLI used to spawn Agent Client Protocol subprocess sessions.",
+        "description": "Legacy path or command name for an ACP-compatible subprocess transport. Prefer the native TypeScript ACP transport when available.",
         "required": false,
         "default": "acpx",
         "sensitive": false
       },
+      "ELIZA_ACP_FORMAT": {
+        "type": "string",
+        "description": "Agent Client Protocol event format expected from legacy transports.",
+        "required": false,
+        "default": "json",
+        "sensitive": false
+      },
       "ACPX_DEFAULT_TIMEOUT_MS": {
         "type": "number",
-        "description": "Default timeout in milliseconds for ACPX prompt/session subprocess calls when an action does not provide a timeout.",
+        "description": "Default timeout in milliseconds for ACP prompt/session calls when an action does not provide a timeout.",
         "required": false,
         "sensitive": false
       },
       "ACPX_APPROVE_ALL": {
         "type": "boolean",
-        "description": "When true, defaults ACPX sessions to the approve-all approval preset unless an action overrides approvalPreset.",
+        "description": "When true, defaults ACP sessions to the approve-all approval preset unless an action overrides approvalPreset.",
         "required": false,
         "default": false,
         "sensitive": false
       },
       "ACPX_FORMAT": {
         "type": "string",
-        "description": "Output format passed to acpx. The plugin expects typed JSON/NDJSON Agent Client Protocol events.",
+        "description": "Deprecated alias for ELIZA_ACP_FORMAT.",
         "required": false,
         "default": "json",
         "sensitive": false
@@ -140,7 +146,7 @@
       },
       "ACPX_DEFAULT_CWD": {
         "type": "string",
-        "description": "Default working directory for ACPX sessions when an action does not provide workdir.",
+        "description": "Default working directory for ACP sessions when an action does not provide workdir.",
         "required": false,
         "sensitive": false
       }

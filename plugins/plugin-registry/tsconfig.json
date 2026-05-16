@@ -44,6 +44,12 @@
       "@elizaos/plugin-wallet/*": [
         "../plugin-wallet/src/*"
       ],
+      "@elizaos/plugin-computeruse": [
+        "../plugin-computeruse/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-computeruse/*": [
+        "../plugin-computeruse/dist/*"
+      ],
       "@elizaos/plugin-registry": [
         "./src/index.ts"
       ],

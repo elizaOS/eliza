@@ -34,7 +34,7 @@ const storeTargets = [
   {
     platform: "ios",
     label: "iOS App Store",
-    artifact: "App Store",
+    artifact: "iOS App Store",
     status: "coming-soon",
     reviewState: "not-submitted",
     rolloutChannel: "TestFlight first",
@@ -44,7 +44,7 @@ const storeTargets = [
   {
     platform: "android",
     label: "Google Play Store",
-    artifact: "Play Store",
+    artifact: "Google Play Store",
     status: "coming-soon",
     reviewState: "not-submitted",
     rolloutChannel: "APK bridge",

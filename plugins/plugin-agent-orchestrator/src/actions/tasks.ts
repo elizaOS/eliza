@@ -198,6 +198,100 @@ function labelFrom(task: string, index: number): string {
   return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
 }
 
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function additionalSessionMetadata(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...(objectValue(content.metadata) ?? {}),
+    ...(objectValue(params.metadata) ?? {}),
+  };
+}
+
+function pickRecordString(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
+function originConnectorMessageId(
+  message: Memory,
+  content: Record<string, unknown>,
+): string | undefined {
+  const messageMetadata = objectValue(message.metadata);
+  const contentMetadata = objectValue(content.metadata);
+  return (
+    pickRecordString(contentMetadata, "originConnectorMessageId") ??
+    pickRecordString(contentMetadata, "connectorMessageId") ??
+    pickRecordString(contentMetadata, "platformMessageId") ??
+    pickRecordString(contentMetadata, "discordMessageId") ??
+    pickRecordString(messageMetadata, "originConnectorMessageId") ??
+    pickRecordString(messageMetadata, "connectorMessageId") ??
+    pickRecordString(messageMetadata, "platformMessageId") ??
+    pickRecordString(messageMetadata, "discordMessageId") ??
+    pickRecordString(messageMetadata, "messageId")
+  );
+}
+
+function pickRoutingString(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  return (
+    pickString(params, content, key) ??
+    (typeof metadata[key] === "string"
+      ? (metadata[key] as string).trim() || undefined
+      : undefined)
+  );
+}
+
+function buildSwarmRoomMetadata(
+  message: Memory,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+): {
+  originRoomId: unknown;
+  taskRoomId: unknown;
+  worktreeRoomId?: string;
+  swarmRooms: Array<{ roomId: unknown; roles: string[] }>;
+} {
+  const taskRoomId =
+    pickRoutingString(params, content, metadata, "taskRoomId") ??
+    pickRoutingString(params, content, metadata, "originRoomId") ??
+    (typeof metadata.roomId === "string" ? metadata.roomId : undefined) ??
+    message.roomId;
+  const worktreeRoomId =
+    pickRoutingString(params, content, metadata, "worktreeRoomId") ??
+    pickRoutingString(params, content, metadata, "coordinationRoomId");
+  const roomMap = new Map<string, { roomId: unknown; roles: string[] }>();
+  const add = (roomId: unknown, role: string) => {
+    if (typeof roomId !== "string" || !roomId.trim()) return;
+    const key = roomId.trim();
+    const current = roomMap.get(key) ?? { roomId: key, roles: [] };
+    if (!current.roles.includes(role)) current.roles.push(role);
+    roomMap.set(key, current);
+  };
+  add(taskRoomId, "task");
+  add(worktreeRoomId, "worktree");
+  return {
+    originRoomId: message.roomId,
+    taskRoomId,
+    ...(worktreeRoomId ? { worktreeRoomId } : {}),
+    swarmRooms: [...roomMap.values()],
+  };
+}
+
 function taskWithResolvedRoute(
   task: string,
   route: ResolvedWorkdirRoute | undefined,
@@ -308,6 +402,14 @@ async function runCreate(
   );
   const timeoutMs = getTimeoutMs(params, content);
   const baseLabel = pickString(params, content, "label");
+  const extraMetadata = additionalSessionMetadata(params, content);
+  const connectorMessageId = originConnectorMessageId(message, content);
+  const swarmRoomMetadata = buildSwarmRoomMetadata(
+    message,
+    params,
+    content,
+    extraMetadata,
+  );
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -336,9 +438,14 @@ async function runCreate(
         model,
         timeoutMs,
         metadata: {
+          ...extraMetadata,
           requestedType: baseAgentType,
           messageId: message.id,
-          roomId: message.roomId,
+          ...(connectorMessageId
+            ? { originConnectorMessageId: connectorMessageId }
+            : {}),
+          roomId: swarmRoomMetadata.taskRoomId,
+          ...swarmRoomMetadata,
           worldId: message.worldId,
           userId: message.entityId,
           label,
@@ -480,6 +587,13 @@ async function runSpawnAgent(
       pickBoolean(params, content, "deferUserReply") === true ||
       requestsDeferredUserReply(task);
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
+    const extraMetadata = additionalSessionMetadata(params, content);
+    const swarmRoomMetadata = buildSwarmRoomMetadata(
+      message,
+      params,
+      content,
+      extraMetadata,
+    );
 
     // Resolve the connector source for routing the sub-agent's eventual
     // reply back to the user. For messages that originated on a platform
@@ -491,6 +605,7 @@ async function runSpawnAgent(
     // level by reading the upstream `originSource` the router stamps onto
     // its synthetic inbound's metadata, so nested spawns inherit the
     // real user-facing platform.
+    const connectorMessageId = originConnectorMessageId(message, content);
     const inboundOriginSource =
       typeof content.metadata === "object" &&
       content.metadata !== null &&
@@ -515,9 +630,14 @@ async function runSpawnAgent(
       memoryContent,
       approvalPreset,
       metadata: {
+        ...extraMetadata,
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
-        roomId: message.roomId,
+        ...(connectorMessageId
+          ? { originConnectorMessageId: connectorMessageId }
+          : {}),
+        roomId: swarmRoomMetadata.taskRoomId,
+        ...swarmRoomMetadata,
         worldId: message.worldId,
         userId: message.entityId,
         label,
@@ -2510,9 +2630,24 @@ export const tasksAction: Action & {
     },
     {
       name: "metadata",
-      description: "Additional metadata for action=create.",
+      description:
+        "Additional metadata for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "object" as const },
+    },
+    {
+      name: "taskRoomId",
+      description:
+        "Optional task-owner swarm room id for action=create / action=spawn_agent.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "worktreeRoomId",
+      description:
+        "Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
+      required: false,
+      schema: { type: "string" as const },
     },
   ],
   validate: async (runtime, message) => {

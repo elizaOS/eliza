@@ -77,9 +77,10 @@ async def test_completed_zero_accuracy_run_exits_success(
     assert await cli.run_cli(_args(tmp_path)) == 0
 
 
-def test_resolve_task_agent_defaults_to_opencode(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_task_agent_defaults_to_elizaos(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in (
         "BENCHMARK_TASK_AGENT",
+        "CEREBRAS_API_KEY",
         "ANTHROPIC_API_KEY",
         "CLAUDE_API_KEY",
         "CODEX_API_KEY",
@@ -87,11 +88,12 @@ def test_resolve_task_agent_defaults_to_opencode(monkeypatch: pytest.MonkeyPatch
     ):
         monkeypatch.delenv(key, raising=False)
 
-    assert cli.resolve_task_agent() == "opencode"
+    assert cli.resolve_task_agent() == "elizaos"
 
 
 def test_resolve_task_agent_uses_key_implied_harnesses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BENCHMARK_TASK_AGENT", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("CLAUDE_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
@@ -140,7 +142,7 @@ async def test_openclaw_cerebras_model_provider_configures_runner(
 
     monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
     monkeypatch.delenv("ELIZA_BENCH_TOKEN", raising=False)
-    for key in ("BENCHMARK_TASK_AGENT", "ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CODEX_API_KEY", "OPENAI_API_KEY"):
+    for key in ("BENCHMARK_TASK_AGENT", "CEREBRAS_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CODEX_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr(cli, "TerminalBenchRunner", FakeRunner)
 
@@ -149,7 +151,7 @@ async def test_openclaw_cerebras_model_provider_configures_runner(
     assert config.agent_harness == "openclaw"
     assert config.model_provider == "cerebras"
     assert config.model_name == "gpt-oss-120b"
-    assert config.task_agent == "opencode"
+    assert config.task_agent == "elizaos"
     assert config.execution_backend == "tmux"
     assert cli.os.environ["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
     assert cli.os.environ["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"

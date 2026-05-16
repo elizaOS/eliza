@@ -217,6 +217,21 @@ describe("shellAction", () => {
     expect(data?.exit_code).toBe(7);
   });
 
+  it("returns command_failed when an earlier pipeline command fails", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "false | true" },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("command_failed");
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.output).toContain("[exit 1]");
+  });
+
   it("clears shell history through the canonical SHELL action", async () => {
     const { runtime, shellHistoryService } = await makeRuntime({
       withShellHistoryService: true,

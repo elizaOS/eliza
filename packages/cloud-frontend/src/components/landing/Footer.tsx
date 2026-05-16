@@ -21,7 +21,7 @@ export default function Footer() {
             <div className="relative mr-auto flex flex-col gap-3">
               <ElizaCloudLockup />
               <p className="max-w-[14rem] text-sm leading-relaxed text-white/74">
-                Your Eliza in the cloud.
+                Eliza, everywhere.
               </p>
             </div>
             <p className="text-sm text-white/80 whitespace-nowrap">
@@ -37,13 +37,13 @@ export default function Footer() {
                 href="https://eliza.app"
                 className="text-base text-white transition-colors hover:text-[#FF8A24]"
               >
-                Get the App
+                Get App
               </a>
               <a
                 href="https://elizaos.ai"
                 className="text-base text-white transition-colors hover:text-[#FF8A24]"
               >
-                Install The OS
+                Install OS
               </a>
               <Link
                 to="/docs"

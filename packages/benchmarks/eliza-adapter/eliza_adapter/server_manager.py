@@ -112,11 +112,52 @@ def _normalize_model_env(env: dict[str, str]) -> None:
 
     env.setdefault("BENCHMARK_MODEL_NAME", model)
     env.setdefault("MODEL_NAME", model)
+    if (
+        provider == "cerebras"
+        or env.get("ELIZA_PROVIDER", "").strip().lower() == "cerebras"
+    ):
+        env.setdefault("CEREBRAS_MODEL", model)
     env.setdefault("OPENAI_SMALL_MODEL", model)
     env.setdefault("OPENAI_LARGE_MODEL", model)
     env.setdefault("OPENAI_RESPONSE_HANDLER_MODEL", model)
     env.setdefault("OPENAI_ACTION_PLANNER_MODEL", model)
     env.setdefault("OPENAI_MEDIUM_MODEL", model)
+
+
+def _normalize_task_agent_env(env: dict[str, str]) -> None:
+    """Expose benchmark task-agent aliases to the ACP orchestrator."""
+    benchmark_requested = env.get("BENCHMARK_TASK_AGENT", "").strip()
+    requested = (
+        benchmark_requested
+        or env.get("ELIZA_ACP_DEFAULT_AGENT")
+        or env.get("ELIZA_DEFAULT_AGENT_TYPE")
+        or ""
+    ).strip()
+    if not requested:
+        return
+
+    normalized = requested.lower().replace("_", "-")
+    if normalized in {"elizaos", "eliza-os", "pi-agent", "pi agent"}:
+        acp_agent = "opencode"
+    elif normalized in {"claude-code", "claude code"}:
+        acp_agent = "claude"
+    elif normalized in {"openai", "openai-codex", "openai codex"}:
+        acp_agent = "codex"
+    elif normalized in {"open-code", "open code"}:
+        acp_agent = "opencode"
+    else:
+        acp_agent = normalized
+
+    env.setdefault("BENCHMARK_TASK_AGENT", requested)
+    env.setdefault("ELIZA_AGENT_ORCHESTRATOR", "1")
+    env.setdefault("ELIZA_AGENT_SELECTION_STRATEGY", "fixed")
+    if benchmark_requested:
+        env["ELIZA_AGENT_SELECTION_STRATEGY"] = "fixed"
+        env["ELIZA_ACP_DEFAULT_AGENT"] = acp_agent
+        env["ELIZA_DEFAULT_AGENT_TYPE"] = acp_agent
+    else:
+        env.setdefault("ELIZA_ACP_DEFAULT_AGENT", acp_agent)
+        env.setdefault("ELIZA_DEFAULT_AGENT_TYPE", acp_agent)
 
 
 class ElizaServerManager:
@@ -231,6 +272,7 @@ class ElizaServerManager:
             "ELIZA_BENCH_TOKEN": self._token,
         }
         _normalize_model_env(env)
+        _normalize_task_agent_env(env)
         # Stub embeddings are diagnostic-only. The server manager preserves an
         # explicit caller-provided ELIZA_BENCH_ALLOW_STUB_EMBEDDING value but
         # never enables it by default.

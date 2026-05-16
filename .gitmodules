@@ -30,12 +30,11 @@
 	url = https://github.com/elizaOS/omnivoice.cpp.git
 	branch = master
 
-[submodule "vendor/opencode"]
+[submodule "plugins/plugin-agent-orchestrator/vendor/opencode"]
 	# opencode — the elizaOS fork of the opencode AI coding agent.
 	# Used by plugin-agent-orchestrator to spawn opencode sub-agents.
-	# Initialized by postinstall via scripts/ensure-opencode-submodule.mjs.
 	# The binary is expected on PATH after build; hasBinaryOnPath("opencode")
 	# in task-agent-frameworks.ts gates its use.
-	path = vendor/opencode
+	path = plugins/plugin-agent-orchestrator/vendor/opencode
 	url = https://github.com/elizaOS/opencode.git
 	branch = dev

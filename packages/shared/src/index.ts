@@ -225,6 +225,7 @@ export * from "./format-error.js";
 export * from "./local-inference/index.js";
 export * from "./onboarding-presets.characters.js";
 export * from "./onboarding-presets.js";
+export * from "./onboarding-presets.js";
 export * from "./platform/is-native-server.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";

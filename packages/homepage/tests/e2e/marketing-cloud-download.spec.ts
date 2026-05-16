@@ -105,8 +105,9 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
     page.getByRole("link", { name: /Telegram.*Start onboarding/i }),
   ).toHaveAttribute("href", "/get-started?method=telegram");
   await expect(page.getByText(/One personal agent/i).first()).toBeVisible();
-  await expect(page.getByText(/brew install|snap install|flatpak install/i))
-    .toHaveCount(0);
+  await expect(
+    page.getByText(/brew install|snap install|flatpak install/i),
+  ).toHaveCount(0);
 
   if (releaseData.release.downloads.length > 0) {
     const requiredIds = new Set([

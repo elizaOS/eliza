@@ -247,6 +247,20 @@ else
 fi
 node packages/scripts/patch-tsup-dts.mjs || true
 
+# @elizaos/contracts must be built BEFORE @elizaos/core: core's
+# tsconfig.declarations.json maps `@elizaos/contracts` to
+# `../contracts/dist/index.d.ts`, so the declarations build aborts with
+# TS2307 if dist/ doesn't exist yet.
+if [[ -f packages/contracts/package.json ]] && jq -e '.scripts.build' packages/contracts/package.json >/dev/null; then
+  log "Building @elizaos/contracts (required by core declarations)"
+  pushd packages/contracts >/dev/null
+  "$BUN_BIN" run build
+  popd >/dev/null
+  mkdir -p node_modules/@elizaos
+  rm -rf node_modules/@elizaos/contracts
+  ln -s ../../packages/contracts node_modules/@elizaos/contracts
+fi
+
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
@@ -263,7 +277,11 @@ else
 fi
 
 log "Building shared/cloud package artifacts"
-for package_dir in packages/shared cloud/packages/sdk packages/cloud-routing; do
+# @elizaos/cloud-routing was made a no-op stub in the cloud-migration squash
+# (no src/, just package.json + gitignored dist/, build script just asserts
+# `test -f dist/index.js`). No runtime code imports it any more — see
+# bedbaf2226 in turbo.json — so skip it here too.
+for package_dir in packages/shared packages/cloud-sdk; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
     pushd "$package_dir" >/dev/null
@@ -272,10 +290,9 @@ for package_dir in packages/shared cloud/packages/sdk packages/cloud-routing; do
   fi
 done
 mkdir -p node_modules/@elizaos
-rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk
 ln -s ../../packages/shared node_modules/@elizaos/shared
-ln -s ../../cloud/packages/sdk node_modules/@elizaos/cloud-sdk
-ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
+ln -s ../../packages/cloud-sdk node_modules/@elizaos/cloud-sdk
 
 log "Building Capacitor plugins"
 "$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs

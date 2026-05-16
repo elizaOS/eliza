@@ -155,6 +155,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = firstCall?.[1] as {
 			tools?: Array<{ name?: string; parameters?: { required?: string[] } }>;
 			toolChoice?: string;
+			maxTokens?: number;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
 			providerOptions?: { eliza?: Record<string, unknown> };
@@ -166,6 +167,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
+		expect(params.maxTokens).toBe(2048);
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -534,6 +536,83 @@ android smoke model works`,
 		expect(result.kind).toBe("planned_reply");
 		expect(runtime.useModel).toHaveBeenCalledTimes(4);
 		expect(runtime.logger.warn).toHaveBeenCalledTimes(3);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Recovered through planner fallback.",
+			);
+		}
+	});
+
+	it("uses a direct reply fallback when an explicitly addressed simple Stage 1 turn stays empty", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			"elizaOS is an open-source agent runtime for building agents with memory, tools, plugins, and chat integrations.",
+		]);
+		const message = makeMessage({
+			text: "Test Agent (@000000000000000000) BASH_EXECUTE FETCH_URL TASKS_SPAWN_AGENT Can you tell me what elizaOS is?",
+			currentMessageText: "Can you tell me what elizaOS is?",
+		} as Partial<Memory["content"]>);
+
+		message.content.mentionContext = { isMention: true } as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(4);
+		expect(runtime.useModel).toHaveBeenLastCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.objectContaining({
+				prompt: expect.stringContaining("Can you tell me what elizaOS is?"),
+				maxTokens: 96,
+			}),
+		);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"open-source agent runtime",
+			);
+		}
+	});
+
+	it("keeps polluted rendered text out of empty Stage 1 planner fallback candidates", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			JSON.stringify({
+				thought: "Fallback planner can answer.",
+				toolCalls: [],
+				messageToUser: "Recovered through planner fallback.",
+			}),
+		]);
+		const message = makeMessage({
+			text: "Test Agent (@000000000000000000) BASH_EXECUTE FETCH_URL TASKS_SPAWN_AGENT Can you tell me what elizaOS is?",
+			currentMessageText: "Can you check my calendar?",
+		});
+		message.content.mentionContext = { isMention: true } as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(4);
+		const plannerCall = useModelCalls(runtime)[3];
+		const plannerParams = plannerCall?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const plannerPrompt = plannerParams.messages?.[1]?.content ?? "";
+		expect(plannerPrompt).toContain("Can you check my calendar?");
+		expect(plannerPrompt).not.toContain("BASH_EXECUTE");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Recovered through planner fallback.",
@@ -1365,11 +1444,19 @@ android smoke model works`,
 		expect(userContent).not.toContain("provider:RECENT_MESSAGES:");
 		expect(userContent).not.toContain("# Conversation Messages");
 		expect(userContent).not.toContain("full recent provider text");
+		expect(userContent).toContain("prior_message:user:");
+		expect(userContent).toContain("current_turn_boundary:");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
 		expect(userContent).not.toContain("[sub-agent: old build");
 		expect(userContent).not.toContain("stale raw transcript");
 		expect(userContent).toContain("Can you check my calendar?");
+		expect(userContent.indexOf("prior_message:user:")).toBeLessThan(
+			userContent.indexOf("current_turn_boundary:"),
+		);
+		expect(userContent.indexOf("current_turn_boundary:")).toBeLessThan(
+			userContent.lastIndexOf("message:user:"),
+		);
 		expect(userContent).not.toContain("user_role:");
 		const fullPrompt = `${params.prompt ?? ""}\n${systemContent}\n${userContent}`;
 		expect(fullPrompt).toContain("# Runtime Model Context");

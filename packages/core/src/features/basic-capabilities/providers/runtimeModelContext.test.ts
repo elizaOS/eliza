@@ -33,8 +33,10 @@ describe("runtimeModelContextProvider", () => {
 			OPENAI_SMALL_MODEL: "gpt-oss-120b",
 			OPENAI_MEDIUM_MODEL: "gpt-oss-120b",
 			OPENAI_LARGE_MODEL: "gpt-oss-120b",
+			OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
 			ELIZA_DEFAULT_AGENT_TYPE: "opencode",
 			ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
+			ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
 		});
 
 		const result = await runtimeModelContextProvider.get(
@@ -45,10 +47,16 @@ describe("runtimeModelContextProvider", () => {
 
 		expect(result.text).toContain("Response handler model: gpt-oss-120b");
 		expect(result.text).toContain("Action planner model: gpt-oss-120b");
+		expect(result.text).toContain("Response handler provider adapter: openai");
+		expect(result.text).toContain(
+			"Response handler endpoint host: api.cerebras.ai",
+		);
 		expect(result.text).toContain("Default coding sub-agent: opencode");
 		expect(result.text).toContain("OpenCode model: gpt-oss-120b");
+		expect(result.text).toContain("OpenCode endpoint host: api.cerebras.ai");
 		expect(result.text).not.toContain("Claude 3.5");
 		expect(result.data?.responseHandlerModel).toBe("gpt-oss-120b");
+		expect(result.data?.responseHandlerEndpointHost).toBe("api.cerebras.ai");
 	});
 
 	it("uses the runtime resolver when available", async () => {

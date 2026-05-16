@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Memory } from "@elizaos/core";
+import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractSubResources,
@@ -11,9 +11,11 @@ import {
 import type { SessionInfo } from "../../src/services/types.js";
 
 const ROOM = "11111111-2222-3333-4444-555555555555";
+const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 const WORLD = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const USER = "ffffffff-1111-2222-3333-444444444444";
 const PARENT_MSG = "99999999-8888-7777-6666-555555555555";
+const CONNECTOR_MSG = "123456789012345678";
 const SESSION_ID = "01234567-89ab-cdef-0123-456789abcdef";
 
 interface CapturedHandler {
@@ -55,8 +57,22 @@ function makeRuntime(opts: {
   setting?: Record<string, string | undefined>;
 }) {
   const handleMessage = vi.fn<
-    (runtime: unknown, memory: Memory) => Promise<unknown>
+    (
+      runtime: unknown,
+      memory: Memory,
+      callback?: HandlerCallback,
+    ) => Promise<unknown>
   >(async () => ({}));
+  const sendMessageToTarget = vi.fn(
+    async (
+      _target: { source: string; roomId?: string },
+      content: Content,
+    ): Promise<Memory> =>
+      ({
+        id: "aaaaaaaa-0000-0000-0000-000000000000",
+        content,
+      }) as Memory,
+  );
   const createMemory = vi.fn(async () => undefined);
   const createEntity = vi.fn(async () => true);
   const addParticipant = vi.fn(async () => true);
@@ -89,6 +105,7 @@ function makeRuntime(opts: {
     createEntity,
     addParticipant,
     emitEvent,
+    sendMessageToTarget,
     messageService: { handleMessage },
   } as never;
   return {
@@ -98,6 +115,7 @@ function makeRuntime(opts: {
     createEntity,
     addParticipant,
     emitEvent,
+    sendMessageToTarget,
     spawnSession,
   };
 }
@@ -164,11 +182,205 @@ describe("SubAgentRouter", () => {
     expect(metadata?.subAgent).toBe(true);
     expect(metadata?.subAgentSessionId).toBe(SESSION_ID);
     expect(metadata?.subAgentEvent).toBe("task_complete");
+    expect(metadata?.subAgentRoutingKind).toBe("TASK_STATUS");
+    expect(metadata?.subAgentTargetRoomId).toBe(ROOM);
+    expect(metadata?.subAgentTargetRoomRoles).toEqual(["task"]);
     expect(metadata?.originUserId).toBe(USER);
     expect(typeof posted.content?.text).toBe("string");
     expect(posted.content?.text).toContain("PR opened");
 
     await router.stop();
+  });
+
+  it("posts terminal updates to deduped deterministic task/worktree swarm rooms", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        swarmRooms: [
+          { roomId: WORKTREE_ROOM, roles: ["worktree"] },
+          { roomId: ROOM, roles: ["task"] },
+        ],
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, addParticipant } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "all done" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(handleMessage.mock.calls.map((call) => call[1]?.roomId)).toEqual([
+      ROOM,
+      WORKTREE_ROOM,
+    ]);
+    expect(addParticipant.mock.calls.map((call) => call[1])).toEqual([
+      ROOM,
+      WORKTREE_ROOM,
+    ]);
+    const taskMeta = handleMessage.mock.calls[0]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    const worktreeMeta = handleMessage.mock.calls[1]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    expect(taskMeta.subAgentTargetRoomRoles).toEqual(["task"]);
+    expect(worktreeMeta.subAgentTargetRoomRoles).toEqual(["worktree"]);
+    expect(taskMeta.subAgentSwarmRooms).toEqual([
+      { roomId: ROOM, roles: ["task"] },
+      { roomId: WORKTREE_ROOM, roles: ["worktree"] },
+    ]);
+  });
+
+  it("threads sub-agent planner replies delivered through sendMessageToTarget", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        originConnectorMessageId: CONNECTOR_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, sendMessageToTarget } = makeRuntime({
+      acp: acp.service,
+    });
+    handleMessage.mockImplementation(async (_runtime, _memory, callback) => {
+      await callback?.({ text: "done", inReplyTo: PARENT_MSG });
+      return {};
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "done",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const routedMeta = handleMessage.mock.calls[0]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    expect(routedMeta.originConnectorMessageId).toBe(CONNECTOR_MSG);
+    expect(sendMessageToTarget).toHaveBeenCalledWith(
+      {
+        source: "telegram",
+        roomId: ROOM,
+      },
+      expect.objectContaining({
+        text: "done",
+        inReplyTo: CONNECTOR_MSG,
+      }),
+    );
+  });
+
+  it("dedupes task/worktree swarm rooms when both roles share one room", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, addParticipant } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "one room update" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(addParticipant).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(ROOM);
+    expect(metadata?.subAgentTargetRoomRoles).toEqual(["task", "worktree"]);
+    expect(metadata?.subAgentSwarmRooms).toEqual([
+      { roomId: ROOM, roles: ["task", "worktree"] },
+    ]);
+  });
+
+  it("routes QUESTION_FOR_TASK_CREATOR to the task room with actionable metadata", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+      question: "Which branch should I target?",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(ROOM);
+    expect(posted?.content?.text).toContain("Which branch");
+    expect(metadata?.subAgentEvent).toBe("QUESTION_FOR_TASK_CREATOR");
+    expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
+    expect(metadata?.subAgentTargetRoomRole).toBe("task");
+    expect(metadata?.taskRoomId).toBe(ROOM);
+    expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
+  });
+
+  it("routes AGENT_COORDINATION to the worktree room with actionable metadata", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "AGENT_COORDINATION", {
+      message: "I am touching router tests.",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(WORKTREE_ROOM);
+    expect(posted?.content?.text).toContain("router tests");
+    expect(metadata?.subAgentEvent).toBe("AGENT_COORDINATION");
+    expect(metadata?.subAgentRoutingKind).toBe("AGENT_COORDINATION");
+    expect(metadata?.subAgentTargetRoomRole).toBe("worktree");
+    expect(metadata?.taskRoomId).toBe(ROOM);
+    expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
   });
 
   it("does not inject for streaming events like agent_message_chunk", async () => {
@@ -559,6 +771,78 @@ describe("SubAgentRouter", () => {
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).toContain(appBase);
       expect(posted?.content?.text).not.toContain("[tool output:");
+    });
+
+    it("reports routed app page URLs instead of asset-only completions", async () => {
+      const tmpRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "sub-agent-router-"),
+      );
+      try {
+        const appDir = path.join(tmpRoot, "data/apps/random-tweet");
+        fs.mkdirSync(appDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(appDir, "index.html"),
+          '<link rel="stylesheet" href="style.css"><script src="app.js"></script>',
+        );
+        fs.writeFileSync(
+          path.join(appDir, "style.css"),
+          "body { color: red; }",
+        );
+        fs.writeFileSync(path.join(appDir, "app.js"), "console.log('ok');");
+        const localPage = "http://127.0.0.1:6900/apps/random-tweet/";
+        const publicPage = "https://example.test/apps/random-tweet/";
+        const localStyle = `${localPage}style.css`;
+        const publicScript = `${publicPage}app.js`;
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () => {
+            return new Response("ok", { status: 200 });
+          }),
+        );
+        session = {
+          ...sessionWithTask(`build and verify ${publicPage}`, undefined, {
+            workdirRoute: {
+              id: "static-apps",
+              workdir: tmpRoot,
+              urlMappings: [
+                {
+                  urlPrefix: "http://127.0.0.1:6900/apps/",
+                  localPath: "data/apps/",
+                },
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          }),
+          workdir: tmpRoot,
+        };
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
+
+        acp.emit(SESSION_ID, "task_complete", {
+          response: `${localStyle}\n${publicScript}`,
+        });
+        await new Promise((r) => setTimeout(r, 200));
+
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.text).toContain(localPage);
+        expect(posted?.content?.text).toContain(publicPage);
+        expect(posted?.content?.text).not.toContain("style.css");
+        expect(posted?.content?.text).not.toContain("app.js");
+        expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
+          localPage,
+          publicPage,
+        ]);
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
     });
 
     it("rejects mapped app URLs whose local target was not written this session", async () => {

@@ -24,16 +24,16 @@ import {
 } from "@/generated/release-data";
 import { getElizacloudUrl } from "@/lib/api/client";
 
-type OS = "macos-arm" | "macos-intel" | "windows" | "linux" | "unknown";
+type OS =
+  | "macos-any"
+  | "macos-arm"
+  | "macos-intel"
+  | "windows"
+  | "linux"
+  | "unknown";
 
 type DownloadButton = {
-  id:
-    | OS
-    | "macos-any"
-    | "linux-deb"
-    | "linux-rpm"
-    | "linux-appimage"
-    | "linux-tar";
+  id: OS | "linux-deb" | "linux-rpm" | "linux-appimage" | "linux-tar";
   label: string;
   sublabel?: string;
   href: string;
@@ -799,8 +799,8 @@ export default function Marketing() {
               const CardTag = isAvailable ? "a" : "div";
               return (
                 <CardTag
-                key={target.platform}
-                  href={isAvailable ? target.url ?? undefined : undefined}
+                  key={target.platform}
+                  href={isAvailable ? (target.url ?? undefined) : undefined}
                   aria-disabled={isAvailable ? undefined : "true"}
                   className={[
                     "rounded-lg border border-neutral-200 p-5",
@@ -808,16 +808,16 @@ export default function Marketing() {
                       ? "bg-white transition-colors hover:border-neutral-950"
                       : "bg-neutral-100 opacity-60 grayscale",
                   ].join(" ")}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
                       <h3 className="font-semibold">
                         {platformLabelForStoreTarget(target)}
                       </h3>
-                    <p className="mt-1 text-sm text-neutral-500">
-                      {target.artifact}
-                    </p>
-                  </div>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {target.artifact}
+                      </p>
+                    </div>
                     {isAvailable ? (
                       <span className="rounded-full border border-[#FF5800]/30 px-2.5 py-1 text-xs font-medium text-[#B74100]">
                         Available
@@ -825,21 +825,21 @@ export default function Marketing() {
                     ) : (
                       <ComingSoonBadge />
                     )}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-neutral-600">
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-neutral-600">
                       {statusLabelForStoreTarget(target)}
-                  </span>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-neutral-600">
-                    {target.rolloutChannel}
-                  </span>
+                    </span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-neutral-600">
+                      {target.rolloutChannel}
+                    </span>
                     <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-neutral-600">
                       {target.reviewState}
                     </span>
-                </div>
-                <p className="mt-4 text-sm leading-6 text-neutral-600">
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-neutral-600">
                     {detailForStoreTarget(target)}
-                </p>
+                  </p>
                 </CardTag>
               );
             })}

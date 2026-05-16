@@ -168,6 +168,56 @@ Replay scoring example (from normalized Eliza capture artifacts):
 
 `capture_path` is required and must point to a file or directory of normalized `*.replay.json` artifacts.
 
+## Code Agent Matrix
+
+Worker lane for comparing real coding agents on SWE-bench cells:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --benchmarks swe_bench \
+  --adapters elizaos,opencode \
+  --provider cerebras \
+  --model gpt-oss-120b \
+  --max-tasks 1 \
+  --no-docker
+```
+
+The matrix writes one directory per `(benchmark, adapter)` cell under
+`benchmark_results/code-agent-matrix/<timestamp>/`, preserving:
+
+- `command.json` with the redacted command/environment metadata.
+- `stdout.log` and `stderr.log` with secret-looking env values redacted.
+- benchmark output JSON under each cell's `output/` directory.
+- requested trajectory output under each cell's `trajectories/` directory.
+- top-level `summary.json` and `summary.md` with failure buckets.
+
+Resume is default: cells with `cell-result.json` are reused. Add `--force` to
+rerun, or summarize an interrupted/keyed run without executing anything:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --summarize /path/to/benchmark_results/code-agent-matrix/20260516T120000Z
+```
+
+No-key smoke/dry validation:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --dry-run \
+  --smoke \
+  --no-docker \
+  --max-tasks 1 \
+  --run-root /tmp/eliza-code-agent-matrix-smoke
+```
+
+For a real opencode cell, keep `CEREBRAS_API_KEY` in the shell environment and
+ensure the `opencode` CLI is installed or set `OPENCODE_BIN`. The matrix does
+not write provider key values into `command.json`; subprocess logs are redacted
+before being persisted.
+
 ## Viewer
 
 Serve live viewer API + UI:

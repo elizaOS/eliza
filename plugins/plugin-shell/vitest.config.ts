@@ -5,10 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@elizaos/core": path.resolve(__dirname, "../../packages/core/src/index.ts"),
-      "@elizaos/shared": path.resolve(
-        __dirname,
-        "../../packages/shared/src/index.ts",
-      ),
+      "@elizaos/shared": path.resolve(__dirname, "../../packages/shared/src/index.ts"),
     },
   },
   test: {

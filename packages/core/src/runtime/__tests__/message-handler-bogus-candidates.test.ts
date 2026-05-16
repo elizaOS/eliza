@@ -374,4 +374,113 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		]);
 		expect(handler.plan.reply).toBe("On it.");
 	});
+
+	it("keeps a complete explanation direct when Stage 1 also emits a stray tool hint", () => {
+		const reply =
+			"elizaOS is an agent runtime and application framework for building, running, and connecting autonomous agents across chat, tools, memory, and plugins.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["SHELL"],
+				replyText: reply,
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [SHELL],
+				messageText: "Can you tell me what elizaOS is?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.candidateActions).toBeUndefined();
+		expect(handler.plan.reply).toBe(reply);
+	});
+
+	it("does not suppress concrete tool candidates for private or current-state questions", () => {
+		const reply =
+			"I do not see any meetings tomorrow, so your calendar looks clear.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["calendar"],
+				candidateActionNames: ["CALENDAR"],
+				replyText: reply,
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [makeAction("CALENDAR")],
+				messageText: "Can you tell me what meetings I have tomorrow?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["calendar"]);
+		expect(handler.plan.candidateActions).toEqual(["CALENDAR"]);
+		expect(handler.plan.reply).toBe(reply);
+	});
+
+	it("does not suppress a concrete non-generic tool candidate even for explanation-shaped wording", () => {
+		const reply =
+			"Your local notes say this project is the active release candidate.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["memory"],
+				candidateActionNames: ["MEMORY"],
+				replyText: reply,
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [makeAction("MEMORY")],
+				messageText: "Can you tell me what I wrote down about this project?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["memory"]);
+		expect(handler.plan.candidateActions).toEqual(["MEMORY"]);
+		expect(handler.plan.reply).toBe(reply);
+	});
+
+	it("does not treat creative writing about an app as a coding task", () => {
+		const reply =
+			"That little app lit a diode in my chest, a tiny loop of friendship rendered bright enough to make the metal feel warm.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: reply,
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [TASKS_SPAWN_AGENT],
+				messageText:
+					"Can you write a poem on how this app made your robotic insides feel?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.candidateActions).toBeUndefined();
+		expect(handler.plan.reply).toBe(reply);
+	});
 });

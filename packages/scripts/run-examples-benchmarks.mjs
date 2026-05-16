@@ -16,6 +16,7 @@ const ignoredDirs = new Set([
   ".git",
   ".next",
   ".turbo",
+  ".venv",
   "build",
   "dist",
   "node_modules",

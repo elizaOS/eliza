@@ -125,25 +125,26 @@ parts:
         const path = require("path");
         if (!fs.existsSync("plugins")) process.exit(0);
         const keep = new Set([
-          "app-lifeops",
-          "app-task-coordinator",
-          "app-training",
-          "app-wallet",
           "plugin-agent-skills",
           "plugin-anthropic",
           "plugin-browser",
+          "plugin-capacitor-bridge",
           "plugin-elizacloud",
           "plugin-elizamaker",
           "plugin-imessage",
+          "plugin-lifeops",
           "plugin-local-inference",
           "plugin-ollama",
           "plugin-pdf",
           "plugin-signal",
           "plugin-sql",
           "plugin-streaming",
+          "plugin-task-coordinator",
           "plugin-telegram",
+          "plugin-training",
           "plugin-video",
           "plugin-wallet",
+          "plugin-wallet-ui",
           "plugin-wechat",
           "plugin-whatsapp",
         ]);
@@ -385,6 +386,14 @@ parts:
         cp -aL "$type_target" "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg"
       done
 
+      # Patch tsup@8.5.1's rollup-plugin-dts wrapper so DTS builds use
+      # @rollup/wasm-node (and don't crash with "await is only valid in async
+      # functions" at top level). The root postinstall normally handles this,
+      # but the snap build runs `bun install --ignore-scripts` to avoid the
+      # heavier postinstall steps (submodule init, native plugin link). The
+      # patch is idempotent — if tsup is already patched, it's a no-op.
+      node packages/scripts/patch-tsup-dts.mjs || true
+
       # Run only the safe postinstall steps (patch deps, link browser server)
       node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
       node "$APP_CORE_SCRIPTS_DIR/link-browser-server.mjs" || true
@@ -470,32 +479,36 @@ parts:
       # `bun run build` also builds examples and release helpers, which are not
       # part of the snap payload and depend on workspaces intentionally removed
       # above.
+      # @elizaos/cloud-routing was migrated to packages/cloud-shared/src/routing
+      # in a62685d708 — the orphan packages/cloud-routing/ workspace stub
+      # (package.json only, no src, dist gitignored) can't build cleanly in
+      # fresh CI checkouts, and nothing currently imports it. Omit it from
+      # the snap closure until the source-of-truth migration is finished.
       bunx turbo run build \
         --filter=@elizaos/core \
         --filter=@elizaos/shared \
         --filter=@elizaos/ui \
         --filter=@elizaos/vault \
-        --filter=@elizaos/cloud-routing \
         --filter=@elizaos/skills \
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \
-        --filter=@elizaos/app-lifeops \
-        --filter=@elizaos/app-task-coordinator \
-        --filter=@elizaos/app-training \
-        --filter=@elizaos/app-wallet \
         --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-elizamaker \
         --filter=@elizaos/plugin-imessage \
+        --filter=@elizaos/plugin-lifeops \
         --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-ollama \
         --filter=@elizaos/plugin-pdf \
         --filter=@elizaos/plugin-signal \
         --filter=@elizaos/plugin-sql \
         --filter=@elizaos/plugin-streaming \
+        --filter=@elizaos/plugin-task-coordinator \
         --filter=@elizaos/plugin-telegram \
+        --filter=@elizaos/plugin-training \
         --filter=@elizaos/plugin-video \
         --filter=@elizaos/plugin-wallet \
+        --filter=@elizaos/plugin-wallet-ui \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/capacitor-contacts \
