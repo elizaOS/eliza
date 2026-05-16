@@ -91,6 +91,11 @@ type LocalInferenceServerApi = {
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ) => Promise<boolean>;
+  handleLocalInferenceTtsRoute?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    state: { current: AgentRuntime | null },
+  ) => Promise<boolean>;
 };
 
 let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
@@ -1652,6 +1657,15 @@ async function handleRequest(
 
   const { handleLocalInferenceRoutes } = await getLocalInferenceServerApi();
   if (await handleLocalInferenceRoutes(req, res)) return;
+  const localInferenceServerApi = await getLocalInferenceServerApi();
+  if (
+    localInferenceServerApi.handleLocalInferenceTtsRoute &&
+    (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
+      current: state.runtime,
+    }))
+  ) {
+    return;
+  }
 
   if (
     await handleBackgroundTasksRoute({
@@ -3584,6 +3598,15 @@ export async function startApiServer(opts?: {
     // Always register generic stream routes. If a streaming destination is
     // configured, inject it so /api/stream/live can fetch credentials.
     void (async () => {
+      if (
+        isMobilePlatform() &&
+        process.env.ELIZA_MOBILE_ENABLE_STREAMING_ROUTES !== "1"
+      ) {
+        logger.debug(
+          "[eliza-api] Desktop streaming routes disabled on mobile platform.",
+        );
+        return;
+      }
       try {
         const streamRoutes = await import("@elizaos/plugin-streaming");
         const handleStreamRoute =

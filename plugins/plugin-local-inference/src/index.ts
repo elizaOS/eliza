@@ -22,6 +22,12 @@ export {
 	type LocalInferenceCommandIntent,
 } from "./local-inference-routes.js";
 export {
+	handleLocalInferenceTtsRoute,
+	normalizeAudioBytes,
+	sanitizeLocalInferenceSpeechText,
+	sniffAudioContentType,
+} from "./routes/local-inference-tts-route.js";
+export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 	LOCAL_INFERENCE_MODEL_TYPES,
