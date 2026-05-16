@@ -20,7 +20,11 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts"
+    "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
+    "build:app": "electrobun build",
+    "package:darwin": "electrobun build --platform darwin",
+    "package:linux": "electrobun build --platform linux",
+    "package:win32": "electrobun build --platform win32"
   },
   "dependencies": {
     "@elizaos/shared-brand": "workspace:*",

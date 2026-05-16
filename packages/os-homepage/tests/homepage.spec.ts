@@ -1,9 +1,10 @@
 import { expect, test } from "playwright/test";
 
 const heroCopy = [
-  "An operating system for your agent.",
+  "The agentic operating system.",
   "Local first",
   "Open source",
+  "Runs on your phone",
 ];
 
 const installerCopy = [
@@ -35,6 +36,7 @@ test("lander renders hero with cloud video and primary copy", async ({
 }) => {
   await page.goto("/");
 
+  await expect(page.locator('[data-hero="cloud"] img')).toHaveCount(0);
   const heroVideo = page.locator('[data-testid="cloud-video"]');
   await expect(heroVideo).toHaveCount(1);
 
@@ -57,10 +59,10 @@ test("anchor sections #download and #hardware exist and are reachable", async ({
 
   await expect(
     page.getByRole("link", { name: /^Download/i }).first(),
-  ).toHaveAttribute("href", "#download");
+  ).toHaveAttribute("href", "/#download");
   await expect(
     page.getByRole("link", { name: /^Hardware/i }).first(),
-  ).toHaveAttribute("href", "#hardware");
+  ).toHaveAttribute("href", "/#hardware");
 
   const order = await page.evaluate(() => {
     const d = document.querySelector("#download")?.getBoundingClientRect();
@@ -114,6 +116,57 @@ test("hardware tiles link to checkout per product", async ({ page }) => {
     "href",
     /^https:\/\/elizaos\.ai\/checkout\?collection=elizaos-hardware$/,
   );
+});
+
+test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
+  page,
+}) => {
+  await page.goto("/checkout?sku=elizaos-usb");
+
+  await expect(
+    page.getByRole("heading", { name: "ElizaOS USB" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Checkout on elizaOS." }),
+  ).toBeVisible();
+  await expect(page.locator(".checkout-product-shot img")).toHaveAttribute(
+    "src",
+    "/assets/concept_usbdrive.jpg",
+  );
+
+  const googleLink = page.getByRole("link", { name: "Google" });
+  await expect(googleLink).toHaveAttribute(
+    "href",
+    /api\.elizacloud\.ai\/steward\/auth\/oauth\/google\/authorize/,
+  );
+  await expect(googleLink).toHaveAttribute(
+    "href",
+    /redirect_uri=http%3A%2F%2F127\.0\.0\.1%3A4455%2Fcheckout%3Fsku%3Delizaos-usb/,
+  );
+
+  await page.getByRole("button", { name: /ElizaOS mini PC/i }).click();
+  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-mini-pc$/);
+  await expect(
+    page.getByRole("heading", { name: "ElizaOS mini PC" }),
+  ).toBeVisible();
+});
+
+test("checkout result pages return to hardware", async ({ page }) => {
+  await page.goto("/checkout/success?sku=elizaos-usb");
+  await expect(
+    page.getByRole("heading", { name: "Pre-order received." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to elizaOS" }),
+  ).toHaveAttribute("href", "/#hardware");
+
+  await page.goto("/checkout/cancel?sku=elizaos-usb");
+  await expect(
+    page.getByRole("heading", { name: "Checkout canceled." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Return to hardware" }),
+  ).toHaveAttribute("href", "/#hardware");
 });
 
 for (const product of [

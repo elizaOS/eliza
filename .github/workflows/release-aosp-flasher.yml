@@ -1,0 +1,38 @@
+name: Release AOSP Flasher
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version tag
+        required: false
+  release:
+    types: [created]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            artifact: elizaos-aosp-flasher-macos
+          - os: ubuntu-latest
+            platform: linux
+            artifact: elizaos-aosp-flasher-linux
+          - os: windows-latest
+            platform: win32
+            artifact: elizaos-aosp-flasher-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+      - run: bun install
+      - run: bun run --cwd packages/aosp-flasher build
+      - run: bun run --cwd packages/aosp-flasher typecheck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/aosp-flasher/dist/

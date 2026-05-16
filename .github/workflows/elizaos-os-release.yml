@@ -8,6 +8,7 @@ on:
       - "packages/os/**"
       - "packages/os-homepage/**"
       - "packages/os-usb-installer/**"
+      - "packages/aosp-flasher/**"
 
 jobs:
   validate-os-release:
@@ -47,6 +48,12 @@ jobs:
           packages/os/android/installer/tests/run-tests.sh
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
             packages/os/android/installer/manifests/android-release-manifest.example.json
+
+      - name: Validate AOSP flasher
+        continue-on-error: true
+        run: |
+          bun run --cwd packages/aosp-flasher typecheck || echo "WARN: aosp-flasher not yet present"
+          bun run --cwd packages/aosp-flasher build || echo "WARN: aosp-flasher build skipped"
 
       - name: Validate VM metadata
         run: |

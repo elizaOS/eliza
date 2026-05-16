@@ -48,6 +48,7 @@ const WRITE_BUILD_INFO_SCRIPT = fs.existsSync(
 const APP_CORE_PACKAGE_DIR = path.join(ROOT, "packages", "app-core");
 const CORE_PACKAGE_DIR = path.join(ROOT, "packages", "core");
 const SHARED_PACKAGE_DIR = path.join(ROOT, "packages", "shared");
+const VAULT_PACKAGE_DIR = path.join(ROOT, "packages", "vault");
 
 const argv = process.argv.slice(2);
 const command = argv[0] && !argv[0].startsWith("--") ? argv[0] : "build";
@@ -571,6 +572,7 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
 function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/core", CORE_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/shared", SHARED_PACKAGE_DIR);
+  ensureWorkspaceRuntimePackageBuilt("@elizaos/vault", VAULT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 

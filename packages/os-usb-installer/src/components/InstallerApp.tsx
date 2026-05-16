@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { detectPlatformId, PLATFORM_NOTES } from "../backend/platform-notes";
 import type {
   ElizaOsImage,
+  InstallerStepId,
   RemovableDrive,
   UsbInstallerBackend,
   WritePlan,
@@ -20,6 +21,13 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+type WriteMode = "preview" | "real";
+
+interface StepProgress {
+  step: InstallerStepId;
+  progress: number;
+}
+
 interface InstallerAppProps {
   backend: UsbInstallerBackend;
 }
@@ -33,9 +41,18 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   const [writePlan, setWritePlan] = useState<WritePlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [executing, setExecuting] = useState(false);
+  const [stepProgress, setStepProgress] = useState<
+    Partial<Record<InstallerStepId, number>>
+  >({});
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingWriteMode, setPendingWriteMode] = useState<WriteMode | null>(
+    null,
+  );
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
 
     async function load() {
       try {
@@ -43,9 +60,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           backend.listRemovableDrives(),
           backend.listImages(),
         ]);
-        if (cancelled) {
-          return;
-        }
+        if (cancelledRef.current) return;
 
         setDrives(nextDrives);
         setImages(nextImages);
@@ -56,11 +71,11 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         );
         setSelectedImageId(nextImages[0]?.id ?? "");
       } catch (cause) {
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           setError(cause instanceof Error ? cause.message : String(cause));
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           setLoading(false);
         }
       }
@@ -68,7 +83,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
 
     void load();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
   }, [backend]);
 
@@ -84,25 +99,108 @@ export function InstallerApp({ backend }: InstallerAppProps) {
     (note) => note.platform === detectPlatformId(),
   );
 
-  async function prepareDryRun() {
+  const supportsRealWrite = Boolean(backend.executeWritePlan);
+
+  async function handleAction(mode: WriteMode) {
+    if (mode === "real") {
+      setPendingWriteMode("real");
+      setShowConfirmModal(true);
+      return;
+    }
+    await runWrite("preview");
+  }
+
+  async function confirmRealWrite() {
+    setShowConfirmModal(false);
+    if (pendingWriteMode === "real") {
+      await runWrite("real");
+    }
+    setPendingWriteMode(null);
+  }
+
+  function cancelRealWrite() {
+    setShowConfirmModal(false);
+    setPendingWriteMode(null);
+  }
+
+  async function runWrite(mode: WriteMode) {
     setError(null);
     setWritePlan(null);
+    setStepProgress({});
+
+    const isDryRun = mode === "preview";
 
     try {
       const plan = await backend.createWritePlan({
         driveId: selectedDriveId,
         imageId: selectedImageId,
-        dryRun: true,
+        dryRun: isDryRun,
         acknowledgeDataLoss,
       });
       setWritePlan(plan);
+
+      if (!isDryRun && backend.executeWritePlan) {
+        setExecuting(true);
+        await backend.executeWritePlan(plan, (step, progress) => {
+          setStepProgress((prev) => ({ ...prev, [step]: progress }));
+        });
+        setExecuting(false);
+      }
     } catch (cause) {
+      setExecuting(false);
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
+  const canWrite =
+    Boolean(selectedDrive) && Boolean(selectedImage) && !executing;
+  const canRealWrite = canWrite && acknowledgeDataLoss && supportsRealWrite;
+
   return (
     <main className="installer-shell">
+      {showConfirmModal && selectedDrive && selectedImage ? (
+        <div className="modal-overlay">
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+          >
+            <h2 id="modal-title">Confirm destructive write</h2>
+            <p>
+              <strong>
+                All data on {selectedDrive.name} ({selectedDrive.devicePath})
+                will be permanently erased.
+              </strong>
+            </p>
+            <p>
+              The image{" "}
+              <strong>
+                {selectedImage.label} {selectedImage.version}
+              </strong>{" "}
+              ({formatBytes(selectedImage.sizeBytes)}) will be written to this
+              drive.
+            </p>
+            <p className="muted">
+              This cannot be undone. Make sure you have selected the correct
+              drive.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={() => void confirmRealWrite()}
+              >
+                Yes, erase and write
+              </button>
+              <button type="button" onClick={cancelRealWrite}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <section className="header-band">
         <div>
           <img
@@ -113,7 +211,6 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           <p className="eyebrow">elizaOS media tool</p>
           <h1>USB installer</h1>
         </div>
-        <span className="status-pill">Dry-run only</span>
       </section>
 
       <section className="workspace-grid">
@@ -216,7 +313,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           <ol className="walkthrough-list">
             <li>Pick a trusted elizaOS release and review its manifest.</li>
             <li>Select removable media that meets the minimum USB size.</li>
-            <li>Run the dry-run plan to confirm every destructive gate.</li>
+            <li>Preview the plan or write directly to the drive.</li>
           </ol>
           <label className="ack-row">
             <input
@@ -226,38 +323,76 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             />
             <span>I understand the selected drive would be erased.</span>
           </label>
-          <button
-            type="button"
-            disabled={!selectedDrive || !selectedImage}
-            onClick={() => void prepareDryRun()}
-          >
-            Prepare dry-run
-          </button>
+
+          <div className="action-buttons">
+            <button
+              type="button"
+              disabled={!canWrite}
+              onClick={() => void handleAction("preview")}
+            >
+              Preview plan
+            </button>
+            {supportsRealWrite ? (
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={!canRealWrite}
+                title={
+                  !acknowledgeDataLoss
+                    ? "Check the acknowledgement box first"
+                    : undefined
+                }
+                onClick={() => void handleAction("real")}
+              >
+                {executing ? "Writing..." : "Write to drive"}
+              </button>
+            ) : null}
+          </div>
+
           {error ? <p className="error">{error}</p> : null}
-          {selectedDrive && selectedImage ? (
-            <p className="muted">
-              This package can only prepare a dry-run plan. It refuses
-              non-dry-run requests and does not implement raw disk writes.
-            </p>
-          ) : null}
+
           {writePlan ? (
             <ol className="step-list">
-              {writePlan.steps.map((step) => (
-                <li key={step.id} className={step.status}>
-                  <strong>{step.label}</strong>
-                  <span>{step.detail}</span>
-                </li>
-              ))}
+              {writePlan.steps.map((step) => {
+                const progress = stepProgress[step.id];
+                const isRunning =
+                  progress !== undefined && progress > 0 && progress < 1;
+                const isDone = progress === 1;
+                return (
+                  <li
+                    key={step.id}
+                    className={
+                      isDone ? "complete" : isRunning ? "running" : step.status
+                    }
+                  >
+                    <strong>{step.label}</strong>
+                    <span>{step.detail}</span>
+                    {isRunning ? (
+                      <div
+                        className="progress-bar"
+                        role="progressbar"
+                        aria-valuenow={Math.round(progress * 100)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${Math.round(progress * 100)}%` }}
+                        />
+                        <span className="progress-label">
+                          {Math.round(progress * 100)}%
+                        </span>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ol>
           ) : null}
         </div>
 
         <div className="panel notes-panel">
           <h2>Platform Notes</h2>
-          <p className="muted">
-            Privileged disk writes are intentionally not implemented in this
-            scaffold.
-          </p>
           {platformNotes ? (
             <>
               <h3>{platformNotes.title}</h3>

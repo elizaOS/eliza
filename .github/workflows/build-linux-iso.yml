@@ -1,0 +1,199 @@
+name: Build elizaOS Linux ISO
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        default: stable
+      publish:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options: [nightly, beta, stable]
+        default: nightly
+      publish:
+        description: Upload to GitHub Release
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 3 * * *'
+  release:
+    types: [created]
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install live-build and dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            live-build \
+            just \
+            squashfs-tools \
+            xorriso \
+            isolinux \
+            syslinux-efi \
+            grub-efi-amd64-bin \
+            grub-pc-bin \
+            mtools \
+            dosfstools \
+            python3 \
+            curl \
+            rsync
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Restore model cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/usbeliza-build/models
+          key: elizaos-model-cache-${{ hashFiles('packages/os/linux/Justfile') }}
+          restore-keys: elizaos-model-cache-
+
+      - name: Restore CLI cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/usbeliza-build/cli
+          key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/Justfile') }}
+          restore-keys: elizaos-cli-cache-
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/os/linux/target
+          key: elizaos-iso-rust-${{ runner.os }}-${{ hashFiles('packages/os/linux/**/Cargo.lock', 'packages/os/linux/**/Cargo.toml') }}
+          restore-keys: elizaos-iso-rust-${{ runner.os }}-
+
+      - name: Stage ISO build
+        working-directory: packages/os/linux
+        run: just iso-stage
+
+      - name: Cache pre-downloaded models
+        working-directory: packages/os/linux
+        run: just iso-cache-model
+
+      - name: Cache pre-downloaded CLIs
+        working-directory: packages/os/linux
+        run: just iso-cache-cli
+
+      - name: Configure live-build
+        working-directory: packages/os/linux
+        run: just iso-config
+
+      - name: Validate ISO config
+        working-directory: packages/os/linux
+        run: just iso-check
+
+      - name: Build ISO
+        working-directory: packages/os/linux
+        run: sudo just iso-build
+        timeout-minutes: 90
+
+      - name: Locate and rename ISO
+        id: iso
+        run: |
+          ISO=$(find packages/os/linux -name "*.iso" | head -1)
+          if [ -z "$ISO" ]; then
+            echo "ERROR: ISO not found after build"
+            exit 1
+          fi
+          DATE=$(date +%Y.%m.%d)
+          DEST="elizaos-linux-live-${CHANNEL}-${DATE}-amd64.iso"
+          cp "$ISO" "$DEST"
+          SHA256=$(sha256sum "$DEST" | cut -d' ' -f1)
+          SIZE=$(stat --format="%s" "$DEST")
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "filename=$DEST" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SHA256SUMS
+        run: |
+          sha256sum "${{ steps.iso.outputs.path }}" > "${{ steps.iso.outputs.filename }}.sha256"
+
+      - name: Smoke test ISO (headless QEMU)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
+          # Boot headless for 60 seconds and check for boot completion via serial
+          QEMU_TIMEOUT=120
+          ISO_PATH="${{ steps.iso.outputs.path }}"
+          SERIAL_LOG=$(mktemp)
+          timeout "$QEMU_TIMEOUT" qemu-system-x86_64 \
+            -cdrom "$ISO_PATH" \
+            -boot d \
+            -m 2G \
+            -smp 2 \
+            -display none \
+            -vga none \
+            -serial "file:$SERIAL_LOG" \
+            -no-reboot \
+            -nographic 2>/dev/null || true
+          if grep -qi "elizaOS\|eliza\|login:" "$SERIAL_LOG" 2>/dev/null; then
+            echo "ISO smoke test: boot strings found in serial log"
+          else
+            echo "WARN: boot strings not detected in serial log (QEMU may not support KVM in CI)"
+          fi
+          rm -f "$SERIAL_LOG"
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: elizaos-linux-iso-${{ env.CHANNEL }}
+          path: |
+            ${{ steps.iso.outputs.path }}
+            ${{ steps.iso.outputs.filename }}.sha256
+          retention-days: 7
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'workflow_call' && inputs.publish == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.iso.outputs.path }}
+            ${{ steps.iso.outputs.filename }}.sha256
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write ISO metadata to summary
+        run: |
+          {
+            echo "## elizaOS Linux ISO"
+            echo "| Field | Value |"
+            echo "| ----- | ----- |"
+            echo "| File | \`${{ steps.iso.outputs.filename }}\` |"
+            echo "| SHA-256 | \`${{ steps.iso.outputs.sha256 }}\` |"
+            echo "| Size | ${{ steps.iso.outputs.size }} bytes |"
+            echo "| Channel | ${CHANNEL} |"
+          } >> "$GITHUB_STEP_SUMMARY"

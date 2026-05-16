@@ -81,16 +81,16 @@ jobs:
       - name: Cache llama.cpp cmake build dir
         uses: actions/cache@v5
         with:
-          path: packages/inference/llama.cpp/build
-          key: llama-ffi-macos-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}
+          path: plugins/plugin-local-inference/native/llama.cpp/build
+          key: llama-ffi-macos-${{ hashFiles('plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt') }}
           restore-keys: |
             llama-ffi-macos-
 
       - name: Configure llama.cpp (Metal, shared, no server)
         run: |
           set -euo pipefail
-          cmake -S packages/inference/llama.cpp \
-                -B packages/inference/llama.cpp/build \
+          cmake -S plugins/plugin-local-inference/native/llama.cpp \
+                -B plugins/plugin-local-inference/native/llama.cpp/build \
                 -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DBUILD_SHARED_LIBS=ON \
@@ -108,12 +108,12 @@ jobs:
           set -euo pipefail
           # -j4 cap to stay friendly on hosted runners and predictable on
           # self-hosted runners that share the box with other jobs.
-          cmake --build packages/inference/llama.cpp/build --target llama -j 4
+          cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama -j 4
 
       - name: Verify artifact
         run: |
           set -euo pipefail
-          ART_DIR="packages/inference/llama.cpp/build"
+          ART_DIR="plugins/plugin-local-inference/native/llama.cpp/build"
           if [ -f "$ART_DIR/libllama.dylib" ]; then
             ART="$ART_DIR/libllama.dylib"
           elif [ -f "$ART_DIR/bin/libllama.dylib" ]; then
@@ -135,8 +135,8 @@ jobs:
           # The artifact lands at one of two paths depending on cmake
           # generator output dir conventions. Take whichever is present.
           for cand in \
-            packages/inference/llama.cpp/build/libllama.dylib \
-            packages/inference/llama.cpp/build/bin/libllama.dylib; do
+            plugins/plugin-local-inference/native/llama.cpp/build/libllama.dylib \
+            plugins/plugin-local-inference/native/llama.cpp/build/bin/libllama.dylib; do
             if [ -f "$cand" ]; then
               cp "$cand" "$STAGE_DIR/libelizainference.dylib"
               break
@@ -149,7 +149,7 @@ jobs:
             echo "ref=${{ github.ref }}"
             echo "sha=${{ github.sha }}"
             echo "runner=macos-14"
-            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+            echo "llama_sha=$(git -C plugins/plugin-local-inference/native/llama.cpp rev-parse HEAD || echo n/a)"
           } > "$STAGE_DIR/BUILD_INFO.txt"
           echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
 

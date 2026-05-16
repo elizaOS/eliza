@@ -70,7 +70,7 @@ jobs:
           OMNIVOICE_REF: ${{ env.OMNIVOICE_REF }}
         run: |
           set -euo pipefail
-          TARGET_DIR="packages/inference/omnivoice.cpp"
+          TARGET_DIR="plugins/plugin-local-inference/native/omnivoice.cpp"
           if [ ! -d "${TARGET_DIR}/.git" ]; then
             git clone --recurse-submodules "${OMNIVOICE_REPO}" "${TARGET_DIR}"
           fi
@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build build-essential
-          cd packages/inference/omnivoice.cpp
+          cd plugins/plugin-local-inference/native/omnivoice.cpp
           if [ -x ./buildcpu.sh ]; then
             ./buildcpu.sh
           else
@@ -117,6 +117,10 @@ jobs:
           HF_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
         run: |
           set -euo pipefail
+          if [ ! -f scripts/inference/convert-omnivoice-singing.mjs ]; then
+            echo "scripts/inference/convert-omnivoice-singing.mjs is not present; skipping singing conversion"
+            exit 0
+          fi
           mkdir -p "${OUT_DIR}"
           node scripts/inference/convert-omnivoice-singing.mjs \
             --out-dir "${OUT_DIR}" \

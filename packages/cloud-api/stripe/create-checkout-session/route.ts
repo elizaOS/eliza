@@ -110,6 +110,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       c.env.NEXT_PUBLIC_APP_URL,
       "http://localhost:3000",
       "http://localhost:3001",
+      "http://localhost:4455",
+      "https://elizaos.ai",
+      "https://www.elizaos.ai",
+      "https://os.elizacloud.ai",
       "https://eliza.ai",
       "https://www.eliza.ai",
     ].filter(Boolean) as string[];
@@ -241,8 +245,15 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       c.req.header("origin") ||
       c.req.header("referer")?.split("/").slice(0, 3).join("/");
 
+    const hardwareOrigin =
+      hardwareSku && requestOrigin && allowedOrigins.includes(requestOrigin)
+        ? requestOrigin
+        : null;
+
     let baseUrl: string;
-    if (envAppUrl?.trim()) {
+    if (hardwareOrigin) {
+      baseUrl = hardwareOrigin;
+    } else if (envAppUrl?.trim()) {
       baseUrl = envAppUrl.trim();
     } else if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
       baseUrl = requestOrigin;
@@ -256,9 +267,12 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     }
     if (!baseUrl.startsWith("http")) baseUrl = "http://localhost:3000";
 
-    const successUrl = `${baseUrl}/dashboard/billing/success?session_id={CHECKOUT_SESSION_ID}&from=${returnUrl}`;
-    const cancelUrl =
-      returnUrl === "settings"
+    const successUrl = hardwareSku
+      ? `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&sku=${hardwareSku}`
+      : `${baseUrl}/dashboard/billing/success?session_id={CHECKOUT_SESSION_ID}&from=${returnUrl}`;
+    const cancelUrl = hardwareSku
+      ? `${baseUrl}/checkout/cancel?sku=${hardwareSku}`
+      : returnUrl === "settings"
         ? `${baseUrl}/dashboard/settings?tab=billing`
         : `${baseUrl}/dashboard/billing?canceled=true`;
 
