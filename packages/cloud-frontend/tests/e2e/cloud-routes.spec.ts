@@ -20,9 +20,7 @@ const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
 
 // Requests we don't fail on if they 4xx/5xx — e.g. optional analytics,
 // third-party heartbeats. Keep this empty until proven necessary.
-const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [
-  /\/__telemetry__/,
-];
+const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 
 // Page-title sanity per route. The homepage title is the brand fallback;
 // when a sub-page accidentally inherits it (because of missing <title> on
@@ -266,7 +264,9 @@ for (const route of publicRoutes) {
     const titleRule = ROUTE_TITLE_RULES[pathKey];
     const title = await page.title();
     if (titleRule) {
-      expect(title, `unexpected title on ${route}: ${title}`).toMatch(titleRule);
+      expect(title, `unexpected title on ${route}: ${title}`).toMatch(
+        titleRule,
+      );
     }
     if (pathKey !== "/") {
       expect(title, `route ${route} fell back to homepage title`).not.toMatch(

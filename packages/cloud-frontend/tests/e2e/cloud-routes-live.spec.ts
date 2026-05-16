@@ -31,10 +31,7 @@ test.describe("live: public routes against real backend", () => {
   ];
 
   const HOMEPAGE_TITLE_FALLBACK = /eliza cloud - Your Eliza, always online/i;
-  const ALLOWED_CONSOLE_NOISE: RegExp[] = [
-    /favicon/i,
-    /\/__telemetry__/i,
-  ];
+  const ALLOWED_CONSOLE_NOISE: RegExp[] = [/favicon/i, /\/__telemetry__/i];
   const ALLOWED_NETWORK_NOISE: RegExp[] = [
     /\/__telemetry__/i,
     // GA / Posthog / Sentry beacons fail in headless without consent banners
@@ -48,7 +45,11 @@ test.describe("live: public routes against real backend", () => {
   }
 
   function collect(page: Page): Captured {
-    const c: Captured = { pageErrors: [], consoleErrors: [], failedResponses: [] };
+    const c: Captured = {
+      pageErrors: [],
+      consoleErrors: [],
+      failedResponses: [],
+    };
     page.on("pageerror", (e) => c.pageErrors.push(e.message ?? String(e)));
     page.on("console", (msg) => {
       if (msg.type() !== "error") return;
