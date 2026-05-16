@@ -113,7 +113,11 @@ export function VoicePill(props: VoicePillProps) {
     className,
   } = props;
 
-  const [open, setOpen] = useControllableBoolean(openProp, defaultOpen, onOpenChange);
+  const [open, setOpen] = useControllableBoolean(
+    openProp,
+    defaultOpen,
+    onOpenChange,
+  );
   const [recording, setRecording] = useControllableBoolean(
     recordingProp,
     defaultRecording,

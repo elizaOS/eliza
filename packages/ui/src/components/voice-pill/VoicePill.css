@@ -10,11 +10,27 @@
   flex-direction: column;
   align-items: center;
   gap: 9px;
-  font-family: var(--font-brand, "Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif);
+  font-family: var(
+    --font-brand,
+    "Poppins",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Arial,
+    sans-serif
+  );
 }
 
 .voice-pill-greeting {
-  font-family: var(--font-brand, "Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif);
+  font-family: var(
+    --font-brand,
+    "Poppins",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Arial,
+    sans-serif
+  );
   font-weight: 500;
   font-size: 22px;
   color: #ffffff;
@@ -28,7 +44,9 @@
   width: 280px;
   background: transparent;
   overflow: visible;
-  transition: opacity 0.26s ease, transform 0.26s ease;
+  transition:
+    opacity 0.26s ease,
+    transform 0.26s ease;
 }
 
 .voice-pill-chat.voice-pill-chat-hidden {
