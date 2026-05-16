@@ -110,7 +110,6 @@ export function CloudVideoBackground({
         playsInline
         preload="auto"
         poster={poster}
-        aria-hidden="true"
         style={{
           position: "absolute",
           inset: 0,

@@ -89,7 +89,9 @@
   --link-color: var(--brand-black);
   --link-hover-color: var(--brand-blue);
 
-  --font-sans: "Poppins", "Poppins Variable", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-sans:
+    "Poppins", "Poppins Variable", system-ui, -apple-system, "Segoe UI", Arial,
+    sans-serif;
   --mono: var(--font-sans);
   --font-body: var(--font-sans);
   --font-display: var(--font-sans);

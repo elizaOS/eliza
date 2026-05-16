@@ -192,7 +192,9 @@ a {
   font-weight: 600;
   font-size: 1rem;
   border: 1px solid currentColor;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 .os-cta--solid {
   background: var(--brand-white);

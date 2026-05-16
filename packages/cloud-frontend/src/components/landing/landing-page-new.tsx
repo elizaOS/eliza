@@ -95,8 +95,8 @@ export function LandingPage({ accessError }: LandingPageProps) {
               You own the agent
             </h3>
             <p className="text-base leading-relaxed text-white/80">
-              Migrate between cloud and your own hardware whenever you want.
-              The agent, its memory, and its skills travel with you.
+              Migrate between cloud and your own hardware whenever you want. The
+              agent, its memory, and its skills travel with you.
             </p>
           </div>
           <div>
@@ -107,8 +107,8 @@ export function LandingPage({ accessError }: LandingPageProps) {
               Monetize what you build
             </h3>
             <p className="text-base leading-relaxed text-white/80">
-              Publish apps, agents, and MCP servers. Earn from inference
-              markups and creator revenue share.
+              Publish apps, agents, and MCP servers. Earn from inference markups
+              and creator revenue share.
             </p>
           </div>
         </div>
@@ -127,8 +127,8 @@ export function LandingPage({ accessError }: LandingPageProps) {
               Get the Eliza app.
             </h2>
             <p className="mt-4 max-w-xl text-lg leading-snug text-black/80">
-              The desktop and mobile companion for your agent. Voice, chat,
-              and connectors — everything routes back to your cloud.
+              The desktop and mobile companion for your agent. Voice, chat, and
+              connectors — everything routes back to your cloud.
             </p>
           </div>
           <a

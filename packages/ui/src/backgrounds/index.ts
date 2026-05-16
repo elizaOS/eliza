@@ -8,6 +8,8 @@ export {
 } from "./BACKGROUND_EDIT-action-contract";
 export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";
+export type { CloudVideoBackgroundProps } from "./CloudVideoBackground";
+export { CloudVideoBackground } from "./CloudVideoBackground";
 export {
   getActiveBackground,
   getBackground,
@@ -19,8 +21,6 @@ export {
   setActiveBackground,
 } from "./registry";
 export { createSlowCloudsBackground } from "./slow-clouds";
-export type { CloudVideoBackgroundProps } from "./CloudVideoBackground";
-export { CloudVideoBackground } from "./CloudVideoBackground";
 export type {
   BackgroundHandle,
   BackgroundKind,

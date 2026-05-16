@@ -357,7 +357,9 @@ body {
   font-weight: 600;
   font-size: 1rem;
   border: 1px solid currentColor;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
   text-decoration: none;
 }
 .app-cta--dark {
@@ -463,7 +465,9 @@ body {
   padding: 1.25rem 1.5rem;
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: var(--brand-white);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 .app-download-tile:hover {
   background: rgba(255, 255, 255, 0.06);

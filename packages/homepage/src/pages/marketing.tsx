@@ -1,4 +1,11 @@
-import { ArrowRight, Cloud, Cpu, MessageCircle, Mic, Smartphone } from "lucide-react";
+import {
+  ArrowRight,
+  Cloud,
+  Cpu,
+  MessageCircle,
+  Mic,
+  Smartphone,
+} from "lucide-react";
 
 const cloudUrl = "https://elizacloud.ai";
 const osUrl = "https://elizaos.ai";
@@ -33,8 +40,8 @@ export default function MarketingPage() {
           everywhere.
         </h1>
         <p className="app-lede">
-          Voice, chat, connectors, automations. Eliza is the companion app
-          for your agent — on your desktop, your phone, and your watch.
+          Voice, chat, connectors, automations. Eliza is the companion app for
+          your agent — on your desktop, your phone, and your watch.
         </p>
         <div className="app-cta-row">
           <a href="#download" className="app-cta app-cta--dark">
@@ -91,12 +98,36 @@ export default function MarketingPage() {
           <p className="app-eyebrow">Download</p>
           <h2 className="app-h2 app-h2--invert">Get Eliza today.</h2>
           <div className="app-download-grid">
-            <Download platform="macOS" detail="Apple Silicon · Intel" href="/downloads/Eliza.dmg" />
-            <Download platform="Windows" detail="64-bit · MSIX" href="/downloads/Eliza.exe" />
-            <Download platform="Linux" detail="deb · AppImage" href="/downloads/Eliza.AppImage" />
-            <Download platform="iOS" detail="TestFlight" href="https://testflight.apple.com" />
-            <Download platform="Android" detail="Play Store · APK" href="https://play.google.com" />
-            <Download platform="Web" detail="Open in browser" href="https://elizacloud.ai" />
+            <Download
+              platform="macOS"
+              detail="Apple Silicon · Intel"
+              href="/downloads/Eliza.dmg"
+            />
+            <Download
+              platform="Windows"
+              detail="64-bit · MSIX"
+              href="/downloads/Eliza.exe"
+            />
+            <Download
+              platform="Linux"
+              detail="deb · AppImage"
+              href="/downloads/Eliza.AppImage"
+            />
+            <Download
+              platform="iOS"
+              detail="TestFlight"
+              href="https://testflight.apple.com"
+            />
+            <Download
+              platform="Android"
+              detail="Play Store · APK"
+              href="https://play.google.com"
+            />
+            <Download
+              platform="Web"
+              detail="Open in browser"
+              href="https://elizacloud.ai"
+            />
           </div>
         </div>
       </section>
@@ -106,8 +137,8 @@ export default function MarketingPage() {
           <div>
             <h2 className="app-h2 app-h2--invert">Powered by elizaOS.</h2>
             <p className="app-paragraph">
-              The open-source runtime that does the actual thinking. Eliza
-              the app is just the face — the OS is what makes it tick.
+              The open-source runtime that does the actual thinking. Eliza the
+              app is just the face — the OS is what makes it tick.
             </p>
           </div>
           <a href={osUrl} className="app-cta app-cta--white">
@@ -122,8 +153,8 @@ export default function MarketingPage() {
           <div>
             <h2 className="app-h2">Or skip install. Open the cloud.</h2>
             <p className="app-paragraph app-paragraph--dark">
-              Eliza Cloud is the same agent, running in our managed cloud.
-              Sign in from any browser.
+              Eliza Cloud is the same agent, running in our managed cloud. Sign
+              in from any browser.
             </p>
           </div>
           <a href={cloudUrl} className="app-cta app-cta--dark">

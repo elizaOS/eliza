@@ -1,4 +1,11 @@
-import { ArrowRight, Check, Cloud, Cpu, Download, Terminal } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Cloud,
+  Cpu,
+  Download,
+  Terminal,
+} from "lucide-react";
 
 const cloudUrl = "https://elizacloud.ai";
 const appUrl = "https://eliza.app";
@@ -36,15 +43,18 @@ export function App() {
         </h1>
         <p className="os-lede">
           elizaOS is the open-source runtime that powers Eliza. Run it on a
-          phone, a laptop, a $4 USB stick, or your own cloud — your agent
-          lives wherever you do.
+          phone, a laptop, a $4 USB stick, or your own cloud — your agent lives
+          wherever you do.
         </p>
         <div className="os-cta-row">
           <a href="#download" className="os-cta os-cta--solid">
             Download elizaOS
             <ArrowRight className="os-icon" />
           </a>
-          <a href="https://github.com/elizaOS/eliza" className="os-cta os-cta--ghost">
+          <a
+            href="https://github.com/elizaOS/eliza"
+            className="os-cta os-cta--ghost"
+          >
             View source
           </a>
         </div>
@@ -58,12 +68,16 @@ export function App() {
             <article className="os-install-tile">
               <Terminal className="os-icon-lg" />
               <h3>macOS &amp; Linux</h3>
-              <pre className="os-code">curl -fsSL https://elizaos.ai/install.sh | bash</pre>
+              <pre className="os-code">
+                curl -fsSL https://elizaos.ai/install.sh | bash
+              </pre>
             </article>
             <article className="os-install-tile">
               <Cpu className="os-icon-lg" />
               <h3>Windows</h3>
-              <pre className="os-code">iwr -useb https://elizaos.ai/install.ps1 | iex</pre>
+              <pre className="os-code">
+                iwr -useb https://elizaos.ai/install.ps1 | iex
+              </pre>
             </article>
             <article className="os-install-tile">
               <Download className="os-icon-lg" />
@@ -149,8 +163,8 @@ export function App() {
           <div>
             <h2 className="os-h2">Built to talk to the app.</h2>
             <p className="os-paragraph os-paragraph--dark">
-              elizaOS pairs with the Eliza app for voice, chat, connectors,
-              and your phone. The OS is the runtime — the app is the face.
+              elizaOS pairs with the Eliza app for voice, chat, connectors, and
+              your phone. The OS is the runtime — the app is the face.
             </p>
           </div>
           <a href={appUrl} className="os-cta os-cta--dark">
