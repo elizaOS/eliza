@@ -1,4 +1,9 @@
 /* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource/poppins/800.css";
 @import "@fontsource-variable/open-sans";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
@@ -7,7 +12,7 @@
 @source "../../ui/src";
 
 :root {
-  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-open-sans: "Poppins", "Open Sans", Arial, system-ui, sans-serif;
   --font-sans: var(--font-open-sans);
   --font-mono: var(--font-open-sans);
 }
@@ -217,4 +222,293 @@ body {
 }
 .intro-logo .z-piece-trbl.reveal {
   animation: reveal-trbl 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ─── Eliza app marketing (orange theme) ─────────────────────────── */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: "Poppins", system-ui, sans-serif;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem clamp(1.25rem, 4vw, 3rem);
+  background: var(--brand-orange);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.16);
+  color: var(--brand-black);
+}
+.app-brand-mark {
+  height: 1.75rem;
+  width: auto;
+  display: block;
+}
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.app-nav-pill {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+}
+
+.app-hero {
+  padding-top: clamp(4rem, 10vw, 9rem);
+  padding-bottom: clamp(4rem, 10vw, 9rem);
+}
+.app-narrow {
+  max-width: 80rem;
+  margin: 0 auto;
+}
+.app-split {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  align-items: flex-start;
+}
+@media (min-width: 768px) {
+  .app-split {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.app-eyebrow {
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  color: var(--brand-black);
+  opacity: 0.78;
+}
+.app-eyebrow--dark {
+  color: var(--brand-orange);
+  opacity: 1;
+}
+
+.app-display {
+  font-size: clamp(3rem, 9vw, 7rem);
+  font-weight: 800;
+  line-height: 0.95;
+  margin: 0;
+  letter-spacing: -0.02em;
+  color: var(--brand-black);
+}
+
+.app-h2 {
+  font-size: clamp(2rem, 5vw, 3.75rem);
+  font-weight: 800;
+  line-height: 1;
+  margin: 0 0 1.5rem;
+  letter-spacing: -0.02em;
+  color: var(--brand-black);
+}
+.app-h2--invert {
+  color: var(--brand-white);
+}
+
+.app-lede {
+  font-size: clamp(1.1rem, 1.6vw, 1.35rem);
+  font-weight: 400;
+  line-height: 1.45;
+  margin: 1.5rem 0 0;
+  max-width: 44rem;
+  color: var(--brand-black);
+  opacity: 0.84;
+}
+.app-paragraph {
+  font-size: 1.125rem;
+  line-height: 1.5;
+  max-width: 36rem;
+  margin: 0;
+  color: var(--brand-white);
+  opacity: 0.9;
+}
+.app-paragraph--dark {
+  color: var(--brand-black);
+  opacity: 0.78;
+}
+
+.app-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.app-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.25rem;
+  padding: 0 1.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  border: 1px solid currentColor;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-decoration: none;
+}
+.app-cta--dark {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  border-color: var(--brand-black);
+}
+.app-cta--dark:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+.app-cta--outline {
+  background: transparent;
+  color: var(--brand-black);
+  border-color: var(--brand-black);
+}
+.app-cta--outline:hover {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+.app-cta--white {
+  background: var(--brand-white);
+  color: var(--brand-blue);
+  border-color: var(--brand-white);
+}
+.app-cta--white:hover {
+  background: var(--brand-gray);
+}
+
+.app-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.app-feature-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+  margin-top: 2.5rem;
+}
+@media (min-width: 720px) {
+  .app-feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .app-feature-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.app-feature-tile {
+  border: 1px solid var(--brand-black);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: var(--brand-black);
+  background: var(--brand-white);
+}
+.app-feature-tile h3 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0;
+}
+.app-feature-tile p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+  color: rgba(0, 0, 0, 0.72);
+}
+.app-feature-icon {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-orange);
+}
+.app-feature-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.app-download-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  margin-top: 2.5rem;
+}
+@media (min-width: 720px) {
+  .app-download-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .app-download-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.app-download-tile {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: var(--brand-white);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.app-download-tile:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--brand-orange);
+}
+.app-download-platform {
+  font-weight: 700;
+  font-size: 1.125rem;
+  flex: 1;
+}
+.app-download-detail {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.app-footer {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  padding: clamp(2rem, 5vw, 3rem) clamp(1.25rem, 4vw, 3rem);
+}
+.app-footer-inner {
+  max-width: 80rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+@media (min-width: 768px) {
+  .app-footer-inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+.app-footer-nav {
+  display: flex;
+  gap: 1.5rem;
+  font-weight: 600;
+}
+.app-footer-nav a:hover {
+  color: var(--brand-orange);
+}
+.app-footer-copy {
+  margin: 0;
+  opacity: 0.6;
+  font-size: 0.85rem;
 }
