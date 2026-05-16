@@ -94,29 +94,48 @@ jobs:
         run: node ../app-core/scripts/write-homepage-release-data.mjs
 
       - name: Check homepage release data
+        id: release_data_check
         working-directory: packages/homepage
-        run: bun run check:release-data
+        shell: bash
+        run: |
+          if bun run check:release-data; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "::error::Release-triggered homepage deploys require published release data."
+            exit 1
+          fi
+
+          echo "::warning::No complete published release data is available; skipping homepage deploy for this develop push."
+          echo "available=false" >> "$GITHUB_OUTPUT"
 
       - name: Build homepage
+        if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
         run: bun run build
 
       - name: Install homepage browser
+        if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
         run: ../../node_modules/.bin/playwright install --with-deps chromium
 
       - name: Test homepage downloads
+        if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run test:e2e
 
       - name: Write CNAME and .nojekyll
+        if: steps.release_data_check.outputs.available == 'true'
         run: |
           echo "eliza.app" > packages/homepage/dist/CNAME
           touch packages/homepage/dist/.nojekyll
 
       - name: Check deploy key availability
+        if: steps.release_data_check.outputs.available == 'true'
         id: deploy_key_check
         shell: bash
         env:
@@ -134,7 +153,7 @@ jobs:
           fi
 
       - name: Deploy to elizaOS/elizaos.github.io (gh-pages branch)
-        if: steps.deploy_key_check.outputs.available == 'true'
+        if: steps.release_data_check.outputs.available == 'true' && steps.deploy_key_check.outputs.available == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           deploy_key: ${{ secrets.HOMEPAGE_DEPLOY_KEY }}

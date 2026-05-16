@@ -52,7 +52,7 @@ export default function HeroSection() {
         <div className="absolute inset-y-[-4rem] right-[-5rem] w-[39rem] xl:right-[-7rem] xl:w-[43rem]">
           <img
             alt=""
-            className="h-full w-full object-contain drop-shadow-[0_32px_90px_rgba(0,20,120,0.42)]"
+            className="h-full w-full object-contain mix-blend-multiply drop-shadow-[0_32px_90px_rgba(0,20,120,0.42)]"
             draggable={false}
             src="/brand/elizaos-phone.png"
           />
