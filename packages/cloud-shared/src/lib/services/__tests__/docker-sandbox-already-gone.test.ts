@@ -11,9 +11,7 @@ import { isAlreadyGoneMessage } from "../docker-error-classifier";
 describe("isAlreadyGoneMessage", () => {
   test('recognizes "No such container" (Docker 24)', () => {
     expect(
-      isAlreadyGoneMessage(
-        "Error response from daemon: No such container: agent-abc123",
-      ),
+      isAlreadyGoneMessage("Error response from daemon: No such container: agent-abc123"),
     ).toBe(true);
   });
 
@@ -22,15 +20,11 @@ describe("isAlreadyGoneMessage", () => {
   });
 
   test('recognizes "already gone"', () => {
-    expect(isAlreadyGoneMessage("container already gone before stop")).toBe(
-      true,
-    );
+    expect(isAlreadyGoneMessage("container already gone before stop")).toBe(true);
   });
 
   test('recognizes "no longer exists"', () => {
-    expect(
-      isAlreadyGoneMessage("the named container no longer exists on host"),
-    ).toBe(true);
+    expect(isAlreadyGoneMessage("the named container no longer exists on host")).toBe(true);
   });
 
   test("case-insensitive", () => {
@@ -39,17 +33,13 @@ describe("isAlreadyGoneMessage", () => {
 
   test("returns false for SSH connection failure", () => {
     expect(
-      isAlreadyGoneMessage(
-        "ssh: connect to host 138.201.80.125 port 22: Connection timed out",
-      ),
+      isAlreadyGoneMessage("ssh: connect to host 138.201.80.125 port 22: Connection timed out"),
     ).toBe(false);
   });
 
   test("returns false for Docker daemon down", () => {
     expect(
-      isAlreadyGoneMessage(
-        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
-      ),
+      isAlreadyGoneMessage("Cannot connect to the Docker daemon at unix:///var/run/docker.sock"),
     ).toBe(false);
   });
 

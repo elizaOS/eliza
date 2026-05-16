@@ -258,6 +258,18 @@ export class UsersRepository {
   }
 
   /**
+   * Finds a user by Solana wallet address (case-sensitive base58, no folding).
+   */
+  async findBySolanaWalletAddressWithOrganization(
+    walletAddress: string,
+  ): Promise<UserWithOrganization | undefined> {
+    return await this.findUserWithOrganizationByPredicate(
+      dbRead,
+      eq(users.wallet_address, walletAddress),
+    );
+  }
+
+  /**
    * Lists all users in an organization.
    */
   async listByOrganization(organizationId: string): Promise<User[]> {

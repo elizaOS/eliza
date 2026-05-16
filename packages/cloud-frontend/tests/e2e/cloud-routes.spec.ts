@@ -122,24 +122,29 @@ const dashboardRoutes = [
   "/dashboard/my-agents",
   "/dashboard/api-keys",
   "/dashboard/mcps",
-  "/dashboard/voices",
   "/dashboard/documents",
   "/dashboard/analytics",
   "/dashboard/earnings",
   "/dashboard/affiliates",
   "/dashboard/invoices/inv_1",
-  "/dashboard/image",
-  "/dashboard/video",
-  "/dashboard/gallery",
   "/dashboard/containers",
   "/dashboard/containers/container_1",
   "/dashboard/containers/agents/agent_1",
-  "/dashboard/chat",
   "/dashboard/api-explorer",
   "/dashboard/admin",
   "/dashboard/admin/infrastructure",
   "/dashboard/admin/metrics",
   "/dashboard/admin/redemptions",
+];
+
+// Legacy paths kept for inbound links; the real implementation redirects them
+// to the canonical dashboard surface. Tested separately from the renders list.
+const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
+  ["/dashboard/chat", /\/dashboard\/my-agents$/],
+  ["/dashboard/image", /\/dashboard\/api-explorer$/],
+  ["/dashboard/video", /\/dashboard\/api-explorer$/],
+  ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
+  ["/dashboard/voices", /\/dashboard\/api-explorer$/],
 ];
 
 async function installApiMocks(page: Page) {
@@ -300,6 +305,13 @@ test("legacy dashboard routes redirect to their canonical surfaces", async ({
   await page.goto("/dashboard/apps/create");
   await expect(page).toHaveURL(/\/dashboard\/apps$/);
 });
+
+for (const [from, toPattern] of dashboardRedirects) {
+  test(`legacy dashboard redirect: ${from}`, async ({ page }) => {
+    await page.goto(from);
+    await expect(page).toHaveURL(toPattern);
+  });
+}
 
 test("anonymous protected dashboard routes redirect to login", async ({
   context,

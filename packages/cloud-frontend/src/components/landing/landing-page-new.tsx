@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import LandingHeader from "../layout/landing-header";
+import Footer from "./Footer";
 import HeroSection from "./hero-section";
 
 interface LandingPageProps {
@@ -69,6 +70,7 @@ export function LandingPage({ accessError }: LandingPageProps) {
     <div className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white">
       <LandingHeader />
       <HeroSection />
+      <Footer />
     </div>
   );
 }

@@ -539,6 +539,18 @@ body {
   object-fit: cover;
 }
 
+.app-cloud-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--brand-orange);
+  opacity: 0.84;
+}
+
+.app-hero-copy--cloud {
+  position: relative;
+  z-index: 1;
+}
+
 .app-action-band--cloud {
   position: relative;
   z-index: 1;
