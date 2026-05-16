@@ -55,6 +55,10 @@ const localTestAuthSecret = envDefault(
   "PLAYWRIGHT_TEST_AUTH_SECRET",
   "playwright-local-auth-secret",
 );
+const serviceStartupTimeoutMs = Number.parseInt(
+  envDefault("DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS", "120000"),
+  10,
+);
 
 const packagedCloudAvailable =
   existsSync(`${repoRoot}/packages/cloud-api/package.json`) &&
@@ -335,6 +339,15 @@ function canConnect(host, port) {
   });
 }
 
+async function waitForPort(label, host, port) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < serviceStartupTimeoutMs) {
+    if (await canConnect(host, port)) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`[dev:all] ${label} did not start on ${host}:${port}`);
+}
+
 function describePortOwner(port) {
   try {
     return execFileSync(
@@ -456,7 +469,23 @@ async function main() {
 
   if (dryRun) return;
   await assertPortsAvailable();
-  const children = services.map(startService).filter(Boolean);
+  const children = [];
+
+  const cloudDbService = services.find((service) => service.name === "cloud-db");
+  if (cloudDbService) {
+    const cloudDb = startService(cloudDbService);
+    if (cloudDb) children.push(cloudDb);
+    console.log(
+      `[dev:all] waiting for cloud DB on 127.0.0.1:${ports.cloudDb}`,
+    );
+    await waitForPort("cloud DB", "127.0.0.1", ports.cloudDb);
+  }
+
+  for (const service of services) {
+    if (service.name === "cloud-db") continue;
+    const child = startService(service);
+    if (child) children.push(child);
+  }
 
   let shuttingDown = false;
   const shutdown = (signal) => {

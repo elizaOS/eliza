@@ -17,6 +17,10 @@ type HardwareSku =
   | "elizaos-phone"
   | "elizaos-box"
   | "elizaos-usb-chibi"
+  | "elizaos-usb"
+  | "elizaos-raspberry-pi-case"
+  | "elizaos-custom-raspberry-pi-case"
+  | "elizaos-mini-pc"
   | "elizaos-usb-plastic";
 
 type HardwareProduct = {
@@ -26,7 +30,7 @@ type HardwareProduct = {
   subtitle: string;
   colors: Array<{ id: string; name: string }>;
   image?: string;
-  kind: "phone" | "box" | "usb" | "chibi";
+  kind: "phone" | "box" | "usb" | "chibi" | "mini";
 };
 
 const products: HardwareProduct[] = [
@@ -41,6 +45,7 @@ const products: HardwareProduct[] = [
       { id: "phone-white", name: "White" },
       { id: "phone-blue-glass", name: "Blue" },
     ],
+    image: "/brand/concepts/concept_phone.jpg",
     kind: "phone",
   },
   {
@@ -54,7 +59,7 @@ const products: HardwareProduct[] = [
       { id: "box-white", name: "White" },
       { id: "box-black", name: "Black" },
     ],
-    image: "/product/elizaos-box-concept.avif",
+    image: "/brand/concepts/billboard_concept.jpg",
     kind: "box",
   },
   {
@@ -63,8 +68,22 @@ const products: HardwareProduct[] = [
     price: "$49",
     subtitle: "Character USB installer. Ships October 2026.",
     colors: [{ id: "chibi-orange", name: "Orange" }],
-    image: "/product/elizaos-usb-key-concept.png",
+    image: "/brand/concepts/chibi_usb_concept.jpg",
     kind: "chibi",
+  },
+  {
+    sku: "elizaos-usb",
+    name: "ElizaOS USB key",
+    price: "$49",
+    subtitle: "Simple branded USB installer. Ships October 2026.",
+    colors: [
+      { id: "usb-orange", name: "Orange" },
+      { id: "usb-blue", name: "Blue" },
+      { id: "usb-white", name: "White" },
+      { id: "usb-black", name: "Black" },
+    ],
+    image: "/brand/concepts/concept_usbdrive.jpg",
+    kind: "usb",
   },
   {
     sku: "elizaos-usb-plastic",
@@ -77,7 +96,50 @@ const products: HardwareProduct[] = [
       { id: "usb-white", name: "White" },
       { id: "usb-black", name: "Black" },
     ],
+    image: "/brand/concepts/concept_usbdrive.jpg",
     kind: "usb",
+  },
+  {
+    sku: "elizaos-raspberry-pi-case",
+    name: "Raspberry Pi case",
+    price: "$49",
+    subtitle: "ElizaOS case for a local agent board.",
+    colors: [
+      { id: "case-orange", name: "Orange" },
+      { id: "case-blue", name: "Blue" },
+      { id: "case-white", name: "White" },
+      { id: "case-black", name: "Black" },
+    ],
+    image: "/product/elizaos-box-concept.avif",
+    kind: "box",
+  },
+  {
+    sku: "elizaos-custom-raspberry-pi-case",
+    name: "Raspberry Pi + case",
+    price: "$149",
+    subtitle: "Custom Pi kit in the ElizaOS case.",
+    colors: [
+      { id: "kit-orange", name: "Orange" },
+      { id: "kit-blue", name: "Blue" },
+      { id: "kit-white", name: "White" },
+      { id: "kit-black", name: "Black" },
+    ],
+    image: "/product/elizaos-box-concept.avif",
+    kind: "box",
+  },
+  {
+    sku: "elizaos-mini-pc",
+    name: "ElizaOS mini PC",
+    price: "$1999",
+    subtitle: "Always-on local compute for agents.",
+    colors: [
+      { id: "mini-orange", name: "Orange" },
+      { id: "mini-blue", name: "Blue" },
+      { id: "mini-white", name: "White" },
+      { id: "mini-black", name: "Black" },
+    ],
+    image: "/brand/concepts/concept_minipc.jpg",
+    kind: "mini",
   },
 ];
 
@@ -91,7 +153,7 @@ const colorMap: Record<string, string> = {
 function getProduct(sku: string | null): HardwareProduct {
   return (
     products.find((product) => product.sku === sku) ??
-    products.find((product) => product.sku === "elizaos-usb-plastic") ??
+    products.find((product) => product.sku === "elizaos-usb") ??
     products[0]
   );
 }
@@ -115,7 +177,8 @@ function HardwareVisual({ product }: { product: HardwareProduct }) {
 
 function ProductIcon({ product }: { product: HardwareProduct }) {
   if (product.kind === "phone") return <Smartphone aria-hidden="true" />;
-  if (product.kind === "box") return <Box aria-hidden="true" />;
+  if (product.kind === "box" || product.kind === "mini")
+    return <Box aria-hidden="true" />;
   return <Usb aria-hidden="true" />;
 }
 
@@ -200,19 +263,15 @@ export default function CheckoutPage() {
           <p className="mt-5 max-w-lg text-lg font-medium leading-snug text-white/72">
             Reserve with your Eliza Cloud account.
           </p>
-          <div className="mt-8 flex flex-wrap gap-2 text-xs font-semibold uppercase text-white/56">
-            <span className="border border-white/18 px-3 py-2">
-              {product.price}
-            </span>
-            <span className="border border-white/18 px-3 py-2">
-              {product.subtitle}
-            </span>
+          <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase text-white/60">
+            <span>{product.price}</span>
+            <span>{product.subtitle}</span>
           </div>
         </section>
 
-        <section className="self-center border border-white/16 bg-black/72 p-4 text-white backdrop-blur-md md:p-5">
+        <section className="self-center bg-black/78 p-4 text-white backdrop-blur-md md:p-5">
           <div className="grid gap-5 md:grid-cols-[0.95fr_1fr]">
-            <div className="border border-white/12 bg-white/[0.03] p-4">
+            <div className="bg-white p-0">
               <HardwareVisual product={product} />
             </div>
             <div className="flex flex-col justify-between gap-6">
@@ -230,10 +289,10 @@ export default function CheckoutPage() {
                   {product.colors.map((color) => (
                     <button
                       aria-label={`Select ${color.name}`}
-                      className={`size-8 border ${
+                      className={`size-8 ${
                         selectedColor.id === color.id
-                          ? "border-white ring-2 ring-[#FF5800]"
-                          : "border-white/30"
+                          ? "ring-2 ring-[#FF5800]"
+                          : "ring-1 ring-white/30"
                       }`}
                       key={color.id}
                       onClick={() => setSelectedColor(color)}
@@ -243,11 +302,11 @@ export default function CheckoutPage() {
                     />
                   ))}
                 </div>
-                <div className="mt-6 border border-white/14 bg-white/[0.04] p-4 text-sm text-white/70">
+                <div className="mt-6 bg-white/[0.06] p-4 text-sm text-white/70">
                   {selectedColor.name} selected.
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/14 pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-5">
                 <strong className="text-xl text-white">{product.price}</strong>
                 {session.authenticated ? (
                   <button
@@ -288,23 +347,23 @@ export default function CheckoutPage() {
         </section>
 
         {collection === "elizaos-hardware" ? (
-          <section className="border border-white/14 bg-black/72 p-4 backdrop-blur-md md:col-span-2">
+          <section className="bg-black/78 p-4 backdrop-blur-md md:col-span-2">
             <h2 className="text-xl font-semibold text-white">Preorder</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               {products.map((item) => (
                 <Link
-                  className={`border p-3 transition-colors ${
+                  className={`p-3 transition-colors ${
                     item.sku === product.sku
-                      ? "border-[#FF5800] bg-[#FF5800]/10"
-                      : "border-white/14 bg-black hover:bg-white/10"
+                      ? "bg-[#FF5800] text-black"
+                      : "bg-black hover:bg-white/10"
                   }`}
                   key={item.sku}
                   to={`/checkout?collection=elizaos-hardware&sku=${item.sku}`}
                 >
-                  <span className="text-sm font-semibold text-white">
+                  <span className="text-sm font-semibold">
                     {item.name}
                   </span>
-                  <span className="mt-1 block text-xs text-white/60">
+                  <span className="mt-1 block text-xs opacity-70">
                     {item.price}
                   </span>
                 </Link>
