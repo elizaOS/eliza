@@ -34,16 +34,16 @@ export default function RootLayout() {
       <Helmet>
         <html lang="en" />
         <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
-        <title>eliza cloud - Run in Cloud</title>
+        <title>eliza cloud - Launch Eliza</title>
         <meta
           name="description"
-          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
+          content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
-        <meta property="og:title" content="eliza cloud - Run in Cloud" />
+        <meta property="og:title" content="eliza cloud - Launch Eliza" />
         <meta
           property="og:description"
-          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
+          content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
         <meta property="og:url" content={`${baseUrl}/`} />
         <meta property="og:site_name" content="Eliza Cloud" />
@@ -57,7 +57,7 @@ export default function RootLayout() {
         <meta name="twitter:title" content="Eliza Cloud" />
         <meta
           name="twitter:description"
-          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
+          content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
         <meta name="twitter:image" content={ogImage} />
         <link rel="icon" type="image/svg+xml" href={BRAND_FAVICONS.svg} />

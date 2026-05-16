@@ -410,6 +410,7 @@ export interface AospLlamaLoadOptions {
   modelPath: string;
   contextSize?: number;
   useGpu?: boolean;
+  gpuLayers?: number;
   maxThreads?: number;
   draftModelPath?: string;
   draftContextSize?: number;
@@ -1035,7 +1036,7 @@ class AospLlamaAdapter implements AospLoader {
 
   private loadModelPointer(
     modelPath: string,
-    useGpu: boolean,
+    gpuLayers: number,
     phase: string,
   ): Pointer {
     const modelParamsPtr = this.shim.eliza_llama_model_params_default();
@@ -1046,9 +1047,10 @@ class AospLlamaAdapter implements AospLoader {
     }
     let modelPtr: Pointer = 0;
     try {
-      if (!useGpu) {
-        this.shim.eliza_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
-      }
+      this.shim.eliza_llama_model_params_set_n_gpu_layers(
+        modelParamsPtr,
+        gpuLayers,
+      );
       const pathBuf = encodeCString(modelPath);
       const startedAt = Date.now();
       writeAospLlamaDebugLog(`${phase}:modelLoad:start`, {
@@ -1166,7 +1168,7 @@ class AospLlamaAdapter implements AospLoader {
 
   private async configureSpeculativeDraft(args: {
     loadArgs: AospLlamaLoadOptions;
-    useGpu: boolean;
+    gpuLayers: number;
     maxThreads: number;
     targetContextSize: number;
     nBatch: number;
@@ -1218,7 +1220,7 @@ class AospLlamaAdapter implements AospLoader {
     const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.25);
     const draftModel = this.loadModelPointer(
       draftPath,
-      args.useGpu,
+      args.gpuLayers,
       "loadModel:dflashDraft",
     );
     let draftCtx: Pointer = 0;
@@ -1320,7 +1322,8 @@ class AospLlamaAdapter implements AospLoader {
     // resolveThreads docblock for why "auto-detect" is dangerous on
     // Android.
     const maxThreads = resolveThreads(args.maxThreads);
-    const useGpu = args.useGpu ?? false;
+    const gpuLayers = args.gpuLayers ?? (args.useGpu === true ? 99 : 0);
+    const useGpu = gpuLayers > 0;
     const kvCacheType = resolveKvCacheType(
       args.modelPath,
       args.kvCacheType ??
@@ -1335,6 +1338,7 @@ class AospLlamaAdapter implements AospLoader {
       contextSize,
       maxThreads,
       useGpu,
+      gpuLayers,
       nBatch: nBatchParam,
       nUBatch: nUBatchParam,
       kvCacheType,
@@ -1354,9 +1358,10 @@ class AospLlamaAdapter implements AospLoader {
     }
     let modelPtr: Pointer = 0;
     try {
-      if (!useGpu) {
-        this.shim.eliza_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
-      }
+      this.shim.eliza_llama_model_params_set_n_gpu_layers(
+        modelParamsPtr,
+        gpuLayers,
+      );
       const pathBuf = encodeCString(args.modelPath);
       const modelLoadStartedAt = Date.now();
       writeAospLlamaDebugLog("loadModel:modelLoad:start", {
@@ -1491,7 +1496,7 @@ class AospLlamaAdapter implements AospLoader {
     try {
       await this.configureSpeculativeDraft({
         loadArgs: args,
-        useGpu,
+        gpuLayers,
         maxThreads,
         targetContextSize: contextSize,
         nBatch: nBatchParam,
@@ -1509,13 +1514,14 @@ class AospLlamaAdapter implements AospLoader {
       nBatch: nBatchEffective,
       maxThreads,
       useGpu,
+      gpuLayers,
       kvK: kvCacheType?.k ?? "f16",
       kvV: kvCacheType?.v ?? "f16",
       dflash: this.speculativeHandle !== null,
       draft: this.loadedDraftPath ? path.basename(this.loadedDraftPath) : null,
     });
     logger.info(
-      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"}, dflash=${this.speculativeHandle !== null})`,
+      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu_layers=${gpuLayers}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"}, dflash=${this.speculativeHandle !== null})`,
     );
   }
 

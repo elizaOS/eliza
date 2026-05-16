@@ -899,19 +899,19 @@ const RECOMMENDED_MODELS: Record<
 > = {
 	TEXT_SMALL: {
 		id: "eliza-1-0_8b",
-		hfRepo: "elizalabs/eliza-1",
+		hfRepo: "elizaos/eliza-1",
 		ggufFile: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
 		localFile: "eliza-1-0_8b-128k.gguf",
 	},
 	TEXT_LARGE: {
 		id: "eliza-1-2b",
-		hfRepo: "elizalabs/eliza-1",
+		hfRepo: "elizaos/eliza-1",
 		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
 		localFile: "eliza-1-2b-128k.gguf",
 	},
 	TEXT_EMBEDDING: {
 		id: "eliza-1-embedding",
-		hfRepo: "elizalabs/eliza-1",
+		hfRepo: "elizaos/eliza-1",
 		ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
 		localFile: "eliza-1-embedding.gguf",
 	},

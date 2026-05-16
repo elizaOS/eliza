@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
   installDefaultAppRoutes,
@@ -52,9 +52,20 @@ const RED_ERROR_TEXT =
 const BENIGN_SHIM_ISSUES = [
   /"Keyboard" plugin is not implemented on web/i,
   /\[Eliza\] Network plugin not available: Cannot read properties of undefined \(reading 'addListener'\)/i,
+  /Failed to read the 'sessionStorage' property from 'Window': Access is denied for this document\./i,
 ];
 
 test.use({ userAgent: ANDROID_ELIZA_UA });
+
+function getAndroidSystemRoute(name: string): AndroidSystemRouteCase {
+  const route = ANDROID_SYSTEM_APP_CASES.find(
+    (candidate) => candidate.name === name,
+  );
+  if (!route) {
+    throw new Error(`Missing Android system app route: ${name}`);
+  }
+  return route;
+}
 
 function installAndroidPlatformShim(page: Page): Promise<void> {
   return page.addInitScript(() => {
@@ -120,6 +131,22 @@ async function openAppWindow(
   );
 }
 
+async function openFreshAppWindow(
+  context: BrowserContext,
+  routeCase: AndroidSystemRouteCase,
+): Promise<{ issues: string[]; page: Page }> {
+  const page = await context.newPage();
+  await installAndroidPlatformShim(page);
+  await seedAppStorage(page, {
+    "eliza:ui-theme": "dark",
+    "elizaos:ui-theme": "dark",
+  });
+  await installDefaultAppRoutes(page);
+  const issues = installIssueGuards(page);
+  await openAppWindow(page, routeCase);
+  return { issues, page };
+}
+
 async function expectNoIssues(
   page: Page,
   issues: readonly string[],
@@ -151,26 +178,25 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("AOSP system apps render and expose safe controls", async ({ page }) => {
-  const issues = installIssueGuards(page);
-
+test("AOSP system apps render and expose safe controls", async ({
+  context,
+}) => {
   for (const routeCase of ANDROID_SYSTEM_APP_CASES) {
     await test.step(routeCase.name, async () => {
-      await openAppWindow(page, routeCase);
+      const { issues, page } = await openFreshAppWindow(context, routeCase);
       await expectNoIssues(page, issues.splice(0), routeCase.name);
+      await page.close();
     });
   }
 });
 
 test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interactions", async ({
-  page,
+  context,
 }) => {
-  const issues = installIssueGuards(page);
-  const byName = new Map(
-    ANDROID_SYSTEM_APP_CASES.map((route) => [route.name, route]),
+  let { issues, page } = await openFreshAppWindow(
+    context,
+    getAndroidSystemRoute("phone"),
   );
-
-  await openAppWindow(page, byName.get("phone")!);
   await page.getByTestId("phone-dial-key-1").click();
   await page.getByTestId("phone-dial-key-2").click();
   await page.getByTestId("phone-dial-key-3").click();
@@ -179,7 +205,9 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     page.getByRole("status", { name: "Number being dialed" }),
   ).toContainText("12");
   await page.getByRole("tab", { name: "Recent" }).click();
-  await expect(page.getByText("No recent calls.", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("No recent calls.", { exact: true }),
+  ).toBeVisible();
   const phoneContactsTab = page.getByRole("tab", { name: "Contacts" });
   if (await phoneContactsTab.isEnabled()) {
     await phoneContactsTab.click();
@@ -190,8 +218,12 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     await expect(phoneContactsTab).toBeDisabled();
   }
   await expectNoIssues(page, issues.splice(0), "phone interactions");
+  await page.close();
 
-  await openAppWindow(page, byName.get("contacts")!);
+  ({ issues, page } = await openFreshAppWindow(
+    context,
+    getAndroidSystemRoute("contacts"),
+  ));
   await page.getByTestId("contacts-search").fill("ada");
   await page.getByTestId("contacts-new").click();
   await page.getByPlaceholder("Full name").fill("Ada Lovelace");
@@ -199,22 +231,34 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByTestId("contacts-shell")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "contacts interactions");
+  await page.close();
 
-  await openAppWindow(page, byName.get("wifi")!);
+  ({ issues, page } = await openFreshAppWindow(
+    context,
+    getAndroidSystemRoute("wifi"),
+  ));
   await page.getByTestId("wifi-scan").click();
   await expect(page.getByText("Wi-Fi is off")).toBeVisible();
   await expect(page.getByText("No networks found")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "wifi interactions");
+  await page.close();
 
-  await openAppWindow(page, byName.get("messages")!);
+  ({ issues, page } = await openFreshAppWindow(
+    context,
+    getAndroidSystemRoute("messages"),
+  ));
   await page.getByTestId("messages-new").click();
   await page.getByTestId("messages-compose-address").fill("+1 555 0101");
   await page.getByTestId("messages-compose-body").fill("QA SMS draft");
   await expect(page.getByTestId("messages-send")).toBeEnabled();
   await page.getByTestId("messages-refresh").click();
   await expectNoIssues(page, issues.splice(0), "messages interactions");
+  await page.close();
 
-  await openAppWindow(page, byName.get("device settings")!);
+  ({ issues, page } = await openFreshAppWindow(
+    context,
+    getAndroidSystemRoute("device settings"),
+  ));
   await page.getByTestId("device-settings-brightness").fill("67");
   const mediaVolume = page.getByTestId("device-settings-volume-music");
   if (await mediaVolume.isVisible().catch(() => false)) {
@@ -222,4 +266,5 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   }
   await page.getByTestId("device-settings-refresh").click();
   await expectNoIssues(page, issues.splice(0), "device settings interactions");
+  await page.close();
 });

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Consolidate split Eliza-1 voice payload repos into ``elizalabs/eliza-1``.
+"""Consolidate split Eliza-1 voice payload repos into ``elizaos/eliza-1``.
 
 DEPRECATED (2026-05-15): the migration described below is complete. The
-legacy ``elizalabs/eliza-1-voice-*`` repos have been removed and every voice
-asset now lives under ``elizalabs/eliza-1`` at ``voice/<model-id>/...``. The
+legacy ``elizaos/eliza-1-voice-*`` repos have been removed and every voice
+asset now lives under ``elizaos/eliza-1`` at ``voice/<model-id>/...``. The
 ``LEGACY_REPOS`` map is retained as a historical record of the migration
 source. This script will fail loudly if invoked because the source repos
 no longer exist; do not run it on a fresh checkout.
@@ -18,7 +18,7 @@ This script is intentionally conservative:
 
 The unified layout is::
 
-    elizalabs/eliza-1/voice/<model-id>/<asset filename>
+    elizaos/eliza-1/voice/<model-id>/<asset filename>
 
 ``models/voice/manifest.json`` remains the local audit source for sha256 and
 sizeBytes. The script verifies source payloads before staging, publishing, or
@@ -40,19 +40,19 @@ from typing import Any, Iterable
 from huggingface_hub import HfApi, hf_hub_download, upload_folder
 
 
-TARGET_REPO = "elizalabs/eliza-1"
+TARGET_REPO = "elizaos/eliza-1"
 VOICE_PREFIX = "voice"
 LEGACY_REPOS: dict[str, str] = {
-    "asr": "elizalabs/eliza-1-voice-asr",
-    "turn-detector": "elizalabs/eliza-1-voice-turn",
-    "voice-emotion": "elizalabs/eliza-1-voice-emotion",
-    "speaker-encoder": "elizalabs/eliza-1-voice-speaker",
-    "diarizer": "elizalabs/eliza-1-voice-diarizer",
-    "vad": "elizalabs/eliza-1-voice-vad",
-    "wakeword": "elizalabs/eliza-1-voice-wakeword",
-    "kokoro": "elizalabs/eliza-1-voice-kokoro",
-    "omnivoice": "elizalabs/eliza-1-voice-omnivoice",
-    "embedding": "elizalabs/eliza-1-voice-embedding",
+    "asr": "elizaos/eliza-1-voice-asr",
+    "turn-detector": "elizaos/eliza-1-voice-turn",
+    "voice-emotion": "elizaos/eliza-1-voice-emotion",
+    "speaker-encoder": "elizaos/eliza-1-voice-speaker",
+    "diarizer": "elizaos/eliza-1-voice-diarizer",
+    "vad": "elizaos/eliza-1-voice-vad",
+    "wakeword": "elizaos/eliza-1-voice-wakeword",
+    "kokoro": "elizaos/eliza-1-voice-kokoro",
+    "omnivoice": "elizaos/eliza-1-voice-omnivoice",
+    "embedding": "elizaos/eliza-1-voice-embedding",
 }
 GGUF_EXTENSIONS = (".gguf", ".ggml", ".ggml.bin", ".bin")
 

@@ -84,7 +84,7 @@ describe("Local AI Plugin", () => {
 		});
 
 		it("defaults local TTS to the small-tier Kokoro bundle component", () => {
-			expect(MODEL_SPECS.tts.default.repo).toBe("elizalabs/eliza-1");
+			expect(MODEL_SPECS.tts.default.repo).toBe("elizaos/eliza-1");
 			expect(MODEL_SPECS.tts.default.name).toBe("tts/kokoro/model_q4.onnx");
 			expect(MODEL_SPECS.tts.default.tokenizer.name).toBe(
 				"tts/kokoro/tokenizer.json",

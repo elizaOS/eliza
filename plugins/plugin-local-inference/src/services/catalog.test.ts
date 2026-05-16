@@ -45,13 +45,13 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("uses the single Eliza Labs HuggingFace repo for every visible Eliza-1 tier", () => {
+	it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			const tier = model.id.slice("eliza-1-".length);
-			expect(model.hfRepo).toBe("elizalabs/eliza-1");
+			expect(model.hfRepo).toBe("elizaos/eliza-1");
 			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
-				`/elizalabs/eliza-1/resolve/main/bundles/${tier}/`,
+				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
 			);
 		}
 	});

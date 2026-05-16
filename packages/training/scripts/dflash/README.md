@@ -17,7 +17,7 @@ Today this is:
 ```
 
 These IDs name the **target** text models — the bundles a user downloads from
-`elizalabs/eliza-1` under `bundles/<tier>/` on Hugging Face.
+`elizaos/eliza-1` under `bundles/<tier>/` on Hugging Face.
 
 DFlash drafter training covers the same tier set:
 

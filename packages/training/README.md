@@ -14,7 +14,7 @@ model, including native tool calls.
 > | Dataset (native trajectory SFT)   | runtime `eliza_native_v1` exports          | `scripts/trajectories_to_sft.py`|
 > | Trained models                    | `elizaos/eliza-1` (model; `bundles/<tier>/`) | `scripts/publish/publish_model.py` |
 > | Training dataset (SFT splits)     | `elizaos/eliza-1-training` (dataset)         | `scripts/publish/publish_dataset.py` |
-> | Pipeline source (this directory)  | `elizaos/eliza-1-pipeline` (model)           | `scripts/publish/publish_pipeline.py` |
+> | Pipeline source (this directory)  | `elizaos/eliza-1-training` (dataset; `pipeline/`) | `scripts/publish/publish_pipeline.py` |
 >
 > Quants land under the same `elizaos/eliza-1` model repo alongside each
 > bundle manifest; do not create per-quant public defaults.
@@ -49,7 +49,7 @@ shape on the held-out trajectory split.
 ## Cloning the pipeline on a fresh machine
 
 ```bash
-hf download elizaos/eliza-1-pipeline --repo-type model --local-dir ./training
+hf download elizaos/eliza-1-training pipeline --repo-type dataset --local-dir ./training
 cd training
 uv sync --extra train
 ```

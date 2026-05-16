@@ -116,19 +116,23 @@ export async function findOrCreateSolanaUserByWalletAddress(
   walletAddress: string,
   options?: FindOrCreateWalletOptions,
 ): Promise<{ user: UserWithOrganization; isNewAccount: boolean }> {
+  const address = walletAddress.trim();
+  if (!address) {
+    throw new Error("Wallet address is required");
+  }
   const grantInitialCredits = options?.grantInitialCredits !== false;
 
-  const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
+  const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
   if (existing) {
     return { user: existing, isNewAccount: false };
   }
 
-  const slug = `wallet-solana-${walletAddress}`;
+  const slug = `wallet-solana-${address}`;
   let org: Organization | null = (await organizationsRepository.findBySlug(slug)) ?? null;
   if (!org) {
     try {
       org = await organizationsService.create({
-        name: `Solana Wallet ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
+        name: `Solana Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
         slug,
         credit_balance: "0.00",
       });
@@ -159,8 +163,8 @@ export async function findOrCreateSolanaUserByWalletAddress(
 
   try {
     const created = await usersRepository.create({
-      steward_user_id: `wallet:solana:${walletAddress}`,
-      wallet_address: walletAddress,
+      steward_user_id: `wallet:solana:${address}`,
+      wallet_address: address,
       wallet_chain_type: "solana",
       wallet_verified: true,
       organization_id: org.id,
@@ -171,7 +175,7 @@ export async function findOrCreateSolanaUserByWalletAddress(
     const isUniqueViolation =
       e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
     if (!isUniqueViolation) throw e;
-    const raced = await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
+    const raced = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
     if (!raced) throw e;
     return { user: raced, isNewAccount: false };
   }

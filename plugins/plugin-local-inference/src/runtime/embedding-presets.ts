@@ -15,9 +15,9 @@ export interface EmbeddingPreset {
 }
 
 const COMPACT_ELIZA_1_EMBEDDING = {
-	// Canonical bundle layout: elizalabs/eliza-1 + bundles/<tier>/<subdir>/<file>.
+	// Canonical bundle layout: elizaos/eliza-1 + bundles/<tier>/<subdir>/<file>.
 	model: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-	modelRepo: "elizalabs/eliza-1",
+	modelRepo: "elizaos/eliza-1",
 	dimensions: 1024,
 	contextSize: 131072,
 	downloadSizeMB: 512,

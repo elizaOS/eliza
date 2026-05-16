@@ -30,10 +30,10 @@ export default function HeroSection() {
           className="max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
-          Run in Cloud.
+          Launch Eliza.
         </h1>
         <p className="mt-6 max-w-xl text-xl font-light leading-snug text-black/80 sm:text-2xl">
-          Your agent, always on.
+          Your agent, always online.
         </p>
         <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
           <button

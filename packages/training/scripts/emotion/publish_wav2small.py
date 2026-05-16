@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Publish the trained Wav2Small student to `elizalabs/eliza-1`.
+"""Publish the trained Wav2Small student to `elizaos/eliza-1`.
 
 Inputs (defaults match `run_distill_ravdess.py`):
 
   --run-dir   the training output directory (must contain
               `wav2small-msp-dim-int8.onnx` and `wav2small-msp-dim-int8.json`).
-  --hf-repo   target HF repo (default `elizalabs/eliza-1`).
+  --hf-repo   target HF repo (default `elizaos/eliza-1`).
   --version   semver tag for this release (default `0.1.0`).
   --dry-run   print the upload plan without touching the HF repo.
 
@@ -37,7 +37,7 @@ import sys
 
 LOG = logging.getLogger("publish_wav2small")
 
-DEFAULT_REPO = "elizalabs/eliza-1"
+DEFAULT_REPO = "elizaos/eliza-1"
 DEFAULT_PATH_PREFIX = "voice/voice-emotion"
 DEFAULT_RUN_DIR = pathlib.Path("packages/training/out/emotion-wav2small-final")
 

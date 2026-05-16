@@ -26,6 +26,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +45,17 @@ if (!existsSync(pluginsRoot)) {
 let linked = 0;
 let alreadyOk = 0;
 let skipped = 0;
+
+const removeTarget = (targetDir) => {
+  try {
+    const stat = lstatSync(targetDir);
+    if (stat.isSymbolicLink()) {
+      unlinkSync(targetDir);
+    } else {
+      rmSync(targetDir, { recursive: true, force: true });
+    }
+  } catch {}
+};
 
 for (const dirName of readdirSync(pluginsRoot)) {
   if (!dirName.startsWith("plugin-native-")) continue;
@@ -75,33 +87,32 @@ for (const dirName of readdirSync(pluginsRoot)) {
     // /Users/... path).
     const relativeTarget = path.relative(parentDir, pkgDir);
 
-    // Already a correct symlink? Leave it.
+    // Already a correct symlink? Leave it. Broken symlinks make
+    // existsSync(targetDir) return false, so use lstatSync directly and
+    // repair stale workspace links before creating the new one.
     let needLink = true;
-    if (existsSync(targetDir)) {
-      try {
-        const stat = lstatSync(targetDir);
-        if (stat.isSymbolicLink()) {
-          const currentTarget = realpathSync(targetDir);
-          const expectedTarget = realpathSync(pkgDir);
-          if (currentTarget === expectedTarget) {
-            needLink = false;
-            alreadyOk += 1;
-          } else {
-            rmSync(targetDir, { recursive: true, force: true });
-          }
+    try {
+      const stat = lstatSync(targetDir);
+      if (stat.isSymbolicLink()) {
+        const currentTarget = realpathSync(targetDir);
+        const expectedTarget = realpathSync(pkgDir);
+        if (currentTarget === expectedTarget) {
+          needLink = false;
+          alreadyOk += 1;
         } else {
-          // Real directory at the same path — bun installed something
-          // unrelated under the same name. Leave it; printing here would
-          // surface a real conflict.
-          skipped += 1;
-          continue;
+          removeTarget(targetDir);
         }
-      } catch {
-        // Stat failure — fall through to (re)create.
-        try {
-          rmSync(targetDir, { recursive: true, force: true });
-        } catch {}
+      } else {
+        // Real directory at the same path — bun installed something
+        // unrelated under the same name. Leave it; printing here would
+        // surface a real conflict.
+        skipped += 1;
+        continue;
       }
+    } catch {
+      // Missing path or broken symlink — remove any stale directory entry
+      // and fall through to (re)create.
+      removeTarget(targetDir);
     }
 
     if (needLink) {

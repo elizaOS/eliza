@@ -595,20 +595,23 @@ function HomePage() {
       <Header />
       <main id="main">
         <CloudHero>
-          <h1>The agentic operating system.</h1>
-          <p className="hero-copy">
-            Local first. Open source. Runs on your phone, your laptop, a USB
-            stick, or a mini PC.
-          </p>
-          <div className="hero-actions">
-            <a href="#download" className="button">
-              Download
-              <Download className="icon" />
-            </a>
-            <a href="#hardware" className="button button-dark">
-              Hardware
-              <ShoppingBag className="icon" />
-            </a>
+          <div className="hero-os-inner">
+            <h1>The agentic operating system.</h1>
+            <p className="hero-copy">For devices that run themselves.</p>
+            <p className="hero-copy">
+              Local first. Open source. Runs on your phone, your laptop, a USB
+              stick, or a mini PC.
+            </p>
+            <div className="hero-actions">
+              <a href="#download" className="button">
+                Download
+                <Download className="icon" />
+              </a>
+              <a href="#hardware" className="button button-dark">
+                Hardware
+                <ShoppingBag className="icon" />
+              </a>
+            </div>
           </div>
         </CloudHero>
 

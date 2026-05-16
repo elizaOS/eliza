@@ -400,6 +400,11 @@ function envWithBinaryLibraryPath(binaryPath: string): NodeJS.ProcessEnv {
 
 	prependPath("LD_LIBRARY_PATH");
 	if (process.platform === "darwin") prependPath("DYLD_LIBRARY_PATH");
+	if (process.platform === "win32") {
+		const pathKey =
+			Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+		prependPath(pathKey);
+	}
 	return env;
 }
 
@@ -519,12 +524,39 @@ export function logDflashDevDisabledWarning(): void {
 }
 
 function managedDflashBinaryPath(): string {
+	const dir = path.join(localInferenceRoot(), "bin", "dflash", platformKey());
+	return findServerBinaryInDir(dir) ?? path.join(dir, serverBinaryNames()[0]);
+}
+
+function runtimePlatformKey(
+	platform: NodeJS.Platform = process.platform,
+): string {
+	return platform === "win32" ? "windows" : platform;
+}
+
+function serverBinaryNames(
+	platform: NodeJS.Platform = process.platform,
+): string[] {
+	return platform === "win32"
+		? ["llama-server.exe", "llama-server"]
+		: ["llama-server"];
+}
+
+function findServerBinaryInDir(dir: string): string | null {
+	for (const name of serverBinaryNames()) {
+		const candidate = path.join(dir, name);
+		if (fs.existsSync(candidate)) return candidate;
+	}
+	return null;
+}
+
+function managedDflashCapabilitiesPath(): string {
 	return path.join(
 		localInferenceRoot(),
 		"bin",
 		"dflash",
 		platformKey(),
-		"llama-server",
+		"CAPABILITIES.json",
 	);
 }
 
@@ -559,31 +591,32 @@ function managedDflashBinaryPath(): string {
  */
 function accelBackendKey(suffix: "" | "-fused"): string {
 	const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-	if (forced) return `${process.platform}-${process.arch}-${forced}${suffix}`;
+	const platform = runtimePlatformKey();
+	if (forced) return `${platform}-${process.arch}-${forced}${suffix}`;
 	if (process.platform === "darwin") {
-		return `${process.platform}-${process.arch}-metal${suffix}`;
+		return `${platform}-${process.arch}-metal${suffix}`;
 	}
 	if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES) {
-		return `${process.platform}-${process.arch}-rocm${suffix}`;
+		return `${platform}-${process.arch}-rocm${suffix}`;
 	}
 	if (
 		process.env.CUDA_VISIBLE_DEVICES &&
 		process.env.CUDA_VISIBLE_DEVICES !== "-1"
 	) {
-		return `${process.platform}-${process.arch}-cuda${suffix}`;
+		return `${platform}-${process.arch}-cuda${suffix}`;
 	}
 	for (const backend of ["cuda", "vulkan", "rocm"] as const) {
 		const dir = path.join(
 			localInferenceRoot(),
 			"bin",
 			"dflash",
-			`${process.platform}-${process.arch}-${backend}${suffix}`,
+			`${platform}-${process.arch}-${backend}${suffix}`,
 		);
-		if (fs.existsSync(path.join(dir, "llama-server"))) {
-			return `${process.platform}-${process.arch}-${backend}${suffix}`;
+		if (findServerBinaryInDir(dir)) {
+			return `${platform}-${process.arch}-${backend}${suffix}`;
 		}
 	}
-	return `${process.platform}-${process.arch}-cpu${suffix}`;
+	return `${platform}-${process.arch}-cpu${suffix}`;
 }
 
 function fusedBackendKey(): string {
@@ -606,8 +639,8 @@ function managedFusedDflashDir(): string {
 export function resolveFusedDflashBinary(): string | null {
 	if (readBool("ELIZA_DFLASH_DISABLE_FUSED_SERVER")) return null;
 	const dir = managedFusedDflashDir();
-	const bin = path.join(dir, "llama-server");
-	if (!fs.existsSync(bin)) return null;
+	const bin = findServerBinaryInDir(dir);
+	if (!bin) return null;
 	const caps = readCapabilitiesAt(path.join(dir, "CAPABILITIES.json"));
 	if (!caps) return null;
 	const fused =
@@ -616,16 +649,6 @@ export function resolveFusedDflashBinary(): string | null {
 			(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 		);
 	return fused ? bin : null;
-}
-
-function managedDflashCapabilitiesPath(): string {
-	return path.join(
-		localInferenceRoot(),
-		"bin",
-		"dflash",
-		platformKey(),
-		"CAPABILITIES.json",
-	);
 }
 
 /**
@@ -805,7 +828,9 @@ function capabilitiesAdvertiseDflashSpecType(binaryPath: string): boolean {
 			caps.kernels?.dflash === true &&
 			caps.dflashDraftArchitecture === true &&
 			(caps.missingRequiredKernels?.length ?? 0) === 0 &&
-			caps.binaries.includes("llama-server") &&
+			caps.binaries.some((binary) =>
+				serverBinaryNames().includes(path.basename(binary)),
+			) &&
 			((caps.supportedArchitectures ?? []).includes("dflash-draft") ||
 				(caps.draftArchitectures ?? []).includes("dflash-draft")),
 	);
@@ -1246,7 +1271,7 @@ function candidateBinaryPaths(): string[] {
 		if (fused) out.push(fused);
 	}
 	out.push(managedDflashBinaryPath());
-	if (readBool("ELIZA_DFLASH_ENABLED")) out.push("llama-server");
+	if (readBool("ELIZA_DFLASH_ENABLED")) out.push(...serverBinaryNames());
 	return out;
 }
 

@@ -166,7 +166,7 @@ def test_voice_remote_template_overrides_default_path(tmp_path: Path) -> None:
     Per-voice staging releases ship `voice.bin` at the release-dir root
     (rather than `voices/<voice>.bin`) — the template lets the caller override
     the remote path even though all voices now consolidate under
-    `elizalabs/eliza-1` at `voice/kokoro/voices/<voice>.bin`.
+    `elizaos/eliza-1` at `voice/kokoro/voices/<voice>.bin`.
     """
     bundle = _write_bundle(tmp_path)
     report = stage.stage_kokoro_bundle(

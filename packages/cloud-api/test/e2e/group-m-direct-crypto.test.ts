@@ -35,7 +35,8 @@ async function getCurrentUserWallet(): Promise<string> {
   expect(res.status).toBe(200);
   const body = (await res.json()) as { wallet_address?: string };
   expect(body.wallet_address).toMatch(/^0x[a-fA-F0-9]{40}$/);
-  return body.wallet_address!;
+  if (!body.wallet_address) throw new Error("current user has no wallet");
+  return body.wallet_address;
 }
 
 beforeAll(async () => {
@@ -66,9 +67,7 @@ describe("GET /api/crypto/status", () => {
     if (!serverReachable) return;
     const res = await api.get("/api/crypto/status");
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type") ?? "").toContain(
-      "application/json",
-    );
+    expect(res.headers.get("content-type") ?? "").toContain("application/json");
     const body = (await res.json()) as {
       directWallet?: {
         enabled?: boolean;
@@ -86,9 +85,10 @@ describe("GET /api/crypto/status", () => {
     for (const network of body.directWallet?.networks ?? []) {
       expect(network.rpcUrl).toBeUndefined();
       expect(network.secureAddress).toBeUndefined();
-      expect(network.receiveAddress === null || typeof network.receiveAddress === "string").toBe(
-        true,
-      );
+      expect(
+        network.receiveAddress === null ||
+          typeof network.receiveAddress === "string",
+      ).toBe(true);
     }
   });
 });
@@ -135,6 +135,7 @@ describe("/api/crypto/direct-payments", () => {
 
   test("happy path: creates a Base USDC payment for the account wallet", async () => {
     if (!shouldRunSession()) return;
+    if (!sessionCookie) throw new Error("session cookie missing");
 
     const statusRes = await api.get("/api/crypto/status");
     const status = (await statusRes.json()) as {
@@ -151,7 +152,9 @@ describe("/api/crypto/direct-payments", () => {
     const createRes = await api.post(
       "/api/crypto/direct-payments",
       { amount: 1, network: "base", payerAddress },
-      { headers: { Cookie: sessionCookie!, "Content-Type": "application/json" } },
+      {
+        headers: { Cookie: sessionCookie, "Content-Type": "application/json" },
+      },
     );
     expect(createRes.status).toBe(200);
     const created = (await createRes.json()) as {
@@ -182,7 +185,9 @@ describe("/api/crypto/direct-payments", () => {
     const confirmRes = await api.post(
       `/api/crypto/direct-payments/${created.paymentId}/confirm`,
       { transactionHash: "not-a-tx" },
-      { headers: { Cookie: sessionCookie!, "Content-Type": "application/json" } },
+      {
+        headers: { Cookie: sessionCookie, "Content-Type": "application/json" },
+      },
     );
     expect(confirmRes.status).toBe(400);
   });

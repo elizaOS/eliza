@@ -524,11 +524,17 @@ ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-
 # pre-12.8 nvcc that cannot target sm_100/sm_120 directly. nvcc >= 12.8 adds
 # native sm_120 SASS on top (faster JIT-free first launch on Blackwell consumer).
 comma := ,
+CUDA_SM89_GENCODE := $(shell echo 'int main(){return 0;}' > /tmp/.nvcc_sm89_probe.cu 2>/dev/null && $(NVCC) -arch=sm_89 -c /tmp/.nvcc_sm89_probe.cu -o /dev/null >/dev/null 2>&1 && echo "-gencode arch=compute_89@code=sm_89"; rm -f /tmp/.nvcc_sm89_probe.cu)
+CUDA_SM90A_GENCODE := $(shell echo 'int main(){return 0;}' > /tmp/.nvcc_sm90a_probe.cu 2>/dev/null && $(NVCC) -arch=sm_90a -c /tmp/.nvcc_sm90a_probe.cu -o /dev/null >/dev/null 2>&1 && echo "-gencode arch=compute_90a@code=sm_90a"; rm -f /tmp/.nvcc_sm90a_probe.cu)
+CUDA_SM100_GENCODE := $(shell echo 'int main(){return 0;}' > /tmp/.nvcc_sm100_probe.cu 2>/dev/null && $(NVCC) -arch=sm_100 -c /tmp/.nvcc_sm100_probe.cu -o /dev/null >/dev/null 2>&1 && echo "-gencode arch=compute_100@code=sm_100"; rm -f /tmp/.nvcc_sm100_probe.cu)
 CUDA_BLACKWELL_GENCODE := $(shell echo 'int main(){return 0;}' > /tmp/.nvcc_sm120_probe.cu 2>/dev/null && $(NVCC) -arch=sm_120 -c /tmp/.nvcc_sm120_probe.cu -o /dev/null >/dev/null 2>&1 && echo "-gencode arch=compute_120@code=sm_120"; rm -f /tmp/.nvcc_sm120_probe.cu)
 CUDA_ARCH_FLAGS ?= -gencode arch=compute_80,code=sm_80 \
     -gencode arch=compute_86,code=sm_86 \
     -gencode arch=compute_90,code=sm_90 \
     -gencode arch=compute_90,code=compute_90 \
+    $(subst @,$(comma),$(CUDA_SM89_GENCODE)) \
+    $(subst @,$(comma),$(CUDA_SM90A_GENCODE)) \
+    $(subst @,$(comma),$(CUDA_SM100_GENCODE)) \
     $(subst @,$(comma),$(CUDA_BLACKWELL_GENCODE))
 
 CUDA_INCLUDES = -I$(CUDA_HOME)/include -I.

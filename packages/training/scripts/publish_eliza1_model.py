@@ -1,19 +1,17 @@
-"""Publish a fused-kernel "eliza-1-optimized" GGUF to the elizalabs org.
+"""Publish a fused-kernel "eliza-1-optimized" GGUF to the elizaOS model repo.
 
 This is the wrapper around `huggingface_hub` that takes a directory
 produced by W5-Pipeline (a fully-optimized GGUF + manifest.json + a
-README.md) and ships it to `elizalabs/<base>-optimized` (or the
-sibling drafter repo). It is distinct from `push_model_to_hf.py`, which
-publishes the *base* eliza-1 fine-tunes in stock GGUF / fp8 / polarquant
-flavors under the `elizalabs/*` org — those repos contain one optimization
-at a time. The elizalabs repos contain the **fused** stack
-(Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
+README.md) and ships it to `elizaos/eliza-1`. It is distinct from
+`push_model_to_hf.py`, which publishes the *base* eliza-1 fine-tunes in stock
+GGUF / fp8 / polarquant flavors. The canonical model repo contains the
+**fused** stack (Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
 
 Refuses to ship stock-format GGUFs: every file the script publishes must
 declare `Q4_POLAR`, `qjl1_256`, and a TurboQuant V-cache type (`tbq3_0` or
 `tbq4_0`) in its GGUF tensor type table.
 This is the safety rail that keeps an accidentally-mislabeled K-quant
-out of the elizalabs org.
+out of the elizaOS model repo.
 
 Idempotency: after a successful upload the script writes
 `published.json` next to the GGUF with the canonical resolve URL,
@@ -27,13 +25,13 @@ Usage::
     # GGUF metadata, refuses to continue if Q4_POLAR/QJL1_256 are missing.
     uv run python scripts/publish_eliza1_model.py \\
         --model-dir /path/to/qwen3.5-4b-optimized \\
-        --repo-id elizalabs/qwen3.5-4b-optimized \\
+        --repo-id elizaos/eliza-1 \\
         --dry-run
 
     # Real push.
     HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_model.py \\
         --model-dir /path/to/qwen3.5-4b-optimized \\
-        --repo-id elizalabs/qwen3.5-4b-optimized
+        --repo-id elizaos/eliza-1
 """
 
 from __future__ import annotations
@@ -72,7 +70,7 @@ REQUIRED_GGUF_MARKERS: tuple[bytes, ...] = (b"q4_polar", b"qjl1_256")
 REQUIRED_GGUF_MARKER_ALTERNATIVES: tuple[tuple[bytes, ...], ...] = (
     (b"tbq3_0", b"tbq4_0"),
 )
-ELIZA_1_HF_ORG = "elizalabs"
+ELIZA_1_HF_ORG = "elizaos"
 
 # How many bytes of the GGUF header to scan. The tensor type table lives
 # near the start of the file — 4 MB is generous and avoids loading a

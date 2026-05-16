@@ -533,17 +533,7 @@ function findAndroidVulkanInclude(ndk) {
 function findGlslc(ndk, { preferNdk = false } = {}) {
   const explicit = process.env.GLSLC?.trim();
   if (explicit && fs.existsSync(explicit)) return explicit;
-  // Prefer the host shaderc package when present. The NDK-bundled glslc is
-  // useful as a fallback for Android cross builds, but older NDK toolchains can
-  // reject desktop Vulkan feature probes and even fail optimizing generated
-  // shaders that the host shaderc handles correctly.
-  if (has("glslc")) {
-    const out = spawnSync("which", ["glslc"], {
-      encoding: "utf8",
-    }).stdout?.trim();
-    if (out) return out;
-    return "glslc";
-  }
+  let ndkGlslc = null;
   if (ndk) {
     const hostDirs = [
       "linux-x86_64",
@@ -559,7 +549,19 @@ function findGlslc(ndk, { preferNdk = false } = {}) {
       }
     }
   }
-  return null;
+  if (preferNdk && ndkGlslc) return ndkGlslc;
+  // Prefer the host shaderc package when present. The NDK-bundled glslc is
+  // useful as a fallback for Android cross builds, but older NDK toolchains can
+  // reject desktop Vulkan feature probes and even fail optimizing generated
+  // shaders that the host shaderc handles correctly.
+  if (has("glslc")) {
+    const out = spawnSync("which", ["glslc"], {
+      encoding: "utf8",
+    }).stdout?.trim();
+    if (out) return out;
+    return "glslc";
+  }
+  return ndkGlslc;
 }
 
 // Find a usable x86_64-w64-mingw32 cross-toolchain on the host.

@@ -99,11 +99,38 @@ function detectBackend() {
     process.env.CUDA_VISIBLE_DEVICES !== "-1"
   )
     return "cuda";
+  const nvidia = spawnSync("nvidia-smi", ["-L"], {
+    stdio: ["ignore", "pipe", "ignore"],
+    encoding: "utf8",
+  });
+  if (nvidia.status === 0 && /\bGPU\s+\d+:/i.test(nvidia.stdout ?? "")) {
+    return "cuda";
+  }
   return "cpu";
 }
 
 function platformKey(backend) {
   return `${process.platform}-${process.arch}-${backend}`;
+}
+
+function canonicalArch(arch = process.arch) {
+  if (arch === "x64") return "x86_64";
+  return arch;
+}
+
+function canonicalPlatformKey(backend) {
+  return `${process.platform}-${canonicalArch()}-${backend}`;
+}
+
+function thresholdLookupKeys(hardware) {
+  const keys = [
+    hardware.platformKey,
+    hardware.canonicalPlatformKey,
+    `${hardware.platform}-${hardware.arch}`,
+    `${hardware.platform}-${hardware.canonicalArch}`,
+    hardware.backend,
+  ];
+  return [...new Set(keys.filter(Boolean))];
 }
 
 function defaultBinary(backend) {
@@ -348,7 +375,7 @@ function printHelp() {
   console.log(`Usage: node scripts/local-inference-ablation.mjs [options]
 
 Options:
-  --backend metal|cuda|rocm|cpu
+  --backend metal|cuda|rocm|vulkan|cpu
   --binary /path/to/llama-server
   --model /path/to/target.gguf
   --drafter /path/to/drafter.gguf
@@ -408,23 +435,29 @@ function loadThresholds(filePath) {
 
 function thresholdFor(thresholds, backend, variantName) {
   if (!thresholds) return null;
-  const byBackend = thresholds[backend];
-  if (!byBackend || typeof byBackend !== "object") return null;
-  const direct = byBackend[variantName];
-  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
-  const fallback = byBackend.default;
-  if (typeof fallback === "number" && Number.isFinite(fallback))
-    return fallback;
+  const keys = Array.isArray(backend) ? backend : [backend];
+  for (const key of keys) {
+    const byBackend = thresholds[key];
+    if (!byBackend || typeof byBackend !== "object") continue;
+    const direct = byBackend[variantName];
+    if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+    const fallback = byBackend.default;
+    if (typeof fallback === "number" && Number.isFinite(fallback)) {
+      return fallback;
+    }
+  }
   return null;
 }
 
 function evaluateGate(report, thresholds) {
   const violations = [];
+  const thresholdKeys = thresholdLookupKeys(report.hardware);
   for (const variant of report.variants) {
     if (variant.skipped || !variant.ok) continue;
-    const min = thresholdFor(thresholds, report.hardware.backend, variant.name);
+    const min = thresholdFor(thresholds, thresholdKeys, variant.name);
     if (min === null) continue;
     variant.thresholdTokPerSec = min;
+    variant.thresholdKeys = thresholdKeys;
     if (variant.avgTokPerSec < min) {
       violations.push({
         name: variant.name,
@@ -453,8 +486,10 @@ function hardwareInfo(args) {
   const info = {
     platform: process.platform,
     arch: process.arch,
+    canonicalArch: canonicalArch(),
     backend: args.backend,
     platformKey: platformKey(args.backend),
+    canonicalPlatformKey: canonicalPlatformKey(args.backend),
     hostname: os.hostname(),
     cpus: os.cpus().map((cpu) => cpu.model)[0],
     memoryGb: Math.round(os.totalmem() / 1024 ** 3),

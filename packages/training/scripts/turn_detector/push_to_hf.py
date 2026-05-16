@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Push fine-tuned turn-detector artifacts to ``elizalabs/eliza-1``.
+"""Push fine-tuned turn-detector artifacts to ``elizaos/eliza-1``.
 
 Uploads (per locale):
 
@@ -30,7 +30,7 @@ CLI::
     python3 push_to_hf.py \
         --bundle packages/training/out/turn-detector-en-v1/onnx \
         --locale en \
-        --repo elizalabs/eliza-1 \
+        --repo elizaos/eliza-1 \
         --version 0.2.0 \
         --base-model livekit/turn-detector \
         --base-revision v1.2.2-en \
@@ -220,7 +220,7 @@ commercial use is permitted under Apache-2.0.
   title = {{Eliza-1 Voice Turn Detector v{version}}},
   author = {{Eliza Labs}},
   year = {{2026}},
-  howpublished = {{\\url{{https://huggingface.co/elizalabs/eliza-1/tree/main/voice/turn-detector}}}}
+  howpublished = {{\\url{{https://huggingface.co/elizaos/eliza-1/tree/main/voice/turn-detector}}}}
 }}
 ```
 """
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     ap.add_argument("--locale", choices=("en", "intl"), required=True)
-    ap.add_argument("--repo", default="elizalabs/eliza-1")
+    ap.add_argument("--repo", default="elizaos/eliza-1")
     ap.add_argument("--path-in-repo", default="voice/turn-detector")
     ap.add_argument("--version", required=True)
     ap.add_argument("--base-model", default="livekit/turn-detector")

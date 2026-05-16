@@ -12,6 +12,7 @@
  * Run with: bun test --preload <this-file> apps/api/test/e2e
  */
 
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
@@ -33,9 +34,12 @@ for (const envPath of [
 
 const DEFAULT_TEST_SECRETS_MASTER_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-const PLAYWRIGHT_E2E_WALLET_ADDRESS = privateKeyToAccount(
-  "0x1111111111111111111111111111111111111111111111111111111111111111",
-).address;
+function testWalletAddress(seed: string): string {
+  const digest = createHash("sha256")
+    .update(`playwright:${seed}`)
+    .digest("hex");
+  return privateKeyToAccount(`0x${digest}`).address;
+}
 
 if (!process.env.SECRETS_MASTER_KEY) {
   process.env.SECRETS_MASTER_KEY = DEFAULT_TEST_SECRETS_MASTER_KEY;
@@ -65,6 +69,7 @@ async function ensureTestUser({
   stewardUserId: string;
   role?: string;
 }) {
+  const walletAddress = testWalletAddress(stewardUserId);
   const existingOrg = await dbWrite.query.organizations.findFirst({
     where: eq(organizations.slug, slug),
   });
@@ -97,7 +102,7 @@ async function ensureTestUser({
           organization_id: organization.id,
           role,
           steward_user_id: stewardUserId,
-          wallet_address: PLAYWRIGHT_E2E_WALLET_ADDRESS,
+          wallet_address: walletAddress,
           wallet_chain_type: "evm",
           wallet_verified: true,
         })
@@ -118,7 +123,7 @@ async function ensureTestUser({
       email,
       organization_id: organization.id,
       role,
-      wallet_address: PLAYWRIGHT_E2E_WALLET_ADDRESS,
+      wallet_address: walletAddress,
       wallet_chain_type: "evm",
       wallet_verified: true,
       is_active: true,

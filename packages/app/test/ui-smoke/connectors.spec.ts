@@ -242,7 +242,7 @@ test("connector modes keep developer credentials as the default path", async ({
   ).toHaveClass(/border-accent/);
   await expect(
     telegramSection.getByText(
-      "Manage Telegram bot accounts through @elizaos/plugin-telegram account inventory.",
+      /Telegram does not support bot-install OAuth for bidirectional chats\..*BotFather token/i,
     ),
   ).toBeVisible();
 

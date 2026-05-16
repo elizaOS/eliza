@@ -1,6 +1,6 @@
 """Publish the Qwen3-ASR K-quant ladder + Q8_0 mmproj to HuggingFace.
 
-Target: ``elizalabs/eliza-1`` (Apache-2.0, public) under ``voice/asr/``.
+Target: ``elizaos/eliza-1`` (Apache-2.0, public) under ``voice/asr/``.
 
 Inputs:
 
@@ -9,7 +9,7 @@ Inputs:
   ``gguf_asr.json`` sidecars (the output of ``gguf_asr_apply.py``
   followed by ``eval_asr_wer.py``).
 - ``--readme`` rendered Markdown README to push verbatim.
-- ``--repo`` HF repo id (default ``elizalabs/eliza-1``).
+- ``--repo`` HF repo id (default ``elizaos/eliza-1``).
 - ``--path-prefix`` remote path prefix inside the repo (default ``voice/asr``).
 
 The wrapper:
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("--quant-dir", required=True, type=Path)
     ap.add_argument("--readme", required=True, type=Path)
-    ap.add_argument("--repo", default="elizalabs/eliza-1")
+    ap.add_argument("--repo", default="elizaos/eliza-1")
     ap.add_argument("--path-prefix", default="voice/asr")
     ap.add_argument("--quants", default="Q3_K_M,Q4_K_M,Q5_K_M,Q6_K,Q8_0")
     ap.add_argument("--mmproj-quant", default="Q8_0")

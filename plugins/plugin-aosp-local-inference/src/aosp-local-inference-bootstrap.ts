@@ -152,6 +152,7 @@ interface AospLoadModelArgs {
   contextSize?: number;
   maxThreads?: number;
   useGpu?: boolean;
+  gpuLayers?: number;
   draftModelPath?: string;
   draftContextSize?: number;
   draftMin?: number;
@@ -337,6 +338,13 @@ function readPositiveIntEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function readNonNegativeIntEnv(name: string): number | null {
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 export function isAospLocalEmbeddingEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -374,6 +382,13 @@ function readBooleanEnv(name: string): boolean | null {
     return false;
   }
   return null;
+}
+
+function resolveAospLlamaGpuLayers(): number {
+  const explicitLayers = readNonNegativeIntEnv("ELIZA_LLAMA_N_GPU_LAYERS");
+  if (explicitLayers !== null) return explicitLayers;
+  const useGpu = readBooleanEnv("ELIZA_AOSP_LLAMA_USE_GPU");
+  return useGpu === true ? 99 : 0;
 }
 
 function dflashServerSpawnAllowed(): boolean {
@@ -436,6 +451,7 @@ export function buildAospLoadModelArgs(
 ): AospLoadModelArgs {
   if (role === "chat") {
     const draftModelPath = resolveDflashDrafterPath(modelPath);
+    const gpuLayers = resolveAospLlamaGpuLayers();
     return {
       modelPath,
       contextSize: readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
@@ -449,7 +465,8 @@ export function buildAospLoadModelArgs(
       draftMax: draftModelPath
         ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_MAX", 16)
         : undefined,
-      useGpu: false,
+      useGpu: gpuLayers > 0,
+      gpuLayers,
       kvCacheType: {
         k: "qjl1_256",
         v: "q4_polar",
@@ -460,6 +477,7 @@ export function buildAospLoadModelArgs(
     modelPath,
     contextSize: readPositiveIntEnv("ELIZA_LLAMA_EMBEDDING_N_CTX", 512),
     useGpu: false,
+    gpuLayers: 0,
     kvCacheType: {
       k: "f16",
       v: "f16",
@@ -884,12 +902,12 @@ const AOSP_RECOMMENDED_MODELS: Record<
 > = {
   chat: {
     id: "eliza-1-2b",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
   },
 };

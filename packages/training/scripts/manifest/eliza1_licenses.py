@@ -193,7 +193,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "(native silero-vad-cpp Silero VAD v5); "
             "optional fallback: onnx-community/silero-vad (snakers4/silero-vad)"
         ),
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="Silero Team",
         note=(
             "Voice-activity detection model, shipped for native inference as "
@@ -208,8 +208,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="DFlash speculative-decode drafter",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="elizalabs/eliza-1/bundles/<tier> (distilled from the text backbone)",
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
             "The DFlash drafter is a small student model aligned to the Eliza-1 "
@@ -336,8 +336,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="Eliza-1 bundle (umbrella)",
         spdx="CC-BY-NC-SA-4.0",
         text_file=_CC_BY_NC_SA,
-        upstream_repo="elizalabs/eliza-1/bundles/<tier>",
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_repo="elizaos/eliza-1/bundles/<tier>",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs and the upstream component authors (see per-component LICENSE.* files)",
         note=(
             "Eliza-1 is a non-commercial open-source on-device model line. This "

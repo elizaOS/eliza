@@ -13,7 +13,7 @@
 #     ONNX to a torch checkpoint that the publish pipeline converts to
 #     a GGUF LoRA via `llama.cpp/convert_lora_to_gguf.py`. The runtime
 #     manifest slot is `files.eotLoraAdapter`, not `files.turn`.
-#   - `teacher_repo: elizalabs/eliza-1` — the bundle repo on HF. Per
+#   - `teacher_repo: elizaos/eliza-1` — the bundle repo on HF. Per
 #     `packages/training/AGENTS.md` §1 we already publish drafter GGUFs
 #     to this repo under `bundles/<tier>/drafter/`; the training side
 #     loads the matching pre-quant safetensors checkpoint that ships
@@ -26,7 +26,7 @@
 
 tier: 2b
 teacher_kind: eliza-1-drafter
-teacher_repo: elizalabs/eliza-1
+teacher_repo: elizaos/eliza-1
 teacher_revision: bundles/2b/drafter
 
 # LoRA rank — slightly higher than the LiveKit recipe because we are

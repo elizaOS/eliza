@@ -178,7 +178,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "turn-detector-intl",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T11:15:08Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
     // K7: GGUF path live via LiveKitGgmlTurnDetector (J1.d). ONNX file
     // stays on HF for one release per HF asset policy.
@@ -210,7 +210,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.2.0",
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-15T05:17:55Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     // K7: GGUF path live via LiveKitGgmlTurnDetector (J1.d). ONNX file
     // stays on HF for one release per HF asset policy.
@@ -242,7 +242,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.2.0",
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-15T04:50:24Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     // K7: OmniVoice is fully on the fork via libelizainference FFI (W3-3).
     // No ONNX path ever existed for OmniVoice.
@@ -286,7 +286,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "speaker-encoder",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -305,7 +305,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "diarizer",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -331,7 +331,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "turn-detector",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -364,7 +364,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "voice-emotion",
     version: "0.2.0",
     publishedToHfAt: "2026-05-15T07:20:39Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -415,14 +415,14 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     // .swarm/impl/J2-kokoro-port-notes.md; ship continues per brief override.
     //
     // missingAssets carries the planned ladder; the GGUF push to the
-    // consolidated elizalabs/eliza-1 repo lands once the full PyTorch
+    // consolidated elizaos/eliza-1 repo lands once the full PyTorch
     // checkpoint walks through convert_kokoro_pth_to_gguf.py with the full
     // _PTH_KEY_RULES map (Q3..Q8 ladder via gguf_kokoro_apply.py from W3-1).
     id: "kokoro",
     version: "0.3.0",
     parentVersion: "0.2.0",
     publishedToHfAt: "2026-05-15T05:00:00Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
     // K7: runtime defaults to KOKORO_BACKEND=fork (pick-runtime.ts). ONNX
     // path is one-release deprecation runway (KOKORO_BACKEND=onnx env only).
@@ -461,7 +461,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.2.0",
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-15T11:27:44Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
     ggufAssets: [
       {
@@ -490,7 +490,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "kokoro",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -517,7 +517,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "omnivoice",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [],
     missingAssets: [
@@ -554,7 +554,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "vad",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     // K7: VAD is fully native through silero-vad-cpp/libsilero_vad.
     // vad.ts imports SileroVadGgml only; onnxruntime-node NOT imported.
@@ -585,7 +585,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "wakeword",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     // K7: wake-word is fully on fork FFI (eliza_inference_wakeword_* in
     // libelizainference). wake-word.ts uses GgmlWakeWordModel only;
@@ -623,7 +623,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "embedding",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -642,7 +642,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "asr",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
@@ -668,7 +668,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "asr",
     version: "0.2.0",
     publishedToHfAt: "2026-05-15T00:00:00Z",
-    hfRepo: "elizalabs/eliza-1",
+    hfRepo: "elizaos/eliza-1",
     hfRevision: "50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4",
     ggufAssets: [
       {

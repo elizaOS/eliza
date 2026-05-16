@@ -19,6 +19,7 @@ import {
 } from "@elizaos/capacitor-contacts";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, Input } from "@elizaos/ui";
+import { isNative } from "@elizaos/ui/platform";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -109,6 +110,13 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!isNative) {
+      setContacts([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {

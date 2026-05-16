@@ -13,7 +13,7 @@ Qwen3 dense bases do not work with the eliza-1 dflash spec-decode path
 shape for the fused QJL/Polar paths). Historical per-tier repos remain public
 for existing downloads, but their model cards are marked DEPRECATED and no new
 SFT runs target them. New raw and fine-tuned bundles publish into the single
-``elizalabs/eliza-1`` repo under ``bundles/<tier>/``.
+``elizaos/eliza-1`` repo under ``bundles/<tier>/``.
 
 The active entries map onto the size-first ``eliza-1-*`` tier ids used
 by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
@@ -103,13 +103,13 @@ class ModelEntry:
 
     eliza_repo_id: str = ""
     """HuggingFace repo id under which the fine-tuned model is published,
-    e.g. ``elizalabs/eliza-1``. Size tiers live under ``bundles/<tier>/`` and
+    e.g. ``elizaos/eliza-1``. Size tiers live under ``bundles/<tier>/`` and
     quantized GGUF variants live alongside the tier's manifest."""
 
     abliteration_repo_id: str = ""
     """HuggingFace repo id for the post-abliteration ("uncensored") release,
     Empty means: do not publish an abliterated variant for this entry. The
-    active release policy uses one model repo (``elizalabs/eliza-1``), so older
+    active release policy uses one model repo (``elizaos/eliza-1``), so older
     per-size uncensored repos are intentionally not configured here."""
 
     # ─── inference budgets (PolarQuant weights + TurboQuant 4-bit KV) ───
@@ -292,7 +292,7 @@ REGISTRY: dict[str, ModelEntry] = {
         hf_id="Qwen/Qwen3.5-0.8B-Base",
         short_name="qwen3.5-0.8b",
         eliza_short_name="eliza-1-0_8b",
-        eliza_repo_id="elizalabs/eliza-1",
+        eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=0.8,
         tier=Tier.LOCAL,
@@ -337,7 +337,7 @@ REGISTRY: dict[str, ModelEntry] = {
         hf_id="Qwen/Qwen3.5-2B-Base",
         short_name="qwen3.5-2b",
         eliza_short_name="eliza-1-2b",
-        eliza_repo_id="elizalabs/eliza-1",
+        eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=2.27,
         tier=Tier.LOCAL,
@@ -370,7 +370,7 @@ REGISTRY: dict[str, ModelEntry] = {
         hf_id="Qwen/Qwen3.5-4B-Base",
         short_name="qwen3.5-4b",
         eliza_short_name="eliza-1-4b",
-        eliza_repo_id="elizalabs/eliza-1",
+        eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=4.0,
         tier=Tier.LOCAL,
@@ -405,7 +405,7 @@ REGISTRY: dict[str, ModelEntry] = {
         hf_id="Qwen/Qwen3.5-9B",
         short_name="qwen3.5-9b",
         eliza_short_name="eliza-1-9b",
-        eliza_repo_id="elizalabs/eliza-1",
+        eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=9.0,
         tier=Tier.WORKSTATION,
@@ -438,7 +438,7 @@ REGISTRY: dict[str, ModelEntry] = {
         hf_id="Qwen/Qwen3.6-27B",
         short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b",
-        eliza_repo_id="elizalabs/eliza-1",
+        eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=27.0,
         tier=Tier.CLOUD,

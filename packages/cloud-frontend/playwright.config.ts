@@ -3,6 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 // When CLOUD_E2E_LIVE_URL is set we are testing the real deployed site, so we
 // don't spin up the local Vite dev server at all.
 const LIVE_URL = process.env.CLOUD_E2E_LIVE_URL;
+const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
+const PORT = process.env.PLAYWRIGHT_PORT || "4173";
+const LOCAL_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`;
+const BASE_URL = LIVE_URL ?? LOCAL_URL;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -14,19 +18,15 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: LIVE_URL ?? "http://127.0.0.1:4173",
+    baseURL: BASE_URL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   webServer: LIVE_URL
     ? undefined
     : {
-        // VITE_ELIZA_RENDER_TELEMETRY is intentionally NOT enabled here — its
-        // "committed N profiler updates" console.error noise trips the strict
-        // console-error assertions in cloud-routes.spec.ts.
-        command:
-          "env -u FORCE_COLOR VITE_PLAYWRIGHT_TEST_AUTH=true bun --bun vite --host 127.0.0.1 --port 4173",
-        url: "http://127.0.0.1:4173",
+        command: `env -u FORCE_COLOR VITE_PLAYWRIGHT_TEST_AUTH=true VITE_ELIZA_RENDER_TELEMETRY=false bun --bun vite --host ${HOST} --port ${PORT} --strictPort`,
+        url: LOCAL_URL,
         reuseExistingServer:
           process.env.CLOUD_FRONTEND_E2E_SERVER_STARTED === "1" ||
           !process.env.CI,

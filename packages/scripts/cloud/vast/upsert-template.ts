@@ -168,13 +168,13 @@ async function main(): Promise<void> {
       }
     }
     // TODO(wave3): vLLM cannot load from a subpath; the canonical bundle repo
-    // elizalabs/eliza-1 contains GGUFs, not safetensors. Per-tier vLLM repos
-    // (elizalabs/eliza-1-2b safetensors checkpoint) need to be published before
+    // elizaos/eliza-1 contains GGUFs, not safetensors. Per-tier vLLM repos
+    // (elizaos/eliza-1-2b safetensors checkpoint) need to be published before
     // this default is reachable. Today it is a placeholder; live deployments
     // must override MODEL_REPO via env or a manifest.
     env.MODEL_REPO = readEnv(
       "MODEL_REPO",
-      manifest?.manifest.model ?? manifest?.manifest.model_repo ?? "elizalabs/eliza-1-2b",
+      manifest?.manifest.model ?? manifest?.manifest.model_repo ?? "elizaos/eliza-1-2b",
     );
     env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-2b");
     if (manifest?.manifest.served_model_name) {
@@ -215,10 +215,10 @@ async function main(): Promise<void> {
       }
     }
     // llama.cpp can resolve a subpath inside the bundle repo. Canonical default
-    // is the consolidated elizalabs/eliza-1 + bundles/<tier>/... layout.
+    // is the consolidated elizaos/eliza-1 + bundles/<tier>/... layout.
     env.MODEL_REPO = readEnv(
       "MODEL_REPO",
-      manifest?.manifest.model_repo ?? manifest?.manifest.model ?? "elizalabs/eliza-1",
+      manifest?.manifest.model_repo ?? manifest?.manifest.model ?? "elizaos/eliza-1",
     );
     env.MODEL_FILE = readEnv(
       "MODEL_FILE",

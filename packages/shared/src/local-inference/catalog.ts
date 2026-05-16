@@ -18,7 +18,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -95,7 +95,7 @@ export function isDefaultEligibleId(id: string): boolean {
  *     publish staging must include `vision/mmproj-0_8b.gguf` and
  *     `vision/mmproj-2b.gguf` or manifest validation fails loudly.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
- *     published under the unified elizalabs/eliza-1 `voice/<model-id>/...`
+ *     published under the unified elizaos/eliza-1 `voice/<model-id>/...`
  *     layout. Per-tier manifests still need to consume these paths directly
  *     where a bundle wants eager voice downloads.
  *   - Kokoro same voice preset: `af_same.bin` absent from all

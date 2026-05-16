@@ -43,6 +43,12 @@ function listTargets(root) {
     .sort();
 }
 
+function normalizeArch(arch) {
+  if (arch === "x86_64") return "x64";
+  if (arch === "aarch64") return "arm64";
+  return arch;
+}
+
 /**
  * Decide whether `target` (e.g. "android-arm64-cpu") can plausibly execute
  * on the current host. Cross-compiled binaries (Android arm64 on Linux x64,
@@ -59,7 +65,7 @@ function targetMatchesHost(target) {
     targetPlatform === hostPlatform ||
     (targetPlatform === "windows" && hostPlatform === "win32");
   // arch: x64 | arm64 | armv7l | ... (matches Node's process.arch)
-  const archMatch = targetArch === hostArch;
+  const archMatch = normalizeArch(targetArch) === normalizeArch(hostArch);
   return platformMatch && archMatch;
 }
 

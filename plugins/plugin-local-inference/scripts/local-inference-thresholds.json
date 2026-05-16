@@ -10,6 +10,72 @@
     "dflash_turbo4_polar": 3,
     "all_dflash_qjl_tcq": 3
   },
+  "linux-x64-cpu": {
+    "_comment": "Linux x86_64 CPU managed fork floor. Keep separate from generic cpu so desktop regressions do not hide behind mobile/CI baselines.",
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
+  "linux-x86_64-cpu": {
+    "_comment": "Canonical-arch alias for linux-x64-cpu.",
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
+  "win32-x64-cpu": {
+    "_comment": "Runtime process.platform key for Windows x86_64 CPU.",
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
+  "win32-x86_64-cpu": {
+    "_comment": "Canonical-arch alias for Windows x86_64 CPU.",
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
+  "windows-x64-cpu": {
+    "_comment": "Managed artifact key for Windows x86_64 CPU builds.",
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
+  "windows-x86_64-cpu": {
+    "_comment": "Canonical-arch alias for managed Windows x86_64 CPU builds.",
+    "default": 3,
+    "baseline_f16_kv": 5,
+    "turbo4_polar_kv": 4,
+    "turbo3_polar_kv": 4,
+    "qjl_tcq_forced": 3,
+    "dflash_only": 4,
+    "dflash_turbo4_polar": 3,
+    "all_dflash_qjl_tcq": 3
+  },
   "cuda": {
     "default": 50,
     "baseline_f16_kv": 80,
@@ -50,5 +116,71 @@
     "dflash_only": 40,
     "dflash_turbo4_polar": 35,
     "all_dflash_qjl_tcq": 25
+  },
+  "android-arm64-cpu": {
+    "_comment": "Physical Android arm64 CPU floor for the in-process/mobile libllama path. Kept separate from desktop cpu so mobile thermal and big.LITTLE behavior do not water down desktop regressions.",
+    "default": 1,
+    "baseline_f16_kv": 2,
+    "turbo4_polar_kv": 1,
+    "turbo3_polar_kv": 1,
+    "qjl_tcq_forced": 1,
+    "dflash_only": 1,
+    "dflash_turbo4_polar": 1,
+    "all_dflash_qjl_tcq": 1
+  },
+  "android-x86_64-cpu": {
+    "_comment": "Cuttlefish/emulator Android x86_64 CPU floor. Diagnostic only until a model-staged APK completes the full chat smoke.",
+    "default": 1,
+    "baseline_f16_kv": 2,
+    "turbo4_polar_kv": 1,
+    "turbo3_polar_kv": 1,
+    "qjl_tcq_forced": 1,
+    "dflash_only": 1,
+    "dflash_turbo4_polar": 1,
+    "all_dflash_qjl_tcq": 1
+  },
+  "android-x64-cpu": {
+    "_comment": "Node process.arch compatibility alias for android-x86_64-cpu.",
+    "default": 1,
+    "baseline_f16_kv": 2,
+    "turbo4_polar_kv": 1,
+    "turbo3_polar_kv": 1,
+    "qjl_tcq_forced": 1,
+    "dflash_only": 1,
+    "dflash_turbo4_polar": 1,
+    "all_dflash_qjl_tcq": 1
+  },
+  "android-arm64-vulkan": {
+    "_comment": "Physical Android Vulkan floor for Adreno/Mali. Intentionally not inherited from desktop vulkan; tighten by GPU family once Adreno and Mali graph-dispatch reports exist.",
+    "default": 5,
+    "baseline_f16_kv": 8,
+    "turbo4_polar_kv": 6,
+    "turbo3_polar_kv": 6,
+    "qjl_tcq_forced": 5,
+    "dflash_only": 8,
+    "dflash_turbo4_polar": 6,
+    "all_dflash_qjl_tcq": 5
+  },
+  "android-x86_64-vulkan": {
+    "_comment": "Android x86_64 Vulkan floor for real ChromeOS/ARCVM GPU silicon. Cuttlefish SwiftShader runs are diagnostic and should not be used as recordable evidence.",
+    "default": 5,
+    "baseline_f16_kv": 8,
+    "turbo4_polar_kv": 6,
+    "turbo3_polar_kv": 6,
+    "qjl_tcq_forced": 5,
+    "dflash_only": 8,
+    "dflash_turbo4_polar": 6,
+    "all_dflash_qjl_tcq": 5
+  },
+  "android-x64-vulkan": {
+    "_comment": "Node process.arch compatibility alias for android-x86_64-vulkan.",
+    "default": 5,
+    "baseline_f16_kv": 8,
+    "turbo4_polar_kv": 6,
+    "turbo3_polar_kv": 6,
+    "qjl_tcq_forced": 5,
+    "dflash_only": 8,
+    "dflash_turbo4_polar": 6,
+    "all_dflash_qjl_tcq": 5
   }
 }

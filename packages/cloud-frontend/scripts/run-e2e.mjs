@@ -7,7 +7,7 @@ const args = process.argv.slice(2);
 const env = {
   ...process.env,
   VITE_PLAYWRIGHT_TEST_AUTH: "true",
-  VITE_ELIZA_RENDER_TELEMETRY: "true",
+  VITE_ELIZA_RENDER_TELEMETRY: "false",
   CLOUD_FRONTEND_E2E_SERVER_STARTED: "1",
 };
 delete env.FORCE_COLOR;
@@ -39,10 +39,14 @@ function stop(child) {
   child.kill("SIGTERM");
 }
 
-const server = spawn("bun", ["--bun", "vite", "--host", host, "--port", port], {
-  stdio: "inherit",
-  env,
-});
+const server = spawn(
+  "bun",
+  ["--bun", "vite", "--host", host, "--port", port, "--strictPort"],
+  {
+    stdio: "inherit",
+    env,
+  },
+);
 
 try {
   await waitForServer(server);

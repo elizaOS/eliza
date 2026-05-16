@@ -268,7 +268,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
             {
                 "schemaVersion": 1,
                 "tier": tier,
-                "repoId": "elizalabs/eliza-1",
+                "repoId": "elizaos/eliza-1",
                 "repoPath": f"bundles/{tier}",
                 "releaseState": "weights-staged",
                 "final": {

@@ -376,6 +376,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: Number.isFinite(devServerPort) ? devServerPort : 3000,
       ...(allowedHosts.length ? { allowedHosts } : {}),
+      watch: {
+        usePolling: process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true",
+      },
       proxy: {
         "/api": {
           target: apiProxyTarget,
