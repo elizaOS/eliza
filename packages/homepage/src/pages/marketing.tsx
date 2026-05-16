@@ -1,8 +1,5 @@
 import { ArrowRight, Download, ExternalLink } from "lucide-react";
-import {
-  type ReleaseDataDownload,
-  releaseData,
-} from "@/generated/release-data";
+import { releaseData } from "@/generated/release-data";
 
 const cloudUrl = "https://www.elizacloud.ai/dashboard/my-agents";
 const osUrl = "https://elizaos.ai";
@@ -32,10 +29,10 @@ export default function MarketingPage() {
       id,
       label: releaseDownload?.label ?? fallbackDownloads[id],
       href: releaseDownload?.url ?? releaseFallbackUrl,
+      detail: releaseDownload?.sizeLabel ?? "GitHub Releases",
       meta: releaseDownload
         ? `From ${releaseDownload.releaseTagName}`
         : "Opens release page",
-      download: releaseDownload,
     };
   });
 
@@ -198,18 +195,18 @@ export default function MarketingPage() {
 function DownloadLink({
   label,
   href,
+  detail,
   meta,
-  download,
 }: {
   label: string;
   href: string;
+  detail: string;
   meta: string;
-  download?: ReleaseDataDownload;
 }) {
   return (
     <a className="app-download-row" href={href}>
       <span>{label}</span>
-      <span>{download?.sizeLabel ?? meta}</span>
+      <span>{detail}</span>
       <span>{meta}</span>
       <ArrowRight className="app-icon" aria-hidden="true" />
     </a>

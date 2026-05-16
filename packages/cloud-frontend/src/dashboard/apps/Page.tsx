@@ -93,10 +93,7 @@ export default function AppsPage() {
               }
             />
           ) : apps.length === 0 ? (
-            <AppsEmptyState
-              description="Your agent will create apps here when you have it build something."
-              action={<AdvancedRegisterApp />}
-            />
+            <AppsEmptyState action={<AdvancedRegisterApp />} />
           ) : (
             <AppsTable apps={apps} />
           )}

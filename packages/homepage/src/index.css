@@ -619,7 +619,8 @@ body {
   }
 
   .app-display {
-    font-size: clamp(4rem, 22vw, 6.2rem);
+    font-size: clamp(3.2rem, 17vw, 4.4rem);
+    line-height: 0.94;
   }
 
   .app-cta {

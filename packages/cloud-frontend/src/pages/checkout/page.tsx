@@ -1,5 +1,12 @@
 import { CloudVideoBackground } from "@elizaos/ui";
-import { ArrowRight, Box, CreditCard, Loader2, Smartphone, Usb } from "lucide-react";
+import {
+  ArrowRight,
+  Box,
+  CreditCard,
+  Loader2,
+  Smartphone,
+  Usb,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useSearchParams } from "react-router-dom";
@@ -186,9 +193,7 @@ export default function CheckoutPage() {
             className="mb-8 h-9 w-auto"
             draggable={false}
           />
-          <p className="text-xs font-bold uppercase text-[#FF5800]">
-            preorder
-          </p>
+          <p className="text-xs font-bold uppercase text-[#FF5800]">preorder</p>
           <h1 className="mt-3 max-w-xl text-5xl font-extrabold leading-[0.9] text-white md:text-7xl">
             {product.name}
           </h1>

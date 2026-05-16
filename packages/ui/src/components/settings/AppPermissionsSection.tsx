@@ -17,7 +17,7 @@ import {
   RECOGNISED_PERMISSION_NAMESPACES,
   type RecognisedPermissionNamespace,
 } from "@elizaos/shared";
-import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state";

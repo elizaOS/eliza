@@ -168,9 +168,9 @@ p {
 }
 
 h1 {
-  max-width: 18ch;
-  margin-bottom: 1.25rem;
-  font-size: clamp(3rem, 6vw, 5.3rem);
+  max-width: 22ch;
+  margin-bottom: 1rem;
+  font-size: clamp(2.8rem, 5vw, 4.6rem);
   font-weight: 800;
   line-height: 0.94;
   letter-spacing: 0;
@@ -205,7 +205,7 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 0.8rem;
-  margin-top: 2rem;
+  margin-top: 1.25rem;
 }
 
 .button {

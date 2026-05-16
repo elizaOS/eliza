@@ -436,6 +436,14 @@
         "vitest": "4.1.5",
       },
     },
+    "packages/brand": {
+      "name": "@elizaos/brand",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/browser-bridge-extension": {
       "name": "@elizaos/browser-bridge-extension",
       "version": "2.0.0-beta.2",
@@ -491,9 +499,6 @@
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "@fontsource-variable/inter": "^5.2.8",
-        "@fontsource-variable/open-sans": "^5.2.7",
-        "@fontsource/dm-mono": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
         "@mdx-js/rollup": "^3.1.0",
         "@monaco-editor/react": "^4.7.0",
@@ -1953,6 +1958,7 @@
       "name": "@elizaos/os-usb-installer",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/shared-brand": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
         "vite": "^8.0.0",
       },
@@ -4687,6 +4693,8 @@
 
     "@elizaos/bench-eliza-1-vision-cua-e2e": ["@elizaos/bench-eliza-1-vision-cua-e2e@workspace:packages/benchmarks/eliza-1/vision-cua-e2e"],
 
+    "@elizaos/brand": ["@elizaos/brand@workspace:packages/brand"],
+
     "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge-extension"],
 
     "@elizaos/bun-ios-runtime": ["@elizaos/bun-ios-runtime@workspace:packages/bun-ios-runtime"],
@@ -5293,11 +5301,7 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
-    "@fontsource-variable/inter": ["@fontsource-variable/inter@5.2.8", "", {}, "sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ=="],
-
     "@fontsource-variable/open-sans": ["@fontsource-variable/open-sans@5.2.7", "", {}, "sha512-wzCLm2STuekK9Fz58DiuBnk4GgJpvvVtAU85a4b06ACNG/UsVjQcCvkUd6R/ETlHfsaykCUZamLRvSXg4KtWuA=="],
-
-    "@fontsource/dm-mono": ["@fontsource/dm-mono@5.2.7", "", {}, "sha512-Ma1az2atTVgQWuOWwjuxx26p/6A6CU9HBNKq1CFV6YKpKhpswnf9ry9Ql4+T6bTZzkdtSfS6tjJvqZOljVzIFQ=="],
 
     "@fontsource/poppins": ["@fontsource/poppins@5.2.7", "", {}, "sha512-6uQyPmseo4FgI97WIhA4yWRlNaoLk4vSDK/PyRwdqqZb5zAEuc+Kunt8JTMcsHYUEGYBtN15SNkMajMdqUSUmg=="],
 
