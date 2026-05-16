@@ -1,3 +1,4 @@
+import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import LandingHeader from "../../components/layout/landing-header";
@@ -10,14 +11,23 @@ function StewardLoginSectionFallback() {
 
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
-    <div className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white">
-      <LandingHeader />
-      <div className="relative z-10 flex flex-1 items-center justify-center p-4 pt-24">
-        <div className="w-full max-w-md border border-white/14 bg-black p-6 text-white md:p-8">
-          {children}
+    <CloudVideoBackground
+      basePath="/clouds"
+      speed="4x"
+      poster="/clouds/poster.jpg"
+      scrim={0.82}
+      scrimColor="rgba(0,0,0,1)"
+      className="theme-cloud min-h-screen bg-black text-white"
+    >
+      <div className="flex min-h-screen w-full flex-col">
+        <LandingHeader />
+        <div className="relative z-10 flex flex-1 items-center justify-center p-4 pt-24">
+          <div className="w-full max-w-md border border-white/14 bg-black/86 p-6 text-white backdrop-blur-md md:p-8">
+            {children}
+          </div>
         </div>
       </div>
-    </div>
+    </CloudVideoBackground>
   );
 }
 
@@ -29,12 +39,16 @@ export default function LoginPage() {
     <LoginBackground>
       <div className="space-y-6">
         <div className="space-y-2 text-center">
+          <img
+            src="/brand/logos/elizacloud_logotext.svg"
+            alt="eliza cloud"
+            className="mx-auto h-8 w-auto"
+            draggable={false}
+          />
           <h1 className="font-poppins text-2xl font-semibold text-white">
-            Welcome back
+            Sign in
           </h1>
-          <p className="text-sm text-white/70">
-            Sign in to chat with your cloud agent and manage everything for it.
-          </p>
+          <p className="text-sm text-white/70">Run your Eliza in Cloud.</p>
         </div>
         <Suspense fallback={<StewardLoginSectionFallback />}>
           <StewardLoginSection />

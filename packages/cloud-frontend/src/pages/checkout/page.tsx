@@ -291,21 +291,21 @@ export default function CheckoutPage() {
         </section>
 
         {collection === "elizaos-hardware" ? (
-          <section className="rounded-lg border border-black/10 bg-white/80 p-4 md:col-span-2">
-            <h2 className="text-xl font-semibold">ElizaOS hardware catalog</h2>
+          <section className="border border-white/14 bg-black p-4 md:col-span-2">
+            <h2 className="text-xl font-semibold text-white">ElizaOS hardware catalog</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               {products.map((item) => (
                 <Link
-                  className={`rounded-lg border p-3 ${
+                  className={`border p-3 transition-colors ${
                     item.sku === product.sku
-                      ? "border-[#FF5800] bg-[#fff5ee]"
-                      : "border-black/10 bg-white"
+                      ? "border-[#FF5800] bg-[#FF5800]/10"
+                      : "border-white/14 bg-black hover:bg-white/10"
                   }`}
                   key={item.sku}
                   to={`/checkout?collection=elizaos-hardware&sku=${item.sku}`}
                 >
-                  <span className="text-sm font-semibold">{item.name}</span>
-                  <span className="mt-1 block text-xs text-[#6a6660]">
+                  <span className="text-sm font-semibold text-white">{item.name}</span>
+                  <span className="mt-1 block text-xs text-white/60">
                     {item.price}
                   </span>
                 </Link>

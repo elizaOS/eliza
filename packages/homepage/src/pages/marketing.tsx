@@ -71,11 +71,7 @@ export default function MarketingPage() {
               <p className="app-lede">
                 Your Eliza agent on desktop, mobile, and the web.
               </p>
-              <div
-                className="app-cta-row"
-                role="group"
-                aria-label="Primary actions"
-              >
+              <div className="app-cta-row">
                 <a href="#download" className="app-cta app-cta--black">
                   <Download className="app-icon" aria-hidden="true" />
                   Download the app
@@ -105,25 +101,16 @@ export default function MarketingPage() {
         <section id="download" className="brand-section brand-section--black">
           <div className="app-band-inner app-download-band">
             <div>
-              <p className="app-kicker app-kicker--light">Download</p>
               <h2 className="app-h2 app-h2--light">Install Eliza App.</h2>
             </div>
 
-            <div
-              className="app-download-list"
-              role="group"
-              aria-label="App downloads"
-            >
+            <div className="app-download-list">
               {downloads.map((download) => (
                 <DownloadLink key={download.id} {...download} />
               ))}
             </div>
 
-            <div
-              className="app-store-list"
-              role="group"
-              aria-label="Store availability"
-            >
+            <div className="app-store-list">
               {releaseData.storeTargets.map((store) => (
                 <div
                   key={store.platform}

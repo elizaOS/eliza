@@ -80,9 +80,6 @@ export default function BlobButton({
           className="absolute right-0 flex flex-col items-center "
           style={{ top: btnH + GAP, width: PANEL_W }}
         >
-          <p className="text-black/70 text-xs text-center leading-tight">
-            On desktop?
-          </p>
           <p className="text-black/70 text-xs font-medium text-center mb-1 leading-tight">
             Open on your phone
           </p>

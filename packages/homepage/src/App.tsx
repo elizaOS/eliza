@@ -16,7 +16,7 @@ function RouteFallback() {
       style={{
         background: "#000",
         color: "#fff",
-        fontFamily: "Poppins, system-ui, sans-serif",
+        fontFamily: "Poppins",
       }}
     >
       <div className="opacity-60 animate-pulse">Loading...</div>

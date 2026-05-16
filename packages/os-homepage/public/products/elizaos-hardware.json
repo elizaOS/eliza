@@ -1,0 +1,58 @@
+{
+  "collection": "elizaos-hardware",
+  "checkoutBaseUrl": "https://elizaos.ai/checkout",
+  "products": [
+    {
+      "sku": "elizaos-usb",
+      "name": "ElizaOS USB",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "image": "/assets/concept_usbdrive.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-usb"
+    },
+    {
+      "sku": "elizaos-raspberry-pi-case",
+      "name": "Raspberry Pi case",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "image": "/assets/elizaos-box-concept.avif",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-raspberry-pi-case"
+    },
+    {
+      "sku": "elizaos-custom-raspberry-pi-case",
+      "name": "Custom Raspberry Pi + case",
+      "priceUsd": 149,
+      "ships": "October 2026",
+      "image": "/assets/elizaos-box-concept.avif",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-custom-raspberry-pi-case"
+    },
+    {
+      "sku": "elizaos-mini-pc",
+      "name": "ElizaOS mini PC",
+      "priceUsd": 1999,
+      "ships": "October 2026",
+      "image": "/assets/concept_minipc.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-mini-pc"
+    },
+    {
+      "sku": "elizaos-phone",
+      "name": "ElizaOS Phone",
+      "image": "/assets/concept_phone.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-phone"
+    },
+    {
+      "sku": "elizaos-box",
+      "name": "ElizaOS Box",
+      "image": "/assets/billboard_concept.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-box"
+    },
+    {
+      "sku": "elizaos-usb-chibi",
+      "name": "Chibi USB key",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "image": "/assets/chibi_usb_concept.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-usb-chibi"
+    }
+  ]
+}

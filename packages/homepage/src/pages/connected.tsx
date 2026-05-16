@@ -288,9 +288,6 @@ export default function ConnectedPage() {
           >
             Connected.
           </h1>
-          <p className="app-paragraph--dark text-black/75">
-            Talk to Eliza on any platform you have linked.
-          </p>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-black text-white border border-black">
             <span className="w-2 h-2 bg-[#FF5800] animate-pulse" />
             <span className="text-xs font-semibold">Awake</span>
@@ -344,9 +341,6 @@ export default function ConnectedPage() {
               </div>
               <div className="flex flex-col items-start">
                 <span className="text-lg font-medium">Connect Telegram</span>
-                <span className="text-sm text-black/60">
-                  Link your Telegram account
-                </span>
               </div>
             </Button>
           )}
@@ -398,17 +392,11 @@ export default function ConnectedPage() {
                 </div>
                 <div className="flex flex-col items-start flex-1">
                   <span className="text-lg font-medium">iMessage</span>
-                  <span className="text-sm text-black/60">
-                    Add your phone number to enable
-                  </span>
                 </div>
               </button>
 
               {showPhoneInput && (
                 <div className="w-full bg-black text-white border border-black p-4 flex flex-col gap-3">
-                  <p className="text-xs text-white/70">
-                    Link your phone to chat with Eliza via iMessage
-                  </p>
                   <PhoneNumberInput
                     selectedCountry={selectedCountry}
                     onCountryChange={setSelectedCountry}
@@ -495,9 +483,6 @@ export default function ConnectedPage() {
               </div>
               <div className="flex flex-col items-start flex-1">
                 <span className="text-lg font-medium">WhatsApp</span>
-                <span className="text-sm text-black/60">
-                  Message to connect
-                </span>
               </div>
             </button>
           )}
@@ -544,9 +529,6 @@ export default function ConnectedPage() {
               </div>
               <div className="flex flex-col items-start">
                 <span className="text-lg font-medium">Connect Discord</span>
-                <span className="text-sm text-black/60">
-                  Link your Discord account
-                </span>
               </div>
             </Button>
           )}
