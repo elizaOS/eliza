@@ -307,14 +307,16 @@ jobs:
       - name: Restore build metadata after test rebuilds
         run: node --import tsx packages/scripts/write-build-info.ts
 
+      - name: Generate release validation manifests
+        run: |
+          node packages/app-core/scripts/write-homepage-release-data.mjs
+          node packages/app-core/scripts/generate-static-asset-manifest.mjs
+
       - name: Release readiness checks
         env:
           ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           ELIZA_VALIDATE_CDN: "1"
-        run: |
-          node packages/app-core/scripts/write-homepage-release-data.mjs
-          node packages/app-core/scripts/generate-static-asset-manifest.mjs
-          bun run release:check
+        run: bun run release:check
 
   build-browser-companions:
     name: Build Agent Browser Bridge companions
