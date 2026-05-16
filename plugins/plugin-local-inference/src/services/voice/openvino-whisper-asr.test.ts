@@ -17,11 +17,9 @@ import {
 	vi,
 } from "vitest";
 
-// Shared mock state. `vi.hoisted` runs before any `import` so this object
-// is reachable from both the `vi.mock` factory below and from each test's
-// `beforeEach` — without sharing module-level state with sibling test files
-// that may also be importing `./openvino-whisper-asr`.
-const mockState = vi.hoisted(() => ({
+// Shared mock state. The mock is installed with `doMock` before the dynamic
+// import so this works in both Vitest and Bun's test runner.
+const mockState = {
 	runtimeFixture: null as null | {
 		pythonBin: string;
 		workerScript: string;
@@ -30,21 +28,7 @@ const mockState = vi.hoisted(() => ({
 	},
 	decoderCalls: [] as Array<Float32Array>,
 	disposeCalls: { count: 0 },
-}));
-
-vi.mock("./openvino-whisper-asr", () => ({
-	OPENVINO_WHISPER_DEFAULT_DEVICE_CHAIN: "NPU,CPU",
-	resolveOpenVinoWhisperRuntime: () => mockState.runtimeFixture,
-	makeOpenVinoWhisperDecoder: () => ({
-		decoder: async (pcm16k: Float32Array): Promise<string> => {
-			mockState.decoderCalls.push(pcm16k);
-			return "openvino-mock-transcript";
-		},
-		dispose: () => {
-			mockState.disposeCalls.count++;
-		},
-	}),
-}));
+};
 
 // Use dynamic imports after vi.resetModules() so that transcriber.ts is loaded
 // fresh with the mock applied, regardless of test-file execution order when
@@ -54,7 +38,20 @@ let AsrUnavailableError: typeof import("./transcriber")["AsrUnavailableError"];
 let OpenVinoStreamingTranscriber: typeof import("./transcriber")["OpenVinoStreamingTranscriber"];
 
 beforeAll(async () => {
-	vi.resetModules();
+	vi.resetModules?.();
+	vi.doMock?.("./openvino-whisper-asr", () => ({
+		OPENVINO_WHISPER_DEFAULT_DEVICE_CHAIN: "NPU,CPU",
+		resolveOpenVinoWhisperRuntime: () => mockState.runtimeFixture,
+		makeOpenVinoWhisperDecoder: () => ({
+			decoder: async (pcm16k: Float32Array): Promise<string> => {
+				mockState.decoderCalls.push(pcm16k);
+				return "openvino-mock-transcript";
+			},
+			dispose: () => {
+				mockState.disposeCalls.count++;
+			},
+		}),
+	}));
 	const m = await import("./transcriber");
 	createStreamingTranscriber = m.createStreamingTranscriber;
 	AsrUnavailableError = m.AsrUnavailableError;
@@ -69,7 +66,6 @@ beforeEach(() => {
 
 afterEach(() => {
 	mockState.runtimeFixture = null;
-	vi.unstubAllEnvs();
 	delete process.env.ELIZA_LOCAL_ASR_BACKEND;
 	delete process.env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO;
 });
@@ -108,7 +104,7 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
 	});
 
 	it("uses ELIZA_LOCAL_ASR_BACKEND=openvino-whisper as an explicit backend preference", () => {
-		vi.stubEnv("ELIZA_LOCAL_ASR_BACKEND", "openvino-whisper");
+		process.env.ELIZA_LOCAL_ASR_BACKEND = "openvino-whisper";
 		mockState.runtimeFixture = {
 			pythonBin: "/fake/python",
 			workerScript: "/fake/worker.py",
@@ -134,7 +130,7 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
 	});
 
 	it("auto chain skips OpenVINO when ELIZA_LOCAL_ASR_ALLOW_OPENVINO disables it", () => {
-		vi.stubEnv("ELIZA_LOCAL_ASR_ALLOW_OPENVINO", "false");
+		process.env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO = "false";
 		mockState.runtimeFixture = {
 			pythonBin: "/fake/python",
 			workerScript: "/fake/worker.py",

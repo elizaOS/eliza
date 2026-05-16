@@ -150,6 +150,21 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getImageDescriptionApiKey(runtime)).toBe("sk-vision-fake");
   });
 
+  it("falls back to OPENAI_API_KEY for OpenAI image descriptions while text uses Cerebras", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_IMAGE_DESCRIPTION_API_KEY: undefined,
+      OPENAI_IMAGE_DESCRIPTION_BASE_URL: "https://api.openai.com/v1",
+    });
+
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getImageDescriptionBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getImageDescriptionApiKey(runtime)).toBe("sk-openai-fake");
+  });
+
   it("respects an explicit OPENAI_BASE_URL for OpenAI-compatible non-Cerebras endpoints", () => {
     const runtime = buildRuntime({
       OPENAI_BASE_URL: "https://api.openrouter.ai/api/v1",

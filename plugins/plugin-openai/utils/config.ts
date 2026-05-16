@@ -173,7 +173,15 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
 }
 
 export function getImageDescriptionApiKey(runtime: IAgentRuntime): string | undefined {
-  return getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_API_KEY") ?? getApiKey(runtime);
+  const imageDescriptionApiKey = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_API_KEY");
+  if (imageDescriptionApiKey) {
+    return imageDescriptionApiKey;
+  }
+  const imageDescriptionURL = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL");
+  if (imageDescriptionURL && /(^|\.)openai\.com(\/|$)/i.test(imageDescriptionURL)) {
+    return getSetting(runtime, "OPENAI_API_KEY");
+  }
+  return getApiKey(runtime);
 }
 
 export function getImageDescriptionAuthHeader(runtime: IAgentRuntime): Record<string, string> {

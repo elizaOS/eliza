@@ -6187,9 +6187,7 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 
 	if (
 		looksLikeCreativeWritingRequest(normalized) &&
-		!/\b(?:build|code|implement|scaffold|program|develop)\b[\s\S]{0,120}\b(?:app|site|page|code|project|frontend|backend|cli|script)\b/iu.test(
-			normalized,
-		)
+		!looksLikeCreativeCodingWorkRequest(normalized)
 	) {
 		return false;
 	}
@@ -6221,6 +6219,27 @@ function looksLikeCreativeWritingRequest(text: string): boolean {
 	if (!creativeObject) return false;
 	return /\b(?:write|compose|draft|make|create|give me|generate)\b/iu.test(
 		normalized,
+	);
+}
+
+function looksLikeCreativeCodingWorkRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (
+		/\b(?:poem|haiku|sonnet|verse|story|joke|song|lyrics)\b[\s\S]{0,80}\b(?:about|on|how|that|where|involving)\b[\s\S]{0,80}\b(?:app|site|page|project)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const codingObject =
+		/\b(?:app|site|page|code|project|frontend|backend|cli|script)\b/iu;
+	const codingVerb =
+		/\b(?:build|code|implement|scaffold|program|develop|create|make|write|generate)\b/iu;
+	return (
+		(codingVerb.test(normalized) && codingObject.test(normalized)) ||
+		/\b(?:app|site|page|project)\b[\s\S]{0,160}\b(?:that|which|where|with|for)\b/iu.test(
+			normalized,
+		)
 	);
 }
 

@@ -829,8 +829,7 @@ export function createStreamingTranscriber(
 	const envAllowsOpenVinoWhisper = allowOpenVinoWhisperFromEnv();
 	const allowOpenVinoWhisper =
 		prefer === "openvino-whisper" ||
-		opts.allowOpenVinoWhisper !== false ||
-		envAllowsOpenVinoWhisper;
+		(opts.allowOpenVinoWhisper ?? envAllowsOpenVinoWhisper ?? true);
 
 	const tryFusedStreaming = (): StreamingTranscriber | null => {
 		if (!opts.ffi || !opts.getContext) return null;
