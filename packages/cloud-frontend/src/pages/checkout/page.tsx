@@ -1,10 +1,10 @@
-import { CloudVideoBackground } from "@elizaos/ui";
 import {
   BRAND_COLORS,
   BRAND_PATHS,
   CONCEPT_PRODUCT_IMAGES,
   LOGO_FILES,
 } from "@elizaos/shared-brand";
+import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
   Box,
@@ -254,7 +254,10 @@ export default function CheckoutPage() {
         />
       </Helmet>
       <LandingHeader />
-      <main id="main" className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12">
+      <main
+        id="main"
+        className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12"
+      >
         <section className="self-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}

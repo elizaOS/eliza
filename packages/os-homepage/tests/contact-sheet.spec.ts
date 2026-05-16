@@ -37,7 +37,7 @@ test.describe("contact sheet", () => {
     await page.waitForTimeout(400);
 
     for (const frame of desktopFrames) {
-      const locator = page.locator(frame.selector!).first();
+      const locator = page.locator(frame.selector).first();
       await locator.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
       await page.screenshot({
@@ -55,7 +55,7 @@ test.describe("contact sheet", () => {
     await page.waitForTimeout(400);
 
     for (const frame of mobileFrames) {
-      const locator = page.locator(frame.selector!).first();
+      const locator = page.locator(frame.selector).first();
       await locator.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
       await page.screenshot({

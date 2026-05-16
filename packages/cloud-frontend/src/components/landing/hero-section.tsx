@@ -1,7 +1,7 @@
 "use client";
 
-import { CloudVideoBackground } from "@elizaos/ui";
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 

@@ -1,9 +1,5 @@
+import { BRAND_FAVICONS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
-import {
-  BRAND_FAVICONS,
-  BRAND_PATHS,
-  LOGO_FILES,
-} from "@elizaos/shared-brand";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";

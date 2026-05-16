@@ -31,7 +31,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaOS/eliza.git",
-    "directory": "packages/native-plugins/macosalarm"
+    "directory": "plugins/plugin-native-macosalarm"
   },
   "keywords": [
     "elizaos",

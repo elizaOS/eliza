@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "test:ui": "playwright test --ui",
+    "test": "bun --bun playwright test",
+    "test:headed": "bun --bun playwright test --headed",
+    "test:ui": "bun --bun playwright test --ui",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
-import { CloudVideoBackground } from "@elizaos/ui";
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import LandingHeader from "../../components/layout/landing-header";

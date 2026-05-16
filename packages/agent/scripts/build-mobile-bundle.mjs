@@ -655,9 +655,8 @@ const nativeCapacitorPlugin = {
       const packageName = args.path.replace("@elizaos/capacitor-", "");
       const target = path.resolve(
         repoRoot,
-        "packages",
-        "native-plugins",
-        packageName,
+        "plugins",
+        `plugin-native-${packageName}`,
         "src",
         "index.ts",
       );

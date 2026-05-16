@@ -17,7 +17,16 @@
  * symlinks. Idempotent: existing correct symlinks are left alone.
  */
 
-import { existsSync, readdirSync, readFileSync, lstatSync, symlinkSync, mkdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,8 +76,14 @@ for (const dirName of readdirSync(pluginsRoot)) {
     try {
       const stat = lstatSync(targetDir);
       if (stat.isSymbolicLink()) {
-        needLink = false;
-        alreadyOk += 1;
+        const currentTarget = realpathSync(targetDir);
+        const expectedTarget = realpathSync(pkgDir);
+        if (currentTarget === expectedTarget) {
+          needLink = false;
+          alreadyOk += 1;
+        } else {
+          rmSync(targetDir, { recursive: true, force: true });
+        }
       } else {
         // Real directory at the same path — bun installed something
         // unrelated under the same name. Leave it; printing here would

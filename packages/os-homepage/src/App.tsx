@@ -6,7 +6,7 @@ import {
 } from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
@@ -49,7 +49,7 @@ const hardwareProducts: Product[] = [
     name: "Raspberry Pi case",
     price: "$49",
     ships: "Ships October 2026",
-    image: CONCEPT_PRODUCT_IMAGES.billboard,
+    image: "/assets/elizaos-box-concept.avif",
     imageAlt: "ElizaOS Raspberry Pi case concept",
     summary: "A shell for a local agent.",
     detail: "Bring your own Pi. We ship the enclosure.",
@@ -61,7 +61,7 @@ const hardwareProducts: Product[] = [
     name: "Custom Raspberry Pi + case",
     price: "$149",
     ships: "Ships October 2026",
-    image: CONCEPT_PRODUCT_IMAGES.billboard,
+    image: "/assets/elizaos-box-concept.avif",
     imageAlt: "ElizaOS Raspberry Pi kit concept",
     summary: "Plug in, boot, run local.",
     detail: "Pi, case, SD card pre-imaged. One box, one cable.",
@@ -95,7 +95,7 @@ const hardwareProducts: Product[] = [
     sku: "elizaos-box",
     name: "ElizaOS Box",
     ships: "Pre-order",
-    image: CONCEPT_PRODUCT_IMAGES.billboard,
+    image: "/assets/elizaos-box-concept.avif",
     imageAlt: "ElizaOS box hardware concept",
     summary: "A household agent appliance.",
     detail: "Sits on the shelf. Runs the home.",
@@ -179,6 +179,28 @@ function ProductImage({ product }: { product: Product }) {
       className="product-image"
       draggable={false}
     />
+  );
+}
+
+function CloudHero({ children }: { children: ReactNode }) {
+  return (
+    <section className="band hero-cloud" data-hero="cloud">
+      <video
+        className="cloud-video"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        poster="/clouds/poster.jpg"
+        data-testid="cloud-video"
+      >
+        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
+        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
+      </video>
+      <div className="cloud-scrim" aria-hidden="true" />
+      <div className="band-inner hero-cloud-inner">{children}</div>
+    </section>
   );
 }
 
@@ -572,29 +594,23 @@ function HomePage() {
     <div className="os-shell">
       <Header />
       <main id="main">
-        <section className="band band-blue hero-os">
-          <div className="band-inner hero-os-inner">
-            <img
-              src={`${BRAND_PATHS.logos}/${LOGO_FILES.markWhiteBlueBg}`}
-              alt=""
-              aria-hidden="true"
-              className="hero-mark"
-              draggable={false}
-            />
-            <h1>The agentic operating system.</h1>
-            <p className="hero-copy">Open source. Local first.</p>
-            <div className="hero-actions">
-              <a href="#download" className="button">
-                Download
-                <Download className="icon" />
-              </a>
-              <a href="#hardware" className="button button-dark">
-                Hardware
-                <ShoppingBag className="icon" />
-              </a>
-            </div>
+        <CloudHero>
+          <h1>The agentic operating system.</h1>
+          <p className="hero-copy">
+            Local first. Open source. Runs on your phone, your laptop, a USB
+            stick, or a mini PC.
+          </p>
+          <div className="hero-actions">
+            <a href="#download" className="button">
+              Download
+              <Download className="icon" />
+            </a>
+            <a href="#hardware" className="button button-dark">
+              Hardware
+              <ShoppingBag className="icon" />
+            </a>
           </div>
-        </section>
+        </CloudHero>
 
         <section id="download" className="band band-white">
           <div className="band-inner split-band">

@@ -35,7 +35,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza.git",
-    "directory": "packages/native-plugins/agent"
+    "directory": "plugins/plugin-native-agent"
   },
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
