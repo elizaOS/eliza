@@ -1,4 +1,5 @@
 import inspect
+import subprocess
 
 from tps.configuration.conflicting_app import ConflictingApp
 from tps.configuration.binding import Binding
@@ -23,6 +24,48 @@ class BrowserBookmarks(Feature):
             process_names=["firefox.real"],
         ),
     )
+
+
+class MiladyData(Feature):
+    Id = "MiladyData"
+    translatable_name = "elizaOS Data"
+    Bindings = (
+        Binding("milady/eliza", "/home/amnesia/.eliza"),
+        Binding("milady/milady", "/home/amnesia/.milady"),
+        Binding("milady/config", "/home/amnesia/.config/elizaOS"),
+        Binding("milady/config-legacy", "/home/amnesia/.config/milady"),
+        Binding("milady/config-legacy-caps", "/home/amnesia/.config/Milady"),
+        Binding("milady/cef-cache", "/home/amnesia/.cache/ai.elizaos.app"),
+        Binding("milady/cef-cache-legacy", "/home/amnesia/.cache/ai.milady.milady"),
+    )
+    enabled_by_default = True
+    conflicting_apps = (
+        ConflictingApp(
+            name="elizaOS",
+            desktop_id="milady.desktop",
+            process_names=["launcher", "bun"],
+        ),
+    )
+
+    def _run_persistence_maintenance(self, command: str):
+        subprocess.run(
+            ["/usr/local/lib/elizaos/persistence-maintenance", command],
+            check=False,
+        )
+
+    def do_activate(self, job, non_blocking=False):
+        self._run_persistence_maintenance("enter")
+        try:
+            super().do_activate(job, non_blocking=non_blocking)
+        finally:
+            self._run_persistence_maintenance("leave")
+
+    def do_deactivate(self, job):
+        self._run_persistence_maintenance("enter")
+        try:
+            super().do_deactivate(job)
+        finally:
+            self._run_persistence_maintenance("leave")
 
 
 class WelcomeScreen(Feature):

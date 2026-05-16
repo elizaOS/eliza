@@ -9,4 +9,45 @@ echo "Ensuring filesystem permissions are correct"
 # Despite our attempt to set these permissions correctly in auto/config,
 # sometimes /tmp ends up with incorrect permissions in the chroot,
 # which breaks some APT operations in later stages of the build.
-chmod 2777 /tmp
+chmod 1777 /tmp
+
+chown root:root \
+    /usr/local/bin/milady \
+    /usr/local/lib/elizaos/capability-runner \
+    /usr/local/lib/elizaos/elizaos-webkit-shell \
+    /usr/local/lib/elizaos/milady-keeper \
+    /usr/local/lib/elizaos/renderer-server.mjs \
+    /usr/local/lib/elizaos/start-elizaos-agent-user \
+    /usr/local/lib/elizaos/start-elizaos-browser-user \
+    /usr/local/lib/elizaos/start-elizaos-renderer-user \
+    /usr/local/lib/elizaos/start-milady-user
+chmod 0755 \
+    /usr/local/bin/milady \
+    /usr/local/lib/elizaos/capability-runner \
+    /usr/local/lib/elizaos/elizaos-webkit-shell \
+    /usr/local/lib/elizaos/milady-keeper \
+    /usr/local/lib/elizaos/renderer-server.mjs \
+    /usr/local/lib/elizaos/start-elizaos-agent-user \
+    /usr/local/lib/elizaos/start-elizaos-browser-user \
+    /usr/local/lib/elizaos/start-elizaos-renderer-user \
+    /usr/local/lib/elizaos/start-milady-user
+
+chown root:root \
+    /etc/systemd/system/milady.path \
+    /etc/systemd/system/milady.service \
+    /etc/systemd/user/elizaos-agent.service \
+    /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/milady.service \
+    /usr/share/applications/milady.desktop
+chmod 0644 \
+    /etc/systemd/system/milady.path \
+    /etc/systemd/system/milady.service \
+    /etc/systemd/user/elizaos-agent.service \
+    /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/milady.service \
+    /usr/share/applications/milady.desktop
+
+if [ -e /etc/generate-sudoers.d/elizaos-capability-runner.toml ]; then
+    chown root:root /etc/generate-sudoers.d/elizaos-capability-runner.toml
+    chmod 0644 /etc/generate-sudoers.d/elizaos-capability-runner.toml
+fi

@@ -1,4 +1,5 @@
 wiki/src/
+config/chroot_local-includes/usr/share/elizaos/milady-app/
 config/chroot_local-includes/usr/share/doc/tails/website/
 config/chroot_local-includes/usr/lib/python3/dist-packages/additional_software.py
 config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py

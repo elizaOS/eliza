@@ -1,4 +1,4 @@
-# ROADMAP — from here to a real, fully-complete milady-tails
+# ROADMAP — from here to a real, fully-complete elizaOS Live
 
 This is the honest road. `PLAN.md` is the phase map; the `docs/specs/`
 are the turn-by-turn directions; **this doc is the realistic schedule,
@@ -8,39 +8,51 @@ No optimism inflation. Where something is risky or unknown, it says so.
 
 ---
 
-## Where we are right now (2026-05-14)
+## Where we are right now (2026-05-16)
 
 **Done and proven:**
-- The **containerized build pipeline** works. A full Tails-based ISO
-  builds end-to-end in a container — ~1.9 GB, boots, isohybrid. No
+- The **containerized build pipeline** works. A full elizaOS ISO
+  builds end-to-end in a container and boots as a CD-ROM ISO. No
   Vagrant, no host setup, any-OS, fast incremental rebuilds.
 - **6 genuine Tails Trixie-compat bugs** found and fixed along the way.
-- **Every implementation phase (2–9) is fully spec'd** at the file level.
-- The **Milady Electrobun Linux app builds** (the build sequence is
+- **Every implementation phase (2–9) has a source-level spec/backlog.**
+- The **elizaOS desktop app builds** (the build sequence is
   fragile but verified and documented).
 - Brand assets rendered; build infra clean-code reviewed; the Phase 6
-  agent-tree refactor fully mapped.
+  agent/runtime integration risks are documented.
+- Local overlays now exist for elizaOS branding, Privacy Mode, elizaOS app
+  install/autostart, a conservative elizaOS capability broker, and elizaOS
+  Persistent Storage.
+- The old root-level usbeliza prototype has been removed from this branch;
+  the active Linux distro work now lives under this Tails-based variant.
 
 **Not done:**
-- The ISO has been built but **not yet verified booting to the greeter**
-  in QEMU (in progress).
-- **Zero Milady-specific implementation** — no rebrand, no app baked in,
-  no agent wired. Phases 2–9 are specs, not code.
+- The current full ISO build/test pass is still in progress. The latest
+  artifact is not demo-approved until the rebuilt ISO passes QEMU greeter,
+  desktop, app/service, persistence, and privacy checks.
+- elizaOS app launch, CEF/sandbox behavior, privacy/direct networking, and
+  Persistent Storage behavior still need proof inside the rebuilt live OS.
+- The app/runtime can inherit elizaOS state/privacy/broker env, but there
+  are not yet first-class approval-gated app actions for privileged
+  package/network mutation.
+- Phases 8–9 are still specs/backlog, not release-complete code.
 
-So: the *build machine* is essentially complete. The *product* —
-milady-tails itself — is at the starting line of Phase 2, with every
-phase mapped.
+So: the *build machine* is mostly complete. The *product* — elizaOS Live
+— has the core overlays in place, but the next heavy gate is still a
+fresh rebuild + boot + app + mode/persistence validation.
 
 ---
 
 ## The two milestones
 
-### Milestone A — "Demo-able" (a Milady-branded OS that boots)
+### Milestone A — "Demo-able" (an elizaOS-branded OS that boots)
 
-**Phases 1 + 2.** A USB-bootable ISO that says Milady everywhere — boot
-menu, Plymouth splash, greeter, wallpaper, `os-release`. Boots in QEMU
-and on real hardware. **No Milady app yet** — this is "here's our OS, it
-boots, it's branded."
+**Phases 1 + 2 plus app launch proof.** A USB-bootable ISO that says
+elizaOS everywhere — boot menu, Plymouth splash, greeter, wallpaper,
+`os-release` — and automatically starts the bundled elizaOS app as a
+normal desktop window. Boots in QEMU and on real hardware. The local tree
+also contains privacy/persistence/broker overlays, but this milestone only
+claims demo readiness after the app stays running in the rebuilt image.
 
 - Effort: Phase 1 finish (~hours, mostly build iteration) + Phase 2
   (~1–2 days — config-only, validated with `just binary` ~10 min/cycle).
@@ -49,10 +61,10 @@ boots, it's branded."
 
 ### Milestone B — "v1.0 fully complete" (the real product)
 
-**Phases 1–11.** Milady is the desktop. You boot the USB, land in the
-Milady app, chat with Eliza, she builds apps, runs the local LLM, opens
-windows — in all 4 storage×privacy combos, with encrypted persistence,
-validated on real hardware, released.
+**Phases 1–11.** elizaOS is the desktop. You boot the USB, land in the
+elizaOS app, chat with Eliza, she builds apps, runs the local LLM or a
+signed cloud/model provider, opens windows — in all 4 storage×privacy
+combos, with encrypted persistence, validated on real hardware, released.
 
 - Effort: **multi-week.** The honest breakdown is below.
 - Risk: medium-high, concentrated in Phases 4 and 6 (see Risk section).
@@ -90,13 +102,13 @@ Phase 1 ──> Phase 2 ──┬──> Phase 3 ──────────�
 | Phase | What | Effort | Confidence |
 |---|---|---|---|
 | 1 | Base ISO builds + boots | hours (build iteration) | high — pipeline proven |
-| 2 | Rebrand to Milady | 1–2 days | high — config only |
-| 3 | Privacy-mode toggle | 3–5 days | medium — firewall ordering is subtle |
-| 4 | Bake the Milady app | 3–6 days | **low** — ~2.9 GB tree, ISO-size + chrome-sandbox unknowns |
-| 5 | Auto-launch | 1–2 days | high — mostly config |
-| 6 | Wire the agent | **1–2 weeks** | **low-medium** — real refactor, see audit |
-| 7 | Persistence | 3–5 days | high — Tails-native, tiny footprint |
-| 8 | Mode-parity harness + run | ~1 week | medium — tedious, reuses usbeliza harnesses |
+| 2 | Rebrand OS to elizaOS | 1–2 days | high — config only |
+| 3 | Privacy-mode toggle | overlay present; validation still needed | medium — firewall ordering is subtle |
+| 4 | Bake the elizaOS app | overlay/payload present; validation still needed | **low** — ~2.9 GB tree, ISO-size + chrome-sandbox unknowns |
+| 5 | Auto-launch | overlay present; validation still needed | high — mostly config |
+| 6 | Wire the agent | OS env/broker partial; shared-agent work still **1–2 weeks** | **low-medium** — real refactor, see audit |
+| 7 | Persistence | overlay present; validation still needed | high — Tails-native, tiny footprint |
+| 8 | Mode-parity harness + run | ~1 week | medium — tedious QEMU automation, no longer shared with the removed prototype |
 | 9 | Customization actions | 1 week | medium — substrate exists |
 | 10 | Bare-metal validation | 3–5 days | medium — hardware quirks |
 | 11 | Release | 2–3 days | high |
@@ -109,13 +121,14 @@ Phase 1's build is confirmed booting.
 
 ## What "fully complete" actually means (the v1.0 definition of done)
 
-milady-tails v1.0 is done when **all of this is true on real hardware**:
+elizaOS Live v1.0 is done when **all of this is true on real hardware**:
 
 1. The ISO `dd`'s to a USB stick and boots on 2–3 real machines (Intel,
    AMD, NVIDIA).
-2. Boot menu offers "Milady" and "Milady — Privacy Mode"; everything is
-   Milady-branded; Tails is credited (greeter footer, About, CREDITS).
-3. After the greeter, the Milady app launches as the desktop and the v36
+2. Boot menu offers "elizaOS" and "elizaOS — Privacy Mode"; everything at
+   the OS layer is elizaOS-branded; Tails is credited (greeter footer,
+   About, CREDITS).
+3. After the greeter, the elizaOS app launches as the desktop and the v36
    3-question onboarding runs in chat.
 4. Eliza works: local LLM chat (GPU-accelerated), BUILD_APP (stub +
    Claude), OPEN_APP, SET_WALLPAPER, the customization actions.
@@ -135,18 +148,18 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
 
 ## The risks that could actually blow the timeline
 
-1. **ISO size (Phase 4).** The Milady app tree is ~2.9 GB uncompressed.
+1. **ISO size (Phase 4).** The elizaOS app tree is ~2.9 GB uncompressed.
    On top of Tails the ISO could hit 3–4 GB. Mitigation work (slim build
    profile, aggressive squashfs) may be needed and isn't scoped yet.
 2. **`chrome-sandbox` under AppArmor + squashfs (Phase 4).** The likely
-   "boots but Milady won't render" failure. `--no-sandbox` is the
+   "boots but elizaOS won't render" failure. `--no-sandbox` is the
    fallback but weakens the renderer on a security-focused OS.
-3. **Phase 6 is a real refactor, not verification.** PLAN.md's old "1
-   week, mostly verification" estimate was wrong. The portability audit
-   found 6 categories: ~11 sway files, a ~25-file env rename,
-   `~/.eliza` path hardcoding, the persistence-script swap. It's
-   tractable and mostly mechanical — but it's the longest pole.
-4. **Milady build fragility.** The desktop build needs an exact
+3. **App/agent OS integration is real product work, not verification.**
+   The app boots from a live image only if Electron/CEF, embedded Bun,
+   plugins, persistence paths, and model/provider defaults all agree with
+   Tails' live-user environment. The demo has targeted workarounds for
+   some of this; the release path needs cleaner package boundaries.
+4. **elizaOS app build fragility.** The desktop build needs an exact
    `eliza`-first + `setup-upstreams.mjs` + `MILADY_ELIZA_SOURCE=local`
    sequence. If the milady repo's lockfile/dist-tag state drifts, the
    `just milady-app` recipe breaks. Worth fixing upstream.
@@ -162,13 +175,36 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
 
 ## Immediate next steps (in order)
 
-1. **Confirm Phase 1** — verify the built ISO boots to the Tails greeter
-   in QEMU. (In progress.)
-2. **Commit** the build infra + all these docs to the repo.
-3. **Reconcile the vendored `tails/` tree** — decide its long-term git
-   strategy (committed files vs submodule); apply the `gdisk`/`mtools`
-   fix there (done); make `just build` the canonical entrypoint.
-4. **Phase 2** — rebrand. Brand assets are ready; the spec is exact.
-   This gets us to Milestone A — a demo-able branded ISO.
-5. Then the Phase 3 / 4 / 7 parallelizable cluster, then 5 → 6, then 8,
-   9, 10, 11.
+1. **Finish the current low-CPU rebuild.** Do not call it done until the
+   fresh ISO checksum is known and the artifact is booted.
+2. **QEMU visual pass for Phase 2** — confirm elizaOS boot menu, Plymouth,
+   greeter, wallpaper, system identity, and Tails credit.
+3. **QEMU/runtime pass for Phase 3-7** — confirm direct/privacy networking,
+   elizaOS launch/chrome-sandbox, always-on normal-window behavior,
+   conservative broker status/root-status, and Persistent Storage.
+4. **Run a guarded USB write on a sacrificial removable drive** — prove
+   the real-device path without touching the laptop's internal disk.
+5. Continue mode-parity, app-close/minimize UX, model onboarding, update
+   infrastructure, release signing, and enterprise hardening.
+
+## Product and Distribution Track
+
+The demo ISO is not the whole product. Real distribution needs:
+
+- **Signed releases:** versioned ISO, SHA256, detached signature, release
+  notes, SBOM, license bundle, and a reproducible build target.
+- **No-full-ISO updates where possible:** signed app/runtime updates can
+  land in encrypted persistence; OS/base updates should use a Tails-style
+  incremental update path or a full-image fallback.
+- **Model delivery:** do not bake large/private models into every ISO by
+  default. Onboarding should offer cloud sign-in, local-only mode, or a
+  signed Eliza-1 download cached in persistent storage.
+- **USB writer UX:** keep the guarded CLI script for developers, then add
+  the same removable-disk checks to the desktop app so users can write a
+  new elizaOS USB without Etcher.
+- **Enterprise channel:** staged rollout rings, revocation, fleet policy,
+  recovery image, hardware compatibility notes, and root-capability audit
+  logs.
+
+See [`docs/distribution-and-updates.md`](./docs/distribution-and-updates.md)
+and [`docs/production-readiness.md`](./docs/production-readiness.md).

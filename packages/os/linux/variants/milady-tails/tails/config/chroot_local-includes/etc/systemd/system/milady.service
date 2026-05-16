@@ -1,0 +1,14 @@
+[Unit]
+Description=elizaOS AI desktop home supervisor
+After=display-manager.service
+ConditionPathExists=/usr/local/bin/milady
+ConditionPathExists=/opt/milady/bin/launcher
+RefuseManualStop=yes
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/elizaos/milady-keeper
+Restart=always
+RestartSec=2
+SyslogIdentifier=milady-supervisor

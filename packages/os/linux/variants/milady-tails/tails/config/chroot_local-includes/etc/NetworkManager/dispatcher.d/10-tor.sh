@@ -11,6 +11,8 @@ if [ -z "$1" ] || [ "$1" = "lo" ]; then
     exit 0
 fi
 
+[ "$(cat /etc/elizaos/privacy-mode 2>/dev/null || printf on)" != "off" ] || exit 0
+
 BASENAME=$(basename "$0")
 
 if [ "$2" = "up" ]; then

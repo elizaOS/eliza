@@ -1,4 +1,4 @@
-# milady-tails — Justfile recipes
+# elizaOS Live — Justfile recipes
 #
 # The ISO build is containerized: any host with Docker (Linux / macOS /
 # Windows WSL2 / CI) builds an identical ISO with no VM, no Vagrant, no
@@ -30,15 +30,73 @@ setup:
 
 # --- Build ------------------------------------------------------------------
 
+# Build or stage the Milady Electrobun app artifact for the ISO. If the
+# existing app build is present, this only rsyncs it into live-build's
+# chroot_local-includes overlay. Set ELIZAOS_BUILD_MILADY_APP=1 to allow
+# this recipe to run the heavier app build when the artifact is missing.
+milady-app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    milady_root="$(cd ../../../../../.. && pwd)"
+    app_out="${milady_root}/eliza/packages/app-core/platforms/electrobun/build/dev-linux-x64/Milady-dev"
+    stage="tails/config/chroot_local-includes/usr/share/elizaos/milady-app"
+    if [ ! -x "${app_out}/bin/launcher" ]; then
+        if [ "${ELIZAOS_BUILD_MILADY_APP:-0}" != "1" ]; then
+            echo "Milady app build not found at ${app_out}/bin/launcher"
+            echo "Build it separately, or rerun with ELIZAOS_BUILD_MILADY_APP=1 to permit this recipe to build it."
+            exit 1
+        fi
+        echo "Milady app build not found; ELIZAOS_BUILD_MILADY_APP=1 so building it now"
+        ( cd "${milady_root}" && bun install --no-frozen-lockfile --ignore-scripts )
+        ( cd "${milady_root}" && bun install --cwd eliza --no-frozen-lockfile --ignore-scripts )
+        ( cd "${milady_root}" && MILADY_ELIZA_SOURCE=local node scripts/setup-upstreams.mjs )
+        ( cd "${milady_root}/eliza/packages/electrobun-carrots" && bun run build )
+        ( cd "${milady_root}" && MILADY_ELIZA_SOURCE=local bun run build:desktop )
+    fi
+    test -x "${app_out}/bin/launcher" || { echo "missing ${app_out}/bin/launcher"; exit 1; }
+    if [ -e "${stage}" ] && ! rm -rf "${stage}"; then
+        sudo -n rm -rf "${stage}"
+    fi
+    mkdir -p "${stage}"
+    rsync -a --delete "${app_out}/" "${stage}/"
+    node scripts/prepare-milady-app-overlay.mjs "${stage}"
+    echo "staged Milady app at ${stage}"
+
 # Full clean ISO build → out/. ~1.5h cold, much faster once the
 # apt-cacher-ng volume is warm. This is the release-quality build.
-build:
+build: milady-app
     ./build.sh build
 
 # Like 'build' but with low-compression squashfs — faster mksquashfs,
 # larger ISO. For dev iteration when you just need a bootable image.
-build-fast:
+build-fast: milady-app
     MT_FAST=1 ./build.sh build
+
+# Low-CPU full build for hot laptops / parallel dev work. Override the
+# cap with ELIZAOS_BUILD_CPUS=3 just build-cool. This defaults to
+# demo-friendly docs behavior; set ELIZAOS_SKIP_WEBSITE=0 to rebuild docs.
+build-cool: milady-app
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cpus="${ELIZAOS_BUILD_CPUS:-2}"
+    ELIZAOS_BUILD_CPUS="${cpus}" \
+        ELIZAOS_MKSQUASHFS_PROCESSORS="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${cpus}}" \
+        ELIZAOS_SKIP_WEBSITE="${ELIZAOS_SKIP_WEBSITE:-1}" \
+        MT_FAST=1 \
+        ./build.sh build
+
+# Fastest full demo build: keep the Tails OS build, low-compression ISO,
+# and CPU cap, but skip rebuilding the bundled offline website/docs.
+# Use release `just build` when the local Tails documentation must be exact.
+build-demo: milady-app
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cpus="${ELIZAOS_BUILD_CPUS:-2}"
+    ELIZAOS_BUILD_CPUS="${cpus}" \
+        ELIZAOS_MKSQUASHFS_PROCESSORS="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${cpus}}" \
+        ELIZAOS_SKIP_WEBSITE=1 \
+        MT_FAST=1 \
+        ./build.sh build
 
 # Go/no-go: run only `lb config` in the container. Fast (~1 min) sanity
 # check that the Tails config tree still processes cleanly.
@@ -48,10 +106,25 @@ config:
 # Incremental rebuild: reuse the chroot/ from the last full build and
 # re-run only the squashfs + ISO assembly (~10 min). Use after editing
 # overlay files. Run a full `just build` first to create the chroot/.
-binary:
+binary: milady-app
     ./build.sh binary
 
+# Low-CPU incremental rebuild. Still requires an existing chroot/ from a
+# previous full build.
+binary-cool: milady-app
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cpus="${ELIZAOS_BUILD_CPUS:-2}"
+    ELIZAOS_BUILD_CPUS="${cpus}" \
+        ELIZAOS_MKSQUASHFS_PROCESSORS="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${cpus}}" \
+        MT_FAST=1 \
+        ./build.sh binary
+
 # --- Test -------------------------------------------------------------------
+
+# Run CPU-light static checks only. No Docker, no QEMU, no ISO build.
+static-smoke:
+    scripts/static-smoke.sh
 
 # Boot the built chroot/ in systemd-nspawn — seconds, no QEMU. For
 # non-GUI sanity (do my systemd units parse? did my file land where I
@@ -61,27 +134,27 @@ binary:
 nspawn:
     @test -d tails/chroot || { echo "no tails/chroot/ — run 'just build' first"; exit 1; }
     sudo systemd-nspawn --boot --directory=tails/chroot \
-        --volatile=overlay --machine=milady-tails-dev
+        --volatile=overlay --machine=elizaos-live-dev
 
-# Boot the latest built ISO in QEMU. Presents the ISO as a USB stick so
-# Tails' `live-media=removable` cmdline is satisfied. Needs KVM.
+# Boot the latest built ISO in QEMU. Tails stopped making the ISO
+# isohybrid, so the ISO must be presented as a CD-ROM. Needs KVM.
 boot:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    iso="$(ls -t out/*.iso 2>/dev/null | head -1 || true)"
-    [ -n "${iso}" ] || { echo "no ISO in out/ — run 'just build' first"; exit 1; }
-    echo "booting ${iso}"
-    qemu-system-x86_64 -enable-kvm -m 4096 -smp 2 \
-        -drive file="${iso}",format=raw,if=none,id=isostick \
-        -device qemu-xhci -device usb-storage,drive=isostick,bootindex=1 \
-        -vga virtio -display gtk
+    scripts/boot-qemu.sh
 
-# Lint / typecheck — runs against the agent, shared with usbeliza.
+# Write the latest built ISO to a removable USB device with guard rails.
+usb-write device:
+    scripts/usb-write.sh "{{device}}"
+
+# Write a specific ISO to a removable USB device with guard rails.
+usb-write-iso device iso:
+    scripts/usb-write.sh "{{device}}" "{{iso}}"
+
+# CPU-light validation for the active elizaOS Live variant.
 lint:
-    cd ../../agent && bun run typecheck
+    ./scripts/static-smoke.sh
 
 test:
-    cd ../../agent && bun test
+    ./scripts/static-smoke.sh
 
 # --- Clean ------------------------------------------------------------------
 
@@ -97,5 +170,5 @@ clean:
 # everything from the network — only do this to reclaim disk or force a
 # fully cold rebuild.
 cache-clean:
-    docker volume rm milady-tails-acng 2>/dev/null || true
+    docker volume rm elizaos-tails-acng milady-tails-acng 2>/dev/null || true
     @echo "apt-cacher-ng cache volume removed."

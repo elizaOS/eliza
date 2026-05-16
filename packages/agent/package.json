@@ -101,6 +101,36 @@
       "import": "./dist/services/app-session-gate.js",
       "default": "./dist/services/app-session-gate.js"
     },
+    "./services/permissions/probers/index": {
+      "types": "./src/services/permissions/probers/index.d.ts",
+      "eliza-source": {
+        "types": "./src/services/permissions/probers/index.ts",
+        "import": "./src/services/permissions/probers/index.ts",
+        "default": "./src/services/permissions/probers/index.ts"
+      },
+      "bun": {
+        "types": "./src/services/permissions/probers/index.ts",
+        "import": "./src/services/permissions/probers/index.ts",
+        "default": "./src/services/permissions/probers/index.ts"
+      },
+      "import": "./dist/services/permissions/probers/index.js",
+      "default": "./dist/services/permissions/probers/index.js"
+    },
+    "./services/permissions/probers/*": {
+      "types": "./src/services/permissions/probers/*.d.ts",
+      "eliza-source": {
+        "types": "./src/services/permissions/probers/*.ts",
+        "import": "./src/services/permissions/probers/*.ts",
+        "default": "./src/services/permissions/probers/*.ts"
+      },
+      "bun": {
+        "types": "./src/services/permissions/probers/*.ts",
+        "import": "./src/services/permissions/probers/*.ts",
+        "default": "./src/services/permissions/probers/*.ts"
+      },
+      "import": "./dist/services/permissions/probers/*.js",
+      "default": "./dist/services/permissions/probers/*.js"
+    },
     "./security/*": {
       "types": "./src/security/*.d.ts",
       "eliza-source": {

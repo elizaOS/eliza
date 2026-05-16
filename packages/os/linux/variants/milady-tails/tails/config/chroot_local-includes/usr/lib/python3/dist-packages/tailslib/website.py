@@ -3,8 +3,8 @@ import os
 from tailslib.django import SuspiciousFileOperation, safe_join
 from tailslib.systemd import tor_has_bootstrapped
 
-WEBSITE_URL = "https://tails.net"
-WEBSITE_LOCAL_PATH = "/usr/share/doc/tails/website"
+WEBSITE_URL = "https://elizaos.ai"
+WEBSITE_LOCAL_PATH = "/usr/share/doc/elizaos/website"
 LANG_CODE = os.getenv("LANG", "en")[0:2]
 
 
@@ -56,6 +56,9 @@ def find_local_page(page: str, lang: str) -> str:
         local_page = get_local_path(page, lang_code)
         if os.path.isfile(local_page):
             return "file://" + local_page
+    fallback_page = get_local_path("doc", "en")
+    if os.path.isfile(fallback_page):
+        return "file://" + fallback_page
     return ""
 
 

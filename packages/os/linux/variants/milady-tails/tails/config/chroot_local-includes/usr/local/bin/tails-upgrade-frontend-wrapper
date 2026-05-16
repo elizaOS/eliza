@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
 """
-Tails upgrade frontend wrapper.
+elizaOS upgrade frontend wrapper.
 
 Test with "python3 tails-upgrade-frontend-wrapper.py doctest".
 The tests will start the upgrade process which could pop up a dialog box
@@ -36,10 +36,10 @@ RUN_AS_USER = "tails-upgrade-frontend"
 ERROR_MESSAGE = _(
     """<b>Not enough memory available to check for upgrades.</b>
 
-Make sure this system satisfies the requirements for running Tails.
+Make sure this system satisfies the requirements for running elizaOS.
 See file:///usr/share/doc/tails/website/doc/about/requirements.en.html
 
-Try to restart Tails to check for upgrades again.
+Try to restart elizaOS to check for upgrades again.
 
 Or do a manual upgrade.
 See {manual_upgrade_url}"""

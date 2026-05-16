@@ -180,7 +180,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
             message_type=Gtk.MessageType.WARNING,
             title=_("Persistent Storage Still Locked"),
             text=_(
-                "Do you really want to start Tails without unlocking your Persistent Storage?",
+                "Do you really want to start elizaOS without unlocking your Persistent Storage?",
             ),
             cancel_label=_("Cancel"),
             ok_label=_("Start Without Persistent Storage"),
@@ -193,8 +193,8 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
             title=_("Language and Keyboard layout"),
             text=_(
                 "Your language and keyboard layout will be saved unencrypted "
-                "on your Tails USB stick and applied automatically in the future.\n\n"
-                "Someone who finds your Tails USB stick can see your language and keyboard layout.",
+                "on your elizaOS USB stick and applied automatically in the future.\n\n"
+                "Someone who finds your elizaOS USB stick can see your language and keyboard layout.",
             ),
             cancel_label=_("Cancel"),
             ok_label=_("Save Unencrypted"),
@@ -541,7 +541,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
             label = "{}\n\n{}".format(
                 _("Failed to repair the file system of your Persistent Storage."),
                 _(
-                    "Start Tails to send an error report and learn how to recover your data.",
+                    "Start elizaOS to send an error report and learn how to recover your data.",
                 ),
             )
             self.on_tps_activation_failed(label)
@@ -578,7 +578,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
                     self.on_tps_activation_failed(
                         _(
                             "You aborted the repair of the file system. You can "
-                            "either start Tails without Persistent Storage or restart "
+                            "either start elizaOS without Persistent Storage or restart "
                             "the computer to try repairing the file system again.",
                         ),
                     )
@@ -716,10 +716,10 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
 
     def cb_entry_storage_passphrase_changed(self, editable, user_data=None):
         # Only allow starting if the password entry is empty. We used to
-        # attempt unlocking with the entered password when the "Start Tails"
+        # attempt unlocking with the entered password when the "Start elizaOS"
         # button was clicked, but changed that behavior (see #17136), so
         # we now force users to click the "Unlock" button first before
-        # they can click "Start Tails".
+        # they can click "Start elizaOS".
         passphrase_empty = not bool(editable.get_text())
         self.button_start.set_sensitive(passphrase_empty)
         self.button_storage_unlock.set_sensitive(not passphrase_empty)
@@ -863,7 +863,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
                 str(e)
                 + "\n"
                 + _(
-                    "Start Tails and open the Persistent Storage settings to find out more.",
+                    "Start elizaOS and open the Persistent Storage settings to find out more.",
                 )
             )
             self.on_tps_activation_failed(label)
@@ -893,7 +893,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
         self.image_storage_unlock_failed.set_visible(False)
         self.label_storage_unlock_status.set_label(
             _(
-                "Your Persistent Storage is unlocked. Its content will be available until you shut down Tails.",
+                "Your Persistent Storage is unlocked. Its content will be available until you shut down elizaOS.",
             ),
         )
         self.button_start.set_sensitive(True)
@@ -921,7 +921,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
             _(
                 "Error reading data from your Persistent Storage. The hardware of your USB stick is probably failing.",
             ),
-            _("Start Tails to learn how to recover your data."),
+            _("Start elizaOS to learn how to recover your data."),
         )
         self.on_tps_activation_failed(label)
         self.open_help_after_login("doc/persistent_storage/fsck")
@@ -936,7 +936,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
             text=_(
                 """Errors were detected in the file system of your Persistent Storage.
 
-Tails can try to fix these errors, but this might erase some of your data and take a long time.
+elizaOS can try to fix these errors, but this might erase some of your data and take a long time.
 
 If you already have an up-to-date backup of your Persistent Storage, we recommend that you try to repair.
 
@@ -955,7 +955,7 @@ If you don't have a backup, we recommend that you create a partition image of yo
             # it for the "Create Backup" button out of better options.
             if response == Gtk.ResponseType.REJECT:
                 label = _(
-                    "Start Tails to learn how to create a partition image of your Persistent Storage.",
+                    "Start elizaOS to learn how to create a partition image of your Persistent Storage.",
                 )
                 self.on_tps_activation_failed(label)
                 self.open_help_after_login("doc/persistent_storage/fsck")
@@ -974,14 +974,14 @@ If you don't have a backup, we recommend that you create a partition image of yo
     def on_tps_upgrade_failed(self):
         label = _(
             "Failed to upgrade the Persistent Storage. "
-            "Please start Tails and send an error report.",
+            "Please start elizaOS and send an error report.",
         )
         self.on_tps_activation_failed(label)
 
     def on_tps_unlock_failed(self):
         label = _(
             "Failed to unlock the Persistent Storage. "
-            "Please start Tails and send an error report.",
+            "Please start elizaOS and send an error report.",
         )
         self.on_tps_activation_failed(label)
 
@@ -989,7 +989,7 @@ If you don't have a backup, we recommend that you create a partition image of yo
         if not label:
             label = _(
                 "Failed to activate the Persistent Storage. "
-                "Please start Tails and send an error report.",
+                "Please start elizaOS and send an error report.",
             )
         self.image_storage_state.set_visible(True)
         self.spinner_storage_unlock.set_visible(False)

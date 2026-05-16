@@ -1,0 +1,5 @@
+elizaOS is built on Tails and Debian.
+
+This demo image keeps Milady as the bundled desktop application while the
+operating system branding, boot flow, greeter, wallpaper, and about surfaces
+use elizaOS.

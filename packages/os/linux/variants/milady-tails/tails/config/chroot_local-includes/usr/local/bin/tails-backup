@@ -24,7 +24,7 @@ unlocked_backup_TailsData_device() {
 }
 
 pinentry_auth() {
-    your_device="$(gettext -s 'your backup Tails USB stick')"
+    your_device="$(gettext -s 'your backup elizaOS USB stick')"
     # For consistency, let's use the same text in our prompt as GVFS
     # when unlocking volumes from e.g. nautilus.
     # shellcheck disable=SC3037
@@ -43,14 +43,14 @@ EOF
 
 title="$(gettext -s 'Back Up Persistent Storage')"
 if [ ! -d "$SOURCE" ] || [ ! -b "$(backup_luks_device)" ]; then
-    msg="$(gettext -s 'This utility backs up your Persistent Storage to your backup Tails USB stick.\n\nTo create a backup Tails USB stick, see <a href="file:///usr/share/doc/tails/website/doc/persistent_storage/backup.en.html">making a backup of your Persistent Storage</a>.\n\n<b>Sorry, it is impossible to back up your Persistent Storage.</b>\n\nTo back up your Persistent Storage, you need to:')"
+    msg="$(gettext -s 'This utility backs up your Persistent Storage to your backup elizaOS USB stick.\n\nTo create a backup elizaOS USB stick, see <a href="file:///usr/share/doc/tails/website/doc/persistent_storage/backup.en.html">making a backup of your Persistent Storage</a>.\n\n<b>Sorry, it is impossible to back up your Persistent Storage.</b>\n\nTo back up your Persistent Storage, you need to:')"
     if [ ! -d "$SOURCE" ]; then
         msg="${msg}""$(gettext -s '\n\n• Unlock your Persistent Storage when starting Tails.')"
     fi
     if [ ! -b "$(backup_luks_device)" ]; then
-        msg="${msg}""$(gettext -s '\n\n• Plug in your backup Tails USB stick.')"
+        msg="${msg}""$(gettext -s '\n\n• Plug in your backup elizaOS USB stick.')"
     fi
-    # Ask to retry if only the backup Tails USB stick is missing
+    # Ask to retry if only the backup elizaOS USB stick is missing
     if [ ! -b "$(backup_luks_device)" ] && [ -d "$SOURCE" ]; then
         while [ ! -b "$(backup_luks_device)" ]; do
             if ! zenity --question --title "$title" --text "$msg" --ok-label "$(gettext -s 'Retry')" --cancel-label "$(gettext -s 'Cancel')"; then
@@ -63,7 +63,7 @@ if [ ! -d "$SOURCE" ] || [ ! -b "$(backup_luks_device)" ]; then
     fi
 fi
 
-msg="$(gettext -s 'Do you want to back up your Persistent Storage now?\n\nThis will replace all data in the Persistent Storage of your backup Tails USB stick.\n\nThis will not update the version of Tails on your backup Tails USB stick. Use Tails Cloner to do so.')"
+msg="$(gettext -s 'Do you want to back up your Persistent Storage now?\n\nThis will replace all data in the Persistent Storage of your backup elizaOS USB stick.\n\nThis will not update the version of elizaOS on your backup elizaOS USB stick. Use elizaOS USB Cloner to do so.')"
 if ! zenity --question --title "$title" --text "$msg" --ok-label "$(gettext -s 'Back Up')" --cancel-label "$(gettext -s 'Cancel')"; then
     exit 1
 fi
@@ -103,11 +103,11 @@ if sudo /usr/local/lib/tails-backup-rsync |
     echo "Done!"
     gio mount --eject "${DEST}"
     title="$(gettext -s 'Persistent Storage Backup Successful')"
-    msg="$(gettext -s '<b>Your Persistent Storage was backed up successfully to your backup Tails USB stick!</b>\n\nYou can now safely unplug your backup Tails USB stick.\n\nIf your backup Tails USB stick has an outdated version of Tails, we recommend you\nupdate it by cloning your current Tails using <i>Tails Cloner</i>.\n\nSee <a href="file:///usr/share/doc/tails/website/doc/upgrade/clone.en.html#upgrade">manually upgrade from another Tails</a>.')"
+    msg="$(gettext -s '<b>Your Persistent Storage was backed up successfully to your backup elizaOS USB stick!</b>\n\nYou can now safely unplug your backup elizaOS USB stick.\n\nIf your backup elizaOS USB stick has an outdated version of elizaOS, we recommend you\nupdate it by cloning your current elizaOS using <i>elizaOS USB Cloner</i>.\n\nSee <a href="file:///usr/share/doc/tails/website/doc/upgrade/clone.en.html#upgrade">manually upgrade from another elizaOS</a>.')"
     zenity --info --title "$title" --text "$msg"
 else
     title="$(gettext -s 'Persistent Storage Backup Failed')"
-    msg="$(gettext -s '<b>Backing up your Persistent Storage to your backup Tails USB stick failed.</b>\n\nYou can:\n\n• Try to back up your Persistent Storage again.\n\n• Make sure that there is enough free space on your backup Tails USB stick.\n\n• Analyze the log in the terminal.')"
+    msg="$(gettext -s '<b>Backing up your Persistent Storage to your backup elizaOS USB stick failed.</b>\n\nYou can:\n\n• Try to back up your Persistent Storage again.\n\n• Make sure that there is enough free space on your backup elizaOS USB stick.\n\n• Analyze the log in the terminal.')"
     zenity --error --title "$title" --text "$msg"
     exit 1
 fi

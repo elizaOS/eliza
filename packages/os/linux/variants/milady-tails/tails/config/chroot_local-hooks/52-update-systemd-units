@@ -5,6 +5,32 @@ set -u
 
 ### Tweak systemd unit files
 
+# Live-build preserves ownership from chroot_local-includes. These files
+# are the root-owned control plane that keeps Milady supervised.
+for path in \
+    /etc/systemd/system/milady.path \
+    /etc/systemd/system/milady.service \
+    /etc/systemd/user/elizaos-agent.service \
+    /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/milady.service \
+    /usr/share/applications/milady.desktop \
+    /usr/local/bin/milady \
+    /usr/local/lib/elizaos
+do
+    if [ -e "${path}" ]; then
+        chown -R root:root "${path}"
+    fi
+done
+if [ -d /usr/local/lib/elizaos ]; then
+    find /usr/local/lib/elizaos -type d -exec chmod 755 {} +
+    find /usr/local/lib/elizaos -type f -exec chmod go-w {} +
+    chmod 755 /usr/local/lib/elizaos/* 2>/dev/null || true
+fi
+chmod 644 /etc/systemd/system/milady.path /etc/systemd/system/milady.service \
+    /etc/systemd/user/elizaos-agent.service /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/milady.service 2>/dev/null || true
+chmod 755 /usr/local/bin/milady 2>/dev/null || true
+
 # Workaround for https://bugs.debian.org/934389
 systemctl enable memlockd.service
 
@@ -30,6 +56,18 @@ systemctl enable tails-tor-has-bootstrapped-flag-file.service
 systemctl enable tca-portal.socket
 systemctl enable run-initramfs.mount
 systemctl enable var-tmp.mount
+systemctl enable milady.path
+
+# Debian's GDM unit lives under /usr/lib/systemd/system in this Tails base,
+# while older display-manager symlinks may still point at /lib. Keep
+# graphical.target wired to the real unit so Tails Greeter starts.
+if [ -e /usr/lib/systemd/system/gdm.service ]; then
+    ln -sfn /usr/lib/systemd/system/gdm.service \
+        /etc/systemd/system/display-manager.service
+elif [ -e /usr/lib/systemd/system/gdm3.service ]; then
+    ln -sfn /usr/lib/systemd/system/gdm3.service \
+        /etc/systemd/system/display-manager.service
+fi
 
 # Enable our own systemd user unit files
 systemctl --global enable tails-additional-software-install.service
@@ -52,6 +90,9 @@ systemctl --global enable tails-dump-user-env.service
 systemctl --global enable tails-start-system-gnome-session-target.service
 systemctl --global enable tails-post-greeter-docs.service
 systemctl --global enable tails-post-greeter-whisperback.service
+systemctl --global enable elizaos-agent.service
+systemctl --global enable elizaos-renderer.service
+systemctl --global enable milady.service
 
 # This causes the proxies to run during the whole session, instead of
 # being started and stopped when needed. The only app which needs

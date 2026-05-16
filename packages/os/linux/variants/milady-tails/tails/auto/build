@@ -53,15 +53,29 @@ rm -rf cache/stages_rootfs
 # fix permissions on some source files that will be copied as is to the chroot.
 # they may be wrong, e.g. if the Git repository was cloned with a strict umask.
 chown 0:0 config/chroot_local-includes/etc/resolv.conf
+for path in \
+    config/chroot_local-includes/etc/generate-sudoers.d \
+    config/chroot_local-includes/etc/systemd \
+    config/chroot_local-includes/usr/lib/live/config/0001-elizaos-privacy-mode \
+    config/chroot_local-includes/usr/local/bin/milady \
+    config/chroot_local-includes/usr/local/lib/elizaos \
+    config/chroot_local-includes/usr/share/applications/milady.desktop
+do
+    [ -e "${path}" ] || continue
+    chown -R 0:0 "${path}"
+done
 chmod -R go+rX config/binary_local-includes/
 chmod -R go-w config/chroot_local-includes/
+chmod 1777 config/chroot_local-includes/tmp
 chmod -R go+rX config/chroot_local-includes/etc
 chmod 0440 config/chroot_local-includes/etc/sudoers.d/*
-chmod go+rX config/chroot_local-includes/lib
-chmod go+rX config/chroot_local-includes/lib/live
-chmod -R go+rx config/chroot_local-includes/lib/live/config
-chmod go+rX config/chroot_local-includes/lib/live/mount
-chmod -R go+rX config/chroot_local-includes/lib/systemd
+if [ -e config/chroot_local-includes/lib ]; then
+    chmod go+rX config/chroot_local-includes/lib
+    chmod go+rX config/chroot_local-includes/lib/live
+    chmod -R go+rx config/chroot_local-includes/lib/live/config
+    chmod go+rX config/chroot_local-includes/lib/live/mount
+    chmod -R go+rX config/chroot_local-includes/lib/systemd
+fi
 chmod go+rX config/chroot_local-includes/live
 chmod -R u=rwX,go= config/chroot_local-includes/root
 chmod -R go+rX config/chroot_local-includes/usr
@@ -77,7 +91,7 @@ find \
     config/binary_local-includes \
     config/chroot_local-includes \
     wiki/src \
-    -exec touch --no-dereference --date="@$SOURCE_DATE_EPOCH" '{}' \;
+    -exec touch --no-dereference --date="@$SOURCE_DATE_EPOCH" '{}' +
 
 # build the image
 
@@ -95,10 +109,37 @@ export DEBOOTSTRAP_OPTIONS
 # shellcheck disable=SC2223
 : ${MKSQUASHFS_OPTIONS:='-comp zstd -Xcompression-level 22 -b 1024K -no-exports'}
 MKSQUASHFS_OPTIONS="${MKSQUASHFS_OPTIONS} -mem 512M -wildcards -ef chroot/usr/share/tails/build/mksquashfs-excludes"
+squashfs_processors="${ELIZAOS_MKSQUASHFS_PROCESSORS:-${ELIZAOS_BUILD_CPUS:-}}"
+if [ -n "${squashfs_processors}" ]; then
+    if [[ "${squashfs_processors}" =~ ^[0-9]+$ ]] && [ "${squashfs_processors}" -gt 0 ]; then
+        MKSQUASHFS_OPTIONS="${MKSQUASHFS_OPTIONS} -processors ${squashfs_processors}"
+    else
+        echo "W: ignoring non-integer ELIZAOS_MKSQUASHFS_PROCESSORS=${squashfs_processors}" >&2
+    fi
+fi
 export MKSQUASHFS_OPTIONS
 
 # build the doc wiki
-if [ "${TAILS_WEBSITE_CACHE:-no}" = "yes" ]; then
+if [ "${ELIZAOS_SKIP_WEBSITE:-}" = "1" ]; then
+    WEBSITE_BUILD_DIR="config/chroot_local-includes/usr/share/doc/tails/website"
+    echo "I: Skipping bundled website build for elizaOS demo iteration"
+    mkdir -p "${WEBSITE_BUILD_DIR}"
+    cat >"${WEBSITE_BUILD_DIR}/index.html" <<EOF
+<!doctype html>
+<meta charset="utf-8">
+<title>elizaOS</title>
+<h1>elizaOS</h1>
+<p>This demo image bundles the elizaOS app on an elizaOS live system.</p>
+EOF
+    cat >"${WEBSITE_BUILD_DIR}/local.css" <<EOF
+body {
+  font-family: sans-serif;
+}
+EOF
+elif [ "${ELIZAOS_REUSE_BUILT_WEBSITE:-}" = "1" ] \
+        && [ -d config/chroot_local-includes/usr/share/doc/tails/website ]; then
+    echo "I: Reusing existing built website for elizaOS demo iteration"
+elif [ "${TAILS_WEBSITE_CACHE:-no}" = "yes" ]; then
     export WEBSITE_DEST_DIR=.
     export WEBSITE_CACHE_BASEDIR
 

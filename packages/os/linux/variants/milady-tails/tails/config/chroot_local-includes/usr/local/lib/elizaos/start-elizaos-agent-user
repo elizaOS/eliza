@@ -1,0 +1,83 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "elizaOS agent must run as the live user, not as root." >&2
+    exit 1
+fi
+
+if [ "$(id -un)" != "amnesia" ]; then
+    echo "elizaOS agent must run as the Tails live user 'amnesia'." >&2
+    exit 1
+fi
+
+if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
+    /usr/local/lib/elizaos/persistence-maintenance wait
+fi
+
+runtime_entry=/opt/milady/Resources/app/eliza-dist/entry.js
+runtime_modules=/opt/milady/Resources/app/eliza-dist/node_modules
+
+if [ ! -x /opt/milady/bin/bun ]; then
+    echo "elizaOS Bun runtime is not installed at /opt/milady/bin/bun." >&2
+    exit 1
+fi
+
+if [ ! -f "${runtime_entry}" ]; then
+    echo "elizaOS agent runtime is not installed at ${runtime_entry}." >&2
+    exit 1
+fi
+
+export HOME=/home/amnesia
+export PATH="/opt/milady/bin:${PATH}"
+export NODE_PATH="${NODE_PATH:-${runtime_modules}}"
+
+export ELIZAOS_EDITION="${ELIZAOS_EDITION:-live-usb}"
+export ELIZAOS_BASE="${ELIZAOS_BASE:-tails}"
+export ELIZAOS_CAPABILITY_RUNNER="${ELIZAOS_CAPABILITY_RUNNER:-/usr/local/lib/elizaos/capability-runner}"
+export ELIZA_NAMESPACE="${ELIZA_NAMESPACE:-eliza}"
+export ELIZA_APP_NAME="${ELIZA_APP_NAME:-elizaOS}"
+export ELIZA_APP_ID="${ELIZA_APP_ID:-ai.elizaos.app}"
+export ELIZA_URL_SCHEME="${ELIZA_URL_SCHEME:-elizaos}"
+export ELIZA_CONFIG_DIR_NAME="${ELIZA_CONFIG_DIR_NAME:-elizaOS}"
+
+export ELIZA_STATE_DIR="${ELIZA_STATE_DIR:-/home/amnesia/.eliza}"
+export MILADY_STATE_DIR="${MILADY_STATE_DIR:-${ELIZA_STATE_DIR}}"
+export ELIZA_WORKSPACE_DIR="${ELIZA_WORKSPACE_DIR:-${ELIZA_STATE_DIR}/workspace}"
+export MILADY_WORKSPACE_DIR="${MILADY_WORKSPACE_DIR:-${ELIZA_WORKSPACE_DIR}}"
+export MILADY_ELIZA_SOURCE="${MILADY_ELIZA_SOURCE:-local}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${ELIZA_STATE_DIR}/xdg-config}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${ELIZA_STATE_DIR}/xdg-cache}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-${ELIZA_STATE_DIR}/xdg-data}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-${ELIZA_STATE_DIR}/xdg-state}"
+
+export ELIZA_API_PORT="${ELIZA_API_PORT:-31337}"
+export ELIZA_PORT="${ELIZA_PORT:-${ELIZA_API_PORT}}"
+export ELIZA_API_BIND="${ELIZA_API_BIND:-127.0.0.1}"
+export ELIZAOS_LIVE_EMBEDDING_FALLBACK="${ELIZAOS_LIVE_EMBEDDING_FALLBACK:-1}"
+export ELIZA_DISABLE_PROACTIVE_AGENT="${ELIZA_DISABLE_PROACTIVE_AGENT:-1}"
+export ELIZA_DISABLE_DIRECT_RUN="${ELIZA_DISABLE_DIRECT_RUN:-1}"
+
+case "$(cat /etc/elizaos/privacy-mode 2>/dev/null || printf on)" in
+    off)
+        export ELIZAOS_PRIVACY_MODE=0
+        ;;
+    *)
+        export ELIZAOS_PRIVACY_MODE=1
+        ;;
+esac
+
+mkdir -p \
+    "${ELIZA_STATE_DIR}" \
+    "${ELIZA_STATE_DIR}/logs" \
+    "${ELIZA_WORKSPACE_DIR}" \
+    "${XDG_CONFIG_HOME}" \
+    "${XDG_CACHE_HOME}" \
+    "${XDG_DATA_HOME}" \
+    "${XDG_STATE_HOME}"
+
+unset LD_PRELOAD
+
+cd "${ELIZA_WORKSPACE_DIR}"
+exec /opt/milady/bin/bun run "${runtime_entry}" start

@@ -47,7 +47,6 @@ render:x:107:
 netdev:x:109:
 scanner:x:116:saned
 memlockd:x:110:
-systemd-timesync:x:102:
 debian-tor:x:112:
 systemd-oom:x:997:
 messagebus:x:111:

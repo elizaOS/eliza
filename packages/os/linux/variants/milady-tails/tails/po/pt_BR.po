@@ -41,7 +41,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Tor Project\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"POT-Creation-Date: 2026-05-16 16:43+0000\n"
 "PO-Revision-Date: 2026-04-25 20:09+0000\n"
 "Last-Translator: emma peel <emma.peel@riseup.net>\n"
 "Language-Team: Portuguese (Brazil) <https://hosted.weblate.org/projects/tor/"
@@ -131,8 +131,8 @@ msgstr ""
 "Adicionais</b>."
 
 #: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:325
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:344
 msgid "Create Persistent Storage"
 msgstr "Crie Armazenamento Persistente"
 
@@ -226,22 +226,24 @@ msgstr "Programas adicionais instalados com sucesso"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:678
 msgid "Additional Software"
 msgstr "Programas Adicionais"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+#, fuzzy
 msgid ""
 "You can install additional software automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Você pode instalar programas adicionais automaticamente a partir de seu "
 "Armazenamento Persistente ao iniciar o Tails."
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+#, fuzzy
 msgid ""
 "The following software is installed automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "O seguintes programas são instalados automaticamente a partir do seu "
 "armazenamento persistente durante o início do Tails."
@@ -262,8 +264,9 @@ msgid "_Create persistent storage"
 msgstr "_Criar armazenamento persistente"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:62
+#, fuzzy
 msgid ""
-"Tails needs donations to keep everybody free and safe online.\n"
+"elizaOS needs donations to keep everybody free and safe online.\n"
 "\n"
 "Every bit helps in our fight against surveillance and censorship!\n"
 "\n"
@@ -274,8 +277,9 @@ msgstr ""
 "\n"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:72
+#, fuzzy
 msgid ""
-"Tails protects your wallet.\n"
+"elizaOS protects your wallet.\n"
 "\n"
 "Help us keep your bitcoins safe!\n"
 "\n"
@@ -306,8 +310,9 @@ msgid "Persistence is disabled for Electrum"
 msgstr "O volume persistente está desabilitado para usar Electrum"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:193
+#, fuzzy
 msgid ""
-"When you reboot Tails, all of Electrum's data will be lost, including your "
+"When you reboot elizaOS, all of Electrum's data will be lost, including your "
 "Bitcoin wallet.\n"
 "It is strongly recommended to only run Electrum when its persistence feature "
 "is activated."
@@ -821,8 +826,10 @@ msgid "Persistent Storage Still Locked"
 msgstr "Armazenamento persistente ainda bloqueado"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+#, fuzzy
 msgid ""
-"Do you really want to start Tails without unlocking your Persistent Storage?"
+"Do you really want to start elizaOS without unlocking your Persistent "
+"Storage?"
 msgstr ""
 "Você realmente deseja iniciar o Tails sem desbloquear seu armazenamento "
 "persistente?"
@@ -837,10 +844,10 @@ msgstr "Idioma e layout do teclado"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
 msgid ""
-"Your language and keyboard layout will be saved unencrypted on your Tails "
+"Your language and keyboard layout will be saved unencrypted on your elizaOS "
 "USB stick and applied automatically in the future.\n"
 "\n"
-"Someone who finds your Tails USB stick can see your language and keyboard "
+"Someone who finds your elizaOS USB stick can see your language and keyboard "
 "layout."
 msgstr ""
 
@@ -879,7 +886,9 @@ msgstr ""
 "Falha ao reparar o sistema de arquivos do seu Armazenamento Persistente."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
-msgid "Start Tails to send an error report and learn how to recover your data."
+#, fuzzy
+msgid ""
+"Start elizaOS to send an error report and learn how to recover your data."
 msgstr ""
 "Inicie o Tails para enviar um relatório de erros e aprender como recuperar "
 "seus dados."
@@ -903,8 +912,9 @@ msgid "Close"
 msgstr "Fechar"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
+#, fuzzy
 msgid ""
-"You aborted the repair of the file system. You can either start Tails "
+"You aborted the repair of the file system. You can either start elizaOS "
 "without Persistent Storage or restart the computer to try repairing the file "
 "system again."
 msgstr ""
@@ -913,15 +923,18 @@ msgstr ""
 "sistema de arquivos novamente."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
-msgid "Start Tails and open the Persistent Storage settings to find out more."
+#, fuzzy
+msgid ""
+"Start elizaOS and open the Persistent Storage settings to find out more."
 msgstr ""
 "Inicie o Tails e abra as configurações de armazenamento persistente para "
 "saber mais."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked. Its content will be available until you "
-"shut down Tails."
+"shut down elizaOS."
 msgstr ""
 "Seu Armazenamento Persistente está desbloqueado. Seu conteúdo estará "
 "disponível até você desligar o Tails."
@@ -939,7 +952,8 @@ msgstr ""
 "pendrive provavelmente está falhando."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
-msgid "Start Tails to learn how to recover your data."
+#, fuzzy
+msgid "Start elizaOS to learn how to recover your data."
 msgstr "Inicie o Tails para aprender como recuperar seus dados."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
@@ -947,10 +961,11 @@ msgid "File System Errors"
 msgstr "Erros do sistema de arquivos"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:937
+#, fuzzy
 msgid ""
 "Errors were detected in the file system of your Persistent Storage.\n"
 "\n"
-"Tails can try to fix these errors, but this might erase some of your data "
+"elizaOS can try to fix these errors, but this might erase some of your data "
 "and take a long time.\n"
 "\n"
 "If you already have an up-to-date backup of your Persistent Storage, we "
@@ -980,8 +995,9 @@ msgid "Create Partition Image"
 msgstr "Criar imagem de partição"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
+#, fuzzy
 msgid ""
-"Start Tails to learn how to create a partition image of your Persistent "
+"Start elizaOS to learn how to create a partition image of your Persistent "
 "Storage."
 msgstr ""
 "Inicie o Tails para aprender como criar uma imagem de partição do seu "
@@ -994,24 +1010,27 @@ msgstr ""
 "de arquivos."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+#, fuzzy
 msgid ""
-"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"Failed to upgrade the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Falha ao atualizar o armazenamento persistente. Por favor, inicie o Tails e "
 "envie um relatório de erro."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+#, fuzzy
 msgid ""
-"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"Failed to unlock the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Falha ao desbloquear o armazenamento persistente. Por favor, inicie o Tails "
 "e envie um relatório de erro."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+#, fuzzy
 msgid ""
-"Failed to activate the Persistent Storage. Please start Tails and send an "
+"Failed to activate the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Falha ao ativar o armazenamento persistente. Por favor, inicie o Tails e "
@@ -1101,12 +1120,13 @@ msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
 msgstr "Não foi possível copiar %(infile)s para %(outfile)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
-msgid "Removing existing Tails system"
+#, fuzzy
+msgid "Removing existing elizaOS system"
 msgstr "Removendo o sistema Tails existente"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
-#, python-format
-msgid "Unable to remove file from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove file from previous elizaOS system: %(message)s"
 msgstr ""
 "Não foi possível remover o arquivo do sistema Tails anterior:%(message)s"
 
@@ -1116,8 +1136,8 @@ msgid "Unable to chmod %(file)s: %(message)s"
 msgstr "Não foi possível modificar as permissões de %(file)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
-#, python-format
-msgid "Unable to remove directory from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove directory from previous elizaOS system: %(message)s"
 msgstr ""
 "Não foi possível remover o diretório do sistema Tails anterior:%(message)s"
 
@@ -1243,9 +1263,11 @@ msgid "Synchronizing data on disk..."
 msgstr "Sincronizando dados no disco..."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
+#, fuzzy
 msgid ""
 "Unable to clone because the target USB stick is being used. Close all open "
-"files on the target USB stick, restart Tails Cloner, and try to clone again."
+"files on the target USB stick, restart elizaOS USB Cloner, and try to clone "
+"again."
 msgstr ""
 "Não é possível clonar porque a unidade USB de destino está sendo usada. "
 "Feche todos os arquivos abertos na unidade USB de destino, reinicie o Tails "
@@ -1265,22 +1287,25 @@ msgid "Cloning complete! (%s)"
 msgstr "Clonagem concluída! (%s)"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
-msgid "Tails installation failed!"
+#, fuzzy
+msgid "elizaOS installation failed!"
 msgstr "A instalação do Tails falhou!"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
-msgid "Tails Cloner"
-msgstr "Tails Cloner"
+msgid "elizaOS USB Cloner"
+msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
-msgid "Clone the current Tails"
+#, fuzzy
+msgid "Clone the current elizaOS"
 msgstr "Clonar a versão do Tails em uso"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
-msgid "Use a downloaded Tails ISO image"
+#, fuzzy
+msgid "Use a downloaded elizaOS ISO image"
 msgstr "Utilizar uma imagem ISO do Tails já baixada"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
@@ -1316,7 +1341,8 @@ msgid "No ISO image selected"
 msgstr "Nenhuma imagem ISO selecionada"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
-msgid "Please select a Tails ISO image."
+#, fuzzy
+msgid "Please select an elizaOS ISO image."
 msgstr "Por favor, selecione uma imagem ISO do Tails."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
@@ -1341,11 +1367,11 @@ msgstr ""
 "Você só pode optar por reinstalar ao clonar o armazenamento persistente."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
-#, python-format
+#, fuzzy, python-format
 msgid ""
 "The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
-"manufacturer and Tails will fail to start from it. Please try installing on "
-"a different model."
+"manufacturer and elizaOS will fail to start from it. Please try installing "
+"on a different model."
 msgstr ""
 "A memória USB \"%(pretty_name)s\" está configurada como 'não-removível' pelo "
 "fabricante e o Tais não funcionará nela. Por favor, tente instalar Tails em "
@@ -1357,19 +1383,19 @@ msgid "The device \"%(pretty_name)s\" is read-only."
 msgstr "O dispositivo “%(pretty_name)s” é somente leitura."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"The device \"%(pretty_name)s\" is too small to install elizaOS (at least "
 "%(size)s GB is required)."
 msgstr ""
 "O dispositivo \"%(pretty_name)s\" é muito pequeno para instalar Tails (no "
 "mínimo %(size)s GB são necessários)."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
-"downloaded Tails ISO image:\n"
+"To upgrade device \"%(pretty_name)s\" from this elizaOS, you need to use a "
+"downloaded elizaOS ISO image:\n"
 "%(dl_url)s"
 msgstr ""
 "Para atualizar o dispositvio \"%(pretty_name)s\" a partir deste Tails, você "
@@ -1377,7 +1403,8 @@ msgstr ""
 "%(dl_url)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
-msgid "No device suitable to install Tails could be found"
+#, fuzzy
+msgid "No device suitable to install elizaOS could be found"
 msgstr ""
 "Não foi encontrado nenhum dispositivo adequado para a instalação do Tails"
 
@@ -1387,7 +1414,8 @@ msgid "Plug in a USB stick of at least %0.1f GB."
 msgstr "Conecte um pendrive de pelo menos %0.1f GB."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
-msgid "An error happened while installing Tails"
+#, fuzzy
+msgid "An error happened while installing elizaOS"
 msgstr "Um erro ocorreu durante a instalação do Tails"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
@@ -1463,7 +1491,8 @@ msgid "%(filename)s selected"
 msgstr "%(filename)s selecionado"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
-msgid "Unable to find Tails on ISO"
+#, fuzzy
+msgid "Unable to find elizaOS on ISO"
 msgstr "Não foi possível encontrar o Tails na ISO"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
@@ -1582,19 +1611,22 @@ msgid "Partitioning Error"
 msgstr "Erros na partição"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
-msgid "Errors were detected in the partitioning of your Tails USB stick."
+#, fuzzy
+msgid "Errors were detected in the partitioning of your elizaOS USB stick."
 msgstr "Erros foram detectados no particionamento do seu disco USB Tails ."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
+#, fuzzy
 msgid ""
-"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
-"i> to migrate to a new USB stick."
+"We recommend that you create a backup of your elizaOS using <i>elizaOS USB "
+"Cloner</i> to migrate to a new USB stick."
 msgstr ""
 "Recomendamos que você crie um backup do seu Tails usando o <i>Tails Cloner</"
 "i> para migrar para um novo pendrive."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
-msgid "Open Tails Cloner"
+#, fuzzy
+msgid "Open elizaOS USB Cloner"
 msgstr "Abrir o Tails Cloner"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
@@ -1602,8 +1634,9 @@ msgid "Creation of Persistent Storage has been disabled."
 msgstr "A criação do \"Armazenamento Persistente\" foi desativada."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
+#, fuzzy
 msgid ""
-"We recommend that you reinstall Tails from scratch. If the error persists, "
+"We recommend that you reinstall elizaOS from scratch. If the error persists, "
 "reinstall on a new USB stick."
 msgstr ""
 "Recomendamos que você reinstale o Tails do zero. Se o erro persistir, "
@@ -1652,28 +1685,13 @@ msgstr "Reiniciar"
 msgid "Power Off"
 msgstr "Desligar"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:27
-#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
-msgid "Tails"
-msgstr "Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:30
-#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
-msgid "About Tails"
-msgstr "Sobre o Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:34
+#: config/chroot_local-includes/usr/local/bin/tails-about:33
 msgid "Check for Upgrades"
 msgstr "Verifique se há atualizações"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:57
+#: config/chroot_local-includes/usr/local/bin/tails-about:56
 msgid "UNRELEASED"
 msgstr "NÃO LANÇADO"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:64
-#, python-format
-msgid "Built from %s"
-msgstr "Construído a partir de %s"
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
 #, python-brace-format
@@ -1711,8 +1729,9 @@ msgstr ""
 "href=\"org.gnome.Terminal.desktop\">APT na linha de comando</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+#, fuzzy
 msgid ""
-"To do so, unlock your Persistent Storage when starting Tails and install "
+"To do so, unlock your Persistent Storage when starting elizaOS and install "
 "some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
 "a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
 msgstr ""
@@ -1732,7 +1751,9 @@ msgstr ""
 "href=\"org.gnome.Terminal.desktop\">APT na linha de comando</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
-msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+#, fuzzy
+msgid ""
+"To do so, install elizaOS on a USB stick and create a Persistent Storage."
 msgstr ""
 "Para fazer isso, instale o Tails em um pendrive USB e crie um Armazenamento "
 "Persistente."
@@ -1904,14 +1925,14 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:37
-#, python-brace-format
+#, fuzzy, python-brace-format
 msgid ""
 "<b>Not enough memory available to check for upgrades.</b>\n"
 "\n"
-"Make sure this system satisfies the requirements for running Tails.\n"
+"Make sure this system satisfies the requirements for running elizaOS.\n"
 "See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
 "\n"
-"Try to restart Tails to check for upgrades again.\n"
+"Try to restart elizaOS to check for upgrades again.\n"
 "\n"
 "Or do a manual upgrade.\n"
 "See {manual_upgrade_url}"
@@ -1984,9 +2005,10 @@ msgstr ""
 "Armazenamento Persistente</a>."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+#, fuzzy
 msgid ""
 "To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
-"Storage</a> on your Tails USB stick."
+"Storage</a> on your elizaOS USB stick."
 msgstr ""
 "Para salvar sua ponte,<a href=\"doc/persistent_storage\">crie um "
 "Armazenamento Persistente</a> em seu pendrive USB com Tails."
@@ -2377,10 +2399,11 @@ msgid "_Send Error Report"
 msgstr "_Enviar relatório de erro"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:153
+#, fuzzy
 msgid ""
 "Impossible to delete the Persistent Storage while it is unlocked.\n"
 "\n"
-"To delete the Persistent Storage, restart Tails without unlocking the "
+"To delete the Persistent Storage, restart elizaOS without unlocking the "
 "Persistent Storage and open the Persistent Storage settings again."
 msgstr ""
 "Impossível excluir o Armazenamento Persistente enquanto ele estiver "
@@ -2391,12 +2414,13 @@ msgstr ""
 "Persistente novamente."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:167
+#, fuzzy
 msgid ""
 "Impossible to delete the Persistent Storage because the USB stick is read-"
 "only.\n"
 "\n"
 "To delete the Persistent Storage, turn off the read-only protection of the "
-"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"USB stick, restart elizaOS without unlocking the Persistent Storage and open "
 "the Persistent Storage settings again."
 msgstr ""
 "Impossível excluir o Armazenamento Persistente porque o pendrive é somente "
@@ -2656,8 +2680,9 @@ msgid "The Unsafe Browser was disabled in the Welcome Screen.\\n\\n"
 msgstr "O navegador não seguro foi desativado na tela de boas-vindas.\\n\\n"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
+#, fuzzy
 msgid ""
-"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"To use the Unsafe Browser, restart elizaOS and make sure that the Unsafe "
 "Browser is enabled in the additional settings of the Welcome Screen."
 msgstr ""
 "Para usar o navegador não seguro, reinicie o Tails e verifique se o "
@@ -2665,7 +2690,8 @@ msgstr ""
 "boas-vindas."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
-msgid "To use the Unsafe Browser, restart Tails."
+#, fuzzy
+msgid "To use the Unsafe Browser, restart elizaOS."
 msgstr "Para usar o navegador Inseguro, reinicie o Tails."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
@@ -2673,9 +2699,10 @@ msgid "_Restart"
 msgstr "_Reiniciar"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+#, fuzzy
 msgid ""
-"Do you really want to restart Tails now?\\n\\nAll your current work will be "
-"lost."
+"Do you really want to restart elizaOS now?\\n\\nAll your current work will "
+"be lost."
 msgstr ""
 "Você realmente deseja reiniciar o Tails agora?\\n\\nTodo o seu trabalho "
 "atual será perdido."
@@ -2810,10 +2837,11 @@ msgid "Invalid contact OpenPGP public key block"
 msgstr "Bloco de chave pública de contato OpenPGP inválido"
 
 #: config/chroot_local-includes/usr/local/bin/tca:11
+#, fuzzy
 msgid ""
 "You turned on Offline Mode in the Welcome Screen.\n"
 "It is impossible to connect to Tor in Offline Mode.\n"
-"To connect to Tor and the Internet, restart Tails without Offline Mode."
+"To connect to Tor and the Internet, restart elizaOS without Offline Mode."
 msgstr ""
 "Você ativou o modo offline na tela de boas-vindas.\n"
 "É impossível conectar-se ao Tor no modo offline.\n"
@@ -2850,19 +2878,26 @@ msgid "configuration;saved"
 msgstr "configuração;salvo"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
-msgid "Tails Documentation"
-msgstr "Documentação do Tails"
+#, fuzzy
+msgid "elizaOS Documentation"
+msgstr "Documentação"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
-msgid "Learn how to use Tails"
+#, fuzzy
+msgid "Learn how to use elizaOS"
 msgstr "Saiba como usar o Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
 msgid "learn"
 msgstr "aprender"
 
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About elizaOS"
+msgstr ""
+
 #: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
-msgid "Learn more about Tails"
+#, fuzzy
+msgid "Learn more about elizaOS"
 msgstr "Saiba mais sobre o Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
@@ -2870,8 +2905,9 @@ msgid "Back Up Persistent Storage"
 msgstr "Fazer backup do Armazenamento Persistente"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+#, fuzzy
 msgid ""
-"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+"Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick"
 msgstr ""
 "Faça um backup do Armazenamento Persistente do Tails para outro pendrive "
 "Tails"
@@ -2881,15 +2917,18 @@ msgid "backup"
 msgstr "backup"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
-msgid "Install, clone, upgrade Tails"
+#, fuzzy
+msgid "Install, clone, upgrade elizaOS"
 msgstr "Instalar, clonar, atualizar o Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
-msgid "install;clone;upgrade;manual"
+#, fuzzy
+msgid "elizaOS;install;clone;upgrade;USB;"
 msgstr "instalar;clonar;atualizar;manual"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
-msgid "Connect Tails to the Tor network"
+#, fuzzy
+msgid "Connect elizaOS to the Tor network"
 msgstr "Conecte o Tails à rede Tor"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
@@ -2929,9 +2968,10 @@ msgid "mount;encrypted;container;truecrypt"
 msgstr "montar;criptografado;contêiner;truecrypt"
 
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:2
+#, fuzzy
 msgid ""
 "Configure the additional software installed from your Persistent Storage "
-"when starting Tails"
+"when starting elizaOS"
 msgstr ""
 "Configure os programas adicionais instalados a partir de seu Armazenamento "
 "Persistente ao iniciar o Tails"
@@ -2941,16 +2981,21 @@ msgid "persistent;storage;package;install"
 msgstr "persistente;armazenamento;pacote;instalar"
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
-msgid "WhisperBack Error Reporting"
-msgstr "Reportador de Errors WhisperBack"
+msgid "Send Feedback"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
-msgid "Send feedback via encrypted e-mail"
-msgstr "Enviar feedback via email criptografado"
+msgid "Send encrypted feedback to elizaOS support"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
-msgid "feedback;bug;report;tails;error;"
+#, fuzzy
+msgid "feedback;support;report;elizaos;error;"
 msgstr "feedback;bug;problema;relatório;tails;erro;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
 
 #: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
 msgid "Tails specific tools"
@@ -2970,7 +3015,7 @@ msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:882
 msgid "Administration Password"
 msgstr "Senha de Administração"
 
@@ -2997,7 +3042,7 @@ msgid "Disable"
 msgstr "Desabilitar"
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:886
 msgid "MAC Address Anonymization"
 msgstr "Anonimização de Endereço MAC"
 
@@ -3068,89 +3113,95 @@ msgid "Settings were loaded from the Persistent Storage."
 msgstr ""
 "Configurações foram carregadas a partir do seu Armazenamento Persistente."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
-msgid "Welcome to Tails!"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:111
+#, fuzzy
+msgid "Welcome to elizaOS!"
 msgstr "Boas-vindas ao Tails!"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:144
 msgid "Language and Formats"
 msgstr "Idioma e Formatos"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:180
 msgid "Default Settings"
 msgstr "Configurações-Padrão"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:230
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:251
 msgid "Save"
 msgstr "Salvar"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:280
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:392
 msgid "_Persistent Storage"
 msgstr "_Armazenamento persistente"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:300
+#, fuzzy
 msgid ""
 "You can save some of your files and configuration in an encrypted Persistent "
-"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi "
 "passwords, and so on."
 msgstr ""
 "Você pode salvar alguns de seus arquivos e configurações em um armazenamento "
 "persistente criptografado em seu stick USB Tails: seus documentos, favoritos "
 "do navegador, senhas de Wi-Fi e assim por diante."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
-msgid "Create and configure a Persistent Storage after starting Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:327
+#, fuzzy
+msgid "Create and configure a Persistent Storage after starting elizaOS"
 msgstr "Crie e configure um Armazenamento Persistente após iniciar o Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:419
 msgid "Show Passphrase"
 msgstr "Mostrar Senha"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:476
 msgid "Enter your passphrase"
 msgstr "Digite sua senha"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:491
 msgid "Unlock Encryption"
 msgstr "Desbloquear Criptografia"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:558
 msgid "Impossible to unlock the Persistent Storage."
 msgstr "Impossível desbloquear o Armazenamento Persistente."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:618
 msgid "Partitioning Errors"
 msgstr "Erros na partição"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:654
+#, fuzzy
 msgid ""
-"Errors were detected in the partitioning of your Tails USB stick.\n"
+"Errors were detected in the partitioning of your elizaOS USB stick.\n"
 "\n"
-"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+"Try reinstalling elizaOS. If the error persists, reinstall on a new USB "
+"stick."
 msgstr ""
 "Foram detectados erros no particionamento do seu pendrive Tails.\n"
 "\n"
 "Tente reinstalar o Tails. Se o erro persistir, reinstale em um novo pendrive."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:686
 msgid "_Additional Settings"
 msgstr "_Configurações Adicionais"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:769
 msgid "Add an additional setting"
 msgstr "Adicionar uma configuração adicional"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:816
 msgid "Shutdown"
 msgstr "Encerrar"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
-msgid "_Start Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:825
+#, fuzzy
+msgid "_Start elizaOS"
 msgstr "_Iniciar o Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:854
 msgid ""
 "The default settings are safe in most situations. To add a custom setting, "
 "press the \"+\" button below."
@@ -3158,7 +3209,7 @@ msgstr ""
 "As configurações padrão são seguras na maioria dos casos. Para outras "
 "configurações personalizadas, clique na tecla \"+\" abaixo."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:890
 msgid "Network Configuration"
 msgstr "Configuração de Rede"
 
@@ -3217,10 +3268,11 @@ msgid "Send Error Report"
 msgstr "Enviar relatório de erro"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:63
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked.\n"
 "\n"
-"Its content is available until you shut down Tails.\n"
+"Its content is available until you shut down elizaOS.\n"
 "\n"
 "<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
 "Persistent Storage.</a>"
@@ -3233,9 +3285,10 @@ msgstr ""
 "Armazenamento Persistente.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+#, fuzzy
 msgid ""
 "Turn on the features of the Persistent Storage for the data that you want to "
-"save to your Tails USB stick."
+"save to your elizaOS USB stick."
 msgstr ""
 "Ative os recursos do Armazenamento Persistente para os dados que você deseja "
 "salvar no pendrive do Tails."
@@ -3309,101 +3362,116 @@ msgid "Applications"
 msgstr "Aplicações"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "elizaOS Data"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:432
+msgid "Save elizaOS memory, settings, and local runtime state."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:448
+#, fuzzy
+msgid "Activate elizaOS Data"
+msgstr "Ativar Cliente SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:461
 msgid "Tor Browser Bookmarks"
 msgstr "Favoritos do Navegador Tor"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:477
 msgid "Activate Tor Browser Bookmarks"
 msgstr "Ativar Favoritos do Navegador Tor"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:490
 msgid "Electrum Bitcoin Wallet"
 msgstr "Carteira de Bitcoin Electrum"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:506
 msgid "Activate Electrum Bitcoin Wallet"
 msgstr "Ativar a Carteira Bitcoin Electrum"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
 msgid "Thunderbird Email Client"
 msgstr "Cliente de E-mail Thunderbird"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
 msgid "Activate Thunderbird Email Client"
 msgstr "Ativar cliente de e-mail Thunderbird"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
 msgid "GnuPG"
 msgstr "GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:549
 msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
 msgstr "Chaves OpenPGP fora do Thunderbird, inclusive no Kleopatra."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:565
 msgid "Activate GnuPG"
 msgstr "Ativar GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:578
 #, fuzzy
 msgid "Pidgin Internet Messenger"
 msgstr "Pidgin Internet Messenger"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:594
 msgid "Activate Pidgin Internet Messenger"
 msgstr "Ativar o Pidgin Internet Messenger"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:607
 msgid "SSH Client"
 msgstr "Cliente SSH"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:623
 msgid "Activate SSH Client"
 msgstr "Ativar Cliente SSH"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:650
 msgid "Advanced Settings"
 msgstr "Configurações avançadas"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
-msgid "Install additional software automatically when starting Tails."
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:679
+#, fuzzy
+msgid "Install additional software automatically when starting elizaOS."
 msgstr "Instale software adicional automaticamente ao iniciar o Tails."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:704
 msgid "Configure Additional Software"
 msgstr "Configurar Software Adicional"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:717
 msgid "Activate Additional Software"
 msgstr "Ativar Programas Adicionais"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:730
 msgid "Dotfiles"
 msgstr "Arquivos de configuração (Dotfiles)"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:731
 msgid "Symlink every file in the Dotfiles folder into the Home folder."
 msgstr ""
 "Cria links simbólicos na pasta 'Dotfiles' para dentro do 'Diretório de "
 "Usuário'."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:764
 msgid "Activate Dotfiles"
 msgstr "Ativar Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:796
 msgid "Custom"
 msgstr "Personalizado"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:815
+#, fuzzy
 msgid ""
-"To add or remove custom features, modify /live/persistence/"
-"TailsData_unlocked/persistence.conf."
+"To add or remove custom features, modify the Persistent Storage "
+"configuration file directly."
 msgstr ""
 "Para adicionar ou remover recursos personalizados, modifique /live/"
 "persistence/TailsData_unlocked/persistence.conf."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:857
 msgid ""
 "<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
 "a>"
@@ -3412,11 +3480,12 @@ msgstr ""
 "Persistente.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in:53
+#, fuzzy
 msgid ""
 "<b>Your Persistent Storage is locked.</b>\n"
 "\n"
 "To use or configure your Persistent Storage, unlock it in the Welcome Screen "
-"when starting Tails.\n"
+"when starting elizaOS.\n"
 "\n"
 "To delete your Persistent Storage, click <b>Delete</b> on the right of the "
 "title bar."
@@ -3469,11 +3538,12 @@ msgid "_Create Persistent Storage"
 msgstr "_Crie um Armazenamento Persistente"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+#, fuzzy
 msgid ""
-"Everything you do disappears automatically when you shut down Tails.\n"
+"Everything you do disappears automatically when you shut down elizaOS.\n"
 "\n"
 "But you can save some of your files and configuration in an encrypted "
-"Persistent Storage on your Tails USB stick, for example:\n"
+"Persistent Storage on your elizaOS USB stick, for example:\n"
 "\n"
 "• Your documents\n"
 "• Your Wi-Fi passwords\n"
@@ -3498,11 +3568,12 @@ msgstr ""
 "Persistente</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+#, fuzzy
 msgid ""
 "Sorry, it is impossible to create a Persistent Storage on this device.\n"
 "\n"
-"To be able to use Tails with a Persistent Storage, please follow our "
-"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+"To be able to use elizaOS with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing elizaOS on a USB stick</a>."
 msgstr ""
 "Infelizmente, este dispositivo Tails não suporta a criação de um "
 "Armazenamento Persistente.\n"
@@ -3525,8 +3596,9 @@ msgid "_Change Passphrase…"
 msgstr "_Alterar senha…"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
-msgid "_Restart Tails"
-msgstr "_Reiniciar o Tails"
+#, fuzzy
+msgid "_Restart elizaOS"
+msgstr "Reiniciar mais tarde"
 
 #: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
 msgid "File Containers"
@@ -4230,6 +4302,28 @@ msgstr "Dezembro"
 msgid "Clock"
 msgstr "Relógio"
 
+#~ msgid "Tails Cloner"
+#~ msgstr "Tails Cloner"
+
+#~ msgid "About Tails"
+#~ msgstr "Sobre o Tails"
+
+#, python-format
+#~ msgid "Built from %s"
+#~ msgstr "Construído a partir de %s"
+
+#~ msgid "Tails Documentation"
+#~ msgstr "Documentação do Tails"
+
+#~ msgid "WhisperBack Error Reporting"
+#~ msgstr "Reportador de Errors WhisperBack"
+
+#~ msgid "Send feedback via encrypted e-mail"
+#~ msgstr "Enviar feedback via email criptografado"
+
+#~ msgid "_Restart Tails"
+#~ msgstr "_Reiniciar o Tails"
+
 #~ msgid "Bridge address malformed"
 #~ msgstr "Endereço de ponte inválido"
 
@@ -4251,9 +4345,6 @@ msgstr "Relógio"
 
 #~ msgid "Scan QR Code"
 #~ msgstr "Escanear Código QR"
-
-#~ msgid "Documentation"
-#~ msgstr "Documentação"
 
 #, fuzzy
 #~| msgid ""

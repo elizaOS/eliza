@@ -17,11 +17,11 @@ def sanitize_page_uri(page: str) -> str:
     'contribute/release_process'
 
     A link to the website is made relative
-    >>> sanitize_page_uri("https://tails.net/install/")
+    >>> sanitize_page_uri("https://elizaos.ai/install/")
     'install'
 
     Localized links are de-localized
-    >>> sanitize_page_uri("https://tails.net/install/index.de.html")
+    >>> sanitize_page_uri("https://elizaos.ai/install/index.de.html")
     'install'
     """
     page = page.removeprefix(WEBSITE_URL + "/")
@@ -76,13 +76,10 @@ def main():
             sys.exit(0)
         return
 
-    # We rely on the logic in the tor-browser script to resolve this
-    # to a local page if necessary.
-    if args.page.startswith(WEBSITE_URL):
-        uri = args.page
-    else:
-        page = sanitize_page_uri(args.page)
-        uri = f"https://tails.net/{page}"
+    # Always open the local elizaOS docs page. The inherited Tails docs corpus
+    # is intentionally bypassed so visible help stays on-brand until elizaOS has
+    # complete product documentation.
+    uri = "file:///usr/share/doc/elizaos/website/doc.en.html"
 
     if args.anchor:
         uri = f"{uri}#{args.anchor}"

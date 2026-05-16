@@ -1,0 +1,76 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "elizaOS app shell must run as the live user, not as root." >&2
+    exit 1
+fi
+
+if [ "$(id -un)" != "amnesia" ]; then
+    echo "elizaOS app shell must run as the Tails live user 'amnesia'." >&2
+    exit 1
+fi
+
+export HOME=/home/amnesia
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+export ELIZA_API_PORT="${ELIZA_API_PORT:-31337}"
+export ELIZAOS_RENDERER_PORT="${ELIZAOS_RENDERER_PORT:-5174}"
+export ELIZA_STATE_DIR="${ELIZA_STATE_DIR:-/home/amnesia/.eliza}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+
+if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
+    /usr/local/lib/elizaos/persistence-maintenance wait
+fi
+
+user_env_file="${XDG_RUNTIME_DIR}/user-env"
+url="http://127.0.0.1:${ELIZAOS_RENDERER_PORT}/?apiBase=http%3A%2F%2F127.0.0.1%3A${ELIZA_API_PORT}"
+export ELIZAOS_SHELL_URL="${ELIZAOS_SHELL_URL:-${url}}"
+
+has_display_env() {
+    [ -e "${user_env_file}" ] || return 1
+    tr '\0' '\n' < "${user_env_file}" \
+        | grep -Eq '^(DISPLAY|WAYLAND_DISPLAY)='
+}
+
+wait_for_display() {
+    for _ in $(seq 1 60); do
+        if has_display_env; then
+            return 0
+        fi
+
+        if [ -S "${XDG_RUNTIME_DIR}/bus" ]; then
+            systemctl --user start tails-dump-user-env.service >/dev/null 2>&1 || true
+        fi
+
+        sleep 1
+    done
+
+    echo "elizaOS user display environment was not dumped; retrying via systemd." >&2
+    return 75
+}
+
+wait_for_renderer() {
+    for _ in $(seq 1 90); do
+        if command -v curl >/dev/null 2>&1 \
+            && curl --noproxy '*' -fsS "http://127.0.0.1:${ELIZAOS_RENDERER_PORT}/api/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "elizaOS renderer did not become ready; starting app shell anyway." >&2
+    return 0
+}
+
+wait_for_display
+
+while :; do
+    wait_for_renderer
+    mkdir -p "${ELIZA_STATE_DIR}"
+    /usr/local/lib/run-with-env --env-file "${user_env_file}" -- \
+        /usr/local/lib/elizaos/elizaos-webkit-shell "${ELIZAOS_SHELL_URL}" || true
+    sleep 2
+done

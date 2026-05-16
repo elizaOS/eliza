@@ -1,7 +1,6 @@
 #!/usr/bin/python3 -I
 # -*- encoding: UTF-8
-"""This scripts show a dialog with basic information about the
-running Tails installation.
+"""Show a dialog with basic information about the running elizaOS installation.
 """
 
 import gettext
@@ -18,16 +17,16 @@ translation = gettext.translation("tails", "/usr/share/locale", fallback=True)
 _ = translation.gettext
 
 
-class AboutTails(Gtk.AboutDialog):
+class AboutElizaOS(Gtk.AboutDialog):
     """A simple class showing the dialog"""
 
     def __init__(self):
         Gtk.AboutDialog.__init__(self)
 
-        self.set_program_name(_("Tails"))
+        self.set_program_name("elizaOS")
 
         headerbar = Gtk.HeaderBar()
-        headerbar.set_title(_("About Tails"))
+        headerbar.set_title("About elizaOS")
         headerbar.set_show_close_button(True)
         self.set_titlebar(headerbar)
 
@@ -40,7 +39,7 @@ class AboutTails(Gtk.AboutDialog):
         try:
             self.set_logo(
                 GdkPixbuf.Pixbuf.new_from_file_at_size(
-                    "/usr/share/tails/tails-logo-flat-inverted.svg",
+                    "/usr/share/tails/elizaos-about-logo.png",
                     400,
                     200,
                 ),
@@ -61,7 +60,7 @@ class AboutTails(Gtk.AboutDialog):
                     VERSION_DATA["TAILS_GIT_BASE_COMMIT"],
                 )
 
-        comment = _("Built from %s") % (built_name)
+        comment = "elizaOS live build %s" % (built_name)
 
         if "TAILS_GIT_TAG" in VERSION_DATA:
             tag = VERSION_DATA["TAILS_GIT_TAG"].replace("~", "-")
@@ -101,4 +100,4 @@ class AboutTails(Gtk.AboutDialog):
         )
 
 
-AboutTails()
+AboutElizaOS()

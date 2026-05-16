@@ -156,7 +156,7 @@ class TailsInstallerThread(threading.Thread):
                         _(
                             "Unable to clone because the target USB stick is being "
                             "used. Close all open files on the target USB stick, "
-                            "restart Tails Cloner, and try to clone again."
+                            "restart elizaOS USB Cloner, and try to clone again."
                         )
                     )
                     self.live.log.removeHandler(self.handler)
@@ -236,7 +236,7 @@ class TailsInstallerThread(threading.Thread):
 
         except Exception as ex:
             self.status(ex)
-            self.status(_("Tails installation failed!"))
+            self.status(_("elizaOS installation failed!"))
             self.live.log.exception(str(ex))
             self.live.log.debug(traceback.format_exc())
 
@@ -338,7 +338,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
         # Set windows properties
         self.set_deletable(True)
         self.connect("delete-event", Gtk.main_quit)
-        self.set_title(_("Tails Cloner"))
+        self.set_title(_("elizaOS USB Cloner"))
 
         # Import window content from UI file
         builder = Gtk.Builder.new_from_file(
@@ -390,7 +390,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
     def on_radio_button_source_iso_toggled(self, radio_button):
         self.live.log.debug("Entering on_radio_button_source_iso_toggled")
         active_radio = next(r for r in radio_button.get_group() if r.get_active())
-        if active_radio.get_label() == _("Clone the current Tails"):
+        if active_radio.get_label() == _("Clone the current elizaOS"):
             self.live.log.debug("Mode: clone")
             self.opts.clone = True
             self.live.source = RunningLiveSystemSource(
@@ -398,7 +398,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
             )
             self.source_available = True
             self.__filechooserbutton_source_file.set_sensitive(False)
-        elif active_radio.get_label() == _("Use a downloaded Tails ISO image"):
+        elif active_radio.get_label() == _("Use a downloaded elizaOS ISO image"):
             self.live.log.debug("Mode: from ISO")
             self.opts.clone = False
             self.live.source = None
@@ -492,7 +492,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
 
     def warn_ISO_not_selected(self):
         self.show_confirmation_dialog(
-            _("No ISO image selected"), _("Please select a Tails ISO image."), True
+            _("No ISO image selected"), _("Please select an elizaOS ISO image."), True
         )
 
     def on_start_clicked(self, button):
@@ -590,7 +590,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
                     message = _(
                         'The USB stick "%(pretty_name)s"'
                         " is configured as non-removable by its"
-                        " manufacturer and Tails will fail to start from it."
+                        " manufacturer and elizaOS will fail to start from it."
                         " Please try installing on a different model."
                     ) % {"pretty_name": pretty_name}
                     self.status(message)
@@ -607,7 +607,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
                     message = _(
                         'The device "%(pretty_name)s"'
                         " is too small to install"
-                        " Tails (at least %(size)s GB is required)."
+                        " elizaOS (at least %(size)s GB is required)."
                     ) % {
                         "pretty_name": pretty_name,
                         "size": (
@@ -621,8 +621,8 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
                 if self.opts.clone and not info["is_device_big_enough_for_upgrade"]:
                     message = _(
                         'To upgrade device "%(pretty_name)s"'
-                        " from this Tails, you need to use"
-                        " a downloaded Tails ISO image:\n"
+                        " from this elizaOS, you need to use"
+                        " a downloaded elizaOS ISO image:\n"
                         "%(dl_url)s"
                     ) % {
                         "pretty_name": pretty_name,
@@ -641,7 +641,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
             else:
                 self.__infobar.set_message_type(Gtk.MessageType.INFO)
                 self.__label_infobar_title.set_text(
-                    _("No device suitable to install Tails could be found")
+                    _("No device suitable to install elizaOS could be found")
                 )
                 self.__label_infobar_details.set_text(
                     _("Plug in a USB stick of at least %0.1f GB.")
@@ -657,7 +657,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
         except TailsInstallerError as e:
             self.__infobar.set_message_type(Gtk.MessageType.ERROR)
             self.__label_infobar_title.set_text(
-                _("An error happened while installing Tails")
+                _("An error happened while installing elizaOS")
             )
             self.__label_infobar_details.set_text(e.args[0])
             self.__infobar.set_visible(True)
@@ -757,9 +757,9 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
             return False
 
     def begin(self):
-        """Begin the Tails installation process.
+        """Begin the elizaOS installation process.
 
-        This method is called when the "Install Tails" button is clicked.
+        This method is called when the "Install elizaOS" button is clicked.
         """
         self.enable_widgets(False)
         if not self.target_selected:
