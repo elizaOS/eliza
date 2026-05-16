@@ -32,12 +32,14 @@
 			],
 			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
+			"@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
+			"@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
 			"@elizaos/plugin-mlx": ["../plugin-mlx/dist/node/index.d.ts"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-			"@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
-			"@elizaos/ui/*": ["../../packages/ui/dist/*"],
+			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
+			"@elizaos/ui/*": ["../../packages/ui/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"]
 		}

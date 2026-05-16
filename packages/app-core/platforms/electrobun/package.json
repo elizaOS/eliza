@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
-    "build": "bun run build:preload && ELECTROBUN_SKIP_CODESIGN=1 PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
+    "build": "cd ../../../.. && node packages/app-core/scripts/desktop-build.mjs stage && cd packages/app-core/platforms/electrobun && ELECTROBUN_SKIP_CODESIGN=1 PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
     "typecheck": "tsc --noEmit",
     "test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
     "lint": "bunx @biomejs/biome check src",
