@@ -14,7 +14,7 @@
   --brand-gray: #d1d0d4;
   --background: var(--brand-blue);
   --foreground: var(--brand-white);
-  --radius-xs: 0;
+  --radius-xs: 3px;
 }
 
 * {

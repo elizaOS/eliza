@@ -580,14 +580,14 @@ function MCPCard({
               className={cn(
                 "text-[10px] px-1.5 py-0 shrink-0",
                 server.status === "live"
-                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                  ? "bg-green-500/20 text-green-400 border-green-500/30"
                   : server.status === "coming_soon"
-                    ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                    ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
                     : "bg-red-500/20 text-red-400 border-red-500/30",
               )}
             >
               {server.status === "live" && (
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse mr-1" />
+                <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse mr-1" />
               )}
               {server.status.replace("_", " ")}
             </Badge>

@@ -6,9 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
 import { StatusBadge } from "../ui/status-badge";
 
 const OVERLAY_SHELL_CLASS =
-  "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt backdrop-blur-sm sm:px-6";
+  "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt  sm:px-6";
 const OVERLAY_CARD_CLASS =
-  "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] backdrop-blur-xl";
+  "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] ";
 const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
   mode: "full_control",
   pendingCount: 0,
@@ -212,7 +212,7 @@ export function ComputerUseApprovalOverlay() {
             return (
               <div
                 key={approval.id}
-                className="rounded-2xl border border-border/50 bg-card/75 p-4 shadow-sm"
+                className="rounded border border-border/50 bg-card/75 p-4 shadow-sm"
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
@@ -227,7 +227,7 @@ export function ComputerUseApprovalOverlay() {
                     <div className="mt-2 text-xs text-muted">
                       {new Date(approval.requestedAt).toLocaleTimeString()}
                     </div>
-                    <pre className="mt-4 max-h-56 overflow-auto rounded-xl bg-bg/60 p-3 text-xs leading-relaxed text-txt">
+                    <pre className="mt-4 max-h-56 overflow-auto rounded-sm bg-bg/60 p-3 text-xs leading-relaxed text-txt">
                       {approval.parametersText || "{}"}
                     </pre>
                   </div>
@@ -250,7 +250,7 @@ export function ComputerUseApprovalOverlay() {
                             setDenyReason(event.target.value)
                           }
                           rows={4}
-                          className="w-full rounded-xl border border-border/60 bg-bg/50 px-3 py-2 text-sm text-txt outline-none"
+                          className="w-full rounded-sm border border-border/60 bg-bg/50 px-3 py-2 text-sm text-txt outline-none"
                           placeholder={t(
                             "computeruseapprovaloverlay.DenyReasonPlaceholder",
                             {

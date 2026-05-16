@@ -210,13 +210,13 @@ export function AppPermissionsSection() {
       </header>
 
       {listStatus.state === "error" && (
-        <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
           {listStatus.message}
         </div>
       )}
 
       {listStatus.state !== "loading" && grantableRows.length === 0 && (
-        <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-6 text-center text-xs-tight text-muted">
+        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-6 text-center text-xs-tight text-muted">
           No apps declare permissions yet.
         </div>
       )}
@@ -224,7 +224,7 @@ export function AppPermissionsSection() {
       {grantableRows.map((row) => (
         <article
           key={row.view.slug}
-          className="space-y-3 rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm"
+          className="space-y-3 rounded border border-border/60 bg-card/92 p-4 shadow-sm"
         >
           <header className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="min-w-0">
@@ -253,7 +253,7 @@ export function AppPermissionsSection() {
               return (
                 <div
                   key={ns}
-                  className={`flex flex-col gap-2 rounded-xl border px-3 py-2 sm:flex-row sm:items-center ${
+                  className={`flex flex-col gap-2 rounded-sm border px-3 py-2 sm:flex-row sm:items-center ${
                     granted
                       ? "border-accent/30 bg-accent/10"
                       : "border-border/60 bg-bg-hover"
@@ -298,7 +298,7 @@ export function AppPermissionsSection() {
       ))}
 
       {noManifestRows.length > 0 && (
-        <details className="rounded-xl border border-border/60 bg-bg-hover/40 px-3 py-2 text-xs-tight text-muted">
+        <details className="rounded-sm border border-border/60 bg-bg-hover/40 px-3 py-2 text-xs-tight text-muted">
           <summary className="cursor-pointer">
             {noManifestRows.length} registered app
             {noManifestRows.length === 1 ? "" : "s"} without a permissions

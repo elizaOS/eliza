@@ -2053,7 +2053,7 @@ function GateShell({
 
       <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[calc(max(0.75rem,var(--safe-area-bottom,0px))_+_var(--keyboard-height,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
+          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)]  sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
           style={{
             borderRadius: 0,
             clipPath:

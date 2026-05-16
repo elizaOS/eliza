@@ -57,7 +57,7 @@ export function ElizaAgentPricingBanner({
           {isLowBalance && hasAgents && (
             <Badge
               variant="outline"
-              className="bg-amber-500/10 border-amber-500/30 text-amber-400 text-[10px] px-2"
+              className="bg-orange-500/10 border-orange-500/30 text-orange-400 text-[10px] px-2"
             >
               Low balance
             </Badge>
@@ -69,7 +69,7 @@ export function ElizaAgentPricingBanner({
           {/* Running rate */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <Zap className="h-3 w-3 text-emerald-400" />
+              <Zap className="h-3 w-3 text-green-400" />
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/40">
                 Running
               </p>
@@ -126,7 +126,7 @@ export function ElizaAgentPricingBanner({
             </div>
             <p
               className={`text-base font-mono font-semibold tabular-nums ${
-                isLowBalance && hasAgents ? "text-amber-400" : "text-white"
+                isLowBalance && hasAgents ? "text-orange-400" : "text-white"
               }`}
             >
               {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}

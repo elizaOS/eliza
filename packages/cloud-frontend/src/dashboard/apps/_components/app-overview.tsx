@@ -205,7 +205,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors shrink-0"
                 >
                   {copiedItem === "API Key" ? (
-                    <Check className="h-4 w-4 text-emerald-400" />
+                    <Check className="h-4 w-4 text-green-400" />
                   ) : (
                     <Copy className="h-4 w-4 text-white/60" />
                   )}
@@ -316,7 +316,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     className="p-1.5 hover:bg-white/10 rounded transition-colors"
                   >
                     {copiedItem === "API Key" ? (
-                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      <Check className="h-3.5 w-3.5 text-green-400" />
                     ) : (
                       <Copy className="h-3.5 w-3.5 text-white/50" />
                     )}
@@ -387,8 +387,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/10">
-                <Coins className="h-5 w-5 text-amber-400" />
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <Coins className="h-5 w-5 text-orange-400" />
               </div>
               <div>
                 <h3 className="text-sm font-medium text-white">Monetization</h3>
@@ -405,7 +405,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               <Badge
                 className={cn(
                   monetizationEnabled
-                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                    ? "bg-green-500/20 text-green-400 border-green-500/30"
                     : "bg-white/10 text-white/50 border-white/20",
                 )}
               >

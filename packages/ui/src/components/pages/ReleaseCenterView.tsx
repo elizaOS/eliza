@@ -16,7 +16,7 @@ import {
   type ApplicationUpdateSnapshot,
   getApplicationUpdateSnapshot,
   mapAgentUpdateStatusToSnapshot,
-} from "../../services/app-updates/update-policy";
+} from "@elizaos/app-core/services/app-updates/update-policy";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";

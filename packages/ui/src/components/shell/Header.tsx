@@ -489,7 +489,7 @@ export function Header({
   const mobileBottomNav =
     isMobileViewport && !hideNav ? (
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] "
         style={{
           paddingBottom: "max(0.375rem, env(safe-area-inset-bottom, 0px))",
           paddingLeft: "max(0.5rem, var(--safe-area-left, 0px))",
@@ -592,7 +592,7 @@ export function Header({
   return (
     <>
       <header
-        className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 shadow-[0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
+        className="sticky top-0 z-30 w-full select-none border-b border-border/50 bg-bg/88 shadow-[0_1px_0_rgba(255,255,255,0.04)] "
         style={{ WebkitUserSelect: "none", userSelect: "none" }}
       >
         <div

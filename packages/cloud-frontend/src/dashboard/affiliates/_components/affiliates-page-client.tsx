@@ -231,15 +231,15 @@ export function AffiliatesPageClient() {
             </Button>
           </div>
         ) : !referralMe.is_active ? (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100/90">
-            <p className="font-medium text-amber-100">Invite link inactive</p>
-            <p className="mt-1 text-amber-100/80">
+          <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100/90">
+            <p className="font-medium text-orange-100">Invite link inactive</p>
+            <p className="mt-1 text-orange-100/80">
               Your referral code is turned off for new signups. Only an Eliza
               Cloud administrator can re-enable it. If you believe this is a
               mistake,{" "}
               <a
                 href="mailto:support@eliza.cloud?subject=Referral%20code%20inactive"
-                className="text-cyan-300 underline hover:text-cyan-200"
+                className="text-blue-300 underline hover:text-blue-200"
               >
                 email support@eliza.cloud
               </a>
@@ -251,7 +251,7 @@ export function AffiliatesPageClient() {
           </div>
         ) : (
           <>
-            <p className="text-xs text-cyan-200/70 mb-3">
+            <p className="text-xs text-blue-200/70 mb-3">
               {referralMe.total_referrals === 0
                 ? "No friends have joined yet—share your link to get started."
                 : referralMe.total_referrals === 1

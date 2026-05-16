@@ -82,7 +82,7 @@ function StepIndicator({ state }: { state: StepState }) {
     case "complete":
       return (
         <div
-          className={`${base} bg-emerald-500/15 text-emerald-400 border border-emerald-500/30`}
+          className={`${base} bg-green-500/15 text-green-400 border border-green-500/30`}
         >
           <Check className="h-3 w-3" />
         </div>
@@ -172,7 +172,7 @@ function ProvisioningProgress({
                   <div
                     className={`h-full w-full transition-colors duration-500 ${
                       state === "complete"
-                        ? "bg-emerald-500/30"
+                        ? "bg-green-500/30"
                         : state === "error"
                           ? "bg-red-500/20"
                           : "bg-white/5"
@@ -185,7 +185,7 @@ function ProvisioningProgress({
                 <p
                   className={`text-sm transition-colors duration-300 ${
                     state === "complete"
-                      ? "text-emerald-400/80"
+                      ? "text-green-400/80"
                       : state === "active"
                         ? "text-white"
                         : state === "error"

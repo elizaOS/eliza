@@ -23,7 +23,7 @@
   "styling": {
     "eyebrows": "section"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/brand/favicons/favicon.svg",
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"

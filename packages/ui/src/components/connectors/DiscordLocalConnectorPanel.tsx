@@ -277,7 +277,7 @@ export function DiscordLocalConnectorPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void refreshStatus();
             }}
@@ -290,7 +290,7 @@ export function DiscordLocalConnectorPanel() {
           <Button
             variant="default"
             size="sm"
-            className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void handleAuthorize();
             }}
@@ -308,7 +308,7 @@ export function DiscordLocalConnectorPanel() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
               onClick={() => {
                 void handleDisconnect();
               }}
@@ -333,7 +333,7 @@ export function DiscordLocalConnectorPanel() {
         ) : null}
 
         {status?.authenticated ? (
-          <div className="space-y-3 rounded-xl border border-border/40 bg-bg/60 p-3">
+          <div className="space-y-3 rounded-sm border border-border/40 bg-bg/60 p-3">
             <div className="text-muted">
               {t("pluginsview.DiscordLocalSubscriptionsHint", {
                 defaultValue:
@@ -348,7 +348,7 @@ export function DiscordLocalConnectorPanel() {
                   })}
                 </span>
                 <select
-                  className="h-9 w-full rounded-xl border border-border/40 bg-bg px-3 text-sm text-txt"
+                  className="h-9 w-full rounded-sm border border-border/40 bg-bg px-3 text-sm text-txt"
                   value={selectedGuildId}
                   onChange={(event) => setSelectedGuildId(event.target.value)}
                   disabled={loadingGuilds}
@@ -421,7 +421,7 @@ export function DiscordLocalConnectorPanel() {
                   <Button
                     variant="default"
                     size="sm"
-                    className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+                    className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
                     onClick={() => {
                       void handleSaveSubscriptions();
                     }}

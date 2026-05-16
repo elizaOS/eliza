@@ -1,0 +1,31 @@
+{
+  "name": "Eliza",
+  "short_name": "Eliza",
+  "description": "Your agent, everywhere. Desktop, mobile, and cloud, all running the same Eliza.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FF5800",
+  "theme_color": "#FF5800",
+  "icons": [
+    {
+      "src": "/brand/favicons/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/brand/favicons/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/brand/favicons/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/brand/favicons/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

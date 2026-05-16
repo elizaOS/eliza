@@ -59,7 +59,7 @@ export function OrganizationGeneralTab({
               </label>
               <div className="mt-1">
                 <span
-                  className={`px-2 py-1 text-xs font-mono font-bold uppercase tracking-wide border ${organization.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-rose-500/20 text-rose-400 border-rose-500/40"}`}
+                  className={`px-2 py-1 text-xs font-mono font-bold uppercase tracking-wide border ${organization.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
                 >
                   {organization.is_active ? "Active" : "Inactive"}
                 </span>

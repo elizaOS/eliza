@@ -117,7 +117,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
           if (!silent) {
             toast.success("Domain verified!", {
               description: "SSL certificate is now being provisioned",
-              icon: <CheckCircle2 className="h-4 w-4 text-emerald-400" />,
+              icon: <CheckCircle2 className="h-4 w-4 text-green-400" />,
             });
           }
           await fetchDomains();
@@ -301,9 +301,9 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
           ) : !primaryDomain ? (
             /* No App Deployed */
-            <div className="p-6 rounded-lg bg-amber-500/5 border border-amber-500/20 text-center">
-              <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-3">
-                <AlertTriangle className="h-6 w-6 text-amber-400" />
+            <div className="p-6 rounded-lg bg-orange-500/5 border border-orange-500/20 text-center">
+              <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="h-6 w-6 text-orange-400" />
               </div>
               <h4 className="text-sm font-medium text-white mb-1">
                 No App Deployed
@@ -530,7 +530,7 @@ function DomainCard({
     <div
       className={`
         rounded-lg border p-3
-        ${isVerified ? "bg-black/30 border-white/10" : "bg-amber-500/5 border-amber-500/20"}
+        ${isVerified ? "bg-black/30 border-white/10" : "bg-orange-500/5 border-orange-500/20"}
       `}
     >
       <div className="flex items-center gap-3">
@@ -547,13 +547,13 @@ function DomainCard({
             )}
           </div>
           {isVerified && (
-            <div className="flex items-center gap-1 text-emerald-400/80 mt-2">
+            <div className="flex items-center gap-1 text-green-400/80 mt-2">
               <Lock className="h-3 w-3" />
               <span className="text-xs">SSL/TLS Secured</span>
             </div>
           )}
           {!isVerified && type === "custom" && (
-            <div className="flex items-center gap-1 text-amber-400/80 mt-2">
+            <div className="flex items-center gap-1 text-orange-400/80 mt-2">
               <AlertTriangle className="h-3 w-3" />
               <span className="text-xs">DNS verification pending</span>
             </div>
@@ -570,7 +570,7 @@ function DomainCard({
                 className="h-8 w-8 p-0 text-neutral-400 hover:text-white hover:bg-white/10"
               >
                 {copiedValue === fullUrl ? (
-                  <Check className="h-4 w-4 text-emerald-400" />
+                  <Check className="h-4 w-4 text-green-400" />
                 ) : (
                   <Copy className="h-4 w-4" />
                 )}
@@ -694,10 +694,10 @@ function DomainStatusBadge({
 }) {
   if (status === "verified" && sslStatus === "active") {
     return (
-      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1 text-[10px]">
+      <Badge className="bg-green-500/10 text-green-400 border-green-500/30 gap-1 text-[10px]">
         <span className="relative flex h-1.5 w-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-50" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-50" />
+          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
         </span>
         Active
       </Badge>
@@ -714,7 +714,7 @@ function DomainStatusBadge({
   }
 
   return (
-    <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1 text-[10px]">
+    <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/30 gap-1 text-[10px]">
       <Clock className="h-3 w-3" />
       Pending
     </Badge>
@@ -761,7 +761,7 @@ function DnsConfigPanel({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-amber-400" />
+          <Zap className="h-4 w-4 text-orange-400" />
           <div>
             <h3 className="text-sm font-medium text-white">Configure DNS</h3>
             <p className="text-xs text-neutral-500">
@@ -796,20 +796,20 @@ function DnsConfigPanel({
       <div
         className={`p-3 rounded-lg border flex items-start gap-2 ${
           currentStatus === "valid"
-            ? "bg-emerald-500/10 border-emerald-500/20"
+            ? "bg-green-500/10 border-green-500/20"
             : currentStatus === "invalid"
               ? "bg-red-500/10 border-red-500/20"
-              : "bg-amber-500/10 border-amber-500/20"
+              : "bg-orange-500/10 border-orange-500/20"
         }`}
       >
         {currentStatus === "valid" ? (
           <>
-            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+            <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-emerald-300 font-medium">
+              <p className="text-xs text-green-300 font-medium">
                 DNS Verified
               </p>
-              <p className="text-xs text-emerald-300/70">
+              <p className="text-xs text-green-300/70">
                 SSL certificate is being provisioned
               </p>
             </div>
@@ -828,12 +828,12 @@ function DnsConfigPanel({
           </>
         ) : (
           <>
-            <Loader2 className="h-4 w-4 text-amber-400 animate-spin shrink-0 mt-0.5" />
+            <Loader2 className="h-4 w-4 text-orange-400 animate-spin shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-amber-300 font-medium">
+              <p className="text-xs text-orange-300 font-medium">
                 Waiting for DNS Propagation
               </p>
-              <p className="text-xs text-amber-300/70">
+              <p className="text-xs text-orange-300/70">
                 This may take a few minutes
               </p>
             </div>
@@ -921,7 +921,7 @@ function DnsRecordRow({
           className="h-7 w-7 p-0 text-neutral-500 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
         >
           {copiedValue === value ? (
-            <Check className="h-3.5 w-3.5 text-emerald-400" />
+            <Check className="h-3.5 w-3.5 text-green-400" />
           ) : (
             <Copy className="h-3.5 w-3.5" />
           )}
@@ -944,7 +944,7 @@ function DnsRecordRow({
             className="h-7 px-2 text-neutral-500 hover:text-white"
           >
             {copiedValue === value ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
+              <Check className="h-3.5 w-3.5 text-green-400" />
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}

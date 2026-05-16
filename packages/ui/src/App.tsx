@@ -30,6 +30,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
@@ -290,7 +291,7 @@ function MobileChatSurfaceButton({
       title={label}
       data-testid={`chat-mobile-surface-${surface}`}
       onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted shadow-sm backdrop-blur transition-colors hover:text-txt"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted shadow-sm  transition-colors hover:text-txt"
     >
       <Icon className="h-4 w-4" aria-hidden />
     </button>
@@ -1401,9 +1402,26 @@ export function App() {
   // Non-ready phases are handled by StartupShell (which renders the appropriate
   // view for each coordinator phase: loading, pairing, onboarding, or error).
   if (startupCoordinator.phase !== "ready" || !onboardingComplete) {
+    // Pre-agent / home-screen surface: ORANGE theme over CLOUDS, BLACK text per
+    // brand. xs corners. The CloudVideoBackground itself handles
+    // prefers-reduced-motion (pauses video, leaves poster). No glass overlay.
     return (
       <BugReportProvider value={bugReport}>
-        <StartupShell />
+        <CloudVideoBackground
+          speed="8x"
+          basePath="/clouds"
+          poster="/clouds/poster.jpg"
+          scrim={0.05}
+          style={{ minHeight: "100vh" }}
+        >
+          <div
+            data-testid="pre-agent-cloud-shell"
+            className="flex min-h-[100vh] w-full flex-col text-black"
+            style={{ borderRadius: "var(--radius-xs, 2px)" }}
+          >
+            <StartupShell />
+          </div>
+        </CloudVideoBackground>
         <BugReportModal />
       </BugReportProvider>
     );
@@ -1491,11 +1509,11 @@ export function App() {
       <ConnectionLostOverlay />
       {desktopShuttingDown ? (
         <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg/80 backdrop-blur-sm"
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-bg/80 "
           role="status"
           aria-live="polite"
         >
-          <div className="rounded-2xl border border-border/60 bg-card/95 px-6 py-5 text-center shadow-2xl">
+          <div className="rounded border border-border/60 bg-card/95 px-6 py-5 text-center shadow-sm">
             <div className="text-base font-semibold text-txt">
               Shutting down…
             </div>

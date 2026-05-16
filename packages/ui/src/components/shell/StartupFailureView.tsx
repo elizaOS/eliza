@@ -44,7 +44,7 @@ function startupReasonLabel(
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] backdrop-blur-xl";
+  "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] ";
 
 interface StartupFailureViewProps {
   error: StartupErrorState;
@@ -198,19 +198,19 @@ export function StartupFailureView({
           {reportMessage ? (
             <Banner
               variant={reportState === "success" ? "info" : "error"}
-              className="rounded-xl text-xs"
+              className="rounded-sm text-xs"
             >
               {reportMessage}
             </Banner>
           ) : null}
           {error.detail ? (
-            <section className="space-y-2 rounded-2xl border border-border/50 bg-bg/35 p-4 shadow-sm">
+            <section className="space-y-2 rounded border border-border/50 bg-bg/35 p-4 shadow-sm">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
                 {t("common.details", {
                   defaultValue: "Details",
                 })}
               </div>
-              <pre className="max-h-60 overflow-auto rounded-xl border border-border bg-bg-muted p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
+              <pre className="max-h-60 overflow-auto rounded-sm border border-border bg-bg-muted p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
                 {error.detail}
               </pre>
             </section>

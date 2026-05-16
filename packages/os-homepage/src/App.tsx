@@ -1,7 +1,6 @@
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { type OsArtifact, OsDownloads } from "./components/OsDownloads";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
@@ -32,7 +31,7 @@ const hardwareProducts: Product[] = [
     name: "ElizaOS USB",
     price: "$49",
     ships: "Ships October 2026",
-    image: "/assets/concept_usbdrive.jpg",
+    image: "/brand/concepts/concept_usbdrive.jpg",
     imageAlt: "Blue ElizaOS USB drive concept",
     summary: "Boot elizaOS from your pocket.",
     detail: "Live image on a stick. Plug into any UEFI PC and run.",
@@ -44,7 +43,7 @@ const hardwareProducts: Product[] = [
     name: "Raspberry Pi case",
     price: "$49",
     ships: "Ships October 2026",
-    image: "/assets/elizaos-box-concept.avif",
+    image: "/brand/concepts/billboard_concept.jpg",
     imageAlt: "ElizaOS Raspberry Pi case concept",
     summary: "A shell for a local agent.",
     detail: "Bring your own Pi. We ship the enclosure.",
@@ -56,7 +55,7 @@ const hardwareProducts: Product[] = [
     name: "Custom Raspberry Pi + case",
     price: "$149",
     ships: "Ships October 2026",
-    image: "/assets/elizaos-box-concept.avif",
+    image: "/brand/concepts/billboard_concept.jpg",
     imageAlt: "ElizaOS Raspberry Pi kit concept",
     summary: "Plug in, boot, run local.",
     detail: "Pi, case, SD card pre-imaged. One box, one cable.",
@@ -68,7 +67,7 @@ const hardwareProducts: Product[] = [
     name: "ElizaOS mini PC",
     price: "$1999",
     ships: "Ships October 2026",
-    image: "/assets/concept_minipc.jpg",
+    image: "/brand/concepts/concept_minipc.jpg",
     imageAlt: "ElizaOS mini PC concept",
     summary: "Always-on compute for agents.",
     detail: "Desktop-class inference at home. Quiet, owned, yours.",
@@ -79,7 +78,7 @@ const hardwareProducts: Product[] = [
     sku: "elizaos-phone",
     name: "ElizaOS Phone",
     ships: "Pre-order",
-    image: "/assets/concept_phone.jpg",
+    image: "/brand/concepts/concept_phone.jpg",
     imageAlt: "ElizaOS phone concept",
     summary: "The runtime in your hand.",
     detail: "AOSP build with elizaOS as the shell.",
@@ -90,7 +89,7 @@ const hardwareProducts: Product[] = [
     sku: "elizaos-box",
     name: "ElizaOS Box",
     ships: "Pre-order",
-    image: "/assets/elizaos-box-concept.avif",
+    image: "/brand/concepts/billboard_concept.jpg",
     imageAlt: "ElizaOS box hardware concept",
     summary: "A household agent appliance.",
     detail: "Sits on the shelf. Runs the home.",
@@ -102,7 +101,7 @@ const hardwareProducts: Product[] = [
     name: "Chibi USB key",
     price: "$49",
     ships: "Ships October 2026",
-    image: "/assets/chibi_usb_concept.jpg",
+    image: "/brand/concepts/chibi_usb_concept.jpg",
     imageAlt: "Chibi ElizaOS USB key concept",
     summary: "Same boot key. Smaller mascot shell.",
     detail: "ElizaOS USB in a collector enclosure.",
@@ -557,8 +556,28 @@ function CheckoutPage() {
   );
 }
 
+function CloudHero({ children }: { children: ReactNode }) {
+  return (
+    <section className="hero-cloud band" data-hero="cloud">
+      <video
+        className="cloud-video"
+        data-testid="cloud-video"
+        autoPlay
+        muted
+        loop
+        playsInline
+        poster="/clouds/poster.jpg"
+      >
+        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
+        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
+      </video>
+      <div className="cloud-scrim" aria-hidden="true" />
+      <div className="band-inner hero-cloud-inner">{children}</div>
+    </section>
+  );
+}
+
 function HomePage() {
-  const osArtifacts: OsArtifact[] = [];
   return (
     <div className="os-shell">
       <Header />

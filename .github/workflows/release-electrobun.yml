@@ -810,9 +810,9 @@ jobs:
           ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
           # Flat release root for the updater. Env is encoded in the platform prefix
           # (canary-macos-arm64-update.json etc.), so the baseUrl has no env subdir.
-          # TODO: Configure releases host on elizaOS/eliza repo settings (replace
-          # releases.eliza.ai placeholder with the eliza release host).
-          ELIZA_RELEASE_URL: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && !inputs.draft && 'https://releases.elizaos.ai/' || '' }}
+          # Points to GitHub Releases as the CDN; the ota-publish job attaches
+          # latest-{channel}.json after the release job completes.
+          ELIZA_RELEASE_URL: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && !inputs.draft && format('https://github.com/{0}/releases/download/{1}/', github.repository, needs.prepare.outputs.tag) || '' }}
 
       - name: Dump Electrobun build diagnostics
         if: failure()
@@ -1791,3 +1791,78 @@ jobs:
               -name "browser-bridge-release-manifest-v*.json" \
             \) \
             -print0 | xargs -0 -r gh release upload "${{ needs.prepare.outputs.tag }}" --repo "$GH_REPO" --clobber
+
+  ota-publish:
+    name: Publish OTA Channel Manifest
+    if: ${{ success() && needs.release.result == 'success' }}
+    needs: [prepare, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Generate channel manifest
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          BUILD_ENV: ${{ needs.prepare.outputs.env }}
+        run: |
+          CHANNEL="${BUILD_ENV}"
+          UPDATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+
+          cat > "latest-${CHANNEL}.json" <<JSON
+          {
+            "channel": "${CHANNEL}",
+            "version": "${VERSION}",
+            "updatedAt": "${UPDATED_AT}",
+            "platforms": {
+              "macos-arm64": "${BASE_URL}/macos-arm64-update.json",
+              "macos-x64": "${BASE_URL}/macos-x64-update.json",
+              "windows-x64": "${BASE_URL}/windows-x64-update.json",
+              "linux-x64": "${BASE_URL}/linux-x64-update.json"
+            }
+          }
+          JSON
+
+          echo "Channel manifest:"
+          cat "latest-${CHANNEL}.json"
+
+      - name: Attach channel manifest to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          BUILD_ENV: ${{ needs.prepare.outputs.env }}
+        run: |
+          CHANNEL="${BUILD_ENV}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::warning::No GitHub release found for $TAG; skipping OTA manifest upload."
+            exit 0
+          fi
+          gh release upload "$TAG" "latest-${CHANNEL}.json" --clobber
+          echo "OTA manifest attached: latest-${CHANNEL}.json"
+          echo "Update check URL: https://github.com/${{ github.repository }}/releases/download/${TAG}/latest-${CHANNEL}.json"
+
+      - name: Upload via SSH (optional)
+        if: ${{ env.RELEASE_UPLOAD_KEY != '' }}
+        env:
+          RELEASE_UPLOAD_KEY: ${{ secrets.RELEASE_UPLOAD_KEY }}
+          RELEASE_HOST_FINGERPRINT: ${{ secrets.RELEASE_HOST_FINGERPRINT }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          BUILD_ENV: ${{ needs.prepare.outputs.env }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$RELEASE_UPLOAD_KEY" > ~/.ssh/release_key
+          chmod 600 ~/.ssh/release_key
+          if [[ -n "$RELEASE_HOST_FINGERPRINT" ]]; then
+            echo "$RELEASE_HOST_FINGERPRINT" >> ~/.ssh/known_hosts
+          fi
+          CHANNEL="${BUILD_ENV}"
+          DEST_PATH="/srv/releases/elizaos/${TAG}/"
+          rsync -av --mkpath \
+            -e "ssh -i ~/.ssh/release_key -o StrictHostKeyChecking=yes" \
+            "latest-${CHANNEL}.json" \
+            "releases@${RELEASE_HOST}:${DEST_PATH}"
+          rm -f ~/.ssh/release_key

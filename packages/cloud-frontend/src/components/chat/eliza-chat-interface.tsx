@@ -1564,7 +1564,7 @@ export function ElizaChatInterface({
               {loadingState.isSending && (
                 <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden pointer-events-none z-10">
                   <div
-                    className="absolute h-full w-24 bg-gradient-to-r from-transparent via-[#FF5800] to-transparent"
+                    className="absolute h-full w-24 bg-[#FF5800]"
                     style={{
                       animation:
                         "visor-scan 4.8s cubic-bezier(0.4, 0, 0.6, 1) infinite",
@@ -1573,7 +1573,7 @@ export function ElizaChatInterface({
                     }}
                   />
                   <div
-                    className="absolute h-full w-16 bg-gradient-to-r from-transparent via-[#FF5800]/60 to-transparent"
+                    className="absolute h-full w-16 bg-[#FF5800]/60"
                     style={{
                       animation:
                         "visor-scan-delayed 6.2s cubic-bezier(0.3, 0.1, 0.7, 0.9) infinite 1.5s",
@@ -1981,7 +1981,7 @@ export function ElizaChatInterface({
                                             </span>
                                           )}
                                           {model.free && (
-                                            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[9px] uppercase text-emerald-200">
+                                            <span className="rounded-full border border-green-400/30 bg-green-400/10 px-1.5 py-0.5 text-[9px] uppercase text-green-200">
                                               Free
                                             </span>
                                           )}

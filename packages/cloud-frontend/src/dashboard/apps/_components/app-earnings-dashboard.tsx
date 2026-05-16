@@ -198,9 +198,9 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   return (
     <div className="space-y-4">
       {isTestData && (
-        <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-          <FlaskConical className="h-4 w-4 text-amber-400" />
-          <p className="text-sm text-amber-400">
+        <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+          <FlaskConical className="h-4 w-4 text-orange-400" />
+          <p className="text-sm text-orange-400">
             Test Data Mode - Showing sample earnings data
           </p>
         </div>
@@ -266,7 +266,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   ${summary.totalLifetimeEarnings.toFixed(2)}
                 </p>
                 {breakdown && (
-                  <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
                     <ArrowUpRight className="h-3 w-3" />$
                     {breakdown.thisWeek.total.toFixed(2)} this week
                   </p>
@@ -280,24 +280,24 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           <div
             className={cn(
               "bg-neutral-900 rounded-sm p-4",
-              canWithdraw && "border border-emerald-500/30",
+              canWithdraw && "border border-green-500/30",
             )}
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-neutral-500">Ready to Withdraw</p>
-                <p className="text-2xl font-semibold text-emerald-400 mt-1">
+                <p className="text-2xl font-semibold text-green-400 mt-1">
                   ${summary.withdrawableBalance.toFixed(2)}
                 </p>
               </div>
-              <Wallet className="h-5 w-5 text-emerald-400" />
+              <Wallet className="h-5 w-5 text-green-400" />
             </div>
             <div className="mt-3">
               {canWithdraw ? (
                 <Button
                   onClick={() => setShowWithdrawDialog(true)}
                   size="sm"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white"
+                  className="w-full bg-green-600 hover:bg-green-500 text-white"
                 >
                   <Wallet className="h-4 w-4 mr-2" />
                   Withdraw Now
@@ -363,7 +363,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   <Zap className="h-3 w-3" />$
                   {data.inferenceEarnings.toFixed(2)}
                 </span>
-                <span className="text-amber-400 flex items-center gap-1">
+                <span className="text-orange-400 flex items-center gap-1">
                   <Coins className="h-3 w-3" />$
                   {data.purchaseEarnings.toFixed(2)}
                 </span>
@@ -467,7 +467,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                     className={cn(
                       "font-mono text-sm font-medium",
                       Number(tx.amount) >= 0
-                        ? "text-emerald-400"
+                        ? "text-green-400"
                         : "text-red-400",
                     )}
                   >
@@ -527,7 +527,7 @@ function TransactionBadge({ type }: { type: string }) {
       );
     case "purchase_share":
       return (
-        <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px]">
+        <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px]">
           Purchase
         </Badge>
       );

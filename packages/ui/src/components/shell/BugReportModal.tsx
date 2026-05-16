@@ -59,13 +59,13 @@ const EMPTY_FORM: BugReportForm = {
 };
 
 const modalContentClassName =
-  "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl";
+  "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded border border-border/70 bg-card/96 p-0 shadow-sm ";
 
 const modalInputClassName =
-  "h-11 rounded-xl border-border bg-bg-hover text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
+  "h-11 rounded-sm border-border bg-bg-hover text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
 
 const modalTextareaClassName =
-  "min-h-[88px] rounded-xl border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
+  "min-h-[88px] rounded-sm border-border bg-bg-hover px-4 py-3 text-sm text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
 
 const subtleMonoDescriptionClassName = "font-mono text-xs-tight text-muted";
 
@@ -384,7 +384,7 @@ export function BugReportModal() {
           if (!open) close();
         }}
       >
-        <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl">
+        <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] rounded border border-border/70 bg-card/96 p-0 shadow-sm ">
           <DialogHeader className="px-5 py-4 text-left">
             <DialogTitle
               ref={(node) => {
@@ -464,7 +464,7 @@ export function BugReportModal() {
         >
           <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
             {errorMsg && (
-              <Banner variant="error" className="rounded-xl text-xs">
+              <Banner variant="error" className="rounded-sm text-xs">
                 {errorMsg}
               </Banner>
             )}
@@ -623,7 +623,7 @@ export function BugReportModal() {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-10 rounded-xl px-3 text-xs text-muted hover:text-txt"
+                  className="h-10 rounded-sm px-3 text-xs text-muted hover:text-txt"
                   onClick={() => setShowLogs(!showLogs)}
                   aria-expanded={showLogs}
                   aria-controls="bug-report-logs-panel"

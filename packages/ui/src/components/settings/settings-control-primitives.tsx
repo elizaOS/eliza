@@ -122,7 +122,7 @@ export function AdvancedSettingsDisclosure({
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
       className={cn(
-        "group rounded-xl border border-border/60 bg-card/45 px-3 py-2",
+        "group rounded-sm border border-border/60 bg-card/45 px-3 py-2",
         className,
       )}
     >

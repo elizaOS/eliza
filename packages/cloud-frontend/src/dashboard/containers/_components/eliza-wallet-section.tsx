@@ -86,7 +86,7 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? (
         <svg
-          className="w-3 h-3 text-emerald-400"
+          className="w-3 h-3 text-green-400"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -281,7 +281,7 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
               <div className="flex items-center gap-2">
                 <span
                   className={`inline-block w-2 h-2 rounded-full ${
-                    data.steward.connected ? "bg-emerald-500" : "bg-white/20"
+                    data.steward.connected ? "bg-green-500" : "bg-white/20"
                   }`}
                 />
                 <span className="font-mono text-sm text-white/80">
@@ -367,7 +367,7 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
 
       {/* Live indicator */}
       <div className="flex items-center gap-2 pt-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
         <span className="font-mono text-[10px] text-white/30 tracking-wide">
           LIVE · 30S
         </span>

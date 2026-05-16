@@ -70,7 +70,7 @@ export function DesktopWorkspaceDisplay({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <pre className="overflow-x-auto break-all rounded-xl border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
+        <pre className="overflow-x-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
           {diagnosticsText}
         </pre>
       </CardContent>

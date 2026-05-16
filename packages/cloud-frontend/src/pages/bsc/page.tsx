@@ -124,7 +124,7 @@ export default function BscPromoPage() {
                     </div>
                   </label>
                   {amountValue !== null && amountValue < 10 && (
-                    <p className="font-mono text-xs text-amber-200">
+                    <p className="font-mono text-xs text-orange-200">
                       The BSC bonus starts at $10.
                     </p>
                   )}

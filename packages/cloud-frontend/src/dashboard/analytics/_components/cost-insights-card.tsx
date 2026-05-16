@@ -59,7 +59,7 @@ export function CostInsightsCard({
       </div>
       <div className="flex flex-col gap-5 p-6 pt-2">
         <div className="grid gap-4">
-          <div className="grid gap-2 border border-amber-500/20 bg-black/35 p-4">
+          <div className="grid gap-2 border border-orange-500/20 bg-black/35 p-4">
             <p className="text-xs uppercase tracking-wide text-white/50">
               Daily burn
             </p>
@@ -79,13 +79,13 @@ export function CostInsightsCard({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="border border-amber-500/20 bg-black/35 p-3">
+            <div className="border border-orange-500/20 bg-black/35 p-3">
               <p className="text-xs uppercase tracking-wide text-white/50">
                 Runway
               </p>
               <p className="text-lg font-semibold text-white">{runwayLabel}</p>
             </div>
-            <div className="border border-amber-500/20 bg-black/35 p-3">
+            <div className="border border-orange-500/20 bg-black/35 p-3">
               <p className="text-xs uppercase tracking-wide text-white/50">
                 Balance
               </p>

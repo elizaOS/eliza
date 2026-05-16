@@ -21,6 +21,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
+    "server": "bun run server.ts",
+    "start": "bash run-dev.sh",
     "build:app": "electrobun build",
     "package:darwin": "electrobun build --platform darwin",
     "package:linux": "electrobun build --platform linux",

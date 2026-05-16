@@ -184,10 +184,10 @@ export function ContainerMetrics({
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {/* CPU Utilization */}
-          <div className="p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20 hover:shadow-md transition-shadow">
+          <div className="p-4 rounded-lg border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-blue-500/10">
-                <Cpu className="h-4 w-4 text-blue-500" />
+              <div className="p-2 rounded-md bg-foreground/5">
+                <Cpu className="h-4 w-4 text-foreground" />
               </div>
               <Badge
                 variant={getUtilizationBadge(metrics.cpu_utilization)}
@@ -216,10 +216,10 @@ export function ContainerMetrics({
           </div>
 
           {/* Memory Utilization */}
-          <div className="p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20 hover:shadow-md transition-shadow">
+          <div className="p-4 rounded-lg border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-purple-500/10">
-                <HardDrive className="h-4 w-4 text-purple-500" />
+              <div className="p-2 rounded-md bg-foreground/5">
+                <HardDrive className="h-4 w-4 text-foreground" />
               </div>
               <Badge
                 variant={getUtilizationBadge(metrics.memory_utilization)}
@@ -250,10 +250,10 @@ export function ContainerMetrics({
           </div>
 
           {/* Network In */}
-          <div className="p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20 hover:shadow-md transition-shadow">
+          <div className="p-4 rounded-lg border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-emerald-500/10">
-                <Network className="h-4 w-4 text-emerald-500" />
+              <div className="p-2 rounded-md bg-foreground/5">
+                <Network className="h-4 w-4 text-foreground" />
               </div>
               <Badge variant="outline" className="text-xs">
                 RX
@@ -263,17 +263,17 @@ export function ContainerMetrics({
               <p className="text-sm font-medium text-muted-foreground">
                 Network In
               </p>
-              <p className="text-3xl font-bold text-emerald-500">
+              <p className="text-3xl font-bold text-foreground">
                 {formatBytes(metrics.network_rx_bytes)}
               </p>
             </div>
           </div>
 
           {/* Network Out */}
-          <div className="p-4 rounded-lg border bg-gradient-to-br from-background to-muted/20 hover:shadow-md transition-shadow">
+          <div className="p-4 rounded-lg border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-amber-500/10">
-                <Network className="h-4 w-4 text-amber-500" />
+              <div className="p-2 rounded-md bg-foreground/5">
+                <Network className="h-4 w-4 text-foreground" />
               </div>
               <Badge variant="outline" className="text-xs">
                 TX
@@ -283,7 +283,7 @@ export function ContainerMetrics({
               <p className="text-sm font-medium text-muted-foreground">
                 Network Out
               </p>
-              <p className="text-3xl font-bold text-amber-500">
+              <p className="text-3xl font-bold text-foreground">
                 {formatBytes(metrics.network_tx_bytes)}
               </p>
             </div>

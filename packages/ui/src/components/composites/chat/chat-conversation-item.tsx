@@ -174,7 +174,7 @@ export function ChatConversationItem({
       data-active={isActive || undefined}
       className={
         isGameModal
-          ? `group relative flex w-full items-start gap-2 rounded-xl border p-2.5 transition-all sm:gap-3 ${
+          ? `group relative flex w-full items-start gap-2 rounded-sm border p-2.5 transition-all sm:gap-3 ${
               isActive
                 ? "border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
                 : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"

@@ -469,7 +469,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 <MiniStatCard
                   label="Page Views"
                   value={(requestStats.byType?.pageview || 0).toLocaleString()}
-                  color="text-emerald-400"
+                  color="text-green-400"
                 />
                 <MiniStatCard
                   label="API Requests"

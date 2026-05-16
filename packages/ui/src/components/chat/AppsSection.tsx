@@ -292,7 +292,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     defaultValue: `Launch ${displayName}`,
                     name: displayName,
                   })}
-                  className={`rounded-2xl transition-transform hover:scale-105 ${ringClass}`}
+                  className={`rounded transition-transform hover:scale-105 ${ringClass}`}
                   onClick={() => void handleLaunch(app)}
                 >
                   <AppIdentityTile

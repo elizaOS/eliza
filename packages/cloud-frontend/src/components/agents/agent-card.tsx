@@ -514,7 +514,7 @@ export function AgentCard({
         />
 
         {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+        <div className="absolute inset-0 bg-black/60" />
 
         {/* Top left badges */}
         <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5">

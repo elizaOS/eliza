@@ -156,8 +156,6 @@ export const kaminoProvider: Provider = {
   cacheScope: "turn",
   roleGate: { minRole: "OWNER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    console.log("KAMINO_LENDING provider called");
-
     let kaminoInfo = "";
 
     try {
@@ -166,7 +164,6 @@ export const kaminoProvider: Provider = {
       if (isDM) {
         const account = await getAccountFromMessage(runtime, message);
         if (!account) {
-          console.log("No account found for user");
           return {
             data: {},
             values: {},
@@ -174,22 +171,17 @@ export const kaminoProvider: Provider = {
           };
         }
 
-        console.log("Account found, getting Kamino service...");
-
         // Get Kamino service with proper type casting
         const kaminoService = runtime.getService(
           "KAMINO_SERVICE",
         ) as KaminoService;
         if (!kaminoService) {
-          console.log("Kamino service not available");
           return {
             data: {},
             values: {},
             text: "Kamino service not available.",
           };
         }
-
-        console.log("Kamino service found, generating report...");
 
         kaminoInfo += `=== KAMINO LENDING PROTOCOL REPORT ===\n\n`;
 

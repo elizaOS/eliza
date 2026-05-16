@@ -120,7 +120,7 @@ export default function PaymentRequestPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-200/70" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-200/70" />
       </div>
     );
   }
@@ -141,7 +141,7 @@ export default function PaymentRequestPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-white"
+            className="mt-5 inline-flex text-sm text-blue-200 hover:text-white"
             to="/"
           >
             Return home
@@ -167,7 +167,7 @@ export default function PaymentRequestPage() {
         <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
           <div className="flex flex-col items-center text-center">
             <div className="flex h-16 w-16 items-center justify-center border border-[#0B35F1]/30 bg-[#0B35F1]/10">
-              <CreditCard className="h-7 w-7 text-cyan-200" />
+              <CreditCard className="h-7 w-7 text-blue-200" />
             </div>
             <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
               {formatAmount(
@@ -207,7 +207,7 @@ export default function PaymentRequestPage() {
               type="button"
               disabled={!canPay || isPaying}
               onClick={beginCheckout}
-              className="flex w-full items-center justify-center gap-3 border border-amber-300/30 bg-amber-400/10 px-4 py-4 text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-300/15 disabled:pointer-events-none disabled:opacity-30"
+              className="flex w-full items-center justify-center gap-3 border border-orange-300/30 bg-orange-400/10 px-4 py-4 text-orange-100 transition hover:border-orange-200/60 hover:bg-orange-300/15 disabled:pointer-events-none disabled:opacity-30"
             >
               {isPaying ? (
                 <Loader2 className="h-5 w-5 animate-spin" />

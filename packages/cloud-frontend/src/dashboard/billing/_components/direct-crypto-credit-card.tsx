@@ -306,7 +306,7 @@ export function DirectCryptoCreditCard({
         )}
 
         {!walletMatches && connectedAddress && accountWalletAddress && (
-          <div className="border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-mono text-amber-200">
+          <div className="border border-orange-400/30 bg-orange-400/10 px-3 py-2 text-xs font-mono text-orange-200">
             Connected wallet must match your account wallet (
             {formatAddress(accountWalletAddress)}).
           </div>

@@ -57,7 +57,7 @@ export function ReleaseStatusSection({
   const currentLabel = tr(t, "releasecenterview.Current", "Current");
 
   return (
-    <section className="rounded-2xl border border-border bg-bg-accent p-4">
+    <section className="rounded border border-border bg-bg-accent p-4">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <StatusPill
           label={tr(t, "releasecenter.AppVersionPill", "App: {{version}}", {
@@ -123,7 +123,7 @@ export function ReleaseStatusSection({
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-border bg-bg p-3">
+        <div className="rounded-sm border border-border bg-bg p-3">
           <div className="text-xs font-semibold text-txt">
             {tr(t, "releasecenter.AppReleaseService", "App Release Service")}
           </div>
@@ -149,7 +149,7 @@ export function ReleaseStatusSection({
           />
         </div>
 
-        <div className="rounded-xl border border-border bg-bg p-3">
+        <div className="rounded-sm border border-border bg-bg p-3">
           <div className="mb-3 text-xs font-semibold text-txt">
             {tr(
               t,
@@ -185,7 +185,7 @@ export function ReleaseStatusSection({
             })}
           />
           {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason ? (
-            <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+            <div className="mt-3 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
               {nativeUpdater.autoUpdateDisabledReason}
             </div>
           ) : null}
@@ -246,7 +246,7 @@ export function ReleaseNotesSection({
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
 
   return (
-    <section className="rounded-2xl border border-border bg-bg-accent p-4">
+    <section className="rounded border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(
@@ -294,7 +294,7 @@ export function ReleaseNotesSection({
         </div>
 
         {releaseNotesWindow ? (
-          <div className="rounded-xl border border-border bg-bg p-3 text-xs text-txt">
+          <div className="rounded-sm border border-border bg-bg p-3 text-xs text-txt">
             <DefinitionRow
               label={tr(t, "releasecenter.WindowId", "Window ID")}
               value={releaseNotesWindow.windowId}
@@ -309,7 +309,7 @@ export function ReleaseNotesSection({
             />
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-bg p-3 text-xs text-muted">
+          <div className="rounded-sm border border-border bg-bg p-3 text-xs text-muted">
             {tr(t, "releasecenter.UsingUpdaterUrl", "Using updater URL:")}{" "}
             {nativeUpdater?.baseUrl ?? defaultReleaseNotesUrl}
           </div>
@@ -337,7 +337,7 @@ export function BuildRuntimeSection({
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
 
   return (
-    <section className="rounded-2xl border border-border bg-bg-accent p-4">
+    <section className="rounded border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(
@@ -355,7 +355,7 @@ export function BuildRuntimeSection({
         </p>
       </div>
 
-      <div className="rounded-xl border border-border bg-bg p-3">
+      <div className="rounded-sm border border-border bg-bg p-3">
         <DefinitionRow
           label={tr(t, "releasecenter.Platform", "Platform")}
           value={buildInfo?.platform}
@@ -428,7 +428,7 @@ export function SessionControlsSection({
 }) {
   const { t } = useApp();
   return (
-    <section className="rounded-2xl border border-border bg-bg-accent p-4">
+    <section className="rounded border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(
@@ -452,7 +452,7 @@ export function SessionControlsSection({
           return (
             <div
               key={partition}
-              className="rounded-xl border border-border bg-bg p-3"
+              className="rounded-sm border border-border bg-bg p-3"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -551,7 +551,7 @@ export function WgpuSurfaceSection({
 }) {
   const { t } = useApp();
   return (
-    <section className="rounded-2xl border border-border bg-bg-accent p-4">
+    <section className="rounded border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(t, "releasecenter.BrowserWgpuSurface", "Browser WGPU Surface")}
@@ -568,7 +568,7 @@ export function WgpuSurfaceSection({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
           {wgpuTagAvailable ? (
-            <div className="overflow-hidden rounded-2xl border border-border bg-black/5">
+            <div className="overflow-hidden rounded border border-border bg-black/5">
               {createElement("electrobun-wgpu", {
                 ref: (node: WgpuTagElement | null) => {
                   wgpuRef.current = node;
@@ -577,7 +577,7 @@ export function WgpuSurfaceSection({
               })}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-border px-4 py-12 text-center text-sm text-muted">
+            <div className="rounded border border-dashed border-border px-4 py-12 text-center text-sm text-muted">
               {tr(
                 t,
                 "releasecenter.WgpuCustomElementUnavailable",
@@ -623,7 +623,7 @@ export function WgpuSurfaceSection({
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-bg p-3">
+        <div className="rounded-sm border border-border bg-bg p-3">
           <div className="mb-3 text-xs font-semibold text-txt">
             {tr(
               t,

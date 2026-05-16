@@ -109,9 +109,9 @@ export default function MarketingPage() {
 
         <section className="brand-section brand-section--blue">
           <div className="app-band-inner app-action-band">
-            <h2 className="app-h2 app-h2--light">Build on ElizaOS.</h2>
+            <h2 className="app-h2 app-h2--light">Build on elizaOS.</h2>
             <a href={osUrl} className="app-cta app-cta--white">
-              ElizaOS
+              elizaOS
               <ArrowRight className="app-icon" aria-hidden="true" />
             </a>
           </div>
@@ -127,7 +127,7 @@ export default function MarketingPage() {
             draggable={false}
           />
           <nav className="app-footer-nav" aria-label="Footer">
-            <a href={osUrl}>ElizaOS</a>
+            <a href={osUrl}>elizaOS</a>
             <a href={cloudUrl}>Eliza Cloud</a>
           </nav>
         </div>

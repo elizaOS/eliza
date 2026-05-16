@@ -168,7 +168,7 @@ export function AppMonetizationSettings({
           className={cn(
             "rounded-sm p-4 border transition-colors",
             settings.monetizationEnabled
-              ? "bg-emerald-500/5 border-emerald-500/20"
+              ? "bg-green-500/5 border-green-500/20"
               : "bg-neutral-900 border-white/10",
           )}
         >
@@ -177,7 +177,7 @@ export function AppMonetizationSettings({
               className={cn(
                 "p-2 rounded-lg mt-0.5",
                 settings.monetizationEnabled
-                  ? "bg-emerald-500/10"
+                  ? "bg-green-500/10"
                   : "bg-white/5",
               )}
             >
@@ -185,7 +185,7 @@ export function AppMonetizationSettings({
                 className={cn(
                   "h-5 w-5",
                   settings.monetizationEnabled
-                    ? "text-emerald-400"
+                    ? "text-green-400"
                     : "text-white/40",
                 )}
               />
@@ -206,7 +206,7 @@ export function AppMonetizationSettings({
                       toggleMonetization(checked);
                     }
                   }}
-                  className="data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-neutral-700"
+                  className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
                 />
               </div>
               <p className="text-xs text-neutral-500 mt-1">
@@ -305,7 +305,7 @@ export function AppMonetizationSettings({
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <span className="text-lg font-mono font-semibold text-amber-400">
+                <span className="text-lg font-mono font-semibold text-orange-400">
                   {settings.purchaseSharePercentage}%
                 </span>
               </div>
@@ -326,7 +326,7 @@ export function AppMonetizationSettings({
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-lg transition-colors",
                       settings.purchaseSharePercentage === preset
-                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                        ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
                         : "bg-white/5 text-neutral-400 hover:bg-white/10 border border-transparent",
                     )}
                     onClick={() =>
@@ -420,7 +420,7 @@ export function AppMonetizationSettings({
  */
 function SelfHostCTA() {
   return (
-    <div className="border border-[#FF5800]/30 bg-gradient-to-br from-[#FF5800]/5 to-transparent p-5">
+    <div className="border border-[#FF5800]/30 bg-[#FF5800]/10 p-5">
       <div className="flex items-start gap-4">
         <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-none border border-[#FF5800]/40 bg-[#FF5800]/10 shrink-0">
           <Server className="h-5 w-5 text-[#FF5800]" />

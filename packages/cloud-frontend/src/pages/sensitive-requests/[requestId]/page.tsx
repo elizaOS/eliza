@@ -287,7 +287,7 @@ export default function SensitiveRequestPage() {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
             {effectiveStatus === "success" ||
             effectiveStatus === "fulfilled" ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+              <CheckCircle2 className="h-4 w-4 text-green-300" />
             ) : effectiveStatus === "pending" ? (
               <LockKeyhole className="h-4 w-4 text-[#FF8A47]" />
             ) : (
