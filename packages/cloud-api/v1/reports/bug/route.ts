@@ -7,7 +7,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { emailService } from "@/lib/services/email";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -67,8 +70,12 @@ app.post("/", async (c) => {
 
     const reportId = `rpt_${crypto.randomUUID()}`;
     const receivedAt = new Date().toISOString();
-    const env = c.env as { BUG_REPORT_EMAIL_TO?: string; SUPPORT_EMAIL?: string };
-    const recipient = env.BUG_REPORT_EMAIL_TO ?? env.SUPPORT_EMAIL ?? "developer@elizalabs.ai";
+    const env = c.env as {
+      BUG_REPORT_EMAIL_TO?: string;
+      SUPPORT_EMAIL?: string;
+    };
+    const recipient =
+      env.BUG_REPORT_EMAIL_TO ?? env.SUPPORT_EMAIL ?? "developer@elizalabs.ai";
 
     const startupSummary = validated.startup
       ? JSON.stringify(validated.startup, null, 2)
@@ -120,8 +127,12 @@ app.post("/", async (c) => {
       "",
       "Steps to Reproduce:",
       validated.stepsToReproduce,
-      validated.expectedBehavior ? `\nExpected Behavior:\n${validated.expectedBehavior}` : "",
-      validated.actualBehavior ? `\nActual Behavior:\n${validated.actualBehavior}` : "",
+      validated.expectedBehavior
+        ? `\nExpected Behavior:\n${validated.expectedBehavior}`
+        : "",
+      validated.actualBehavior
+        ? `\nActual Behavior:\n${validated.actualBehavior}`
+        : "",
       startupSummary ? `\nStartup Context:\n${startupSummary}` : "",
       validated.logs ? `\nLogs:\n${validated.logs}` : "",
     ]
@@ -141,7 +152,10 @@ app.post("/", async (c) => {
         source: validated.source,
         category: validated.category,
       });
-      return c.json({ accepted: false, error: "Email service unavailable" }, 503);
+      return c.json(
+        { accepted: false, error: "Email service unavailable" },
+        503,
+      );
     }
 
     logger.info("[BugReport] Structured bug report accepted", {

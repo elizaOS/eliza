@@ -175,7 +175,9 @@ describe("DflashLlamaServer catalog disable reason", () => {
 	});
 
 	it("omits drafter startup flags when launched target-only", async () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-disable-"));
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-dflash-disable-"),
+		);
 		const binary = path.join(root, "llama-server");
 		const argsFile = path.join(root, "args.txt");
 		fs.writeFileSync(

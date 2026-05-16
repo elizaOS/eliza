@@ -22,20 +22,28 @@ app.get("/", async (c) => {
   try {
     const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
-    const agent = await elizaSandboxService.getAgent(agentId, identity.organizationId);
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      identity.organizationId,
+    );
 
     if (!agent) {
       return c.json({ error: "Agent not found" }, 404);
     }
 
     const rawTail = parseInt(c.req.query("tail") ?? "100", 10);
-    const tail = Math.max(1, Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000));
+    const tail = Math.max(
+      1,
+      Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
+    );
 
     if (agent.bridge_url && agent.status === "running") {
       try {
         const logsUrl = `${agent.bridge_url}/logs?tail=${tail}`;
         await assertSafeOutboundUrl(logsUrl);
-        const res = await fetch(logsUrl, { signal: AbortSignal.timeout(10_000) });
+        const res = await fetch(logsUrl, {
+          signal: AbortSignal.timeout(10_000),
+        });
         if (res.ok) {
           const logs = await res.text();
           return c.json({ logs, status: agent.status });
@@ -43,7 +51,8 @@ app.get("/", async (c) => {
       } catch (fetchErr) {
         logger.warn("[service-api] Failed to fetch logs from bridge", {
           agentId,
-          error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+          error:
+            fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
         });
       }
     }

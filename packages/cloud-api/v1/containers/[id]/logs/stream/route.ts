@@ -34,19 +34,28 @@ import { logger } from "@/lib/utils/logger";
 
 const HEARTBEAT_INTERVAL_MS = 25_000;
 
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   let user: { organization_id: string | null };
   try {
     ({ user } = await requireAuthOrApiKeyWithOrg(request));
   } catch (err) {
     return Response.json(
-      { success: false, error: err instanceof Error ? err.message : "Unauthorized" },
+      {
+        success: false,
+        error: err instanceof Error ? err.message : "Unauthorized",
+      },
       { status: 401 },
     );
   }
   if (!user.organization_id) {
     return Response.json(
-      { success: false, error: "Caller is not associated with an organization" },
+      {
+        success: false,
+        error: "Caller is not associated with an organization",
+      },
       { status: 403 },
     );
   }
@@ -68,7 +77,9 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     if (request.signal.aborted) {
       ac.abort();
     } else {
-      request.signal.addEventListener("abort", () => ac.abort(), { once: true });
+      request.signal.addEventListener("abort", () => ac.abort(), {
+        once: true,
+      });
     }
   }
 
@@ -76,7 +87,11 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     async start(controller) {
       const send = (event: string, data: unknown) => {
         try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          controller.enqueue(
+            encoder.encode(
+              `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`,
+            ),
+          );
         } catch {
           // Controller already closed — ignore.
         }
@@ -91,15 +106,22 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
       send("open", { containerId, tailLines });
 
-      const heartbeat = setInterval(() => sendComment("keep-alive"), HEARTBEAT_INTERVAL_MS);
+      const heartbeat = setInterval(
+        () => sendComment("keep-alive"),
+        HEARTBEAT_INTERVAL_MS,
+      );
 
       try {
-        await getHetznerContainersClient().streamLogs(containerId, user.organization_id!, {
-          tailLines,
-          signal: ac.signal,
-          onStdout: (chunk) => send("log", { chunk, stream: "stdout" }),
-          onStderr: (chunk) => send("log", { chunk, stream: "stderr" }),
-        });
+        await getHetznerContainersClient().streamLogs(
+          containerId,
+          user.organization_id!,
+          {
+            tailLines,
+            signal: ac.signal,
+            onStdout: (chunk) => send("log", { chunk, stream: "stdout" }),
+            onStderr: (chunk) => send("log", { chunk, stream: "stderr" }),
+          },
+        );
         send("close", { reason: "remote_exit" });
       } catch (err) {
         if (err instanceof HetznerClientError) {
@@ -141,6 +163,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

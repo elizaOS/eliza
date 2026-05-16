@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import type { RouteContext } from "@/lib/api/hono-next-style-params";
 /**
  * GET /api/compat/agents/[id]/logs — container logs for thin clients
  *
@@ -7,6 +6,7 @@ import type { RouteContext } from "@/lib/api/hono-next-style-params";
  * or returns a descriptive status message otherwise.
  */
 import { envelope, errorEnvelope } from "@/lib/api/compat-envelope";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { logger } from "@/lib/utils/logger";
@@ -17,12 +17,18 @@ import { handleCompatError } from "../../../_lib/error-handler";
 
 const CORS_METHODS = "GET, OPTIONS";
 
-async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+) {
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
 
-    const agent = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return withCompatCors(
         Response.json(errorEnvelope("Agent not found"), { status: 404 }),
@@ -32,7 +38,10 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
 
     const url = new URL(request.url);
     const rawTail = parseInt(url.searchParams.get("tail") ?? "100", 10);
-    const tail = Math.max(1, Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000));
+    const tail = Math.max(
+      1,
+      Math.min(Number.isFinite(rawTail) ? rawTail : 100, 5000),
+    );
 
     // Try bridge logs if agent is running
     if (agent.bridge_url && agent.status === "running") {
@@ -50,7 +59,8 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
       } catch (fetchErr) {
         logger.warn("[compat] Failed to fetch logs from bridge", {
           agentId,
-          error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+          error:
+            fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
         });
       }
     }
@@ -66,7 +76,9 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
     };
 
     return withCompatCors(
-      Response.json(envelope(statusMsg[agent.status] ?? `Agent status: ${agent.status}`)),
+      Response.json(
+        envelope(statusMsg[agent.status] ?? `Agent status: ${agent.status}`),
+      ),
       CORS_METHODS,
     );
   } catch (err) {
@@ -77,6 +89,8 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;
