@@ -11,7 +11,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "VITE_ELIZACLOUD_API_URL=https://www.elizacloud.ai bun run dev -- --host 127.0.0.1 --port 4444",
+      "node ../shared-brand/scripts/sync-to-public.mjs ./public && VITE_ELIZACLOUD_API_URL=https://www.elizacloud.ai ../../node_modules/.bin/vite --host 127.0.0.1 --port 4444",
     url: "http://127.0.0.1:4444",
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,
