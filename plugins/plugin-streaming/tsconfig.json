@@ -22,6 +22,9 @@
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
+    "paths": {
+      "@elizaos/cloud-routing": ["../../packages/cloud-routing/dist/index.d.ts"]
+    },
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowUnusedLabels": true

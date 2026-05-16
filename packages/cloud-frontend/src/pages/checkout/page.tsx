@@ -1,12 +1,9 @@
-import { CloudSkyBackground } from "@elizaos/ui";
+import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
   Box,
-  Check,
   CreditCard,
   Loader2,
-  PackageCheck,
-  Palette,
   Smartphone,
   Usb,
 } from "lucide-react";
@@ -20,6 +17,10 @@ type HardwareSku =
   | "elizaos-phone"
   | "elizaos-box"
   | "elizaos-usb-chibi"
+  | "elizaos-usb"
+  | "elizaos-raspberry-pi-case"
+  | "elizaos-custom-raspberry-pi-case"
+  | "elizaos-mini-pc"
   | "elizaos-usb-plastic";
 
 type HardwareProduct = {
@@ -29,7 +30,7 @@ type HardwareProduct = {
   subtitle: string;
   colors: Array<{ id: string; name: string }>;
   image?: string;
-  kind: "phone" | "box" | "usb" | "chibi";
+  kind: "phone" | "box" | "usb" | "chibi" | "mini";
 };
 
 const products: HardwareProduct[] = [
@@ -44,6 +45,7 @@ const products: HardwareProduct[] = [
       { id: "phone-white", name: "White" },
       { id: "phone-blue-glass", name: "Blue" },
     ],
+    image: "/brand/concepts/concept_phone.jpg",
     kind: "phone",
   },
   {
@@ -57,7 +59,7 @@ const products: HardwareProduct[] = [
       { id: "box-white", name: "White" },
       { id: "box-black", name: "Black" },
     ],
-    image: "/product/elizaos-box-concept.avif",
+    image: "/brand/concepts/billboard_concept.jpg",
     kind: "box",
   },
   {
@@ -66,8 +68,22 @@ const products: HardwareProduct[] = [
     price: "$49",
     subtitle: "Character USB installer. Ships October 2026.",
     colors: [{ id: "chibi-orange", name: "Orange" }],
-    image: "/product/elizaos-usb-key-concept.png",
+    image: "/brand/concepts/chibi_usb_concept.jpg",
     kind: "chibi",
+  },
+  {
+    sku: "elizaos-usb",
+    name: "ElizaOS USB key",
+    price: "$49",
+    subtitle: "Simple branded USB installer. Ships October 2026.",
+    colors: [
+      { id: "usb-orange", name: "Orange" },
+      { id: "usb-blue", name: "Blue" },
+      { id: "usb-white", name: "White" },
+      { id: "usb-black", name: "Black" },
+    ],
+    image: "/brand/concepts/concept_usbdrive.jpg",
+    kind: "usb",
   },
   {
     sku: "elizaos-usb-plastic",
@@ -80,21 +96,64 @@ const products: HardwareProduct[] = [
       { id: "usb-white", name: "White" },
       { id: "usb-black", name: "Black" },
     ],
+    image: "/brand/concepts/concept_usbdrive.jpg",
     kind: "usb",
+  },
+  {
+    sku: "elizaos-raspberry-pi-case",
+    name: "Raspberry Pi case",
+    price: "$49",
+    subtitle: "ElizaOS case for a local agent board.",
+    colors: [
+      { id: "case-orange", name: "Orange" },
+      { id: "case-blue", name: "Blue" },
+      { id: "case-white", name: "White" },
+      { id: "case-black", name: "Black" },
+    ],
+    image: "/product/elizaos-box-concept.avif",
+    kind: "box",
+  },
+  {
+    sku: "elizaos-custom-raspberry-pi-case",
+    name: "Raspberry Pi + case",
+    price: "$149",
+    subtitle: "Custom Pi kit in the ElizaOS case.",
+    colors: [
+      { id: "kit-orange", name: "Orange" },
+      { id: "kit-blue", name: "Blue" },
+      { id: "kit-white", name: "White" },
+      { id: "kit-black", name: "Black" },
+    ],
+    image: "/product/elizaos-box-concept.avif",
+    kind: "box",
+  },
+  {
+    sku: "elizaos-mini-pc",
+    name: "ElizaOS mini PC",
+    price: "$1999",
+    subtitle: "Always-on local compute for agents.",
+    colors: [
+      { id: "mini-orange", name: "Orange" },
+      { id: "mini-blue", name: "Blue" },
+      { id: "mini-white", name: "White" },
+      { id: "mini-black", name: "Black" },
+    ],
+    image: "/brand/concepts/concept_minipc.jpg",
+    kind: "mini",
   },
 ];
 
 const colorMap: Record<string, string> = {
-  Orange: "#ff5800",
-  Blue: "#0057ff",
-  White: "#f7f6f1",
-  Black: "#111111",
+  Orange: "#FF5800",
+  Blue: "#0B35F1",
+  White: "#FFFFFF",
+  Black: "#000000",
 };
 
 function getProduct(sku: string | null): HardwareProduct {
   return (
     products.find((product) => product.sku === sku) ??
-    products.find((product) => product.sku === "elizaos-usb-plastic") ??
+    products.find((product) => product.sku === "elizaos-usb") ??
     products[0]
   );
 }
@@ -118,7 +177,8 @@ function HardwareVisual({ product }: { product: HardwareProduct }) {
 
 function ProductIcon({ product }: { product: HardwareProduct }) {
   if (product.kind === "phone") return <Smartphone aria-hidden="true" />;
-  if (product.kind === "box") return <Box aria-hidden="true" />;
+  if (product.kind === "box" || product.kind === "mini")
+    return <Box aria-hidden="true" />;
   return <Usb aria-hidden="true" />;
 }
 
@@ -172,69 +232,67 @@ export default function CheckoutPage() {
   }
 
   return (
-    <CloudSkyBackground
-      className="min-h-screen bg-[#f7f5ef]"
-      contentClassName="min-h-screen"
-      intensity="soft"
+    <CloudVideoBackground
+      basePath="/clouds"
+      speed="4x"
+      poster="/clouds/poster.jpg"
+      scrim={0.86}
+      scrimColor="rgba(0,0,0,1)"
+      className="theme-cloud min-h-screen bg-black font-poppins text-white"
     >
       <Helmet>
-        <title>ElizaOS Hardware Checkout | Eliza Cloud</title>
+        <title>Preorder | Eliza Cloud</title>
         <meta
           name="description"
-          content="Buy ElizaOS phone, Box, and USB installer hardware with your Eliza Cloud account."
+          content="Preorder ElizaOS hardware with your Eliza Cloud account."
         />
       </Helmet>
       <LandingHeader />
-      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-6xl gap-6 px-5 pb-16 pt-28 text-[#111] md:grid-cols-[0.95fr_1.05fr] md:px-8">
-        <section className="self-start">
-          <p className="text-xs font-bold uppercase text-[#FF5800]">
-            ElizaOS hardware
-          </p>
-          <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-[0.98] tracking-normal text-[#111] md:text-6xl">
-            Buy with your Eliza Cloud account.
+      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12">
+        <section className="self-center">
+          <img
+            src="/brand/logos/elizacloud_logotext.svg"
+            alt="eliza cloud"
+            className="mb-8 h-9 w-auto"
+            draggable={false}
+          />
+          <p className="text-xs font-bold uppercase text-[#FF5800]">preorder</p>
+          <h1 className="mt-3 max-w-xl text-5xl font-extrabold leading-[0.9] text-white md:text-7xl">
+            {product.name}
           </h1>
-          <p className="mt-5 max-w-lg text-base leading-7 text-[#5f5a53] md:text-lg">
-            Checkout, order status, device linking, and installer downloads all
-            stay in one account.
+          <p className="mt-5 max-w-lg text-lg font-medium leading-snug text-white/72">
+            Reserve with your Eliza Cloud account.
           </p>
-          <div className="mt-8 grid gap-3">
-            {[
-              "Phone, Box, and USB installer SKUs",
-              "Orange, blue, white, and black colorways",
-              "USB keys ship October 2026",
-              "Beta self-install remains available today",
-            ].map((item) => (
-              <div
-                className="flex items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-4 py-3 text-sm font-medium"
-                key={item}
-              >
-                <Check aria-hidden="true" className="size-4 text-[#FF5800]" />
-                {item}
-              </div>
-            ))}
+          <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase text-white/60">
+            <span>{product.price}</span>
+            <span>{product.subtitle}</span>
           </div>
         </section>
 
-        <section className="rounded-lg border border-black/10 bg-white/86 p-4 shadow-[0_24px_80px_rgba(3,28,58,0.16)] backdrop-blur-xl md:p-5">
-          <div className="grid gap-4 md:grid-cols-[0.9fr_1fr]">
-            <HardwareVisual product={product} />
-            <div className="flex flex-col justify-between gap-5">
+        <section className="self-center bg-black/78 p-4 text-white backdrop-blur-md md:p-5">
+          <div className="grid gap-5 md:grid-cols-[0.95fr_1fr]">
+            <div className="bg-white p-0">
+              <HardwareVisual product={product} />
+            </div>
+            <div className="flex flex-col justify-between gap-6">
               <div>
                 <div className="flex items-center gap-3">
                   <ProductIcon product={product} />
                   <div>
-                    <h2 className="text-2xl font-semibold">{product.name}</h2>
-                    <p className="text-sm text-[#6a6660]">{product.subtitle}</p>
+                    <h2 className="text-2xl font-semibold text-white">
+                      {product.name}
+                    </h2>
+                    <p className="text-sm text-white/60">{product.subtitle}</p>
                   </div>
                 </div>
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-6 flex flex-wrap gap-2">
                   {product.colors.map((color) => (
                     <button
                       aria-label={`Select ${color.name}`}
-                      className={`size-7 rounded-full border shadow-[inset_0_0_0_2px_rgba(255,255,255,0.55)] ${
+                      className={`size-8 ${
                         selectedColor.id === color.id
-                          ? "border-[#111] ring-2 ring-[#FF5800]"
-                          : "border-black/20"
+                          ? "ring-2 ring-[#FF5800]"
+                          : "ring-1 ring-white/30"
                       }`}
                       key={color.id}
                       onClick={() => setSelectedColor(color)}
@@ -244,22 +302,15 @@ export default function CheckoutPage() {
                     />
                   ))}
                 </div>
-                <div className="mt-6 grid gap-2 rounded-lg bg-[#f7f5ef] p-4 text-sm text-[#5f5a53]">
-                  <span className="flex items-center gap-2">
-                    <Palette className="size-4 text-[#FF5800]" />
-                    {selectedColor.name} is captured with the order.
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <PackageCheck className="size-4 text-[#FF5800]" />
-                    Device linking happens after checkout.
-                  </span>
+                <div className="mt-6 bg-white/[0.06] p-4 text-sm text-white/70">
+                  {selectedColor.name} selected.
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-black/10 pt-4">
-                <strong className="text-xl">{product.price}</strong>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-5">
+                <strong className="text-xl text-white">{product.price}</strong>
                 {session.authenticated ? (
                   <button
-                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-11 items-center gap-2 bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/85 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={isStartingCheckout}
                     onClick={beginHardwareCheckout}
                     type="button"
@@ -272,22 +323,22 @@ export default function CheckoutPage() {
                     ) : (
                       <CreditCard aria-hidden="true" className="size-4" />
                     )}
-                    Continue to payment
+                    Preorder
                     <ArrowRight aria-hidden="true" className="size-4" />
                   </button>
                 ) : (
                   <Link
                     to={loginTarget}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white"
+                    className="inline-flex min-h-11 items-center gap-2 bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/85"
                   >
                     <CreditCard aria-hidden="true" className="size-4" />
-                    Sign in to buy
+                    Sign in to preorder
                     <ArrowRight aria-hidden="true" className="size-4" />
                   </Link>
                 )}
               </div>
               {checkoutError ? (
-                <p className="text-sm font-medium text-red-600">
+                <p className="text-sm font-medium text-[#FF5800]">
                   {checkoutError}
                 </p>
               ) : null}
@@ -296,21 +347,21 @@ export default function CheckoutPage() {
         </section>
 
         {collection === "elizaos-hardware" ? (
-          <section className="rounded-lg border border-black/10 bg-white/80 p-4 md:col-span-2">
-            <h2 className="text-xl font-semibold">ElizaOS hardware catalog</h2>
+          <section className="bg-black/78 p-4 backdrop-blur-md md:col-span-2">
+            <h2 className="text-xl font-semibold text-white">Preorder</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               {products.map((item) => (
                 <Link
-                  className={`rounded-lg border p-3 ${
+                  className={`p-3 transition-colors ${
                     item.sku === product.sku
-                      ? "border-[#FF5800] bg-[#fff5ee]"
-                      : "border-black/10 bg-white"
+                      ? "bg-[#FF5800] text-black"
+                      : "bg-black hover:bg-white/10"
                   }`}
                   key={item.sku}
                   to={`/checkout?collection=elizaos-hardware&sku=${item.sku}`}
                 >
                   <span className="text-sm font-semibold">{item.name}</span>
-                  <span className="mt-1 block text-xs text-[#6a6660]">
+                  <span className="mt-1 block text-xs opacity-70">
                     {item.price}
                   </span>
                 </Link>
@@ -319,6 +370,6 @@ export default function CheckoutPage() {
           </section>
         ) : null}
       </main>
-    </CloudSkyBackground>
+    </CloudVideoBackground>
   );
 }

@@ -590,6 +590,16 @@ export async function stageAndroidAgentRuntime({
         path.join(abiJniDir, "libsigsys-handler.so"),
       ]);
     }
+    const speculativeShimSrc = path.join(
+      abiAssetsDir,
+      "libeliza-llama-speculative-shim.so",
+    );
+    if (fs.existsSync(speculativeShimSrc)) {
+      jniSources.push([
+        speculativeShimSrc,
+        path.join(abiJniDir, "libeliza_llama_speculative_shim.so"),
+      ]);
+    }
     for (const [src, dst] of jniSources) {
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }

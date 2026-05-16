@@ -109,15 +109,14 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
             <CardTitle className="text-base font-semibold">
               Usage projections
             </CardTitle>
-            <Badge variant="outline" className="rounded-full text-xs">
+            <Badge
+              variant="outline"
+              className="rounded-full text-xs"
+              title="Predictive analytics"
+            >
               <Activity className="mr-1 h-3 w-3" />
-              Predictive analytics
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Linear regression-based forecasting with confidence intervals.
-            Projects future costs based on historical trends.
-          </p>
         </CardHeader>
         <CardContent className="border-t border-border/60 p-6">
           <div className="space-y-6">
@@ -289,9 +288,6 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
             <CardTitle className="text-base font-semibold">
               Projection alerts
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Automated insights based on trend analysis and forecasting.
-            </p>
           </CardHeader>
           <CardContent className="border-t border-border/60 p-6">
             <div className="space-y-3">

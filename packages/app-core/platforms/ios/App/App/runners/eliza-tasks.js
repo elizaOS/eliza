@@ -71,6 +71,22 @@ function handleWake(args) {
   var startedAt = Date.now();
   var wakeDeadlineAt = startedAt + hardDeadlineMs;
 
+  if (!isHttpUrlBase(agentBase)) {
+    if (isLocalAgentBase(agentBase)) {
+      return Promise.resolve({
+        delivered: true,
+        skipped: true,
+        reason: "android_agent_service_ipc_unavailable_in_background_jscontext",
+        durationMs: Date.now() - startedAt,
+        lastWakeFiredAt: Date.now(),
+      });
+    }
+    return Promise.reject({
+      delivered: false,
+      error: "invalid args: agentBase must be http(s) or local IPC",
+    });
+  }
+
   var url = `${trimTrailingSlash(agentBase)}/api/internal/wake`;
   // Wrap in Promise.resolve().then so that a synchronous throw inside the
   // sandboxed fetch() (rare, but observed under hostile mocks and the iOS
@@ -136,6 +152,21 @@ function trimTrailingSlash(value) {
   return value.charAt(value.length - 1) === "/"
     ? value.substring(0, value.length - 1)
     : value;
+}
+
+function isHttpUrlBase(base) {
+  if (!base || typeof base !== "string") return false;
+  return /^https?:\/\//i.test(base.trim());
+}
+
+function isLocalAgentBase(base) {
+  if (!base || typeof base !== "string") return false;
+  var normalized = trimTrailingSlash(base.trim()).toLowerCase();
+  return (
+    normalized === "eliza-local-agent://ipc" ||
+    normalized === "http://127.0.0.1:31337" ||
+    normalized === "http://localhost:31337"
+  );
 }
 
 // Export `handleWake` to the global scope so unit tests can exercise it

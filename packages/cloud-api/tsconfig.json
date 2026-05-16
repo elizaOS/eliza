@@ -33,7 +33,7 @@
       "@elizaos/cloud-shared/lib/*": ["../cloud-shared/src/lib/*"],
       "@elizaos/cloud-shared/types": ["../cloud-shared/src/types/index.ts"],
       "@elizaos/cloud-shared/types/*": ["../cloud-shared/src/types/*"],
-      "@elizaos/cloud-shared/routing": ["../cloud-shared/src/routing/index.ts"],
+      "@elizaos/cloud-routing": ["../cloud-routing/src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

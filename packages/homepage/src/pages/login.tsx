@@ -17,8 +17,27 @@ export default function LoginPage() {
   }, [isAuthenticated, isLoading, navigate]);
 
   return (
-    <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-      <div className="text-white/60 animate-pulse">Redirecting...</div>
+    <main className="theme-app app-shell">
+      <header className="app-header">
+        <a href="/" aria-label="Eliza home" className="app-brand">
+          <img
+            src="/brand/logos/eliza_text_black.svg"
+            alt="Eliza"
+            draggable={false}
+            className="app-brand-mark"
+          />
+        </a>
+      </header>
+      <section
+        className="brand-section brand-section--orange app-hero"
+        style={{ flex: 1, display: "flex", alignItems: "center" }}
+      >
+        <div className="app-narrow" style={{ width: "100%" }}>
+          <p className="app-eyebrow">Sign in</p>
+          <h1 className="app-display">Redirecting…</h1>
+          <p className="app-lede">Sending you to the right place.</p>
+        </div>
+      </section>
     </main>
   );
 }

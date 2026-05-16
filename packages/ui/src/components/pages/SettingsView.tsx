@@ -23,7 +23,6 @@ import {
   type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
-  settingsSectionTooltip,
 } from "../settings/settings-sections";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 
@@ -288,7 +287,6 @@ export function SettingsView({
               const isActive = activeSection === section.id;
               const Icon = section.icon;
               const toneClass = SECTION_TONE_ICON_CLASS[section.tone];
-              const tooltip = settingsSectionTooltip(section, t);
               return (
                 <SidebarContent.Item
                   key={section.id}
@@ -301,7 +299,6 @@ export function SettingsView({
                     onClick={() => handleSectionChange(section.id)}
                     aria-current={isActive ? "page" : undefined}
                     className="items-center gap-2.5"
-                    title={tooltip}
                   >
                     <SidebarContent.ItemIcon
                       active={isActive}

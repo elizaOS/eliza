@@ -3158,19 +3158,25 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `restartWithoutDrafter()` uses for memory eviction): the server runs
 		// target-only, no `-md`. Loud warning because this departs from the
 		// always-on DFlash contract.
-		const catalogDrafterDisabledReason = dflash.disabledReason?.trim();
+		const catalogDrafterDisabledReason =
+			typeof dflash.disabledReason === "string"
+				? dflash.disabledReason.trim()
+				: "";
 		const drafterUnavailable =
-			!!catalogDrafterDisabledReason || !drafter || drafterBlockReason !== null;
-		const disabledDrafterReason = catalogDrafterDisabledReason
-			? catalogDrafterDisabledReason
-			: !drafter
-				? `companion drafter '${dflash.drafterModelId}' is not installed`
-				: drafterBlockReason
-					? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
-					: undefined;
+			catalogDrafterDisabledReason.length > 0 ||
+			!drafter ||
+			drafterBlockReason !== null;
+		const disabledDrafterReason =
+			catalogDrafterDisabledReason.length > 0
+				? catalogDrafterDisabledReason
+				: !drafter
+					? `companion drafter '${dflash.drafterModelId}' is not installed`
+					: drafterBlockReason
+						? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
+						: undefined;
 		if (drafterUnavailable) {
 			console.warn(
-				catalogDrafterDisabledReason
+				catalogDrafterDisabledReason.length > 0
 					? `[dflash] ⚠️  ${target.displayName}: ${catalogDrafterDisabledReason} — loading target-only (speculative decoding OFF).`
 					: `[dflash] ⚠️  ${target.displayName}: companion drafter ` +
 							`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +

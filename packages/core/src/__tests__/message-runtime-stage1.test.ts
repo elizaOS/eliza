@@ -45,6 +45,58 @@ function makeState(): State {
 	};
 }
 
+function makeAttachmentState(): State {
+	return {
+		values: {
+			availableContexts: "general, media, messaging",
+		},
+		data: {
+			providers: {
+				ATTACHMENTS: {
+					data: {
+						attachments: [
+							{
+								id: "image-1",
+								url: "https://cdn.example.test/image.png",
+								title: "Image Attachment",
+								source: "Image",
+								contentType: "image",
+							},
+						],
+						visibleAttachments: [
+							{
+								id: "image-1",
+								url: "https://cdn.example.test/image.png",
+								title: "Image Attachment",
+								source: "Image",
+								contentType: "image",
+							},
+						],
+					},
+				},
+				RECENT_MESSAGES: {
+					data: {
+						recentMessages: [
+							{
+								id: "00000000-0000-0000-0000-000000000011" as UUID,
+								entityId: "00000000-0000-0000-0000-000000000002" as UUID,
+								agentId: "00000000-0000-0000-0000-000000000003" as UUID,
+								roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+								createdAt: 1,
+								content: {
+									text: "can you see this image?",
+									source: "test",
+								},
+							},
+						],
+					},
+				},
+			},
+		},
+		text: "provider:ATTACHMENTS\n# Attachments\nID: image-1",
+	};
+}
+
 function stage1Response(fields: {
 	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
 	thought?: string;
@@ -271,6 +323,134 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.grammar).not.toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
+	});
+
+	it("routes image follow-up replies through ATTACHMENT before answering", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Yes, I can see the image you attached.",
+				extra: { requiresTool: false },
+			}),
+			{
+				thought: "Read the visible image attachment before answering.",
+				toolCalls: [
+					{
+						id: "read-image",
+						name: "ATTACHMENT",
+						args: { action: "read", attachmentId: "image-1" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Attachment was read before replying.",
+				messageToUser:
+					"I couldn't generate a readable description for that image.",
+			}),
+		]);
+		const attachmentHandler = vi.fn(async () => ({
+			success: true,
+			text: "I couldn't generate a readable description for that image.",
+			data: { actionName: "ATTACHMENT" },
+		}));
+		runtime.actions = [
+			{
+				name: "ATTACHMENT",
+				contexts: ["general", "media", "messaging"],
+				description: "Read current or recent attachments.",
+				parameters: [
+					{
+						name: "action",
+						description: "Attachment operation",
+						required: false,
+						schema: { type: "string" },
+					},
+					{
+						name: "attachmentId",
+						description: "Attachment id",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: attachmentHandler,
+			},
+		] as never;
+		const state = makeAttachmentState();
+		runtime.composeState = vi.fn(async () => state) as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Give me thoughts on it",
+				mentionContext: { isReply: true },
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(attachmentHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		expect(plannerUserContent).toContain('"candidateActions":["ATTACHMENT"]');
+		expect(plannerUserContent).not.toContain(
+			"Yes, I can see the image you attached.",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't generate a readable description for that image.",
+			);
+		}
+	});
+
+	it("does not send an image-inspection ack when attachment tooling is unavailable", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "On it.",
+				extra: { requiresTool: false },
+			}),
+			JSON.stringify({
+				thought: "No attachment action is exposed in this fixture.",
+				toolCalls: [],
+				messageToUser:
+					"I can see there is an image attachment, but I cannot inspect its contents from this context.",
+			}),
+		]);
+		const state = makeAttachmentState();
+		runtime.composeState = vi.fn(async () => state) as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what shape and color is in this image?",
+				mentionContext: { isMention: true },
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const calls = useModelCalls(runtime);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"candidateActions":["ATTACHMENT"]');
+		expect(plannerUserContent).not.toContain('"reply":"On it."');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"cannot inspect its contents",
+			);
+		}
 	});
 
 	it("uses a compact direct-channel prompt catalog", async () => {
@@ -697,7 +877,7 @@ android smoke model works`,
 					{
 						id: "spawn-app-builder",
 						name: "TASKS_SPAWN_AGENT",
-						args: { task: "Build a random tweet app." },
+						args: { task: "Write a random tweet app." },
 					},
 				],
 			},
@@ -747,7 +927,7 @@ android smoke model works`,
 		const message = makeMessage();
 		message.content = {
 			...message.content,
-			text: "build an app that generates a random tweet",
+			text: "write me a tweet app",
 			mentionContext: { isMention: true },
 		};
 

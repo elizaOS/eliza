@@ -40,7 +40,7 @@
     "@elizaos/plugin-tunnel": "workspace:*"
   },
   "dependencies": {
-    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-tunnel": "workspace:*",
     "zod": "^4.4.3"

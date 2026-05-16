@@ -3,7 +3,7 @@
  * and pipeline control actions (local FFmpeg via dashboard API).
  */
 
-import { isCloudConnected } from "@elizaos/cloud-shared/routing";
+import { isCloudConnected } from "@elizaos/cloud-routing";
 import type {
   Action,
   ActionResult,

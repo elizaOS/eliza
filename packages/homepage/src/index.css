@@ -1,5 +1,6 @@
 /* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
-@import "@fontsource-variable/open-sans";
+@import "@fontsource/poppins/300.css";
+@import "@fontsource/poppins/500.css";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
@@ -7,9 +8,13 @@
 @source "../../ui/src";
 
 :root {
-  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
-  --font-sans: var(--font-open-sans);
-  --font-mono: var(--font-open-sans);
+  --font-sans: "Poppins";
+  --font-mono: "Poppins";
+  --brand-blue: #0b35f1;
+  --brand-orange: #ff5800;
+  --brand-white: #ffffff;
+  --brand-black: #000000;
+  --brand-gray: #d1d0d4;
 }
 
 body {
@@ -217,4 +222,423 @@ body {
 }
 .intro-logo .z-piece-trbl.reveal {
   animation: reveal-trbl 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Eliza App marketing */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  /* biome-ignore lint/a11y/useGenericFontNames: Eliza App brand requires Poppins only. */
+  font-family: Poppins;
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.brand-section {
+  width: 100%;
+  padding: clamp(4rem, 9vw, 8rem) clamp(1.25rem, 5vw, 5rem);
+}
+
+.brand-section--orange {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.brand-section--black {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.brand-section--white {
+  background: var(--brand-white);
+  color: var(--brand-black);
+}
+
+.brand-section--blue {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.brand-section--cloud {
+  position: relative;
+  overflow: hidden;
+  min-height: 30rem;
+  background: var(--brand-gray);
+  color: var(--brand-black);
+  display: flex;
+  align-items: center;
+}
+
+.app-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem clamp(1.25rem, 4vw, 3rem);
+  color: var(--brand-black);
+}
+
+.app-brand {
+  flex: 0 0 auto;
+}
+
+.app-brand-mark {
+  height: clamp(1.55rem, 2vw, 2rem);
+  width: auto;
+  display: block;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.65rem, 2vw, 1.4rem);
+  font-weight: 500;
+  font-size: clamp(0.78rem, 1.5vw, 0.95rem);
+  white-space: nowrap;
+}
+
+.app-nav a {
+  text-decoration: none;
+}
+
+.app-nav-download {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  padding: 0.55rem 0.95rem;
+  font-weight: 500;
+}
+
+.app-hero {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding-top: clamp(7rem, 10vw, 10rem);
+}
+
+.app-band-inner {
+  width: min(100%, 82rem);
+  max-width: 80rem;
+  margin: 0 auto;
+}
+
+.app-hero-grid {
+  display: grid;
+  gap: clamp(2rem, 7vw, 6rem);
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .app-hero-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(13rem, 0.55fr);
+  }
+}
+
+.app-hero-copy {
+  max-width: 52rem;
+}
+
+.app-hero-mark {
+  width: min(100%, 22rem);
+  justify-self: start;
+}
+
+@media (min-width: 768px) {
+  .app-hero-mark {
+    justify-self: end;
+  }
+}
+
+.app-kicker {
+  font-size: clamp(0.95rem, 1.7vw, 1.125rem);
+  font-weight: 500;
+  margin: 0 0 1rem;
+  color: var(--brand-black);
+  letter-spacing: 0;
+}
+
+.app-kicker--light {
+  color: var(--brand-white);
+}
+
+.app-display {
+  font-size: clamp(4.5rem, 13vw, 12rem);
+  font-weight: 500;
+  line-height: 0.86;
+  margin: 0;
+  letter-spacing: 0;
+  color: var(--brand-black);
+  text-wrap: balance;
+}
+
+.app-h2 {
+  font-size: clamp(2.7rem, 7vw, 6.5rem);
+  font-weight: 500;
+  line-height: 0.92;
+  margin: 0;
+  letter-spacing: 0;
+  color: var(--brand-black);
+  text-wrap: balance;
+}
+
+.app-h2--invert {
+  color: var(--brand-white);
+}
+
+.app-h2--light {
+  color: var(--brand-white);
+}
+
+.app-lede {
+  font-size: clamp(1.25rem, 2.3vw, 2rem);
+  font-weight: 300;
+  line-height: 1.2;
+  margin: 1.5rem 0 0;
+  max-width: 42rem;
+  color: var(--brand-black);
+}
+
+.app-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.app-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.25rem;
+  padding: 0 1.5rem;
+  font-weight: 500;
+  font-size: 1rem;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-cta--black {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.app-cta--black:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.app-cta--orange-secondary {
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--brand-black);
+}
+
+.app-cta--orange-secondary:hover {
+  background: var(--brand-white);
+}
+
+.app-cta--orange {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.app-cta--orange:hover {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.app-cta--white {
+  background: var(--brand-white);
+  color: var(--brand-blue);
+}
+
+.app-cta--white:hover {
+  background: var(--brand-gray);
+}
+
+.app-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.app-download-band {
+  display: grid;
+  gap: clamp(2rem, 5vw, 4rem);
+}
+
+.app-download-list {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .app-download-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.app-download-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 4.5rem;
+  padding: 1rem 0;
+  color: var(--brand-white);
+  text-decoration: none;
+}
+
+.app-download-row:hover {
+  color: var(--brand-orange);
+}
+
+.app-download-row span:first-child {
+  font-weight: 500;
+  font-size: 1.125rem;
+  flex: 1;
+}
+
+.app-download-row span:not(:first-child) {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.app-store-list {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.app-store-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, auto) minmax(6rem, auto);
+  gap: 1rem;
+  align-items: center;
+  color: var(--brand-gray);
+  min-height: 2.5rem;
+  font-size: 0.9rem;
+  box-shadow: inset 0 -1px 0 rgba(209, 208, 212, 0.28);
+}
+
+.app-store-row span:first-child {
+  color: var(--brand-white);
+  font-weight: 600;
+}
+
+.app-mini-grid,
+.app-action-band {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .app-mini-grid,
+  .app-action-band {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.app-side-copy {
+  margin: 0;
+  max-width: 30rem;
+  font-size: clamp(1.2rem, 2vw, 1.75rem);
+  line-height: 1.25;
+  font-weight: 300;
+}
+
+.app-cloud-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.app-action-band--cloud {
+  position: relative;
+  z-index: 1;
+}
+
+.app-footer {
+  background: var(--brand-black);
+  color: var(--brand-white);
+  padding: 2rem clamp(1.25rem, 4vw, 3rem);
+}
+
+.app-footer-inner {
+  max-width: 80rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+@media (min-width: 768px) {
+  .app-footer-inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.app-footer-logo {
+  height: 1.25rem;
+  width: auto;
+}
+
+.app-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  font-weight: 500;
+}
+
+.app-footer-nav a:hover {
+  color: var(--brand-orange);
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .app-nav {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+  }
+
+  .app-display {
+    font-size: clamp(3.2rem, 17vw, 4.4rem);
+    line-height: 0.94;
+  }
+
+  .app-cta {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .app-download-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .app-download-row span:not(:first-child) {
+    grid-column: 1 / -1;
+  }
+
+  .app-store-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+    padding: 0.75rem 0;
+  }
 }

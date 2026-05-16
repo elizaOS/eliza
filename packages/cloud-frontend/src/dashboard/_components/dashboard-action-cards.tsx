@@ -60,9 +60,6 @@ export function DashboardActionCards({
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">My Agent</h3>
-          <p className="mt-1 text-sm text-white/50">
-            Administer your running cloud agent
-          </p>
         </div>
         <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
       </Link>
@@ -76,9 +73,6 @@ export function DashboardActionCards({
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">API Access</h3>
-          <p className="mt-1 mb-3 text-sm text-white/50">
-            Keys, docs, and live endpoint testing
-          </p>
           <div className="flex flex-wrap items-center gap-3">
             <Link
               to="/dashboard/api-keys"
@@ -121,9 +115,6 @@ export function DashboardActionCards({
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">Billing</h3>
-          <p className="mt-1 text-sm text-white/50">
-            Manage credits and cloud usage
-          </p>
         </div>
         <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
       </Link>
@@ -141,9 +132,6 @@ export function DashboardActionCards({
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">Instances</h3>
-          <p className="mt-1 text-sm text-white/50">
-            Inspect containers and agent runtime
-          </p>
         </div>
         <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-violet-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
       </Link>
@@ -163,9 +151,6 @@ export function DashboardActionCards({
           <h3 className="text-base font-semibold text-white">
             Apps &amp; Monetization
           </h3>
-          <p className="mt-1 text-sm text-white/50">
-            Package your agent and track revenue
-          </p>
         </div>
         <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
       </Link>

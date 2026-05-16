@@ -25,6 +25,8 @@ type RuntimeOverrides = Partial<AgentRuntime> & {
 };
 
 type MessageService = NonNullable<AgentRuntime["messageService"]>;
+type UseModel = NonNullable<AgentRuntime["useModel"]>;
+type UseModelMock = ReturnType<typeof vi.fn> & UseModel;
 
 function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
   const runtime = {
@@ -58,6 +60,12 @@ function createChatMessage(text: string) {
     entityId: stringToUuid("user"),
     content: { text, channelType: ChannelType.DM },
   });
+}
+
+function createUseModelMock(
+  impl: (modelType: unknown, params: unknown) => Promise<unknown>,
+): UseModelMock {
+  return vi.fn(impl) as unknown as UseModelMock;
 }
 
 function createStreamingMessageService(
@@ -161,6 +169,156 @@ describe("generateChatResponse token streaming", () => {
 
     expect(runningTotal).toBe("alpha beta gamma");
     expect(result.text).toBe("alpha beta gamma");
+  });
+
+  it("streams cleaned snapshots from the Android local direct path", async () => {
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+    const useModel = createUseModelMock(async (_modelType, params) => {
+      const textParams = params as {
+        onStreamChunk?: (chunk: string) => Promise<void> | void;
+      };
+      await textParams.onStreamChunk?.("Yes");
+      await textParams.onStreamChunk?.(", locally.");
+      return "Yes, locally.";
+    });
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const message = createChatMessage("can you hear me locally?");
+    message.content = {
+      ...message.content,
+      channelType: ChannelType.VOICE_DM,
+    } as typeof message.content;
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => {
+          chunks.push(chunk);
+        },
+        onSnapshot: (text) => {
+          snapshots.push(text);
+        },
+      },
+    );
+
+    expect(useModel).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        stream: true,
+        maxTokens: 20,
+        providerOptions: {
+          androidLocal: {
+            minFirstSentenceChars: 12,
+            stopOnFirstSentence: true,
+          },
+        },
+        onStreamChunk: expect.any(Function),
+      }),
+    );
+    expect(chunks).toEqual(["Yes", ", locally."]);
+    expect(chunks.join("")).toBe("Yes, locally.");
+    expect(snapshots).toEqual(["Yes", "Yes, locally."]);
+    expect(result.text).toBe("Yes, locally.");
+    expect(result.localInference).toEqual(
+      expect.objectContaining({
+        provider: "mobile-local-direct-reply",
+        streamedChunks: 2,
+      }),
+    );
+  });
+
+  it("keeps contextual Android local turns on the normal message runtime", async () => {
+    const useModel = createUseModelMock(async () => "generic local reply");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "You just told me your name is Ada." },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "contextual-turn",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("what did I just say?"),
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(useModel).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("You just told me your name is Ada.");
+  });
+
+  it("keeps tool-like Android local turns on the normal message runtime", async () => {
+    const useModel = createUseModelMock(async () => "generic local reply");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "I need the normal runtime for that." },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "tool-like-turn",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("remember that my favorite model is eliza"),
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(useModel).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("I need the normal runtime for that.");
   });
 
   it("aborts the message runtime when the chat generation timeout fires", async () => {

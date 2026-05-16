@@ -12,13 +12,17 @@ function wavBytes(): Uint8Array {
 	]);
 }
 
-function fakeReq(body?: unknown): http.IncomingMessage {
+function fakeReq(
+	body?: unknown,
+	headers: http.IncomingHttpHeaders = {},
+): http.IncomingMessage {
 	const req = new http.IncomingMessage(new Socket());
 	req.method = "POST";
 	req.url = "/api/asr/local-inference";
 	req.headers = {
 		host: "localhost:2138",
 		"content-type": "audio/wav",
+		...headers,
 	};
 	Object.defineProperty(req.socket, "remoteAddress", {
 		value: "127.0.0.1",
@@ -109,5 +113,23 @@ describe("local inference ASR route", () => {
 		).toEqual(Array.from(wavBytes()));
 		expect(useModel.mock.calls[0]?.[2]).toBe("eliza-local-inference");
 		expect(out.bodyJson()).toEqual({ text: "hello from json" });
+	});
+
+	it("accepts packaged desktop views:// origins without a bearer token", async () => {
+		const useModel = vi.fn().mockResolvedValue("hello from desktop");
+		const state: CompatRuntimeState = {
+			current: { useModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		await handleLocalInferenceAsrRoute(
+			fakeReq(wavBytes(), { origin: "views://main" }),
+			out.res,
+			state,
+		);
+
+		expect(out.status()).toBe(200);
+		expect(out.bodyJson()).toEqual({ text: "hello from desktop" });
+		expect(useModel).toHaveBeenCalledTimes(1);
 	});
 });

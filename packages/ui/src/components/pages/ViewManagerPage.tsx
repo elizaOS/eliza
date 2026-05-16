@@ -300,9 +300,6 @@ export function ViewManagerPage() {
       {/* Header */}
       <div className="shrink-0 border-b border-border/50 px-4 py-3">
         <h1 className="text-sm font-semibold text-txt">Views</h1>
-        <p className="text-xs text-muted">
-          Built-in shell views and agent-provided views from installed plugins
-        </p>
       </div>
 
       {/* Search */}

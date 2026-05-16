@@ -113,14 +113,14 @@ jobs:
           cd packages/benchmarks/lifeops-bench
           pip install -e .
 
-      - name: Typecheck (lifeops + training + scenario-runner + core)
+      - name: Type/build check (lifeops + training + scenario-runner + core)
         if: steps.gate.outputs.skip != 'true'
         run: |
           set -e
           bun run --cwd packages/core typecheck
-          bun run --cwd packages/scenario-runner typecheck
-          bunx tsc --noEmit -p plugins/plugin-lifeops/tsconfig.build.json
-          bunx tsc --noEmit -p plugins/plugin-training/tsconfig.build.json
+          bun run --cwd packages/scenario-runner build
+          bun run --cwd plugins/plugin-lifeops build:types
+          bun run --cwd plugins/plugin-training build:types
 
       - name: Verify Cerebras wiring
         if: steps.gate.outputs.skip != 'true'

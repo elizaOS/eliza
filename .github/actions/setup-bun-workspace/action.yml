@@ -33,7 +33,7 @@ inputs:
   init-submodules:
     description: "Run `git submodule update --init --recursive` before install"
     required: false
-    default: "true"
+    default: "false"
 
 runs:
   using: "composite"

@@ -187,19 +187,11 @@ export function RuntimeSettingsSection() {
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-5">
-      <div className="flex flex-col gap-1">
-        <div className="text-sm font-medium text-foreground">
-          {t("settings.runtime.currentMode", {
-            defaultValue: "Current mode: {{mode}}",
-            mode: currentRuntime.label,
-          })}
-        </div>
-        <p className="text-sm text-foreground/70">
-          {t("settings.runtime.description", {
-            defaultValue:
-              "Switch where the app sends agent requests. Reset Everything resets the currently selected agent.",
-          })}
-        </p>
+      <div className="text-sm font-medium text-foreground">
+        {t("settings.runtime.currentMode", {
+          defaultValue: "Current mode: {{mode}}",
+          mode: currentRuntime.label,
+        })}
       </div>
       <div
         className={
@@ -223,13 +215,8 @@ export function RuntimeSettingsSection() {
               className="h-auto justify-start gap-2 px-3 py-2 text-left"
             >
               <Icon className="size-4 shrink-0" aria-hidden="true" />
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-sm font-medium">
-                  {action.label}
-                </span>
-                <span className="whitespace-normal text-xs opacity-70">
-                  {action.description}
-                </span>
+              <span className="truncate text-sm font-medium">
+                {action.label}
               </span>
             </Button>
           );
@@ -276,12 +263,6 @@ export function RuntimeSettingsSection() {
           ) : null}
         </div>
       ) : null}
-      <p className="text-xs text-foreground/60">
-        {t("settings.runtime.switchNote", {
-          defaultValue:
-            "Switching reopens the runtime picker and leaves each agent's own data on that agent.",
-        })}
-      </p>
     </div>
   );
 }

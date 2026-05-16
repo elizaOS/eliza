@@ -50,7 +50,7 @@ export default function BlogPost({
           <div className="sticky top-20 z-10 mb-8">
             <Link
               to="/blog"
-              className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm text-neutral-200 backdrop-blur-sm transition-colors hover:bg-orange-500/40 hover:text-white"
+              className="inline-flex items-center gap-2 border border-white/14 bg-black px-4 py-2 text-sm text-white transition-colors hover:bg-[#FF5800] hover:text-white"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Blog

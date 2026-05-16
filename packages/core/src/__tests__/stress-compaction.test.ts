@@ -311,6 +311,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 				handler: async () => ({
 					success: true,
 					text: `Generated TaskFlow app:\n${generatedApp}`,
+					userFacingText: "Generated the TaskFlow app source.",
 					data: {
 						actionName: "GENERATE_FULL_STACK_APP",
 						files: {
@@ -349,6 +350,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 					return {
 						success: true,
 						text: `Wrote ${files.size} files to the app workspace.`,
+						userFacingText: `Wrote ${files.size} files to the app workspace.`,
 						data: { actionName: "WRITE_APP_FILES", fileCount: files.size },
 					};
 				},
@@ -387,6 +389,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 						return {
 							success: true,
 							text: "lint passed with no implementation markers.",
+							userFacingText: "lint passed with no implementation markers.",
 							data: { actionName: "RUN_QUALITY_GATE", gate },
 						};
 					}
@@ -397,6 +400,9 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 							text: app.includes("createTask")
 								? "tests passed: task creation flow is covered."
 								: "tests failed: task creation flow missing.",
+							userFacingText: app.includes("createTask")
+								? "tests passed: task creation flow is covered."
+								: undefined,
 							data: { actionName: "RUN_QUALITY_GATE", gate },
 						};
 					}
@@ -408,6 +414,9 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 							text: hasRequiredFiles
 								? "build passed: client and API modules compiled."
 								: "build failed: required modules missing.",
+							userFacingText: hasRequiredFiles
+								? "build passed: client and API modules compiled."
+								: undefined,
 							data: { actionName: "RUN_QUALITY_GATE", gate },
 						};
 					}
@@ -433,6 +442,8 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 					return {
 						success: true,
 						text: "Repaired generated files and removed implementation markers.",
+						userFacingText:
+							"Repaired generated files and removed implementation markers.",
 						data: { actionName: "REPAIR_APP_FILES" },
 					};
 				},
@@ -449,6 +460,12 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: stage1Response({
 						contexts: ["general"],
+						candidateActionNames: [
+							"GENERATE_FULL_STACK_APP",
+							"WRITE_APP_FILES",
+							"RUN_QUALITY_GATE",
+							"REPAIR_APP_FILES",
+						],
 						thought:
 							"The user requested a multi-step build and verification task.",
 					}),

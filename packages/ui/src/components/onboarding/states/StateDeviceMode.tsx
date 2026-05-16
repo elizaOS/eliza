@@ -25,7 +25,6 @@ export function StateDeviceMode(
       data-eliza-ob-state="device-mode"
     >
       <h1>Local Runtime</h1>
-      <p>You can run entirely locally or use Eliza Cloud.</p>
       <div className="eliza-ob-choice-list">
         <button
           type="button"

@@ -2,7 +2,7 @@ import {
   type RouteSpec,
   resolveCloudRoute,
   toRuntimeSettings,
-} from "@elizaos/cloud-shared/routing";
+} from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
   Service,

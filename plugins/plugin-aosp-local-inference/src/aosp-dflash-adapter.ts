@@ -1,11 +1,19 @@
 /**
- * AOSP DFlash adapter.
+ * Legacy AOSP DFlash server-spawn adapter.
  *
  * Spawns the bundled `llama-server` binary (cross-compiled per ABI by
  * `eliza/packages/app-core/scripts/aosp/compile-libllama.mjs` and staged
  * by `stage-android-agent.mjs` into `assets/agent/<abi>/llama-server`) and
  * routes inference over loopback HTTP using the same OpenAI-shaped request
  * shape that the host-side `dflash-server.ts` already speaks.
+ *
+ * Why this is not the stock APK runtime path:
+ *   Stock Android APKs must keep local inference in-process. Android app-data
+ *   executable policy, lifecycle management, RAM use, and Play Store-style
+ *   packaging all make a child `llama-server` process the wrong production
+ *   contract. The production DFlash path is the in-process speculative shim
+ *   loaded beside libllama.so. This file remains as an explicit diagnostic
+ *   escape hatch only, guarded by ELIZA_DFLASH_SERVER_SPAWN=1.
  *
  * Why a separate file:
  *   The in-process FFI adapter (`AospLlamaAdapter` in `aosp-llama-adapter.ts`)
@@ -20,9 +28,8 @@
  *   informs whether path b is worth the shim work.
  *
  * Activation:
- *   - `AospLlamaLoadOptions.draftModelPath` is set, OR
- *   - `ELIZA_DFLASH=1` env var is set AND the catalog entry for the
- *     loaded target advertises `runtime.dflash.drafterModelId`.
+ *   - `ELIZA_DFLASH_SERVER_SPAWN=1`, AND
+ *   - `AospLlamaLoadOptions.draftModelPath` is set.
  *
  * Lifecycle:
  *   - `loadModel({ modelPath, draftModelPath, ... })` allocates a free
@@ -118,6 +125,22 @@ export interface DflashAdapter {
    * server instead of the desktop-spawned `llama-server`.
    */
   voiceTextRunner(): DflashVoiceTextRunner;
+}
+
+function readBooleanEnv(name: string): boolean | null {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
+    return true;
+  }
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+    return false;
+  }
+  return null;
+}
+
+function dflashServerSpawnAllowed(): boolean {
+  return readBooleanEnv("ELIZA_DFLASH_SERVER_SPAWN") === true;
 }
 
 /**
@@ -484,6 +507,9 @@ export function buildDflashAdapter(
   arch: NodeJS.Architecture = process.arch,
   cwd: string = process.cwd(),
 ): DflashAdapter | null {
+  if (!dflashServerSpawnAllowed()) {
+    return null;
+  }
   let llamaServerPath: string;
   try {
     llamaServerPath = resolveLlamaServerPath(arch, cwd);
@@ -510,11 +536,10 @@ export function buildDflashAdapter(
 }
 
 /**
- * Decide whether a `loadModel` call should route through the DFlash
- * adapter. True when:
- *   - The caller passed `draftModelPath` explicitly, OR
- *   - `ELIZA_DFLASH=1` is set in env (catalog has paired the model already
- *     at the dispatch layer).
+ * Decide whether a `loadModel` call should route through the legacy
+ * server-spawn adapter. `ELIZA_DFLASH` alone is not sufficient here; it
+ * names the desired speculative mode, and stock APK production must satisfy
+ * that through the in-process shim rather than a spawned localhost server.
  *
  * Exported so the dispatcher in registerAospLlamaLoader can apply the same
  * rule without re-implementing it.
@@ -522,7 +547,5 @@ export function buildDflashAdapter(
 export function shouldRouteViaDflash(args: {
   draftModelPath?: string;
 }): boolean {
-  if (args.draftModelPath) return true;
-  const env = process.env.ELIZA_DFLASH?.trim().toLowerCase();
-  return env === "1" || env === "true" || env === "yes";
+  return dflashServerSpawnAllowed() && Boolean(args.draftModelPath);
 }

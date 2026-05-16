@@ -5,8 +5,14 @@ const mockClient = vi.hoisted(() => ({
   startLocalInferenceDownload: vi.fn(),
 }));
 
+const fetchWithCsrfMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../api", () => ({
   client: mockClient,
+}));
+
+vi.mock("../api/csrf-client", () => ({
+  fetchWithCsrf: fetchWithCsrfMock,
 }));
 
 import { MODEL_CATALOG } from "../services/local-inference/catalog";
@@ -75,10 +81,7 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
 
   it("queues the fit-aware recommended default model on iOS simulator hardware", async () => {
     vi.stubGlobal("window", { localStorage: stubLocalStorage() });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("ok", { status: 200 })),
-    );
+    fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));
     mockClient.getLocalInferenceHub.mockResolvedValue(simulatorSnapshot());
     mockClient.startLocalInferenceDownload.mockResolvedValue({ ok: true });
 

@@ -14,7 +14,7 @@ export default defineConfig({
       "VITE_ELIZACLOUD_API_URL=https://www.elizacloud.ai bun run dev -- --host 127.0.0.1 --port 4444",
     url: "http://127.0.0.1:4444",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 240_000,
   },
   projects: [
     {

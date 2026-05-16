@@ -18,8 +18,6 @@
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
-			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"],
 			"@elizaos/plugin-agent-skills": [

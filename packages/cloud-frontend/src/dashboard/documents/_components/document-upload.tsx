@@ -270,10 +270,6 @@ export function DocumentUpload({
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground text-center">
-              Files upload automatically after selection
-            </p>
-
             {selectedFiles.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">

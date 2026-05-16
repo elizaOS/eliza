@@ -48,8 +48,6 @@ export interface SettingsSectionDef {
   defaultLabel: string;
   icon: LucideIcon;
   tone: SettingsSectionTone;
-  tooltipDescription?: string;
-  defaultTooltipDescription?: string;
   titleKey: string;
   defaultTitle: string;
   bodyClassName?: string;
@@ -71,8 +69,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Basics",
     icon: User,
     tone: "neutral",
-    tooltipDescription: "settings.sections.identity.desc",
-    defaultTooltipDescription: "Name, voice, prompt.",
     titleKey: "settings.sections.identity.label",
     defaultTitle: "Basics",
     Component: IdentitySettingsSection,
@@ -83,8 +79,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Providers",
     icon: Brain,
     tone: "accent",
-    tooltipDescription: "settings.sections.aimodel.desc",
-    defaultTooltipDescription: "Cloud, local, subscriptions, keys.",
     titleKey: "common.providers",
     defaultTitle: "Providers",
     Component: ProviderSwitcher,
@@ -95,8 +89,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Runtime",
     icon: Server,
     tone: "neutral",
-    tooltipDescription: "settings.sections.runtime.desc",
-    defaultTooltipDescription: "Local, cloud, or remote.",
     titleKey: "settings.sections.runtime.label",
     defaultTitle: "Runtime",
     Component: RuntimeSettingsSection,
@@ -107,8 +99,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Appearance",
     icon: Palette,
     tone: "neutral",
-    tooltipDescription: "settings.sections.appearance.desc",
-    defaultTooltipDescription: "Language, theme, packs.",
     titleKey: "settings.sections.appearance.label",
     defaultTitle: "Appearance",
     Component: AppearanceSettingsSection,
@@ -119,9 +109,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Voice",
     icon: Mic,
     tone: "accent",
-    tooltipDescription: "settings.sections.voice.desc",
-    defaultTooltipDescription:
-      "Continuous chat, wake word, profiles, and privacy.",
     titleKey: "settings.sections.voice.label",
     defaultTitle: "Voice",
     Component: VoiceSectionMount,
@@ -132,8 +119,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Capabilities",
     icon: SlidersHorizontal,
     tone: "accent",
-    tooltipDescription: "settings.sections.capabilities.desc",
-    defaultTooltipDescription: "Agent features and automations.",
     titleKey: "common.capabilities",
     defaultTitle: "Capabilities",
     Component: CapabilitiesSection,
@@ -144,8 +129,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Apps",
     icon: LayoutGrid,
     tone: "accent",
-    tooltipDescription: "settings.sections.apps.desc",
-    defaultTooltipDescription: "Installed apps and creation.",
     titleKey: "settings.sections.apps.label",
     defaultTitle: "Apps",
     Component: AppsManagementSection,
@@ -156,8 +139,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Carrots",
     icon: Carrot,
     tone: "accent",
-    tooltipDescription: "settings.sections.carrots.desc",
-    defaultTooltipDescription: "Sandboxed mini-apps.",
     titleKey: "settings.sections.carrots.label",
     defaultTitle: "Carrots",
     Component: CarrotManagerSection,
@@ -168,8 +149,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Connectors",
     icon: Webhook,
     tone: "accent",
-    tooltipDescription: "settings.sections.connectors.desc",
-    defaultTooltipDescription: "Telegram, Discord, iMessage.",
     titleKey: "settings.sections.connectors.label",
     defaultTitle: "Connectors",
     Component: ConnectorsSection,
@@ -180,8 +159,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "App Permissions",
     icon: ShieldCheck,
     tone: "warn",
-    tooltipDescription: "settings.sections.apppermissions.desc",
-    defaultTooltipDescription: "Per-app filesystem and network grants.",
     titleKey: "settings.sections.apppermissions.label",
     defaultTitle: "App Permissions",
     Component: AppPermissionsSection,
@@ -192,8 +169,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Wallet & RPC",
     icon: Wallet,
     tone: "neutral",
-    tooltipDescription: "settings.sections.walletrpc.desc",
-    defaultTooltipDescription: "Wallet network and RPC.",
     titleKey: "settings.sections.walletrpc.label",
     defaultTitle: "Wallet & RPC",
     bodyClassName: "p-4 sm:p-5",
@@ -205,8 +180,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Permissions",
     icon: Shield,
     tone: "warn",
-    tooltipDescription: "settings.sections.permissions.desc",
-    defaultTooltipDescription: "Browser and device access.",
     titleKey: "common.permissions",
     defaultTitle: "Permissions",
     Component: PermissionsSection,
@@ -217,8 +190,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Vault",
     icon: KeyRound,
     tone: "warn",
-    tooltipDescription: "settings.sections.secrets.desc",
-    defaultTooltipDescription: "Secrets, logins, routing.",
     titleKey: "settings.sections.secrets.label",
     defaultTitle: "Vault",
     Component: SecretsManagerSection,
@@ -229,8 +200,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Security",
     icon: Lock,
     tone: "warn",
-    tooltipDescription: "settings.sections.security.desc",
-    defaultTooltipDescription: "Local and remote access.",
     titleKey: "settings.sections.security.label",
     defaultTitle: "Security",
     Component: SecuritySettingsSection,
@@ -241,8 +210,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Updates",
     icon: RefreshCw,
     tone: "neutral",
-    tooltipDescription: "settings.sections.updates.desc",
-    defaultTooltipDescription: "Software updates.",
     titleKey: "settings.sections.updates.label",
     defaultTitle: "Updates",
     Component: ReleaseCenterView,
@@ -253,8 +220,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Backup & Reset",
     icon: Archive,
     tone: "neutral",
-    tooltipDescription: "settings.sections.backupReset.desc",
-    defaultTooltipDescription: "Export, import, reset.",
     titleKey: "settings.sections.backupReset.label",
     defaultTitle: "Backup & Reset",
     Component: AdvancedSection,
@@ -266,16 +231,6 @@ export function settingsSectionLabel(
   t: (key: string, vars?: Record<string, unknown>) => string,
 ): string {
   return t(section.label, { defaultValue: section.defaultLabel });
-}
-
-export function settingsSectionTooltip(
-  section: SettingsSectionDef,
-  t: (key: string, vars?: Record<string, unknown>) => string,
-): string | undefined {
-  if (!section.tooltipDescription) return section.defaultTooltipDescription;
-  return t(section.tooltipDescription, {
-    defaultValue: section.defaultTooltipDescription ?? "",
-  });
 }
 
 export function settingsSectionTitle(

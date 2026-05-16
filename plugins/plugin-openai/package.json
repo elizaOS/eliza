@@ -155,6 +155,18 @@
         "default": 1536,
         "sensitive": false
       },
+      "OPENAI_IMAGE_DESCRIPTION_API_KEY": {
+        "type": "string",
+        "description": "Optional API key for image-description requests. Falls back to the general OpenAI API key when unset.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_IMAGE_DESCRIPTION_BASE_URL": {
+        "type": "string",
+        "description": "Optional OpenAI-compatible base URL for image-description requests. Useful when text models use a non-vision-compatible endpoint.",
+        "required": false,
+        "sensitive": false
+      },
       "OPENAI_IMAGE_DESCRIPTION_MODEL": {
         "type": "string",
         "description": "Identifier of the model used for describing images.",

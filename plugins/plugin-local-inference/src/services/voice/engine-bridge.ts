@@ -94,8 +94,10 @@ import {
 } from "./speaker-preset-cache";
 import {
 	ASR_SAMPLE_RATE,
+	type AsrBackendPreference,
 	AsrUnavailableError,
 	createStreamingTranscriber,
+	readAsrBackendPreferenceFromEnv,
 	resampleLinear,
 } from "./transcriber";
 import type {
@@ -1488,6 +1490,8 @@ export class EngineVoiceBridge {
 	 */
 	createStreamingTranscriber(opts?: {
 		vad?: VadEventSource;
+		prefer?: AsrBackendPreference;
+		allowOpenVinoWhisper?: boolean;
 	}): StreamingTranscriber {
 		this.assertVoiceOn("create streaming transcriber");
 		const contextRef = this.ffiContextRef;
@@ -1496,6 +1500,8 @@ export class EngineVoiceBridge {
 			getContext: contextRef ? () => contextRef.ensure() : undefined,
 			asrBundlePresent: this.asrAvailable,
 			vad: opts?.vad,
+			prefer: opts?.prefer,
+			allowOpenVinoWhisper: opts?.allowOpenVinoWhisper,
 		});
 	}
 
@@ -1517,6 +1523,36 @@ export class EngineVoiceBridge {
 			throw signal.reason instanceof Error
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
+		}
+		const transcribeWithStreaming = async (
+			prefer?: AsrBackendPreference,
+		): Promise<string> => {
+			const transcriber = this.createStreamingTranscriber(
+				prefer ? { prefer } : undefined,
+			);
+			const abort = () => transcriber.dispose();
+			try {
+				signal?.addEventListener("abort", abort, { once: true });
+				transcriber.feed({
+					pcm: args.pcm,
+					sampleRate: args.sampleRate,
+					timestampMs: 0,
+				});
+				const final = await transcriber.flush();
+				if (signal?.aborted) {
+					throw signal.reason instanceof Error
+						? signal.reason
+						: new DOMException("Aborted", "AbortError");
+				}
+				return final.partial;
+			} finally {
+				signal?.removeEventListener("abort", abort);
+				transcriber.dispose();
+			}
+		};
+		const asrPreference = readAsrBackendPreferenceFromEnv();
+		if (asrPreference === "openvino-whisper") {
+			return await transcribeWithStreaming("openvino-whisper");
 		}
 		const backendBatch = this.backend as OmniVoiceBackend & {
 			transcribe?: (args: TranscriptionAudio) => Promise<string>;
@@ -1554,26 +1590,7 @@ export class EngineVoiceBridge {
 			}
 			return transcript;
 		}
-		const transcriber = this.createStreamingTranscriber();
-		const abort = () => transcriber.dispose();
-		try {
-			signal?.addEventListener("abort", abort, { once: true });
-			transcriber.feed({
-				pcm: args.pcm,
-				sampleRate: args.sampleRate,
-				timestampMs: 0,
-			});
-			const final = await transcriber.flush();
-			if (signal?.aborted) {
-				throw signal.reason instanceof Error
-					? signal.reason
-					: new DOMException("Aborted", "AbortError");
-			}
-			return final.partial;
-		} finally {
-			signal?.removeEventListener("abort", abort);
-			transcriber.dispose();
-		}
+		return await transcribeWithStreaming(asrPreference ?? undefined);
 	}
 
 	/**

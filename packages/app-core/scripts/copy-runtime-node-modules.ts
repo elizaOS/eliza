@@ -591,6 +591,22 @@ function shouldPreservePrunedPackageEntry(
   );
 }
 
+function shouldPrunePackageRelativePath(
+  packageName: string,
+  relativePath: string,
+): boolean {
+  const normalizedPath = relativePath.split(path.sep).join("/");
+
+  if (packageName === "@elizaos/plugin-local-inference") {
+    return (
+      normalizedPath === "native/llama.cpp/tools/server/webui" ||
+      normalizedPath.startsWith("native/llama.cpp/tools/server/webui/")
+    );
+  }
+
+  return false;
+}
+
 function pruneCopiedPackageDir(name: string, packageDir: string): void {
   if (!fs.existsSync(packageDir)) return;
 
@@ -598,6 +614,11 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
     for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
       const entryPath = path.join(currentDir, entry.name);
       const relativePath = path.relative(packageDir, entryPath);
+
+      if (shouldPrunePackageRelativePath(name, relativePath)) {
+        fs.rmSync(entryPath, { recursive: true, force: true });
+        continue;
+      }
 
       if (
         entry.name === "node_modules" ||

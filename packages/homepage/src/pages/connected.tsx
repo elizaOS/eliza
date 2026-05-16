@@ -63,7 +63,7 @@ function CrossPlatformNote({
     text = `Your conversations are linked across ${platforms.slice(0, -1).join(", ")}, and ${platforms[platforms.length - 1]}`;
   }
 
-  return <p className="text-xs text-white/40 text-center">{text}</p>;
+  return <p className="text-xs text-black/55 text-center">{text}</p>;
 }
 
 export default function ConnectedPage() {
@@ -171,16 +171,26 @@ export default function ConnectedPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Loading...</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Loading…
+        </div>
       </main>
     );
   }
 
   if (!isAuthenticated || !user) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Redirecting...</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Redirecting…
+        </div>
       </main>
     );
   }
@@ -200,20 +210,21 @@ export default function ConnectedPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4 relative">
+    <main
+      className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative"
+      style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+    >
       <div className="absolute top-4 right-4 flex items-center gap-3">
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2">
-          <span className="text-xs text-white/50">Credits</span>
-          <span className="text-sm font-semibold text-white">
-            ${creditBalance}
-          </span>
+        <div className="bg-black text-white border border-black px-4 py-2.5 flex items-center gap-2">
+          <span className="text-xs opacity-60">Credits</span>
+          <span className="text-sm font-semibold">${creditBalance}</span>
         </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="focus:outline-none focus:ring-2 focus:ring-white/20 rounded-full"
+              className="focus:outline-none focus:ring-2 focus:ring-black/30 rounded-full"
             >
               {user.avatar ? (
                 <img
@@ -271,27 +282,32 @@ export default function ConnectedPage() {
         </div>
 
         <div className="text-center space-y-3">
-          <h1 className="text-xl font-medium text-white">Talk to Eliza</h1>
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium text-green-400">Awake</span>
+          <h1
+            className="app-display"
+            style={{ fontSize: "clamp(2.5rem, 7vw, 4.5rem)" }}
+          >
+            Connected.
+          </h1>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-black text-white border border-black">
+            <span className="w-2 h-2 bg-[#FF5800] animate-pulse" />
+            <span className="text-xs font-semibold">Awake</span>
           </div>
         </div>
 
         <div className="flex flex-col gap-4">
           {user.telegram_id ? (
-            <div className="w-full h-[72px] rounded-2xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 text-white border border-[#229ED9]/30 flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
               <button
                 type="button"
                 onClick={handleOpenTelegram}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <TelegramIcon className="size-8 text-[#229ED9]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
                   <span className="text-lg font-medium">Telegram</span>
-                  <span className="text-sm text-white/50">
+                  <span className="text-sm text-black/60">
                     @{getTelegramBotUsername()}
                   </span>
                 </div>
@@ -304,7 +320,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyTelegram();
                 }}
-                className="shrink-0 text-white/40 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy Telegram link"
               >
                 {copiedTelegram ? (
@@ -318,33 +334,30 @@ export default function ConnectedPage() {
             <Button
               type="button"
               onClick={() => navigate("/get-started?method=telegram&link=true")}
-              className="w-full h-[72px] rounded-2xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 text-white border border-[#229ED9]/30 gap-4 justify-start px-5"
+              className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black gap-4 justify-start px-5"
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                 <TelegramIcon className="size-8 text-[#229ED9]" />
               </div>
               <div className="flex flex-col items-start">
                 <span className="text-lg font-medium">Connect Telegram</span>
-                <span className="text-sm text-white/50">
-                  Link your Telegram account
-                </span>
               </div>
             </Button>
           )}
 
           {user.phone_number ? (
-            <div className="w-full h-[72px] rounded-2xl bg-[#34C759]/10 hover:bg-[#34C759]/20 text-white border border-[#34C759]/30 flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
               <button
                 type="button"
                 onClick={handleOpenMessages}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
                   <span className="text-lg font-medium">iMessage</span>
-                  <span className="text-sm text-white/50">
+                  <span className="text-sm text-black/60">
                     {ELIZA_PHONE_FORMATTED}
                   </span>
                 </div>
@@ -357,7 +370,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyPhone();
                 }}
-                className="shrink-0 text-white/40 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy number"
               >
                 {copiedPhone ? (
@@ -371,7 +384,7 @@ export default function ConnectedPage() {
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                className="w-full h-[72px] rounded-2xl bg-[#34C759]/10 hover:bg-[#34C759]/20 text-white border border-[#34C759]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
+                className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={() => setShowPhoneInput((v) => !v)}
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
@@ -379,17 +392,11 @@ export default function ConnectedPage() {
                 </div>
                 <div className="flex flex-col items-start flex-1">
                   <span className="text-lg font-medium">iMessage</span>
-                  <span className="text-sm text-white/50">
-                    Add your phone number to enable
-                  </span>
                 </div>
               </button>
 
               {showPhoneInput && (
-                <div className="w-full rounded-2xl bg-white/5 border border-white/10 p-4 flex flex-col gap-3">
-                  <p className="text-xs text-white/50">
-                    Link your phone to chat with Eliza via iMessage
-                  </p>
+                <div className="w-full bg-black text-white border border-black p-4 flex flex-col gap-3">
                   <PhoneNumberInput
                     selectedCountry={selectedCountry}
                     onCountryChange={setSelectedCountry}
@@ -408,7 +415,7 @@ export default function ConnectedPage() {
                       type="button"
                       onClick={handleLinkPhone}
                       disabled={!phoneValue.trim() || isLinkingPhone}
-                      className="flex-1 h-10 rounded-xl bg-[#34C759] hover:bg-[#2DB84D] text-white text-sm font-medium disabled:opacity-50"
+                      className="flex-1 h-10 bg-[#FF5800] hover:bg-[#FF5800]/90 text-black text-sm font-semibold disabled:opacity-50"
                     >
                       {isLinkingPhone ? "Linking..." : "Link Phone"}
                     </Button>
@@ -420,7 +427,7 @@ export default function ConnectedPage() {
                         setPhoneError(null);
                         setPhoneValue("");
                       }}
-                      className="h-10 rounded-xl text-white/40 hover:text-white hover:bg-white/10 text-sm"
+                      className="h-10 text-white/70 hover:text-white hover:bg-white/10 text-sm"
                     >
                       Cancel
                     </Button>
@@ -431,18 +438,18 @@ export default function ConnectedPage() {
           )}
 
           {user.whatsapp_id ? (
-            <div className="w-full h-[72px] rounded-2xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-white border border-[#25D366]/30 flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
               <button
                 type="button"
                 onClick={handleOpenWhatsApp}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <WhatsAppIcon className="size-8 text-[#25D366]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
                   <span className="text-lg font-medium">WhatsApp</span>
-                  <span className="text-sm text-white/50">
+                  <span className="text-sm text-black/60">
                     {user.whatsapp_name || "Open WhatsApp"}
                   </span>
                 </div>
@@ -455,7 +462,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyWhatsApp();
                 }}
-                className="shrink-0 text-white/40 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy WhatsApp link"
               >
                 {copiedWhatsApp ? (
@@ -468,7 +475,7 @@ export default function ConnectedPage() {
           ) : (
             <button
               type="button"
-              className="w-full h-[72px] rounded-2xl bg-[#25D366]/10 hover:bg-[#25D366]/20 text-white border border-[#25D366]/30 flex items-center gap-4 px-5 cursor-pointer transition-colors"
+              className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
               onClick={handleOpenWhatsApp}
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
@@ -476,26 +483,23 @@ export default function ConnectedPage() {
               </div>
               <div className="flex flex-col items-start flex-1">
                 <span className="text-lg font-medium">WhatsApp</span>
-                <span className="text-sm text-white/50">
-                  Message to connect
-                </span>
               </div>
             </button>
           )}
 
           {user.discord_id ? (
-            <div className="w-full h-[72px] rounded-2xl bg-[#5865F2]/10 hover:bg-[#5865F2]/20 text-white border border-[#5865F2]/30 flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
               <button
                 type="button"
                 onClick={handleOpenDiscord}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-white"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <DiscordIcon className="size-8 text-[#5865F2]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
                   <span className="text-lg font-medium">Discord</span>
-                  <span className="text-sm text-white/50">
+                  <span className="text-sm text-black/60">
                     @{user.discord_username || "Eliza"}
                   </span>
                 </div>
@@ -508,7 +512,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   navigate("/get-started?guide=discord");
                 }}
-                className="shrink-0 text-white/40 hover:text-white hover:bg-white/10"
+                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Setup guide"
               >
                 <Info className="size-5" />
@@ -518,16 +522,13 @@ export default function ConnectedPage() {
             <Button
               type="button"
               onClick={() => navigate("/get-started?method=discord&link=true")}
-              className="w-full h-[72px] rounded-2xl bg-[#5865F2]/10 hover:bg-[#5865F2]/20 text-white border border-[#5865F2]/30 gap-4 justify-start px-5"
+              className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black gap-4 justify-start px-5"
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                 <DiscordIcon className="size-8 text-[#5865F2]" />
               </div>
               <div className="flex flex-col items-start">
                 <span className="text-lg font-medium">Connect Discord</span>
-                <span className="text-sm text-white/50">
-                  Link your Discord account
-                </span>
               </div>
             </Button>
           )}
@@ -542,15 +543,15 @@ export default function ConnectedPage() {
       </div>
 
       <footer className="absolute bottom-6 left-0 right-0 text-center">
-        <p className="text-[10px] text-white/25">
+        <p className="text-[10px] text-black/50">
           ElizaCloud Inc. {new Date().getFullYear()}{" "}
-          <a href="/terms" className="hover:text-white/40">
+          <a href="/terms" className="hover:text-black">
             Terms
           </a>{" "}
-          <a href="/privacy" className="hover:text-white/40">
+          <a href="/privacy" className="hover:text-black">
             Privacy
           </a>{" "}
-          <a href="/help" className="hover:text-white/40">
+          <a href="/help" className="hover:text-black">
             Help
           </a>
         </p>

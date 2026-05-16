@@ -2384,6 +2384,86 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
+function providerDataRecord(
+	state: State,
+	providerName: string,
+): Record<string, unknown> | null {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") return null;
+	const entry =
+		providers[providerName] ??
+		providers[providerName.toLowerCase()] ??
+		providers[providerName.toUpperCase()];
+	if (!entry || typeof entry !== "object") return null;
+	const data = (entry as { data?: unknown }).data;
+	return data && typeof data === "object"
+		? (data as Record<string, unknown>)
+		: null;
+}
+
+function mediaListFrom(value: unknown): Media[] {
+	return Array.isArray(value)
+		? value.filter((item): item is Media => !!item && typeof item === "object")
+		: [];
+}
+
+function availableAttachmentCount(message: Memory, state: State): number {
+	const directAttachments = mediaListFrom(message.content.attachments);
+	const attachmentData = providerDataRecord(state, "ATTACHMENTS");
+	const providerAttachments = [
+		...mediaListFrom(attachmentData?.attachments),
+		...mediaListFrom(attachmentData?.visibleAttachments),
+	];
+	const ids = new Set<string>();
+	for (const attachment of [...directAttachments, ...providerAttachments]) {
+		const id = typeof attachment.id === "string" ? attachment.id : "";
+		ids.add(id || attachment.url || JSON.stringify(attachment));
+	}
+	return ids.size;
+}
+
+function latestPriorUserText(state: State): string {
+	const recentData = providerDataRecord(state, "RECENT_MESSAGES");
+	const recentMessages = Array.isArray(recentData?.recentMessages)
+		? (recentData.recentMessages as Memory[])
+		: [];
+	const latest = [...recentMessages]
+		.filter((memory) => memory.entityId !== memory.agentId)
+		.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+		.at(-1);
+	return typeof latest?.content?.text === "string" ? latest.content.text : "";
+}
+
+const ATTACHMENT_NOUN_RE =
+	/\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b/iu;
+const ATTACHMENT_INSPECTION_RE =
+	/\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|shape|colou?r|thoughts?|think|opinion|take)\b/iu;
+const VISUAL_INSPECTION_RE =
+	/\b(?:can\s+you\s+see|what\s+do\s+you\s+see|look\s+at|view|describe|analy[sz]e|inspect|read|open)\b/iu;
+const PRONOUN_ATTACHMENT_FOLLOWUP_RE = /\b(?:it|this|that|them|those)\b/iu;
+
+function looksLikeAttachmentInspectionRequest(
+	message: Memory,
+	state: State,
+): boolean {
+	if (availableAttachmentCount(message, state) === 0) return false;
+	const text =
+		typeof message.content.text === "string" ? message.content.text : "";
+	if (!text.trim()) return false;
+	if (ATTACHMENT_NOUN_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)) {
+		return true;
+	}
+	if (VISUAL_INSPECTION_RE.test(text)) {
+		return true;
+	}
+	const priorText = latestPriorUserText(state);
+	return (
+		ATTACHMENT_NOUN_RE.test(priorText) &&
+		PRONOUN_ATTACHMENT_FOLLOWUP_RE.test(text) &&
+		ATTACHMENT_INSPECTION_RE.test(text)
+	);
+}
+
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -2405,6 +2485,23 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					],
 				};
 			},
+		},
+		{
+			name: "core.attachment_inspection_requires_tool",
+			description:
+				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
+			priority: 10,
+			shouldRun: ({ message, state }) =>
+				looksLikeAttachmentInspectionRequest(message, state),
+			evaluate: () => ({
+				requiresTool: true,
+				addContexts: ["media", "messaging"],
+				addCandidateActions: ["ATTACHMENT"],
+				clearReply: true,
+				debug: [
+					"attachment/image request has conversation attachments; routing through ATTACHMENT before answering",
+				],
+			}),
 		},
 	];
 
@@ -6090,9 +6187,7 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 
 	if (
 		looksLikeCreativeWritingRequest(normalized) &&
-		!/\b(?:build|code|implement|scaffold|program|develop)\b[\s\S]{0,120}\b(?:app|site|page|code|project|frontend|backend|cli|script)\b/iu.test(
-			normalized,
-		)
+		!looksLikeCreativeCodingWorkRequest(normalized)
 	) {
 		return false;
 	}
@@ -6124,6 +6219,27 @@ function looksLikeCreativeWritingRequest(text: string): boolean {
 	if (!creativeObject) return false;
 	return /\b(?:write|compose|draft|make|create|give me|generate)\b/iu.test(
 		normalized,
+	);
+}
+
+function looksLikeCreativeCodingWorkRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (
+		/\b(?:poem|haiku|sonnet|verse|story|joke|song|lyrics)\b[\s\S]{0,80}\b(?:about|on|how|that|where|involving)\b[\s\S]{0,80}\b(?:app|site|page|project)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const codingObject =
+		/\b(?:app|site|page|code|project|frontend|backend|cli|script)\b/iu;
+	const codingVerb =
+		/\b(?:build|code|implement|scaffold|program|develop|create|make|write|generate)\b/iu;
+	return (
+		(codingVerb.test(normalized) && codingObject.test(normalized)) ||
+		/\b(?:app|site|page|project)\b[\s\S]{0,160}\b(?:that|which|where|with|for)\b/iu.test(
+			normalized,
+		)
 	);
 }
 

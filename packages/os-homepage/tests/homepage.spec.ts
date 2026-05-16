@@ -2,23 +2,24 @@ import { expect, test } from "playwright/test";
 
 const requiredCopy = [
   "The agentic operating system for devices that run themselves.",
+  "Download/install elizaOS",
   "Download ElizaOS",
   "Download Eliza App",
   "Run in Eliza Cloud",
   "Choose the installer for your device.",
-  "Pre-order hardware",
-  "ElizaOS Phone",
-  "ElizaOS Box",
-  "Chibi USB key",
-  "Branded USB key",
+  "Pre-order hardware on elizaos.ai.",
+  "ElizaOS USB",
+  "Raspberry Pi case",
+  "Custom Raspberry Pi + case",
+  "ElizaOS mini PC",
   "$49",
+  "$149",
+  "$1999",
   "Ships October 2026",
-  "Pre-order",
-  "Hardware orders live in Eliza Cloud.",
   "Supported Mac hardware is limited",
 ];
 
-test("homepage focuses on downloads before hardware preorder", async ({
+test("homepage focuses on install before integrated hardware preorder", async ({
   page,
 }) => {
   await page.goto("/");
@@ -33,25 +34,20 @@ test("homepage focuses on downloads before hardware preorder", async ({
     page.getByRole("navigation", { name: "Product switcher" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "Product switcher" }).getByText("App"),
-  ).toHaveCount(0);
-  await expect(
-    page
-      .getByRole("navigation", { name: "Product switcher" })
-      .getByText("Cloud"),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: /Download ElizaOS/i }).first(),
+    page.getByRole("link", { name: /Download\/install elizaOS/i }).first(),
   ).toHaveAttribute("href", "#downloads");
   await expect(
-    page.getByRole("link", { name: /Open Cloud checkout/i }),
-  ).toHaveAttribute("href", /\/checkout\?collection=elizaos-hardware$/);
+    page.getByRole("link", { name: /Open checkout/i }),
+  ).toHaveAttribute(
+    "href",
+    /^https:\/\/elizaos\.ai\/checkout\?collection=elizaos-hardware$/,
+  );
   await expect(
     page
-      .locator(".product-card")
+      .locator(".product-row")
       .getByRole("link", { name: "Pre-order" })
       .first(),
-  ).toHaveAttribute("href", /\/checkout\?sku=/);
+  ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/checkout\?sku=/);
 
   const sectionOrder = await page.evaluate(() => {
     const downloads = document
@@ -75,6 +71,7 @@ test("homepage removes verbose release planning copy", async ({ page }) => {
   await expect(page.getByText("What has to ship together")).toHaveCount(0);
   await expect(page.getByText("Prepared for GitHub releases")).toHaveCount(0);
   await expect(page.getByText("Source on GitHub")).toHaveCount(0);
+  await expect(page.locator(".product-card")).toHaveCount(0);
 });
 
 test("hero has no horizontal overflow and keeps primary action visible", async ({
@@ -98,10 +95,17 @@ test("hero has no horizontal overflow and keeps primary action visible", async (
 });
 
 for (const product of [
+  ["usb", "ElizaOS USB", "elizaos-usb"],
+  ["case", "Raspberry Pi case", "elizaos-raspberry-pi-case"],
+  [
+    "raspberry-pi",
+    "Custom Raspberry Pi + case",
+    "elizaos-custom-raspberry-pi-case",
+  ],
+  ["mini-pc", "ElizaOS mini PC", "elizaos-mini-pc"],
   ["phone", "ElizaOS Phone", "elizaos-phone"],
   ["box", "ElizaOS Box", "elizaos-box"],
-  ["usb", "Branded USB key", "elizaos-usb-plastic"],
-  ["usb-chibi", "Chibi USB key", "elizaos-usb-chibi"],
+  ["chibi-usb", "Chibi USB key", "elizaos-usb-chibi"],
 ] as const) {
   test(`hardware detail page supports preorder for ${product[1]}`, async ({
     page,
@@ -112,11 +116,9 @@ for (const product of [
 
     await expect(page.getByRole("heading", { name })).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /Pre-order in Eliza Cloud/i }),
-    ).toHaveAttribute("href", new RegExp(`/checkout\\?sku=${sku}$`));
-    await expect(
-      page.getByText("Checkout continues in Eliza Cloud."),
-    ).toBeVisible();
+      page.getByRole("link", { name: /Pre-order on elizaos.ai/i }),
+    ).toHaveAttribute("href", `https://elizaos.ai/checkout?sku=${sku}`);
+    await expect(page.getByText("Checkout stays on elizaos.ai.")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Download beta/i }),
     ).toHaveAttribute("href", "/downloads/elizaos-beta-manifest.json");

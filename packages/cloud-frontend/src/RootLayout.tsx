@@ -22,7 +22,7 @@ const baseUrl =
  *  - sonner Toaster
  *  - nprogress-driven navigation bar
  *
- * The layout sets the Open Sans CSS variables on the body via the className.
+ * The layout sets the Poppins font class on the body.
  * The vendored font import lives in `globals.css`.
  */
 export default function RootLayout() {
@@ -31,25 +31,25 @@ export default function RootLayout() {
       <Helmet>
         <html lang="en" />
         <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
-        <title>eliza cloud - Your Eliza, always online</title>
+        <title>eliza cloud - Run in Cloud</title>
         <meta
           name="description"
-          content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
+          content="Run your Eliza agent in Cloud. Sign in or preorder ElizaOS hardware."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
-        <meta
-          property="og:title"
-          content="eliza cloud - Your Eliza, always online"
-        />
+        <meta property="og:title" content="eliza cloud - Run in Cloud" />
         <meta
           property="og:description"
-          content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
+          content="Run your Eliza agent in Cloud. Sign in or preorder ElizaOS hardware."
         />
         <meta property="og:url" content={`${baseUrl}/`} />
         <meta property="og:site_name" content="Eliza Cloud" />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="en_US" />
-        <meta property="og:image" content="/cloudlogo.png" />
+        <meta
+          property="og:image"
+          content="/brand/logos/logo_white_blackbg.svg"
+        />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content="Eliza Cloud" />
@@ -57,12 +57,23 @@ export default function RootLayout() {
         <meta name="twitter:title" content="Eliza Cloud" />
         <meta
           name="twitter:description"
-          content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
+          content="Run your Eliza agent in Cloud. Sign in or preorder ElizaOS hardware."
         />
-        <meta name="twitter:image" content="/cloudlogo.png" />
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="shortcut icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/favicon.ico" />
+        <meta
+          name="twitter:image"
+          content="/brand/logos/logo_white_blackbg.svg"
+        />
+        <link
+          rel="icon"
+          type="image/svg+xml"
+          href="/brand/favicons/favicon.svg"
+        />
+        <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
+        <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
+        <link
+          rel="apple-touch-icon"
+          href="/brand/favicons/apple-touch-icon.png"
+        />
         <link rel="manifest" href="/site.webmanifest" />
       </Helmet>
       {/*
@@ -81,7 +92,7 @@ export default function RootLayout() {
           <CreditsProvider>
             <ThemeProvider
               attribute="class"
-              defaultTheme="light"
+              defaultTheme="dark"
               enableSystem={false}
               disableTransitionOnChange
             >
@@ -89,17 +100,16 @@ export default function RootLayout() {
               <Outlet />
               <Toaster
                 richColors
-                theme="light"
+                theme="dark"
                 position="top-right"
                 toastOptions={{
                   style: {
-                    background: "rgba(255, 255, 255, 0.82)",
-                    border: "1px solid rgba(255, 255, 255, 0.34)",
-                    color: "#06131f",
-                    backdropFilter: "blur(12px)",
-                    borderRadius: "18px",
+                    background: "#000000",
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    color: "#FFFFFF",
+                    borderRadius: "0",
                   },
-                  className: "font-open-sans",
+                  className: "font-poppins",
                 }}
               />
             </ThemeProvider>

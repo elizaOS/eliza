@@ -136,6 +136,13 @@ export function getAuthHeader(
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
+function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Record<string, string> {
+  if (isBrowser() && !getBooleanSetting(runtime, "OPENAI_ALLOW_BROWSER_API_KEY", false)) {
+    return {};
+  }
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
 export function getBaseURL(runtime: IAgentRuntime): string {
   const browserURL = getSetting(runtime, "OPENAI_BROWSER_BASE_URL");
   const cerebrasBaseURL =
@@ -162,6 +169,31 @@ export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
   }
 
   logger.debug("[OpenAI] Falling back to general base URL for embeddings");
+  return getBaseURL(runtime);
+}
+
+export function getImageDescriptionApiKey(runtime: IAgentRuntime): string | undefined {
+  const imageDescriptionApiKey = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_API_KEY");
+  if (imageDescriptionApiKey) {
+    return imageDescriptionApiKey;
+  }
+  const imageDescriptionURL = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL");
+  if (imageDescriptionURL && /(^|\.)openai\.com(\/|$)/i.test(imageDescriptionURL)) {
+    return getSetting(runtime, "OPENAI_API_KEY");
+  }
+  return getApiKey(runtime);
+}
+
+export function getImageDescriptionAuthHeader(runtime: IAgentRuntime): Record<string, string> {
+  return authHeaderForKey(runtime, getImageDescriptionApiKey(runtime));
+}
+
+export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
+  const imageDescriptionURL = getSetting(runtime, "OPENAI_IMAGE_DESCRIPTION_BASE_URL");
+  if (imageDescriptionURL) {
+    logger.debug(`[OpenAI] Using image-description base URL: ${imageDescriptionURL}`);
+    return imageDescriptionURL;
+  }
   return getBaseURL(runtime);
 }
 

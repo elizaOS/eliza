@@ -304,6 +304,12 @@ function getInjectedAppApiBase(): string | undefined {
   );
 }
 
+// TODO(brand): the Eliza brand wants the orange `.theme-app` look on the
+// first-run / onboarding / marketing surfaces (BLACK text on #FF5800, Poppins,
+// sharp corners), and the dark theme inside the running chat UI. That switch
+// is driven by `@elizaos/ui`'s onboarding wrapper, which we don't edit from
+// this shell. When the onboarding component gains an explicit "marketing
+// theme" preset, point `APP_BRANDING.onboardingTheme` at it here.
 const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
   theme: ELIZA_DEFAULT_THEME,
@@ -597,7 +603,7 @@ function renderIosFullBunSmokeStatus(message: string): void {
     document.body.innerHTML = "";
     const container = document.createElement("main");
     container.style.cssText =
-      "min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg,#f7f8fa);color:var(--text,#101114);font-family:var(--font-sans,'Open Sans',Arial,system-ui,sans-serif);padding:32px;text-align:center;";
+      "min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg,#f7f8fa);color:var(--text,#101114);font-family:var(--font-sans,'Poppins','Open Sans',Arial,system-ui,sans-serif);padding:32px;text-align:center;";
     const text = document.createElement("div");
     text.style.cssText = "max-width:360px;font-size:16px;line-height:1.45;";
     text.textContent = message;

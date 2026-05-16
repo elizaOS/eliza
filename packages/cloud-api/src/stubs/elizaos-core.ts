@@ -207,6 +207,7 @@ const stubLogger = {
 export const logger = stubLogger;
 export const elizaLogger = stubLogger;
 
+export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "deepseek/deepseek-chat";
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
 export async function readRequestBodyBuffer(
@@ -664,6 +665,99 @@ export function getRequestContext(): undefined {
   return undefined;
 }
 
+export function toRuntimeSettings(runtime: unknown): Record<string, unknown> {
+  if (!runtime || typeof runtime !== "object") return {};
+  const candidate = runtime as {
+    settings?: unknown;
+    character?: { settings?: unknown };
+  };
+  const settings =
+    candidate.settings ??
+    candidate.character?.settings ??
+    (runtime as Record<string, unknown>);
+  return settings && typeof settings === "object" && !Array.isArray(settings)
+    ? (settings as Record<string, unknown>)
+    : {};
+}
+
+export function isCloudInferenceSelectedInConfig(
+  config: Record<string, unknown> | null | undefined,
+): boolean {
+  const cloud = config?.cloud;
+  if (!cloud || typeof cloud !== "object" || Array.isArray(cloud)) {
+    return false;
+  }
+  const record = cloud as Record<string, unknown>;
+  return record.enabled === true || typeof record.apiKey === "string";
+}
+
+export const isElizaCloudServiceSelectedInConfig =
+  isCloudInferenceSelectedInConfig;
+
+export function isCloudConnected(settings: Record<string, unknown>): boolean {
+  return isCloudInferenceSelectedInConfig(settings);
+}
+
+export function migrateLegacyRuntimeConfig(
+  _config: Record<string, unknown> | null | undefined,
+): void {}
+
+export function isElizaSettingsDebugEnabled(): boolean {
+  return false;
+}
+
+export function settingsDebugCloudSummary(
+  config: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const cloud =
+    config?.cloud && typeof config.cloud === "object"
+      ? (config.cloud as Record<string, unknown>)
+      : {};
+  return {
+    enabled: cloud.enabled === true,
+    hasApiKey: typeof cloud.apiKey === "string" && cloud.apiKey.length > 0,
+  };
+}
+
+export function sanitizeSpeechText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function getRuntimeRouteHostContext<T = Record<string, unknown>>(
+  runtime: unknown,
+): T | undefined {
+  if (!runtime || typeof runtime !== "object") return undefined;
+  const candidate = runtime as { routeHostContext?: T; hostContext?: T };
+  return candidate.routeHostContext ?? candidate.hostContext;
+}
+
+export function registerAppRoutePluginLoader(
+  _id: string,
+  _loader: () => Promise<unknown>,
+): void {}
+
+export function resolveDesktopApiPort(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  return Number.parseInt(
+    env.ELIZA_API_PORT ?? env.API_PORT ?? env.SERVER_PORT ?? "2138",
+    10,
+  );
+}
+
+export function resolveApiSecurityConfig(
+  env: Record<string, string | undefined> = process.env,
+): { bindHost: string; isLoopbackBind: boolean } {
+  const bindHost = env.ELIZA_API_BIND ?? env.API_HOST ?? "127.0.0.1";
+  return {
+    bindHost,
+    isLoopbackBind:
+      bindHost === "127.0.0.1" ||
+      bindHost === "localhost" ||
+      bindHost === "::1",
+  };
+}
+
 export class Service {
   protected runtime: unknown;
 
@@ -753,6 +847,7 @@ export type MediaGenerationResponse = Record<string, unknown>;
 export default {
   logger,
   elizaLogger,
+  DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   ContentType,
   EventType,
   ChannelType,
@@ -790,6 +885,18 @@ export default {
   resolveEffectiveSystemPrompt,
   renderChatMessagesForPrompt,
   getRequestContext,
+  toRuntimeSettings,
+  isCloudInferenceSelectedInConfig,
+  isElizaCloudServiceSelectedInConfig,
+  isCloudConnected,
+  migrateLegacyRuntimeConfig,
+  isElizaSettingsDebugEnabled,
+  settingsDebugCloudSummary,
+  sanitizeSpeechText,
+  getRuntimeRouteHostContext,
+  registerAppRoutePluginLoader,
+  resolveApiSecurityConfig,
+  resolveDesktopApiPort,
   Service,
   IMediaGenerationService,
   AgentRuntime,

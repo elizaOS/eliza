@@ -75,11 +75,6 @@ export default function DashboardPage() {
                 <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl">
                   Run your Eliza agent on the hosted runtime
                 </h1>
-                <p className="mt-3 text-sm leading-6 text-white/60 md:text-base">
-                  Administer your live agent, connect app devices, manage API
-                  access, monitor runtime instances, and prepare apps for
-                  monetization from one dashboard.
-                </p>
               </div>
             </section>
 

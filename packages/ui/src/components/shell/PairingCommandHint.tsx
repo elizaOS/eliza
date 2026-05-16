@@ -1,4 +1,4 @@
-import { Copy, RefreshCw, Server } from "lucide-react";
+import { Copy, Server } from "lucide-react";
 import { useMemo } from "react";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
@@ -101,23 +101,6 @@ export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
             <span className="font-mono text-txt">{commandInfo.sshTarget}</span>{" "}
             {t("pairingcommandhint.editSshTargetSuffix", {
               defaultValue: "with your real SSH user and host.",
-            })}
-          </p>
-        ) : null}
-        <p className="flex items-start gap-1.5">
-          <RefreshCw className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-          <span>
-            {t("pairingcommandhint.refreshHint", {
-              defaultValue:
-                "Codes last 10 minutes. If the countdown is low or expired, run the command again.",
-            })}
-          </span>
-        </p>
-        {commandInfo.usesDefaultPort ? (
-          <p>
-            {t("pairingcommandhint.defaultPortHint", {
-              defaultValue:
-                "No port was in the URL, so this assumes the agent listens on 2138 locally. Change 2138 if your server uses a custom ELIZA_PORT.",
             })}
           </p>
         ) : null}

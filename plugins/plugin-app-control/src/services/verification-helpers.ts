@@ -274,7 +274,8 @@ export async function describeScreenshotWithVision(
 		const fs = await import("node:fs/promises");
 		const bytes = await fs.readFile(imagePath);
 		const dataUri = `data:image/png;base64,${bytes.toString("base64")}`;
-		const raw = (await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+		const runModel = runtime.useModel.bind(runtime);
+		const raw = (await runModel(ModelType.IMAGE_DESCRIPTION, {
 			imageUrl: dataUri,
 			prompt:
 				prompt ??

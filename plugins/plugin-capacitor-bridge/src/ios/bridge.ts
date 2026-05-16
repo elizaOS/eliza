@@ -4,7 +4,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
-import { dispatchRoute } from "@elizaos/agent";
 import {
 	ChannelType,
 	createMessageMemory,
@@ -88,8 +87,38 @@ interface IosBridgeBackend {
 	 * runs the matched route handler directly, with no loopback HTTP hop.
 	 */
 	runtime: IAgentRuntime;
+	dispatchRoute: DispatchRoute;
 	conversations: Map<string, IosConversation>;
 	close: () => Promise<void>;
+}
+
+type DispatchRoute = (args: {
+	runtime: IAgentRuntime;
+	method: string;
+	path: string;
+	headers: Record<string, string>;
+	query: Record<string, string | string[]>;
+	body: unknown;
+	inProcess: true;
+	isAuthorized: () => true;
+}) => Promise<
+	| {
+			status: number;
+			headers?: Record<string, string>;
+			body?: unknown;
+	  }
+	| null
+	| undefined
+>;
+
+type AgentModule = {
+	bootElizaRuntime: () => Promise<IAgentRuntime>;
+	dispatchRoute: DispatchRoute;
+};
+
+async function loadAgentModule(): Promise<AgentModule> {
+	const specifier = "@elizaos/" + "agent";
+	return (await import(specifier)) as AgentModule;
 }
 
 interface IosBridgeHost {
@@ -356,13 +385,14 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 		process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP || "1";
 	process.env.LOG_LEVEL = process.env.LOG_LEVEL || "error";
 
-	const { bootElizaRuntime } = await import("@elizaos/agent");
+	const { bootElizaRuntime, dispatchRoute } = await loadAgentModule();
 
 	const runtime = await bootElizaRuntime();
 	installIosNativeLlamaHandlers(runtime);
 
 	return {
 		runtime,
+		dispatchRoute,
 		conversations: new Map(),
 		close: async () => {
 			await unloadNativeLlamaModel().catch(() => undefined);
@@ -587,7 +617,7 @@ async function fetchBackend(
 	// local app talking to its own runtime via a sealed native bridge, no external
 	// attacker can inject frames here.
 	const result = await timeoutAfter(
-		dispatchRoute({
+		backend.dispatchRoute({
 			runtime: backend.runtime,
 			method,
 			path: pathname,

@@ -108,6 +108,7 @@ describe("probeLocalAgent", () => {
 
   it("falls back to fetch outside native Android", async () => {
     capacitorState.isNative = false;
+    capacitorState.plugins.Agent = undefined;
     const fetchMock = vi.fn(
       async () =>
         new Response(JSON.stringify({ ok: true }), {

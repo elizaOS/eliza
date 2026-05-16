@@ -48,12 +48,6 @@ const chartConfig = {
   },
 } as const;
 
-const metricDescriptions: Record<MetricKey, string> = {
-  requests: "Raw throughput captured at the selected cadence.",
-  cost: "Total cost in USD for the interval.",
-  successRate: "Share of successful calls over total attempts.",
-};
-
 export function UsageChart({ data, granularity }: UsageChartProps) {
   const [activeMetric, setActiveMetric] = useState<MetricKey>("requests");
 
@@ -143,9 +137,6 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
               Latest data point
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {metricDescriptions[activeMetric]}
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {(Object.keys(chartConfig) as MetricKey[]).map((metric) => {

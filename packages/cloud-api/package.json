@@ -39,7 +39,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
+    "@types/pg": "^8.16.0",
     "dotenv": "^17.4.2",
+    "pg": "^8.20.0",
     "typescript": "^6.0.3"
   }
 }

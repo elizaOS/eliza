@@ -36,6 +36,14 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/vault$/,
+        replacement: path.join(monorepoRoot, "packages/vault/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/vault\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
+      },
+      {
         find: /^@elizaos\/plugin-cli$/,
         replacement: path.join(
           repoRoot,
@@ -51,6 +59,7 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     environment: "node",
+    pool: "vmForks",
     setupFiles: ["test/setup.ts"],
     testTimeout: 120_000,
     hookTimeout: 120_000,
