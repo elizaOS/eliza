@@ -30,7 +30,6 @@ on:
       - "packages/core/src/runtime/**"
       - "test/scenarios/lifeops.**"
       - "scripts/lifeops-*.mjs"
-      - "scripts/aggregate-lifeops-run.mjs"
       - ".github/workflows/lifeops-bench.yml"
   workflow_dispatch:
     inputs:

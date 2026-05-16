@@ -15,7 +15,7 @@ concurrency:
 
 env:
   APP_DIR: packages/app
-  NODE_VERSION: "23"
+  NODE_VERSION: "24.15.0"
 
 jobs:
   build-android:

@@ -47,7 +47,7 @@ permissions:
 
 env:
   JAVA_VERSION: "21"
-  NODE_VERSION: "22"
+  NODE_VERSION: "24.15.0"
 
 jobs:
   build-aab:
