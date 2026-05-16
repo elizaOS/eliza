@@ -125,6 +125,349 @@ function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
+const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
+  /\b(check|search|find|fetch|get|look\s+up|browse|open|click|call|email|send|create|update|delete|save|remember|schedule|remind|set|run|execute|install|download|upload|read|inspect|build|deploy|commit|push|pull|merge|rebase|book|pay|buy|order)\b/i;
+
+const ANDROID_LOCAL_CURRENT_DATA_PATTERN =
+  /\b(latest|current|today|tomorrow|yesterday|weather|price|calendar|email|file|repo|repository|log|logs|issue|issues|pr|pull\s+request|wallet|transaction|account|contact|contacts)\b/i;
+
+function readRuntimeStringSetting(
+  runtime: AgentRuntime,
+  key: string,
+): string | null {
+  const setting =
+    typeof runtime.getSetting === "function" ? runtime.getSetting(key) : null;
+  if (typeof setting === "string" && setting.trim().length > 0) {
+    return setting.trim();
+  }
+  if (typeof setting === "number" || typeof setting === "boolean") {
+    return String(setting);
+  }
+  const env = process.env[key];
+  return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
+}
+
+function readPositiveIntegerSetting(
+  runtime: AgentRuntime,
+  key: string,
+  fallback: number,
+): number {
+  const raw = readRuntimeStringSetting(runtime, key);
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
+  const optOut = readRuntimeStringSetting(
+    runtime,
+    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
+  );
+  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
+    return false;
+  }
+  const platform =
+    readRuntimeStringSetting(runtime, "ELIZA_MOBILE_PLATFORM") ??
+    readRuntimeStringSetting(runtime, "ELIZA_PLATFORM");
+  const localLlama =
+    readRuntimeStringSetting(runtime, "ELIZA_LOCAL_LLAMA") === "1" ||
+    readRuntimeStringSetting(runtime, "ELIZA_DEVICE_BRIDGE_ENABLED") === "1";
+  return platform?.toLowerCase() === "android" && localLlama;
+}
+
+function hasAndroidLocalDirectChatBlockingContent(
+  content: Content & Record<string, unknown>,
+): boolean {
+  if (Array.isArray(content.attachments) && content.attachments.length > 0) {
+    return true;
+  }
+  if (Array.isArray(content.media) && content.media.length > 0) {
+    return true;
+  }
+  if (Array.isArray(content.files) && content.files.length > 0) {
+    return true;
+  }
+  if (content.documentIds || content.documents || content.localInference) {
+    return true;
+  }
+  const metadata =
+    content.metadata && typeof content.metadata === "object"
+      ? (content.metadata as Record<string, unknown>)
+      : {};
+  return Boolean(
+    metadata.benchmark || metadata.localInference || metadata.contextRouting,
+  );
+}
+
+function isAndroidLocalDirectChatChannel(content: Content): boolean {
+  const channelType = (content as Record<string, unknown>).channelType;
+  return (
+    channelType === ChannelType.API ||
+    channelType === ChannelType.DM ||
+    channelType === ChannelType.SELF ||
+    channelType === ChannelType.VOICE_DM ||
+    channelType === undefined
+  );
+}
+
+function shouldUseAndroidLocalDirectChat(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+): boolean {
+  if (!isAndroidLocalDirectChatRuntime(runtime)) {
+    return false;
+  }
+  const text = extractCompatTextContent(message.content).trim();
+  if (!text || text.length > 700) {
+    return false;
+  }
+  if (!isAndroidLocalDirectChatChannel(message.content)) {
+    return false;
+  }
+  if (
+    hasAndroidLocalDirectChatBlockingContent(
+      message.content as Content & Record<string, unknown>,
+    )
+  ) {
+    return false;
+  }
+  if (ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN.test(text)) {
+    return false;
+  }
+  if (ANDROID_LOCAL_CURRENT_DATA_PATTERN.test(text)) {
+    return /\b(local|locally|on[-\s]?device|device|pixel|eliza[-\s]?1|llama)\b/i.test(
+      text,
+    );
+  }
+  return true;
+}
+
+function escapeAndroidLocalChatTemplateTokens(text: string): string {
+  return text
+    .replaceAll("<|im_start|>", "<| im_start |>")
+    .replaceAll("<|im_end|>", "<| im_end |>")
+    .replaceAll("<think>", "< think >")
+    .replaceAll("</think>", "</ think >");
+}
+
+function buildAndroidLocalDirectChatPrompt(args: {
+  runtime: AgentRuntime;
+  userText: string;
+}): string {
+  const systemText = [
+    "Eliza-1 on Android.",
+    "One natural sentence under 10 words. Stop after it.",
+    "If asked local/on-device: yes, local Eliza-1 with DFlash.",
+    "No markdown, labels, tools, logs, or hidden reasoning.",
+  ].join("\n");
+  return [
+    "<|im_start|>system",
+    systemText,
+    "<|im_end|>",
+    "<|im_start|>user",
+    escapeAndroidLocalChatTemplateTokens(args.userText),
+    "<|im_end|>",
+    "<|im_start|>assistant",
+  ].join("\n");
+}
+
+function extractAndroidLocalModelText(raw: unknown): string {
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (!raw || typeof raw !== "object") {
+    return "";
+  }
+  const record = raw as Record<string, unknown>;
+  if (typeof record.text === "string") {
+    return record.text;
+  }
+  if (typeof record.content === "string") {
+    return record.content;
+  }
+  if (Array.isArray(record.content)) {
+    return record.content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object") {
+          const partRecord = part as Record<string, unknown>;
+          return typeof partRecord.text === "string" ? partRecord.text : "";
+        }
+        return "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+function truncateAndroidLocalReplyToFirstSentence(text: string): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  const firstSentence = compact.match(/^(.{12,280}?[.!?])(?:\s|$)/u)?.[1];
+  return (firstSentence ?? compact).trim();
+}
+
+function stripAndroidLocalReasoning(text: string): string {
+  let next = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  const danglingClose = next.lastIndexOf("</think>");
+  if (danglingClose >= 0) {
+    next = next.slice(danglingClose + "</think>".length);
+  }
+  const danglingOpen = next.indexOf("<think>");
+  if (danglingOpen >= 0) {
+    next = next.slice(0, danglingOpen);
+  }
+  return next;
+}
+
+function cleanAndroidLocalDirectChatReply(raw: unknown): string {
+  let text = stripAndroidLocalReasoning(extractAndroidLocalModelText(raw));
+  text = text
+    .split("<|im_end|>")[0]
+    .split("<|im_start|>")[0]
+    .replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
+    .replace(/\bMilady-1\b/gi, "Eliza-1")
+    .trim();
+  text = truncateAndroidLocalReplyToFirstSentence(text);
+  if (text.length <= 700) {
+    return text;
+  }
+  const truncated = text.slice(0, 700);
+  const sentenceEnd = Math.max(
+    truncated.lastIndexOf("."),
+    truncated.lastIndexOf("!"),
+    truncated.lastIndexOf("?"),
+  );
+  return (
+    sentenceEnd >= 80 ? truncated.slice(0, sentenceEnd + 1) : truncated
+  ).trim();
+}
+
+async function maybeGenerateAndroidLocalDirectChatResponse(args: {
+  runtime: AgentRuntime;
+  message: ReturnType<typeof createMessageMemory>;
+  agentName: string;
+  signal: AbortSignal;
+  opts?: ChatGenerateOptions;
+}): Promise<ChatGenerationResult | null> {
+  if (!shouldUseAndroidLocalDirectChat(args.runtime, args.message)) {
+    return null;
+  }
+  const userText = extractCompatTextContent(args.message.content).trim();
+  const prompt = buildAndroidLocalDirectChatPrompt({
+    runtime: args.runtime,
+    userText,
+  });
+  const maxTokens = readPositiveIntegerSetting(
+    args.runtime,
+    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+    20,
+  );
+  const startedAt = Date.now();
+  args.runtime.logger.info(
+    {
+      src: "eliza-api",
+      promptChars: prompt.length,
+      maxTokens,
+      messageId: args.message.id,
+    },
+    "[eliza-api] Android local direct chat fast path start",
+  );
+  let streamedRaw = "";
+  let lastStreamedSnapshot = "";
+  let streamedChunks = 0;
+  const emitCleanStreamingSnapshot = (snapshot: string): void => {
+    if (!snapshot || snapshot === lastStreamedSnapshot) return;
+    const update = resolveStreamingUpdate(lastStreamedSnapshot, snapshot);
+    if (update.kind === "append") {
+      args.opts?.onChunk?.(update.emittedText);
+    } else if (update.kind === "replace" && !args.opts?.onSnapshot) {
+      // OpenAI-compatible SSE cannot rewrite already-sent text. In the rare
+      // case cleaning turns a partial local reply into a non-append snapshot,
+      // hold the rewrite for the final response body instead of duplicating
+      // content on the token stream.
+      args.runtime.logger.debug(
+        {
+          src: "eliza-api",
+          previousChars: lastStreamedSnapshot.length,
+          nextChars: snapshot.length,
+          messageId: args.message.id,
+        },
+        "[eliza-api] Android local direct chat fast path held non-append streaming snapshot",
+      );
+    }
+    args.opts?.onSnapshot?.(snapshot);
+    lastStreamedSnapshot = snapshot;
+  };
+  const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+    maxTokens,
+    stopSequences: ["<|im_end|>", "<|im_start|>"],
+    temperature: 0,
+    providerOptions: {
+      androidLocal: {
+        stopOnFirstSentence: true,
+        minFirstSentenceChars: 12,
+      },
+    },
+    signal: args.signal,
+    stream: true,
+    onStreamChunk: (chunk: string) => {
+      streamedRaw += chunk;
+      streamedChunks += 1;
+      const snapshot = cleanAndroidLocalDirectChatReply(streamedRaw);
+      emitCleanStreamingSnapshot(snapshot);
+    },
+  });
+  const text = cleanAndroidLocalDirectChatReply(raw);
+  if (!text) {
+    args.runtime.logger.warn(
+      { src: "eliza-api", messageId: args.message.id },
+      "[eliza-api] Android local direct chat fast path returned empty text",
+    );
+    return null;
+  }
+  const latencyMs = Date.now() - startedAt;
+  emitCleanStreamingSnapshot(text);
+  const localInference = {
+    provider: "mobile-local-direct-reply",
+    mode: "api_fast_path",
+    latencyMs,
+    promptChars: prompt.length,
+    maxTokens,
+    streamedChunks,
+  } satisfies LocalInferenceChatMetadata;
+  const responseContent = {
+    text,
+    source: "client_chat",
+    actions: ["REPLY"],
+    localInference,
+  } satisfies Content;
+  args.runtime.logger.info(
+    {
+      src: "eliza-api",
+      latencyMs,
+      textChars: text.length,
+      messageId: args.message.id,
+    },
+    "[eliza-api] Android local direct chat fast path done",
+  );
+  return {
+    text,
+    agentName: args.agentName,
+    localInference,
+    responseContent,
+    usage: {
+      promptTokens: estimateTokenCount(prompt),
+      completionTokens: estimateTokenCount(text),
+      totalTokens: estimateTokenCount(prompt) + estimateTokenCount(text),
+      model: detectRuntimeModel(args.runtime, undefined) ?? undefined,
+      provider: "mobile-local-direct-reply",
+      isEstimated: true,
+      llmCalls: 1,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Exported types
 // ---------------------------------------------------------------------------
@@ -1434,6 +1777,51 @@ export async function generateChatResponse(
         ? { trajectoryStepId: trajectoryStepId.trim() }
         : undefined;
 
+    const androidDirectResult = await runWithTrajectoryContext(
+      trajectoryContext,
+      () =>
+        maybeGenerateAndroidLocalDirectChatResponse({
+          runtime,
+          message,
+          agentName,
+          signal: generationAbortController.signal,
+          opts,
+        }),
+    );
+    if (androidDirectResult) {
+      try {
+        if (
+          androidDirectResult.responseContent &&
+          typeof runtime.emitEvent === "function"
+        ) {
+          const memoryLike = createMessageMemory({
+            id: crypto.randomUUID() as UUID,
+            roomId: message.roomId,
+            entityId: runtime.agentId,
+            content: ensureMessageMemoryContent(
+              androidDirectResult.responseContent,
+            ),
+          });
+          memoryLike.metadata = message.metadata;
+          await runtime.emitEvent("MESSAGE_SENT", {
+            message: memoryLike,
+            source: messageSource,
+          });
+        }
+      } catch (err) {
+        runtime.logger.warn(
+          {
+            err,
+            src: "eliza-api",
+            messageId: message.id,
+            roomId: message.roomId,
+          },
+          "Failed to emit MESSAGE_SENT event",
+        );
+      }
+      return androidDirectResult;
+    }
+
     let result:
       | Awaited<
           ReturnType<
@@ -1610,9 +1998,6 @@ export async function generateChatResponse(
               await maybeAugmentChatMessageWithDocuments(
                 runtime,
                 walletAugmentedMessage,
-                {
-                  signal: generationAbortController.signal,
-                },
               );
             result = await runtime.messageService?.handleMessage(
               runtime,
