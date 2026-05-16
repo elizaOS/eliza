@@ -24,9 +24,14 @@ public struct RuntimeConfiguration: Codable, Equatable, Sendable {
         self.userName = UserProfile.normalizedName(userName)
     }
 
-    public static func defaultConfiguration(repositoryRoot: String? = nil) -> RuntimeConfiguration {
+    public static func defaultConfiguration(
+        repositoryRoot: String? = nil,
+        arguments: [String] = CommandLine.arguments,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> RuntimeConfiguration {
         RuntimeConfiguration(
             repositoryRoot: repositoryRoot
+                ?? launchRepositoryRoot(arguments: arguments, environment: environment)
                 ?? ElizaRepositoryResolver.resolve()?.path
                 ?? FileManager.default.currentDirectoryPath
         )
@@ -51,5 +56,31 @@ public struct RuntimeConfiguration: Codable, Equatable, Sendable {
             preconditionFailure("Invalid localhost URL for port: \(port)")
         }
         return url
+    }
+
+    private static func launchRepositoryRoot(arguments: [String], environment: [String: String]) -> String? {
+        if let argumentValue = value(after: "--eliza-repository-root", in: arguments) {
+            return argumentValue
+        }
+
+        if let argumentValue = value(after: "--repo-root", in: arguments) {
+            return argumentValue
+        }
+
+        return environment["ELIZA_REPOSITORY_ROOT"]
+    }
+
+    private static func value(after flag: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: flag) else {
+            return nil
+        }
+
+        let valueIndex = arguments.index(after: index)
+        guard valueIndex < arguments.endIndex else {
+            return nil
+        }
+
+        let value = arguments[valueIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }

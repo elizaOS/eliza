@@ -78,6 +78,16 @@ public final class RuntimeController {
         status = .starting
         try nextProcess.run()
         process = nextProcess
+        nextProcess.terminationHandler = { [weak self, weak nextProcess] _ in
+            Task { @MainActor in
+                guard let self, self.process === nextProcess else {
+                    return
+                }
+                self.process = nil
+                self.status = .stopped
+                self.logger.info("[RuntimeController] Runtime process exited")
+            }
+        }
         status = .running(apiBase: configuration.apiBaseURL)
         logger.info("[RuntimeController] Started runtime pid=\(nextProcess.processIdentifier, privacy: .public)")
     }

@@ -15,6 +15,7 @@ struct RuntimeOverviewView: View {
                 )
                 statusHeader
                 runtimeDetails
+                liveTelemetry
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -22,6 +23,13 @@ struct RuntimeOverviewView: View {
         .navigationTitle("Runtime")
         .toolbar {
             ToolbarItemGroup {
+                Button {
+                    model.refreshRuntimeSnapshot()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isRefreshingRuntime)
+
                 Button {
                     model.startRuntime()
                 } label: {
@@ -75,5 +83,55 @@ struct RuntimeOverviewView: View {
                 .textSelection(.enabled)
             }
         }
+    }
+
+    @ViewBuilder
+    private var liveTelemetry: some View {
+        if let snapshot = model.runtimeSnapshot {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Live Telemetry")
+                        .font(.headline)
+
+                    DetailGrid(rows: [
+                        ("Ready", snapshot.health.ready ? "Yes" : "No"),
+                        ("Agent state", snapshot.health.agentState),
+                        ("Runtime", snapshot.health.runtime),
+                        ("Database", snapshot.health.database),
+                        ("Plugins", "\(snapshot.health.plugins.loaded) loaded, \(snapshot.health.plugins.failed) failed"),
+                        ("Coordinator", snapshot.health.coordinator),
+                        ("Uptime", formattedUptime(snapshot.health.uptime)),
+                        ("Logs", "\(snapshot.logs.entries.count) entries")
+                    ])
+                    .textSelection(.enabled)
+                }
+            }
+        } else if let error = model.lastRuntimeProbeError {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Probe Failed")
+                        .font(.headline)
+                    Text(error)
+                        .foregroundStyle(theme.destructiveTint)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private func formattedUptime(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let remainingSeconds = seconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m \(remainingSeconds)s"
+        }
+
+        if minutes > 0 {
+            return "\(minutes)m \(remainingSeconds)s"
+        }
+
+        return "\(remainingSeconds)s"
     }
 }

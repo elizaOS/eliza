@@ -25,6 +25,8 @@ struct DashboardView: View {
                     }
                 }
 
+                liveRuntimeCard
+
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Core Surfaces")
@@ -67,5 +69,44 @@ struct DashboardView: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
         .navigationTitle("Dashboard")
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    model.refreshRuntimeSnapshot()
+                } label: {
+                    Label("Refresh Runtime", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isRefreshingRuntime)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var liveRuntimeCard: some View {
+        if let snapshot = model.runtimeSnapshot {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("Live Runtime", systemImage: "dot.radiowaves.left.and.right")
+                            .font(.headline)
+                        Spacer()
+                        StatusPill(
+                            title: snapshot.health.ready ? "Ready" : "Starting",
+                            systemImage: snapshot.health.ready ? "checkmark.circle.fill" : "clock",
+                            tint: snapshot.health.ready ? .green : .orange
+                        )
+                    }
+
+                    DetailGrid(rows: [
+                        ("Agent state", snapshot.health.agentState),
+                        ("Runtime", snapshot.health.runtime),
+                        ("Plugins", "\(snapshot.health.plugins.loaded) loaded"),
+                        ("Connectors", "\(snapshot.health.connectors.count) reported"),
+                        ("Logs", "\(snapshot.logs.entries.count) entries")
+                    ])
+                    .textSelection(.enabled)
+                }
+            }
+        }
     }
 }

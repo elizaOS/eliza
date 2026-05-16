@@ -34,6 +34,16 @@ struct DiagnosticsView: View {
             .padding(24)
         }
         .navigationTitle("Diagnostics")
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    model.refreshRuntimeSnapshot()
+                } label: {
+                    Label("Refresh Runtime", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isRefreshingRuntime)
+            }
+        }
     }
 
     private func tint(for severity: DiagnosticSeverity) -> Color {

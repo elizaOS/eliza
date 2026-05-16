@@ -61,6 +61,8 @@ struct MenuBarStatusView: View {
             CompactMetric(title: "Models", value: "\(model.modelRoutes.count)", detail: "\(model.modelRoutes.filter { $0.state == .preferred }.count) preferred")
             CompactMetric(title: "LifeOps", value: "\(model.lifeOpsFeatures.count)", detail: "tasks")
             CompactMetric(title: "Health", value: "\(model.healthFeatures.count)", detail: "registries")
+            CompactMetric(title: "Logs", value: "\(model.runtimeLogEntries.count)", detail: model.runtimeSnapshot == nil ? "local" : "runtime")
+            CompactMetric(title: "Uptime", value: uptimeValue, detail: "API")
         }
     }
 
@@ -119,6 +121,13 @@ struct MenuBarStatusView: View {
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
+                Button {
+                    model.refreshRuntimeSnapshot()
+                } label: {
+                    Label("Refresh Telemetry", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isRefreshingRuntime)
+
                 Divider()
 
                 QuickActionRow(title: "Dashboard", systemImage: "rectangle.grid.2x2") {
@@ -164,20 +173,50 @@ struct MenuBarStatusView: View {
     }
 
     private var activitySamples: [ChartSample] {
-        let seed = max(1, model.runtimeEvents.count)
+        if model.runtimeLogEntries.isEmpty {
+            let seed = max(1, model.runtimeEvents.count)
+            return (0..<28).map { index in
+                let wave = Double((index * 7 + seed * 3) % 18)
+                let bump = index > 10 && index < 17 ? Double(index - 9) * 2.4 : 0
+                return ChartSample(index: index, value: max(1, wave + bump))
+            }
+        }
+
+        let newest = model.runtimeLogEntries.map(\.timestamp).max() ?? 0
+        let bucketSize = 30_000
         return (0..<28).map { index in
-            let wave = Double((index * 7 + seed * 3) % 18)
-            let bump = index > 10 && index < 17 ? Double(index - 9) * 2.4 : 0
-            return ChartSample(index: index, value: max(1, wave + bump))
+            let bucketStart = newest - ((27 - index) * bucketSize)
+            let bucketEnd = bucketStart + bucketSize
+            let count = model.runtimeLogEntries.filter { entry in
+                entry.timestamp >= bucketStart && entry.timestamp < bucketEnd
+            }.count
+            return ChartSample(index: index, value: Double(max(1, count)))
         }
     }
 
     private var routeSamples: [ChartSample] {
         (0..<28).map { index in
-            let base = Double((index * 5 + model.modelRoutes.count * 4) % 16)
+            let pluginWeight = Double(model.runtimeSnapshot?.health.plugins.loaded ?? model.pluginFeatures.count)
+            let base = Double((index * 5 + Int(pluginWeight)) % 16)
             let active = Double(model.connectors.filter { $0.state == .connected }.count * 5)
             return ChartSample(index: index, value: 8 + base + active)
         }
+    }
+
+    private var uptimeValue: String {
+        guard let uptime = model.runtimeSnapshot?.health.uptime else {
+            return "-"
+        }
+
+        if uptime >= 3600 {
+            return "\(uptime / 3600)h"
+        }
+
+        if uptime >= 60 {
+            return "\(uptime / 60)m"
+        }
+
+        return "\(uptime)s"
     }
 }
 

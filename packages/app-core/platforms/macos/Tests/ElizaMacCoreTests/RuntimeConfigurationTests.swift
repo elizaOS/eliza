@@ -22,4 +22,22 @@ final class RuntimeConfigurationTests: XCTestCase {
 
         XCTAssertEqual(configuration.apiBaseURL, external)
     }
+
+    func testDefaultConfigurationPrefersRepositoryArgument() {
+        let configuration = RuntimeConfiguration.defaultConfiguration(
+            arguments: ["ElizaMac", "--eliza-repository-root", "/workspace/eliza"],
+            environment: ["ELIZA_REPOSITORY_ROOT": "/env/eliza"]
+        )
+
+        XCTAssertEqual(configuration.repositoryRoot, "/workspace/eliza")
+    }
+
+    func testDefaultConfigurationReadsRepositoryEnvironment() {
+        let configuration = RuntimeConfiguration.defaultConfiguration(
+            arguments: ["ElizaMac"],
+            environment: ["ELIZA_REPOSITORY_ROOT": "/env/eliza"]
+        )
+
+        XCTAssertEqual(configuration.repositoryRoot, "/env/eliza")
+    }
 }

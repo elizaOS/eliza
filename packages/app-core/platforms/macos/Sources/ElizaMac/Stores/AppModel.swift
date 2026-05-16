@@ -27,6 +27,10 @@ final class AppModel: ObservableObject {
     @Published var cloudFeatures: [ShellFeature]
     @Published var releaseFeatures: [ShellFeature]
     @Published var runtimeEvents: [String]
+    @Published var runtimeLogEntries: [RuntimeLogEntry]
+    @Published var runtimeSnapshot: RuntimeSnapshot?
+    @Published var isRefreshingRuntime: Bool
+    @Published var lastRuntimeProbeError: String?
     @Published var consoleURL: URL
     @Published var consoleTitle: String
     @Published var consoleDetail: String
@@ -71,6 +75,10 @@ final class AppModel: ObservableObject {
         cloudFeatures: [ShellFeature] = ShellFeature.cloudDefaults,
         releaseFeatures: [ShellFeature] = ShellFeature.releaseDefaults,
         runtimeEvents: [String] = [],
+        runtimeLogEntries: [RuntimeLogEntry] = [],
+        runtimeSnapshot: RuntimeSnapshot? = nil,
+        isRefreshingRuntime: Bool = false,
+        lastRuntimeProbeError: String? = nil,
         consoleTitle: String = "Renderer Home",
         consoleDetail: String = "Base renderer target for the current elizaOS runtime.",
         settingsSelection: SettingsPane = .account,
@@ -110,6 +118,10 @@ final class AppModel: ObservableObject {
         self.cloudFeatures = cloudFeatures
         self.releaseFeatures = releaseFeatures
         self.runtimeEvents = runtimeEvents.isEmpty ? ["Swift shell initialized."] : runtimeEvents
+        self.runtimeLogEntries = runtimeLogEntries
+        self.runtimeSnapshot = runtimeSnapshot
+        self.isRefreshingRuntime = isRefreshingRuntime
+        self.lastRuntimeProbeError = lastRuntimeProbeError
         self.consoleURL = resolvedConfiguration.rendererURL
         self.consoleTitle = consoleTitle
         self.consoleDetail = consoleDetail
@@ -129,7 +141,7 @@ final class AppModel: ObservableObject {
     }
 
     var metrics: [ShellMetric] {
-        [
+        var items = [
             ShellMetric(id: "runtime", title: "Runtime", value: status.title, detail: configuration.launchMode.title, systemImage: status.systemImage),
             ShellMetric(id: "chat", title: "Chat", value: "\(chatFeatures.count)", detail: "native lanes", systemImage: "bubble.left.and.bubble.right"),
             ShellMetric(id: "apps", title: "Apps", value: "\(appFeatures.count)", detail: "\(appFeatures.filter { $0.state == .ready }.count) ready", systemImage: "square.grid.3x3"),
@@ -142,6 +154,29 @@ final class AppModel: ObservableObject {
             ShellMetric(id: "approvals", title: "Approvals", value: "\(approvals.count)", detail: approvals.isEmpty ? "queue empty" : "pending", systemImage: "checklist.checked"),
             ShellMetric(id: "vault", title: "Vault", value: "\(vaultItems.count)", detail: "secure stores", systemImage: "lock.rectangle.stack")
         ]
+
+        if let runtimeSnapshot {
+            items.append(
+                ShellMetric(
+                    id: "runtime-plugins",
+                    title: "Loaded Plugins",
+                    value: "\(runtimeSnapshot.health.plugins.loaded)",
+                    detail: "\(runtimeSnapshot.health.plugins.failed) failed",
+                    systemImage: "puzzlepiece.extension"
+                )
+            )
+            items.append(
+                ShellMetric(
+                    id: "runtime-logs",
+                    title: "Runtime Logs",
+                    value: "\(runtimeSnapshot.logs.entries.count)",
+                    detail: "\(runtimeSnapshot.logs.sources.count) sources",
+                    systemImage: "text.page"
+                )
+            )
+        }
+
+        return items
     }
 
     var filteredSections: [AppSection] {
@@ -160,6 +195,7 @@ final class AppModel: ObservableObject {
             try runtimeController.start(configuration: configuration)
             status = runtimeController.status
             appendRuntimeEvent("Runtime started at \(configuration.apiBaseURL.absoluteString).")
+            refreshRuntimeSnapshot(after: 1_500_000_000)
         } catch {
             status = .failed(message: error.localizedDescription)
             appendRuntimeEvent("Runtime failed: \(error.localizedDescription)")
@@ -169,6 +205,9 @@ final class AppModel: ObservableObject {
     func stopRuntime() {
         runtimeController.stop()
         status = runtimeController.status
+        runtimeSnapshot = nil
+        runtimeLogEntries = []
+        lastRuntimeProbeError = nil
         appendRuntimeEvent("Runtime stopped.")
     }
 
@@ -264,6 +303,42 @@ final class AppModel: ObservableObject {
         consoleDetail = "Base renderer target for the current elizaOS runtime."
         selection = .console
         appendRuntimeEvent("Opened renderer home.")
+    }
+
+    func refreshRuntimeSnapshot() {
+        guard !isRefreshingRuntime else {
+            return
+        }
+
+        isRefreshingRuntime = true
+        let apiBase = configuration.apiBaseURL
+
+        Task {
+            defer {
+                isRefreshingRuntime = false
+            }
+
+            do {
+                let snapshot = try await RuntimeAPIClient(baseURL: apiBase).fetchSnapshot()
+                applyRuntimeSnapshot(snapshot, apiBase: apiBase)
+            } catch {
+                let message = error.localizedDescription
+                lastRuntimeProbeError = message
+                diagnostics = diagnosticsAfterProbeFailure(message)
+                appendRuntimeEvent("Runtime probe failed: \(message)")
+            }
+        }
+    }
+
+    private func refreshRuntimeSnapshot(after delay: UInt64) {
+        Task {
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            refreshRuntimeSnapshot()
+        }
     }
 
     @discardableResult
@@ -412,6 +487,199 @@ final class AppModel: ObservableObject {
         profile = .anonymous
         nameDraft = ""
         appendRuntimeEvent("Display name reset.")
+    }
+
+    private func applyRuntimeSnapshot(_ snapshot: RuntimeSnapshot, apiBase: URL) {
+        runtimeSnapshot = snapshot
+        runtimeLogEntries = Array(snapshot.logs.entries.suffix(80).reversed())
+        lastRuntimeProbeError = nil
+        status = snapshot.health.ready ? .running(apiBase: apiBase) : .starting
+
+        if !snapshot.agents.isEmpty {
+            agents = snapshot.agents.map { agent in
+                AgentProfile(
+                    id: agent.id,
+                    name: agent.name,
+                    role: "Runtime agent: \(snapshot.health.agentState)",
+                    model: snapshot.health.runtime,
+                    systemImage: "person.crop.circle.badge.checkmark",
+                    state: agentState(from: agent.status)
+                )
+            }
+        }
+
+        connectors = connectorProfiles(from: snapshot.health.connectors)
+        diagnostics = diagnostics(from: snapshot, apiBase: apiBase)
+        appendRuntimeEvent("Runtime probe refreshed: \(snapshot.health.plugins.loaded) plugins, \(snapshot.logs.entries.count) logs.")
+    }
+
+    private func diagnostics(from snapshot: RuntimeSnapshot, apiBase: URL) -> [DiagnosticItem] {
+        var items = [
+            repositoryDiagnostic(),
+            DiagnosticItem(
+                id: "runtime-api",
+                title: "Runtime API",
+                detail: snapshot.health.ready ? "Ready at \(apiBase.absoluteString)" : "Responding but not ready",
+                systemImage: snapshot.health.ready ? "checkmark.seal" : "clock",
+                severity: snapshot.health.ready ? .info : .warning
+            ),
+            DiagnosticItem(
+                id: "database",
+                title: "Database",
+                detail: snapshot.health.database,
+                systemImage: "externaldrive.connected.to.line.below",
+                severity: snapshot.health.database == "ok" ? .info : .warning
+            ),
+            DiagnosticItem(
+                id: "runtime-plugins",
+                title: "Runtime Plugins",
+                detail: "\(snapshot.health.plugins.loaded) loaded, \(snapshot.health.plugins.failed) failed",
+                systemImage: "puzzlepiece.extension",
+                severity: snapshot.health.plugins.failed == 0 ? .info : .critical
+            ),
+            DiagnosticItem(
+                id: "coordinator",
+                title: "Coordinator",
+                detail: snapshot.health.coordinator,
+                systemImage: "point.3.connected.trianglepath.dotted",
+                severity: snapshot.health.coordinator == "ok" ? .info : .warning
+            ),
+            DiagnosticItem(
+                id: "runtime-logs",
+                title: "Runtime Logs",
+                detail: "\(snapshot.logs.entries.count) entries from \(snapshot.logs.sources.count) sources",
+                systemImage: "text.page",
+                severity: .info
+            )
+        ]
+
+        if snapshot.health.connectors.isEmpty {
+            items.append(
+                DiagnosticItem(
+                    id: "connectors",
+                    title: "Connectors",
+                    detail: "No runtime connector status was reported.",
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    severity: .warning
+                )
+            )
+        }
+
+        items.append(
+            DiagnosticItem(
+                id: "permissions",
+                title: "Permissions",
+                detail: "Screen Recording, Calendar, Notifications, and Files remain user-controlled native grants.",
+                systemImage: "hand.raised",
+                severity: .warning
+            )
+        )
+
+        return items
+    }
+
+    private func diagnosticsAfterProbeFailure(_ message: String) -> [DiagnosticItem] {
+        [
+            repositoryDiagnostic(),
+            DiagnosticItem(
+                id: "runtime-api",
+                title: "Runtime API",
+                detail: message,
+                systemImage: "exclamationmark.triangle",
+                severity: .critical
+            ),
+            DiagnosticItem(
+                id: "permissions",
+                title: "Permissions",
+                detail: "Screen Recording, Calendar, Notifications, and Files remain user-controlled native grants.",
+                systemImage: "hand.raised",
+                severity: .warning
+            )
+        ]
+    }
+
+    private func repositoryDiagnostic() -> DiagnosticItem {
+        let rootURL = URL(fileURLWithPath: configuration.repositoryRoot, isDirectory: true)
+        let resolved = ElizaRepositoryResolver.resolve(startingAt: rootURL)
+
+        return DiagnosticItem(
+            id: "repo",
+            title: "Repository",
+            detail: resolved == nil ? "No elizaOS workspace found at \(configuration.repositoryRoot)" : "elizaOS workspace detected at \(resolved?.path ?? configuration.repositoryRoot)",
+            systemImage: resolved == nil ? "folder.badge.questionmark" : "checkmark.seal",
+            severity: resolved == nil ? .critical : .info
+        )
+    }
+
+    private func connectorProfiles(from statuses: [String: String]) -> [ConnectorProfile] {
+        let dynamicProfiles = statuses.keys.sorted().map { id in
+            let status = statuses[id] ?? "unknown"
+            return ConnectorProfile(
+                id: id,
+                name: connectorName(for: id),
+                detail: "Runtime status: \(status)",
+                systemImage: connectorSystemImage(for: id),
+                state: connectorState(from: status)
+            )
+        }
+
+        let dynamicIDs = Set(dynamicProfiles.map(\.id))
+        let remainingDefaults = ConnectorProfile.defaults.filter { !dynamicIDs.contains($0.id) }
+        return dynamicProfiles + remainingDefaults
+    }
+
+    private func connectorName(for id: String) -> String {
+        if let existing = ConnectorProfile.defaults.first(where: { $0.id == id }) {
+            return existing.name
+        }
+
+        return id
+            .split { character in
+                character == "-" || character == "_" || character == "."
+            }
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
+
+    private func connectorSystemImage(for id: String) -> String {
+        switch id {
+        case "discord", "telegram", "slack", "matrix", "mattermost", "signal", "whatsapp":
+            "message"
+        case "browser":
+            "safari"
+        case "calendar":
+            "calendar"
+        case "filesystem", "files":
+            "folder"
+        case "notifications":
+            "bell.badge"
+        case "wallet", "steward":
+            "wallet.pass"
+        default:
+            "point.3.connected.trianglepath.dotted"
+        }
+    }
+
+    private func connectorState(from status: String) -> ConnectorState {
+        switch status.lowercased() {
+        case "ok", "ready", "running", "active", "connected", "configured", "healthy":
+            .connected
+        case "blocked", "failed", "error", "invalid", "needs-reauth":
+            .blocked
+        default:
+            .available
+        }
+    }
+
+    private func agentState(from status: String) -> AgentState {
+        switch status.lowercased() {
+        case "running", "ready", "active":
+            .active
+        case "stopped", "paused":
+            .paused
+        default:
+            .draft
+        }
     }
 
     private func appendRuntimeEvent(_ event: String) {

@@ -88,11 +88,13 @@ packages/app-core/platforms/macos/
         ShellFeature.swift
         ShellMetric.swift
         ThemeSettings.swift
+        RuntimeTelemetry.swift
         UserProfile.swift
         WorkspaceProfile.swift
       Services/
         BunExecutableResolver.swift
         ElizaRepositoryResolver.swift
+        RuntimeAPIClient.swift
         RuntimeController.swift
   Tests/
     ElizaMacCoreTests/
@@ -101,6 +103,7 @@ packages/app-core/platforms/macos/
       ElizaRepositoryResolverTests.swift
       RuntimeCommandBuilderTests.swift
       RuntimeConfigurationTests.swift
+      RuntimeAPIClientTests.swift
       ShellFeatureTests.swift
       ThemeSettingsTests.swift
       UserProfileTests.swift
@@ -148,6 +151,14 @@ On first launch the main window switches into a transparent AppKit-backed mode a
 
 The menu bar extra uses `.menuBarExtraStyle(.window)` so it can render a compact custom dashboard with Swift Charts instead of a plain menu. Its current graph surfaces are runtime activity bars, model-route capacity lines, feature metrics, and quick actions for Dashboard, Chat, Plugins, Agents, LifeOps, Health, Approvals, and Diagnostics.
 
+The shell now includes a native runtime probe client for:
+
+- `GET /api/health`
+- `GET /api/agents`
+- `GET /api/logs`
+
+Runtime refresh updates the native Dashboard, Runtime, Diagnostics, Logs, Connectors, Agents, and menu bar graph surfaces with the live runtime readiness, plugin load/failure counts, connector statuses, active agent metadata, uptime, and recent log entries. Probe failures are surfaced as critical diagnostics instead of being hidden behind static defaults.
+
 Appearance customization is centralized in `ThemeSettings` and surfaced through `ThemeCustomizationView`. Users can change:
 
 - appearance mode: system, light, dark
@@ -177,6 +188,14 @@ When a profile name is set, runtime launches include:
 
 - `ELIZA_USER_NAME`
 - `ELIZA_PROFILE_NAME`
+
+When the local run script launches the app bundle, it passes:
+
+- `--eliza-repository-root <repo>`
+
+Packaged launchers can also provide:
+
+- `ELIZA_REPOSITORY_ROOT`
 
 ## Commands
 
