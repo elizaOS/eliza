@@ -18,6 +18,7 @@ import { getPreferredElizaAgentWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import type {
   AgentAdminDetailsDto,
@@ -364,63 +365,63 @@ app.delete("/", async (c) => {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    if (existing.node_id && existing.sandbox_id) {
-      const forwarded = await deleteDockerBackedAgentViaControlPlane(
-        c,
-        user,
-        agentId,
+    if (existing.status === "provisioning") {
+      return c.json(
+        { success: false, error: "Agent provisioning is in progress" },
+        409,
       );
-      if (forwarded) return forwarded;
     }
 
-    const deleted = await elizaSandboxService.deleteAgent(
+    // Async delete via the same job-queue path agent_provision uses. This
+    // moves the SSH stop, Neon cleanup, and per-agent key revoke off the
+    // request thread so a slow / unreachable Hetzner core can no longer
+    // make the API hang or silently return 200 while the container lives
+    // on. Idempotent: a second DELETE while a job is in flight reuses
+    // the existing one.
+    const enqueueResult = await provisioningJobService.enqueueAgentDeleteOnce({
       agentId,
-      user.organization_id,
-    );
-    if (!deleted.success) {
-      const status =
-        deleted.error === "Agent not found"
-          ? 404
-          : deleted.error === "Agent provisioning is in progress"
-            ? 409
-            : 500;
-      return c.json({ success: false, error: deleted.error }, status);
-    }
-
-    const characterId = deleted.deletedSandbox.character_id;
-    const reusesExistingCharacter = reusesExistingElizaCharacter(
-      deleted.deletedSandbox.agent_config,
-    );
-
-    if (characterId && !reusesExistingCharacter) {
-      try {
-        await userCharactersRepository.delete(characterId);
-        logger.info("[agent-api] Cleaned up linked character after delete", {
-          agentId,
-          characterId,
-        });
-      } catch (characterErr) {
-        logger.warn(
-          "[agent-api] Failed to clean up linked character after delete",
-          {
-            agentId,
-            characterId,
-            error:
-              characterErr instanceof Error
-                ? characterErr.message
-                : String(characterErr),
-          },
-        );
-      }
-    }
-
-    logger.info("[agent-api] Agent deleted", {
-      agentId,
-      orgId: user.organization_id,
+      organizationId: user.organization_id,
+      userId: user.id,
     });
 
-    return c.json({ success: true });
+    // Best-effort wake of the worker so the user does not wait for the
+    // next cron tick. Same pattern as the provision path.
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
+      // Logged inside the service; nothing actionable here.
+    });
+
+    logger.info("[agent-api] Agent delete enqueued", {
+      agentId,
+      orgId: user.organization_id,
+      jobId: enqueueResult.job.id,
+      created: enqueueResult.created,
+    });
+
+    return c.json(
+      {
+        success: true,
+        created: enqueueResult.created,
+        alreadyInProgress: !enqueueResult.created,
+        message: enqueueResult.created
+          ? "Delete job created. Poll the job endpoint for status."
+          : "Delete is already in progress.",
+        data: {
+          jobId: enqueueResult.job.id,
+          agentId,
+          status: enqueueResult.job.status,
+        },
+        polling: {
+          endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
+          intervalMs: 5_000,
+          expectedDurationMs: 30_000,
+        },
+      },
+      202,
+    );
   } catch (error) {
+    if (error instanceof Error && error.message === "Agent not found") {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
     logger.error("[agent-api] DELETE /agents/:agentId error", { error });
     return failureResponse(c, error);
   }
