@@ -15,6 +15,7 @@ const EXPECTED_ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-4b": "eliza-1-4B",
   "eliza-1-9b": "eliza-1-9B",
   "eliza-1-27b": "eliza-1-27B",
+  "eliza-1-27b-256k": "eliza-1-27B-256k",
 };
 
 describe("local inference catalog", () => {
@@ -95,6 +96,7 @@ describe("local inference catalog", () => {
       "eliza-1-4b": 131072,
       "eliza-1-9b": 131072,
       "eliza-1-27b": 131072,
+      "eliza-1-27b-256k": 262144,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -139,16 +141,16 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("keeps the 0.8B local default target-only without a DFlash companion", () => {
+  it("attaches a tiny DFlash companion to the 0.8B tier", () => {
     const model = findCatalogModel("eliza-1-0_8b");
 
     expect(model, "eliza-1-0_8b missing").toBeTruthy();
     expect(model?.displayName).toBe("eliza-1-0.8B");
-    expect(model?.companionModelIds ?? []).toEqual([]);
-    expect(model?.runtime?.dflash).toBeUndefined();
+    expect(model?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
+    expect(model?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
     expect(
       MODEL_CATALOG.some((entry) => entry.id === "eliza-1-0_8b-drafter"),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("does not ship non-Eliza local model entries", () => {

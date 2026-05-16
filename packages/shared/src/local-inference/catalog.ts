@@ -2,7 +2,8 @@
  * Eliza-curated local model catalog.
  *
  * Default local inference is restricted to the active Eliza-1 line:
- * eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b, and eliza-1-27b.
+ * eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
+ * and eliza-1-27b-256k.
  * These ship Qwen3.5 bases for 0.8B/2B/4B/9B and Qwen3.6 for 27B. The
  * 2026-05-12 mandate retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
@@ -25,6 +26,7 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
+  "eliza-1-27b-256k",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
@@ -38,6 +40,7 @@ export const ELIZA_1_VISION_TIER_IDS = [
   "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
+  "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
@@ -152,7 +155,7 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
  *     the low-latency fallback.
  *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
- *   - Large tier (27b) → OmniVoice only. The RAM
+ *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
  */
@@ -165,6 +168,7 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
+  "eliza-1-27b-256k": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
@@ -302,6 +306,24 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     hasImageGen: true,
   },
+  "eliza-1-27b-256k": {
+    id: "eliza-1-27b-256k",
+    params: "27B",
+    parameterLabel: "27B 256k",
+    sizeGb: 16.8,
+    minRamGb: 48,
+    q4MinRamGb: 48,
+    bucket: "large",
+    contextLength: 262144,
+    textFile: "text/eliza-1-27b-256k.gguf",
+    drafterParams: "4B",
+    drafterSizeGb: 2.6,
+    drafterMinRamGb: 48,
+    gpuProfile: "h200",
+    hasEmbedding: true,
+    hasVision: true,
+    hasImageGen: true,
+  },
 };
 
 function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
@@ -324,6 +346,8 @@ function tierDisplaySlug(id: Eliza1TierId): string {
       return "9B";
     case "eliza-1-27b":
       return "27B";
+    case "eliza-1-27b-256k":
+      return "27B-256k";
   }
   const exhaustive: never = id;
   return exhaustive;
@@ -414,6 +438,7 @@ const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
+  "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
 };
 
 export function voiceQuantLadderForTier(
@@ -583,6 +608,8 @@ function blurbForTier(id: Eliza1TierId): string {
       return `${displayName} - workstation local tier for stronger reasoning.`;
     case "eliza-1-27b":
       return `${displayName} - high-quality local tier for GPU workstations.`;
+    case "eliza-1-27b-256k":
+      return `${displayName} - long-context local tier for high-memory GPU workstations.`;
   }
   const exhaustive: never = id;
   return exhaustive;

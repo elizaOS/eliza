@@ -2612,6 +2612,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -3504,6 +3505,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
