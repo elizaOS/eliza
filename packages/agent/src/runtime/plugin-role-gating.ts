@@ -73,6 +73,121 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 };
 
 // ---------------------------------------------------------------------------
+// Sender-role lookup cache
+// ---------------------------------------------------------------------------
+// `checkSenderRole` does two DB queries (resolveWorldForMessage +
+// resolveEntityRole). When state composition runs, every gated provider's
+// wrapped `get()` calls it in parallel via `Promise.all`. With even a
+// modest set of gated providers (ACTIVE_WORKSPACE_CONTEXT,
+// CODING_AGENT_EXAMPLES, SECRETS_STATUS, walletPortfolio, etc. —
+// 10+ providers gated to admin or owner), that's 20+ DB queries per
+// turn before the planner is prompted. On a busy host the per-validator
+// stats compound and the provider provider-loop hits its overall
+// timeout cap, dropping providers from the prompt's context.
+//
+// Cache key: `${agentId}|${entityId}|${roomId}`. Roles are scoped per
+// world, and a room's world is stable for a single conversation. TTL is
+// short so admin promotions/demotions become visible within the cache
+// window.
+//
+// In-flight dedup ensures parallel callers for the same key share one DB
+// roundtrip instead of N.
+type CachedRoleCheck = {
+  value: { role: string; isOwner: boolean; isAdmin: boolean } | null;
+  expiresAt: number;
+};
+
+const ROLE_CHECK_CACHE_TTL_MS = 30_000;
+const ROLE_CHECK_CACHE_MAX_SIZE = 512;
+const roleCheckCache = new Map<string, CachedRoleCheck>();
+const roleCheckInflight = new Map<string, Promise<CachedRoleCheck["value"]>>();
+let roleCheckLoader:
+  | Promise<typeof import("./roles.ts").checkSenderRole>
+  | undefined;
+
+function loadCheckSenderRole() {
+  if (!roleCheckLoader) {
+    // Clear the cached promise if the dynamic import rejects so the next
+    // call can retry. Without this, a single transient module-registry
+    // failure (e.g. evaluation error during startup) would permanently
+    // wedge every gated provider for the runtime's lifetime by handing
+    // back the same rejected promise on every call.
+    roleCheckLoader = import("./roles.ts").then((mod) => mod.checkSenderRole);
+    roleCheckLoader.catch(() => {
+      roleCheckLoader = undefined;
+    });
+  }
+  return roleCheckLoader;
+}
+
+async function fetchAndCacheSenderRole(
+  runtime: IAgentRuntime,
+  message: Memory,
+  cacheKey: string,
+): Promise<CachedRoleCheck["value"]> {
+  const checkSenderRole = await loadCheckSenderRole();
+  const fresh = await checkSenderRole(runtime, message);
+  const value = fresh
+    ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
+    : null;
+  roleCheckCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + ROLE_CHECK_CACHE_TTL_MS,
+  });
+
+  // Bound the cache. Drop the oldest-inserted 25% (FIFO via Map iteration
+  // order) when we cross the threshold so a long-running agent never
+  // accumulates unbounded entries. FIFO is intentional — true LRU would
+  // require tracking last-access timestamps on every cache hit, and the
+  // 30s TTL is short enough that the eviction policy difference doesn't
+  // meaningfully affect hit rate for the parallel-Promise.all workload
+  // this cache is sized for.
+  if (roleCheckCache.size > ROLE_CHECK_CACHE_MAX_SIZE) {
+    const toDrop = Math.ceil(roleCheckCache.size / 4);
+    let dropped = 0;
+    for (const k of roleCheckCache.keys()) {
+      roleCheckCache.delete(k);
+      if (++dropped >= toDrop) break;
+    }
+  }
+
+  return value;
+}
+
+async function getCachedSenderRole(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<CachedRoleCheck["value"]> {
+  const entityId = message.entityId;
+  const roomId = message.roomId;
+  if (!entityId || !roomId) {
+    const checkSenderRole = await loadCheckSenderRole();
+    const fresh = await checkSenderRole(runtime, message);
+    return fresh
+      ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
+      : null;
+  }
+
+  const key = `${runtime.agentId}|${entityId}|${roomId}`;
+  const cached = roleCheckCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  // Dedup: if a fetch for this key is already in flight (another gated
+  // provider's wrapper running in the same Promise.all batch), await the
+  // shared promise instead of starting a duplicate DB query.
+  const inflight = roleCheckInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = fetchAndCacheSenderRole(runtime, message, key).finally(() => {
+    roleCheckInflight.delete(key);
+  });
+  roleCheckInflight.set(key, promise);
+  return promise;
+}
+
+// ---------------------------------------------------------------------------
 // Gating implementation
 // ---------------------------------------------------------------------------
 
@@ -110,9 +225,7 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
     message: Memory,
     state: State,
   ): Promise<ProviderResult> => {
-    const { checkSenderRole } = await import("./roles.ts");
-
-    const check = await checkSenderRole(runtime, message);
+    const check = await getCachedSenderRole(runtime, message);
     if (!check || !roleCheckPasses(check, gate)) {
       return { text: "" };
     }
