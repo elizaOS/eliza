@@ -148,25 +148,30 @@ describe("route-mode matrix", () => {
     ).toBe(false);
   });
 
-  test("/api/tts/local-inference is hidden outside local runtimes", () => {
-    for (const mode of ["local", "local-only"] as const) {
-      expect(
-        isRouteVisible({
-          pathname: "/api/tts/local-inference",
-          method: "POST",
-          mode,
-        }),
-      ).toBe(true);
-    }
+  test("local-inference audio routes are hidden outside local runtimes", () => {
+    for (const pathname of [
+      "/api/tts/local-inference",
+      "/api/asr/local-inference",
+    ]) {
+      for (const mode of ["local", "local-only"] as const) {
+        expect(
+          isRouteVisible({
+            pathname,
+            method: "POST",
+            mode,
+          }),
+        ).toBe(true);
+      }
 
-    for (const mode of ["cloud", "remote"] as const) {
-      expect(
-        isRouteVisible({
-          pathname: "/api/tts/local-inference",
-          method: "POST",
-          mode,
-        }),
-      ).toBe(false);
+      for (const mode of ["cloud", "remote"] as const) {
+        expect(
+          isRouteVisible({
+            pathname,
+            method: "POST",
+            mode,
+          }),
+        ).toBe(false);
+      }
     }
   });
 

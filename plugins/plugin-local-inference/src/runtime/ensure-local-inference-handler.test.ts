@@ -328,6 +328,32 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("arms the active voice bundle before TRANSCRIPTION", async () => {
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.TRANSCRIPTION,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<string>)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		await expect(
+			handler?.(runtime, { audio: new Uint8Array([82, 73, 70, 70]) }),
+		).resolves.toBe("transcribed");
+
+		expect(engineState.ensureActiveBundleVoiceReady).toHaveBeenCalledTimes(1);
+		expect(engineState.transcribePcm).toHaveBeenCalledWith(
+			{ pcm: new Float32Array([0]), sampleRate: 16_000 },
+			undefined,
+		);
+	});
+
 	it("threads structured streaming callbacks through the RESPONSE_HANDLER registration", async () => {
 		const { registrations, runtime } = makeRuntime();
 		engineState.hasLoadedModel.mockReturnValue(true);

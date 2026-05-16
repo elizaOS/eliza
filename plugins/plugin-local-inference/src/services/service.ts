@@ -84,6 +84,7 @@ import type {
 	VisionDescribeRequest,
 	VisionDescribeResult,
 } from "./vision/types";
+import { prewarmLocalVoiceStackForModel } from "./voice-prewarm";
 
 const SYSTEM_PREFIX_CONVERSATION_ID = "__system_prefix__";
 
@@ -343,12 +344,19 @@ export class LocalInferenceService {
 			overrides,
 		);
 		if (runtime && state.status === "ready") {
-			void this.prewarmSystemPrefix(runtime).catch(() => {
-				// Logged inside prewarmSystemPrefix at debug; activation should not
-				// regress to a blocking path if a best-effort warmup misses.
+			void (async () => {
+				await this.prewarmActiveVoice(modelId);
+				await this.prewarmSystemPrefix(runtime);
+			})().catch(() => {
+				// Individual prewarm helpers log their own failures; activation
+				// should not regress to a blocking path if a best-effort warmup misses.
 			});
 		}
 		return state;
+	}
+
+	async prewarmActiveVoice(modelId: string): Promise<boolean> {
+		return prewarmLocalVoiceStackForModel(modelId);
 	}
 
 	/**

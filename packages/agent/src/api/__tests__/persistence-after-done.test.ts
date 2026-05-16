@@ -20,6 +20,8 @@ let persistResolvedAt: number | null = null;
 let captureGenerateAbortSignal: AbortSignal | undefined;
 let generateWaitsForAbort = false;
 let generateThrowsTurnAbort = false;
+let generateThrowsTimeout = false;
+let assistantMemoryAlreadyPersisted = false;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -66,6 +68,9 @@ vi.mock("../chat-routes.ts", async () => {
         };
       });
     }),
+    hasRecentVisibleAssistantMemorySince: vi.fn(
+      async () => assistantMemoryAlreadyPersisted,
+    ),
     generateChatResponse: vi.fn(async (_runtime, _msg, agentName, opts) => {
       captureGenerateAbortSignal = opts?.abortSignal;
       if (generateThrowsTurnAbort) {
@@ -75,6 +80,9 @@ vi.mock("../chat-routes.ts", async () => {
         err.name = "TurnAbortedError";
         err.code = "TURN_ABORTED";
         throw err;
+      }
+      if (generateThrowsTimeout) {
+        throw new Error("Chat generation timed out after 180000ms");
       }
       if (generateWaitsForAbort) {
         await new Promise<void>((resolve) => {
@@ -137,13 +145,16 @@ vi.mock("../character-routes.ts", async () => {
   return actual;
 });
 
-import { readChatRequestPayload } from "../chat-routes.ts";
+import {
+  hasRecentVisibleAssistantMemorySince,
+  persistAssistantConversationMemory,
+  readChatRequestPayload,
+} from "../chat-routes.ts";
 import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
 import { handleConversationRoutes } from "../conversation-routes.ts";
-import { readChatRequestPayload } from "../chat-routes.ts";
 
 interface MockResponseRecord {
   writes: string[];
@@ -271,6 +282,8 @@ describe("conversation-routes streaming persistence ordering", () => {
     captureGenerateAbortSignal = undefined;
     generateWaitsForAbort = false;
     generateThrowsTurnAbort = false;
+    generateThrowsTimeout = false;
+    assistantMemoryAlreadyPersisted = false;
   });
 
   afterEach(() => {
@@ -382,5 +395,19 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(false);
     expect(record.writes.some((w) => w.includes('"type":"error"'))).toBe(false);
     expect(persistCalledAt).toBeNull();
+  });
+
+  it("suppresses synthetic fallback when a timed-out turn already persisted a reply", async () => {
+    generateThrowsTimeout = true;
+    assistantMemoryAlreadyPersisted = true;
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    expect(hasRecentVisibleAssistantMemorySince).toHaveBeenCalled();
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(true);
+    expect(record.writes.join("")).not.toContain("provider issue");
+    expect(record.ended).toBe(true);
   });
 });

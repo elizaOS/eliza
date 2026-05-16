@@ -28,6 +28,7 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
 type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =
@@ -1385,6 +1386,7 @@ export async function handleLocalInferenceRoutes(
 				status: "ready",
 			};
 			sendJson(res, activeModelState);
+			void prewarmLocalVoiceStackForModel(installed.id);
 		} catch (error) {
 			activeModelState = {
 				modelId: installed.id,

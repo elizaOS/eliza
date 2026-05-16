@@ -29,9 +29,9 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-	KokoroOnnxRuntime,
 	KokoroTtsBackend,
-} from "@elizaos/shared/local-inference";
+	pickKokoroRuntimeBackend,
+} from "@elizaos/shared";
 import { localInferenceRoot } from "../paths";
 import { VoiceStartupError } from "./errors";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
@@ -53,7 +53,12 @@ import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
-import { AsrUnavailableError, createStreamingTranscriber } from "./transcriber";
+import {
+	ASR_SAMPLE_RATE,
+	AsrUnavailableError,
+	createStreamingTranscriber,
+	resampleLinear,
+} from "./transcriber";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
@@ -369,6 +374,41 @@ export class FfiOmniVoiceBackend {
 		});
 	}
 }
+export function createKokoroTtsBackend(kokoro) {
+	const forkUrl =
+		process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
+		process.env.ELIZA_GATEWAY_URL?.trim() ||
+		"http://127.0.0.1:18789";
+	const forkModelId =
+		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
+	const decision = pickKokoroRuntimeBackend({
+		defaultBackend: kokoro.runtimeKind === "onnx" ? "onnx" : "fork",
+		fork: {
+			serverUrl: forkUrl,
+			modelId: forkModelId,
+			sampleRate: kokoro.layout.sampleRate,
+		},
+		onnx: {
+			layout: kokoro.layout,
+			expectedSha256: null,
+		},
+	});
+	console.info(
+		`[voice/kokoro] runtime backend=${decision.backend} reason="${decision.reason}"`,
+	);
+	return new KokoroTtsBackend({
+		layout: kokoro.layout,
+		runtime: decision.runtime,
+		defaultVoiceId: kokoro.defaultVoiceId,
+	});
+}
+export function createKokoroSpeakerPreset(kokoro) {
+	return {
+		voiceId: kokoro.defaultVoiceId,
+		embedding: new Float32Array(0),
+		bytes: new Uint8Array(0),
+	};
+}
 /**
  * Wires the voice scaffold (`VoiceScheduler` + helpers) onto the engine.
  * One bridge per active voice session — created in
@@ -466,6 +506,7 @@ export class EngineVoiceBridge {
 		const { preset, phrases: seedPhrases } = presetCache.loadFromBundle({
 			bundleRoot: opts.bundleRoot,
 		});
+		const schedulerPreset = opts.speakerPresetOverride ?? preset;
 		const phraseCache = new PhraseCache();
 		phraseCache.seed(seedPhrases);
 		for (const entry of opts.prewarmedPhrases ?? []) {
@@ -485,6 +526,12 @@ export class EngineVoiceBridge {
 		const asrAvailable = bundleHasRegularFile(
 			path.join(opts.bundleRoot, "asr"),
 		);
+		if (opts.backendOverride && opts.ttsBackendOverride) {
+			throw new VoiceStartupError(
+				"invalid-options",
+				"[voice] backendOverride and ttsBackendOverride are mutually exclusive.",
+			);
+		}
 		if (opts.backendOverride && opts.useFfiBackend) {
 			throw new VoiceStartupError(
 				"missing-fused-build",
@@ -518,13 +565,16 @@ export class EngineVoiceBridge {
 				},
 			};
 			ffiContextRef = contextRef;
-			backend = new FfiOmniVoiceBackend({
-				ffi: ffiHandle,
-				getContext: contextRef.ensure,
-				sampleRate,
-			});
+			backend =
+				opts.ttsBackendOverride ??
+				new FfiOmniVoiceBackend({
+					ffi: ffiHandle,
+					getContext: contextRef.ensure,
+					sampleRate,
+				});
 		} else {
-			backend = new StubOmniVoiceBackend(sampleRate);
+			backend =
+				opts.ttsBackendOverride ?? new StubOmniVoiceBackend(sampleRate);
 		}
 		const config = {
 			chunkerConfig: {
@@ -533,7 +583,7 @@ export class EngineVoiceBridge {
 					readPositiveIntEnv("ELIZA_VOICE_MAX_TOKENS_PER_PHRASE") ??
 					PHRASE_MAX_TOKENS_DEFAULT,
 			},
-			preset,
+			preset: schedulerPreset,
 			ringBufferCapacity:
 				opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
 			sampleRate,
@@ -595,20 +645,8 @@ export class EngineVoiceBridge {
 		// Synthesize a minimal preset. Kokoro's `resolveVoice(preset)` looks
 		// up `preset.voiceId` against `KOKORO_VOICE_PACKS`; the embedding +
 		// bytes fields are ignored on this path (voice cloning is OmniVoice-only).
-		const preset = {
-			voiceId: kokoro.defaultVoiceId,
-			embedding: new Float32Array(0),
-			bytes: new Uint8Array(0),
-		};
-		const runtime = new KokoroOnnxRuntime({
-			layout: kokoro.layout,
-			expectedSha256: null,
-		});
-		const backend = new KokoroTtsBackend({
-			layout: kokoro.layout,
-			runtime,
-			defaultVoiceId: kokoro.defaultVoiceId,
-		});
+		const preset = createKokoroSpeakerPreset(kokoro);
+		const backend = createKokoroTtsBackend(kokoro);
 		const phraseCache = new PhraseCache();
 		for (const entry of opts.prewarmedPhrases ?? []) {
 			phraseCache.put(entry);
@@ -889,6 +927,30 @@ export class EngineVoiceBridge {
 		const backendBatch = this.backend;
 		if (typeof backendBatch.transcribe === "function") {
 			const transcript = await backendBatch.transcribe(args);
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return transcript;
+		}
+		if (
+			this.ffi &&
+			this.ffiContextRef &&
+			this.asrAvailable &&
+			typeof this.ffi.asrTranscribe === "function"
+		) {
+			const pcm =
+				args.sampleRate === ASR_SAMPLE_RATE
+					? args.pcm
+					: resampleLinear(args.pcm, args.sampleRate, ASR_SAMPLE_RATE);
+			const transcript = this.ffi
+				.asrTranscribe({
+					ctx: this.ffiContextRef.ensure(),
+					pcm,
+					sampleRateHz: ASR_SAMPLE_RATE,
+				})
+				.trim();
 			if (signal?.aborted) {
 				throw signal.reason instanceof Error
 					? signal.reason
