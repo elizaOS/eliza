@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DESKTOP_TRAY_MENU_ITEMS } from "./DesktopTrayRuntime";
 
-const browserEntryPath = fileURLToPath(new URL("../../browser.ts", import.meta.url));
+const browserEntryPath = fileURLToPath(
+  new URL("../../browser.ts", import.meta.url),
+);
 
 describe("app-core browser desktop tray exports", () => {
   it("keeps the renderer-facing tray menu wired to the real desktop runtime", () => {
