@@ -155,10 +155,11 @@ describe("handleMobileOptionalRoutes", () => {
 
   it("keeps the computer-use approval stream alive with an empty snapshot fallback", async () => {
     process.env.ELIZA_MOBILE_LOCAL_AGENT = "1";
+    const req = makeReq();
     const res = makeRes();
 
     const handled = await handleMobileOptionalRoutes(
-      makeReq(),
+      req,
       res,
       "/api/computer-use/approvals/stream",
       "GET",
@@ -169,6 +170,7 @@ describe("handleMobileOptionalRoutes", () => {
     expect(res.header("content-type")).toBe("text/event-stream");
     expect(res.body()).toContain('"type":"snapshot"');
     expect(res.body()).toContain('"mode":"off"');
+    req.emit("close");
   });
 
   it("validates and stores mobile fallback stream settings in-process", async () => {
