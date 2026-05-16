@@ -5,12 +5,14 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 
 const externalDeps = ["@elizaos/core"];
 
 async function build() {
   const totalStart = Date.now();
+  await rm("dist", { recursive: true, force: true });
 
   // Node build
   const nodeStart = Date.now();
@@ -68,7 +70,15 @@ async function build() {
     console.error(cjsResult.logs);
     throw new Error("CJS build failed");
   }
-  await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
+  if (existsSync("dist/cjs/index.node.js")) {
+    await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
+  }
+  if (existsSync("dist/cjs/index.node.js.map")) {
+    await rename("dist/cjs/index.node.js.map", "dist/cjs/index.node.cjs.map");
+  }
+  if (!existsSync("dist/cjs/index.node.cjs")) {
+    throw new Error("CJS build did not produce dist/cjs/index.node.cjs");
+  }
   console.log(
     `✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
   );
