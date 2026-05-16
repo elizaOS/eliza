@@ -22,9 +22,8 @@ const baseUrl =
  *  - sonner Toaster
  *  - nprogress-driven navigation bar
  *
- * The layout sets the Open Sans / DM Mono / Inter CSS variables on the body via
- * the className. The Google Fonts imports live in
- * `globals.css` (CSS variables applied on `<body>`).
+ * The layout sets the Open Sans CSS variables on the body via the className.
+ * The vendored font import lives in `globals.css`.
  */
 export default function RootLayout() {
   return (

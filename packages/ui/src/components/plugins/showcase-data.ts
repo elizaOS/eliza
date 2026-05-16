@@ -171,8 +171,7 @@ export const SHOWCASE_PLUGIN: PluginInfo = {
     {
       key: "RESPONSE_TEMPLATE",
       type: "string",
-      description:
-        "Code editor with monospaced font for templates and snippets.",
+      description: "Code editor for templates and snippets.",
       required: false,
       sensitive: false,
       currentValue: null,
@@ -397,7 +396,7 @@ export const SHOWCASE_PLUGIN: PluginInfo = {
       group: "Structured Data",
       width: "full",
       type: "code",
-      help: "Renderer: code — monospaced code editor",
+      help: "Renderer: code editor",
     },
     ALLOWED_ORIGINS: {
       label: "Allowed Origins",

@@ -18,8 +18,9 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./shared/load-env";
 
-type Logger = typeof import("../../lib/utils/logger").logger;
-type Repo = typeof import("../../db/repositories/agent-sandboxes").agentSandboxesRepository;
+type Logger = typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
+type Repo =
+  typeof import("@elizaos/cloud-shared/db/repositories/agent-sandboxes").agentSandboxesRepository;
 
 interface RouterDeps {
   logger: Logger;
@@ -40,7 +41,9 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-export function readRouterConfig(env: NodeJS.ProcessEnv = process.env): AgentRouterConfig {
+export function readRouterConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): AgentRouterConfig {
   return {
     port: parsePositiveInt(env.AGENT_ROUTER_PORT, DEFAULT_PORT),
     bindHost: env.AGENT_ROUTER_BIND_HOST?.trim() || DEFAULT_BIND_HOST,
@@ -52,8 +55,8 @@ let depsPromise: Promise<RouterDeps> | null = null;
 async function loadDeps(): Promise<RouterDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("../../db/repositories/agent-sandboxes"),
-      import("../../lib/utils/logger"),
+      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/lib/utils/logger"),
     ]).then(([repoModule, loggerModule]) => ({
       agentSandboxesRepository: repoModule.agentSandboxesRepository,
       logger: loggerModule.logger,
@@ -69,7 +72,9 @@ interface RoutingResponse {
   target: string;
 }
 
-export async function resolveAgentRouting(agentId: string): Promise<RoutingResponse | null> {
+export async function resolveAgentRouting(
+  agentId: string,
+): Promise<RoutingResponse | null> {
   const { agentSandboxesRepository } = await loadDeps();
   const sandbox = await agentSandboxesRepository.findById(agentId);
   if (!sandbox || sandbox.status !== "running") return null;
@@ -95,7 +100,8 @@ export async function resolveAgentRouting(agentId: string): Promise<RoutingRespo
   };
 }
 
-const AGENT_ID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const AGENT_ID_RE =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 async function handleRequest(url: URL): Promise<Response> {
   if (url.pathname === "/healthz") {
@@ -103,7 +109,9 @@ async function handleRequest(url: URL): Promise<Response> {
   }
   // /headscale-ip is the path nginx Lua already calls; /routing is the alias
   // for new callers.
-  const match = url.pathname.match(/^\/agents\/([^/]+)\/(headscale-ip|routing)$/);
+  const match = url.pathname.match(
+    /^\/agents\/([^/]+)\/(headscale-ip|routing)$/,
+  );
   if (!match) {
     return Response.json({ error: "not found" }, { status: 404 });
   }
@@ -113,7 +121,10 @@ async function handleRequest(url: URL): Promise<Response> {
   }
   const routing = await resolveAgentRouting(agentId);
   if (!routing) {
-    return Response.json({ error: "agent not found or not running" }, { status: 404 });
+    return Response.json(
+      { error: "agent not found or not running" },
+      { status: 404 },
+    );
   }
   return Response.json(routing, { status: 200 });
 }
@@ -127,11 +138,16 @@ async function main(): Promise<void> {
 
   const { createServer } = await import("node:http");
   server = createServer((req, res) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host || "localhost"}`);
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host || "localhost"}`,
+    );
     handleRequest(url)
       .then((response) => {
         res.statusCode = response.status;
-        response.headers.forEach((v, k) => res.setHeader(k, v));
+        response.headers.forEach((v, k) => {
+          res.setHeader(k, v);
+        });
         return response.text();
       })
       .then((body) => {
@@ -206,7 +222,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 function isMainModule(): boolean {
-  return path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  const entry = process.argv[1];
+  return entry ? path.resolve(entry) === fileURLToPath(import.meta.url) : false;
 }
 
 if (isMainModule()) {

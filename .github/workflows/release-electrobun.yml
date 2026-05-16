@@ -179,46 +179,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Validate public desktop signing inputs
-        env:
-          BUILD_ENV: ${{ needs.prepare.outputs.env }}
-          PUBLISH_RELEASE: ${{ inputs.publish_release || github.event_name == 'push' }}
-          PLATFORM_OS: ${{ matrix.platform.os }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
-          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
-          WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
-        run: |
-          if [[ "$PUBLISH_RELEASE" != "true" && "$BUILD_ENV" != "stable" ]]; then
-            echo "Non-published canary build; signing inputs are advisory."
-            exit 0
-          fi
-
-          missing=()
-          case "$PLATFORM_OS" in
-            macos)
-              [[ -z "$CSC_LINK" ]] && missing+=("CSC_LINK")
-              [[ -z "$CSC_KEY_PASSWORD" ]] && missing+=("CSC_KEY_PASSWORD")
-              [[ -z "$APPLE_ID" ]] && missing+=("APPLE_ID")
-              [[ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]] && missing+=("APPLE_APP_SPECIFIC_PASSWORD")
-              [[ -z "$APPLE_TEAM_ID" ]] && missing+=("APPLE_TEAM_ID")
-              ;;
-            windows)
-              [[ -z "$WINDOWS_SIGN_CERT_BASE64" ]] && missing+=("WINDOWS_SIGN_CERT_BASE64")
-              [[ -z "$WINDOWS_SIGN_CERT_PASSWORD" ]] && missing+=("WINDOWS_SIGN_CERT_PASSWORD")
-              [[ -z "$WINDOWS_SIGN_TIMESTAMP_URL" ]] && missing+=("WINDOWS_SIGN_TIMESTAMP_URL")
-              ;;
-          esac
-
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "::error::Missing public desktop signing inputs for $PLATFORM_OS: ${missing[*]}"
-            exit 1
-          fi
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -414,6 +374,46 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      - name: Validate public desktop signing inputs
+        env:
+          BUILD_ENV: ${{ needs.prepare.outputs.env }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release || github.event_name == 'push' }}
+          PLATFORM_OS: ${{ matrix.platform.os }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+        run: |
+          if [[ "$PUBLISH_RELEASE" != "true" && "$BUILD_ENV" != "stable" ]]; then
+            echo "Non-published canary build; signing inputs are advisory."
+            exit 0
+          fi
+
+          missing=()
+          case "$PLATFORM_OS" in
+            macos)
+              [[ -z "$CSC_LINK" ]] && missing+=("CSC_LINK")
+              [[ -z "$CSC_KEY_PASSWORD" ]] && missing+=("CSC_KEY_PASSWORD")
+              [[ -z "$APPLE_ID" ]] && missing+=("APPLE_ID")
+              [[ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]] && missing+=("APPLE_APP_SPECIFIC_PASSWORD")
+              [[ -z "$APPLE_TEAM_ID" ]] && missing+=("APPLE_TEAM_ID")
+              ;;
+            windows)
+              [[ -z "$WINDOWS_SIGN_CERT_BASE64" ]] && missing+=("WINDOWS_SIGN_CERT_BASE64")
+              [[ -z "$WINDOWS_SIGN_CERT_PASSWORD" ]] && missing+=("WINDOWS_SIGN_CERT_PASSWORD")
+              [[ -z "$WINDOWS_SIGN_TIMESTAMP_URL" ]] && missing+=("WINDOWS_SIGN_TIMESTAMP_URL")
+              ;;
+          esac
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing public desktop signing inputs for $PLATFORM_OS: ${missing[*]}"
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v6

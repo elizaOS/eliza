@@ -73,6 +73,117 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 };
 
 // ---------------------------------------------------------------------------
+// Sender-role lookup dedup
+// ---------------------------------------------------------------------------
+// `checkSenderRole` does two DB queries (resolveWorldForMessage +
+// resolveEntityRole). When state composition runs, every gated provider's
+// wrapped `get()` calls it in parallel via `Promise.all`. With even a
+// modest set of gated providers (ACTIVE_WORKSPACE_CONTEXT,
+// CODING_AGENT_EXAMPLES, SECRETS_STATUS, walletPortfolio, etc. —
+// 10+ providers gated to admin or owner), that's 20+ DB queries per
+// turn before the planner is prompted. On a busy host the per-validator
+// stats compound and the provider provider-loop hits its overall
+// timeout cap, dropping providers from the prompt's context.
+//
+// This intentionally dedups only live in-flight checks. Provider redaction is
+// security-sensitive, and `checkSenderRole` also depends on live connector
+// metadata stamped onto the current message, so resolved role decisions are not
+// cached across turns.
+type RoleCheckValue = {
+  role: string;
+  isOwner: boolean;
+  isAdmin: boolean;
+} | null;
+
+const roleCheckInflightByRuntime = new WeakMap<
+  IAgentRuntime,
+  Map<string, Promise<RoleCheckValue>>
+>();
+let roleCheckLoader:
+  | Promise<typeof import("./roles.ts").checkSenderRole>
+  | undefined;
+
+function loadCheckSenderRole() {
+  if (!roleCheckLoader) {
+    // Clear the cached promise if the dynamic import rejects so the next
+    // call can retry. Without this, a single transient module-registry
+    // failure (e.g. evaluation error during startup) would permanently
+    // wedge every gated provider for the runtime's lifetime by handing
+    // back the same rejected promise on every call.
+    roleCheckLoader = import("./roles.ts").then((mod) => mod.checkSenderRole);
+    roleCheckLoader.catch(() => {
+      roleCheckLoader = undefined;
+    });
+  }
+  return roleCheckLoader;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
+function liveRoleMetadataKey(message: Memory): string {
+  const source =
+    typeof message.content.source === "string" ? message.content.source : "";
+  const metadata = (message as Memory & { metadata?: unknown }).metadata;
+  return stableStringify({ metadata, source });
+}
+
+async function fetchSenderRole(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<RoleCheckValue> {
+  const checkSenderRole = await loadCheckSenderRole();
+  const fresh = await checkSenderRole(runtime, message);
+  return fresh
+    ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
+    : null;
+}
+
+async function getCachedSenderRole(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<RoleCheckValue> {
+  const entityId = message.entityId;
+  const roomId = message.roomId;
+  if (!entityId || !roomId) {
+    const checkSenderRole = await loadCheckSenderRole();
+    const fresh = await checkSenderRole(runtime, message);
+    return fresh
+      ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
+      : null;
+  }
+
+  const key = `${runtime.agentId}|${entityId}|${roomId}|${liveRoleMetadataKey(message)}`;
+  let roleCheckInflight = roleCheckInflightByRuntime.get(runtime);
+  if (!roleCheckInflight) {
+    roleCheckInflight = new Map();
+    roleCheckInflightByRuntime.set(runtime, roleCheckInflight);
+  }
+  const inflight = roleCheckInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = fetchSenderRole(runtime, message).finally(() => {
+    roleCheckInflight.delete(key);
+  });
+  roleCheckInflight.set(key, promise);
+  return promise;
+}
+
+// ---------------------------------------------------------------------------
 // Gating implementation
 // ---------------------------------------------------------------------------
 
@@ -110,9 +221,7 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
     message: Memory,
     state: State,
   ): Promise<ProviderResult> => {
-    const { checkSenderRole } = await import("./roles.ts");
-
-    const check = await checkSenderRole(runtime, message);
+    const check = await getCachedSenderRole(runtime, message);
     if (!check || !roleCheckPasses(check, gate)) {
       return { text: "" };
     }

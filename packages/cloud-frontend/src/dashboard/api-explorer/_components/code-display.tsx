@@ -33,13 +33,13 @@ export function CodeDisplay({
       margin: 0,
       fontSize: "13px",
       lineHeight: "1.6",
-      fontFamily: 'var(--font-mono)',
+      fontFamily: "var(--font-mono)",
     },
     'code[class*="language-"]': {
       background: "transparent",
       fontSize: "13px",
       lineHeight: "1.6",
-      fontFamily: 'var(--font-mono)',
+      fontFamily: "var(--font-mono)",
     },
   };
 

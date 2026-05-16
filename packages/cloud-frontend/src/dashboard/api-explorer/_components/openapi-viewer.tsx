@@ -90,8 +90,7 @@ export function OpenApiViewer({ value, className }: OpenApiViewerProps) {
           options={{
             readOnly: true,
             fontSize: 13,
-            fontFamily:
-              'var(--font-mono)',
+            fontFamily: "var(--font-mono)",
             lineHeight: 21,
             tabSize: 2,
             insertSpaces: true,

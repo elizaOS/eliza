@@ -4,6 +4,7 @@
  * match what we apply on the `<body>` via RootLayout className.
  */
 @import "@fontsource-variable/open-sans";
+@import "../../ui/src/styles/base.css";
 
 @import "tailwindcss";
 @import "@rainbow-me/rainbowkit/styles.css";
@@ -113,64 +114,11 @@
 }
 
 :root {
-  --sky-0: #1d91e8;
-  --sky-1: #47b8ff;
-  --sky-2: #9bdcff;
-  --eliza-orange: #ff8a24;
-  --bg: #eef8ff;
-  --bg-accent: #dff2ff;
-  --bg-elevated: rgba(255, 255, 255, 0.86);
-  --bg-hover: rgba(255, 255, 255, 0.94);
-  --bg-muted: #d8efff;
-  --card: rgba(255, 255, 255, 0.88);
-  --card-foreground: #06131f;
-  --surface: rgba(255, 255, 255, 0.82);
-  --text: #06131f;
-  --text-strong: #07131f;
-  --chat-text: #06131f;
-  --txt: var(--text);
-  --muted: rgba(6, 19, 31, 0.58);
-  --muted-strong: rgba(6, 19, 31, 0.74);
-  --border: rgba(6, 19, 31, 0.12);
-  --border-strong: rgba(6, 19, 31, 0.2);
-  --border-hover: #ff8a24;
-  --input: rgba(255, 255, 255, 0.9);
-  --ring: #ff8a24;
-  --accent: #ff8a24;
-  --accent-rgb: 255, 138, 36;
-  --accent-hover: #ff9a3d;
-  --accent-muted: #d95f16;
-  --accent-subtle: rgba(255, 138, 36, 0.18);
-  --accent-foreground: #fff7ee;
-  --primary: #ff8a24;
-  --primary-foreground: #fff7ee;
-  --ok: hsl(142 76% 36%);
-  --ok-muted: hsla(142 76% 36% / 0.7);
-  --ok-subtle: hsla(142 76% 36% / 0.1);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --destructive-subtle: hsla(0 84% 60% / 0.1);
-  --warn: #ff8a24;
-  --warn-muted: rgba(255, 138, 36, 0.72);
-  --warn-subtle: rgba(255, 138, 36, 0.16);
-  --danger: hsl(0 84.2% 60.2%);
-  --info: #1d91e8;
-  --status-success: var(--ok);
-  --status-success-bg: var(--ok-subtle);
-  --status-danger: var(--danger);
-  --status-danger-bg: var(--destructive-subtle);
-  --status-warning: var(--warn);
-  --status-warning-bg: var(--warn-subtle);
-  --status-info: #1d91e8;
-  --status-info-bg: rgba(29, 145, 232, 0.12);
-  --focus: rgba(255, 138, 36, 0.18);
-  --focus-ring: 0 0 0 2px rgba(255, 138, 36, 0.42);
-  --header-bar-bg: rgba(255, 255, 255, 0.64);
-  --header-bar-fg: #06131f;
-  --section-bar-bg: rgba(255, 255, 255, 0.68);
-  --section-bar-fg: #06131f;
-  --link-color: #0c5f9e;
-  --link-hover-color: #d95f16;
+  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-dm-mono: var(--font-open-sans);
+  --font-inter: var(--font-open-sans);
+  --font-roboto-mono: var(--font-open-sans);
+
   --background: var(--bg);
   --foreground: var(--text);
   --popover: var(--card);
@@ -178,11 +126,13 @@
   --secondary: var(--bg-accent);
   --secondary-foreground: var(--text);
   --muted-foreground: var(--muted);
+
   --chart-1: var(--accent);
   --chart-2: var(--ok);
   --chart-3: var(--status-info);
   --chart-4: var(--warn);
   --chart-5: var(--danger);
+
   --sidebar: var(--bg-accent);
   --sidebar-foreground: var(--text);
   --sidebar-primary: var(--primary);
@@ -191,27 +141,6 @@
   --sidebar-accent-foreground: var(--text);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.06);
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg:
-    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 50px -12px rgb(0 0 0 / 0.3);
-  --shadow-2xl: 0 25px 60px -15px rgb(0 0 0 / 0.4);
-  --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 0.04);
-  --radius: 0.5rem;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-2xl: 1.25rem;
-  --radius-3xl: 1.5rem;
-  --font-sans-default: var(--font-open-sans);
-  --font-body: var(--font-sans-default);
-  --font-display: var(--font-body);
-  --font-chat: var(--font-sans-default);
-  --mono: var(--font-sans-default);
-  color-scheme: light;
 }
 
 @layer base {

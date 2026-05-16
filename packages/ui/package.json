@@ -60,6 +60,21 @@
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
     },
+    "./button": {
+      "types": "./dist/cloud-ui/components/button.d.ts",
+      "import": "./dist/cloud-ui/components/button.js",
+      "default": "./dist/cloud-ui/components/button.js"
+    },
+    "./dropdown-menu": {
+      "types": "./dist/cloud-ui/components/dropdown-menu.d.ts",
+      "import": "./dist/cloud-ui/components/dropdown-menu.js",
+      "default": "./dist/cloud-ui/components/dropdown-menu.js"
+    },
+    "./input": {
+      "types": "./dist/cloud-ui/components/input.d.ts",
+      "import": "./dist/cloud-ui/components/input.js",
+      "default": "./dist/cloud-ui/components/input.js"
+    },
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
     "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
