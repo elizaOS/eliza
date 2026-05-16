@@ -31,12 +31,36 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+import { localInferenceService } from "./services/service.js";
 import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
 let activeModelState = { modelId: null, loadedAt: null, status: "idle" };
+function getDesktopActiveSnapshot() {
+	const active = localInferenceService.getActive();
+	if (active.status === "idle" && !active.modelId) return null;
+	return {
+		modelId: active.modelId,
+		loadedAt: active.loadedAt,
+		status: active.status,
+		...(active.error ? { error: active.error } : {}),
+		...(active.loadedContextSize !== undefined
+			? { loadedContextSize: active.loadedContextSize }
+			: {}),
+		...(active.loadedCacheTypeK !== undefined
+			? { loadedCacheTypeK: active.loadedCacheTypeK }
+			: {}),
+		...(active.loadedCacheTypeV !== undefined
+			? { loadedCacheTypeV: active.loadedCacheTypeV }
+			: {}),
+		...(active.loadedGpuLayers !== undefined
+			? { loadedGpuLayers: active.loadedGpuLayers }
+			: {}),
+	};
+}
 export function getLocalInferenceActiveModelId() {
-	return activeModelState.status === "ready" && activeModelState.modelId?.trim()
-		? activeModelState.modelId.trim()
+	const active = getDesktopActiveSnapshot() ?? activeModelState;
+	return active.status === "ready" && active.modelId?.trim()
+		? active.modelId.trim()
 		: undefined;
 }
 function catalogRole(model) {
@@ -419,6 +443,9 @@ async function installedSnapshot() {
 	return readRegistry();
 }
 export async function getLocalInferenceActiveSnapshot() {
+	const desktopActive = getDesktopActiveSnapshot();
+	if (desktopActive) return desktopActive;
+
 	const bridgeStatus = getMobileDeviceBridgeStatus();
 	const loadedPath = bridgeStatus.devices.find((device) =>
 		Boolean(device.loadedPath),
@@ -633,6 +660,31 @@ async function setRoutingForChat(provider) {
 	}
 	await writeJsonFile(routingPath(), { version: 1, preferences });
 }
+async function getConnectedMobileDeviceBridgeApi() {
+	try {
+		const status = getMobileDeviceBridgeStatus();
+		return status.connected
+			? {
+					getMobileDeviceBridgeStatus,
+					loadMobileDeviceBridgeModel,
+					unloadMobileDeviceBridgeModel,
+				}
+			: null;
+	} catch {
+		return null;
+	}
+}
+function providerForActiveSnapshot(active) {
+	const desktopActive = getDesktopActiveSnapshot();
+	if (
+		desktopActive?.status === "ready" &&
+		desktopActive.modelId &&
+		desktopActive.modelId === active.modelId
+	) {
+		return LOCAL_INFERENCE_PROVIDER_ID;
+	}
+	return "capacitor-llama";
+}
 async function activateInstalledModel(installed) {
 	activeModelState = {
 		modelId: installed.id,
@@ -640,18 +692,25 @@ async function activateInstalledModel(installed) {
 		status: "loading",
 	};
 	try {
-		await loadMobileDeviceBridgeModel(installed.path, installed.id);
-		activeModelState = {
-			modelId: installed.id,
-			loadedAt: new Date().toISOString(),
-			status: "ready",
-		};
+		const bridge = await getConnectedMobileDeviceBridgeApi();
+		let active;
+		if (bridge) {
+			await bridge.loadMobileDeviceBridgeModel(installed.path, installed.id);
+			active = {
+				modelId: installed.id,
+				loadedAt: new Date().toISOString(),
+				status: "ready",
+			};
+		} else {
+			active = await localInferenceService.setActive(null, installed.id);
+		}
+		activeModelState = active;
 		return buildLocalInferenceChatResult({
 			intent: "use_local",
 			status: "ready",
 			modelId: installed.id,
 			activeModelId: installed.id,
-			provider: "capacitor-llama",
+			provider: bridge ? "capacitor-llama" : LOCAL_INFERENCE_PROVIDER_ID,
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -713,7 +772,7 @@ export async function getLocalInferenceChatStatus(intent = "status", error) {
 			status: "ready",
 			modelId: active.modelId,
 			activeModelId: active.modelId,
-			provider: "capacitor-llama",
+			provider: providerForActiveSnapshot(active),
 		});
 	}
 	const installed = await installedSnapshot();
@@ -767,7 +826,7 @@ export async function handleLocalInferenceChatCommand(intent, prompt) {
 		);
 	}
 	if (intent === "use_local") {
-		await setRoutingForChat("capacitor-llama");
+		await setRoutingForChat(LOCAL_INFERENCE_PROVIDER_ID);
 		const installed = await installedSnapshot();
 		const requested = await resolveDefaultChatModel(prompt);
 		const installedModel = installed.find(
@@ -784,7 +843,7 @@ export async function handleLocalInferenceChatCommand(intent, prompt) {
 					status: "downloading",
 					modelId: requested.id,
 					activeModelId: activeModelState.modelId,
-					provider: "capacitor-llama",
+					provider: LOCAL_INFERENCE_PROVIDER_ID,
 					progress: progressForJob(job),
 				},
 				"I also set chat routing to prefer local inference.",

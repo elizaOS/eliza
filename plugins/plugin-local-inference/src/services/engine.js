@@ -28,6 +28,10 @@ import {
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 } from "./dflash-server";
+import {
+	getDflashDrafterBlockReason,
+	getDflashTargetMetaBlockReason,
+} from "./dflash-target-meta";
 import { MemoryMonitor } from "./memory-monitor";
 import { mlxLocalServer } from "./mlx-server";
 import { listInstalledModels } from "./registry";
@@ -59,6 +63,8 @@ import {
 	createEvictableModelRole,
 	SharedResourceRegistry,
 } from "./voice/shared-resources";
+
+export { getDflashTargetMetaBlockReason };
 
 /**
  * Default DFlash draft window per round for voice turns. Small (≤8) so a
@@ -757,6 +763,10 @@ export class LocalInferenceEngine {
 	}
 	activeBackendId() {
 		return this.dispatcher.activeBackendId();
+	}
+	currentRuntimeLoadConfig() {
+		if (this.activeBackendId() !== "llama-server") return null;
+		return dflashLlamaServer.currentRuntimeLoadConfig();
 	}
 	async unload() {
 		// Stop the memory monitor + idle timer and deregister evictable roles
@@ -1902,13 +1912,20 @@ export class LocalInferenceEngine {
 			return null;
 		}
 		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
-		if (!drafter) {
-			const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
-			if (status.required) throw new Error(message);
-			console.warn(`${message} Falling back to node-llama-cpp.`);
-			return null;
-		}
-		const kvCache = catalog?.runtime?.kvCache;
+			if (!drafter) {
+				const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
+				if (status.required) throw new Error(message);
+				console.warn(`${message} Falling back to node-llama-cpp.`);
+				return null;
+			}
+			const drafterBlockReason = await getDflashDrafterBlockReason(drafter);
+			if (drafterBlockReason) {
+				const message = `[dflash] ${catalog.displayName} companion drafter ${dflash.drafterModelId} is not eligible for DFlash: ${drafterBlockReason}.`;
+				if (status.required) throw new Error(message);
+				console.warn(`${message} Falling back to target-only llama-server.`);
+				return null;
+			}
+			const kvCache = catalog?.runtime?.kvCache;
 		return {
 			targetModelPath: target.path,
 			drafterModelPath: drafter.path,

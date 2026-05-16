@@ -36,6 +36,7 @@ import {
 	type DflashTurnStats,
 	parseDflashFieldFromSseChunk,
 } from "./dflash-event-schema";
+import { getDflashDrafterBlockReason } from "./dflash-target-meta";
 import {
 	DflashMetricsCollector,
 	dflashTurnHistory,
@@ -2017,19 +2018,23 @@ async function fetchJson(
 		timeoutMs,
 	);
 	let res: Response | null = null;
+	let bodySettled = false;
 	try {
 		res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
 			const body = await res.text().catch(() => "");
+			bodySettled = true;
 			throw new Error(
 				`HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`,
 			);
 		}
-		return await res.json();
+		const json = await res.json();
+		bodySettled = true;
+		return json;
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
-		if (controller.signal.aborted) {
+		if (res?.body && (!bodySettled || controller.signal.aborted)) {
 			await res?.body?.cancel(controller.signal.reason).catch(() => undefined);
 		}
 	}
@@ -2179,6 +2184,7 @@ async function fetchStreamingChatCompletion(
 	const t0 = performance.now();
 	let firstTokenMs: number | null = null;
 	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+	let completed = false;
 	try {
 		const res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
@@ -2343,6 +2349,7 @@ async function fetchStreamingChatCompletion(
 			}
 			await callbacks.onTextChunk?.(finalRepair);
 		}
+		completed = true;
 		return {
 			text,
 			firstTokenMs,
@@ -2352,8 +2359,21 @@ async function fetchStreamingChatCompletion(
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
-		if (controller.signal.aborted) {
+		if (!completed) {
+			if (!controller.signal.aborted) {
+				controller.abort(
+					new DOMException(
+						"DFlash stream closed before completion",
+						"AbortError",
+					),
+				);
+			}
 			await reader?.cancel(controller.signal.reason).catch(() => undefined);
+		}
+		try {
+			reader?.releaseLock();
+		} catch {
+			// Ignore: the reader may already be released by the runtime.
 		}
 	}
 }
@@ -3088,6 +3108,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			);
 		}
 		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
+		const drafterBlockReason = drafter
+			? await getDflashDrafterBlockReason(drafter)
+			: null;
 		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
 		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
 		// — not a usable draft model — and some bundles ship no drafter at all.
@@ -3096,11 +3119,16 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `restartWithoutDrafter()` uses for memory eviction): the server runs
 		// target-only, no `-md`. Loud warning because this departs from the
 		// always-on DFlash contract.
-		const drafterUnavailable = !drafter;
+		const drafterUnavailable = !drafter || drafterBlockReason !== null;
+		const disabledDrafterReason = !drafter
+			? `companion drafter '${dflash.drafterModelId}' is not installed`
+			: drafterBlockReason
+				? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
+				: undefined;
 		if (drafterUnavailable) {
 			console.warn(
 				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
-					`'${dflash.drafterModelId}' is not installed — loading target-only ` +
+					`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +
 					`(speculative decoding OFF). Install a valid drafter to restore the ` +
 					`always-on DFlash path.`,
 			);
@@ -3169,9 +3197,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				// passed to llama-server (`-md`) while `disableDrafter` is true.
 				drafterModelPath: drafter?.path ?? target.path,
 				disableDrafter: drafterUnavailable,
-				disabledDrafterReason: drafterUnavailable
-					? `companion drafter '${dflash.drafterModelId}' is not installed`
-					: undefined,
+				disabledDrafterReason,
 				contextSize,
 				draftContextSize: dflash.draftContextSize,
 				draftMin: dflash.draftMin,
@@ -3926,7 +3952,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				}),
 			);
 		}
-		const before = await fetchMetricsSnapshot(baseUrl);
+		const before = await fetchMetricsSnapshot(baseUrl, args.signal);
 		let json: Record<string, unknown> | null = null;
 		let text: string;
 		let firstTokenMs: number | null = null;
@@ -4049,7 +4075,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				}).text;
 			}
 		}
-		const after = await fetchMetricsSnapshot(baseUrl);
+		const after = await fetchMetricsSnapshot(baseUrl, args.signal);
 		const responseUsage = json
 			? extractResponseUsage(json)
 			: streamingResponseUsage;

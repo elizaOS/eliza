@@ -46,6 +46,7 @@ const METRIC_KEYS = {
 	"llamacpp:kv_cache_tokens": "kvCacheTokens",
 	"llamacpp:kv_cache_used_cells": "kvCacheUsedCells",
 };
+const DEFAULT_METRICS_SCRAPE_TIMEOUT_MS = 2_000;
 /**
  * Parse a Prometheus exposition-format payload into a metric snapshot.
  * Unknown or malformed lines are silently skipped — counters we don't
@@ -174,7 +175,11 @@ function clampNonNegative(value) {
  * MUST NOT break generation. `scrapeOk=false` tells callers that the
  * zeros are not evidence of absent DFlash/KV activity.
  */
-export async function fetchMetricsSnapshot(baseUrl, signal) {
+export async function fetchMetricsSnapshot(
+	baseUrl,
+	signal,
+	timeoutMs = DEFAULT_METRICS_SCRAPE_TIMEOUT_MS,
+) {
 	const takenAtMs = Date.now();
 	const empty = {
 		takenAtMs,
@@ -188,19 +193,45 @@ export async function fetchMetricsSnapshot(baseUrl, signal) {
 		kvCacheTokens: 0,
 		kvCacheUsedCells: 0,
 	};
+	const controller = new AbortController();
+	const abortFromCaller = () => controller.abort(signal?.reason);
+	if (signal?.aborted) {
+		abortFromCaller();
+	} else {
+		signal?.addEventListener("abort", abortFromCaller, { once: true });
+	}
+	const timer = setTimeout(
+		() =>
+			controller.abort(
+				new DOMException(
+					`llama-server metrics scrape timed out after ${timeoutMs}ms`,
+					"TimeoutError",
+				),
+			),
+		Math.max(1, Math.floor(timeoutMs)),
+	);
+	let res = null;
+	let bodySettled = false;
 	try {
-		const res = await fetch(`${baseUrl.replace(/\/$/, "")}/metrics`, {
+		res = await fetch(`${baseUrl.replace(/\/$/, "")}/metrics`, {
 			method: "GET",
-			signal,
+			signal: controller.signal,
 		});
 		if (!res.ok) return empty;
 		const body = await res.text();
+		bodySettled = true;
 		return parsePrometheusMetrics(body, takenAtMs);
 	} catch {
 		// Best effort: a metrics scrape failure must not abort the response
 		// path. Returning an empty snapshot causes diffSnapshots to surface
 		// zero deltas; the caller still sees the response payload usage.
 		return empty;
+	} finally {
+		clearTimeout(timer);
+		signal?.removeEventListener("abort", abortFromCaller);
+		if (res?.body && (!bodySettled || controller.signal.aborted)) {
+			await res.body.cancel(controller.signal.reason).catch(() => undefined);
+		}
 	}
 }
 //# sourceMappingURL=llama-server-metrics.js.map

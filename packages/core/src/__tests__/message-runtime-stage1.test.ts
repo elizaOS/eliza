@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
@@ -296,6 +299,69 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.maxTokens).toBe(96);
 		expect(params.grammar).toBeUndefined();
 		expect(params.responseSkeleton).toBeUndefined();
+	});
+
+	it("uses provider response text for the fast direct reply path", async () => {
+		const runtime = makeRuntime([
+			{ text: "", response: "Check speaker output before enabling voice." },
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "what should we check before voice?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.TEXT_SMALL);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Check speaker output before enabling voice.",
+			);
+		}
+	});
+
+	it("records provider response text in fast direct reply trajectories", async () => {
+		const previousDir = process.env.ELIZA_TRAJECTORY_DIR;
+		const tempDir = await mkdtemp(join(tmpdir(), "eliza-stage1-trajectory-"));
+		process.env.ELIZA_TRAJECTORY_DIR = tempDir;
+		try {
+			const runtime = makeRuntime([
+				{ text: "", response: "Trajectory response text." },
+			]);
+
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					channelType: ChannelType.DM,
+					text: "write a trajectory response",
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			const agentDir = join(tempDir, String(runtime.agentId));
+			const files = (await readdir(agentDir)).filter((file) =>
+				file.endsWith(".json"),
+			);
+			expect(files.length).toBe(1);
+			const recorded = JSON.parse(
+				await readFile(join(agentDir, files[0] as string), "utf8"),
+			) as {
+				stages?: Array<{ model?: { response?: string } }>;
+			};
+			expect(recorded.stages?.[0]?.model?.response).toBe(
+				"Trajectory response text.",
+			);
+		} finally {
+			if (previousDir === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
+			else process.env.ELIZA_TRAJECTORY_DIR = previousDir;
+			await rm(tempDir, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps tool-like direct messages on the structured routing path", async () => {

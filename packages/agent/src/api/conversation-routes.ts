@@ -41,6 +41,7 @@ import {
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
+  getRecentVisibleAssistantMemoryTextSince,
   hasRecentVisibleAssistantMemorySince,
   initSse,
   normalizeChatResponseText,
@@ -1720,24 +1721,38 @@ export async function handleConversationRoutes(
             { err: getErrorMessage(err) },
             "Chat generation failed with no streamed text",
           );
-          const alreadyPersistedVisibleAssistantTurn =
-            await hasRecentVisibleAssistantMemorySince(
+          const persistedReplyText =
+            await getRecentVisibleAssistantMemoryTextSince(
               runtime,
               conv.roomId,
               turnStartedAt,
             );
-          if (alreadyPersistedVisibleAssistantTurn) {
+          if (persistedReplyText) {
+            const resolvedPersistedText = normalizeChatResponseText(
+              persistedReplyText,
+              state.logBuffer,
+              runtime,
+            );
             logger.warn(
               {
                 err: getErrorMessage(err),
                 conversationId: conv.id,
                 roomId: conv.roomId,
+                persistedTextLength: resolvedPersistedText.length,
               },
-              "Chat generation failed after an assistant reply was already persisted — suppressing synthetic fallback",
+              "Chat generation failed after an assistant reply was already persisted — streaming persisted reply",
             );
+            if (resolvedPersistedText) {
+              for (const chunk of chunkVisibleTextForSse(resolvedPersistedText)) {
+                if (disconnectTracker.isAborted()) break;
+                streamedText += chunk;
+                writeChatTokenSse(res, chunk, streamedText);
+                await new Promise((resolve) => setTimeout(resolve, 60));
+              }
+            }
             writeSseJson(res, {
               type: "done",
-              fullText: "",
+              fullText: resolvedPersistedText,
               agentName: state.agentName,
             });
             return;

@@ -22,6 +22,7 @@ let generateWaitsForAbort = false;
 let generateThrowsTurnAbort = false;
 let generateThrowsTimeout = false;
 let assistantMemoryAlreadyPersisted = false;
+let assistantMemoryTextAlreadyPersisted: string | null = null;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -70,6 +71,9 @@ vi.mock("../chat-routes.ts", async () => {
     }),
     hasRecentVisibleAssistantMemorySince: vi.fn(
       async () => assistantMemoryAlreadyPersisted,
+    ),
+    getRecentVisibleAssistantMemoryTextSince: vi.fn(
+      async () => assistantMemoryTextAlreadyPersisted,
     ),
     generateChatResponse: vi.fn(async (_runtime, _msg, agentName, opts) => {
       captureGenerateAbortSignal = opts?.abortSignal;
@@ -146,6 +150,7 @@ vi.mock("../character-routes.ts", async () => {
 });
 
 import {
+  getRecentVisibleAssistantMemoryTextSince,
   hasRecentVisibleAssistantMemorySince,
   persistAssistantConversationMemory,
   readChatRequestPayload,
@@ -284,6 +289,7 @@ describe("conversation-routes streaming persistence ordering", () => {
     generateThrowsTurnAbort = false;
     generateThrowsTimeout = false;
     assistantMemoryAlreadyPersisted = false;
+    assistantMemoryTextAlreadyPersisted = null;
   });
 
   afterEach(() => {
@@ -397,16 +403,19 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistCalledAt).toBeNull();
   });
 
-  it("suppresses synthetic fallback when a timed-out turn already persisted a reply", async () => {
+  it("streams a persisted assistant reply when post-turn work times out before SSE text", async () => {
     generateThrowsTimeout = true;
     assistantMemoryAlreadyPersisted = true;
+    assistantMemoryTextAlreadyPersisted = "Hi! I'm ready to help.";
     const { ctx, record } = createCtx();
 
     await handleConversationRoutes(ctx);
 
-    expect(hasRecentVisibleAssistantMemorySince).toHaveBeenCalled();
+    expect(getRecentVisibleAssistantMemoryTextSince).toHaveBeenCalled();
+    expect(hasRecentVisibleAssistantMemorySince).not.toHaveBeenCalled();
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
     expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(true);
+    expect(record.writes.join("")).toContain("Hi! I'm ready to help.");
     expect(record.writes.join("")).not.toContain("provider issue");
     expect(record.ended).toBe(true);
   });

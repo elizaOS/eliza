@@ -1440,6 +1440,10 @@ function getV5ModelText(raw: string | GenerateTextResult): string {
 	if (contentText.trim().length > 0) {
 		return contentText;
 	}
+	const responseText = (raw as unknown as Record<string, unknown>).response;
+	if (typeof responseText === "string" && responseText.trim().length > 0) {
+		return responseText;
+	}
 	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
 }
 
@@ -4911,6 +4915,10 @@ function getMessageHandlerResponseText(
 	}
 	if (typeof raw.text === "string" && raw.text.trim().length > 0) {
 		return raw.text;
+	}
+	const responseText = (raw as unknown as Record<string, unknown>).response;
+	if (typeof responseText === "string" && responseText.trim().length > 0) {
+		return responseText;
 	}
 	return parsed ? JSON.stringify(parsed) : "";
 }

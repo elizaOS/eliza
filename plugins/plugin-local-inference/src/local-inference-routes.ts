@@ -28,6 +28,7 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+import { localInferenceService } from "./services/service.js";
 import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
 type ModelRole = "chat" | "embedding" | "drafter";
@@ -158,16 +159,50 @@ interface RoutingPreferencesFile {
 	preferences: RoutingPreferences;
 }
 
-let activeModelState: {
+type LocalInferenceActiveSnapshot = {
 	modelId: string | null;
 	loadedAt: string | null;
 	status: "idle" | "loading" | "ready" | "error";
 	error?: string;
-} = { modelId: null, loadedAt: null, status: "idle" };
+	loadedContextSize?: number | null;
+	loadedCacheTypeK?: string | null;
+	loadedCacheTypeV?: string | null;
+	loadedGpuLayers?: number | null;
+};
+
+let activeModelState: LocalInferenceActiveSnapshot = {
+	modelId: null,
+	loadedAt: null,
+	status: "idle",
+};
+
+function getDesktopActiveSnapshot(): LocalInferenceActiveSnapshot | null {
+	const active = localInferenceService.getActive();
+	if (active.status === "idle" && !active.modelId) return null;
+	return {
+		modelId: active.modelId,
+		loadedAt: active.loadedAt,
+		status: active.status,
+		...(active.error ? { error: active.error } : {}),
+		...(active.loadedContextSize !== undefined
+			? { loadedContextSize: active.loadedContextSize }
+			: {}),
+		...(active.loadedCacheTypeK !== undefined
+			? { loadedCacheTypeK: active.loadedCacheTypeK }
+			: {}),
+		...(active.loadedCacheTypeV !== undefined
+			? { loadedCacheTypeV: active.loadedCacheTypeV }
+			: {}),
+		...(active.loadedGpuLayers !== undefined
+			? { loadedGpuLayers: active.loadedGpuLayers }
+			: {}),
+	};
+}
 
 export function getLocalInferenceActiveModelId(): string | undefined {
-	return activeModelState.status === "ready" && activeModelState.modelId?.trim()
-		? activeModelState.modelId.trim()
+	const active = getDesktopActiveSnapshot() ?? activeModelState;
+	return active.status === "ready" && active.modelId?.trim()
+		? active.modelId.trim()
 		: undefined;
 }
 
@@ -621,9 +656,10 @@ async function installedSnapshot(): Promise<InstalledModel[]> {
 	return readRegistry();
 }
 
-export async function getLocalInferenceActiveSnapshot(): Promise<
-	typeof activeModelState
-> {
+export async function getLocalInferenceActiveSnapshot(): Promise<LocalInferenceActiveSnapshot> {
+	const desktopActive = getDesktopActiveSnapshot();
+	if (desktopActive) return desktopActive;
+
 	const bridgeStatus = await getMobileDeviceBridgeApi()
 		.then((api) => api.getMobileDeviceBridgeStatus())
 		.catch(() => getMobileDeviceBridgeStatusUnavailable());
@@ -861,6 +897,30 @@ async function setRoutingForChat(provider: string): Promise<void> {
 	await writeJsonFile(routingPath(), { version: 1, preferences });
 }
 
+async function getConnectedMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi | null> {
+	try {
+		const api = await getMobileDeviceBridgeApi();
+		const status = api.getMobileDeviceBridgeStatus();
+		return status.connected ? api : null;
+	} catch {
+		return null;
+	}
+}
+
+function providerForActiveSnapshot(
+	active: LocalInferenceActiveSnapshot,
+): string {
+	const desktopActive = getDesktopActiveSnapshot();
+	if (
+		desktopActive?.status === "ready" &&
+		desktopActive.modelId &&
+		desktopActive.modelId === active.modelId
+	) {
+		return LOCAL_INFERENCE_PROVIDER_ID;
+	}
+	return "capacitor-llama";
+}
+
 async function activateInstalledModel(
 	installed: InstalledModel,
 ): Promise<LocalInferenceChatResult> {
@@ -870,19 +930,25 @@ async function activateInstalledModel(
 		status: "loading",
 	};
 	try {
-		const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
-		await loadMobileDeviceBridgeModel(installed.path, installed.id);
-		activeModelState = {
-			modelId: installed.id,
-			loadedAt: new Date().toISOString(),
-			status: "ready",
-		};
+		const bridge = await getConnectedMobileDeviceBridgeApi();
+		let active: LocalInferenceActiveSnapshot;
+		if (bridge) {
+			await bridge.loadMobileDeviceBridgeModel(installed.path, installed.id);
+			active = {
+				modelId: installed.id,
+				loadedAt: new Date().toISOString(),
+				status: "ready",
+			};
+		} else {
+			active = await localInferenceService.setActive(null, installed.id);
+		}
+		activeModelState = active;
 		return buildLocalInferenceChatResult({
 			intent: "use_local",
 			status: "ready",
 			modelId: installed.id,
 			activeModelId: installed.id,
-			provider: "capacitor-llama",
+			provider: bridge ? "capacitor-llama" : LOCAL_INFERENCE_PROVIDER_ID,
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -951,7 +1017,7 @@ export async function getLocalInferenceChatStatus(
 			status: "ready",
 			modelId: active.modelId,
 			activeModelId: active.modelId,
-			provider: "capacitor-llama",
+			provider: providerForActiveSnapshot(active),
 		});
 	}
 
@@ -1014,7 +1080,7 @@ export async function handleLocalInferenceChatCommand(
 	}
 
 	if (intent === "use_local") {
-		await setRoutingForChat("capacitor-llama");
+		await setRoutingForChat(LOCAL_INFERENCE_PROVIDER_ID);
 		const installed = await installedSnapshot();
 		const requested = await resolveDefaultChatModel(prompt);
 		const installedModel = installed.find(
@@ -1031,7 +1097,7 @@ export async function handleLocalInferenceChatCommand(
 					status: "downloading",
 					modelId: requested.id,
 					activeModelId: activeModelState.modelId,
-					provider: "capacitor-llama",
+					provider: LOCAL_INFERENCE_PROVIDER_ID,
 					progress: progressForJob(job),
 				},
 				"I also set chat routing to prefer local inference.",

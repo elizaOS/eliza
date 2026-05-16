@@ -48,6 +48,10 @@ import {
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 } from "./dflash-server";
+import {
+	getDflashDrafterBlockReason,
+	getDflashTargetMetaBlockReason,
+} from "./dflash-target-meta";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
@@ -97,6 +101,8 @@ import type {
 	TranscriptionAudio,
 	VerifierStreamEvent,
 } from "./voice/types";
+
+export { getDflashTargetMetaBlockReason };
 
 /**
  * Default DFlash draft window per round for voice turns. Small (≤8) so a
@@ -2531,6 +2537,13 @@ export class LocalInferenceEngine {
 			const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
 			if (status.required) throw new Error(message);
 			console.warn(`${message} Falling back to node-llama-cpp.`);
+			return null;
+		}
+		const drafterBlockReason = await getDflashDrafterBlockReason(drafter);
+		if (drafterBlockReason) {
+			const message = `[dflash] ${catalog.displayName} companion drafter ${dflash.drafterModelId} is not eligible for DFlash: ${drafterBlockReason}.`;
+			if (status.required) throw new Error(message);
+			console.warn(`${message} Falling back to target-only llama-server.`);
 			return null;
 		}
 

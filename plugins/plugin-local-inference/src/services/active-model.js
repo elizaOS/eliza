@@ -653,6 +653,9 @@ export class ActiveModelCoordinator {
 			} else {
 				await localInferenceEngine.load(installed.path, resolved);
 			}
+			const runtimeLoad = loader
+				? null
+				: localInferenceEngine.currentRuntimeLoadConfig();
 			// Surface the effective load config so consumers (the benchmark
 			// harness, the Settings UI, the active-model SSE) can verify the
 			// requested overrides actually took hold instead of silently
@@ -661,11 +664,20 @@ export class ActiveModelCoordinator {
 				modelId: installed.id,
 				loadedAt: new Date().toISOString(),
 				status: "ready",
-				loadedContextSize: resolved.contextSize ?? null,
-				loadedCacheTypeK: resolved.cacheTypeK ?? null,
-				loadedCacheTypeV: resolved.cacheTypeV ?? null,
+				loadedContextSize:
+					runtimeLoad?.contextSize ?? resolved.contextSize ?? null,
+				loadedCacheTypeK: runtimeLoad
+					? runtimeLoad.cacheTypeK
+					: (resolved.cacheTypeK ?? null),
+				loadedCacheTypeV: runtimeLoad
+					? runtimeLoad.cacheTypeV
+					: (resolved.cacheTypeV ?? null),
 				loadedGpuLayers:
-					typeof resolved.gpuLayers === "number" ? resolved.gpuLayers : null,
+					runtimeLoad !== null
+						? runtimeLoad.gpuLayers
+						: typeof resolved.gpuLayers === "number"
+							? resolved.gpuLayers
+							: null,
 			};
 			if (installed.source === "eliza-download") {
 				await touchElizaModel(installed.id);

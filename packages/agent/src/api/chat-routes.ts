@@ -729,6 +729,18 @@ export function detectLocalInferenceCommandIntent(
   }
 
   if (
+    /\b(?:status|progress|state|ready|loaded|loading|how far|what model)\b/.test(
+      normalized,
+    ) &&
+    (options.localInferenceContext === true ||
+      /\b(?:download|model|local|inference|gguf|eliza-1|provider|runtime)\b/.test(
+        normalized,
+      ))
+  ) {
+    return "status";
+  }
+
+  if (
     /\b(?:use|switch|prefer|route|go|move)\s+(?:to\s+)?(?:the\s+)?(?:local|on device|on device model)\b/.test(
       normalized,
     ) ||
@@ -770,18 +782,6 @@ export function detectLocalInferenceCommandIntent(
     return normalized.includes("resume") || normalized.includes("continue")
       ? "resume"
       : "retry";
-  }
-
-  if (
-    /\b(?:status|progress|state|ready|loaded|loading|how far|what model)\b/.test(
-      normalized,
-    ) &&
-    (options.localInferenceContext === true ||
-      /\b(?:download|model|local|inference|gguf|eliza-1|provider|runtime)\b/.test(
-        normalized,
-      ))
-  ) {
-    return "status";
   }
 
   if (
@@ -984,6 +984,16 @@ export async function hasRecentVisibleAssistantMemorySince(
   roomId: UUID,
   sinceMs: number,
 ): Promise<boolean> {
+  return Boolean(
+    await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
+  );
+}
+
+export async function getRecentVisibleAssistantMemoryTextSince(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  sinceMs: number,
+): Promise<string | null> {
   try {
     const recent = await runtime.getMemories({
       roomId,
@@ -991,17 +1001,24 @@ export async function hasRecentVisibleAssistantMemorySince(
       limit: 12,
     });
 
-    return recent.some((memory) => {
-      const contentText = (memory.content as { text?: string })?.text?.trim();
-      const createdAt = memory.createdAt ?? 0;
-      return (
-        memory.entityId === runtime.agentId &&
-        Boolean(contentText) &&
-        createdAt >= sinceMs - 2000
-      );
-    });
+    const persistedAssistantTurn = recent
+      .filter((memory) => {
+        const contentText = (memory.content as { text?: string })?.text?.trim();
+        const createdAt = memory.createdAt ?? 0;
+        return (
+          memory.entityId === runtime.agentId &&
+          Boolean(contentText) &&
+          createdAt >= sinceMs - 2000
+        );
+      })
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+
+    return (
+      (persistedAssistantTurn?.content as { text?: string } | undefined)?.text?.trim() ??
+      null
+    );
   } catch {
-    return false;
+    return null;
   }
 }
 
