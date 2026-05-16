@@ -224,9 +224,6 @@ function HomePage() {
               <h1>
                 The agentic operating system for devices that run themselves.
               </h1>
-              <p className="hero-copy">
-                Install the runtime. Boot the hardware.
-              </p>
               <div className="hero-actions">
                 <a href="#downloads" className="button">
                   Download/install elizaOS
@@ -250,7 +247,6 @@ function HomePage() {
         <section id="downloads" className="band band-white">
           <div className="band-inner split-band">
             <div>
-              <p className="section-kicker">Download</p>
               <h2>Choose the installer for your device.</h2>
             </div>
             <div className="download-stack">

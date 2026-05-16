@@ -171,11 +171,6 @@ export default function ElizaOsPage() {
                 <h1 className="max-w-4xl text-4xl font-bold leading-tight text-white sm:text-6xl md:text-7xl">
                   The agentic operating system for devices that run themselves.
                 </h1>
-                <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/84 sm:text-xl">
-                  Install ElizaOS natively on supported PCs and Android devices,
-                  or run it in a first-party VM launcher on macOS, Windows, and
-                  Linux. This is a serious OS build, not a normal Mac app.
-                </p>
                 <div className="mt-10 flex flex-wrap gap-3">
                   <CtaLink href="#downloads">
                     <Download className="h-5 w-5" />
@@ -217,10 +212,6 @@ write: ready for confirmation`}</pre>
                 <div className="border border-white/14 bg-black p-6 text-white">
                   <ElizaCloudLockup logoClassName="h-6" />
                   <h2 className="mt-5 text-3xl font-bold">OS / App / Cloud</h2>
-                  <p className="mt-3 text-sm leading-6 text-white/78">
-                    One account identity and design system, available as an
-                    operating system, an app, or a hosted runtime.
-                  </p>
                   <div className="mt-5 grid gap-3 border-t border-white/14 pt-5">
                     {installTargets.map((item) => (
                       <a
@@ -239,15 +230,8 @@ write: ready for confirmation`}</pre>
 
             <section id="downloads" className="px-6 py-16 sm:px-8 lg:px-12">
               <SectionHeader
-                eyebrow="Download paths"
                 title="Install natively, boot from USB, or launch a VM"
               >
-                <p>
-                  ElizaOS ships as native media, VM bundles, Android images, raw
-                  downloads, and developer packages. The download matrix keeps
-                  each route explicit before artifacts are hosted behind
-                  os.elizacloud.ai.
-                </p>
               </SectionHeader>
 
               <div className="mx-auto mt-10 grid max-w-7xl gap-4 sm:grid-cols-2 lg:grid-cols-5">

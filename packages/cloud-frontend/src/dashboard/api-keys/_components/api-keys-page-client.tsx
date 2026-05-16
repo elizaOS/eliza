@@ -296,9 +296,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create API key</DialogTitle>
-            <DialogDescription>
-              Generate a scoped API key with clear permissions and rate limits.
-            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6">
             <div className="grid gap-2">
@@ -318,10 +315,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 autoFocus
                 className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
-              <p className="text-xs text-white/50">
-                Choose a descriptive name for this key so your team can
-                recognize its purpose.
-              </p>
             </div>
 
             <div className="grid gap-2">

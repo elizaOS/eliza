@@ -24,13 +24,11 @@ export function ApiKeysSummary({ summary }: ApiKeysSummaryProps) {
     {
       title: "Total keys",
       value: summary.totalKeys,
-      description: "Across your organization",
       icon: KeyRound,
     },
     {
       title: "Active keys",
       value: summary.activeKeys,
-      description: "Currently enabled",
       icon: ShieldCheck,
     },
     {
@@ -44,7 +42,6 @@ export function ApiKeysSummary({ summary }: ApiKeysSummaryProps) {
       value: summary.lastGeneratedAt
         ? new Date(summary.lastGeneratedAt).toLocaleDateString()
         : "Not yet",
-      description: "Creation activity",
       icon: CalendarClock,
     },
   ] as const;
@@ -65,7 +62,9 @@ export function ApiKeysSummary({ summary }: ApiKeysSummaryProps) {
                 ? item.value
                 : numberFormatter.format(item.value)}
             </div>
-            <p className="text-xs text-white/60 mt-1">{item.description}</p>
+            {"description" in item ? (
+              <p className="text-xs text-white/60 mt-1">{item.description}</p>
+            ) : null}
           </div>
         </BrandCard>
       ))}

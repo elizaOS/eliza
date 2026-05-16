@@ -17,7 +17,6 @@ export function ConnectionsTab() {
         <DashboardSection
           label="Connections"
           title="Messaging & Communication"
-          description="Connect messaging services for AI-powered conversations via SMS, iMessage, WhatsApp, and email."
         />
 
         <div className="grid gap-4">
@@ -34,7 +33,6 @@ export function ConnectionsTab() {
         <DashboardSection
           label="Channels"
           title="Social Media Connections"
-          description="Connect your social accounts to enable AI-powered conversations."
         />
 
         <div className="grid gap-4">

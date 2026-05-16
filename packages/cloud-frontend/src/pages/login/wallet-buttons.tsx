@@ -309,6 +309,7 @@ function EthereumIcon() {
   return (
     <svg
       className="h-4 w-4"
+      aria-hidden="true"
       viewBox="0 0 256 417"
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
@@ -336,6 +337,7 @@ function SolanaIcon() {
   return (
     <svg
       className="h-4 w-4"
+      aria-hidden="true"
       viewBox="0 0 128 128"
       xmlns="http://www.w3.org/2000/svg"
     >

@@ -232,7 +232,8 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  font-family: "Poppins", sans-serif;
+  /* biome-ignore lint/a11y/useGenericFontNames: Eliza App brand requires Poppins only. */
+  font-family: Poppins;
   background: var(--brand-orange);
   color: var(--brand-black);
 }

@@ -193,7 +193,7 @@ export function AppPermissionsSection() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-end gap-3">
         <button
           type="button"
           onClick={() => void refresh()}
