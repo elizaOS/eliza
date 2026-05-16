@@ -242,6 +242,7 @@ def _write_telemetry(
     prompt = _prompt_text(text, context)
     tool_schemas = _context_tool_schemas(context)
     metadata = _metadata_from_response(response)
+    response_text = response.text if response is not None else ""
     tool_calls = []
     if response is not None:
         raw_tool_calls = response.params.get("tool_calls")
@@ -277,6 +278,7 @@ def _write_telemetry(
         "prompt_text": _redact(prompt),
         "prompt_chars": len(prompt),
         "latency_ms": latency_ms,
+        "duration_ms": latency_ms,
         "usage": _jsonable(_redact(usage)),
         "prompt_tokens": tokens["prompt_tokens"],
         "completion_tokens": tokens["completion_tokens"],
@@ -289,7 +291,8 @@ def _write_telemetry(
         "tool_calls": _jsonable(_redact(tool_calls)),
         "tool_call_count": len(tool_calls),
         "actions": list(response.actions) if response is not None else [],
-        "response_text": _redact(response.text if response is not None else ""),
+        "response_text": _redact(response_text),
+        "response_chars": len(response_text),
         "metadata": _jsonable(_redact(metadata)),
         "trajectory_snapshot": _jsonable(_redact(trajectory_snapshot))
         if trajectory_snapshot is not None

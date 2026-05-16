@@ -168,6 +168,8 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
     assert record["agent_label"] == "eliza"
     assert record["prompt_tokens"] == 100
     assert record["completion_tokens"] == 12
+    assert record["duration_ms"] == record["latency_ms"]
+    assert record["response_chars"] == len("done csk-redaction-test-token-000000000000")
     assert record["cache_read_input_tokens"] == 25
     assert record["tool_schema_count"] == 1
     assert record["tool_names"] == ["mail.search"]
