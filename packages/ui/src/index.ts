@@ -69,6 +69,12 @@ export {
 } from "./components";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
+export * from "./components/apps/extensions/registry";
+export * from "./components/apps/extensions/surface";
+export * from "./components/apps/extensions/types";
+export * from "./components/apps/surfaces/GameOperatorShell";
+export * from "./components/apps/surfaces/registry";
+export * from "./components/apps/surfaces/types";
 export * from "./components/apps/AppWindowRenderer";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
