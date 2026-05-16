@@ -155,6 +155,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const params = firstCall?.[1] as {
 			tools?: Array<{ name?: string; parameters?: { required?: string[] } }>;
 			toolChoice?: string;
+			maxTokens?: number;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
 			signal?: AbortSignal;
@@ -165,6 +166,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
+		expect(params.maxTokens).toBe(2048);
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
