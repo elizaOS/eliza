@@ -1,25 +1,14 @@
-import { useState } from "react";
-import {
-  AlertTriangle,
-  Bell,
-  Bot,
-  Check,
-  ChevronRight,
-  Cloud,
-  Cpu,
-  Settings,
-  Trash2,
-} from "lucide-react";
-
-import type { StoryDefinition } from "../Story.tsx";
-
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@ui-src/components/ui/accordion.tsx";
-import { Alert, AlertDescription, AlertTitle } from "@ui-src/components/ui/alert.tsx";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@ui-src/components/ui/alert.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +20,11 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@ui-src/components/ui/alert-dialog.tsx";
-import { Avatar, AvatarFallback, AvatarImage } from "@ui-src/components/ui/avatar.tsx";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@ui-src/components/ui/avatar.tsx";
 import { Badge } from "@ui-src/components/ui/badge.tsx";
 import { Button } from "@ui-src/components/ui/button.tsx";
 import {
@@ -103,7 +96,12 @@ import { Slider } from "@ui-src/components/ui/slider.tsx";
 import { Spinner } from "@ui-src/components/ui/spinner.tsx";
 import { StatusBadge, StatusDot } from "@ui-src/components/ui/status-badge.tsx";
 import { Switch } from "@ui-src/components/ui/switch.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui-src/components/ui/tabs.tsx";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@ui-src/components/ui/tabs.tsx";
 import { Textarea } from "@ui-src/components/ui/textarea.tsx";
 import {
   Tooltip,
@@ -112,6 +110,19 @@ import {
   TooltipTrigger,
 } from "@ui-src/components/ui/tooltip.tsx";
 import { Heading, Text } from "@ui-src/components/ui/typography.tsx";
+import {
+  AlertTriangle,
+  Bell,
+  Bot,
+  Check,
+  ChevronRight,
+  Cloud,
+  Cpu,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import { useState } from "react";
+import type { StoryDefinition } from "../Story.tsx";
 
 /* ---------------------------------------------------------------------------
  * Local controlled-state wrappers so each tile keeps its own instance.
@@ -143,6 +154,11 @@ function ControlledSlider() {
     />
   );
 }
+
+const scrollAreaEvents = Array.from({ length: 14 }, (_, i) => ({
+  id: `event-${i + 1}`,
+  label: `Event #${i + 1}`,
+}));
 
 export const primitiveStories: StoryDefinition[] = [
   {
@@ -329,8 +345,7 @@ export const primitiveStories: StoryDefinition[] = [
   {
     id: "p-checkbox",
     name: "Checkbox",
-    importPath:
-      'import { Checkbox } from "@elizaos/ui/components/ui/checkbox"',
+    importPath: 'import { Checkbox } from "@elizaos/ui/components/ui/checkbox"',
     render: () => (
       <>
         <ControlledCheckbox />
@@ -447,8 +462,7 @@ export const primitiveStories: StoryDefinition[] = [
   {
     id: "p-progress",
     name: "Progress",
-    importPath:
-      'import { Progress } from "@elizaos/ui/components/ui/progress"',
+    importPath: 'import { Progress } from "@elizaos/ui/components/ui/progress"',
     render: () => (
       <div className="gallery-stack" style={{ width: 240 }}>
         <Progress value={20} />
@@ -473,9 +487,10 @@ export const primitiveStories: StoryDefinition[] = [
         }}
       >
         <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
-          {Array.from({ length: 14 }, (_, i) => (
-            <div key={i}>
-              <Check style={{ display: "inline", marginRight: 6 }} /> Event #{i + 1}
+          {scrollAreaEvents.map((event) => (
+            <div key={event.id}>
+              <Check style={{ display: "inline", marginRight: 6 }} />
+              {event.label}
             </div>
           ))}
         </div>
@@ -526,7 +541,9 @@ export const primitiveStories: StoryDefinition[] = [
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Agent settings</SheetTitle>
-            <SheetDescription>Configure your local Eliza agent.</SheetDescription>
+            <SheetDescription>
+              Configure your local Eliza agent.
+            </SheetDescription>
           </SheetHeader>
           <SheetFooter>
             <Button>Save</Button>
@@ -538,8 +555,7 @@ export const primitiveStories: StoryDefinition[] = [
   {
     id: "p-skeleton",
     name: "Skeleton",
-    importPath:
-      'import { Skeleton } from "@elizaos/ui/components/ui/skeleton"',
+    importPath: 'import { Skeleton } from "@elizaos/ui/components/ui/skeleton"',
     render: () => (
       <div className="gallery-stack" style={{ width: 220 }}>
         <Skeleton style={{ height: 16, width: "60%" }} />
@@ -613,8 +629,7 @@ export const primitiveStories: StoryDefinition[] = [
   {
     id: "p-textarea",
     name: "Textarea",
-    importPath:
-      'import { Textarea } from "@elizaos/ui/components/ui/textarea"',
+    importPath: 'import { Textarea } from "@elizaos/ui/components/ui/textarea"',
     render: () => (
       <Textarea
         placeholder="Describe your agent…"

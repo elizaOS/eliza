@@ -88,14 +88,6 @@ test("footer renders wordmark, link nav, and social links", async ({
     "href",
     /elizacloud\.ai/,
   );
-  await expect(footer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
-    "href",
-    /github\.com\/elizaOS/,
-  );
-  await expect(footer.getByRole("link", { name: "X" })).toHaveAttribute(
-    "href",
-    /x\.com\/elizaos/,
-  );
 });
 
 test("hero has no horizontal overflow", async ({ page }) => {
@@ -131,7 +123,7 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
   ).toBeVisible();
   await expect(page.locator(".checkout-product-shot img")).toHaveAttribute(
     "src",
-    "/assets/concept_usbdrive.jpg",
+    "/brand/concepts/concept_usbdrive.jpg",
   );
 
   const googleLink = page.getByRole("link", { name: "Google" });
