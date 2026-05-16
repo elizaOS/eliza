@@ -37,6 +37,7 @@ import {
   renameSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -50,19 +51,26 @@ import {
   resolveStateDir,
   type TextEmbeddingParams,
   type TextToSpeechParams,
+  type TranscriptionParams,
 } from "@elizaos/core";
 import {
+  findKokoroVoice,
   type KokoroEngineDiscoveryResult,
   KokoroOnnxRuntime,
   type KokoroRuntime,
   KokoroTtsBackend,
   resolveKokoroEngineConfig,
 } from "@elizaos/shared";
-import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
+import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
+import {
+  registerAospLlamaLoader,
+  resolveLibllamaPath,
+} from "./aosp-llama-adapter.js";
 
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
+const AOSP_ACTIVE_MODEL_STATE_FILE = "aosp-active.json";
 
 /**
  * Same priority band as cloud / direct provider plugins. Routing-policy
@@ -75,7 +83,7 @@ const registeredRuntimes = new WeakSet<AgentRuntime>();
 const LOCAL_INFERENCE_PRIORITY = 0;
 
 interface AospLoader {
-  loadModel(args: { modelPath: string }): Promise<void>;
+  loadModel(args: AospLoadModelArgs): Promise<void>;
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
   generate(args: {
@@ -83,6 +91,10 @@ interface AospLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
     /**
      * Per-request abort signal. Forwarded into the FFI decode loop in
      * `aosp-llama-adapter.ts`; the loop checks `signal.aborted` between
@@ -95,6 +107,59 @@ interface AospLoader {
     embedding: number[];
     tokens: number;
   }>;
+}
+
+function writeAospActiveModelState(
+  state:
+    | {
+        status: "ready";
+        role: "chat" | "embedding";
+        provider: typeof PROVIDER;
+        path: string;
+        loadedAt: string;
+      }
+    | {
+        status: "error";
+        role: "chat" | "embedding";
+        provider: typeof PROVIDER;
+        path: string;
+        error: string;
+        updatedAt: string;
+      },
+): void {
+  try {
+    const activeStatePath = path.join(
+      resolveStateDir(),
+      "local-inference",
+      AOSP_ACTIVE_MODEL_STATE_FILE,
+    );
+    mkdirSync(path.dirname(activeStatePath), { recursive: true });
+    writeFileSync(
+      activeStatePath,
+      `${JSON.stringify({ version: 1, ...state }, null, 2)}\n`,
+      "utf8",
+    );
+  } catch (err) {
+    logger.warn(
+      "[aosp-local-inference] Failed to write active model state:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+interface AospLoadModelArgs {
+  modelPath: string;
+  contextSize?: number;
+  maxThreads?: number;
+  useGpu?: boolean;
+  draftModelPath?: string;
+  draftContextSize?: number;
+  draftMin?: number;
+  draftMax?: number;
+  kvCacheType?: {
+    k?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
+    v?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
+  };
 }
 
 type GenerateTextHandler = (
@@ -112,13 +177,308 @@ type TextToSpeechHandler = (
   params: TextToSpeechParams | string,
 ) => Promise<Uint8Array>;
 
+type TranscriptionHandler = (
+  runtime: IAgentRuntime,
+  params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+) => Promise<string>;
+
+interface LocalTranscriptionParams {
+  pcm?: Float32Array;
+  audio?: Uint8Array | ArrayBuffer | Buffer;
+  sampleRateHz?: number;
+  sampleRate?: number;
+  signal?: AbortSignal;
+}
+
+function renderMessageContent(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part.trim();
+      if (
+        part &&
+        typeof part === "object" &&
+        typeof (part as { text?: unknown }).text === "string"
+      ) {
+        return (part as { text: string }).text.trim();
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function normalizeChatRole(
+  role: unknown,
+): "system" | "user" | "assistant" | "tool" {
+  return role === "system" ||
+    role === "assistant" ||
+    role === "user" ||
+    role === "tool"
+    ? role
+    : "user";
+}
+
+/**
+ * Render core GenerateTextParams into the flat prompt string consumed by the
+ * bun:ffi llama.cpp backend. v5 Stage-1 calls pass native chat `messages`
+ * and leave legacy `prompt` unset; without this bridge the native adapter sees
+ * an empty string and llama_tokenize returns zero tokens.
+ *
+ * The format mirrors the regular mobile bridge fallback: model-agnostic
+ * role-labelled text plus a trailing assistant turn marker. We deliberately do
+ * not hardcode Llama/Qwen special tokens here; models with baked chat templates
+ * are handled by other backends, while this path must stay tokenizer-neutral.
+ */
+export function flattenGenerateTextParamsForAospPrompt(
+  params: GenerateTextParams,
+): string {
+  if (typeof params.prompt === "string" && params.prompt.length > 0) {
+    return params.prompt;
+  }
+
+  const messages = params.messages ?? [];
+  if (messages.length > 0) {
+    const blocks: string[] = [];
+    const hasSystemMessage = messages.some(
+      (message) => message.role === "system",
+    );
+    if (
+      !hasSystemMessage &&
+      typeof params.system === "string" &&
+      params.system
+    ) {
+      blocks.push(`system:\n${params.system.trim()}`);
+    }
+    for (const message of messages) {
+      const content = renderMessageContent(message.content);
+      if (!content) continue;
+      blocks.push(`${normalizeChatRole(message.role)}:\n${content}`);
+    }
+    if (blocks.length > 0) {
+      const lastRole = normalizeChatRole(messages[messages.length - 1]?.role);
+      if (lastRole !== "assistant") {
+        blocks.push("assistant:");
+      }
+      return blocks.join("\n\n");
+    }
+  }
+
+  const promptFromSegments =
+    params.promptSegments && params.promptSegments.length > 0
+      ? params.promptSegments.map((segment) => segment.content ?? "").join("")
+      : "";
+  if (promptFromSegments.length > 0) {
+    return promptFromSegments;
+  }
+
+  if (typeof params.system === "string" && params.system.length > 0) {
+    return `system:\n${params.system.trim()}\n\nassistant:`;
+  }
+
+  return "";
+}
+
+export function buildGenerateArgsFromParams(
+  params: GenerateTextParams,
+): Parameters<AospLoader["generate"]>[0] {
+  const args: Parameters<AospLoader["generate"]>[0] = {
+    prompt: flattenGenerateTextParamsForAospPrompt(params),
+  };
+  if (params.stopSequences !== undefined) {
+    args.stopSequences = params.stopSequences;
+  }
+  if (params.maxTokens !== undefined) {
+    args.maxTokens = params.maxTokens;
+  }
+  if (params.temperature !== undefined) {
+    args.temperature = params.temperature;
+  }
+  if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
+    args.grammar = params.grammar;
+  }
+  const wantsStreaming =
+    params.stream === true || params.streamStructured === true;
+  if (wantsStreaming && typeof params.onStreamChunk === "function") {
+    args.onTextChunk = (chunk: string) => params.onStreamChunk?.(chunk);
+  }
+  const androidLocalOptions =
+    params.providerOptions?.androidLocal &&
+    typeof params.providerOptions.androidLocal === "object" &&
+    !Array.isArray(params.providerOptions.androidLocal)
+      ? (params.providerOptions.androidLocal as Record<string, unknown>)
+      : null;
+  if (androidLocalOptions?.stopOnFirstSentence === true) {
+    args.stopOnFirstSentence = true;
+  }
+  const minFirstSentenceChars =
+    typeof androidLocalOptions?.minFirstSentenceChars === "number"
+      ? androidLocalOptions.minFirstSentenceChars
+      : Number.NaN;
+  if (Number.isFinite(minFirstSentenceChars) && minFirstSentenceChars > 0) {
+    args.minFirstSentenceChars = Math.floor(minFirstSentenceChars);
+  }
+  if (params.signal !== undefined) {
+    args.signal = params.signal;
+  }
+  return args;
+}
+
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function isAospLocalEmbeddingEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.ELIZA_LOCAL_EMBEDDING_ENABLED?.trim() === "1";
+}
+
+export function disabledAospEmbeddingVector(
+  env: NodeJS.ProcessEnv = process.env,
+): number[] {
+  const dimensions =
+    readPositiveIntEnvFrom(env, "ELIZA_LOCAL_EMBEDDING_DIMENSIONS", 0) ||
+    readPositiveIntEnvFrom(env, "LOCAL_EMBEDDING_DIMENSIONS", 0) ||
+    readPositiveIntEnvFrom(env, "EMBEDDING_DIMENSION", 384);
+  return Array.from({ length: dimensions }, () => 0);
+}
+
+function readPositiveIntEnvFrom(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readBooleanEnv(name: string): boolean | null {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") {
+    return true;
+  }
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
+    return false;
+  }
+  return null;
+}
+
+function dflashServerSpawnAllowed(): boolean {
+  const explicitServerSpawn = readBooleanEnv("ELIZA_DFLASH_SERVER_SPAWN");
+  if (explicitServerSpawn !== null) {
+    return explicitServerSpawn;
+  }
+
+  // ELIZA_DFLASH expresses the desired inference mode. It must not opt a
+  // stock APK into the retired child-process llama-server path. Android
+  // production builds only enable speculation through an in-process FFI
+  // implementation that explicitly reports support; server spawn is a
+  // diagnostic escape hatch and requires ELIZA_DFLASH_SERVER_SPAWN=1.
+  return false;
+}
+
+function inProcessDflashRequested(): boolean {
+  const explicitDflash = readBooleanEnv("ELIZA_DFLASH");
+  if (explicitDflash !== null) {
+    return explicitDflash;
+  }
+  return readBooleanEnv("ELIZA_DFLASH_REQUIRED") === true;
+}
+
+function resolveDflashDrafterPath(modelPath: string): string | null {
+  const explicit = process.env.ELIZA_DFLASH_DRAFTER_PATH?.trim();
+  if (explicit) {
+    return existsSync(explicit) ? explicit : null;
+  }
+  if (!inProcessDflashRequested() && !dflashServerSpawnAllowed()) {
+    return null;
+  }
+  const textDir = path.dirname(modelPath);
+  const bundleDir =
+    path.basename(textDir).toLowerCase() === "text"
+      ? path.dirname(textDir)
+      : path.dirname(modelPath);
+  const dflashDir = path.join(bundleDir, "dflash");
+  if (!existsSync(dflashDir)) return null;
+  try {
+    const candidates = readdirSync(dflashDir)
+      .filter((name) => {
+        const lower = name.toLowerCase();
+        return lower.endsWith(".gguf") && lower.includes("draft");
+      })
+      .sort();
+    for (const name of candidates) {
+      const candidate = path.join(dflashDir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function buildAospLoadModelArgs(
+  role: "chat" | "embedding",
+  modelPath: string,
+): AospLoadModelArgs {
+  if (role === "chat") {
+    const draftModelPath = resolveDflashDrafterPath(modelPath);
+    return {
+      modelPath,
+      contextSize: readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
+      draftModelPath: draftModelPath ?? undefined,
+      draftContextSize: draftModelPath
+        ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_N_CTX", 2048)
+        : undefined,
+      draftMin: draftModelPath
+        ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_MIN", 1)
+        : undefined,
+      draftMax: draftModelPath
+        ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_MAX", 16)
+        : undefined,
+      useGpu: false,
+      kvCacheType: {
+        k: "qjl1_256",
+        v: "q4_polar",
+      },
+    };
+  }
+  return {
+    modelPath,
+    contextSize: readPositiveIntEnv("ELIZA_LLAMA_EMBEDDING_N_CTX", 512),
+    useGpu: false,
+    kvCacheType: {
+      k: "f16",
+      v: "f16",
+    },
+  };
+}
+
 type RuntimeWithModelRegistration = AgentRuntime & {
   getModel: (
     modelType: string | number,
-  ) => GenerateTextHandler | EmbeddingHandler | TextToSpeechHandler | undefined;
+  ) =>
+    | GenerateTextHandler
+    | EmbeddingHandler
+    | TextToSpeechHandler
+    | TranscriptionHandler
+    | undefined;
   registerModel: (
     modelType: string | number,
-    handler: GenerateTextHandler | EmbeddingHandler | TextToSpeechHandler,
+    handler:
+      | GenerateTextHandler
+      | EmbeddingHandler
+      | TextToSpeechHandler
+      | TranscriptionHandler,
     provider: string,
     priority?: number,
   ) => void;
@@ -317,6 +677,157 @@ interface BundledModelManifestEntry {
   filename?: string;
   role: "chat" | "embedding";
 }
+
+interface LocalInferenceAssignmentsFile {
+  assignments?: Record<string, string | undefined>;
+}
+
+interface LocalInferenceRegistryEntry {
+  id?: string;
+  path?: string;
+  bundleRoot?: string;
+}
+
+interface LocalInferenceRegistryFile {
+  models?: LocalInferenceRegistryEntry[];
+}
+
+function readJsonFile<T>(file: string): T | null {
+  try {
+    if (!existsSync(file)) return null;
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function mapExistingModelPath(raw: unknown, modelsDir: string): string | null {
+  if (typeof raw !== "string" || raw.trim().length === 0) return null;
+  const candidate = raw.trim();
+  const normalized = candidate.replaceAll("\\", "/");
+  const marker = "/local-inference/models/";
+  const markerIndex = normalized.lastIndexOf(marker);
+  if (markerIndex >= 0) {
+    const relative = normalized.slice(markerIndex + marker.length);
+    const mapped = path.join(modelsDir, ...relative.split("/").filter(Boolean));
+    if (existsSync(mapped)) return mapped;
+  }
+  return existsSync(candidate) ? candidate : null;
+}
+
+function isChatModelPath(file: string): boolean {
+  const lowerPath = file.replaceAll("\\", "/").toLowerCase();
+  const lowerName = path.basename(file).toLowerCase();
+  return (
+    lowerName.endsWith(".gguf") &&
+    lowerName.includes("eliza-1") &&
+    !lowerPath.includes("/dflash/") &&
+    !lowerPath.includes("/tts/") &&
+    !lowerPath.includes("/asr/") &&
+    !lowerPath.includes("/vad/") &&
+    !lowerName.includes("drafter") &&
+    !lowerName.includes("mmproj")
+  );
+}
+
+function isEmbeddingModelPath(file: string): boolean {
+  const lowerPath = file.replaceAll("\\", "/").toLowerCase();
+  const lowerName = path.basename(file).toLowerCase();
+  return (
+    lowerName.endsWith(".gguf") &&
+    (lowerPath.includes("embedding") || lowerName.includes("bge"))
+  );
+}
+
+function findModelUnderDirectory(
+  root: string,
+  role: "chat" | "embedding",
+): string | null {
+  if (!existsSync(root)) return null;
+  const matcher = role === "chat" ? isChatModelPath : isEmbeddingModelPath;
+  const visit = (dir: string, depth: number): string | null => {
+    if (depth > 4) return null;
+    let names: string[];
+    try {
+      names = readdirSync(dir).sort();
+    } catch {
+      return null;
+    }
+    for (const name of names) {
+      const abs = path.join(dir, name);
+      let stats: ReturnType<typeof statSync>;
+      try {
+        stats = statSync(abs);
+      } catch {
+        continue;
+      }
+      if (stats.isFile() && matcher(abs)) return abs;
+      if (stats.isDirectory()) {
+        const found = visit(abs, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return visit(root, 0);
+}
+
+function resolveAssignedRegistryModel(
+  registry: LocalInferenceRegistryFile | null,
+  modelId: string | undefined,
+  role: "chat" | "embedding",
+  modelsDir: string,
+): string | null {
+  if (!modelId) return null;
+  const entry = registry?.models?.find((model) => model.id === modelId);
+  if (!entry) return null;
+  const direct = mapExistingModelPath(entry.path, modelsDir);
+  if (
+    direct &&
+    (role === "chat" ? isChatModelPath(direct) : isEmbeddingModelPath(direct))
+  ) {
+    return direct;
+  }
+  const bundleRoot = mapExistingModelPath(entry.bundleRoot, modelsDir);
+  if (!bundleRoot) return null;
+  return findModelUnderDirectory(bundleRoot, role);
+}
+
+export function readAssignedBundledModels(modelsDir: string): {
+  chat: string | null;
+  embedding: string | null;
+} {
+  const localInferenceDir = path.dirname(modelsDir);
+  const assignments = readJsonFile<LocalInferenceAssignmentsFile>(
+    path.join(localInferenceDir, "assignments.json"),
+  )?.assignments;
+  if (!assignments) return { chat: null, embedding: null };
+  const registry = readJsonFile<LocalInferenceRegistryFile>(
+    path.join(localInferenceDir, "registry.json"),
+  );
+  return {
+    chat:
+      resolveAssignedRegistryModel(
+        registry,
+        assignments.TEXT_SMALL ?? assignments.TEXT_LARGE,
+        "chat",
+        modelsDir,
+      ) ??
+      resolveAssignedRegistryModel(
+        registry,
+        assignments.TEXT_LARGE,
+        "chat",
+        modelsDir,
+      ),
+    embedding: resolveAssignedRegistryModel(
+      registry,
+      assignments.TEXT_EMBEDDING,
+      "embedding",
+      modelsDir,
+    ),
+  };
+}
+
 function readBundledModelManifest(modelsDir: string): {
   chat: string | null;
   embedding: string | null;
@@ -462,18 +973,45 @@ function fallbackFindBundledModels(modelsDir: string): {
   if (!existsSync(modelsDir)) return { chat: null, embedding: null };
   let chat: string | null = null;
   let embedding: string | null = null;
-  for (const name of readdirSync(modelsDir)) {
-    if (!name.endsWith(".gguf")) continue;
-    const abs = path.join(modelsDir, name);
-    const lower = name.toLowerCase();
-    // Embedding match runs first so a dedicated embedding GGUF is assigned
-    // before the broader Eliza-1 chat rule below.
-    if (!embedding && lower.includes("embedding")) {
-      embedding = abs;
-    } else if (!chat && lower.includes("eliza-1")) {
-      chat = abs;
+  const visit = (dir: string, depth: number): void => {
+    if (depth > 4 || (chat && embedding)) return;
+    for (const name of readdirSync(dir)) {
+      const abs = path.join(dir, name);
+      let isDirectory = false;
+      let isFile = false;
+      try {
+        const stats = statSync(abs);
+        isDirectory = stats.isDirectory();
+        isFile = stats.isFile();
+      } catch {
+        continue;
+      }
+      if (isDirectory) {
+        visit(abs, depth + 1);
+        continue;
+      }
+      if (!isFile || !name.endsWith(".gguf")) continue;
+      const lowerPath = abs.toLowerCase();
+      const lowerName = name.toLowerCase();
+      // Embedding match runs first so a dedicated embedding GGUF is assigned
+      // before the broader Eliza-1 chat rule below.
+      if (!embedding && lowerPath.includes("embedding")) {
+        embedding = abs;
+      } else if (
+        !chat &&
+        lowerName.includes("eliza-1") &&
+        !lowerPath.includes("/dflash/") &&
+        !lowerPath.includes("/tts/") &&
+        !lowerPath.includes("/asr/") &&
+        !lowerPath.includes("/vad/") &&
+        !lowerName.includes("drafter") &&
+        !lowerName.includes("mmproj")
+      ) {
+        chat = abs;
+      }
     }
-  }
+  };
+  visit(modelsDir, 0);
   return { chat, embedding };
 }
 
@@ -491,7 +1029,12 @@ function makeLoaderLifecycle(loader: AospLoader): {
   let currentRole: LoadedRole = null;
   let inflight: Promise<void> | null = null;
   const modelsDir = resolveBundledModelsDir();
-  let resolved = readBundledModelManifest(modelsDir);
+  const assigned = readAssignedBundledModels(modelsDir);
+  const manifest = readBundledModelManifest(modelsDir);
+  let resolved = {
+    chat: assigned.chat ?? manifest.chat,
+    embedding: assigned.embedding ?? manifest.embedding,
+  };
   if (!resolved.chat || !resolved.embedding) {
     const fallback = fallbackFindBundledModels(modelsDir);
     resolved = {
@@ -517,11 +1060,38 @@ function makeLoaderLifecycle(loader: AospLoader): {
       }
     }
     inflight = (async () => {
+      writeAospLlamaDebugLog("bootstrap:loadRole:start", {
+        role,
+        model: path.basename(target),
+      });
       logger.info(
         `[aosp-local-inference] Loading bundled ${role} model: ${path.basename(target)}`,
       );
-      await loader.loadModel({ modelPath: target });
-      currentRole = role;
+      try {
+        await loader.loadModel(buildAospLoadModelArgs(role, target));
+        currentRole = role;
+        writeAospActiveModelState({
+          status: "ready",
+          role,
+          provider: PROVIDER,
+          path: target,
+          loadedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        writeAospActiveModelState({
+          status: "error",
+          role,
+          provider: PROVIDER,
+          path: target,
+          error: err instanceof Error ? err.message : String(err),
+          updatedAt: new Date().toISOString(),
+        });
+        throw err;
+      }
+      writeAospLlamaDebugLog("bootstrap:loadRole:done", {
+        role,
+        model: path.basename(target),
+      });
       logger.info(
         `[aosp-local-inference] Loaded ${role} model (path=${target})`,
       );
@@ -560,16 +1130,7 @@ async function tryLocalGenerate(
         }
       : Promise.reject(err);
   }
-  const args: Parameters<AospLoader["generate"]>[0] = {
-    prompt: params.prompt ?? "",
-  };
-  if (params.stopSequences !== undefined) {
-    args.stopSequences = params.stopSequences;
-  }
-  const paramsSignal = (params as { signal?: AbortSignal }).signal;
-  if (paramsSignal !== undefined) {
-    args.signal = paramsSignal;
-  }
+  const args = buildGenerateArgsFromParams(params);
   try {
     const text = await loader.generate(args);
     return { kind: "ok", text };
@@ -591,23 +1152,25 @@ function makeGenerateHandler(
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
 ): GenerateTextHandler {
   return async (_runtime, params) => {
+    writeAospLlamaDebugLog("bootstrap:generate:ensureChat:start", {
+      maxTokens: params.maxTokens ?? null,
+      hasGrammar:
+        typeof params.grammar === "string" && params.grammar.trim().length > 0,
+    });
     await lifecycle.ensureChatLoaded();
-    const args: Parameters<AospLoader["generate"]>[0] = {
-      prompt: params.prompt ?? "",
-    };
-    if (params.stopSequences !== undefined) {
-      args.stopSequences = params.stopSequences;
-    }
+    writeAospLlamaDebugLog("bootstrap:generate:ensureChat:done");
     // The runtime injects `signal` into `params` from the active streaming
     // context's `abortSignal` when the caller didn't pass one explicitly
     // (see runtime.ts useModel: paramsAsStreaming.signal ??= abortSignal).
     // We forward it into the FFI decode loop so APP_PAUSE etc. can cancel
     // an in-flight phone-CPU prefill that would otherwise pin the bun
     // process for minutes.
-    const paramsSignal = (params as { signal?: AbortSignal }).signal;
-    if (paramsSignal !== undefined) {
-      args.signal = paramsSignal;
-    }
+    const args = buildGenerateArgsFromParams(params);
+    writeAospLlamaDebugLog("bootstrap:generate:start", {
+      promptChars: args.prompt.length,
+      maxTokens: args.maxTokens ?? null,
+      grammarBytes: args.grammar?.trim().length ?? 0,
+    });
     return loader.generate(args);
   };
 }
@@ -680,7 +1243,17 @@ function makeEmbeddingHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
 ): EmbeddingHandler {
+  let loggedDisabled = false;
   return async (_runtime, params) => {
+    if (!isAospLocalEmbeddingEnabled()) {
+      if (!loggedDisabled) {
+        loggedDisabled = true;
+        logger.info(
+          "[aosp-local-inference] Local embeddings disabled; serving zero-vector TEXT_EMBEDDING results (set ELIZA_LOCAL_EMBEDDING_ENABLED=1 to load the embedding GGUF)",
+        );
+      }
+      return disabledAospEmbeddingVector();
+    }
     await lifecycle.ensureEmbeddingLoaded();
     const text = extractEmbeddingText(params);
     const result = await loader.embed({ input: text });
@@ -698,13 +1271,72 @@ type AospKokoroOrtLoader = NonNullable<
   ConstructorParameters<typeof KokoroOnnxRuntime>[0]["loadOrt"]
 >;
 
-const DEFAULT_AOSP_KOKORO_ORT_MODULE = "onnxruntime-node";
+const DEFAULT_AOSP_KOKORO_ORT_MODULE = "onnxruntime-web/wasm";
 
-async function loadAospKokoroOrt(): ReturnType<AospKokoroOrtLoader> {
-  const spec =
-    process.env.ELIZA_AOSP_KOKORO_ORT_MODULE?.trim() ||
-    DEFAULT_AOSP_KOKORO_ORT_MODULE;
-  return (await import(spec)) as Awaited<ReturnType<AospKokoroOrtLoader>>;
+function wrapKokoroWebOrtModule(
+  module: unknown,
+): Awaited<ReturnType<AospKokoroOrtLoader>> {
+  const candidate = module as {
+    default?: unknown;
+    env?: { wasm?: { numThreads?: number } };
+    InferenceSession?: {
+      create: (
+        model: unknown,
+        opts?: Record<string, unknown>,
+      ) => Promise<unknown>;
+    };
+    Tensor?: unknown;
+  };
+  const ort = (
+    candidate.InferenceSession
+      ? candidate
+      : (candidate.default as typeof candidate | undefined)
+  ) as typeof candidate;
+  if (!ort?.InferenceSession?.create || !ort.Tensor) {
+    throw new Error(
+      "[aosp-local-inference] Android Kokoro ORT module is missing InferenceSession/Tensor exports",
+    );
+  }
+  const baseInferenceSession = ort.InferenceSession;
+  if (ort.env?.wasm) {
+    // Pixel stock-APK Bun currently crashes ONNX Runtime Web's worker path
+    // when numThreads > 1 ("Error in worker"). Keep the production default
+    // single-threaded, while preserving an explicit env knob for future AOSP
+    // / runtime experiments.
+    const wasmThreads = readPositiveIntEnv("ELIZA_KOKORO_WASM_THREADS", 1);
+    ort.env.wasm.numThreads = wasmThreads;
+    logger.info(
+      `[aosp-local-inference] Kokoro ORT wasm numThreads=${wasmThreads}`,
+    );
+  }
+  return {
+    ...ort,
+    InferenceSession: {
+      ...baseInferenceSession,
+      create: async (modelPath: string, opts?: Record<string, unknown>) => {
+        const model = existsSync(modelPath)
+          ? readFileSync(modelPath)
+          : modelPath;
+        return baseInferenceSession.create(model, {
+          ...opts,
+          executionProviders: ["wasm"],
+        });
+      },
+    },
+  } as Awaited<ReturnType<AospKokoroOrtLoader>>;
+}
+
+export async function loadAospKokoroOrt(): ReturnType<AospKokoroOrtLoader> {
+  const spec = process.env.ELIZA_AOSP_KOKORO_ORT_MODULE?.trim();
+  if (!spec || spec === DEFAULT_AOSP_KOKORO_ORT_MODULE) {
+    // @ts-ignore onnxruntime-web exposes this runtime subpath without bundled declarations in some workspace tsconfigs.
+    const mod = await import("onnxruntime-web/wasm");
+    return wrapKokoroWebOrtModule(mod);
+  }
+  const mod = await import(spec);
+  return spec.includes("onnxruntime-web")
+    ? wrapKokoroWebOrtModule(mod)
+    : (mod as Awaited<ReturnType<AospKokoroOrtLoader>>);
 }
 
 function extractSpeechText(params: TextToSpeechParams | string): string {
@@ -731,6 +1363,19 @@ function extractSpeechSignal(
   return typeof params === "object" && params !== null
     ? params.signal
     : undefined;
+}
+
+function resolveStagedSpeechVoice(
+  params: TextToSpeechParams | string,
+  config: KokoroEngineDiscoveryResult,
+): string {
+  const requested = extractSpeechVoice(params);
+  if (!requested) return config.defaultVoiceId;
+  const pack = findKokoroVoice(requested);
+  if (pack && existsSync(path.join(config.layout.voicesDir, pack.file))) {
+    return pack.id;
+  }
+  return config.defaultVoiceId;
 }
 
 function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
@@ -847,7 +1492,7 @@ export function makeKokoroTextToSpeechHandler(
           terminator: "punctuation",
         },
         preset: {
-          voiceId: extractSpeechVoice(params) ?? config.defaultVoiceId,
+          voiceId: resolveStagedSpeechVoice(params, config),
           embedding: new Float32Array(0),
           bytes: new Uint8Array(0),
         },
@@ -860,6 +1505,321 @@ export function makeKokoroTextToSpeechHandler(
     } finally {
       signal?.removeEventListener("abort", abort);
     }
+  };
+}
+
+type BunFfiModule = {
+  dlopen: (
+    file: string,
+    symbols: Record<string, { args: readonly number[]; returns: number }>,
+  ) => {
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+    close: () => void;
+  };
+  FFIType: Record<string, number>;
+  ptr: (value: ArrayBufferView) => bigint;
+  read?: { ptr?: (value: ArrayBufferView, offset?: number) => bigint };
+  CString?: (ptr: bigint) => string;
+};
+
+async function loadAospVoiceFfi(): Promise<BunFfiModule> {
+  const ffiSpecifier = "bun" + ":ffi";
+  const ffi = (await import(ffiSpecifier)) as unknown as BunFfiModule;
+  if (
+    typeof ffi.dlopen !== "function" ||
+    typeof ffi.ptr !== "function" ||
+    !ffi.FFIType
+  ) {
+    throw new Error("[aosp-local-inference] bun:ffi is unavailable");
+  }
+  return ffi;
+}
+
+function cString(value: string): Buffer {
+  return Buffer.from(`${value}\0`, "utf8");
+}
+
+function resolveElizaInferenceLibPath(): string {
+  return path.join(path.dirname(resolveLibllamaPath()), "libelizainference.so");
+}
+
+function resolveBundleRootFromModelPath(modelPath: string): string {
+  const parts = modelPath.replaceAll("\\", "/").split("/");
+  const bundleIndex = parts.findIndex((part) => part.endsWith(".bundle"));
+  if (bundleIndex >= 0) {
+    return path.join("/", ...parts.slice(0, bundleIndex + 1));
+  }
+  const textIndex = parts.lastIndexOf("text");
+  if (textIndex > 0) {
+    return path.join("/", ...parts.slice(0, textIndex));
+  }
+  return path.dirname(modelPath);
+}
+
+function resolveAssignedVoiceBundleRoot(): string {
+  const modelsDir = resolveBundledModelsDir();
+  const assigned = readAssignedBundledModels(modelsDir);
+  const manifest = readBundledModelManifest(modelsDir);
+  const fallback = fallbackFindBundledModels(modelsDir);
+  const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
+  if (!chatModel) {
+    throw new Error(
+      `[aosp-local-inference] TRANSCRIPTION requires an installed Eliza-1 chat bundle under ${modelsDir}`,
+    );
+  }
+  const bundleRoot = resolveBundleRootFromModelPath(chatModel);
+  if (!existsSync(path.join(bundleRoot, "asr"))) {
+    throw new Error(
+      `[aosp-local-inference] TRANSCRIPTION requires ASR assets under ${bundleRoot}/asr`,
+    );
+  }
+  return bundleRoot;
+}
+
+function readFfiStringAndFree(
+  ffi: BunFfiModule,
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+  ptrBuffer: Buffer,
+): string {
+  const raw = ffi.read?.ptr?.(ptrBuffer, 0) ?? 0n;
+  if (!raw || raw === 0n) return "(no diagnostic)";
+  let text = "(unreadable diagnostic)";
+  try {
+    text =
+      typeof ffi.CString === "function" ? ffi.CString(raw) : "(no CString)";
+  } catch {}
+  try {
+    symbols.eliza_inference_free_string?.(raw);
+  } catch {}
+  return text;
+}
+
+function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
+  samples: Float32Array;
+  sampleRate: number;
+} {
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (
+    buffer.length < 44 ||
+    buffer.toString("ascii", 0, 4) !== "RIFF" ||
+    buffer.toString("ascii", 8, 12) !== "WAVE"
+  ) {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION expected PCM WAV bytes",
+    );
+  }
+
+  let offset = 12;
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let dataOffset = -1;
+  let dataLength = 0;
+  while (offset + 8 <= buffer.length) {
+    const id = buffer.toString("ascii", offset, offset + 4);
+    const size = buffer.readUInt32LE(offset + 4);
+    const body = offset + 8;
+    if (id === "fmt " && body + 16 <= buffer.length) {
+      channels = buffer.readUInt16LE(body + 2);
+      sampleRate = buffer.readUInt32LE(body + 4);
+      bitsPerSample = buffer.readUInt16LE(body + 14);
+    } else if (id === "data") {
+      dataOffset = body;
+      dataLength = Math.min(size, buffer.length - body);
+    }
+    offset = body + size + (size % 2);
+  }
+
+  if (channels <= 0 || sampleRate <= 0 || dataOffset < 0) {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION WAV missing fmt/data",
+    );
+  }
+  if (bitsPerSample !== 16) {
+    throw new Error(
+      `[aosp-local-inference] TRANSCRIPTION expected PCM16 WAV, got ${bitsPerSample} bits`,
+    );
+  }
+
+  const frames = Math.floor(dataLength / 2 / channels);
+  const samples = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    for (let channel = 0; channel < channels; channel++) {
+      sum += buffer.readInt16LE(dataOffset + (i * channels + channel) * 2);
+    }
+    samples[i] = sum / channels / 32768;
+  }
+  return { samples, sampleRate };
+}
+
+function resampleLinear(
+  samples: Float32Array,
+  fromHz: number,
+  toHz: number,
+): Float32Array {
+  if (fromHz === toHz) return samples;
+  const ratio = toHz / fromHz;
+  const out = new Float32Array(Math.max(1, Math.round(samples.length * ratio)));
+  for (let i = 0; i < out.length; i++) {
+    const src = i / ratio;
+    const i0 = Math.floor(src);
+    const i1 = Math.min(samples.length - 1, i0 + 1);
+    const f = src - i0;
+    out[i] = (samples[i0] ?? 0) * (1 - f) + (samples[i1] ?? 0) * f;
+  }
+  return out;
+}
+
+function bytesFromTranscriptionInput(
+  value: Uint8Array | ArrayBuffer | Buffer,
+): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
+}
+
+function extractAospTranscriptionAudio(
+  params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+): { samples: Float32Array; sampleRate: number; signal?: AbortSignal } {
+  if (typeof params === "string") {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION via local ASR requires WAV bytes or { pcm, sampleRateHz }; URL/path strings are not fetched",
+    );
+  }
+  if (params instanceof Uint8Array || params instanceof ArrayBuffer) {
+    return decodeMonoPcm16WavBytes(bytesFromTranscriptionInput(params));
+  }
+  if (!params || typeof params !== "object") {
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION requires WAV bytes or { pcm, sampleRateHz }",
+    );
+  }
+  if ("pcm" in params && params.pcm instanceof Float32Array) {
+    const sampleRate =
+      ("sampleRateHz" in params ? params.sampleRateHz : undefined) ??
+      ("sampleRate" in params ? params.sampleRate : undefined);
+    if (typeof sampleRate !== "number" || sampleRate <= 0) {
+      throw new Error(
+        "[aosp-local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz",
+      );
+    }
+    return { samples: params.pcm, sampleRate, signal: params.signal };
+  }
+  if (
+    "audio" in params &&
+    (params.audio instanceof Uint8Array || params.audio instanceof ArrayBuffer)
+  ) {
+    return {
+      ...decodeMonoPcm16WavBytes(bytesFromTranscriptionInput(params.audio)),
+      signal: params.signal,
+    };
+  }
+  throw new Error(
+    "[aosp-local-inference] TRANSCRIPTION requires PCM16 WAV bytes or { pcm, sampleRateHz }",
+  );
+}
+
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException("Aborted", "AbortError");
+}
+
+async function transcribeWithAospElizaInference(
+  audio: { samples: Float32Array; sampleRate: number },
+  signal?: AbortSignal,
+): Promise<string> {
+  assertNotAborted(signal);
+  const libPath = resolveElizaInferenceLibPath();
+  if (!existsSync(libPath)) {
+    throw new Error(
+      `[aosp-local-inference] libelizainference.so missing at ${libPath}`,
+    );
+  }
+  const bundleRoot = resolveAssignedVoiceBundleRoot();
+  const ffi = await loadAospVoiceFfi();
+  const T = ffi.FFIType;
+  const usize = T.usize ?? T.ptr;
+  const lib = ffi.dlopen(libPath, {
+    eliza_inference_create: { args: [T.cstring, T.ptr], returns: T.ptr },
+    eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+    eliza_inference_mmap_acquire: {
+      args: [T.ptr, T.cstring, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_asr_transcribe: {
+      args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_free_string: { args: [usize], returns: T.void },
+  });
+  const symbols = lib.symbols;
+  const errCreate = Buffer.alloc(8);
+  const ctx = symbols.eliza_inference_create(
+    cString(bundleRoot),
+    ffi.ptr(errCreate),
+  ) as bigint;
+  if (!ctx || ctx === 0n) {
+    const message = readFfiStringAndFree(ffi, symbols, errCreate);
+    try {
+      lib.close();
+    } catch {}
+    throw new Error(`[aosp-local-inference] ASR create failed: ${message}`);
+  }
+  try {
+    const errAcquire = Buffer.alloc(8);
+    const acquireRc = symbols.eliza_inference_mmap_acquire(
+      ctx,
+      cString("asr"),
+      ffi.ptr(errAcquire),
+    ) as number;
+    if (acquireRc < 0) {
+      throw new Error(
+        `[aosp-local-inference] ASR mmap_acquire rc=${acquireRc}: ${readFfiStringAndFree(ffi, symbols, errAcquire)}`,
+      );
+    }
+    assertNotAborted(signal);
+    const pcm16k = resampleLinear(audio.samples, audio.sampleRate, 16000);
+    const pcmBytes = Buffer.from(
+      pcm16k.buffer,
+      pcm16k.byteOffset,
+      pcm16k.byteLength,
+    );
+    const out = Buffer.alloc(4096);
+    const errAsr = Buffer.alloc(8);
+    const rc = symbols.eliza_inference_asr_transcribe(
+      ctx,
+      ffi.ptr(pcmBytes),
+      BigInt(pcm16k.length),
+      16000,
+      ffi.ptr(out),
+      BigInt(out.length),
+      ffi.ptr(errAsr),
+    ) as number;
+    if (rc < 0) {
+      throw new Error(
+        `[aosp-local-inference] ASR transcribe rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errAsr)}`,
+      );
+    }
+    assertNotAborted(signal);
+    return out.toString("utf8", 0, rc).trim();
+  } finally {
+    try {
+      symbols.eliza_inference_destroy(ctx);
+    } catch {}
+    try {
+      lib.close();
+    } catch {}
+  }
+}
+
+export function makeAospTranscriptionHandler(): TranscriptionHandler {
+  return async (_runtime, params) => {
+    const { signal, ...audio } = extractAospTranscriptionAudio(params);
+    return transcribeWithAospElizaInference(audio, signal);
   };
 }
 
@@ -945,6 +1905,7 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_LARGE,
     ModelType.TEXT_EMBEDDING,
     ModelType.TEXT_TO_SPEECH,
+    ModelType.TRANSCRIPTION,
   ];
   for (const modelType of slots) {
     const handler =
@@ -952,7 +1913,9 @@ export async function ensureAospLocalInferenceHandlers(
         ? makeEmbeddingHandler(loader, lifecycle)
         : modelType === ModelType.TEXT_TO_SPEECH
           ? makeKokoroTextToSpeechHandler()
-          : makeGenerateHandler(loader, lifecycle);
+          : modelType === ModelType.TRANSCRIPTION
+            ? makeAospTranscriptionHandler()
+            : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
       handler,
@@ -995,10 +1958,10 @@ export async function ensureAospLocalInferenceHandlers(
   });
 
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,
   );
   logger.info(
-    `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
   );
   registeredRuntimes.add(runtime);
   return true;

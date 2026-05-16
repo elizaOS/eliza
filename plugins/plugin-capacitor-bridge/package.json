@@ -53,6 +53,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"ws": "^8.18.0"
 	},

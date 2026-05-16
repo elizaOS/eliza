@@ -118,7 +118,8 @@ export function readAsrBackendPreferenceFromEnv(
 
 function allowOpenVinoWhisperFromEnv(
 	env: NodeJS.ProcessEnv = process.env,
-): boolean {
+): boolean | null {
+	if (env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO === undefined) return null;
 	return normalizeBooleanEnv(env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO);
 }
 
@@ -800,10 +801,11 @@ export interface CreateStreamingTranscriberOptions {
 	 */
 	prefer?: AsrBackendPreference;
 	/**
-	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
-	 * unless `ELIZA_LOCAL_ASR_ALLOW_OPENVINO=1` is set. Set explicitly to
-	 * `true` to keep the OpenVINO Whisper tier when fused ASR is unavailable,
-	 * or use `prefer: "openvino-whisper"` to require OpenVINO.
+	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Enabled by
+	 * default when worker/model artifacts are installed so auto mode can fall
+	 * back after fused streaming/batch ASR. Set to false to require fused ASR
+	 * only, or use `prefer: "openvino-whisper"` /
+	 * `ELIZA_LOCAL_ASR_BACKEND=openvino-whisper` to require OpenVINO.
 	 */
 	allowOpenVinoWhisper?: boolean;
 }
@@ -826,10 +828,10 @@ export function createStreamingTranscriber(
 	opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
 	const prefer = opts.prefer ?? readAsrBackendPreferenceFromEnv() ?? "auto";
+	const envAllowsOpenVinoWhisper = allowOpenVinoWhisperFromEnv();
 	const allowOpenVinoWhisper =
-		opts.allowOpenVinoWhisper === true ||
 		prefer === "openvino-whisper" ||
-		allowOpenVinoWhisperFromEnv();
+		(opts.allowOpenVinoWhisper ?? envAllowsOpenVinoWhisper ?? true);
 
 	const tryFusedStreaming = (): StreamingTranscriber | null => {
 		if (!opts.ffi || !opts.getContext) return null;

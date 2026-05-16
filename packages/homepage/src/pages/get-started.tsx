@@ -81,7 +81,7 @@ function getDiscordBotApplicationId(): string {
   return getDiscordClientId();
 }
 
-const MONO = "'Open Sans', Arial, system-ui, sans-serif";
+const MONO = "Poppins, system-ui, sans-serif";
 
 function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
   const { messages, sendMessage, containerStatus, isLoading, isReady } =
@@ -758,8 +758,13 @@ export default function GetStartedPage() {
 
   if (authLoading) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Loading...</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Loading…
+        </div>
       </main>
     );
   }
@@ -773,17 +778,25 @@ export default function GetStartedPage() {
     step !== "PROVISIONING_CHAT"
   ) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Redirecting...</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Redirecting…
+        </div>
       </main>
     );
   }
 
   if (isRedirectingToOAuth) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">
-          Redirecting to Discord...
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Redirecting to Discord…
         </div>
       </main>
     );
@@ -832,25 +845,10 @@ export default function GetStartedPage() {
         <div className="w-full max-w-[400px] flex flex-col items-center">
           {step === "SELECT_METHOD" && (
             <>
-              <animated.div style={titleSpring} className="w-full mb-6">
-                <div className="w-full px-4 py-3 rounded-xl bg-white/40 backdrop-blur-sm border border-white/60 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold text-white">
-                    E
-                  </div>
-                  <p className="text-sm text-neutral-700 leading-relaxed">
-                    Hi! I'm Eliza. Connect below and I'll have your personal AI
-                    space ready — we can talk while it warms up.
-                  </p>
-                </div>
-              </animated.div>
-
               <animated.div style={titleSpring}>
-                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-2 whitespace-nowrap">
+                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowrap">
                   Anywhere you want her to be.
                 </h1>
-                <p className="text-neutral-600 text-center mb-8">
-                  Choose your path(s)
-                </p>
               </animated.div>
 
               {(discordError || telegramError) && (
@@ -872,9 +870,6 @@ export default function GetStartedPage() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-neutral-900 font-medium">Telegram</p>
-                    <p className="text-sm text-neutral-500">
-                      Use the Telegram app
-                    </p>
                   </div>
                 </animated.button>
 
@@ -888,9 +883,6 @@ export default function GetStartedPage() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-neutral-900 font-medium">iMessage</p>
-                    <p className="text-sm text-neutral-500">
-                      Use text messages
-                    </p>
                   </div>
                 </animated.button>
 
@@ -904,9 +896,6 @@ export default function GetStartedPage() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-neutral-900 font-medium">WhatsApp</p>
-                    <p className="text-sm text-neutral-500">
-                      Use the WhatsApp app
-                    </p>
                   </div>
                 </animated.button>
 
@@ -920,9 +909,6 @@ export default function GetStartedPage() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-neutral-900 font-medium">Discord</p>
-                    <p className="text-sm text-neutral-500">
-                      Use the Discord app
-                    </p>
                   </div>
                 </animated.button>
               </div>
@@ -1008,10 +994,6 @@ export default function GetStartedPage() {
               >
                 {isSubmittingPhone ? "Setting up..." : "Complete Setup"}
               </Button>
-
-              <p className="text-xs text-neutral-400 text-center mt-4">
-                Your phone enables cross-platform chat via iMessage
-              </p>
             </>
           )}
 
@@ -1066,10 +1048,6 @@ export default function GetStartedPage() {
               >
                 I also want to use Telegram
               </button>
-
-              <p className="text-xs text-neutral-400 text-center mt-6">
-                No signup required - just send a message!
-              </p>
             </>
           )}
 
@@ -1108,10 +1086,6 @@ export default function GetStartedPage() {
               >
                 I also want to use Telegram
               </button>
-
-              <p className="text-xs text-neutral-400 text-center mt-6">
-                No signup required - just send a message!
-              </p>
             </>
           )}
 
@@ -1251,10 +1225,6 @@ export default function GetStartedPage() {
                   </h1>
                 </>
               )}
-              <p className="text-sm text-neutral-500 text-center mb-8">
-                Here&apos;s how to start chatting with Eliza on Discord
-              </p>
-
               <div className="w-full flex flex-col gap-4">
                 <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
                   <div className="flex items-start gap-3">
@@ -1266,9 +1236,6 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         Add Eliza to your server
-                      </p>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Already have Eliza in a server? Skip this step.
                       </p>
                       <Button
                         variant="outline"
@@ -1285,10 +1252,6 @@ export default function GetStartedPage() {
                         <ExternalLink className="size-3.5" />
                         Invite to Server
                       </Button>
-                      <p className="text-[11px] text-neutral-400 mt-2">
-                        Only needed if Eliza isn&apos;t in a server you&apos;re
-                        part of
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -1303,9 +1266,6 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         Send a direct message
-                      </p>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Open Discord and start a DM with Eliza
                       </p>
                       <Button
                         variant="outline"
@@ -1322,10 +1282,6 @@ export default function GetStartedPage() {
                         <ExternalLink className="size-3.5" />
                         Open DM
                       </Button>
-                      <p className="text-[11px] text-neutral-400 mt-2">
-                        You can also right-click the bot in any shared server
-                        and select &quot;Message&quot;
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -1340,9 +1296,6 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         Start chatting
-                      </p>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Try sending your first message:
                       </p>
                       <div className="mt-2 px-3 py-2 bg-[#5865F2]/10 border border-[#5865F2]/20 rounded-lg">
                         <p className="text-sm text-[#5865F2] font-medium">

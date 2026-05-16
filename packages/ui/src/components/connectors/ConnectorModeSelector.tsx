@@ -316,11 +316,6 @@ export function ConnectorModeSelector({
           </button>
         ))}
       </div>
-      {modes.find((m) => m.id === selectedMode)?.description && (
-        <div className="mt-1.5 text-2xs text-muted">
-          {modes.find((m) => m.id === selectedMode)?.description}
-        </div>
-      )}
     </div>
   );
 }

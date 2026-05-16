@@ -47,6 +47,30 @@ function buildSubPlannerActionLookup(
 	return lookup;
 }
 
+function buildSubPlannerTools(actions: readonly Action[]): ToolDefinition[] {
+	const canonicalTools = buildPlannerToolsFromActions(actions);
+	const toolsByName = new Map(canonicalTools.map((tool) => [tool.name, tool]));
+	const tools: ToolDefinition[] = [...canonicalTools];
+	for (const action of actions) {
+		const canonical = toolsByName.get(action.name);
+		if (!canonical) continue;
+		for (const simile of action.similes ?? []) {
+			if (typeof simile !== "string" || simile.trim().length === 0) continue;
+			const name = simile.trim();
+			if (toolsByName.has(name)) continue;
+			const aliasTool = {
+				...canonical,
+				name,
+				description:
+					`${canonical.description ?? action.description ?? ""}\nAlias for ${action.name}.`.trim(),
+			};
+			toolsByName.set(name, aliasTool);
+			tools.push(aliasTool);
+		}
+	}
+	return tools;
+}
+
 export function actionHasSubActions(action: Action): boolean {
 	return Array.isArray(action.subActions) && action.subActions.length > 0;
 }
@@ -193,7 +217,7 @@ export async function runSubPlanner(
 	// tools (REPLY / IGNORE / STOP) are always exposed so the model has a
 	// stable way to end the sub-planner pass.
 	const tools: ToolDefinition[] = [
-		...buildPlannerToolsFromActions(childActions),
+		...buildSubPlannerTools(childActions),
 		...CORE_PLANNER_TERMINALS,
 	];
 	const execute = params.execute ?? executePlannedToolCall;

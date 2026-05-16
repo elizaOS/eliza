@@ -27,7 +27,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*"
   },

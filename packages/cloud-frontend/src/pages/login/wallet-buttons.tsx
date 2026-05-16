@@ -218,7 +218,7 @@ function EthereumButton({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+      className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
     >
       {loading ? <Spinner /> : <EthereumIcon />} Ethereum
     </button>
@@ -296,7 +296,7 @@ function SolanaButton({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+      className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
     >
       {loading ? <Spinner /> : <SolanaIcon />} Solana
     </button>
@@ -309,6 +309,7 @@ function EthereumIcon() {
   return (
     <svg
       className="h-4 w-4"
+      aria-hidden="true"
       viewBox="0 0 256 417"
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
@@ -336,6 +337,7 @@ function SolanaIcon() {
   return (
     <svg
       className="h-4 w-4"
+      aria-hidden="true"
       viewBox="0 0 128 128"
       xmlns="http://www.w3.org/2000/svg"
     >

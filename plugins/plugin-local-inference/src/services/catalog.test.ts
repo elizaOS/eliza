@@ -97,6 +97,7 @@ describe("local inference catalog", () => {
 			"eliza-1-4b": 131072,
 			"eliza-1-9b": 131072,
 			"eliza-1-27b": 131072,
+			"eliza-1-27b-256k": 262144,
 		};
 		for (const [id, expectedLength] of Object.entries(expected)) {
 			const model = findCatalogModel(id);
@@ -201,7 +202,9 @@ describe("local inference catalog", () => {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
 			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
+				"q3_k_m",
 				"q4_k_m",
+				"q5_k_m",
 				"q6_k",
 				"q8_0",
 			]);
@@ -228,6 +231,9 @@ describe("local inference catalog", () => {
 			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
+			"omnivoice",
+		]);
+		expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
 			"omnivoice",
 		]);
 	});

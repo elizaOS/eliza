@@ -1,7 +1,7 @@
-import { BrandCard, CornerBrackets, ElizaCloudLockup } from "@elizaos/ui";
 import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
+import Footer from "../../components/landing/Footer";
 import LandingHeader from "../../components/layout/landing-header";
 
 const sections = [
@@ -57,7 +57,7 @@ const sections = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden bg-black">
+    <div className="theme-cloud flex min-h-screen w-full flex-col bg-black font-poppins text-white">
       <Helmet>
         <title>Privacy Policy | Eliza Cloud</title>
         <meta
@@ -68,64 +68,54 @@ export default function PrivacyPolicyPage() {
 
       <LandingHeader />
 
-      <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60" />
+      <main className="flex-1 px-6 pt-32 pb-16 sm:px-8 lg:px-12">
+        <div className="mx-auto w-full max-w-4xl space-y-10">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 text-sm text-white/60 transition-colors hover:text-[#FF5800]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to login
+          </Link>
 
-      <div className="relative z-10 flex flex-1 items-start justify-center p-4 py-12">
-        <BrandCard className="w-full max-w-4xl bg-black/60 backdrop-blur-sm">
-          <CornerBrackets size="lg" className="opacity-50" />
+          <div className="space-y-3 border-b border-white/14 pb-6">
+            <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
+              Privacy Policy
+            </h1>
+            <p className="text-base text-white/60">
+              Last updated: November 4, 2025
+            </p>
+          </div>
 
-          <div className="relative z-10 space-y-8">
+          <div className="space-y-10">
+            {sections.map((section) => (
+              <section key={section.title} className="space-y-3">
+                <h2 className="text-2xl font-bold text-white">
+                  {section.title}
+                </h2>
+                <p className="leading-relaxed text-white/80">{section.body}</p>
+              </section>
+            ))}
+          </div>
+
+          <div className="flex flex-col items-center justify-between gap-4 border-t border-white/14 pt-8 sm:flex-row">
+            <Link
+              to="/terms-of-service"
+              className="text-sm text-white/60 underline underline-offset-4 transition-colors hover:text-[#FF5800]"
+            >
+              Terms of Service
+            </Link>
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-sm text-white/60 transition-colors hover:text-[#FF5800]"
+              className="text-sm text-white/60 transition-colors hover:text-[#FF5800]"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Back to login
+              Return to login
             </Link>
-
-            <div className="space-y-3 border-b border-white/10 pb-4">
-              <ElizaCloudLockup
-                logoClassName="h-5"
-                textClassName="text-[11px]"
-              />
-              <h1 className="text-4xl font-bold tracking-tight text-white">
-                Privacy Policy
-              </h1>
-              <p className="text-base text-white/60">
-                Last updated: November 4, 2025
-              </p>
-            </div>
-
-            <div className="space-y-8">
-              {sections.map((section) => (
-                <section key={section.title} className="space-y-4">
-                  <h2 className="text-2xl font-bold text-white">
-                    {section.title}
-                  </h2>
-                  <p className="text-white/80 leading-relaxed">
-                    {section.body}
-                  </p>
-                </section>
-              ))}
-            </div>
-
-            <div className="flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 sm:flex-row">
-              <Link
-                to="/terms-of-service"
-                className="text-sm text-white/60 underline underline-offset-4 transition-colors hover:text-[#FF5800]"
-              >
-                Terms of Service
-              </Link>
-              <Link
-                to="/login"
-                className="text-sm text-white/60 transition-colors hover:text-[#FF5800]"
-              >
-                Return to login
-              </Link>
-            </div>
           </div>
-        </BrandCard>
-      </div>
+        </div>
+      </main>
+
+      <Footer />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
+  ELIZA_1_DFLASH_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
   MODEL_CATALOG,
@@ -17,6 +18,7 @@ const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-4b": "eliza-1-4B",
   "eliza-1-9b": "eliza-1-9B",
   "eliza-1-27b": "eliza-1-27B",
+  "eliza-1-27b-256k": "eliza-1-27B-256k",
 };
 const EXPECTED_CHAT_PARAMS: Record<string, string> = {
   "eliza-1-0_8b": "0.8B",
@@ -24,6 +26,7 @@ const EXPECTED_CHAT_PARAMS: Record<string, string> = {
   "eliza-1-4b": "4B",
   "eliza-1-9b": "9B",
   "eliza-1-27b": "27B",
+  "eliza-1-27b-256k": "27B",
 };
 
 describe("voiceQuantLadderForTier", () => {
@@ -92,13 +95,18 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("ships every active text tier at the 128k floor", () => {
+  it("ships every active text tier at or above the 128k floor", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.contextLength).toBeGreaterThanOrEqual(131072);
       expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
-      expect(entry?.contextLength).toBe(131072);
-      expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
+      if (id === "eliza-1-27b-256k") {
+        expect(entry?.contextLength).toBe(262144);
+        expect(entry?.ggufFile).toBe("text/eliza-1-27b-256k.gguf");
+      } else {
+        expect(entry?.contextLength).toBe(131072);
+        expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
+      }
     }
   });
 
@@ -114,6 +122,11 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
       );
+      if (ELIZA_1_DFLASH_TIER_IDS.includes(id)) {
+        expect(entry?.runtime?.dflash?.disabledReason).toContain("#7631");
+      } else {
+        expect(entry?.runtime?.dflash).toBeUndefined();
+      }
     }
   });
 

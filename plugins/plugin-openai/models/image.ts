@@ -17,6 +17,8 @@ import type {
 import {
   getAuthHeader,
   getBaseURL,
+  getImageDescriptionAuthHeader,
+  getImageDescriptionBaseURL,
   getImageDescriptionMaxTokens,
   getImageDescriptionModel,
   getImageModel,
@@ -140,7 +142,7 @@ export async function handleImageDescription(
     throw new Error("IMAGE_DESCRIPTION requires a valid image URL");
   }
 
-  const baseURL = getBaseURL(runtime);
+  const baseURL = getImageDescriptionBaseURL(runtime);
 
   const requestBody = {
     model: modelName,
@@ -169,7 +171,7 @@ export async function handleImageDescription(
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: "POST",
       headers: {
-        ...getAuthHeader(runtime),
+        ...getImageDescriptionAuthHeader(runtime),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),

@@ -5,6 +5,7 @@
   --brand-orange: #ff5800;
   --brand-black: #000000;
   --brand-white: #ffffff;
+  --brand-gray: #d1d0d4;
   --sky-0: var(--brand-blue);
   --sky-1: var(--brand-blue);
   --sky-2: var(--brand-white);
@@ -88,7 +89,9 @@
   --link-color: var(--brand-black);
   --link-hover-color: var(--brand-blue);
 
-  --font-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-sans:
+    "Poppins", "Poppins Variable", system-ui, -apple-system, "Segoe UI", Arial,
+    sans-serif;
   --mono: var(--font-sans);
   --font-body: var(--font-sans);
   --font-display: var(--font-sans);
@@ -331,4 +334,164 @@ body.platform-ios *,
 body.platform-android * {
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* ─── Brand theme variants ───────────────────────────────────────────
+   Each marketing surface picks one of these by setting the class on
+   <html> or <body>. Shared palette, different center of gravity:
+     .theme-cloud   eliza cloud   black + white, blue/orange as accents
+     .theme-os      elizaOS       blue primary, white text
+     .theme-app     eliza app     orange primary, black text on orange
+   Designed for full-bleed solid-color sections and a cloud video hero. */
+
+.theme-cloud {
+  --bg: var(--brand-black);
+  --bg-accent: rgba(255, 255, 255, 0.04);
+  --bg-elevated: rgba(255, 255, 255, 0.04);
+  --bg-hover: rgba(255, 255, 255, 0.08);
+  --bg-muted: rgba(255, 255, 255, 0.06);
+
+  --card: var(--brand-black);
+  --card-foreground: var(--brand-white);
+  --surface: rgba(255, 255, 255, 0.04);
+
+  --text: var(--brand-white);
+  --text-strong: var(--brand-white);
+  --muted: rgba(255, 255, 255, 0.62);
+  --muted-strong: rgba(255, 255, 255, 0.82);
+
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.28);
+  --border-hover: var(--brand-white);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: var(--brand-white);
+
+  --accent: var(--brand-white);
+  --accent-hover: var(--brand-gray);
+  --accent-foreground: var(--brand-black);
+  --primary: var(--brand-white);
+  --primary-foreground: var(--brand-black);
+
+  --header-bar-bg: var(--brand-black);
+  --header-bar-fg: var(--brand-white);
+  --section-bar-bg: var(--brand-black);
+  --section-bar-fg: var(--brand-white);
+  --link-color: var(--brand-white);
+  --link-hover-color: var(--brand-blue);
+
+  color-scheme: dark;
+}
+
+.theme-os {
+  --bg: var(--brand-blue);
+  --bg-accent: rgba(255, 255, 255, 0.08);
+  --bg-elevated: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.12);
+  --bg-muted: rgba(255, 255, 255, 0.08);
+
+  --card: var(--brand-blue);
+  --card-foreground: var(--brand-white);
+  --surface: rgba(255, 255, 255, 0.08);
+
+  --text: var(--brand-white);
+  --text-strong: var(--brand-white);
+  --muted: rgba(255, 255, 255, 0.7);
+  --muted-strong: rgba(255, 255, 255, 0.88);
+
+  --border: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.34);
+  --border-hover: var(--brand-white);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: var(--brand-white);
+
+  --accent: var(--brand-white);
+  --accent-hover: var(--brand-gray);
+  --accent-foreground: var(--brand-blue);
+  --primary: var(--brand-white);
+  --primary-foreground: var(--brand-blue);
+
+  --header-bar-bg: var(--brand-blue);
+  --header-bar-fg: var(--brand-white);
+  --section-bar-bg: var(--brand-blue);
+  --section-bar-fg: var(--brand-white);
+  --link-color: var(--brand-white);
+  --link-hover-color: var(--brand-orange);
+
+  color-scheme: dark;
+}
+
+.theme-app {
+  --bg: var(--brand-orange);
+  --bg-accent: rgba(0, 0, 0, 0.06);
+  --bg-elevated: rgba(0, 0, 0, 0.04);
+  --bg-hover: rgba(0, 0, 0, 0.08);
+  --bg-muted: rgba(0, 0, 0, 0.06);
+
+  --card: var(--brand-orange);
+  --card-foreground: var(--brand-black);
+  --surface: rgba(0, 0, 0, 0.04);
+
+  --text: var(--brand-black);
+  --text-strong: var(--brand-black);
+  --muted: rgba(0, 0, 0, 0.66);
+  --muted-strong: rgba(0, 0, 0, 0.82);
+
+  --border: rgba(0, 0, 0, 0.18);
+  --border-strong: rgba(0, 0, 0, 0.34);
+  --border-hover: var(--brand-black);
+  --input: rgba(0, 0, 0, 0.06);
+  --ring: var(--brand-black);
+
+  --accent: var(--brand-black);
+  --accent-hover: rgba(0, 0, 0, 0.86);
+  --accent-foreground: var(--brand-white);
+  --primary: var(--brand-black);
+  --primary-foreground: var(--brand-white);
+
+  --header-bar-bg: var(--brand-orange);
+  --header-bar-fg: var(--brand-black);
+  --section-bar-bg: var(--brand-orange);
+  --section-bar-fg: var(--brand-black);
+  --link-color: var(--brand-black);
+  --link-hover-color: var(--brand-blue);
+
+  color-scheme: light;
+}
+
+/* Cloud video hero: dark scrim over the video; black text per brand rule. */
+.theme-clouds {
+  --bg: var(--brand-white);
+  --text: var(--brand-black);
+  --text-strong: var(--brand-black);
+  --muted: rgba(0, 0, 0, 0.7);
+  --accent: var(--brand-black);
+  --accent-foreground: var(--brand-white);
+  color-scheme: light;
+}
+
+/* Brand utility: full-bleed solid sections, no rounded cards. */
+.brand-section {
+  display: block;
+  width: 100%;
+  padding: clamp(3rem, 8vw, 7rem) clamp(1.25rem, 4vw, 4rem);
+}
+.brand-section--blue {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+.brand-section--orange {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+.brand-section--black {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+.brand-section--white {
+  background: var(--brand-white);
+  color: var(--brand-black);
+}
+.brand-section--gray {
+  background: var(--brand-gray);
+  color: var(--brand-black);
 }

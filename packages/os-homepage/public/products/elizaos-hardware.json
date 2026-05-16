@@ -1,33 +1,58 @@
 {
   "collection": "elizaos-hardware",
-  "checkoutBaseUrl": "https://elizacloud.ai/checkout",
+  "checkoutBaseUrl": "https://elizaos.ai/checkout",
   "products": [
+    {
+      "sku": "elizaos-usb",
+      "name": "ElizaOS USB",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "image": "/assets/concept_usbdrive.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-usb"
+    },
+    {
+      "sku": "elizaos-raspberry-pi-case",
+      "name": "Raspberry Pi case",
+      "priceUsd": 49,
+      "ships": "October 2026",
+      "image": "/assets/elizaos-box-concept.avif",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-raspberry-pi-case"
+    },
+    {
+      "sku": "elizaos-custom-raspberry-pi-case",
+      "name": "Custom Raspberry Pi + case",
+      "priceUsd": 149,
+      "ships": "October 2026",
+      "image": "/assets/elizaos-box-concept.avif",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-custom-raspberry-pi-case"
+    },
+    {
+      "sku": "elizaos-mini-pc",
+      "name": "ElizaOS mini PC",
+      "priceUsd": 1999,
+      "ships": "October 2026",
+      "image": "/assets/concept_minipc.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-mini-pc"
+    },
     {
       "sku": "elizaos-phone",
       "name": "ElizaOS Phone",
-      "colors": ["orange", "blue", "white", "blue"],
-      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-phone"
+      "image": "/assets/concept_phone.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-phone"
     },
     {
       "sku": "elizaos-box",
       "name": "ElizaOS Box",
-      "colors": ["orange", "blue", "white", "black"],
-      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-box"
+      "image": "/assets/billboard_concept.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-box"
     },
     {
       "sku": "elizaos-usb-chibi",
-      "name": "Chibi ElizaOS USB key",
+      "name": "Chibi USB key",
       "priceUsd": 49,
       "ships": "October 2026",
-      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-usb-chibi"
-    },
-    {
-      "sku": "elizaos-usb-plastic",
-      "name": "Branded ElizaOS USB key",
-      "priceUsd": 49,
-      "ships": "October 2026",
-      "colors": ["orange", "blue", "white", "black"],
-      "checkoutUrl": "https://elizacloud.ai/checkout?sku=elizaos-usb-plastic"
+      "image": "/assets/chibi_usb_concept.jpg",
+      "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-usb-chibi"
     }
   ]
 }

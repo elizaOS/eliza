@@ -10,8 +10,15 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
-const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b"]);
-const VISION_TIERS = new Set<Eliza1Tier>(["0_8b", "2b", "4b", "9b", "27b"]);
+const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b", "27b-256k"]);
+const VISION_TIERS = new Set<Eliza1Tier>([
+	"0_8b",
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+]);
 
 function passingBackends() {
 	return {
@@ -113,7 +120,14 @@ describe("Eliza-1 manifest schema constants", () => {
 
 	it("uses Eliza-1 size-tier ids and tokenizer family", () => {
 		expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
-		expect(ELIZA_1_TIERS).toEqual(["0_8b", "2b", "4b", "9b", "27b"]);
+		expect(ELIZA_1_TIERS).toEqual([
+			"0_8b",
+			"2b",
+			"4b",
+			"9b",
+			"27b",
+			"27b-256k",
+		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
 		);

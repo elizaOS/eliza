@@ -42,13 +42,13 @@ function HeaderComponent({
   })();
 
   return (
-    <header className="flex min-h-14 items-center justify-between gap-2 rounded-[22px] border border-white/32 bg-white/28 px-3 py-2 shadow-[0_12px_40px_rgba(3,28,58,0.12)] backdrop-blur-2xl md:min-h-16 md:gap-4 md:px-6">
+    <header className="flex min-h-14 items-center justify-between gap-2 border border-white/14 bg-black px-3 py-2 md:min-h-16 md:gap-4 md:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
         {/* Mobile Menu Button */}
         <BrandButton
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 border-white/28 bg-white/18 md:hidden"
+          className="size-8 shrink-0 border border-white/14 bg-transparent md:hidden"
           onClick={onToggleSidebar}
           aria-label="Toggle navigation"
         >

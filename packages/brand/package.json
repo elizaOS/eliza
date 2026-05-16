@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/brand",
+  "version": "2.0.0-beta.2",
+  "description": "Shared elizaOS brand asset paths, static assets, and brand CSS constants.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/brand"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "build": "bun run clean && tsc -p tsconfig.json && node ../scripts/copy-package-assets.mjs packages/brand assets src/brand.css && node ../scripts/prepare-package-dist.mjs packages/brand",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check src"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./brand.css": "./dist/brand.css",
+    "./assets/*": "./dist/assets/*",
+    "./package.json": "./package.json"
+  },
+  "sideEffects": [
+    "./dist/brand.css"
+  ],
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "typescript": "^6.0.3"
+  }
+}

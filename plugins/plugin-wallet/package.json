@@ -66,7 +66,7 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
-    "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@lifi/sdk": "^3.7.9",
     "@meteora-ag/dlmm": "^1.9.7",

@@ -5,7 +5,7 @@ name: Deploy Eliza Provisioning Worker
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
-#   HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap
+#   HCLOUD_TOKEN=... bun run packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs
 
 on:
   push:
@@ -16,11 +16,11 @@ on:
       - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
       - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
       - 'packages/scripts/cloud/admin/eliza-agent-router.service'
-      - 'cloud/packages/lib/services/provisioning-jobs.ts'
-      - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
-      - 'cloud/packages/lib/services/eliza-sandbox.ts'
-      - 'cloud/packages/db/repositories/agent-sandboxes.ts'
-      - 'packages/billing/**'
+      - 'packages/cloud-shared/src/lib/services/provisioning-jobs.ts'
+      - 'packages/cloud-shared/src/lib/services/docker-sandbox-provider.ts'
+      - 'packages/cloud-shared/src/lib/services/eliza-sandbox.ts'
+      - 'packages/cloud-shared/src/db/repositories/agent-sandboxes.ts'
+      - 'packages/cloud-shared/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
@@ -55,7 +55,7 @@ jobs:
               echo "Bootstrap the Hetzner host and secrets with:"
               echo ""
               echo "\`\`\`bash"
-              echo "HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap"
+              echo "HCLOUD_TOKEN=... bun run packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs"
               echo "\`\`\`"
             } >> "$GITHUB_STEP_SUMMARY"
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then

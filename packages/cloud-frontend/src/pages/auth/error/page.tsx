@@ -34,11 +34,11 @@ function AuthErrorContent() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0A0A0A] p-4">
-      <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A] via-neutral-900/50 to-[#0A0A0A]" />
-      <div className="relative w-full max-w-md bg-neutral-900 border border-white/10 rounded-2xl p-8">
+    <div className="flex min-h-screen items-center justify-center bg-black p-4">
+      <div className="absolute inset-0 bg-black" />
+      <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
         <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-500/10">
+          <div className="flex h-14 w-14 items-center justify-center  bg-red-500/10">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
           <div className="space-y-2">
@@ -49,7 +49,7 @@ function AuthErrorContent() {
           <div className="w-full space-y-3">
             <Button
               onClick={handleLogin}
-              className="w-full h-11 rounded-xl bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+              className="w-full h-11  bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
@@ -57,7 +57,7 @@ function AuthErrorContent() {
             <Button
               variant="outline"
               asChild
-              className="w-full h-11 rounded-xl border-white/10 hover:bg-white/10"
+              className="w-full h-11  border-white/14 hover:bg-white/10"
             >
               <Link to="/">
                 <Home className="h-4 w-4 mr-2" />
@@ -83,11 +83,11 @@ export default function AuthErrorPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#0A0A0A] p-4">
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A] via-neutral-900/50 to-[#0A0A0A]" />
-          <div className="relative w-full max-w-md bg-neutral-900 border border-white/10 rounded-2xl p-8">
+        <div className="flex min-h-screen items-center justify-center bg-black p-4">
+          <div className="absolute inset-0 bg-black" />
+          <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
             <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-500/10">
+              <div className="flex h-14 w-14 items-center justify-center  bg-red-500/10">
                 <AlertCircle className="h-7 w-7 text-red-500" />
               </div>
               <div className="space-y-1">

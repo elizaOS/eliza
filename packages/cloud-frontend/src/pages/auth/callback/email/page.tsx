@@ -1,7 +1,5 @@
 import {
   BrandButton,
-  BrandCard,
-  CornerBrackets,
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "@elizaos/ui";
@@ -121,15 +119,11 @@ export default function StewardEmailCallbackPage() {
 
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
+    <div className="theme-cloud relative flex min-h-screen w-full flex-col overflow-hidden bg-black font-poppins text-white">
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md bg-black/60 backdrop-blur-sm">
-          <CornerBrackets size="md" className="opacity-50" />
-          <div className="relative z-10 flex flex-col items-center gap-6 px-2 py-8">
-            {children}
-          </div>
-        </BrandCard>
+        <div className="w-full max-w-md border border-white/14 bg-black p-8">
+          <div className="flex flex-col items-center gap-6">{children}</div>
+        </div>
       </div>
     </div>
   );

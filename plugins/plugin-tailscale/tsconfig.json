@@ -19,9 +19,7 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "paths": {
-      "@elizaos/cloud-shared/routing": [
-        "../../packages/cloud-shared/src/routing/index.ts"
-      ]
+      "@elizaos/cloud-routing": ["../../packages/cloud-routing/src/index.ts"]
     },
     "noEmit": true,
     "types": ["node"]

@@ -6,15 +6,12 @@
 
 "use client";
 
-import { CloudSkyBackground } from "@elizaos/ui";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-// import DiscoverAgents from "./discover-agents";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import LandingHeader from "../layout/landing-header";
-import Footer from "./Footer";
 import HeroSection from "./hero-section";
 
 interface LandingPageProps {
@@ -27,7 +24,6 @@ export function LandingPage({ accessError }: LandingPageProps) {
   const hasRedirectedRef = useRef(false);
   const errorShownRef = useRef(false);
 
-  // Show access error toast
   useEffect(() => {
     if (accessError && !errorShownRef.current) {
       errorShownRef.current = true;
@@ -40,7 +36,6 @@ export function LandingPage({ accessError }: LandingPageProps) {
         });
       }
 
-      // Clear error from URL
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         url.searchParams.delete("error");
@@ -51,47 +46,27 @@ export function LandingPage({ accessError }: LandingPageProps) {
 
   useEffect(() => {
     if (!ready || hasRedirectedRef.current) return;
-
-    // Web: Redirect authenticated users to dashboard
     if (authenticated) {
       hasRedirectedRef.current = true;
       navigate("/dashboard/agents", { replace: true });
     }
   }, [ready, authenticated, navigate]);
 
-  // Still loading
   if (!ready) return null;
 
-  // Web: Show loading while redirecting authenticated users
   if (authenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center flex-col gap-2">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black text-white">
         <Loader2 className="h-6 w-6 animate-spin" />
-        <span>Opening Eliza Cloud...</span>
+        <span>Opening Eliza Cloud…</span>
       </div>
     );
   }
 
-  // Web: Show landing page for anonymous users
   return (
-    <CloudSkyBackground
-      className="min-h-screen"
-      contentClassName="min-h-screen"
-      intensity="hero"
-    >
-      <div className="relative flex min-h-screen w-full flex-col">
-        <LandingHeader />
-
-        <div className="flex min-h-screen items-center justify-center pt-20 pb-16">
-          <HeroSection />
-        </div>
-
-        {/* Discover Sections */}
-        {/* <DiscoverApps /> */}
-        {/* <DiscoverAgents /> */}
-
-        <Footer />
-      </div>
-    </CloudSkyBackground>
+    <div className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white">
+      <LandingHeader />
+      <HeroSection />
+    </div>
   );
 }

@@ -1,4 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	ELIZA_1_RELEASE_TIER_IDS,
+	isDefaultEligibleId,
+	MODEL_CATALOG,
+} from "./catalog";
+import { runDflashDoctor } from "./dflash-doctor";
 
 vi.mock("./registry", () => ({
 	listInstalledModels: vi.fn(async () => []),
@@ -28,8 +34,6 @@ afterEach(() => {
 
 describe("runDflashDoctor — tokenizer parity check", () => {
 	it("emits one tokenizer-parity check per DFlash pair (when any are declared)", async () => {
-		const { runDflashDoctor } = await import("./dflash-doctor");
-		const { MODEL_CATALOG } = await import("./catalog");
 		const dflashTargets = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
 		expect(dflashTargets.length).toBeGreaterThan(0);
 
@@ -44,10 +48,9 @@ describe("runDflashDoctor — tokenizer parity check", () => {
 		for (const check of tokenizerChecks) {
 			expect(check.status, `${check.id}: ${check.detail}`).toBe("pass");
 		}
-	}, 10_000);
+	});
 
 	it("fails the parity check when a drafter resolves to a missing entry", async () => {
-		const { MODEL_CATALOG } = await import("./catalog");
 		const target = MODEL_CATALOG.find((m) => m.runtime?.dflash);
 		if (!target?.runtime?.dflash) {
 			throw new Error("Expected at least one DFlash catalog entry");
@@ -55,7 +58,6 @@ describe("runDflashDoctor — tokenizer parity check", () => {
 		const originalDrafter = target.runtime.dflash.drafterModelId;
 		target.runtime.dflash.drafterModelId = "does-not-exist-drafter";
 		try {
-			const { runDflashDoctor } = await import("./dflash-doctor");
 			const report = await runDflashDoctor();
 			const failed = report.checks.find(
 				(c) => c.id === `${target.id}:tokenizer`,
@@ -68,9 +70,6 @@ describe("runDflashDoctor — tokenizer parity check", () => {
 	});
 
 	it("every default-eligible Eliza-1 tier declares runtime.dflash", async () => {
-		const { ELIZA_1_RELEASE_TIER_IDS, MODEL_CATALOG, isDefaultEligibleId } =
-			await import("./catalog");
-
 		for (const id of ELIZA_1_RELEASE_TIER_IDS) {
 			const model = MODEL_CATALOG.find((m) => m.id === id);
 			expect(model, `${id} missing from catalog`).toBeDefined();

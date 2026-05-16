@@ -326,7 +326,7 @@ async function saveAttachmentAsDocument(params: {
 
 export const readAttachmentAction: Action = {
 	name: "ATTACHMENT",
-	contexts: ["files", "media", "messaging", "documents", "web"],
+	contexts: ["general", "files", "media", "messaging", "documents", "web"],
 	roleGate: { minRole: "ADMIN" },
 	similes: [
 		"READ_ATTACHMENT",

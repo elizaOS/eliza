@@ -176,7 +176,8 @@ async function extractNames(
 
 	let raw = "";
 	try {
-		raw = await runtime.useModel(ModelType.TEXT_SMALL, {
+		const runModel = runtime.useModel.bind(runtime);
+		raw = await runModel(ModelType.TEXT_SMALL, {
 			prompt,
 			stopSequences: [],
 		});

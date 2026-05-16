@@ -35,7 +35,8 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/shared": "workspace:*"
+		"@elizaos/shared": "workspace:*",
+		"react": "^19.0.0"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",

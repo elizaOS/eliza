@@ -586,6 +586,8 @@ packages/training/out/
 plugins/plugin-vision/eng.traineddata
 dev-desktop.pid
 reports/
+!packages/cloud-api/v1/reports/
+!packages/cloud-api/v1/reports/**
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 yolov8n.pt
@@ -683,6 +685,8 @@ claudedocs
 logs/
 !apps/api/**/logs/
 !apps/api/**/logs/**
+!packages/cloud-api/**/logs/
+!packages/cloud-api/**/logs/**
 test_output.log
 ts_errors.log
 

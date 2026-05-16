@@ -29,7 +29,7 @@ let audioPayload: AudioPayload | null = null;
 
 document.body.innerHTML = `
   <style>
-    :root { color-scheme: dark; font-family: "Open Sans", Arial, system-ui, sans-serif; background:#08090b; color:#f5f7fb; }
+    :root { color-scheme: dark; font-family: "Poppins", "Open Sans", Arial, system-ui, sans-serif; background:#08090b; color:#f5f7fb; }
     body { margin:0; min-height:100vh; background:#08090b; }
     .shell { min-height:100vh; display:flex; flex-direction:column; }
     header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid #242833; background:rgba(8,9,11,.92); backdrop-filter:blur(12px); }
@@ -46,11 +46,11 @@ document.body.innerHTML = `
     .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
     .card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
     h2 { margin:0; font-size:14px; }
-    .model { margin-top:7px; color:#9ba3b4; font:12px "Open Sans", Arial, system-ui, sans-serif; }
+    .model { margin-top:7px; color:#9ba3b4; font:12px "Poppins", "Open Sans", Arial, system-ui, sans-serif; }
     .providers { margin-top:5px; color:#697286; font-size:12px; line-height:1.35; overflow-wrap:anywhere; }
     .pill { border:1px solid #3a4050; color:#9ba3b4; border-radius:999px; padding:4px 8px; font-size:12px; white-space:nowrap; }
     .pill.ready { border-color:#277a55; color:#7be0af; background:#0f2a20; }
-    pre { margin:12px 0 0; max-height:260px; overflow:auto; border:1px solid #242833; border-radius:8px; background:#08090b; color:#c5ccda; padding:10px; font:12px/1.45 "Open Sans", Arial, system-ui, sans-serif; white-space:pre-wrap; }
+    pre { margin:12px 0 0; max-height:260px; overflow:auto; border:1px solid #242833; border-radius:8px; background:#08090b; color:#c5ccda; padding:10px; font:12px/1.45 "Poppins", "Open Sans", Arial, system-ui, sans-serif; white-space:pre-wrap; }
     audio, img.preview { margin-top:12px; width:100%; border-radius:8px; }
     img.preview { max-height:260px; object-fit:cover; border:1px solid #242833; }
     .error { color:#ff8b8b; font-size:12px; margin-top:10px; }

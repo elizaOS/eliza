@@ -48,7 +48,6 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
       </div>
       <h1>Setup Your Eliza</h1>
       <div className="eliza-ob-runtime-intro">
-        <strong>Let's get set up.</strong>
         <span className="eliza-ob-recommendation-copy">
           {copy.recommendation}
         </span>
@@ -63,10 +62,7 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
             <strong>Cloud</strong>
             <span className="eliza-ob-chip">Recommended</span>
           </span>
-          <span>
-            Sign in, talk immediately, and move into your container when it is
-            ready.
-          </span>
+          <span>Sign in and start talking.</span>
         </button>
         <button
           type="button"
@@ -74,9 +70,7 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           onClick={() => onChooseRuntime("device")}
         >
           <strong>On-Device</strong>
-          <span>
-            Download the preferred Eliza-1 model and run on this device.
-          </span>
+          <span>Run on this device.</span>
         </button>
       </div>
       <div className="eliza-ob-footer vertical">

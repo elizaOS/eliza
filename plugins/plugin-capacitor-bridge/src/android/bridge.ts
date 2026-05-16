@@ -63,6 +63,14 @@ import * as nodeFs from "node:fs";
 import nodePath from "node:path";
 import { installMobileFsShim } from "../shared/fs-shim.ts";
 
+type StartEliza = (options: { serverOnly: true }) => Promise<unknown>;
+
+async function loadStartEliza(): Promise<StartEliza> {
+	const specifier = "@elizaos/" + "agent";
+	const mod = (await import(specifier)) as { startEliza: StartEliza };
+	return mod.startEliza;
+}
+
 // ── Resolve canonical paths and install mobile fs sandbox ─────────────────
 //
 // On Android, getFilesDir() returns /data/user/0/<pkg>/files but the bundle
@@ -188,7 +196,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	});
 
 	_logToFile("[android-bridge] importing startEliza...");
-	const { startEliza } = await import("@elizaos/agent");
+	const startEliza = await loadStartEliza();
 	_logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
 
 	// Heartbeat: log every 10s during startEliza so we can see where it stalls.
@@ -196,7 +204,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile("[android-bridge] startEliza still running...");
 	}, 10_000);
 
-	let runtime: Awaited<ReturnType<typeof startEliza>>;
+	let runtime: unknown;
 	try {
 		runtime = await startEliza({ serverOnly: true });
 	} catch (err: unknown) {
@@ -224,7 +232,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
 			"../mobile-device-bridge-bootstrap.ts"
 		);
-		await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+		await ensureMobileDeviceBridgeInferenceHandlers(runtime as never);
 	}
 
 	// Keep the process alive indefinitely — ElizaAgentService will SIGTERM

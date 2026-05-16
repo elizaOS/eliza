@@ -13,7 +13,6 @@
     "./lib/*": "./src/lib/*",
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*",
-    "./routing": "./src/routing/index.ts",
     "./package.json": "./package.json"
   },
   "scripts": {

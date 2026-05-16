@@ -12,8 +12,7 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-sdk/**"
       - "packages/cloud-services/**"
-      - "tests/cloud/**"
-      - "scripts/cloud/**"
+      - "packages/scripts/cloud/**"
       - ".github/workflows/cloud-tests.yml"
       - ".github/actions/cloud-setup-test-env/**"
   push:
@@ -24,8 +23,7 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-sdk/**"
       - "packages/cloud-services/**"
-      - "tests/cloud/**"
-      - "scripts/cloud/**"
+      - "packages/scripts/cloud/**"
       - ".github/workflows/cloud-tests.yml"
       - ".github/actions/cloud-setup-test-env/**"
 

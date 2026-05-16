@@ -110,9 +110,11 @@ export function ApiKeysTable({
                     label={getStatusLabel(key.status)}
                   />
                 </div>
-                <p className="line-clamp-2 text-xs text-white/60">
-                  {key.description ?? "No description provided"}
-                </p>
+                {key.description ? (
+                  <p className="line-clamp-2 text-xs text-white/60">
+                    {key.description}
+                  </p>
+                ) : null}
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -247,9 +249,9 @@ export function ApiKeysTable({
                         label={getStatusLabel(key.status)}
                       />
                     </div>
-                    <p className="text-xs text-white/60">
-                      {key.description ?? "No description provided"}
-                    </p>
+                    {key.description ? (
+                      <p className="text-xs text-white/60">{key.description}</p>
+                    ) : null}
                     <div className="flex items-center gap-2 text-xs text-white/60">
                       <span className="rounded-none bg-black/60 border border-white/10 px-1.5 py-0.5 font-mono text-xs text-white">
                         {`${key.keyPrefix}•••••••`}

@@ -21,9 +21,6 @@ export function StateHello(props: StateHelloProps): React.JSX.Element {
         <button type="button" className="eliza-ob-btn orange" onClick={onBegin}>
           Tap to begin
         </button>
-        <div className="eliza-ob-tap-hint">
-          voice and transcript start after your tap
-        </div>
       </div>
     </section>
   );

@@ -54,7 +54,7 @@ function SidebarComponent({
       {/* Sidebar Container — fixed drawer on mobile, persistent rail on desktop */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-white/30 bg-white/28 p-1.5 shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl transition-transform duration-300 ease-in-out md:static md:z-auto md:h-full md:w-72 md:translate-x-0 md:bg-white/20",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-white/14 bg-black p-1.5 transition-transform duration-300 ease-in-out md:static md:z-auto md:h-full md:w-72 md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full",
           className,
         )}

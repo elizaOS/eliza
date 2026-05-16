@@ -567,6 +567,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				return {
 					success: true,
 					text: "saved",
+					userFacingText: "saved",
 					data: { actionName: "CLIPBOARD_WRITE" },
 				};
 			},
@@ -932,12 +933,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: stage1Response({
 						contexts: ["web"],
 						thought: "Two-step task.",
+						candidateActionNames: ["WEB_SEARCH", "CLIPBOARD_WRITE"],
 					}),
 				},
 				// Single planner call enqueues BOTH tools
 				{
 					body: {
 						text: "Search then save.",
+						messageToUser: "Both done.",
 						toolCalls: [
 							{ id: "t1", name: "WEB_SEARCH", args: {} },
 							{ id: "t2", name: "CLIPBOARD_WRITE", args: { content: "x" } },
