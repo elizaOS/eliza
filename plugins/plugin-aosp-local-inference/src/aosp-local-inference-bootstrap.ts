@@ -1523,7 +1523,8 @@ type BunFfiModule = {
 };
 
 async function loadAospVoiceFfi(): Promise<BunFfiModule> {
-  const ffi = (await import("bun:ffi")) as unknown as BunFfiModule;
+  const ffiSpecifier = "bun" + ":ffi";
+  const ffi = (await import(ffiSpecifier)) as unknown as BunFfiModule;
   if (
     typeof ffi.dlopen !== "function" ||
     typeof ffi.ptr !== "function" ||
