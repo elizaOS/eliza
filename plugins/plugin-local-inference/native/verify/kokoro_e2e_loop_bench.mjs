@@ -782,9 +782,9 @@ async function startTextServer(engine, files, args, log) {
       files.drafter,
       "--spec-type",
       "dflash",
-      "--draft-min",
+      "--spec-draft-n-min",
       "2",
-      "--draft-max",
+      "--spec-draft-n-max",
       "6",
     );
   }

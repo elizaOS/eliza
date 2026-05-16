@@ -8,7 +8,7 @@
  * (which itself was 8,988 commits ahead of upstream b8198 with quant
  * type IDs that conflicted with apothic's TBQ slots). Wave-3 agent A
  * surgically ported the DFlash CLI surface (--spec-type dflash,
- * --draft-min-prob, n_drafted_total/n_drafted_accepted_total Prometheus
+ * --spec-draft-n-min/max, n_drafted_total/n_drafted_accepted_total Prometheus
  * counters) onto the combined fork and retired the dual-fork situation.
  * See the fork consolidation strategy doc §H step 8 for the migration
  * story. Override via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF if you need
@@ -139,7 +139,7 @@ const LEGACY_DFLASH_DRAFTER_REF =
   process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REF ||
   "6575873e9c4872709d374d854b583cfaa270caff";
 // Minimum commit that must be an ancestor of the build source's HEAD: it
-// carries the DFlash CLI surface (--spec-type dflash, --draft-min-prob,
+// carries the DFlash CLI surface (--spec-type dflash, --spec-draft-n-min/max,
 // Prometheus draft counters). It is contained by v1.0.0-eliza (and the W4-B
 // CUDA kernel additions). The submodule checkout always satisfies this; the
 // check only matters for a standalone clone pinned at an older ref.

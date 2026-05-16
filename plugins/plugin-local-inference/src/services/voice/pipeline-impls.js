@@ -86,7 +86,7 @@ function prefixToPrompt(prefix) {
 }
 /**
  * `DraftProposer` over the DFlash drafter via llama-server. The fork's
- * `--draft-max` already bounds proposals; this adapter additionally
+ * `--spec-draft-n-max` already bounds proposals; this adapter additionally
  * clamps to the pipeline's `maxDraft` and stops early on
  * `cancel.cancelled`. GPU dispatch is N=1 (the fork's voice profile
  * disables command-buffer batching — ledger §2 "Keep voice dispatch

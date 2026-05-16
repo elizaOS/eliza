@@ -1218,7 +1218,7 @@ async function main() {
       "-m", files.text,
       "-md", files.drafter,
       "--spec-type", "dflash",
-      "--draft-min", "2", "--draft-max", "6",
+      "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
       "--port", String(port),
       "-c", String(args.ctx), "-cd", String(args.ctx),
       "-ngl", String(args.ngl),
