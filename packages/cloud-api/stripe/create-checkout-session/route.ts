@@ -37,11 +37,32 @@ const HARDWARE_PRODUCTS = {
     name: "Chibi USB key preorder",
     description: "Character ElizaOS USB installer key. Ships October 2026.",
   },
+  "elizaos-usb": {
+    amount: 49,
+    name: "ElizaOS USB key preorder",
+    description:
+      "First-party ElizaOS USB installer key. Ships October 2026.",
+  },
   "elizaos-usb-plastic": {
     amount: 49,
     name: "Branded USB key preorder",
     description:
       "Simple plastic ElizaOS USB installer key. Ships October 2026.",
+  },
+  "elizaos-raspberry-pi-case": {
+    amount: 49,
+    name: "ElizaOS Raspberry Pi case preorder",
+    description: "Reserve the ElizaOS Raspberry Pi case.",
+  },
+  "elizaos-custom-raspberry-pi-case": {
+    amount: 149,
+    name: "ElizaOS Raspberry Pi + case preorder",
+    description: "Reserve the custom Raspberry Pi and ElizaOS case kit.",
+  },
+  "elizaos-mini-pc": {
+    amount: 1999,
+    name: "ElizaOS mini PC preorder",
+    description: "Reserve the first-party ElizaOS mini PC.",
   },
 } as const;
 
@@ -65,7 +86,11 @@ const checkoutRequestSchema = z
         "elizaos-phone",
         "elizaos-box",
         "elizaos-usb-chibi",
+        "elizaos-usb",
         "elizaos-usb-plastic",
+        "elizaos-raspberry-pi-case",
+        "elizaos-custom-raspberry-pi-case",
+        "elizaos-mini-pc",
       ])
       .optional(),
     hardwareColor: z.string().min(1).max(32).optional(),
