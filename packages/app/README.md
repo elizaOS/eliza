@@ -56,16 +56,29 @@ npx @elizaos/app setup
 
 ### Download the App
 
-Desktop and mobile builds are available on the [Releases](https://github.com/elizaOS/eliza/releases) page:
+Desktop builds are published on the
+[GitHub Releases](https://github.com/elizaOS/eliza/releases) page when a signed
+release has completed. Mobile distribution is store-first: TestFlight/App Store
+for iOS and Play testing/Play Store for Android. Developer sideload paths are
+for contributors and QA, not the public mobile install path.
 
 | Platform | Format |
 |---|---|
 | macOS (Apple Silicon) | `.dmg` |
 | macOS (Intel) | `.dmg` |
 | Windows | `.exe` installer |
-| Linux | `.AppImage`, `.deb` |
-| iOS | App Store (coming soon) |
-| Android | Play Store (coming soon) |
+| Linux | `.AppImage`, `.deb`, `.rpm` when attached to the release |
+| iOS | TestFlight / App Store (coming soon); local Xcode sideload for development |
+| Android | Play Store (coming soon); signed QA APK only when explicitly attached |
+
+Developer preflight checks:
+
+```bash
+bun run preflight:ios:sideload
+bun run preflight:ios:store
+bun run preflight:android:sideload
+bun run preflight:android:store
+```
 
 ## Quick Start
 

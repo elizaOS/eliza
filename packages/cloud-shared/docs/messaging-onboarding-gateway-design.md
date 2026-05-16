@@ -66,6 +66,31 @@ separation already present in the repo.
   and
   `packages/test/scenarios/gateway/whatsapp-gateway.bot-routes-to-user-agent.scenario.ts`.
 
+## Implementation Gaps Blocking Launch
+
+The current repo has the major gateway surfaces, but the launch plan is not
+complete until these gaps are closed:
+
+- Identity resolution must be consistent. Gateway reads resolve through
+  `user_identities`; auth/link paths that still write only canonical `users`
+  columns must also upsert the provider identity projection, or the resolver
+  must fall back to canonical columns until projection sync is guaranteed.
+- Explicit identity-link start/confirm routes are required before production
+  binding. Messaging possession alone must not bind Telegram, Discord,
+  WhatsApp, or phone/iMessage handles to an existing cloud account.
+- Discord system-bot DMs need an unlinked-user fallback. If route resolution
+  returns `handled:false` because the Discord identity is unknown, the cloud
+  route should call the shared onboarding worker and return the onboarding
+  reply to the gateway.
+- Linked identities without an active `agentId` must route to
+  onboarding/provisioning status rather than throwing in the gateway resolver.
+- The Mac-hosted iMessage path still needs a cloud `bluebubbles` relay
+  contract: Headscale node tag, relay registration record, signed inbound
+  events, outbound relay delivery, and degraded-health state.
+- Transcript handoff needs an idempotency key and platform/session metadata so
+  retries do not duplicate memory records and audits can identify the source
+  channel.
+
 ## Goals
 
 1. One onboarding conversation contract across all messaging platforms.

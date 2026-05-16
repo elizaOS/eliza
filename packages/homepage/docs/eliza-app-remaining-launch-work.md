@@ -18,8 +18,8 @@ Status terms:
 | Eliza App homepage tagline: "Your Eliza, everywhere." | Repo-ready | Keep the first viewport focused on app download and one personal agent. |
 | Shared product switcher: ElizaOS, App, Cloud, Docs, GitHub | Repo-ready | Update URLs if final domains differ. |
 | One taxonomy: ElizaOS, Eliza App, Eliza Cloud | Repo-ready | Keep docs and public copy aligned when Cloud/OS branches land. |
-| One account identity across app, cloud, and OS | Repo TODO | Enforce account/session linking in Cloud and OS onboarding routes. |
-| One agent per user | Repo TODO | Add a durable one-agent uniqueness gate at provisioning. |
+| One account identity across app, cloud, and OS | Repo TODO | Enforce account/session linking in Cloud and OS onboarding routes; fix identity projection reads/writes before messaging launch. |
+| One agent per user | Repo TODO | Add a durable one-agent uniqueness gate at provisioning and make duplicate webhook/onboarding calls idempotent. |
 
 ## Downloads And Stores
 
@@ -28,7 +28,7 @@ Status terms:
 | macOS `.dmg` direct download | External blocker | Publish signed/notarized Apple Silicon and Intel DMGs to the GitHub release. |
 | Windows `.exe` direct download | External blocker | Publish signed `ElizaOSApp-Setup*.exe` to the GitHub release. |
 | Linux `.deb` direct download | External blocker | Publish release `.deb` to the GitHub release. |
-| Linux `.rpm`, AppImage, `.tar.gz` | Repo TODO / external blocker | Ensure release jobs actually produce and attach the promised formats. Homepage can render them when present. |
+| Linux `.rpm`, AppImage, `.tar.gz` | Repo TODO / external blocker | Ensure release jobs actually produce and attach the promised formats. The launch gate now requires all claimed desktop formats. |
 | No dead fallback installer URLs | Repo-ready | Fallback cards open the GitHub releases page instead of guessed filenames. |
 | Public deploy blocks without release assets | Repo-ready | `bun run check:release-data` fails until required artifacts exist. |
 | App Store, Play Store, Mac App Store, Microsoft Store | External blocker | Create store listings, finish review, then replace disabled cards with real URLs and review status. |
@@ -75,7 +75,7 @@ Status terms:
 | Release orchestrator waits for desktop artifacts | Repo TODO | Make `release-orchestrator.yml` call or depend on the desktop release workflow before homepage deploy. |
 | Checksums | Repo TODO / external blocker | Generate and attach `SHA256SUMS.txt`; make `check:release-data` require it once release jobs publish checksums consistently. |
 | Actual GitHub release assets | External blocker | Cut a release tag and run signed desktop/mobile jobs. |
-| Store rollout metadata in homepage | Repo TODO / external blocker | Add generated store metadata once store URLs and review states exist. |
+| Store rollout metadata in homepage | Repo-ready / external blocker | Generated release data now carries store target status/review fields. Add real URLs only after store review approves them. |
 
 ## Verification Before Public Launch
 

@@ -9,6 +9,15 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
   page,
 }) => {
   await page.goto("/");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(0);
 
   await expect(
     page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
@@ -84,6 +93,8 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
     await expect(
       card.getByText("Coming soon", { exact: true }).first(),
     ).toBeVisible();
+    await expect(card.locator("a")).toHaveCount(0);
+    await expect(card.getByText("not-submitted")).toBeVisible();
   }
 
   await expect(page.getByText(/^Start in chat\. Finish/)).toBeVisible();
@@ -94,10 +105,24 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
     page.getByRole("link", { name: /Telegram.*Start onboarding/i }),
   ).toHaveAttribute("href", "/get-started?method=telegram");
   await expect(page.getByText(/One personal agent/i).first()).toBeVisible();
-  await expect(page.getByText(/Execution plan/i)).toHaveCount(0);
-  await expect(page.getByText(/should/i)).toHaveCount(0);
+  await expect(page.getByText(/brew install|snap install|flatpak install/i))
+    .toHaveCount(0);
 
   if (releaseData.release.downloads.length > 0) {
+    const requiredIds = new Set([
+      "macos-arm64",
+      "macos-x64",
+      "windows-x64",
+      "linux-x64",
+      "linux-deb",
+      "linux-rpm",
+    ]);
+    const downloadIds = new Set(
+      releaseData.release.downloads.map((download) => download.id),
+    );
+    for (const requiredId of requiredIds) {
+      expect(downloadIds.has(requiredId), `missing ${requiredId}`).toBe(true);
+    }
     for (const download of releaseData.release.downloads) {
       expect(download.releaseTagName).not.toBe("unavailable");
       expect(download.releaseUrl).toContain("/releases/tag/");
