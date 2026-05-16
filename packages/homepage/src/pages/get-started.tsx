@@ -994,7 +994,6 @@ export default function GetStartedPage() {
               >
                 {isSubmittingPhone ? "Setting up..." : "Complete Setup"}
               </Button>
-
             </>
           )}
 
