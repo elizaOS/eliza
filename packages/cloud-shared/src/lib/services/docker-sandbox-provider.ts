@@ -18,6 +18,7 @@ import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { dockerNodeManager } from "./docker-node-manager";
+import { isAlreadyGoneMessage } from "./docker-error-classifier";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   allocatePort,
@@ -40,8 +41,15 @@ import {
 } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import { headscaleIntegration } from "./headscale-integration";
-import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
-import { ensureStewardTenant, resolveStewardTenantCredentials } from "./steward-tenant-config";
+import type {
+  SandboxCreateConfig,
+  SandboxHandle,
+  SandboxProvider,
+} from "./sandbox-provider-types";
+import {
+  ensureStewardTenant,
+  resolveStewardTenantCredentials,
+} from "./steward-tenant-config";
 
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata
@@ -100,7 +108,10 @@ function resolveStewardHostUrl(): string {
 
 function resolveStewardContainerEnvUrl(): string {
   const env = getCloudAwareEnv();
-  return resolveStewardContainerUrl(resolveStewardHostUrl(), env.STEWARD_CONTAINER_URL);
+  return resolveStewardContainerUrl(
+    resolveStewardHostUrl(),
+    env.STEWARD_CONTAINER_URL,
+  );
 }
 
 /**
@@ -109,7 +120,9 @@ function resolveStewardContainerEnvUrl(): string {
  * (the proxy listens on the docker host). Returns an empty object when
  * proxy mode is disabled so callers can spread it unconditionally.
  */
-export function buildStewardProxyEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function buildStewardProxyEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
   if (env.USE_STEWARD_PROXY !== "true") return {};
   const base = "http://host.docker.internal:8080";
   return {
@@ -140,7 +153,9 @@ const AUTOSCALED_NODE_READY_POLL_MS = 10_000;
 
 function getDockerHealthCmd(port: string): string {
   if (!/^\d+$/.test(port)) {
-    throw new Error(`[docker-sandbox] Invalid port "${port}": must be a numeric string.`);
+    throw new Error(
+      `[docker-sandbox] Invalid port "${port}": must be a numeric string.`,
+    );
   }
   // /api/health returns 200 or 401 (auth required) — both mean the server is up.
   // Use curl with -o /dev/null and check status code to accept either.
@@ -150,7 +165,9 @@ function getDockerHealthCmd(port: string): string {
 function extractStewardToken(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) {
-    throw new Error("[docker-sandbox] Steward token endpoint returned an empty response");
+    throw new Error(
+      "[docker-sandbox] Steward token endpoint returned an empty response",
+    );
   }
 
   try {
@@ -334,7 +351,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     // Unreachable, but satisfies the compiler
-    throw lastError ?? new Error("[docker-sandbox] create exhausted all retry attempts");
+    throw (
+      lastError ??
+      new Error("[docker-sandbox] create exhausted all retry attempts")
+    );
   }
 
   /**
@@ -345,14 +365,18 @@ export class DockerSandboxProvider implements SandboxProvider {
    * sandboxes, so a duplicate will fail at INSERT time. The public `create()`
    * method wraps this in a retry loop to handle port collisions automatically.
    */
-  private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
+  private async _createOnce(
+    config: SandboxCreateConfig,
+  ): Promise<SandboxHandle> {
     const { agentId, agentName, environmentVars, organizationId } = config;
 
     // Resolve Docker image: operator env override > per-agent DB override > hardcoded default.
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
     // overrides are not accidentally shadowed by the generic Eliza default.
     const resolvedImage =
-      DOCKER_IMAGE_OVERRIDE || config.dockerImage || "ghcr.io/elizaos/eliza:latest";
+      DOCKER_IMAGE_OVERRIDE ||
+      config.dockerImage ||
+      "ghcr.io/elizaos/eliza:latest";
     const imagePlatform = containersEnv.defaultAgentImagePlatform();
     const platformFlags = dockerPlatformFlag(imagePlatform);
 
@@ -414,7 +438,11 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // 3. Allocate ports (check DB for existing assignments to avoid collisions)
     const usedPorts = await getUsedDockerHostPorts(nodeId);
-    const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, usedPorts);
+    const bridgePort = allocatePort(
+      BRIDGE_PORT_MIN,
+      BRIDGE_PORT_MAX,
+      usedPorts,
+    );
     // No need to add bridgePort to exclusion set — web UI port range [20000,25000)
     // never overlaps bridge range [18790,19790)
     const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
@@ -441,7 +469,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     let vpnEnvVars: Record<string, string> = {};
     if (headscaleEnabled) {
       try {
-        const vpnSetup = await headscaleIntegration.prepareContainerVPN(agentId);
+        const vpnSetup =
+          await headscaleIntegration.prepareContainerVPN(agentId);
         vpnEnvVars = vpnSetup.envVars;
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {
@@ -479,7 +508,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
     // then create/start the container. Pass hostKeyFingerprint so pooled
     // clients pin the key when available.
-    const ssh = DockerSSHClient.getClient(hostname, sshPort, hostKeyFingerprint, sshUser);
+    const ssh = DockerSSHClient.getClient(
+      hostname,
+      sshPort,
+      hostKeyFingerprint,
+      sshUser,
+    );
 
     try {
       // Ensure volume directory exists
@@ -489,10 +523,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
 
       // Pull image (may take a while on first run)
-      logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
+      logger.info(
+        `[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`,
+      );
       try {
         await ssh.exec(
-          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(" "),
+          ["docker pull", ...platformFlags, shellQuote(resolvedImage)].join(
+            " ",
+          ),
           PULL_TIMEOUT_MS,
         );
         logger.info(`[docker-sandbox] Image pulled successfully on ${nodeId}`);
@@ -520,7 +558,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       // sandbox will skip registration silently in that case.
       const registryRedisUrl = process.env.KV_REST_API_URL?.trim() ?? "";
       const registryRedisToken = process.env.KV_REST_API_TOKEN?.trim() ?? "";
-      const canSelfRegister = registryRedisUrl !== "" && registryRedisToken !== "";
+      const canSelfRegister =
+        registryRedisUrl !== "" && registryRedisToken !== "";
       if (!canSelfRegister) {
         logger.warn(
           "[docker-sandbox] KV_REST_API_URL / KV_REST_API_TOKEN missing from orchestrator env — sandbox will not register in Redis and gateways will not route inbound platform messages to it",
@@ -549,7 +588,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         // (no D-Bus keychain). Generate one per container — the vault state
         // lives only in the per-container PGlite, so a unique per-launch key
         // is fine.
-        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        ELIZA_VAULT_PASSPHRASE:
+          environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
         // Gateway service discovery — see SandboxRegistry in app-core.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
@@ -583,7 +623,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         `--name ${shellQuote(containerName)}`,
         "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
-        ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
+        ...(requiresDockerHostGateway(stewardContainerUrl) ||
+        Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
         `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || DEFAULT_AGENT_PORT))}`,
@@ -591,7 +632,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-timeout 5s",
         "--health-start-period 15s",
         "--health-retries 6",
-        ...(headscaleEnabled ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"] : []),
+        ...(headscaleEnabled
+          ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"]
+          : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 3000).
@@ -606,7 +649,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       const containerId = extractDockerCreateContainerId(
         await ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
       );
-      await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker start ${shellQuote(containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
@@ -621,18 +667,24 @@ export class DockerSandboxProvider implements SandboxProvider {
           cloud: {
             enabled: Boolean(allEnv.ELIZAOS_CLOUD_API_KEY),
             apiKey: allEnv.ELIZAOS_CLOUD_API_KEY || "",
-            baseUrl: allEnv.ELIZAOS_CLOUD_BASE_URL || "https://www.elizacloud.ai/api/v1",
+            baseUrl:
+              allEnv.ELIZAOS_CLOUD_BASE_URL ||
+              "https://www.elizacloud.ai/api/v1",
           },
         });
         // Base64-encode the JSON before passing it through the shell so an
         // apiKey/baseUrl containing single quotes can't break out of the
         // outer sh -c quoting or inject commands on the remote host.
-        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
+        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString(
+          "base64",
+        );
         const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
           `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
         )}`;
         await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
-        logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
+        logger.info(
+          `[docker-sandbox] Cloud config written to eliza.json in ${containerName}`,
+        );
       } catch (configErr) {
         logger.warn(
           `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
@@ -646,7 +698,9 @@ export class DockerSandboxProvider implements SandboxProvider {
           `curl -s -X DELETE -H ${shellQuote(`X-Steward-Tenant: ${stewardTenant.tenantId}`)} ${stewardTenant.apiKey ? `-H ${shellQuote(`X-Steward-Key: ${stewardTenant.apiKey}`)}` : ""} ${shellQuote(`${resolveStewardHostUrl()}/agents/${agentId}`)} || true`,
           DOCKER_CMD_TIMEOUT_MS,
         );
-        logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
+        logger.info(
+          `[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`,
+        );
       } catch (cleanupErr) {
         logger.warn(
           `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
@@ -654,7 +708,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       await ssh
-        .exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS)
+        .exec(
+          `docker rm -f ${shellQuote(containerName)}`,
+          DOCKER_CMD_TIMEOUT_MS,
+        )
         .catch(() => {});
 
       // Rollback allocated_count on failure
@@ -663,11 +720,13 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
       // Clean up Headscale pre-auth key if VPN was prepared
       if (headscaleEnabled) {
-        await headscaleIntegration.cleanupContainerVPN(agentId).catch((cleanupErr) => {
-          logger.warn(
-            `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
-        });
+        await headscaleIntegration
+          .cleanupContainerVPN(agentId)
+          .catch((cleanupErr) => {
+            logger.warn(
+              `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+            );
+          });
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -677,7 +736,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
       try {
-        headscaleIp = await headscaleIntegration.waitForVPNRegistration(agentId, 60_000);
+        headscaleIp = await headscaleIntegration.waitForVPNRegistration(
+          agentId,
+          60_000,
+        );
         if (headscaleIp) {
           logger.info(
             `[docker-sandbox] Container ${containerName} registered on VPN: ${headscaleIp}`,
@@ -743,18 +805,24 @@ export class DockerSandboxProvider implements SandboxProvider {
     const hcloudToken = containersEnv.hetznerCloudToken();
     const publicKey = env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
     if (!hcloudToken || !publicKey) {
-      logger.warn("[docker-sandbox] No Docker capacity and autoscale is not configured", {
-        hasHcloudToken: Boolean(hcloudToken),
-        hasPublicKey: Boolean(publicKey),
-      });
+      logger.warn(
+        "[docker-sandbox] No Docker capacity and autoscale is not configured",
+        {
+          hasHcloudToken: Boolean(hcloudToken),
+          hasPublicKey: Boolean(publicKey),
+        },
+      );
       return null;
     }
 
     try {
-      logger.info("[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node", {
-        image,
-        platform,
-      });
+      logger.info(
+        "[docker-sandbox] No reachable Docker capacity; provisioning autoscaled node",
+        {
+          image,
+          platform,
+        },
+      );
       const provisioned = await getNodeAutoscaler().provisionNode(
         {
           prePullImages: [image],
@@ -769,7 +837,9 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       const deadline = Date.now() + AUTOSCALED_NODE_READY_TIMEOUT_MS;
       while (Date.now() < deadline) {
-        const node = await dockerNodesRepository.findByNodeId(provisioned.nodeId);
+        const node = await dockerNodesRepository.findByNodeId(
+          provisioned.nodeId,
+        );
         if (
           node &&
           (await dockerNodeManager.ensureNodeReady(node, {
@@ -782,18 +852,26 @@ export class DockerSandboxProvider implements SandboxProvider {
           });
           return node;
         }
-        await new Promise((resolve) => setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, AUTOSCALED_NODE_READY_POLL_MS),
+        );
       }
 
-      logger.warn("[docker-sandbox] Autoscaled Docker node did not become ready before timeout", {
-        nodeId: provisioned.nodeId,
-        hostname: provisioned.hostname,
-      });
+      logger.warn(
+        "[docker-sandbox] Autoscaled Docker node did not become ready before timeout",
+        {
+          nodeId: provisioned.nodeId,
+          hostname: provisioned.hostname,
+        },
+      );
       return null;
     } catch (error) {
-      logger.warn("[docker-sandbox] Autoscaled Docker node provisioning failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[docker-sandbox] Autoscaled Docker node provisioning failed",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return null;
     }
   }
@@ -816,22 +894,60 @@ export class DockerSandboxProvider implements SandboxProvider {
       meta.sshUser,
     );
 
+    // Track both attempts so we can fail loudly if neither call landed.
+    // Historically these errors were swallowed independently, which let
+    // the caller think a delete succeeded while the container kept
+    // running on the core (observed in prod e2e on 2026-05-16). We need
+    // at least one of (stop, rm) to land for the container to be
+    // effectively gone.
+    let stopErr: unknown;
+    let rmErr: unknown;
+
     try {
       // Graceful stop with 10s timeout, then force-remove
-      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker stop -t 10 ${shellQuote(meta.containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(`[docker-sandbox] Container stopped: ${meta.containerName}`);
-    } catch (stopErr) {
+    } catch (err) {
+      stopErr = err;
       logger.warn(
-        `[docker-sandbox] docker stop failed for ${meta.containerName}: ${stopErr instanceof Error ? stopErr.message : String(stopErr)}`,
+        `[docker-sandbox] docker stop failed for ${meta.containerName}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
     try {
-      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        `docker rm -f ${shellQuote(meta.containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(`[docker-sandbox] Container removed: ${meta.containerName}`);
-    } catch (rmErr) {
+    } catch (err) {
+      rmErr = err;
       logger.error(
-        `[docker-sandbox] docker rm failed for ${meta.containerName}: ${rmErr instanceof Error ? rmErr.message : String(rmErr)}`,
+        `[docker-sandbox] docker rm failed for ${meta.containerName}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    if (stopErr && rmErr) {
+      const stopMsg =
+        stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
+      // "No such container" from either call means the container was
+      // already gone — that is a success, not a failure. We only escalate
+      // when both calls failed for a reason that does NOT indicate the
+      // container is absent (SSH down, Docker daemon hung, etc.).
+      const stopIsGone = isAlreadyGoneMessage(stopMsg);
+      const rmIsGone = isAlreadyGoneMessage(rmMsg);
+      if (!stopIsGone && !rmIsGone) {
+        throw new Error(
+          `Failed to stop container ${meta.containerName} on ${meta.hostname}: ` +
+            `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
+        );
+      }
+      logger.info(
+        `[docker-sandbox] Container ${meta.containerName} already absent on ${meta.hostname}`,
       );
     }
 
@@ -844,11 +960,13 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Clean up Headscale VPN registration if enabled
     if (process.env.HEADSCALE_API_KEY && meta.agentId) {
-      await headscaleIntegration.cleanupContainerVPN(meta.agentId).catch((err) => {
-        logger.warn(
-          `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      await headscaleIntegration
+        .cleanupContainerVPN(meta.agentId)
+        .catch((err) => {
+          logger.warn(
+            `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
     }
 
     // Remove from in-memory registry
@@ -919,10 +1037,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       // Wait before retrying (but don't overshoot the deadline)
       const remaining = deadline - Date.now();
       if (remaining > HEALTH_CHECK_POLL_INTERVAL_MS) {
-        await new Promise((resolve) => setTimeout(resolve, HEALTH_CHECK_POLL_INTERVAL_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, HEALTH_CHECK_POLL_INTERVAL_MS),
+        );
       } else if (remaining > 0) {
         // One last attempt after a short wait
-        await new Promise((resolve) => setTimeout(resolve, Math.min(remaining, 1000)));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(remaining, 1000)),
+        );
       } else {
         break;
       }
@@ -949,11 +1071,16 @@ export class DockerSandboxProvider implements SandboxProvider {
         diagnostics: diagnostics.slice(-12_000),
       });
     } catch (diagnosticsError) {
-      logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
-        containerName: meta.containerName,
-        error:
-          diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError),
-      });
+      logger.warn(
+        "[docker-sandbox] Failed to collect health timeout diagnostics",
+        {
+          containerName: meta.containerName,
+          error:
+            diagnosticsError instanceof Error
+              ? diagnosticsError.message
+              : String(diagnosticsError),
+        },
+      );
     }
     return false;
   }
@@ -962,12 +1089,19 @@ export class DockerSandboxProvider implements SandboxProvider {
   // runCommand
   // ------------------------------------------------------------------
 
-  async runCommand(sandboxId: string, cmd: string, args?: string[]): Promise<string> {
+  async runCommand(
+    sandboxId: string,
+    cmd: string,
+    args?: string[],
+  ): Promise<string> {
     const meta = await this.resolveContainer(sandboxId);
 
     // Shell-escape each argument to prevent command injection
-    const escapedArgs = args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
-    const fullCmd = escapedArgs ? `${shellQuote(cmd)} ${escapedArgs}` : shellQuote(cmd);
+    const escapedArgs =
+      args && args.length > 0 ? args.map((a) => shellQuote(a)).join(" ") : "";
+    const fullCmd = escapedArgs
+      ? `${shellQuote(cmd)} ${escapedArgs}`
+      : shellQuote(cmd);
 
     logger.info(
       `[docker-sandbox] Executing command in ${meta.containerName}: ${cmd} ${(args ?? []).join(" ").slice(0, 80)}`,
@@ -1014,7 +1148,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         let sshUser = DEFAULT_SSH_USERNAME;
         let hostKeyFingerprint: string | undefined;
 
-        const dbNode = await dockerNodesRepository.findByNodeId(sandbox.node_id);
+        const dbNode = await dockerNodesRepository.findByNodeId(
+          sandbox.node_id,
+        );
         if (dbNode) {
           hostname = dbNode.hostname;
           sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;
