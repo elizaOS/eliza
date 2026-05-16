@@ -5,25 +5,29 @@
 
 "use client";
 
-import { ElizaCloudLockup } from "@elizaos/ui";
 import { Link } from "react-router-dom";
 
 export default function Footer() {
   return (
     <footer
-      className="relative border-t border-white/18 bg-[#0647ff]/72 backdrop-blur-xl"
+      className="relative border-t border-white/14 bg-black"
       style={{ flexShrink: 0 }}
     >
-      <div className="container mx-auto px-6 py-8 relative z-10">
+      <div className="container mx-auto px-6 py-12 relative z-10">
         <div className="grid grid-cols-2 items-start gap-8">
           <div className="flex flex-col gap-8">
             <div className="relative mr-auto flex flex-col gap-3">
-              <ElizaCloudLockup />
-              <p className="max-w-[14rem] text-sm leading-relaxed text-white/74">
+              <img
+                src="/brand/logos/elizacloud_logotext_white.svg"
+                alt="eliza cloud"
+                className="h-8 w-auto"
+                draggable={false}
+              />
+              <p className="max-w-[16rem] text-sm leading-relaxed text-white/74">
                 Eliza, everywhere.
               </p>
             </div>
-            <p className="text-sm text-white/80 whitespace-nowrap">
+            <p className="text-sm text-white/70 whitespace-nowrap">
               © 2026 eliza cloud · USA
             </p>
           </div>
@@ -32,13 +36,13 @@ export default function Footer() {
             <div className="flex flex-col gap-1.5 text-right relative">
               <a
                 href="https://eliza.app"
-                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+                className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
                 Get App
               </a>
               <a
                 href="https://elizaos.ai"
-                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+                className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
                 Install OS
               </a>
@@ -50,19 +54,19 @@ export default function Footer() {
             >
               <Link
                 to="/docs"
-                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+                className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
                 Docs
               </Link>
               <a
                 href="/privacy-policy"
-                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+                className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
                 Privacy
               </a>
               <a
                 href="/terms-of-service"
-                className="text-base text-white transition-colors hover:text-[#FF8A24]"
+                className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
                 Terms
               </a>
@@ -73,7 +77,7 @@ export default function Footer() {
                 href="https://github.com/elizaos"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white transition-colors hover:text-[#FF8A24]"
+                className="text-white transition-colors hover:text-[#FF5800]"
                 aria-label="GitHub"
               >
                 <span className="sr-only">GitHub</span>
@@ -94,7 +98,7 @@ export default function Footer() {
                 href="https://discord.gg/mPsBnEXJuA"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white transition-colors hover:text-[#FF8A24]"
+                className="text-white transition-colors hover:text-[#FF5800]"
                 aria-label="Discord"
               >
                 <span className="sr-only">Discord</span>
@@ -111,7 +115,7 @@ export default function Footer() {
                 href="https://x.com/elizaos"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white transition-colors hover:text-[#FF8A24]"
+                className="text-white transition-colors hover:text-[#FF5800]"
                 aria-label="X (Twitter)"
               >
                 <span className="sr-only">X</span>

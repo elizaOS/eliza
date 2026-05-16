@@ -19,6 +19,8 @@ export {
   setActiveBackground,
 } from "./registry";
 export { createSlowCloudsBackground } from "./slow-clouds";
+export type { CloudVideoBackgroundProps } from "./CloudVideoBackground";
+export { CloudVideoBackground } from "./CloudVideoBackground";
 export type {
   BackgroundHandle,
   BackgroundKind,

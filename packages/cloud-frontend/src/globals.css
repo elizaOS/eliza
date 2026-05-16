@@ -3,6 +3,11 @@
  * CSS custom properties (--font-dm-mono, --font-inter, --font-open-sans)
  * match what we apply on the `<body>` via RootLayout className.
  */
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource/poppins/800.css";
 @import "@fontsource-variable/open-sans";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
@@ -28,7 +33,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-open-sans: "Poppins", "Open Sans", Arial, system-ui, sans-serif;
   --font-dm-mono: var(--font-open-sans);
   --font-inter: var(--font-open-sans);
   --font-roboto-mono: var(--font-open-sans);
