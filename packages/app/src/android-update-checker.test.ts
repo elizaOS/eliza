@@ -150,7 +150,7 @@ describe("AndroidUpdateChecker.check()", () => {
     // Set last check to 1 hour ago
     localStorage.setItem(
       "elizaos_android_update_last_check",
-      String(Date.now() - 60 * 60 * 1000)
+      String(Date.now() - 60 * 60 * 1000),
     );
 
     global.fetch = vi.fn();
@@ -174,6 +174,9 @@ describe("AndroidUpdateChecker.check()", () => {
 
     await AndroidUpdateChecker.check("stable");
 
-    expect(global.fetch).toHaveBeenCalledWith(STABLE_MANIFEST_URL, expect.any(Object));
+    expect(global.fetch).toHaveBeenCalledWith(
+      STABLE_MANIFEST_URL,
+      expect.any(Object),
+    );
   });
 });

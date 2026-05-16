@@ -209,6 +209,12 @@ function HardwareTiles() {
 function Header({ solid = false }: { solid?: boolean }) {
   return (
     <header className={solid ? "site-header site-header-solid" : "site-header"}>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[color:var(--brand-orange)]"
+      >
+        Skip to content
+      </a>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
           src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
@@ -244,7 +250,7 @@ function ProductDetail({ product }: { product: Product }) {
   return (
     <div className="os-shell">
       <Header solid />
-      <main>
+      <main id="main">
         <section className="band band-blue product-detail-hero">
           <div className="band-inner detail-grid">
             <div>
@@ -289,7 +295,7 @@ function CheckoutResult({
   return (
     <div className="os-shell">
       <Header solid />
-      <main>
+      <main id="main">
         <section className="band band-blue checkout-result">
           <div className="band-inner">
             <h1>{success ? "Pre-order received." : "Checkout canceled."}</h1>
@@ -435,7 +441,7 @@ function CheckoutPage() {
   return (
     <div className="os-shell">
       <Header solid />
-      <main>
+      <main id="main">
         <section className="band band-blue checkout-hero">
           <div className="band-inner checkout-grid">
             <div className="checkout-copy">
@@ -565,7 +571,7 @@ function HomePage() {
   return (
     <div className="os-shell">
       <Header />
-      <main>
+      <main id="main">
         <section className="band band-blue hero-os">
           <div className="band-inner hero-os-inner">
             <img

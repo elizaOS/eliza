@@ -56,7 +56,7 @@ export const AndroidUpdateChecker = {
   },
 
   async check(
-    channel: "stable" | "beta" = "stable"
+    channel: "stable" | "beta" = "stable",
   ): Promise<UpdateCheckResult | null> {
     try {
       const isSideload = await AndroidUpdateChecker.isAndroidSideload();
@@ -82,7 +82,7 @@ export const AndroidUpdateChecker = {
         });
         if (!response.ok) {
           console.warn(
-            `[AndroidUpdateChecker] Manifest fetch failed: ${response.status}`
+            `[AndroidUpdateChecker] Manifest fetch failed: ${response.status}`,
           );
           return null;
         }
@@ -101,7 +101,7 @@ export const AndroidUpdateChecker = {
         currentVersion = appInfo.version;
       } catch {
         console.warn(
-          "[AndroidUpdateChecker] Could not read app info via @capacitor/app"
+          "[AndroidUpdateChecker] Could not read app info via @capacitor/app",
         );
         return null;
       }
@@ -119,14 +119,14 @@ export const AndroidUpdateChecker = {
   },
 
   async promptIfUpdateAvailable(
-    channel: "stable" | "beta" = "stable"
+    channel: "stable" | "beta" = "stable",
   ): Promise<boolean> {
     const result = await AndroidUpdateChecker.check(channel);
     if (!result?.updateAvailable) {
       return false;
     }
     const confirmed = window.confirm(
-      `elizaOS v${result.manifest.latestVersion} is available. Download and install now?`
+      `elizaOS v${result.manifest.latestVersion} is available. Download and install now?`,
     );
     if (confirmed) {
       await AndroidUpdateChecker.openDownloadPage(result.manifest);

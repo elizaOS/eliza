@@ -525,6 +525,18 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/cloud-e2e": {
+      "name": "@elizaos/cloud-e2e",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/cloud-test-mocks": "workspace:*",
+      },
+      "devDependencies": {
+        "@playwright/test": "^1.59.1",
+        "@types/node": "^22.0.0",
+        "typescript": "^5.5.0",
+      },
+    },
     "packages/cloud-frontend": {
       "name": "@elizaos/cloud-frontend",
       "version": "0.1.0",
@@ -1654,330 +1666,6 @@
       "name": "@elizaos/ios-native-deps",
       "version": "0.1.0",
     },
-    "packages/native-plugins/activity-tracker": {
-      "name": "@elizaos/native-activity-tracker",
-      "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/native-plugins/agent": {
-      "name": "@elizaos/capacitor-agent",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/appblocker": {
-      "name": "@elizaos/capacitor-appblocker",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/bun-runtime": {
-      "name": "@elizaos/capacitor-bun-runtime",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.17",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/calendar": {
-      "name": "@elizaos/capacitor-calendar",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/camera": {
-      "name": "@elizaos/capacitor-camera",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/canvas": {
-      "name": "@elizaos/capacitor-canvas",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/contacts": {
-      "name": "@elizaos/capacitor-contacts",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/desktop": {
-      "name": "@elizaos/capacitor-desktop",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/eliza-tasks": {
-      "name": "@elizaos/capacitor-eliza-tasks",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.17",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/gateway": {
-      "name": "@elizaos/capacitor-gateway",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
-        "@capacitor/core": "^8.3.1",
-        "@capacitor/docgen": "^0.3.0",
-        "rollup": "^4.60.2",
-        "swiftlint": "^2.0.0",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/llama": {
-      "name": "@elizaos/capacitor-llama",
-      "version": "2.0.0-beta.2",
-      "dependencies": {
-        "llama-cpp-capacitor": "^0.1.5",
-      },
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.17",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/location": {
-      "name": "@elizaos/capacitor-location",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@capacitor/docgen": "^0.3.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/macosalarm": {
-      "name": "@elizaos/macosalarm",
-      "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^24.0.0",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-    },
-    "packages/native-plugins/messages": {
-      "name": "@elizaos/capacitor-messages",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/mobile-agent-bridge": {
-      "name": "@elizaos/capacitor-mobile-agent-bridge",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@biomejs/biome": "^2.4.14",
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/mobile-signals": {
-      "name": "@elizaos/capacitor-mobile-signals",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.17",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/network-policy": {
-      "name": "@elizaos/capacitor-network-policy",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/phone": {
-      "name": "@elizaos/capacitor-phone",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/screencapture": {
-      "name": "@elizaos/capacitor-screencapture",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/shared-types": {
-      "name": "@elizaos/native-plugin-shared-types",
-      "version": "2.0.0-beta.2",
-    },
-    "packages/native-plugins/swabble": {
-      "name": "@elizaos/capacitor-swabble",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@elizaos/native-plugin-shared-types": "workspace:*",
-        "@rollup/plugin-node-resolve": "^16.0.0",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/system": {
-      "name": "@elizaos/capacitor-system",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/talkmode": {
-      "name": "@elizaos/capacitor-talkmode",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "@capacitor/docgen": "^0.3.0",
-        "@elizaos/native-plugin-shared-types": "workspace:*",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/websiteblocker": {
-      "name": "@elizaos/capacitor-websiteblocker",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
-    "packages/native-plugins/wifi": {
-      "name": "@elizaos/capacitor-wifi",
-      "version": "2.0.0-beta.2",
-      "devDependencies": {
-        "@capacitor/core": "^8.3.1",
-        "rollup": "^4.60.2",
-        "typescript": "^6.0.3",
-      },
-      "peerDependencies": {
-        "@capacitor/core": "^8.3.1",
-      },
-    },
     "packages/os": {
       "name": "@elizaos/distro-os",
       "version": "2.0.0-beta.2",
@@ -2115,6 +1803,7 @@
       "name": "@elizaos/ui",
       "version": "2.0.0-beta.2",
       "dependencies": {
+        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
@@ -3373,6 +3062,330 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
+      },
+    },
+    "plugins/plugin-native-activity-tracker": {
+      "name": "@elizaos/native-activity-tracker",
+      "version": "2.0.0-beta.2",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^6.0.3",
+      },
+    },
+    "plugins/plugin-native-agent": {
+      "name": "@elizaos/capacitor-agent",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-appblocker": {
+      "name": "@elizaos/capacitor-appblocker",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-bun-runtime": {
+      "name": "@elizaos/capacitor-bun-runtime",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-calendar": {
+      "name": "@elizaos/capacitor-calendar",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-camera": {
+      "name": "@elizaos/capacitor-camera",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-canvas": {
+      "name": "@elizaos/capacitor-canvas",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-contacts": {
+      "name": "@elizaos/capacitor-contacts",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-desktop": {
+      "name": "@elizaos/capacitor-desktop",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-eliza-tasks": {
+      "name": "@elizaos/capacitor-eliza-tasks",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-gateway": {
+      "name": "@elizaos/capacitor-gateway",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@capacitor/core": "^8.3.1",
+        "@capacitor/docgen": "^0.3.0",
+        "rollup": "^4.60.2",
+        "swiftlint": "^2.0.0",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-llama": {
+      "name": "@elizaos/capacitor-llama",
+      "version": "2.0.0-beta.2",
+      "dependencies": {
+        "llama-cpp-capacitor": "^0.1.5",
+      },
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-location": {
+      "name": "@elizaos/capacitor-location",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@capacitor/docgen": "^0.3.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-macosalarm": {
+      "name": "@elizaos/macosalarm",
+      "version": "2.0.0-beta.2",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+    },
+    "plugins/plugin-native-messages": {
+      "name": "@elizaos/capacitor-messages",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-mobile-agent-bridge": {
+      "name": "@elizaos/capacitor-mobile-agent-bridge",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-mobile-signals": {
+      "name": "@elizaos/capacitor-mobile-signals",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-network-policy": {
+      "name": "@elizaos/capacitor-network-policy",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-phone": {
+      "name": "@elizaos/capacitor-phone",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-screencapture": {
+      "name": "@elizaos/capacitor-screencapture",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-shared-types": {
+      "name": "@elizaos/native-plugin-shared-types",
+      "version": "2.0.0-beta.2",
+    },
+    "plugins/plugin-native-swabble": {
+      "name": "@elizaos/capacitor-swabble",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@elizaos/native-plugin-shared-types": "workspace:*",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-system": {
+      "name": "@elizaos/capacitor-system",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-talkmode": {
+      "name": "@elizaos/capacitor-talkmode",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "@capacitor/docgen": "^0.3.0",
+        "@elizaos/native-plugin-shared-types": "workspace:*",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-websiteblocker": {
+      "name": "@elizaos/capacitor-websiteblocker",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "plugins/plugin-native-wifi": {
+      "name": "@elizaos/capacitor-wifi",
+      "version": "2.0.0-beta.2",
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
       },
     },
     "plugins/plugin-ngrok": {
@@ -4778,53 +4791,55 @@
 
     "@elizaos/bun-ios-runtime": ["@elizaos/bun-ios-runtime@workspace:packages/bun-ios-runtime"],
 
-    "@elizaos/capacitor-agent": ["@elizaos/capacitor-agent@workspace:packages/native-plugins/agent"],
+    "@elizaos/capacitor-agent": ["@elizaos/capacitor-agent@workspace:plugins/plugin-native-agent"],
 
-    "@elizaos/capacitor-appblocker": ["@elizaos/capacitor-appblocker@workspace:packages/native-plugins/appblocker"],
+    "@elizaos/capacitor-appblocker": ["@elizaos/capacitor-appblocker@workspace:plugins/plugin-native-appblocker"],
 
-    "@elizaos/capacitor-bun-runtime": ["@elizaos/capacitor-bun-runtime@workspace:packages/native-plugins/bun-runtime"],
+    "@elizaos/capacitor-bun-runtime": ["@elizaos/capacitor-bun-runtime@workspace:plugins/plugin-native-bun-runtime"],
 
-    "@elizaos/capacitor-calendar": ["@elizaos/capacitor-calendar@workspace:packages/native-plugins/calendar"],
+    "@elizaos/capacitor-calendar": ["@elizaos/capacitor-calendar@workspace:plugins/plugin-native-calendar"],
 
-    "@elizaos/capacitor-camera": ["@elizaos/capacitor-camera@workspace:packages/native-plugins/camera"],
+    "@elizaos/capacitor-camera": ["@elizaos/capacitor-camera@workspace:plugins/plugin-native-camera"],
 
-    "@elizaos/capacitor-canvas": ["@elizaos/capacitor-canvas@workspace:packages/native-plugins/canvas"],
+    "@elizaos/capacitor-canvas": ["@elizaos/capacitor-canvas@workspace:plugins/plugin-native-canvas"],
 
-    "@elizaos/capacitor-contacts": ["@elizaos/capacitor-contacts@workspace:packages/native-plugins/contacts"],
+    "@elizaos/capacitor-contacts": ["@elizaos/capacitor-contacts@workspace:plugins/plugin-native-contacts"],
 
-    "@elizaos/capacitor-desktop": ["@elizaos/capacitor-desktop@workspace:packages/native-plugins/desktop"],
+    "@elizaos/capacitor-desktop": ["@elizaos/capacitor-desktop@workspace:plugins/plugin-native-desktop"],
 
-    "@elizaos/capacitor-eliza-tasks": ["@elizaos/capacitor-eliza-tasks@workspace:packages/native-plugins/eliza-tasks"],
+    "@elizaos/capacitor-eliza-tasks": ["@elizaos/capacitor-eliza-tasks@workspace:plugins/plugin-native-eliza-tasks"],
 
-    "@elizaos/capacitor-gateway": ["@elizaos/capacitor-gateway@workspace:packages/native-plugins/gateway"],
+    "@elizaos/capacitor-gateway": ["@elizaos/capacitor-gateway@workspace:plugins/plugin-native-gateway"],
 
-    "@elizaos/capacitor-llama": ["@elizaos/capacitor-llama@workspace:packages/native-plugins/llama"],
+    "@elizaos/capacitor-llama": ["@elizaos/capacitor-llama@workspace:plugins/plugin-native-llama"],
 
-    "@elizaos/capacitor-location": ["@elizaos/capacitor-location@workspace:packages/native-plugins/location"],
+    "@elizaos/capacitor-location": ["@elizaos/capacitor-location@workspace:plugins/plugin-native-location"],
 
-    "@elizaos/capacitor-messages": ["@elizaos/capacitor-messages@workspace:packages/native-plugins/messages"],
+    "@elizaos/capacitor-messages": ["@elizaos/capacitor-messages@workspace:plugins/plugin-native-messages"],
 
-    "@elizaos/capacitor-mobile-agent-bridge": ["@elizaos/capacitor-mobile-agent-bridge@workspace:packages/native-plugins/mobile-agent-bridge"],
+    "@elizaos/capacitor-mobile-agent-bridge": ["@elizaos/capacitor-mobile-agent-bridge@workspace:plugins/plugin-native-mobile-agent-bridge"],
 
-    "@elizaos/capacitor-mobile-signals": ["@elizaos/capacitor-mobile-signals@workspace:packages/native-plugins/mobile-signals"],
+    "@elizaos/capacitor-mobile-signals": ["@elizaos/capacitor-mobile-signals@workspace:plugins/plugin-native-mobile-signals"],
 
-    "@elizaos/capacitor-network-policy": ["@elizaos/capacitor-network-policy@workspace:packages/native-plugins/network-policy"],
+    "@elizaos/capacitor-network-policy": ["@elizaos/capacitor-network-policy@workspace:plugins/plugin-native-network-policy"],
 
-    "@elizaos/capacitor-phone": ["@elizaos/capacitor-phone@workspace:packages/native-plugins/phone"],
+    "@elizaos/capacitor-phone": ["@elizaos/capacitor-phone@workspace:plugins/plugin-native-phone"],
 
-    "@elizaos/capacitor-screencapture": ["@elizaos/capacitor-screencapture@workspace:packages/native-plugins/screencapture"],
+    "@elizaos/capacitor-screencapture": ["@elizaos/capacitor-screencapture@workspace:plugins/plugin-native-screencapture"],
 
-    "@elizaos/capacitor-swabble": ["@elizaos/capacitor-swabble@workspace:packages/native-plugins/swabble"],
+    "@elizaos/capacitor-swabble": ["@elizaos/capacitor-swabble@workspace:plugins/plugin-native-swabble"],
 
-    "@elizaos/capacitor-system": ["@elizaos/capacitor-system@workspace:packages/native-plugins/system"],
+    "@elizaos/capacitor-system": ["@elizaos/capacitor-system@workspace:plugins/plugin-native-system"],
 
-    "@elizaos/capacitor-talkmode": ["@elizaos/capacitor-talkmode@workspace:packages/native-plugins/talkmode"],
+    "@elizaos/capacitor-talkmode": ["@elizaos/capacitor-talkmode@workspace:plugins/plugin-native-talkmode"],
 
-    "@elizaos/capacitor-websiteblocker": ["@elizaos/capacitor-websiteblocker@workspace:packages/native-plugins/websiteblocker"],
+    "@elizaos/capacitor-websiteblocker": ["@elizaos/capacitor-websiteblocker@workspace:plugins/plugin-native-websiteblocker"],
 
-    "@elizaos/capacitor-wifi": ["@elizaos/capacitor-wifi@workspace:packages/native-plugins/wifi"],
+    "@elizaos/capacitor-wifi": ["@elizaos/capacitor-wifi@workspace:plugins/plugin-native-wifi"],
 
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud-api"],
+
+    "@elizaos/cloud-e2e": ["@elizaos/cloud-e2e@workspace:packages/cloud-e2e"],
 
     "@elizaos/cloud-frontend": ["@elizaos/cloud-frontend@workspace:packages/cloud-frontend"],
 
@@ -4928,11 +4943,11 @@
 
     "@elizaos/ios-native-deps": ["@elizaos/ios-native-deps@workspace:packages/ios-native-deps"],
 
-    "@elizaos/macosalarm": ["@elizaos/macosalarm@workspace:packages/native-plugins/macosalarm"],
+    "@elizaos/macosalarm": ["@elizaos/macosalarm@workspace:plugins/plugin-native-macosalarm"],
 
-    "@elizaos/native-activity-tracker": ["@elizaos/native-activity-tracker@workspace:packages/native-plugins/activity-tracker"],
+    "@elizaos/native-activity-tracker": ["@elizaos/native-activity-tracker@workspace:plugins/plugin-native-activity-tracker"],
 
-    "@elizaos/native-plugin-shared-types": ["@elizaos/native-plugin-shared-types@workspace:packages/native-plugins/shared-types"],
+    "@elizaos/native-plugin-shared-types": ["@elizaos/native-plugin-shared-types@workspace:plugins/plugin-native-shared-types"],
 
     "@elizaos/operator": ["@elizaos/operator@workspace:packages/cloud-services/operator"],
 
@@ -11535,6 +11550,8 @@
     "@electron/get/semver": ["semver@7.8.0", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-AcM7dV/5ul4EekoQ29Agm5vri8JNqRyj39o0qpX6vDF2GZrtutZl5RwgD1XnZjiTAfncsJhMI48QQH3sN87YNA=="],
 
     "@electron/get/undici": ["undici@7.25.0", "", {}, "sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ=="],
+
+    "@elizaos/cloud-e2e/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@elizaos/cloud-frontend/lucide-react": ["lucide-react@0.577.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-4LjoFv2eEPwYDPg/CUdBJQSDfPyzXCRrVW1X7jrx/trgxnxkHFjnVZINbzvzxjN70dxychOfg+FTYwBiS3pQ5A=="],
 

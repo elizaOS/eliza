@@ -185,7 +185,6 @@ export { VoicePill } from "./components/voice-pill";
 export type {
   VoicePillMessage,
   VoicePillProps,
-  VoicePillVoiceState,
 } from "./components/voice-pill";
 export { Switch } from "./components/ui/switch";
 export {

@@ -43,7 +43,7 @@ export const AndroidUpdateChecker = {
   },
 
   async check(
-    channel: "stable" | "beta" = "stable"
+    channel: "stable" | "beta" = "stable",
   ): Promise<UpdateCheckResult | null> {
     try {
       const isSideload = await AndroidUpdateChecker.isAndroidSideload();
@@ -57,7 +57,9 @@ export const AndroidUpdateChecker = {
 
       const manifestUrl = MANIFEST_URLS[channel];
       if (!manifestUrl) {
-        console.warn(`[AndroidUpdateChecker] No manifest URL for channel: ${channel}`);
+        console.warn(
+          `[AndroidUpdateChecker] No manifest URL for channel: ${channel}`,
+        );
         return null;
       }
 
@@ -66,10 +68,12 @@ export const AndroidUpdateChecker = {
 
       let manifest: UpdateManifest;
       try {
-        const response = await fetch(manifestUrl, { signal: controller.signal });
+        const response = await fetch(manifestUrl, {
+          signal: controller.signal,
+        });
         if (!response.ok) {
           console.warn(
-            `[AndroidUpdateChecker] Manifest fetch failed: ${response.status} ${response.statusText}`
+            `[AndroidUpdateChecker] Manifest fetch failed: ${response.status} ${response.statusText}`,
           );
           return null;
         }
@@ -93,7 +97,9 @@ export const AndroidUpdateChecker = {
     }
   },
 
-  async promptIfUpdateAvailable(channel: "stable" | "beta" = "stable"): Promise<boolean> {
+  async promptIfUpdateAvailable(
+    channel: "stable" | "beta" = "stable",
+  ): Promise<boolean> {
     const result = await AndroidUpdateChecker.check(channel);
     if (!result?.updateAvailable) return false;
 

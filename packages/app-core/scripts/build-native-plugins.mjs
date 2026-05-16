@@ -64,8 +64,14 @@ export function shouldBuildPluginForHost(pkg, hostPlatform) {
   return true;
 }
 
+const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
+
+function pluginDirFor(pluginsDir, name) {
+  return path.join(pluginsDir, `${NATIVE_PLUGIN_DIR_PREFIX}${name}`);
+}
+
 function readPluginPackageJson(pluginsDir, name) {
-  const pkgPath = path.join(pluginsDir, name, "package.json");
+  const pkgPath = path.join(pluginDirFor(pluginsDir, name), "package.json");
   const raw = fs.readFileSync(pkgPath, "utf8");
   try {
     return JSON.parse(raw);
@@ -145,7 +151,7 @@ async function main() {
   await Promise.all(
     buildablePluginNames.map(async (name) => {
       logVerbose(`[plugin:${name}] building...`);
-      await run("bun", ["run", "build"], path.join(pluginsDir, name));
+      await run("bun", ["run", "build"], pluginDirFor(pluginsDir, name));
       logVerbose(`[plugin:${name}] done`);
     }),
   );

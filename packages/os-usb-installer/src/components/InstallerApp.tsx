@@ -327,7 +327,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   // ---------------------------------------------------------------------------
 
   return (
-    <main className="installer-shell">
+    <main id="main" className="installer-shell">
       {/* ------------------------------------------------------------------ */}
       {/* Header                                                              */}
       {/* ------------------------------------------------------------------ */}
