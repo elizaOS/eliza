@@ -21,6 +21,8 @@
     "build.ts",
     "dist",
     "node_modules",
+    "vendor",
+    "vendor/**",
     "src/test-utils/**",
     "**/__tests__/**",
     "**/*.test.ts",

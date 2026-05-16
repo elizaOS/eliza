@@ -309,9 +309,10 @@ describe("elizaHarnessSchemaFromSkeleton + guided decode wiring", () => {
 			4,
 			false,
 		);
-		// Grammar present (lazy, since the skeleton opens with a literal).
+		// Grammar present; the opening literal is stripped into assistant prefill,
+		// so the runtime no longer needs lazy grammar mode here.
 		expect(typeof body.grammar).toBe("string");
-		expect(body.grammar_lazy).toBe(true);
+		expect(body.grammar_lazy).toBeUndefined();
 		// Prefill plan present.
 		const plan = body.eliza_prefill_plan as
 			| {
