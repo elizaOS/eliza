@@ -9,9 +9,9 @@
  * stack stays green.
  */
 
+import { expect, test } from "@playwright/test";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
-import { expect, test } from "@playwright/test";
 
 const apiBaseUrl =
   process.env.TEST_API_BASE_URL?.trim() ||
@@ -155,7 +155,8 @@ test.describe("SIWS (Solana) wallet flow", () => {
   });
 
   test("issues an API key for a fresh Solana keypair", async () => {
-    const { apiKey, address, organizationId } = await signInWithFreshSolanaKey();
+    const { apiKey, address, organizationId } =
+      await signInWithFreshSolanaKey();
     expect(apiKey).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$|^eliza/);
     expect(address).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
     expect(organizationId).toBeTruthy();

@@ -135,51 +135,12 @@ img {
   margin: 0 auto;
 }
 
-.hero-cloud {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-height: 100vh;
-  padding-top: clamp(7rem, 10vw, 10rem);
-  padding-bottom: clamp(2rem, 5vw, 4.5rem);
-  color: var(--brand-black);
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.cloud-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: -2;
-  pointer-events: none;
-}
-
-.cloud-scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.1);
-  z-index: -1;
-  pointer-events: none;
-}
-
-.hero-cloud-inner {
-  max-width: 50rem;
-}
-
 .hero-mark {
   display: block;
   width: clamp(3.25rem, 5vw, 4.5rem);
   height: auto;
   margin-bottom: 1.25rem;
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.18));
-}
-
-.hero-cloud h1,
-.hero-cloud .hero-copy {
-  color: var(--brand-black);
 }
 
 .hero-os {
