@@ -1,6 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
+import { rmSync } from "node:fs";
+import { createConnection } from "node:net";
 import { dirname, join, relative } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -14,10 +17,19 @@ const baseUrl =
   process.env.TEST_API_BASE_URL ||
   process.env.TEST_BASE_URL ||
   `http://localhost:${apiPort}`;
+const configuredDatabaseUrl =
+  process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || "";
+const pglitePort = process.env.TEST_PGLITE_PORT || "55433";
+const pgliteHost = process.env.PGLITE_HOST || "127.0.0.1";
+const pgliteDataDir =
+  process.env.TEST_PGLITE_DATA_DIR || ".eliza/.pgdata-cloud-api-e2e";
+const pgliteMaxConnections =
+  process.env.TEST_PGLITE_MAX_CONNECTIONS ||
+  process.env.PGLITE_MAX_CONNECTIONS ||
+  "16";
 const databaseUrl =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://eliza_test:test123@localhost:5432/eliza_test";
+  configuredDatabaseUrl ||
+  `postgresql://postgres@${pgliteHost}:${pglitePort}/postgres`;
 const e2eEnv = {
   ...process.env,
   API_DEV_PORT: apiPort,
@@ -61,6 +73,93 @@ async function waitForHealth(processRef) {
   throw new Error(`[api-e2e] timed out waiting for ${baseUrl}/api/health`);
 }
 
+function parsePGliteDataDir(url) {
+  if (!url?.startsWith("pglite://")) return null;
+  const dataDir = url.slice("pglite://".length);
+  if (!dataDir || dataDir === "memory") return null;
+  return dataDir;
+}
+
+async function tcpOk(host, port) {
+  return new Promise((resolveOk) => {
+    const socket = createConnection({ host, port: Number(port) });
+    socket.setTimeout(1_000);
+    socket.once("connect", () => {
+      socket.end();
+      resolveOk(true);
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolveOk(false);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolveOk(false);
+    });
+  });
+}
+
+async function waitForTcp(processRef, host, port) {
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    if (await tcpOk(host, port)) return;
+    if (processRef.exitCode !== null) {
+      throw new Error(
+        `[api-e2e] PGlite TCP server exited before becoming reachable (code ${processRef.exitCode})`,
+      );
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+  }
+  throw new Error(
+    `[api-e2e] timed out waiting for PGlite TCP server at ${host}:${port}`,
+  );
+}
+
+async function ensurePGliteBridge() {
+  const usingPGliteBridge =
+    !configuredDatabaseUrl || configuredDatabaseUrl.startsWith("pglite://");
+  if (!usingPGliteBridge) return null;
+
+  const dataDir = parsePGliteDataDir(configuredDatabaseUrl) || pgliteDataDir;
+  const shouldResetDefaultPGlite =
+    !configuredDatabaseUrl &&
+    process.env.TEST_PGLITE_PERSIST !== "1" &&
+    Boolean(dataDir);
+  const alreadyRunning = await tcpOk(pgliteHost, pglitePort);
+
+  if (shouldResetDefaultPGlite) {
+    if (alreadyRunning) {
+      throw new Error(
+        `[api-e2e] default PGlite server is already running at ${pgliteHost}:${pglitePort}; stop it before running isolated tests, or set TEST_PGLITE_PERSIST=1 to reuse it.`,
+      );
+    }
+    rmSync(resolve(repoRoot, dataDir), { recursive: true, force: true });
+  }
+
+  if (alreadyRunning) return null;
+
+  console.log(
+    `[api-e2e] START PGlite TCP server at ${pgliteHost}:${pglitePort}`,
+  );
+  const child = spawn(
+    bun,
+    ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
+    {
+      cwd: repoRoot,
+      stdio: ["ignore", "inherit", "inherit"],
+      env: {
+        ...e2eEnv,
+        PGLITE_HOST: pgliteHost,
+        PGLITE_PORT: pglitePort,
+        PGLITE_MAX_CONNECTIONS: pgliteMaxConnections,
+        ...(dataDir ? { PGLITE_DATA_DIR: dataDir } : {}),
+      },
+    },
+  );
+  await waitForTcp(child, pgliteHost, pglitePort);
+  return child;
+}
+
 async function ensureServer() {
   if (process.env.REQUIRE_E2E_SERVER === "0") return null;
   if (await isHealthy()) return null;
@@ -102,6 +201,7 @@ const testFiles = readdirSync(testDir)
   .sort()
   .map((name) => relative(appRoot, join(testDir, name)));
 
+const pgliteServer = await ensurePGliteBridge();
 ensureDatabase();
 const server = await ensureServer();
 try {
@@ -138,4 +238,5 @@ try {
   }
 } finally {
   stopServer(server);
+  stopServer(pgliteServer);
 }
