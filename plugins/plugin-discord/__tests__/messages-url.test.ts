@@ -6,7 +6,11 @@ import {
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hasActiveTaskAgentWorkForMessage, MessageManager } from "../messages";
+import {
+	hasActiveTaskAgentWorkForMessage,
+	MessageManager,
+	shouldSuppressTimeoutForInFlightDispatchForTests,
+} from "../messages";
 
 function runtime(): IAgentRuntime {
 	return {
@@ -197,5 +201,30 @@ describe("hasActiveTaskAgentWorkForMessage", () => {
 		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
 			false,
 		);
+	});
+});
+
+describe("shouldSuppressTimeoutForInFlightDispatchForTests", () => {
+	it("suppresses only timeout handling that loses to an in-flight response dispatch", () => {
+		expect(
+			shouldSuppressTimeoutForInFlightDispatchForTests({
+				generationTimedOut: true,
+				responseDispatchInFlight: true,
+			}),
+		).toBe(true);
+
+		expect(
+			shouldSuppressTimeoutForInFlightDispatchForTests({
+				generationTimedOut: false,
+				responseDispatchInFlight: true,
+			}),
+		).toBe(false);
+
+		expect(
+			shouldSuppressTimeoutForInFlightDispatchForTests({
+				generationTimedOut: true,
+				responseDispatchInFlight: false,
+			}),
+		).toBe(false);
 	});
 });

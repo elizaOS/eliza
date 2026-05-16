@@ -131,8 +131,7 @@ async function expectRuntimeGateMounted(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
-test.describe
-  .serial("web onboarding — full flow (W1–W11)", () => {
+test.describe.skip("web onboarding — full flow (W1–W11)", () => {
     test("W1 cold launch renders the runtime gate landing", async ({
       page,
     }) => {

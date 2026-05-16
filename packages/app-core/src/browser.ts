@@ -1,5 +1,5 @@
-export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export * from "@elizaos/ui";
+export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 
 export type CompatRuntimeState = {
   current: unknown;

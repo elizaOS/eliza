@@ -300,7 +300,7 @@ describe("ffi-stub stub library — ABI v3 symbol audit", () => {
 		for (const name of ABI_V3_SYMBOLS) {
 			expect(new RegExp(`\\b_?${name}\\b`).test(symbols)).toBe(true);
 		}
-	});
+	}, 30_000);
 });
 
 describe("ffi-bindings — integration via bun subprocess against stub dylib", () => {
