@@ -208,6 +208,71 @@ def test_compare_vs_random_fails_when_below_min_lift(tmp_path: Path) -> None:
     assert "FAIL" in out
 
 
+def test_compare_vs_random_ignores_newer_scoreless_success(tmp_path: Path) -> None:
+    _seed_db(
+        workspace_root=tmp_path,
+        benchmark_id="bfcl",
+        agent_score=0.8,
+        random_score=0.4,
+    )
+    db_path = tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
+    conn = connect_database(db_path)
+    insert_run_start(
+        conn,
+        run_id="run_agent_scoreless",
+        run_group_id="rg_test",
+        benchmark_id="bfcl",
+        benchmark_directory="bfcl",
+        signature="sig-run_agent_scoreless",
+        attempt=2,
+        agent="eliza",
+        provider="test",
+        model="test-model",
+        extra_config={},
+        started_at="2026-05-11T00:01:00+00:00",
+        command=[],
+        cwd=str(tmp_path),
+        stdout_path="",
+        stderr_path="",
+        benchmark_version=None,
+        benchmarks_commit=None,
+        eliza_commit=None,
+        eliza_version=None,
+    )
+    update_run_result(
+        conn,
+        run_id="run_agent_scoreless",
+        status="succeeded",
+        ended_at="2026-05-11T00:01:01+00:00",
+        duration_seconds=1.0,
+        score=None,
+        unit=None,
+        higher_is_better=None,
+        metrics={"reason": "empty_result"},
+        result_json_path=None,
+        artifacts=[],
+        error=None,
+        high_score_label=None,
+        high_score_value=None,
+        delta_to_high_score=None,
+    )
+    conn.close()
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = run_compare_vs_random(
+            workspace_root=tmp_path,
+            agents=["eliza"],
+            benchmarks=["bfcl"],
+            min_lift=1.5,
+        )
+
+    assert rc == 0
+    out = buf.getvalue()
+    assert "run_agent_scoreless" not in out
+    assert "2.00x" in out
+
+
 def test_compare_vs_random_skips_threshold_when_baseline_missing(
     tmp_path: Path,
 ) -> None:

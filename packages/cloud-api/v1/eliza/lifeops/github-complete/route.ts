@@ -116,5 +116,3 @@ app.get("/", async (c) => {
 });
 
 export default app;
-
-export { __hono_GET as GET };

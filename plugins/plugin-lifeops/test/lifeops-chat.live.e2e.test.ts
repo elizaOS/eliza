@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { describeIf } from "../../../test/helpers/conditional-tests.ts";
-import { createConversation, req } from "../../../test/helpers/http";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
+import { createConversation, req } from "../../../packages/test/helpers/http";
 import {
   assertNoProviderIssue,
   getLifeOpsLiveSetupWarnings,

@@ -1,5 +1,12 @@
 # Eliza-1 context-length scaling: how far can we push the window on real machines?
 
+> 2026-05-15 audit note: the small-tier 32k recommendation in this memo is
+> superseded by the current staging contract. The audited 0.8B GGUF declares
+> `qwen35.context_length = 262144`; release validation still blocks artifacts
+> published under misleading `32k`/`64k` text paths, while the catalog/platform
+> plan use a 128k release floor for non-`27b-256k` tiers unless a distinct
+> 256k catalog tier is introduced.
+
 This is the analysis behind the per-tier `contextLength` in `catalog.ts`, the
 `dflash.{contextSize,draftContextSize}` knobs in `runtimeFor()`, and the
 RAM-budget / spill plumbing in `ram-budget.ts` + `kv-spill.ts`. It answers one
@@ -196,7 +203,7 @@ using `qjl+polarq4` as the assumed layout, not f16.
 ### RESOLVED — `eliza-1-4b` is in `catalog.ts`
 
 `model_registry.py` has a real, buildable `qwen3.5-4b` → `eliza-1-4b` entry; the
-catalog now includes the 4B tier at `elizaos/eliza-1/bundles/4b`. The 4B fits
+catalog now includes the 4B tier at `elizalabs/eliza-1/bundles/4b`. The 4B fits
 an 8 GB phone when the compressed cache path is available (compressed cache,
 ~155k ceiling, though the base model caps at 40960) and is a strong 16 GB-GPU
 default (~436k KV ceiling, ~90k even at f16).

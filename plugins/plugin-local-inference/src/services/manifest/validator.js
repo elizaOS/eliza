@@ -137,7 +137,7 @@ export function isStrictReleaseManifest(manifest) {
 // honours the release-state vocabulary instead of applying the auto-default
 // bar to every manifest).
 const STRICT_RELEASE_STATES = new Set(["base-v1", "finetuned-v2", "final"]);
-const DFLASH_TIERS = new Set(["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]);
+const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k"]);
 const VISION_TIERS = new Set(["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]);
 const MIN_TEXT_CONTEXT = 131072;
 function collectContractErrors(m) {

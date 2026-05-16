@@ -586,17 +586,18 @@ static std::string eliza_asr_force_language() {
 
 static std::string eliza_format_asr_prompt(llama_model * model) {
     (void) model;
-    // Mirrors Qwen3-ASR's chat-template structure: empty system context,
-    // one user audio turn, and a generation prompt. Appending
-    // "language X<asr_text>" follows the upstream text-only forcing path
-    // and avoids returning language metadata or role-token chatter.
-    std::string prompt = std::string("<|im_start|>system\\n<|im_end|>\\n<|im_start|>user\\n") +
+    // Match llama-mtmd-cli's Qwen3-ASR path: one user turn with audio first,
+    // a plain transcription instruction, then the assistant generation prompt.
+    // Forcing "language X<asr_text>" before decode makes the 0.6B ASR emit EOG
+    // too early on short mobile-loopback clips.
+    std::string prompt = std::string("<|im_start|>user\\n") +
         mtmd_default_marker() +
-        "<|im_end|>\\n<|im_start|>assistant\\n";
+        "Transcribe audio to text";
     std::string language = eliza_asr_force_language();
     if (!language.empty()) {
-        prompt += "language " + language + "<asr_text>";
+        prompt += " in " + language;
     }
+    prompt += "<|im_end|>\\n<|im_start|>assistant\\n";
     return prompt;
 }
 
@@ -1087,13 +1088,10 @@ int eliza_inference_asr_transcribe(
             transcript += piece;
             std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
             if (eliza_asr_has_text_payload(cleaned_partial)) {
-                const char last = cleaned_partial.back();
-                const bool sentence_complete = last == '.' || last == '?' || last == '!';
                 if (piece.find('\\n') != std::string::npos ||
                     transcript.find("<|im_end|>") != std::string::npos ||
                     transcript.find("<|endoftext|>") != std::string::npos ||
-                    transcript.find("</s>") != std::string::npos ||
-                    sentence_complete) {
+                    transcript.find("</s>") != std::string::npos) {
                     completed = true;
                     break;
                 }

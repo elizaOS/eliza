@@ -3,7 +3,7 @@ import type { GalleryItem } from "@/lib/types/gallery";
 import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 
-export type GalleryItemKind = "image" | "video";
+type GalleryItemKind = "image" | "video";
 
 interface GalleryListResponseRaw {
   items: Array<{
@@ -78,24 +78,5 @@ export function useGallery(options?: GalleryListOptions) {
       return data.items.map(mapGalleryItem);
     },
     enabled: gate.enabled,
-  });
-}
-
-export interface GalleryStats {
-  totalImages: number;
-  totalVideos: number;
-  totalSize: number;
-}
-
-/** GET /api/v1/gallery/stats — aggregate counts for the caller. */
-export function useGalleryStats() {
-  const gate = useAuthenticatedQueryGate();
-  return useQuery({
-    queryKey: authenticatedQueryKey(["gallery", "stats"], gate),
-    queryFn: () => api<GalleryStats>("/api/v1/gallery/stats"),
-    enabled: gate.enabled,
-    // Aggregate counts move slowly relative to individual gallery items.
-    // 60s avoids hammering the count endpoint on nav.
-    staleTime: 60 * 1000,
   });
 }

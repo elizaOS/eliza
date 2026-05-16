@@ -28,14 +28,3 @@ export function useVoices() {
     staleTime: VOICE_STALE_MS,
   });
 }
-
-export function useVoice(id: string | undefined) {
-  const gate = useAuthenticatedQueryGate(Boolean(id));
-  return useQuery({
-    queryKey: authenticatedQueryKey(["voice", id], gate),
-    queryFn: () =>
-      api<{ voice: Voice }>(`/api/v1/voice/${id}`).then((r) => r.voice),
-    enabled: gate.enabled,
-    staleTime: VOICE_STALE_MS,
-  });
-}

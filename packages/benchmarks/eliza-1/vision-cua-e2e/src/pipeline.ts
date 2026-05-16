@@ -32,6 +32,18 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type FixtureId, loadFixture } from "./fixtures.ts";
+import { captureRealDisplays } from "./real-capture.ts";
+import {
+  RealDriver,
+  spawnControlledWindow,
+  type ControlledWindowHandle,
+} from "./real-driver.ts";
+import {
+  discoverOcrProvider,
+  type RealOcrProvider,
+} from "./real-ocr.ts";
+import { discoverRuntimeAdapter } from "./real-runtime.ts";
+import { RealVlm } from "./real-vlm.ts";
 import {
   reconstructAbsoluteCoords,
   type ScreenTile,
@@ -213,6 +225,52 @@ function createStubBackends(
     },
     recordedClicks() {
       return driver.recordedClicks().map((c) => ({ target: c.target }));
+    },
+  };
+}
+
+function createRealBackends(
+  vlm: RealVlm,
+  ocr: RealOcrProvider | null,
+  ocrReason: string,
+  driver: RealDriver,
+): PipelineBackends {
+  return {
+    mode: "real",
+    async describe({ tile, displayId }) {
+      return vlm.describe({
+        imageUrl: pngToDataUrl(tile.pngBytes),
+        prompt: JSON.stringify({
+          task: "describe_visual_scene",
+          tile: { id: tile.id, displayId },
+        }),
+      });
+    },
+    async ground({ tile, displayId, target }) {
+      return vlm.ground(
+        { description: target, tileId: tile.id, displayId },
+        { tileWidth: tile.tileW, tileHeight: tile.tileH },
+        pngToDataUrl(tile.pngBytes),
+      );
+    },
+    async ocr({ tile, displayId }) {
+      if (!ocr) throw new Error(ocrReason);
+      return ocr.describe({
+        displayId,
+        sourceX: tile.sourceX,
+        sourceY: tile.sourceY,
+        tileWidth: tile.tileW,
+        tileHeight: tile.tileH,
+        pngBytes: tile.pngBytes,
+      });
+    },
+    async click(target) {
+      await driver.click(target);
+    },
+    recordedClicks() {
+      return driver.recordedClicks().map((c) => ({
+        target: c.remappedTo ?? c.target,
+      }));
     },
   };
 }
@@ -561,12 +619,92 @@ function nowStamp(): string {
  * Until then, calling this throws — the README documents the swap.
  */
 export async function runRealPipeline(
-  _opts: RunRealPipelineOptions,
+  opts: RunRealPipelineOptions,
 ): Promise<RunPipelineResult> {
-  throw new Error(
-    "runRealPipeline: not yet wired. Set ELIZA_VISION_CUA_E2E_REAL=1 only after wiring " +
-      "runtime.useModel(IMAGE_DESCRIPTION) and performDesktopClick — see README.md.",
-  );
+  const target =
+    opts.groundingTarget ?? "the close button on the focused window";
+  const runId = opts.runId ?? `vision-cua-e2e-real-${nowStamp()}`;
+  const startedAt = new Date();
+  const stages: StageRecord[] = [];
+  const failures: string[] = [];
+  const displays: DisplayRunRecord[] = [];
+  let controlledWindow: ControlledWindowHandle | null = null;
+
+  try {
+    const runtimeAdapter = await discoverRuntimeAdapter();
+    const ocrDiscovery = await discoverOcrProvider();
+    const capture = await captureRealDisplays();
+
+    if (!opts.skipControlledWindow && !opts.noopClick) {
+      controlledWindow = await spawnControlledWindow({
+        binary: opts.controlledWindowBinary,
+      });
+    }
+
+    const driver = new RealDriver({
+      controlledWindow,
+      noopOnly: opts.noopClick || opts.skipControlledWindow,
+    });
+    const backends = createRealBackends(
+      new RealVlm(runtimeAdapter),
+      ocrDiscovery.provider,
+      ocrDiscovery.reason,
+      driver,
+    );
+
+    const enumerate = await runStage("enumerate_displays", async () => ({
+      summary: `${capture.captures.length} display(s); capture=${capture.providerInfo.captureName}; vlm=${runtimeAdapter.providerInfo.providerName}; ocr=${ocrDiscovery.reason}`,
+    }));
+    stages.push(enumerate);
+    if (!enumerate.ok) {
+      failures.push(`enumerate_displays: ${enumerate.error ?? "unknown"}`);
+    }
+
+    for (const realCapture of capture.captures) {
+      const displayRecord = await runDisplay({
+        capture: realCapture,
+        backends,
+        groundingTarget: target,
+        maxTileEdge: opts.maxTileEdge ?? 1280,
+      });
+      displays.push(displayRecord.record);
+      stages.push(...displayRecord.stages);
+      failures.push(...displayRecord.failures);
+    }
+
+    const finishedAt = new Date();
+    const trace: PipelineTrace = {
+      run_id: runId,
+      mode: "real",
+      fixture_id: `live:${capture.captures
+        .map((c) => c.display.id)
+        .join(",")}`,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      duration_ms: finishedAt.getTime() - startedAt.getTime(),
+      displays,
+      stages,
+      success:
+        failures.length === 0 && displays.every((d) => d.stateChangeDetected),
+      failures,
+    };
+
+    let reportPath: string | null = null;
+    if (opts.writeReport !== false) {
+      const dir = opts.reportDir ?? REPORT_DIR;
+      mkdirSync(dir, { recursive: true });
+      reportPath = join(dir, `${runId}.json`);
+      writeFileSync(reportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+    }
+
+    const recordedClicks = driver
+      .recordedClicks()
+      .map((click) => click.remappedTo ?? click.target);
+
+    return { trace, reportPath, recordedClicks };
+  } finally {
+    await controlledWindow?.close();
+  }
 }
 
 export const REPORT_DIR_PATH = REPORT_DIR;

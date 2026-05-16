@@ -43,7 +43,7 @@ Usage:
     ELIZA_VLLM_DFLASH=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key qwen3.5-4b \\
-        --dflash elizaos/eliza-1-dflash-4b \\
+        --dflash elizalabs/eliza-1-dflash-4b \\
         --port 8000
 
     # Print the assembled command without executing (audit / CI)
@@ -90,31 +90,37 @@ log = logging.getLogger("serve_vllm")
 GPU_TARGETS: dict[str, dict] = {
     "h200-2x": {
         "tp": 2,
-        "ep": 2,                                  # MoE-only; ignored for dense
+        "ep": 2,  # MoE-only; ignored for dense
         "gpu_memory_utilization": 0.92,
-        "default_weight_quant": "fp8",            # block-wise FP8 W8A8 on Hopper
+        "default_weight_quant": "fp8",  # block-wise FP8 W8A8 on Hopper
         # turboquant_4bit_nc, not 3bit. Per PR #38479 numbers (Qwen3-4B):
         # 3bit_nc costs ~20pp absolute on GSM8K and +20.59% PPL; 4bit_nc costs
         # only +2.71% PPL. 4bit also matches our vendored fused_turboquant V
         # bit-width (4-bit RHT+Lloyd-Max), so served-vs-local-debug parity is
         # closer. See /tmp/turboquant_v_reconcile.md.
         "default_kv_cache_dtype": "turboquant_4bit_nc",
-        "attention_backend": None,                # let vLLM pick (FA3 on sm_90)
+        "attention_backend": None,  # let vLLM pick (FA3 on sm_90)
     },
     "h100-2x": {
-        "tp": 2, "ep": 2, "gpu_memory_utilization": 0.92,
+        "tp": 2,
+        "ep": 2,
+        "gpu_memory_utilization": 0.92,
         "default_weight_quant": "fp8",
         "default_kv_cache_dtype": "turboquant_4bit_nc",
         "attention_backend": None,
     },
     "h200-4x": {
-        "tp": 4, "ep": 4, "gpu_memory_utilization": 0.92,
+        "tp": 4,
+        "ep": 4,
+        "gpu_memory_utilization": 0.92,
         "default_weight_quant": "fp8",
         "default_kv_cache_dtype": "turboquant_4bit_nc",
         "attention_backend": None,
     },
     "blkw6000-2x": {
-        "tp": 2, "ep": 2, "gpu_memory_utilization": 0.90,
+        "tp": 2,
+        "ep": 2,
+        "gpu_memory_utilization": 0.90,
         # FP8 wheels for sm_120 are spotty; AWQ-Marlin works everywhere.
         "default_weight_quant": "awq_marlin",
         # Mainline vLLM TurboQuant kernels currently lack sm_120 builds;
@@ -124,19 +130,25 @@ GPU_TARGETS: dict[str, dict] = {
         "attention_backend": None,
     },
     "blkw6000-4x": {
-        "tp": 4, "ep": 4, "gpu_memory_utilization": 0.90,
+        "tp": 4,
+        "ep": 4,
+        "gpu_memory_utilization": 0.90,
         "default_weight_quant": "awq_marlin",
         "default_kv_cache_dtype": "fp8_e4m3",
         "attention_backend": None,
     },
     "b200-2x": {
-        "tp": 2, "ep": 2, "gpu_memory_utilization": 0.93,
+        "tp": 2,
+        "ep": 2,
+        "gpu_memory_utilization": 0.93,
         "default_weight_quant": "fp8",
         "default_kv_cache_dtype": "turboquant_4bit_nc",
         "attention_backend": None,
     },
-    "single": {                                   # local debug, anything 1-GPU
-        "tp": 1, "ep": 1, "gpu_memory_utilization": 0.85,
+    "single": {  # local debug, anything 1-GPU
+        "tp": 1,
+        "ep": 1,
+        "gpu_memory_utilization": 0.85,
         "default_weight_quant": None,
         "default_kv_cache_dtype": None,
         "attention_backend": None,
@@ -150,6 +162,7 @@ def _detect_default_target() -> str:
     """
     try:
         import torch
+
         if not torch.cuda.is_available():
             return "single"
         n = torch.cuda.device_count()
@@ -176,8 +189,11 @@ def _is_moe(entry) -> bool:
 
 
 def _build_speculative_config(
-    *, eagle3_path: str | None, dflash_path: str | None,
-    mtp_native: bool, num_speculative_tokens: int,
+    *,
+    eagle3_path: str | None,
+    dflash_path: str | None,
+    mtp_native: bool,
+    num_speculative_tokens: int,
 ) -> dict | None:
     """Pick exactly one drafter. They are mutually exclusive at runtime.
 
@@ -204,7 +220,7 @@ def _build_speculative_config(
             "method": "eagle3",
             "model": eagle3_path,
             "num_speculative_tokens": num_speculative_tokens or 3,
-            "draft_tensor_parallel_size": 1,    # EAGLE-3 cannot TP
+            "draft_tensor_parallel_size": 1,  # EAGLE-3 cannot TP
         }
     if mtp_native:
         return {
@@ -214,7 +230,7 @@ def _build_speculative_config(
     return None
 
 
-_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizaos/eliza-1")
+_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizalabs/eliza-1")
 
 
 def _is_hybrid_qwen(model_id: str) -> bool:
@@ -239,7 +255,9 @@ def build_command(args, *, entry) -> list[str]:
     # don't replay correctly on prefix-cache hits, breaks tool calling). If
     # all three are set without an explicit acknowledgement that A/B parity
     # has been verified for this serve, default APC OFF.
-    drafter_active = bool(args.dflash) or bool(args.eagle3) or (is_moe and args.use_mtp_native)
+    drafter_active = (
+        bool(args.dflash) or bool(args.eagle3) or (is_moe and args.use_mtp_native)
+    )
     if (
         args.enable_prefix_caching
         and drafter_active
@@ -255,11 +273,17 @@ def build_command(args, *, entry) -> list[str]:
         args.enable_prefix_caching = False
 
     cmd: list[str] = [
-        "vllm", "serve", model_id,
-        "--tensor-parallel-size", str(target["tp"]),
-        "--max-model-len", str(max_model_len),
-        "--gpu-memory-utilization", f"{target['gpu_memory_utilization']:.2f}",
-        "--dtype", "bfloat16",
+        "vllm",
+        "serve",
+        model_id,
+        "--tensor-parallel-size",
+        str(target["tp"]),
+        "--max-model-len",
+        str(max_model_len),
+        "--gpu-memory-utilization",
+        f"{target['gpu_memory_utilization']:.2f}",
+        "--dtype",
+        "bfloat16",
     ]
 
     if weight_quant:
@@ -304,12 +328,15 @@ def build_command(args, *, entry) -> list[str]:
     if args.enable_prefix_caching:
         cmd += [
             "--enable-prefix-caching",
-            "--block-size", str(args.prefix_block_size),
+            "--block-size",
+            str(args.prefix_block_size),
         ]
     cmd += [
         "--enable-chunked-prefill",
-        "--max-num-batched-tokens", str(args.max_num_batched_tokens),
-        "--long-prefill-token-threshold", str(args.long_prefill_token_threshold),
+        "--max-num-batched-tokens",
+        str(args.max_num_batched_tokens),
+        "--long-prefill-token-threshold",
+        str(args.long_prefill_token_threshold),
     ]
 
     # CUDA graphs — never --enforce-eager on production. Unsloth's published
@@ -331,7 +358,8 @@ def build_command(args, *, entry) -> list[str]:
         cmd += [
             "--enable-expert-parallel",
             "--enable-eplb",
-            "--num-redundant-experts", str(args.num_redundant_experts),
+            "--num-redundant-experts",
+            str(args.num_redundant_experts),
         ]
         if args.language_model_only:
             # A3B HF class is multimodal; this skips the vision encoder for
@@ -354,7 +382,8 @@ def build_command(args, *, entry) -> list[str]:
     if args.enable_tool_choice:
         cmd += [
             "--enable-auto-tool-choice",
-            "--tool-call-parser", args.tool_call_parser,
+            "--tool-call-parser",
+            args.tool_call_parser,
         ]
 
     # Attention backend override (mostly for AEON-7 vllm-dflash which exposes
@@ -381,110 +410,188 @@ def main() -> int:
         description=__doc__.split("\n\n", 1)[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--registry-key", required=True,
-                    help="Pull defaults from training/model_registry.py "
-                         "(e.g. qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, qwen3.6-27b).")
-    ap.add_argument("--model", default=None,
-                    help="Override model id (default: registry hf_id).")
-    ap.add_argument("--gpu-target", default=_detect_default_target(),
-                    choices=sorted(GPU_TARGETS),
-                    help="Per-cluster defaults; auto-detected from CUDA caps.")
+    ap.add_argument(
+        "--registry-key",
+        required=True,
+        help="Pull defaults from training/model_registry.py "
+        "(e.g. qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, qwen3.6-27b).",
+    )
+    ap.add_argument(
+        "--model", default=None, help="Override model id (default: registry hf_id)."
+    )
+    ap.add_argument(
+        "--gpu-target",
+        default=_detect_default_target(),
+        choices=sorted(GPU_TARGETS),
+        help="Per-cluster defaults; auto-detected from CUDA caps.",
+    )
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default=None)
     ap.add_argument("--served-model-name", default=None)
-    ap.add_argument("--max-model-len", type=int, default=None,
-                    help="Default: registry infer_max_in + infer_max_out.")
+    ap.add_argument(
+        "--max-model-len",
+        type=int,
+        default=None,
+        help="Default: registry infer_max_in + infer_max_out.",
+    )
 
     # Quantization knobs — defaults come from gpu_target.
-    ap.add_argument("--quantization", default=None,
-                    help="vLLM weight quant: fp8, awq_marlin, gptq_marlin, "
-                         "polarquant (custom plugin), gguf. Default per "
-                         "gpu_target: fp8 on H100/H200, awq_marlin on Blackwell.")
-    ap.add_argument("--kv-cache-dtype", default=None,
-                    help="auto, fp8, fp8_e4m3, fp8_e5m2, turboquant_3bit_nc, "
-                         "turboquant_4bit_nc, turboquant_k8v4, turboquant_k3v4_nc. "
-                         "Default per gpu_target: turboquant_4bit_nc on "
-                         "Hopper/Blackwell datacenter (best PPL/throughput "
-                         "trade vs 3bit_nc — see PR #38479 numbers), fp8_e4m3 "
-                         "on consumer Blackwell.")
-    ap.add_argument("--attention-backend", default=None,
-                    help="FUSED_TURBOQUANT (our vendored plugin), FLASH_ATTN, "
-                         "FLASHINFER, etc. Default: vLLM auto.")
+    ap.add_argument(
+        "--quantization",
+        default=None,
+        help="vLLM weight quant: fp8, awq_marlin, gptq_marlin, "
+        "polarquant (custom plugin), gguf. Default per "
+        "gpu_target: fp8 on H100/H200, awq_marlin on Blackwell.",
+    )
+    ap.add_argument(
+        "--kv-cache-dtype",
+        default=None,
+        help="auto, fp8, fp8_e4m3, fp8_e5m2, turboquant_3bit_nc, "
+        "turboquant_4bit_nc, turboquant_k8v4, turboquant_k3v4_nc. "
+        "Default per gpu_target: turboquant_4bit_nc on "
+        "Hopper/Blackwell datacenter (best PPL/throughput "
+        "trade vs 3bit_nc — see PR #38479 numbers), fp8_e4m3 "
+        "on consumer Blackwell.",
+    )
+    ap.add_argument(
+        "--attention-backend",
+        default=None,
+        help="FUSED_TURBOQUANT (our vendored plugin), FLASH_ATTN, "
+        "FLASHINFER, etc. Default: vLLM auto.",
+    )
 
     # Prefix cache + chunked prefill — see vLLM optimization docs.
-    ap.add_argument("--enable-prefix-caching", action=argparse.BooleanOptionalAction,
-                    default=True,
-                    help="Hash 16-token blocks of the prefix; reuse across "
-                         "requests. Caveat: known omlx#825 bug — prefix-cache + "
-                         "Qwen3.5 hybrid attention + drafter can break tool "
-                         "calling on cache hits. A/B test before enabling on "
-                         "production agent traffic.")
-    ap.add_argument("--prefix-block-size", type=int, default=16,
-                    help="APC block size. 16 is the chat sweet spot.")
-    ap.add_argument("--max-num-batched-tokens", type=int, default=8192,
-                    help="vLLM optimization sweet spot for online serving.")
-    ap.add_argument("--long-prefill-token-threshold", type=int, default=2048,
-                    help="Switch to chunked-prefill above this prompt length.")
+    ap.add_argument(
+        "--enable-prefix-caching",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Hash 16-token blocks of the prefix; reuse across "
+        "requests. Caveat: known omlx#825 bug — prefix-cache + "
+        "Qwen3.5 hybrid attention + drafter can break tool "
+        "calling on cache hits. A/B test before enabling on "
+        "production agent traffic.",
+    )
+    ap.add_argument(
+        "--prefix-block-size",
+        type=int,
+        default=16,
+        help="APC block size. 16 is the chat sweet spot.",
+    )
+    ap.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        default=8192,
+        help="vLLM optimization sweet spot for online serving.",
+    )
+    ap.add_argument(
+        "--long-prefill-token-threshold",
+        type=int,
+        default=2048,
+        help="Switch to chunked-prefill above this prompt length.",
+    )
 
     # CUDA graph + compilation policy.
-    ap.add_argument("--cudagraph-mode", default="FULL_AND_PIECEWISE",
-                    choices=("FULL", "FULL_AND_PIECEWISE", "PIECEWISE", "NONE"),
-                    help="Default FULL_AND_PIECEWISE — uniform decode + "
-                         "piecewise prefill. Never use NONE / --enforce-eager "
-                         "on production; that's a 15-30%% decode regression.")
-    ap.add_argument("--compilation-level", type=int, default=3,
-                    help="vLLM Inductor optimization level. -O3 adds extra "
-                         "fusions on top of the -O2 default.")
+    ap.add_argument(
+        "--cudagraph-mode",
+        default="FULL_AND_PIECEWISE",
+        choices=("FULL", "FULL_AND_PIECEWISE", "PIECEWISE", "NONE"),
+        help="Default FULL_AND_PIECEWISE — uniform decode + "
+        "piecewise prefill. Never use NONE / --enforce-eager "
+        "on production; that's a 15-30%% decode regression.",
+    )
+    ap.add_argument(
+        "--compilation-level",
+        type=int,
+        default=3,
+        help="vLLM Inductor optimization level. -O3 adds extra "
+        "fusions on top of the -O2 default.",
+    )
 
     # Speculative decoder. Mutually exclusive — pick at most one.
-    ap.add_argument("--eagle3", default=None,
-                    help="HF id or local path to a Qwen3.5-EAGLE3 head. "
-                         "Stock vLLM, ~2x decode speedup. Mutually exclusive "
-                         "with --dflash and --use-mtp-native.")
-    ap.add_argument("--dflash", default=None,
-                    help="HF id or local path to a z-lab/...-DFlash drafter. "
-                         "Requires the AEON-7 vllm-dflash fork "
-                         "(set ELIZA_VLLM_DFLASH=1 to acknowledge). 2.5-6x "
-                         "decode on greedy code/math; ~2.75x on prose.")
-    ap.add_argument("--use-mtp-native", action=argparse.BooleanOptionalAction,
-                    default=True,
-                    help="On MoE models that ship an MTP head, use "
-                         "method=qwen3_next_mtp by default. Disable to opt "
-                         "out (e.g. when the MTP head is broken on your "
-                         "vLLM build).")
-    ap.add_argument("--num-speculative-tokens", type=int, default=0,
-                    help="0 = method-specific default (15 dflash, 3 eagle3, 2 mtp).")
-    ap.add_argument("--entropix", action="store_true",
-                    help="Enable entropix logits-processor plugin. NOT compatible with "
-                         "EAGLE-3/DFlash drafter (drafter cannot predict the forced-clarifier "
-                         "branch; spec-decode acceptance collapses). Hard error if combined.")
+    ap.add_argument(
+        "--eagle3",
+        default=None,
+        help="HF id or local path to a Qwen3.5-EAGLE3 head. "
+        "Stock vLLM, ~2x decode speedup. Mutually exclusive "
+        "with --dflash and --use-mtp-native.",
+    )
+    ap.add_argument(
+        "--dflash",
+        default=None,
+        help="HF id or local path to a z-lab/...-DFlash drafter. "
+        "Requires the AEON-7 vllm-dflash fork "
+        "(set ELIZA_VLLM_DFLASH=1 to acknowledge). 2.5-6x "
+        "decode on greedy code/math; ~2.75x on prose.",
+    )
+    ap.add_argument(
+        "--use-mtp-native",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="On MoE models that ship an MTP head, use "
+        "method=qwen3_next_mtp by default. Disable to opt "
+        "out (e.g. when the MTP head is broken on your "
+        "vLLM build).",
+    )
+    ap.add_argument(
+        "--num-speculative-tokens",
+        type=int,
+        default=0,
+        help="0 = method-specific default (15 dflash, 3 eagle3, 2 mtp).",
+    )
+    ap.add_argument(
+        "--entropix",
+        action="store_true",
+        help="Enable entropix logits-processor plugin. NOT compatible with "
+        "EAGLE-3/DFlash drafter (drafter cannot predict the forced-clarifier "
+        "branch; spec-decode acceptance collapses). Hard error if combined.",
+    )
 
     # MoE-specific.
-    ap.add_argument("--num-redundant-experts", type=int, default=8,
-                    help="EPLB redundancy. Drop to 0 if VRAM-bound.")
-    ap.add_argument("--language-model-only", action=argparse.BooleanOptionalAction,
-                    default=True,
-                    help="Skip the multimodal vision encoder branch on A3B-class "
-                         "models for text-only serving (frees its KV budget).")
+    ap.add_argument(
+        "--num-redundant-experts",
+        type=int,
+        default=8,
+        help="EPLB redundancy. Drop to 0 if VRAM-bound.",
+    )
+    ap.add_argument(
+        "--language-model-only",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Skip the multimodal vision encoder branch on A3B-class "
+        "models for text-only serving (frees its KV budget).",
+    )
 
     # Tool / reasoning parsers — Qwen3-canonical.
     ap.add_argument("--reasoning-parser", default="qwen3")
-    ap.add_argument("--enable-tool-choice", action=argparse.BooleanOptionalAction,
-                    default=True)
+    ap.add_argument(
+        "--enable-tool-choice", action=argparse.BooleanOptionalAction, default=True
+    )
     ap.add_argument("--tool-call-parser", default="qwen3_coder")
 
-    ap.add_argument("--extra", default="",
-                    help="Extra raw flags appended to the vllm serve command "
-                         "(use shlex-style quoting).")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Print the assembled command and exit without running.")
-    ap.add_argument("--with-heartbeat", action="store_true",
-                    help="Also spawn scripts.inference.heartbeat as a child "
-                         "subprocess so this serve emits periodic stats to "
-                         "--stats-out. Killed on serve teardown.")
-    ap.add_argument("--stats-out", default="~/.eliza/inference-stats.jsonl",
-                    help="JSONL path the heartbeat appends to (only used "
-                         "when --with-heartbeat is set).")
+    ap.add_argument(
+        "--extra",
+        default="",
+        help="Extra raw flags appended to the vllm serve command "
+        "(use shlex-style quoting).",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the assembled command and exit without running.",
+    )
+    ap.add_argument(
+        "--with-heartbeat",
+        action="store_true",
+        help="Also spawn scripts.inference.heartbeat as a child "
+        "subprocess so this serve emits periodic stats to "
+        "--stats-out. Killed on serve teardown.",
+    )
+    ap.add_argument(
+        "--stats-out",
+        default="~/.eliza/inference-stats.jsonl",
+        help="JSONL path the heartbeat appends to (only used "
+        "when --with-heartbeat is set).",
+    )
     args = ap.parse_args()
 
     if sum(bool(x) for x in (args.eagle3, args.dflash)) > 1:
@@ -494,19 +601,26 @@ def main() -> int:
     if args.entropix and (
         args.eagle3 or args.dflash or (_is_moe(entry) and args.use_mtp_native)
     ):
-        ap.error("--entropix is incompatible with --eagle3/--dflash/--use-mtp-native: "
-                 "entropix's HELV branch flips the argmax, and EAGLE-3/DFlash drafters "
-                 "cannot predict that, so spec-decode acceptance collapses to ~1/K. "
-                 "Drop the drafter or drop --entropix.")
-    log.info("registry %s → hf_id=%s tier=%s",
-             entry.short_name, entry.hf_id, entry.tier.value)
-    log.info("gpu target=%s tp=%d", args.gpu_target,
-             GPU_TARGETS[args.gpu_target]["tp"])
+        ap.error(
+            "--entropix is incompatible with --eagle3/--dflash/--use-mtp-native: "
+            "entropix's HELV branch flips the argmax, and EAGLE-3/DFlash drafters "
+            "cannot predict that, so spec-decode acceptance collapses to ~1/K. "
+            "Drop the drafter or drop --entropix."
+        )
+    log.info(
+        "registry %s → hf_id=%s tier=%s",
+        entry.short_name,
+        entry.hf_id,
+        entry.tier.value,
+    )
+    log.info("gpu target=%s tp=%d", args.gpu_target, GPU_TARGETS[args.gpu_target]["tp"])
 
     cmd = build_command(args, entry=entry)
     if args.entropix:
-        cmd += ["--logits-processors",
-                "scripts.inference.entropix_sampler:VLLMEntropixProcessor"]
+        cmd += [
+            "--logits-processors",
+            "scripts.inference.entropix_sampler:VLLMEntropixProcessor",
+        ]
     pretty = " \\\n  ".join(shlex.quote(c) for c in cmd)
     log.info("assembled vllm command:\n  %s", pretty)
 
@@ -536,10 +650,15 @@ def _run_with_heartbeat(serve_cmd: list[str], *, port: int, stats_out: str) -> i
     metrics_url = _heartbeat_metrics_url(serve_cmd, port)
     label = f"serve-vllm-port-{port}"
     hb_cmd = [
-        sys.executable, "-m", "scripts.inference.heartbeat",
-        "--vllm-metrics-url", metrics_url,
-        "--out", stats_out,
-        "--label", label,
+        sys.executable,
+        "-m",
+        "scripts.inference.heartbeat",
+        "--vllm-metrics-url",
+        metrics_url,
+        "--out",
+        stats_out,
+        "--label",
+        label,
     ]
 
     log.info("launching vllm: %s", " ".join(shlex.quote(c) for c in serve_cmd))

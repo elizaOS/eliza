@@ -6,9 +6,6 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
@@ -213,76 +210,34 @@ class MobileAgentBridgePlugin : Plugin() {
             frame.optInt("timeout_ms", DEFAULT_LOCAL_REQUEST_TIMEOUT_MS),
         ).coerceIn(1_000, MAX_LOCAL_REQUEST_TIMEOUT_MS)
         val body = frame.opt("body")?.takeUnless { it == JSONObject.NULL }?.toString()
-        val url = URL("${localAgentApiBase.trimEnd('/')}$path")
-        val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            instanceFollowRedirects = false
-            useCaches = false
-        }
-        applyHeaders(connection, frame.optJSONObject("headers") ?: JSONObject())
-        readLocalAgentToken()?.let { token ->
-            if (connection.getRequestProperty("Authorization").isNullOrBlank()) {
-                connection.setRequestProperty("Authorization", "Bearer $token")
-            }
-        }
-        if (body != null && method != "GET" && method != "HEAD") {
-            val bytes = body.toByteArray(Charsets.UTF_8)
-            connection.doOutput = true
-            connection.outputStream.use { it.write(bytes) }
-        }
-        val status = connection.responseCode
-        return JSONObject().apply {
-            put("status", status)
-            put("statusText", connection.responseMessage ?: "")
-            put("headers", responseHeaders(connection))
-            put("body", responseBody(connection, status))
-        }
+        return requestLocalAgent(
+            method = method,
+            path = path,
+            headers = frame.optJSONObject("headers") ?: JSONObject(),
+            body = body,
+            timeoutMs = timeoutMs,
+        )
     }
 
-    private fun applyHeaders(connection: HttpURLConnection, headers: JSONObject) {
-        for (key in headers.keys()) {
-            if (key.equals("host", true) || key.equals("connection", true) || key.equals("content-length", true)) {
-                continue
-            }
-            val value = headers.optString(key).trim()
-            if (value.isNotEmpty()) connection.setRequestProperty(key, value)
+    private fun requestLocalAgent(
+        method: String,
+        path: String,
+        headers: JSONObject,
+        body: String?,
+        timeoutMs: Int,
+    ): JSONObject {
+        val request = JSONObject().apply {
+            put("method", method)
+            put("path", path)
+            put("headers", headers)
+            put("body", body ?: JSONObject.NULL)
+            put("timeoutMs", timeoutMs)
         }
-    }
-
-    private fun responseHeaders(connection: HttpURLConnection): JSONObject {
-        return JSONObject().apply {
-            for ((key, values) in connection.headerFields) {
-                if (key != null && !values.isNullOrEmpty()) {
-                    put(key.lowercase(Locale.US), values.joinToString(", "))
-                }
-            }
-        }
-    }
-
-    private fun responseBody(connection: HttpURLConnection, status: Int): String {
-        val stream = if (status >= 400) connection.errorStream else connection.inputStream
-        return stream?.use { input ->
-            val output = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            while (true) {
-                val count = input.read(buffer)
-                if (count == -1) break
-                output.write(buffer, 0, count)
-            }
-            output.toString(Charsets.UTF_8.name())
-        } ?: ""
-    }
-
-    private fun readLocalAgentToken(): String? {
-        return try {
-            val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
-            val method = serviceClass.getMethod("localAgentToken")
-            (method.invoke(null) as? String)?.trim()?.takeIf { it.isNotEmpty() }
-        } catch (_: Exception) {
-            null
-        }
+        val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
+        val bridge = serviceClass.getMethod("requestLocalAgent", String::class.java)
+        val raw = bridge.invoke(null, request.toString()) as? String
+            ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
+        return JSONObject(raw)
     }
 
     private fun sendFrame(frame: JSONObject) {
@@ -291,20 +246,20 @@ class MobileAgentBridgePlugin : Plugin() {
 
     private fun normalizeLocalAgentApiBase(raw: String): String? {
         return try {
+            if (raw == DEFAULT_LOCAL_AGENT_API_BASE) return DEFAULT_LOCAL_AGENT_API_BASE
             val uri = Uri.parse(raw)
             val scheme = uri.scheme?.lowercase(Locale.US)
             val host = uri.host?.lowercase(Locale.US)
             if (scheme != "http") return null
             if (host !in setOf("127.0.0.1", "localhost", "10.0.2.2")) return null
-            val port = if (uri.port > 0) ":${uri.port}" else ""
-            "http://$host$port"
+            DEFAULT_LOCAL_AGENT_API_BASE
         } catch (_: Exception) {
             null
         }
     }
 
     private companion object {
-        private const val DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337"
+        private const val DEFAULT_LOCAL_AGENT_API_BASE = "eliza-local-agent://ipc"
         private const val DEFAULT_LOCAL_REQUEST_TIMEOUT_MS = 30_000
         private const val MAX_LOCAL_REQUEST_TIMEOUT_MS = 600_000
     }

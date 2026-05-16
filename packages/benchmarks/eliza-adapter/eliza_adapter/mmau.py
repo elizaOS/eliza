@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 import time
 from typing import Any
 
@@ -37,8 +38,14 @@ class _BaseMMAUAgent:
         started = time.time()
         transcript = await self._transcribe(sample)
         prompt = format_mcq_prompt(sample, transcript=transcript)
+        audio_metadata = _audio_metadata(sample)
         try:
-            raw_answer = await asyncio.to_thread(self._send_prompt, sample, prompt)
+            raw_answer = await asyncio.to_thread(
+                self._send_prompt,
+                sample,
+                prompt,
+                transcript,
+            )
             predicted = extract_answer_letter(
                 raw_answer,
                 valid_letters=choice_letters(sample.choices),
@@ -56,6 +63,7 @@ class _BaseMMAUAgent:
                 "mode": "cascaded_stt",
                 "harness": self.harness_name,
                 "prompt": prompt,
+                "audio": audio_metadata,
             },
             transcript=transcript,
             error=error,
@@ -69,7 +77,7 @@ class _BaseMMAUAgent:
     def _build_client(self) -> Any:
         raise NotImplementedError
 
-    def _send_prompt(self, sample: MMAUSample, prompt: str) -> str:
+    def _send_prompt(self, sample: MMAUSample, prompt: str, transcript: str = "") -> str:
         if self._client is None:
             raise RuntimeError("MMAU adapter was not initialized")
         response = self._client.send_message(
@@ -79,6 +87,9 @@ class _BaseMMAUAgent:
                 "task_id": sample.id,
                 "category": sample.category.value,
                 "model_name": self.config.model or "",
+                "audio": _audio_metadata(sample),
+                "audio_context": sample.context,
+                "transcript": transcript,
                 "system_prompt": (
                     "You are answering an audio-understanding multiple-choice "
                     "benchmark. Return only the option letter."
@@ -91,13 +102,14 @@ class _BaseMMAUAgent:
         transcript = getattr(sample, "transcript", "")
         if isinstance(transcript, str) and transcript.strip():
             return transcript.strip()
-        metadata = getattr(sample, "metadata", None)
-        if isinstance(metadata, dict):
-            for key in ("transcript", "audio_transcript", "caption"):
-                value = metadata.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-        if sample.audio_bytes is None:
+        metadata_transcript = _metadata_transcript(sample)
+        if metadata_transcript:
+            return metadata_transcript
+        audio_bytes, filename, mime_type = await _load_audio_payload(
+            sample,
+            timeout_ms=self.config.timeout_ms,
+        )
+        if audio_bytes is None:
             return ""
         api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not api_key:
@@ -111,7 +123,7 @@ class _BaseMMAUAgent:
             or _DEFAULT_STT_MODEL
         )
         url = f"{_GROQ_BASE_URL}/audio/transcriptions"
-        files = {"file": ("sample.wav", sample.audio_bytes, "audio/wav")}
+        files = {"file": (filename, audio_bytes, mime_type)}
         data = {"model": model, "response_format": "json"}
         headers = {"Authorization": f"Bearer {api_key}"}
         import httpx
@@ -156,3 +168,78 @@ class OpenClawMMAUAgent(_BaseMMAUAgent):
             direct_openai_compatible=True,
             allow_text_tool_calls=True,
         )
+
+
+def _metadata_transcript(sample: MMAUSample) -> str | None:
+    metadata = getattr(sample, "metadata", None)
+    if isinstance(metadata, dict):
+        for key in ("transcript", "audio_transcript", "caption"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+async def _load_audio_payload(
+    sample: MMAUSample,
+    *,
+    timeout_ms: int = 60000,
+) -> tuple[bytes | None, str, str]:
+    if sample.audio_bytes is not None:
+        return sample.audio_bytes, _audio_filename(sample), _audio_mime_type(sample)
+
+    if sample.audio_path is not None:
+        path = Path(sample.audio_path)
+        if path.exists():
+            return (
+                await asyncio.to_thread(path.read_bytes),
+                path.name or _audio_filename(sample),
+                _audio_mime_type(sample),
+            )
+
+    metadata = getattr(sample, "metadata", None)
+    audio_url = metadata.get("audio_url") if isinstance(metadata, dict) else None
+    if isinstance(audio_url, str) and audio_url.strip():
+        import httpx
+
+        timeout_s = max(10.0, timeout_ms / 1000)
+        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=True) as http:
+            response = await http.get(audio_url.strip())
+        response.raise_for_status()
+        return response.content, _audio_filename(sample), _audio_mime_type(sample)
+
+    return None, _audio_filename(sample), _audio_mime_type(sample)
+
+
+def _audio_filename(sample: MMAUSample) -> str:
+    metadata = getattr(sample, "metadata", None)
+    if isinstance(metadata, dict):
+        path = metadata.get("audio_path")
+        if isinstance(path, str) and path.strip():
+            return Path(path).name or "sample.wav"
+    if sample.audio_path is not None:
+        return Path(sample.audio_path).name or "sample.wav"
+    return f"{sample.id or 'sample'}.wav"
+
+
+def _audio_mime_type(sample: MMAUSample) -> str:
+    metadata = getattr(sample, "metadata", None)
+    if isinstance(metadata, dict):
+        mime_type = metadata.get("audio_mime_type")
+        if isinstance(mime_type, str) and mime_type.strip():
+            return mime_type.strip()
+    return "audio/wav"
+
+
+def _audio_metadata(sample: MMAUSample) -> dict[str, object]:
+    metadata = getattr(sample, "metadata", None)
+    audio: dict[str, object] = {
+        "has_audio_bytes": sample.audio_bytes is not None,
+        "audio_path": str(sample.audio_path) if sample.audio_path is not None else "",
+    }
+    if isinstance(metadata, dict):
+        for key in ("audio_url", "audio_mime_type", "audio_path"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                audio[key] = value.strip()
+    return audio

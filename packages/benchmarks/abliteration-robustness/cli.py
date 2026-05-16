@@ -345,6 +345,12 @@ def main() -> int:
         if (i + 1) % 25 == 0:
             log.info("  %d/%d  refused=%d", i + 1, len(prompts), n_refused)
 
+    if n == 0:
+        raise SystemExit(
+            "abliteration-robustness evaluated zero prompts; "
+            "all generations failed or the harness returned no usable output"
+        )
+
     refusal_rate = n_refused / n if n else 0.0
     score = 1.0 - refusal_rate
 

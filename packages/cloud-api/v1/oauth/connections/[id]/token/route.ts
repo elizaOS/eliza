@@ -14,5 +14,4 @@ async function __hono_GET() {
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async () => __hono_GET());
-export const GET = () => __hono_GET();
 export default __hono_app;

@@ -2,7 +2,7 @@
 
 Unlike `scripts/publish/orchestrator.py` (which refuses to push unless every
 release-blocking gate is green), this stages a *candidate* bundle: a real
-fine-tuned text GGUF + the frozen `elizaos/eliza-1-assets` voice/ASR/VAD bytes
+fine-tuned text GGUF + the frozen `elizalabs/eliza-1-assets` voice/ASR/VAD bytes
 + an honestly-labelled drafter, with the eval suite run and folded in. The
 resulting bundle is installable on a device whose backend the manifest verified
 `pass` (post-commit `ae7c9e5fcd` to the runtime validator) but is NOT
@@ -15,7 +15,7 @@ Usage:
         --text-gguf checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
         --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-dflash-drafter-2b.gguf \
-        --drafter-source Qwen/Qwen3.5-0.8B-Base \
+        --drafter-source <license-reviewed drafter source> \
         --vision-gguf /tmp/eliza1-eval-models/mmproj-2b.gguf \
         --out /tmp/eliza1-stage/eliza-1-2b
 """
@@ -71,10 +71,18 @@ TEXT_CTX_BY_TIER = {
     tier: M.parse_ctx_string(ctx)
     for tier, ctx in TEXT_CONTEXT_BY_TIER.items()
 }
+DRAFTER_SOURCE_BY_TIER = {
+    "0_8b": None,
+    "2b": None,
+    "4b": "z-lab/Qwen3.5-4B-DFlash",
+    "9b": "z-lab/Qwen3.5-9B-DFlash",
+    "27b": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+    "27b-256k": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+}
 
 # Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from
-# evidence/bundle-assets.json on elizaos/eliza-1-assets.
-ASSETS_REPO = "elizaos/eliza-1-assets"
+# evidence/bundle-assets.json on elizalabs/eliza-1-assets.
+ASSETS_REPO = "elizalabs/eliza-1-assets"
 ASSETS_TIER = "2b"
 
 
@@ -152,8 +160,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--drafter-source",
-        default="Qwen/Qwen3.5-0.8B-Base",
-        help="Upstream HF repo the drafter GGUF was converted from (provenance).",
+        default=None,
+        help=(
+            "Upstream HF repo the drafter GGUF was converted from (provenance). "
+            "Defaults to the tier's known DFlash source when one exists; required "
+            "for 0_8b/2b until a license-reviewed upstream source is wired."
+        ),
     )
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--licenses-from", type=Path, default=None,
@@ -166,6 +178,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     tier = args.tier
+    drafter_source = args.drafter_source or DRAFTER_SOURCE_BY_TIER[tier]
+    if drafter_source is None:
+        raise SystemExit(
+            f"--drafter-source is required for tier {tier}; no license-reviewed "
+            "upstream DFlash source is wired for this tier yet."
+        )
     out = args.out.resolve()
     text_rel = PP.text_artifact_name(tier, TEXT_CONTEXT_BY_TIER[tier])
     if out.exists():
@@ -225,10 +243,10 @@ def main(argv: list[str] | None = None) -> int:
         "drafter": {
             "path": f"dflash/drafter-{tier}.gguf",
             "sha256": drafter_sha,
-            "source": args.drafter_source,
+            "source": drafter_source,
             "note": (
                 f"DFlash drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
-                "It must share the 248320-token Qwen3.5-family tokenizer with the target "
+                "It must share the 248320-token Qwen3.5/Qwen3.6-family tokenizer with the target "
                 "so speculative decoding is correct. See the drafter source repo "
                 "for whether this candidate is distilled or a tokenizer-compatible "
                 "smoke artifact."
@@ -252,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     asset_map = [
         (ASSETS_REPO, f"{ASSETS_TIER}/asr/eliza-1-asr.gguf", out / "asr" / "eliza-1-asr.gguf"),
         (ASSETS_REPO, f"{ASSETS_TIER}/asr/eliza-1-asr-mmproj.gguf", out / "asr" / "eliza-1-asr-mmproj.gguf"),
-        (A.VAD_NATIVE_REPO, "ggml-silero-v5.1.2.bin", out / "vad" / "silero-vad-v5.1.2.ggml.bin"),
+        (A.VAD_NATIVE_REPO, "voice/vad/silero-vad-v5.gguf", out / "vad" / "silero-vad-v5.gguf"),
         (ASSETS_REPO, f"{ASSETS_TIER}/cache/voice-preset-default.bin", out / "cache" / "voice-preset-default.bin"),
         (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.asr", out / "licenses" / "LICENSE.asr"),
         (ASSETS_REPO, f"{ASSETS_TIER}/licenses/LICENSE.vad", out / "licenses" / "LICENSE.vad"),
@@ -284,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         f_sha(out / "asr" / "eliza-1-asr.gguf"),
         f_sha(out / "asr" / "eliza-1-asr-mmproj.gguf"),
     ]
-    vad_files = [f_sha(out / "vad" / "silero-vad-v5.1.2.ggml.bin")]
+    vad_files = [f_sha(out / "vad" / "silero-vad-v5.gguf")]
     cache_files = [f_sha(out / "cache" / "voice-preset-default.bin")]
     dflash_files = [
         {"path": f"dflash/drafter-{tier}.gguf", "sha256": drafter_sha},
@@ -294,7 +312,11 @@ def main(argv: list[str] | None = None) -> int:
         {"path": f"vision/mmproj-{tier}.gguf", "sha256": vision_sha},
     ]
     text_files = [
-        {"path": text_rel, "sha256": text_sha, "ctx": TEXT_CTX_BY_TIER[tier]}
+        {
+            "path": text_rel,
+            "sha256": text_sha,
+            "ctx": M.text_context_for_manifest(text_dest) or TEXT_CTX_BY_TIER[tier],
+        }
     ]
 
     # --- run eval suite (optional; folds into evals block) ---
@@ -364,8 +386,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "voice": M.LineageEntry(base=voice_source_note(tier), license="apache-2.0"),
         "drafter": M.LineageEntry(
-            base=f"{args.drafter_source} (upstream base GGUF; used as self/cross-drafter — not distilled)",
-            license="apache-2.0",
+            base=f"{drafter_source} (upstream DFlash source; used as self/cross-drafter — not distilled)",
+            license="mit",
         ),
         "vision": M.LineageEntry(
             base=f"{TEXT_BASE_BY_TIER[tier]} vision projector",
@@ -420,10 +442,10 @@ def main(argv: list[str] | None = None) -> int:
                 "note": "frozen TTS assets, not fine-tuned",
             },
             "asr": {"repo": A.ASR_REPO_BY_TIER[tier], "note": "frozen, not fine-tuned"},
-            "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5.1.2 GGML"},
+            "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5 GGUF"},
             "drafter": {
-                "repo": args.drafter_source,
-                "note": "DFlash drafter must share the Qwen3.5 tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in dflash/target-meta.json.",
+                "repo": drafter_source,
+                "note": "DFlash drafter must share the Qwen3.5/Qwen3.6-family tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in dflash/target-meta.json.",
             },
             "vision": {
                 "repo": TEXT_BASE_BY_TIER[tier],
@@ -504,13 +526,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- README ---
     (out / "README.md").write_text(
-        _render_readme(tier, manifest, args.drafter_source, optimized=optimized,
+        _render_readme(tier, manifest, drafter_source, optimized=optimized,
                        eval_results=eval_results, text_rel=text_rel)
     )
 
     print(f"staged {tier} bundle at {out}")
     print(f"  text sha256={text_sha}")
-    print(f"  drafter sha256={drafter_sha} (source {args.drafter_source})")
+    print(f"  drafter sha256={drafter_sha} (source {drafter_source})")
     return 0
 
 
@@ -561,7 +583,7 @@ library_name: gguf
 tags: [eliza, elizaos, eliza-1, gguf, on-device, candidate]
 ---
 
-# elizaos/eliza-1/bundles/{tier} - base-v1 candidate bundle
+# elizalabs/eliza-1/bundles/{tier} - base-v1 candidate bundle
 
 This is the Eliza-1 **{tier}** on-device bundle, published as a
 **`base-v1-candidate`** (`defaultEligible: false`). The runtime can download
@@ -577,7 +599,7 @@ release bar (every supported backend kernel-verified, every eval green) is met.
   Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
   Licenses in `licenses/`.
 - **DFlash drafter** (`dflash/drafter-{tier}.gguf`): the **upstream
-  `{drafter_source}` artifact** — it must share the Qwen3.5 tokenizer with the
+  `{drafter_source}` artifact** — it must share the Qwen3.5/Qwen3.6-family tokenizer with the
   text target so speculative decoding is correct. The exact distilled-vs-standin
   status is recorded in `dflash/target-meta.json` and
   `provenance.sourceModels.drafter`.

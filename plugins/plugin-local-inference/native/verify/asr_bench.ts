@@ -25,7 +25,8 @@
  * explicit text labels, or `--generate-prompts N` to ask the local text model
  * for short labels before TTS. Pass `--wav-dir <dir>` to bench against
  * external WAV+`.txt` pairs instead. A WAV directory is publish-gate ASR WER
- * only when it is explicitly marked `--real-recorded`; generated TTS audio
+ * only when it is explicitly marked `--real-recorded` and has at least
+ * `--min-real-recorded-utterances` pairs (default: 5); generated TTS audio
  * remains loopback evidence even when it is loaded from disk.
  *
  * Usage:
@@ -101,6 +102,7 @@ const generatedPromptCount = Number(arg("--generate-prompts", "0"));
 const binDir = arg("--bin-dir", path.dirname(dylib));
 const saveAudioDir = arg("--save-audio-dir", "");
 const gateThreshold = Number(arg("--gate", "0.1"));
+const minRealRecordedUtterances = Number(arg("--min-real-recorded-utterances", "5"));
 const verbose = flag("--verbose");
 type PromptServerProcess = ChildProcessByStdio<null, Readable, Readable>;
 
@@ -155,6 +157,13 @@ export interface LabelledSetEvidence {
   realRecordedWer: boolean;
   publishGateEligible: boolean;
   caveat: string | null;
+}
+
+export interface PublishGateEligibility {
+  publishGateEligible: boolean;
+  meetsMinRealRecordedUtterances: boolean;
+  minRealRecordedUtterances: number;
+  reason: string | null;
 }
 
 export function normalizeWavDirProvenance(input: string): AudioProvenance {
@@ -247,6 +256,84 @@ export function labelledSetEvidenceFor(args: {
       "WAV+txt inputs did not declare real recorded provenance. Pass --real-recorded only for " +
       "microphone or field-recorded speech before using this as publish-gate ASR WER.",
   };
+}
+
+export function publishGateEligibilityFor(args: {
+  evidence: LabelledSetEvidence;
+  utteranceCount: number;
+  minRealRecordedUtterances?: number;
+  corpusBlocker?: string | null;
+}): PublishGateEligibility {
+  const minRealRecordedUtterances = args.minRealRecordedUtterances ?? 5;
+  if (!Number.isInteger(minRealRecordedUtterances) || minRealRecordedUtterances < 1) {
+    throw new Error(
+      `[asr-bench] --min-real-recorded-utterances must be a positive integer; got ${minRealRecordedUtterances}`,
+    );
+  }
+
+  const meetsMinRealRecordedUtterances =
+    args.utteranceCount >= minRealRecordedUtterances;
+
+  if (!args.evidence.publishGateEligible) {
+    return {
+      publishGateEligible: false,
+      meetsMinRealRecordedUtterances,
+      minRealRecordedUtterances,
+      reason:
+        args.evidence.caveat ??
+        "labelled set is not explicitly marked as real recorded speech.",
+    };
+  }
+
+  if (args.corpusBlocker) {
+    return {
+      publishGateEligible: false,
+      meetsMinRealRecordedUtterances,
+      minRealRecordedUtterances,
+      reason: args.corpusBlocker,
+    };
+  }
+
+  if (!meetsMinRealRecordedUtterances) {
+    return {
+      publishGateEligible: false,
+      meetsMinRealRecordedUtterances,
+      minRealRecordedUtterances,
+      reason:
+        `real recorded ASR WER publish evidence requires >=${minRealRecordedUtterances} ` +
+        `utterances; found ${args.utteranceCount}.`,
+    };
+  }
+
+  return {
+    publishGateEligible: true,
+    meetsMinRealRecordedUtterances,
+    minRealRecordedUtterances,
+    reason: null,
+  };
+}
+
+function wavDirManifestPublishBlocker(dir: string): string | null {
+  const manifestPath = path.join(dir, "manifest.json");
+  if (!existsSync(manifestPath)) return null;
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    return `${manifestPath} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`;
+  }
+
+  const provenance = String(manifest.provenance ?? "").toLowerCase();
+  if (manifest.realRecorded === false) {
+    return `${manifestPath} declares realRecorded=false. This WAV directory cannot be used as publish ASR WER evidence.`;
+  }
+  if (manifest.publishGateEligible === false) {
+    return `${manifestPath} declares publishGateEligible=false. This WAV directory cannot be used as publish ASR WER evidence.`;
+  }
+  if (/(generated|synthetic|fixture|tts|loopback)/.test(provenance)) {
+    return `${manifestPath} declares non-real-recorded provenance "${provenance}". This WAV directory cannot be used as publish ASR WER evidence.`;
+  }
+  return null;
 }
 
 /* ------------------------------ WAV codec ------------------------------- */
@@ -531,6 +618,7 @@ interface BenchRow {
   transcribeLatencyMs: number;
   rtf: number;
   roundtripMs: number;
+  sampleRateHz: number;
   promptSource: string;
 }
 
@@ -633,6 +721,7 @@ async function main(): Promise<void> {
         transcribeLatencyMs: transcribeMs,
         rtf,
         roundtripMs,
+        sampleRateHz: u.sampleRateHz,
         promptSource: u.promptSource,
       });
       totalErrors += errors;
@@ -656,6 +745,13 @@ async function main(): Promise<void> {
       wavDirProvenance,
       realRecorded: realRecordedWavDir,
     });
+    const corpusBlocker = wavDir ? wavDirManifestPublishBlocker(wavDir) : null;
+    const publishGateEligibility = publishGateEligibilityFor({
+      evidence: labelledSetEvidence,
+      utteranceCount: rows.length,
+      minRealRecordedUtterances,
+      corpusBlocker,
+    });
 
     const result = {
       schemaVersion: 1,
@@ -674,7 +770,11 @@ async function main(): Promise<void> {
         measurementClass: labelledSetEvidence.measurementClass,
         provenance: labelledSetEvidence.provenance,
         realRecordedWer: labelledSetEvidence.realRecordedWer,
-        publishGateEligible: labelledSetEvidence.publishGateEligible,
+        publishGateEligible: publishGateEligibility.publishGateEligible,
+        minRealRecordedUtterances:
+          publishGateEligibility.minRealRecordedUtterances,
+        meetsMinRealRecordedUtterances:
+          publishGateEligibility.meetsMinRealRecordedUtterances,
         wavDir: wavDir || null,
         count: rows.length,
         normalization: "lowercase + strip-punctuation + collapse-ws (Whisper-style)",
@@ -683,6 +783,9 @@ async function main(): Promise<void> {
         generatedPromptModel: generated.model,
         generatedPromptLatencyMs: generated.latencyMs,
         saveAudioDir: saveAudioDir || null,
+        ...(publishGateEligibility.reason
+          ? { publishGateReason: publishGateEligibility.reason }
+          : {}),
         ...(labelledSetEvidence.caveat
           ? { caveat: labelledSetEvidence.caveat }
           : {}),
@@ -708,7 +811,7 @@ async function main(): Promise<void> {
         op: "<=",
         threshold: gateThreshold,
         passed,
-        publishGateEligible: labelledSetEvidence.publishGateEligible,
+        publishGateEligible: publishGateEligibility.publishGateEligible,
       },
       rows,
     };
@@ -719,8 +822,9 @@ async function main(): Promise<void> {
     if (evalOut) {
       // Generated TTS and unknown-provenance WAV directories are loopback or
       // diagnostics, not real recorded WER measurements. Only explicit
-      // --real-recorded WAV+txt corpora can satisfy the publish gate.
-      const validMeasurement = labelledSetEvidence.publishGateEligible;
+      // --real-recorded WAV+txt corpora with enough utterances can satisfy the
+      // publish gate.
+      const validMeasurement = publishGateEligibility.publishGateEligible;
       const evalBlob = validMeasurement
         ? {
             schemaVersion: 1,
@@ -734,6 +838,8 @@ async function main(): Promise<void> {
             labelledSetSource,
             labelledSetProvenance: labelledSetEvidence.provenance,
             utterances: rows.length,
+            minRealRecordedUtterances:
+              publishGateEligibility.minRealRecordedUtterances,
             benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
             ...(passed ? {} : { gateReason: `asr_wer ${aggregateWer.toFixed(4)} > ${gateThreshold}` }),
           }
@@ -750,8 +856,11 @@ async function main(): Promise<void> {
             labelledSetProvenance: labelledSetEvidence.provenance,
             utterances: rows.length,
             reason:
+              publishGateEligibility.reason ??
               labelledSetEvidence.caveat ??
               "labelled set is not explicitly marked as real recorded speech; needs a real recorded WAV+.txt corpus via --wav-dir --real-recorded for publish-gate WER.",
+            minRealRecordedUtterances:
+              publishGateEligibility.minRealRecordedUtterances,
             rtf: aggregateRtf,
             benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
           };
@@ -766,6 +875,7 @@ async function main(): Promise<void> {
           rtf: aggregateRtf,
           meanRoundtripMs: result.aggregate.meanRoundtripMs,
           labelledSetSource,
+          publishGateEligible: publishGateEligibility.publishGateEligible,
           backend,
           out: outPath,
         },

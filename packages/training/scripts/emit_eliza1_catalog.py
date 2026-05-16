@@ -49,7 +49,7 @@ Notes:
     catalog entry at all — see
     ``packages/training/docs/training/gguf-to-runtime.md`` for the
     state-dir / external-scan path. This script is for the
-    "published to ``elizaos/eliza-1`` under ``bundles/<tier>/`` and want it
+    "published to ``elizalabs/eliza-1`` under ``bundles/<tier>/`` and want it
     in the curated catalog" case.
 """
 
@@ -79,52 +79,52 @@ CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "elizaos/eliza-1/bundles/0_8b": {
+    "elizalabs/eliza-1/bundles/0_8b": {
         "params": "0.8B",
-        "context_length": 32768,
+        "context_length": 131072,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 2,
-        "size_gb_estimate": 0.4,  # Q4_POLAR 0.8B ≈ 380-450 MB
+        "size_gb_estimate": 0.5,  # Q4_K_M 0.8B ≈ 530 MB with metadata.
     },
-    "elizaos/eliza-1/bundles/2b": {
+    "elizalabs/eliza-1/bundles/2b": {
         "params": "2B",
-        "context_length": 32768,
+        "context_length": 131072,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "elizaos/eliza-1/bundles/4b": {
+    "elizalabs/eliza-1/bundles/4b": {
         "params": "4B",
-        "context_length": 32768,
+        "context_length": 131072,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "mid",
-        "min_ram_gb": 8,
-        "size_gb_estimate": 2.8,
+        "min_ram_gb": 10,
+        "size_gb_estimate": 2.6,
     },
-    "elizaos/eliza-1/bundles/9b": {
+    "elizalabs/eliza-1/bundles/9b": {
         "params": "9B",
-        "context_length": 65536,
+        "context_length": 131072,
         "tokenizer_family": "eliza1",
         "category": "chat",
-        "bucket": "mid",
+        "bucket": "large",
         "min_ram_gb": 12,
         "size_gb_estimate": 5.4,
     },
-    "elizaos/eliza-1/bundles/27b": {
+    "elizalabs/eliza-1/bundles/27b": {
         "params": "27B",
         "context_length": 131072,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "large",
-        "min_ram_gb": 48,
+        "min_ram_gb": 32,
         "size_gb_estimate": 16.8,
     },
-    "elizaos/eliza-1/bundles/27b-256k": {
+    "elizalabs/eliza-1/bundles/27b-256k": {
         "params": "27B",
         "context_length": 262144,
         "tokenizer_family": "eliza1",
@@ -209,7 +209,7 @@ class Eliza1CatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``elizaos/eliza-1/bundles/2b`` to a catalog id."""
+    """Convert ``elizalabs/eliza-1/bundles/2b`` to a catalog id."""
     if "/bundles/" in hf_repo:
         return f"eliza-1-{hf_repo.rsplit('/bundles/', 1)[1].strip('/')}".lower()
     last = hf_repo.split("/")[-1]
@@ -254,9 +254,9 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
             elif a == "--spec-type" and i + 1 < len(args_list):
                 spec_type = str(args_list[i + 1])
             elif a == "--draft-model" and i + 1 < len(args_list):
-                drafter_model_id = _slug_from_repo(
-                    str(manifest.get("drafter_repo") or "")
-                ) or None
+                drafter_model_id = (
+                    _slug_from_repo(str(manifest.get("drafter_repo") or "")) or None
+                )
 
     slug = _slug_from_repo(target_repo)
     return Eliza1CatalogEntry(
@@ -367,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
         "--print-entry",
         action="store_true",
         help="Print only the rendered TS object literal + a header saying where "
-             "it goes; do not read or diff any catalog file.",
+        "it goes; do not read or diff any catalog file.",
     )
     args = ap.parse_args(argv)
 
@@ -403,7 +403,10 @@ def main(argv: list[str] | None = None) -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(header + diff, encoding="utf-8")
         log.info("wrote patch → %s (%d bytes)", args.output, len(header) + len(diff))
-        log.info("apply with: git apply %s   (after stripping the leading # header)", args.output)
+        log.info(
+            "apply with: git apply %s   (after stripping the leading # header)",
+            args.output,
+        )
     else:
         sys.stdout.write(header)
         sys.stdout.write(diff)

@@ -9,7 +9,7 @@ import type {
 } from "@elizaos/core";
 import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
+import { createMockedTestRuntime } from "../../../packages/test/mocks/helpers/mock-runtime.ts";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
 import {

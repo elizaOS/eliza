@@ -45,12 +45,11 @@ describe("local inference recommendations", () => {
 		expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
 		expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
 		// assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
-		// 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-		// not. Ladder is 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
+		// 27b (minRam 32, size 16.8) fits and is the largest active tier.
 		expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
 	});
 
-	it("picks the 27B 256k tier on a >=96 GB-effective workstation", () => {
+	it("keeps the active 27B tier on a >=96 GB-effective workstation", () => {
 		const probe = hardware({
 			totalRamGb: 128,
 			freeRamGb: 96,
@@ -64,8 +63,7 @@ describe("local inference recommendations", () => {
 
 		const recommended = selectRecommendedModels(probe);
 
-		// effective = max(128, 64) = 128 >= 27b-256k minRam (96).
-		expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
+		expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
 	});
 
 	it("uses the mobile platform ladder and prefers the small Eliza-1 tier when it fits", () => {
@@ -364,7 +362,7 @@ function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
 			vision: [{ path: "vision/mmproj.gguf", sha256: SHA }],
 			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
-			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
+			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},
 		kernels: {
 			required: [...REQUIRED_KERNELS_BY_TIER[tier]],

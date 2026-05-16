@@ -59,6 +59,12 @@ import {
 } from "./lib/capacitor-platform-templates.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
+import {
+  appStoreExecutionProfile,
+  findForbiddenRuntimeImportGroups,
+  findForbiddenRuntimeStrings,
+  formatForbiddenRuntimeFindings,
+} from "../../bun-ios-runtime/scripts/ios-app-store-runtime-policy.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -146,24 +152,7 @@ const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
 ];
-const IOS_BUN_ENGINE_EXECUTION_PROFILE = "ios-app-store-nojit";
-const IOS_BUN_ENGINE_FORBIDDEN_IMPORTS = [
-  "_dlopen",
-  "_dlsym",
-  "_posix_spawn",
-  "_fork",
-  "_execve",
-  "_system",
-  "_pthread_jit_write_protect_np",
-  "_mach_vm_protect",
-  "_vm_protect",
-];
-const IOS_BUN_ENGINE_FORBIDDEN_STRINGS = [
-  /\bMAP_JIT\b/i,
-  /\ballow-jit\b/i,
-  /\bdynamic-codesigning\b/i,
-  /\bunsigned-executable-memory\b/i,
-];
+const IOS_BUN_ENGINE_EXECUTION_PROFILE = appStoreExecutionProfile;
 export const IOS_AGENT_RUNTIME_ASSETS = [
   "agent-bundle.js",
   "pglite.wasm",
@@ -1768,6 +1757,37 @@ function writeAndroidCleartextPolicy({ allowCleartext, label }) {
   }
 }
 
+function restoreAndroidManifestFromPlatformTemplateIfMissing() {
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (fs.existsSync(manifestPath)) return false;
+
+  const templatePath = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (!fs.existsSync(templatePath)) return false;
+
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.copyFileSync(templatePath, manifestPath);
+  console.log(
+    `[mobile-build] Restored missing AndroidManifest.xml from ${path.relative(
+      repoRoot,
+      templatePath,
+    )}.`,
+  );
+  return true;
+}
+
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -1885,6 +1905,7 @@ function overlayAndroid() {
   }
 
   // Merge AndroidManifest.xml
+  restoreAndroidManifestFromPlatformTemplateIfMissing();
   const manifestPath = path.join(
     androidDir,
     "app",
@@ -3092,6 +3113,7 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
   );
   if (fs.existsSync(srcJava)) return;
 
+  restoreAndroidManifestFromPlatformTemplateIfMissing();
   const manifestPath = path.join(
     androidDir,
     "app",
@@ -3834,13 +3856,12 @@ function validateIosBunEngineNoJitDynamicCode(
     );
   }
   const importedSymbols = `${imports.stdout}\n${imports.stderr}`;
-  const forbiddenImports = IOS_BUN_ENGINE_FORBIDDEN_IMPORTS.filter((symbol) =>
-    importedSymbols.includes(symbol),
-  );
-  if (forbiddenImports.length > 0) {
-    const message = `[mobile-build] ${binary} imports App-Store-unsafe dynamic-code/JIT symbol(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenImports.join(
-      ", ",
-    )}`;
+  const importGroups = findForbiddenRuntimeImportGroups(importedSymbols);
+  if (importGroups.length > 0) {
+    const message = formatForbiddenRuntimeFindings({
+      binary,
+      importGroups,
+    });
     if (shouldEnforceIosBunEngineAppStoreRuntime(buildTarget)) {
       throw new Error(message);
     }
@@ -3862,13 +3883,12 @@ function validateIosBunEngineNoJitDynamicCode(
     );
   }
   const binaryStrings = `${strings.stdout}\n${strings.stderr}`;
-  const forbiddenStrings = IOS_BUN_ENGINE_FORBIDDEN_STRINGS.filter((pattern) =>
-    pattern.test(binaryStrings),
-  ).map((pattern) => String(pattern));
-  if (forbiddenStrings.length > 0) {
-    const message = `[mobile-build] ${binary} contains App-Store-unsafe dynamic-code/JIT marker(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenStrings.join(
-      ", ",
-    )}`;
+  const stringPatterns = findForbiddenRuntimeStrings(binaryStrings);
+  if (stringPatterns.length > 0) {
+    const message = formatForbiddenRuntimeFindings({
+      binary,
+      stringPatterns,
+    });
     if (shouldEnforceIosBunEngineAppStoreRuntime(buildTarget)) {
       throw new Error(message);
     }

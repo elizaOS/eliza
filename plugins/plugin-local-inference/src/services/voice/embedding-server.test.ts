@@ -88,7 +88,7 @@ describe("embeddingServerForRoute", () => {
 	it("0_8b pooled-text route → sidecar over the text backbone GGUF with --embeddings --pooling last", () => {
 		const bundleRoot = tmpBundle();
 		const textPath = writeGguf(
-			path.join(bundleRoot, "text", "eliza-1-0_8b-32k.gguf"),
+			path.join(bundleRoot, "text", "eliza-1-0_8b-128k.gguf"),
 		);
 		const route = buildLocalEmbeddingRoute({
 			bundleRoot,
@@ -105,7 +105,7 @@ describe("embeddingServerForRoute", () => {
 	it("2b pooled-text route → sidecar over the text backbone GGUF", () => {
 		const bundleRoot = tmpBundle();
 		const textPath = writeGguf(
-			path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf"),
+			path.join(bundleRoot, "text", "eliza-1-2b-128k.gguf"),
 		);
 		const route = buildLocalEmbeddingRoute({
 			bundleRoot,

@@ -1,6 +1,6 @@
 """Publish staged Eliza-1 runtime bundles into one Hugging Face model repo.
 
-The app catalog points every Eliza-1 tier at ``elizaos/eliza-1`` and resolves
+The app catalog points every Eliza-1 release tier at ``elizalabs/eliza-1`` and resolves
 files under ``bundles/<tier>/``. This publisher is the operator-side mirror of
 that contract: it validates local ``eliza-1-<tier>.bundle`` directories, writes
 the repo README, and uploads each bundle into the single model repo.
@@ -31,7 +31,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-TIERS: tuple[str, ...] = M.ELIZA_1_TIERS
+TIERS: tuple[str, ...] = tuple(tier for tier in M.ELIZA_1_TIERS if tier != "27b-256k")
 DEFAULT_REPO_ID = M.ELIZA_1_HF_REPO
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
 PUBLISH_METADATA_DIRS = frozenset(
@@ -144,7 +144,9 @@ def _release_blocking_reasons(evidence: dict[str, Any]) -> list[str]:
     return [reason for reason in reasons if isinstance(reason, str) and reason.strip()]
 
 
-def _publishable_bundle_relpaths(bundle_dir: Path, manifest: dict[str, Any]) -> list[str]:
+def _publishable_bundle_relpaths(
+    bundle_dir: Path, manifest: dict[str, Any]
+) -> list[str]:
     """Return the runtime bundle files that should be published to the Hub.
 
     Local staging bundles may contain large ``source/`` inputs used to build
@@ -156,7 +158,9 @@ def _publishable_bundle_relpaths(bundle_dir: Path, manifest: dict[str, Any]) -> 
     rels: set[str] = {"eliza-1.manifest.json"}
     rels.update(_iter_manifest_paths(manifest))
     rels.update(
-        rel for rel in PUBLISH_METADATA_FILES if _safe_bundle_child(bundle_dir, rel).is_file()
+        rel
+        for rel in PUBLISH_METADATA_FILES
+        if _safe_bundle_child(bundle_dir, rel).is_file()
     )
     for metadata_dir in PUBLISH_METADATA_DIRS:
         root = bundle_dir / metadata_dir
@@ -191,7 +195,9 @@ def _parse_checksum_manifest(path: Path) -> tuple[dict[str, str], list[str]]:
     errors: list[str] = []
     if not path.is_file():
         return recorded, [f"missing checksum manifest: {path}"]
-    for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_no, raw in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -204,7 +210,9 @@ def _parse_checksum_manifest(path: Path) -> tuple[dict[str, str], list[str]]:
             errors.append(f"{CHECKSUMS_REL}:{line_no}: invalid sha256 digest")
             continue
         if rel == CHECKSUMS_REL:
-            errors.append(f"{CHECKSUMS_REL}:{line_no}: checksum manifest cannot hash itself")
+            errors.append(
+                f"{CHECKSUMS_REL}:{line_no}: checksum manifest cannot hash itself"
+            )
             continue
         recorded[rel] = digest
     return recorded, errors
@@ -250,8 +258,7 @@ def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
         if p.startswith("tts/") or "voice" in p.lower()
     }
     expected_paths = {
-        f"tts/{rel}".lower()
-        for rel in M.required_voice_artifacts_for_tier(tier)
+        f"tts/{rel}".lower() for rel in M.required_voice_artifacts_for_tier(tier)
     }
     warnings: list[str] = []
     for expected_path in sorted(expected_paths - voice_paths):
@@ -274,15 +281,21 @@ def _release_evidence_errors(
 
     errors: list[str] = []
     blocking_reasons = _release_blocking_reasons(evidence)
-    use_blocking_reasons = (
-        evidence.get("publishEligible") is not True and bool(blocking_reasons)
+    use_blocking_reasons = evidence.get("publishEligible") is not True and bool(
+        blocking_reasons
     )
     if evidence.get("tier") != tier:
-        errors.append(f"release evidence tier {evidence.get('tier')!r} does not match {tier}")
+        errors.append(
+            f"release evidence tier {evidence.get('tier')!r} does not match {tier}"
+        )
     if evidence.get("repoId") != DEFAULT_REPO_ID:
-        errors.append(f"evidence/release.json repoId is unexpected: {evidence.get('repoId')!r}")
+        errors.append(
+            f"evidence/release.json repoId is unexpected: {evidence.get('repoId')!r}"
+        )
     if evidence.get("checksumManifest") != CHECKSUMS_REL:
-        errors.append(f"evidence/release.json checksumManifest must be {CHECKSUMS_REL!r}")
+        errors.append(
+            f"evidence/release.json checksumManifest must be {CHECKSUMS_REL!r}"
+        )
     release_state = evidence.get("releaseState")
     if release_state not in PUBLISHABLE_RELEASE_STATES and not use_blocking_reasons:
         errors.append(
@@ -302,8 +315,7 @@ def _release_evidence_errors(
 
     if use_blocking_reasons:
         errors.extend(
-            f"evidence/release.json blocker: {reason}"
-            for reason in blocking_reasons
+            f"evidence/release.json blocker: {reason}" for reason in blocking_reasons
         )
 
     weights = evidence.get("weights")
@@ -334,10 +346,16 @@ def _release_evidence_errors(
                 )
 
     eval_reports = evidence.get("evalReports")
-    expected_eval_reports = sorted(
-        f"evals/{p.name}" for p in (bundle_dir / "evals").iterdir() if p.is_file()
-    ) if (bundle_dir / "evals").is_dir() else []
-    if not isinstance(eval_reports, list) or not all(isinstance(p, str) for p in eval_reports):
+    expected_eval_reports = (
+        sorted(
+            f"evals/{p.name}" for p in (bundle_dir / "evals").iterdir() if p.is_file()
+        )
+        if (bundle_dir / "evals").is_dir()
+        else []
+    )
+    if not isinstance(eval_reports, list) or not all(
+        isinstance(p, str) for p in eval_reports
+    ):
         errors.append("evidence/release.json evalReports must be an array of strings")
     else:
         missing_eval_reports = sorted(set(expected_eval_reports) - set(eval_reports))
@@ -352,7 +370,9 @@ def _release_evidence_errors(
         errors.append("evidence/release.json hf block is missing or not an object")
     else:
         if hf.get("repoId") != DEFAULT_REPO_ID:
-            errors.append(f"evidence/release.json hf.repoId is unexpected: {hf.get('repoId')!r}")
+            errors.append(
+                f"evidence/release.json hf.repoId is unexpected: {hf.get('repoId')!r}"
+            )
         if hf.get("pathPrefix") != f"bundles/{tier}":
             errors.append(
                 f"evidence/release.json hf.pathPrefix {hf.get('pathPrefix')!r} "
@@ -399,13 +419,10 @@ def _release_evidence_errors(
                             "evidence/release.json hf.uploadEvidence.uploadedPaths "
                             f"missing required path(s): {missing_paths}"
                         )
-        elif (
-            hf_status not in {"pending-upload", "upload-ready"}
-            and not (
-                evidence.get("publishEligible") is not True
-                and isinstance(hf_status, str)
-                and hf_status.startswith("blocked-")
-            )
+        elif hf_status not in {"pending-upload", "upload-ready"} and not (
+            evidence.get("publishEligible") is not True
+            and isinstance(hf_status, str)
+            and hf_status.startswith("blocked-")
         ):
             errors.append(
                 "evidence/release.json hf.status must be 'pending-upload', "
@@ -455,8 +472,12 @@ def plan_bundle(
         except Exception as exc:  # noqa: BLE001 - operator report should keep going
             errors.append(f"manifest is not readable JSON: {exc}")
             manifest = {}
-        manifest_id = manifest.get("id") if isinstance(manifest.get("id"), str) else None
-        manifest_tier = manifest.get("tier") if isinstance(manifest.get("tier"), str) else None
+        manifest_id = (
+            manifest.get("id") if isinstance(manifest.get("id"), str) else None
+        )
+        manifest_tier = (
+            manifest.get("tier") if isinstance(manifest.get("tier"), str) else None
+        )
         if manifest_id != f"eliza-1-{tier}":
             errors.append(f"manifest id {manifest_id!r} does not match eliza-1-{tier}")
         if manifest_tier != tier:
@@ -805,7 +826,9 @@ def _print_summary(plans: Sequence[BundlePlan], *, repo_id: str, dry_run: bool) 
     print(f"Eliza-1 model repo publish plan: {repo_id}")
     print(f"mode: {'dry-run' if dry_run else 'upload'}")
     if dry_run:
-        print("hf-cli dry-run: no upload command was run; hf upload has no dry-run flag")
+        print(
+            "hf-cli dry-run: no upload command was run; hf upload has no dry-run flag"
+        )
     for plan in plans:
         status = "ready" if plan.uploadable else "blocked"
         print(
@@ -871,7 +894,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.dry_run:
         token = _token()
         if not token:
-            print("HF_TOKEN or HUGGINGFACE_HUB_TOKEN is required for upload", file=sys.stderr)
+            print(
+                "HF_TOKEN or HUGGINGFACE_HUB_TOKEN is required for upload",
+                file=sys.stderr,
+            )
             return 2
         publish_plans(
             plans,

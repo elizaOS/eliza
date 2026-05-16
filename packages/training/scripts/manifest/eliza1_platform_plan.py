@@ -74,7 +74,7 @@ ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     for tier in ELIZA_1_TIERS
 }
 
-VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
+VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.gguf",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
@@ -476,11 +476,11 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, DFlash, vision mmproj, and OmniVoice TTS payloads are "
-        "GGUF artifacts when a tier ships them. 0.8B/2B/4B use Kokoro only; "
-        "9B carries Kokoro plus OmniVoice; Kokoro is ONNX by design. "
+        "GGUF artifacts when a tier ships them. 0.8B/2B/4B/9B carry Kokoro "
+        "plus OmniVoice; Kokoro is ONNX by design. "
         "27B-class tiers ship OmniVoice GGUF only.",
-        "- VAD is a native GGML artifact at "
-        "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
+        "- VAD is a native silero-vad-cpp GGUF artifact at "
+        "`vad/silero-vad-v5.gguf`. "
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",

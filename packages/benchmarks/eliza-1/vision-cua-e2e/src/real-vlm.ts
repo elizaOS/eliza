@@ -129,7 +129,7 @@ interface ParsedGrounding {
  * Tolerant JSON extraction. Models occasionally wrap the response in prose or
  * fenced code blocks; we scan for the first `{ "x": … }` object.
  */
-export function parseGroundingResponse(raw: string): ParsedGrounding {
+function parseGroundingResponse(raw: string): ParsedGrounding {
   const match = raw.match(/\{[^{}]*"x"\s*:\s*-?\d+[^{}]*\}/);
   if (!match) {
     throw new Error(

@@ -2676,16 +2676,10 @@ export function applyGpuProfile(args: string[], profile: GpuProfile): string[] {
 	if (profile.kvSpillToCpu && !args.includes("--no-kv-offload")) {
 		args.push("--no-kv-offload");
 	}
-	if (
-		!args.includes("--spec-draft-n-min") &&
-		!args.includes("--draft-min")
-	) {
+	if (!args.includes("--spec-draft-n-min") && !args.includes("--draft-min")) {
 		args.push("--spec-draft-n-min", String(profile.dflashDraftMin));
 	}
-	if (
-		!args.includes("--spec-draft-n-max") &&
-		!args.includes("--draft-max")
-	) {
+	if (!args.includes("--spec-draft-n-max") && !args.includes("--draft-max")) {
 		args.push("--spec-draft-n-max", String(profile.dflashDraftMax));
 	}
 	return args;
@@ -2856,7 +2850,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * Mirrors `loadedDrafterModelPath()` for the vision component.
 	 */
 	currentMmprojPath(): string | null {
-		return this.lastOptimizations?.mmproj ?? null;
+		return (
+			process.env.ELIZA_LOCAL_MMPROJ?.trim() ||
+			this.loadedPlan?.mmprojPath ||
+			this.lastOptimizations?.mmproj ||
+			null
+		);
 	}
 
 	/**
@@ -4274,6 +4273,11 @@ export function buildChatCompletionBody(
 		cache_prompt: true,
 		slot_id: slotId,
 	};
+	if (args.thinking === "off" || args.thinking === "on") {
+		payload.chat_template_kwargs = {
+			enable_thinking: args.thinking === "on",
+		};
+	}
 	if (effectivePrefill.length > 0) {
 		// Continue the partial assistant turn instead of opening a new one.
 		payload.continue_final_message = true;

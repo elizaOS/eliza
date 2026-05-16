@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Knowledge-distill a small DFlash drafter from an Eliza-1 text checkpoint.
 
-Eliza-1 ships one DFlash drafter per tier (see inference/AGENTS.md §2). The
-drafter is a small autoregressive model that proposes N tokens per step; the
-target text model verifies them. Acceptance rate — and therefore the speed-up
-— depends entirely on how closely the drafter's next-token distribution tracks
-the target's. We do NOT train the drafter from scratch on raw text; we
-knowledge-distill it from the *exact* text checkpoint it will ship with, so
-its logits match the target's on the distributions that matter.
+Eliza-1 ships DFlash drafters for 2B+ target tiers (see inference/AGENTS.md
+§2). A drafter is a small autoregressive model that proposes N tokens per step;
+the target text model verifies them. Acceptance rate — and therefore the
+speed-up — depends entirely on how closely the drafter's next-token
+distribution tracks the target's. We do NOT train the drafter from scratch on
+raw text; we knowledge-distill it from the *exact* text checkpoint it will ship
+with, so its logits match the target's on the distributions that matter.
 
 Hard contract (training/AGENTS.md §2 + §9):
 
@@ -18,9 +18,11 @@ Hard contract (training/AGENTS.md §2 + §9):
     the sha256 of the final shipped text GGUF it was distilled to match.
     The publish path (and the runtime doctor) refuse a drafter whose
     recorded hash does not match the text GGUF in the same bundle.
-  - The recipe is the same across active tiers. Eliza-1 uses Qwen3.5
-    students only: the active tiny tier is `eliza-1-0_8b`; every tier must
-    distill from a base with byte-identical tokenizer metadata.
+  - The recipe is the same across drafter-enabled tiers. Eliza-1 uses Qwen3.5
+    students only; every drafter-enabled tier must distill from a base with
+    byte-identical tokenizer metadata.
+  - `eliza-1-0_8b` is target-only by design. It has no DFlash drafter,
+    no acceptance gate, and no drafter training job.
 
 Distillation objective: forward KL on the top-k target logits plus a small
 cross-entropy floor on the ground-truth token (label smoothing keeps the
@@ -31,19 +33,19 @@ student from collapsing onto a single mode):
 
 Usage:
 
-    # Smoke (no real models, no GPU): exercises the pipeline + metadata write
+    # Smoke (no real models, no GPU): exercises CLI/control-flow only
     uv run --extra train python scripts/distill_dflash_drafter.py \
-        --tier 0_8b --synthetic-smoke --out-dir /tmp/dflash-smoke
+        --tier 2b --synthetic-smoke --out-dir /tmp/dflash-smoke
 
-    # Real run for the active tiny drafter
+    # Real run for a drafter-enabled tier
     uv run --extra train python scripts/distill_dflash_drafter.py \
-        --tier 0_8b \
-        --target-checkpoint training/checkpoints/eliza-1-0_8b-text \
-        --target-gguf out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf \
+        --tier 2b \
+        --target-checkpoint training/checkpoints/eliza-1-2b-text \
+        --target-gguf out/eliza-1-2b/text/eliza-1-2b-128k.gguf \
         --student-base Qwen/Qwen3.5-0.8B-Base \
         --dataset data/distill/eliza1-distill.jsonl \
         --epochs 1 --batch-size 8 --grad-accum 4 \
-        --out-dir out/eliza-1-0_8b/dflash
+        --out-dir out/eliza-1-2b/dflash
 
 The script writes <out-dir>/drafter-<tier>.gguf and a run manifest
 <out-dir>/drafter-<tier>.distill.json recording dataset hashes, the student
@@ -79,10 +81,11 @@ GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
 ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
 
-# DFlash training can produce a 0_8b drafter, but bundle manifests do not
-# require one for the 0_8b target tier. Keep manifest-required policy in the
-# manifest layer; this script is the training support matrix.
-TRAINING_SUPPORTED_TIERS = ACTIVE_TIERS
+# Target tiers that are allowed to ship a DFlash drafter. 0_8b is target-only:
+# bundle manifests must keep DFlash disabled there, and this script must not
+# produce a drafter artifact for it.
+DFLASH_DRAFTER_TIERS = ("2b", "4b", "9b", "27b", "27b-256k")
+TRAINING_SUPPORTED_TIERS = DFLASH_DRAFTER_TIERS
 
 # Use this only for synthetic smoke fixtures that cannot inspect a tokenizer.
 # Real training and validation derive vocab size from tokenizer/GGUF metadata.
@@ -91,7 +94,6 @@ QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE = 248320
 # Recommended student base per active tier. Every active Eliza-1 tier is on the
 # Qwen3.5 tokenizer family; keep this base aligned with model_registry.py.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
-    "0_8b": "Qwen/Qwen3.5-0.8B-Base",
     "2b": "Qwen/Qwen3.5-0.8B-Base",
     "4b": "Qwen/Qwen3.5-0.8B-Base",
     "9b": "Qwen/Qwen3.5-0.8B-Base",
@@ -105,12 +107,11 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 # can distinguish "trained against a small-tier-ish directory" from "trained
 # against the exact Eliza-1 target".
 DEFAULT_TARGET_MODEL: dict[str, str] = {
-    "0_8b": "elizaos/eliza-1/bundles/0_8b",
-    "2b": "elizaos/eliza-1/bundles/2b",
-    "4b": "elizaos/eliza-1/bundles/4b",
-    "9b": "elizaos/eliza-1/bundles/9b",
-    "27b": "elizaos/eliza-1/bundles/27b",
-    "27b-256k": "elizaos/eliza-1/bundles/27b-256k",
+    "2b": "elizalabs/eliza-1/bundles/2b",
+    "4b": "elizalabs/eliza-1/bundles/4b",
+    "9b": "elizalabs/eliza-1/bundles/9b",
+    "27b": "elizalabs/eliza-1/bundles/27b",
+    "27b-256k": "elizalabs/eliza-1/bundles/27b-256k",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -118,7 +119,6 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
 # acceptance window into `dflash/target-meta.json`. Tighten only with a
 # rebaseline (see training/AGENTS.md §8).
 ACCEPTANCE_GATE: dict[str, float] = {
-    "0_8b": 0.40,
     "2b": 0.48,
     "4b": 0.52,
     "9b": 0.52,
@@ -179,7 +179,9 @@ def _tokenizer_fingerprint(tokenizer: Any) -> dict[str, Any]:
     payload = {
         "class": tokenizer.__class__.__name__,
         "vocabSize": len(vocab),
-        "vocabSha256": _stable_json_sha256(dict(sorted(vocab.items(), key=lambda kv: kv[1]))),
+        "vocabSha256": _stable_json_sha256(
+            dict(sorted(vocab.items(), key=lambda kv: kv[1]))
+        ),
         "addedVocabSha256": _stable_json_sha256(
             dict(sorted(tokenizer.get_added_vocab().items()))
         ),
@@ -206,7 +208,9 @@ def _tokenizer_probe_encodings(tokenizer: Any) -> dict[str, list[int]]:
     }
 
 
-def _tokenizer_parity_report(target_tokenizer: Any, student_tokenizer: Any) -> dict[str, Any]:
+def _tokenizer_parity_report(
+    target_tokenizer: Any, student_tokenizer: Any
+) -> dict[str, Any]:
     target = _tokenizer_fingerprint(target_tokenizer)
     student = _tokenizer_fingerprint(student_tokenizer)
     target_probes = _tokenizer_probe_encodings(target_tokenizer)
@@ -296,7 +300,11 @@ def _find_convert_script() -> Path | None:
             candidates.append(legacy_cand / "convert_hf_to_gguf.py")
             break
     candidates.append(
-        Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp" / "convert_hf_to_gguf.py"
+        Path.home()
+        / ".cache"
+        / "eliza-dflash"
+        / "eliza-llama-cpp"
+        / "convert_hf_to_gguf.py"
     )
     for c in candidates:
         if c.exists():
@@ -335,7 +343,9 @@ def _write_gguf_target_hash(gguf_path: Path, target_sha256: str) -> None:
     )
     del reader
     tmp_path.replace(gguf_path)
-    log.info("recorded %s=%s into %s", GGUF_TARGET_CHECKPOINT_KEY, target_sha256, gguf_path)
+    log.info(
+        "recorded %s=%s into %s", GGUF_TARGET_CHECKPOINT_KEY, target_sha256, gguf_path
+    )
 
 
 def _patch_saved_hf_for_gguf_convert(hf_out: Path) -> None:
@@ -367,17 +377,41 @@ def _patch_saved_hf_for_gguf_convert(hf_out: Path) -> None:
     # Tolerate already-patched configs (idempotent).
     if "text_config" not in c:
         text_keys = [
-            "architectures", "attention_bias", "attention_dropout", "attn_output_gate",
-            "bos_token_id", "dtype", "eos_token_id", "full_attention_interval",
-            "head_dim", "hidden_act", "hidden_size", "initializer_range",
-            "intermediate_size", "layer_types", "linear_conv_kernel_dim",
-            "linear_key_head_dim", "linear_num_key_heads", "linear_num_value_heads",
-            "linear_value_head_dim", "mamba_ssm_dtype", "max_position_embeddings",
-            "mlp_only_layers", "model_type", "mtp_num_hidden_layers",
-            "mtp_use_dedicated_embeddings", "num_attention_heads", "num_hidden_layers",
-            "num_key_value_heads", "pad_token_id", "partial_rotary_factor",
-            "rms_norm_eps", "rope_parameters", "tie_word_embeddings",
-            "use_cache", "vocab_size",
+            "architectures",
+            "attention_bias",
+            "attention_dropout",
+            "attn_output_gate",
+            "bos_token_id",
+            "dtype",
+            "eos_token_id",
+            "full_attention_interval",
+            "head_dim",
+            "hidden_act",
+            "hidden_size",
+            "initializer_range",
+            "intermediate_size",
+            "layer_types",
+            "linear_conv_kernel_dim",
+            "linear_key_head_dim",
+            "linear_num_key_heads",
+            "linear_num_value_heads",
+            "linear_value_head_dim",
+            "mamba_ssm_dtype",
+            "max_position_embeddings",
+            "mlp_only_layers",
+            "model_type",
+            "mtp_num_hidden_layers",
+            "mtp_use_dedicated_embeddings",
+            "num_attention_heads",
+            "num_hidden_layers",
+            "num_key_value_heads",
+            "pad_token_id",
+            "partial_rotary_factor",
+            "rms_norm_eps",
+            "rope_parameters",
+            "tie_word_embeddings",
+            "use_cache",
+            "vocab_size",
         ]
         text_config = {k: c[k] for k in text_keys if k in c}
         text_config["model_type"] = "qwen3_5_text"
@@ -633,6 +667,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
             build_apollo_mini_optimizer,
             build_apollo_optimizer,
         )
+
         if args.optimizer == "apollo":
             opt = build_apollo_optimizer(
                 student,
@@ -735,7 +770,9 @@ def _run_distillation(args: argparse.Namespace) -> int:
     # AutoTokenizer onto its built-in Qwen3_5Tokenizer (transformers' saved
     # config otherwise pins Qwen2Tokenizer slow).
     _patch_saved_hf_for_gguf_convert(hf_out)
-    log.info("saved distilled student (%.3fB params) to %s", n_student_params / 1e9, hf_out)
+    log.info(
+        "saved distilled student (%.3fB params) to %s", n_student_params / 1e9, hf_out
+    )
 
     # Convert to GGUF via the fork's converter, then stamp the target hash.
     convert = _find_convert_script()
@@ -823,8 +860,7 @@ def _run_verify_tokenizers_only(args: argparse.Namespace) -> int:
     print(json.dumps(parity, indent=2, sort_keys=True))
     if not parity["matches"]:
         log.error(
-            "tokenizer mismatch: targetTokenizerSha256=%s "
-            "studentTokenizerSha256=%s",
+            "tokenizer mismatch: targetTokenizerSha256=%s " "studentTokenizerSha256=%s",
             parity["target"]["sha256"],
             parity["student"]["sha256"],
         )
@@ -837,8 +873,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--tier",
         required=True,
-        choices=ACTIVE_TIERS,
-        help="Eliza-1 tier this drafter ships with.",
+        choices=TRAINING_SUPPORTED_TIERS,
+        help="Eliza-1 drafter-enabled target tier this drafter ships with.",
     )
     p.add_argument("--target-checkpoint", help="HF dir of the fine-tuned text model.")
     p.add_argument(

@@ -10,7 +10,7 @@ _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
+from scripts.manifest.eliza1_manifest import ELIZA_1_HF_REPO, ELIZA_1_TIERS  # noqa: E402
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     build_plan,
     missing_files,
@@ -26,10 +26,10 @@ def test_platform_plan_is_json_serializable_and_covers_all_tiers() -> None:
     json.dumps(data, sort_keys=True)
 
 
-def test_vad_is_native_ggml_not_gguf_but_asr_is_gguf() -> None:
+def test_vad_is_native_gguf_and_asr_is_gguf() -> None:
     plan = build_plan()
     for tier_plan in plan.values():
-        assert "vad/silero-vad-v5.1.2.ggml.bin" in tier_plan.required_files
+        assert "vad/silero-vad-v5.gguf" in tier_plan.required_files
         assert "vad/silero-vad-int8.onnx" not in tier_plan.required_files
         assert "vad/silero-vad-int8.gguf" not in tier_plan.required_files
         assert "vad/silero-vad-v5.1.2.gguf" not in tier_plan.required_files
@@ -55,7 +55,7 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/target-meta.json" in tier_plan.required_files
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
     small_plan = build_plan()["0_8b"]
-    assert "dflash/drafter-0_8b.gguf" in small_plan.required_files
+    assert "dflash/drafter-0_8b.gguf" not in small_plan.required_files
     assert "dflash/target-meta.json" in small_plan.required_files
     assert "licenses/LICENSE.dflash" in small_plan.required_files
 
@@ -93,19 +93,19 @@ def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     plan = build_plan()
     root = tmp_path / "bundles"
     (root / "eliza-1-4b" / "vad").mkdir(parents=True)
-    (root / "eliza-1-4b" / "vad" / "silero-vad-v5.1.2.ggml.bin").write_bytes(
+    (root / "eliza-1-4b" / "vad" / "silero-vad-v5.gguf").write_bytes(
         b"vad"
     )
     missing = missing_files(root, plan)
-    assert "vad/silero-vad-v5.1.2.ggml.bin" not in missing["4b"]
+    assert "vad/silero-vad-v5.gguf" not in missing["4b"]
     assert "text/eliza-1-4b-128k.gguf" in missing["4b"]
     assert "evidence/platform/linux-x64-rocm.json" in missing["4b"]
 
 
-def test_readiness_mentions_vad_native_ggml_caveat() -> None:
+def test_readiness_mentions_vad_native_gguf_caveat() -> None:
     text = render_readiness(build_plan(), missing=None)
-    assert "VAD is a native GGML artifact" in text
-    assert "It is not GGUF" in text
+    assert "VAD is a native silero-vad-cpp GGUF artifact" in text
+    assert "vad/silero-vad-v5.gguf" in text
     assert "vad/silero-vad-int8.onnx" in text
     assert "Qwen3.5 0.8B (`0_8b`)" in text
     assert "Qwen3.5 2B (`2b`)" in text
@@ -190,7 +190,10 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
+                    "drafter": {
+                        "repo": ELIZA_1_HF_REPO,
+                        "file": "bundles/2b/dflash/drafter-2b.gguf",
+                    },
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -206,15 +209,15 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": ELIZA_1_HF_REPO,
                     "repoPath": "bundles/2b",
                     "status": "uploaded",
                     "uploadEvidence": {
-                        "repoId": "elizaos/eliza-1",
+                        "repoId": ELIZA_1_HF_REPO,
                         "pathPrefix": "bundles/2b",
                         "status": "uploaded",
                         "commit": "abc123",
-                        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+                        "url": f"https://huggingface.co/{ELIZA_1_HF_REPO}/commit/abc123",
                         "uploadedPaths": required_weights,
                     },
                 },
@@ -256,7 +259,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": ELIZA_1_HF_REPO,
                     "repoPath": "bundles/2b",
                     "status": "pending-upload",
                 },
@@ -297,7 +300,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "weights": [],
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": ELIZA_1_HF_REPO,
                     "status": "pending-upload",
                 },
             }

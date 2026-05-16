@@ -40,9 +40,7 @@ export function isAndroidLocalAgentUrl(value: string): boolean {
 
 function isNativeAndroid(): boolean {
   try {
-    return (
-      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
-    );
+    return Capacitor.getPlatform() === "android";
   } catch {
     return false;
   }

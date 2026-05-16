@@ -91,7 +91,7 @@ uv run --extra train python -m scripts.turn_detector.finetune_turn_detector \
 # `convert_lora_to_gguf.py` ships with the llama.cpp checkout — see
 # `EXPORT-NEXT-STEP.txt` written under the run dir.
 python llama.cpp/convert_lora_to_gguf.py \
-    --base elizaos/eliza-1 \
+    --base elizalabs/eliza-1 \
     --revision bundles/2b/drafter \
     artifacts/turn-detector-eliza1-drafter/checkpoints/best.pt \
     --outfile artifacts/turn-detector-eliza1-drafter/eot-lora.gguf

@@ -10,7 +10,7 @@ interface EmptyStateProps {
   onCreateNew: () => void;
 }
 
-export function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
+function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
   return (
     <EmptyState
       title="No agents yet"
@@ -27,5 +27,4 @@ export function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
   );
 }
 
-// Keep backward-compatible export
 export { AgentsEmptyState as EmptyState };

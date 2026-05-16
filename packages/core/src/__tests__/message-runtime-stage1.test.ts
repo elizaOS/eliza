@@ -157,6 +157,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			toolChoice?: string;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
+			providerOptions?: { eliza?: Record<string, unknown> };
 			signal?: AbortSignal;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
@@ -168,8 +169,61 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
+		expect(params.providerOptions?.eliza).toMatchObject({
+			guidedDecode: true,
+			thinking: "off",
+		});
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
+		}
+	});
+
+	it("regenerates low-quality Stage 1 direct reply text outside the JSON envelope", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "RPPY",
+			}),
+			"Four.",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "What is 2+2?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Four.");
+		}
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.TEXT_SMALL);
+		expect(calls[1]?.[1]).toMatchObject({
+			providerOptions: { eliza: { thinking: "off" } },
+		});
+	});
+
+	it("regenerates numeric-only Stage 1 reply fragments outside the JSON envelope", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "2",
+			}),
+			"2+2 equals 4.",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "What is 2+2?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("2+2 equals 4.");
 		}
 	});
 

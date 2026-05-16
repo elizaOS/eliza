@@ -5,5 +5,4 @@
  * flow through one implementation.
  */
 
-export type { Hono } from "hono";
 export { default } from "@/api/v1/voice/clone/route";

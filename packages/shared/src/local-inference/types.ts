@@ -345,7 +345,7 @@ export interface CatalogModel {
   displayName: string;
   /** Hosting backend. Defaults to Hugging Face when omitted. */
   hub?: CatalogHub;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1". */
   hfRepo: string;
   /**
    * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under

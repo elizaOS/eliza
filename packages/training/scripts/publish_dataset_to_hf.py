@@ -13,11 +13,11 @@ Usage::
 
     # Dry-run (no auth required, prints planned uploads + total bytes).
     uv run python scripts/publish_dataset_to_hf.py \\
-        --dataset training --repo-id elizaos/eliza-1-training --dry-run
+        --dataset training --repo-id elizalabs/eliza-1-training --dry-run
 
     # Real upload (creates the repo private if missing).
     HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \\
-        --dataset training --repo-id elizaos/eliza-1-training
+        --dataset training --repo-id elizalabs/eliza-1-training
 
 The publisher refuses to upload any file outside the explicit per-dataset
 allowlist below — this is the safety rail that keeps the historical WIP
@@ -55,10 +55,10 @@ class DatasetSpec:
     """Resolved upload plan for one dataset bundle."""
 
     name: str
-    files: tuple[Path, ...]              # absolute paths under training/
-    path_in_repo: dict[Path, str]        # abs path -> path inside HF repo
-    card: str                            # README.md body for the HF repo
-    is_pointer_only: bool = False        # if True, do not upload data — README only
+    files: tuple[Path, ...]  # absolute paths under training/
+    path_in_repo: dict[Path, str]  # abs path -> path inside HF repo
+    card: str  # README.md body for the HF repo
+    is_pointer_only: bool = False  # if True, do not upload data — README only
 
 
 def _spec_training_from_dir(source_dir: Path | None = None) -> DatasetSpec:
@@ -217,8 +217,13 @@ def _spec_combined() -> DatasetSpec:
     # Phase-3 fillers added in 2026-05 to close the runtime-phase coverage
     # gap (see docs/dataset/COVERAGE_AUDIT.md, EVALUATOR_SYNTHESIS.md).
     synth_base = DATA / "synthesized"
-    for sub in ("action_examples", "action_pairs", "core_prompts",
-                "evaluators", "phase3"):
+    for sub in (
+        "action_examples",
+        "action_pairs",
+        "core_prompts",
+        "evaluators",
+        "phase3",
+    ):
         d = synth_base / sub
         if not d.exists():
             continue
@@ -271,7 +276,7 @@ def _card_training() -> str:
         "\n"
         "Active SFT corpus for the elizaOS **eliza-1** Qwen-based model series.\n"
         "All app-facing runtime bundles live in the single model repo\n"
-        "[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) under\n"
+        "[`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1) under\n"
         "`bundles/<tier>/` paths for the active `eliza-1-0_8b`,\n"
         "`eliza-1-2b`, and `eliza-1-4b` tiers.\n"
         "\n"
@@ -309,13 +314,13 @@ def _card_training() -> str:
         "trajectories, multi-turn reasoning, n8n workflows, MCP traces, and\n"
         "synthesized eliza-specific scenarios. Per-source counts are in\n"
         "`manifest.json`. The pipeline that built this corpus is published at\n"
-        "[`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline).\n"
+        "[`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline).\n"
         "\n"
         "## Loading\n"
         "\n"
         "```python\n"
         "from datasets import load_dataset\n"
-        'ds = load_dataset("elizaos/eliza-1-training", data_files={\n'
+        'ds = load_dataset("elizalabs/eliza-1-training", data_files={\n'
         '    "train": "train.jsonl",\n'
         '    "validation": "val.jsonl",\n'
         '    "test": "test.jsonl",\n'
@@ -438,7 +443,7 @@ def _card_abliteration() -> str:
         "\n"
         "**This repo intentionally does not host data.** The harmless-prompt\n"
         "calibration set used by\n"
-        "[`scripts/training/abliterate.py`](https://huggingface.co/elizaos/eliza-1-pipeline/blob/main/scripts/training/abliterate.py)\n"
+        "[`scripts/training/abliterate.py`](https://huggingface.co/elizalabs/eliza-1-pipeline/blob/main/scripts/training/abliterate.py)\n"
         "is the upstream\n"
         "[`mlabonne/harmless_alpaca`](https://huggingface.co/datasets/mlabonne/harmless_alpaca)\n"
         "dataset, paired with the harmful set\n"
@@ -483,7 +488,7 @@ def _card_combined() -> str:
         "scambench adversarial set, and the small Claude-teacher synthesis\n"
         "sets that previously lived in separate repos.\n"
         "\n"
-        "Companion repo: [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline)\n"
+        "Companion repo: [`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline)\n"
         "(scripts + Vast.ai automation that built this corpus).\n"
         "\n"
         "## Layout\n"
@@ -530,20 +535,20 @@ def _card_combined() -> str:
         "from datasets import load_dataset\n"
         "\n"
         "# Active SFT splits\n"
-        'sft = load_dataset("elizaos/eliza-1-training", data_files={\n'
+        'sft = load_dataset("elizalabs/eliza-1-training", data_files={\n'
         '    "train": "train.jsonl",\n'
         '    "validation": "val.jsonl",\n'
         '    "test": "test.jsonl",\n'
         "})\n"
         "\n"
         "# Scambench (adversarial)\n"
-        'sb = load_dataset("elizaos/eliza-1-training", data_files={\n'
+        'sb = load_dataset("elizalabs/eliza-1-training", data_files={\n'
         '    "normalized": "scambench/normalized.jsonl",\n'
         '    "synthesized": "scambench/scambench.jsonl",\n'
         "})\n"
         "\n"
         "# Synthesized small sets\n"
-        'syn = load_dataset("elizaos/eliza-1-training", data_files=\n'
+        'syn = load_dataset("elizalabs/eliza-1-training", data_files=\n'
         '    "synthesized/**/*.jsonl")\n'
         "```\n"
         "\n"
@@ -607,7 +612,9 @@ def _remote_sha256(api, repo_id: str, path_in_repo: str) -> str | None:
             continue
         lfs = getattr(sibling, "lfs", None)
         if lfs:
-            return getattr(lfs, "sha256", None) or (lfs.get("sha256") if isinstance(lfs, dict) else None)
+            return getattr(lfs, "sha256", None) or (
+                lfs.get("sha256") if isinstance(lfs, dict) else None
+            )
         return None
     return None
 
@@ -663,8 +670,7 @@ def validate_hf_loadable(spec: DatasetSpec) -> bool:
         return False
 
     feature_fingerprints = {
-        split: repr(dataset.features)
-        for split, dataset in ds.items()
+        split: repr(dataset.features) for split, dataset in ds.items()
     }
     row_counts = {split: int(ds[split].num_rows) for split in ds}
     empty = {split: count for split, count in row_counts.items() if count <= 0}
@@ -672,7 +678,9 @@ def validate_hf_loadable(spec: DatasetSpec) -> bool:
         log.error("HF load preflight found empty split(s): %s", empty)
         return False
     if len(set(feature_fingerprints.values())) != 1:
-        log.error("HF load preflight found split feature drift: %s", feature_fingerprints)
+        log.error(
+            "HF load preflight found split feature drift: %s", feature_fingerprints
+        )
         return False
     log.info(
         "HF load preflight ok: %s",
@@ -681,7 +689,9 @@ def validate_hf_loadable(spec: DatasetSpec) -> bool:
     return True
 
 
-def _print_dry_run(spec: DatasetSpec, repo_id: str, *, validate_hf_load: bool = False) -> int:
+def _print_dry_run(
+    spec: DatasetSpec, repo_id: str, *, validate_hf_load: bool = False
+) -> int:
     rc = _print_dry_run_without_validation(spec, repo_id)
     if rc != 0 or not validate_hf_load:
         return rc
@@ -695,7 +705,9 @@ def _print_dry_run_without_validation(spec: DatasetSpec, repo_id: str) -> int:
         log.info("README preview:\n%s", spec.card)
         return 0
     if not spec.files:
-        log.error("dataset=%s — no files matched the allowlist; nothing to upload.", spec.name)
+        log.error(
+            "dataset=%s — no files matched the allowlist; nothing to upload.", spec.name
+        )
         return 2
     total = 0
     for f in spec.files:
@@ -717,7 +729,9 @@ def _print_dry_run_without_validation(spec: DatasetSpec, repo_id: str) -> int:
 
 def publish(spec: DatasetSpec, repo_id: str, public: bool) -> int:
     if not hf_token():
-        log.error("HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing to push.")
+        log.error(
+            "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing to push."
+        )
         return 1
     if not validate_hf_loadable(spec):
         return 2
@@ -828,7 +842,7 @@ def main() -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help="Destination HF dataset repo id (e.g. elizaos/eliza-1-training).",
+        help="Destination HF dataset repo id (e.g. elizalabs/eliza-1-training).",
     )
     ap.add_argument(
         "--source-dir",
@@ -865,7 +879,9 @@ def main() -> int:
         else SPEC_BUILDERS[args.dataset]()
     )
     if args.dry_run:
-        return _print_dry_run(spec, args.repo_id, validate_hf_load=args.validate_hf_load)
+        return _print_dry_run(
+            spec, args.repo_id, validate_hf_load=args.validate_hf_load
+        )
     # Default: public unless --private flips it.
     return publish(spec, args.repo_id, public=not args.private)
 

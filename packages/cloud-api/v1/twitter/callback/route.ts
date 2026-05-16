@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { fetchHonoRoot } from "@/lib/api/hono-root-request";
 import { cache } from "@/lib/cache/client";
 import {
   getDefaultPlatformRedirectOrigins,
@@ -324,5 +323,3 @@ app.get("/", async (c) => {
 });
 
 export default app;
-
-export const GET = (request: Request) => fetchHonoRoot(app, request);

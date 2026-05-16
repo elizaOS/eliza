@@ -48,7 +48,7 @@ const queryParamsSchema = z.object({
  * MCP Server Registry Entry
  * Defines an MCP server that can be enabled on agents
  */
-export interface McpRegistryEntry {
+interface McpRegistryEntry {
   id: string;
   name: string;
   description: string;

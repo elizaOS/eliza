@@ -14,9 +14,9 @@ import type { PluginListenerHandle } from "@capacitor/core";
  *   - Phone connects to `${relayUrl}?deviceId=<id>` and sends a
  *     `register` frame with optional pairing token.
  *   - Relay forwards JSON frames addressed to this device.
- *   - Phone proxies frames into the on-device agent's local HTTP
- *     surface (`http://127.0.0.1:31337` on Android, in-process ITTP on
- *     iOS) and ships responses back over the same WebSocket.
+ *   - Phone proxies frames into the on-device agent's native local-agent
+ *     bridge (`eliza-local-agent://ipc` on Android, in-process ITTP/Bun IPC
+ *     on iOS) and ships responses back over the same WebSocket.
  *
  * Native iOS and Android implementations open the outbound WebSocket and
  * proxy `http_request` frames to the local agent without exposing an
@@ -41,9 +41,9 @@ export interface MobileAgentBridgeStartOptions {
    */
   pairingToken?: string;
   /**
-   * Optional override for the local agent HTTP base used to satisfy
-   * proxied frames. Defaults to `http://127.0.0.1:31337` on Android and
-   * the in-process ITTP surface on iOS.
+   * Optional override for the local agent base used to satisfy proxied
+   * frames. Defaults to `eliza-local-agent://ipc` on Android and the
+   * in-process ITTP/Bun IPC surface on iOS.
    */
   localAgentApiBase?: string;
 }
@@ -77,8 +77,8 @@ export interface MobileAgentTunnelStateEvent {
  *   - Web stub: returns `{ available: false }` plus a no-op tunnel.
  *   - iOS: URLSessionWebSocketTask + WebView IPC dispatch into the
  *     in-process local-agent bridge.
- *   - Android: OkHttp WebSocket + tokenized loopback HTTP proxy to
- *     the foreground local-agent service.
+ *   - Android: OkHttp WebSocket + foreground-service local-agent request
+ *     dispatch.
  */
 export interface MobileAgentBridgePlugin {
   /**

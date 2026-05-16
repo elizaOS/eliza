@@ -3,6 +3,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
+      "@elizaos/app-core/*": ["../app-core/dist/*"],
       "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-elizamaker": [

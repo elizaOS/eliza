@@ -29,7 +29,7 @@ Usage
     # Start the serve in one terminal, e.g.:
     #   uv run --extra serve python scripts/inference/serve_vllm.py \
     #       --registry-key qwen3.5-4b --gpu-target rtx-4090 \
-    #       --dflash elizaos/eliza-1-dflash-4b --enable-prefix-caching
+    #       --dflash elizalabs/eliza-1-dflash-4b --enable-prefix-caching
 
     # Then in another terminal point this at it:
     uv run --extra serve python scripts/inference/test_apc_dflash_tool_calls.py \

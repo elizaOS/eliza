@@ -1,10 +1,10 @@
-"""Walk the elizaos/eliza-1 bundle repo and emit a catalog diff for local inference.
+"""Walk the elizalabs/eliza-1 bundle repo and emit a catalog diff for local inference.
 
 The local-inference catalog (`packages/app-core/src/services/local-inference/catalog.ts`)
 is the source of truth for which models the phone offers and where it
 downloads them from. This script:
 
-  1. Lists the Eliza-1 bundle repo under the elizaos HF org.
+  1. Lists the Eliza-1 bundle repo under the elizalabs HF org.
   2. Reads each `bundles/<tier>/eliza-1.manifest.json` plus legacy
      per-tier `eliza-1-*` manifests when present.
      and the GGUF metadata (via the `huggingface_hub` repo_info API;
@@ -19,11 +19,11 @@ schema is intentionally tiny:
     {
       "version": 1,
       "generatedAt": "<UTC ISO>",
-      "org": "elizaos",
+      "org": "elizalabs",
       "entries": [
         {
           "id": "eliza-1-2b",
-          "hfRepo": "elizaos/eliza-1",
+          "hfRepo": "elizalabs/eliza-1",
           "hfPathPrefix": "bundles/2b",
           "ggufFile": "text/eliza-1-2b-q4_k_m.gguf",
           "sha256": "<64-hex>",
@@ -40,12 +40,12 @@ Usage::
 
     # No HF_TOKEN required for public repos.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org elizaos \\
+        --org elizalabs \\
         --out reports/porting/2026-05-10/catalog-diff.json
 
     # Limit to a specific naming convention.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org elizaos \\
+        --org elizalabs \\
         --filter-prefix eliza-1- \\
         --out diff.json
 """
@@ -233,7 +233,9 @@ def _primary_text_file_from_manifest(
             sha = lfs_sha
         if sha and size is not None:
             return rel, sha, size
-        log.warning("repo %s manifest text file %s has no sha/size metadata", repo_id, rel)
+        log.warning(
+            "repo %s manifest text file %s has no sha/size metadata", repo_id, rel
+        )
     return None
 
 
@@ -295,9 +297,7 @@ def collect_entries(
             for manifest_path in bundle_manifests:
                 path_prefix = manifest_path.rsplit("/", 1)[0]
                 tier = path_prefix.split("/", 1)[1]
-                manifest_result = _read_remote_manifest(
-                    api, repo_id, (manifest_path,)
-                )
+                manifest_result = _read_remote_manifest(api, repo_id, (manifest_path,))
                 if manifest_result is None:
                     continue
                 _, manifest, manifest_sha = manifest_result
@@ -358,17 +358,19 @@ def collect_entries(
         gguf_file, sha, size = gguf_info
         # Legacy catalog id == bare repo name (after the org/).
         catalog_id = repo_name
-        entries.append(CatalogEntry(
-            id=catalog_id,
-            hf_repo=repo_id,
-            gguf_file=gguf_file,
-            sha256=sha,
-            size_bytes=size,
-            manifest=manifest,
-            bundle_manifest_file=bundle_manifest_file,
-            bundle_manifest_sha256=bundle_manifest_sha,
-            bundle_size_bytes=bundle_size_bytes,
-        ))
+        entries.append(
+            CatalogEntry(
+                id=catalog_id,
+                hf_repo=repo_id,
+                gguf_file=gguf_file,
+                sha256=sha,
+                size_bytes=size,
+                manifest=manifest,
+                bundle_manifest_file=bundle_manifest_file,
+                bundle_manifest_sha256=bundle_manifest_sha,
+                bundle_size_bytes=bundle_size_bytes,
+            )
+        )
     return entries
 
 
@@ -391,20 +393,25 @@ def write_diff(entries: list[CatalogEntry], out_path: Path, *, org: str) -> None
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--org", default="elizaos",
-                    help="HF org to scan (default: elizaos).")
     ap.add_argument(
-        "--filter-prefix", default="eliza-1-",
+        "--org", default="elizalabs", help="HF org to scan (default: elizalabs)."
+    )
+    ap.add_argument(
+        "--filter-prefix",
+        default="eliza-1-",
         help="If set, include only repos whose bare name starts with this prefix "
-             "(default: eliza-1-).",
+        "(default: eliza-1-).",
     )
     ap.add_argument(
-        "--filter-suffix", default=None,
+        "--filter-suffix",
+        default=None,
         help="If set, include only repos whose name ends with -<suffix>. "
-             "Useful for one-off legacy scans; leave unset for Eliza-1.",
+        "Useful for one-off legacy scans; leave unset for Eliza-1.",
     )
     ap.add_argument(
-        "--out", type=Path, required=True,
+        "--out",
+        type=Path,
+        required=True,
         help="Output path for the diff JSON.",
     )
     args = ap.parse_args(argv)

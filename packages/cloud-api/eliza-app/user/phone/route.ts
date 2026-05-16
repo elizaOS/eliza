@@ -54,23 +54,6 @@ const linkPhoneSchema = z.object({
   phone_number: phoneNumberSchema,
 });
 
-/**
- * Success response type
- */
-export interface LinkPhoneSuccessResponse {
-  success: true;
-  phone_number: string;
-}
-
-/**
- * Error response type
- */
-export interface LinkPhoneErrorResponse {
-  success: false;
-  error: string;
-  code: string;
-}
-
 async function handleLinkPhone(request: Request): Promise<Response> {
   // Extract Authorization header
   const authHeader = request.headers.get("Authorization");

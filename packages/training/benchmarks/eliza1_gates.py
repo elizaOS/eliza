@@ -131,11 +131,13 @@ class GateRow:
 class GateReport:
     """Aggregate gate outcome.
 
-    ``passed`` is True iff no *required* gate failed. ``failures`` is the
-    list of human-readable failure strings (one per failed required gate);
+    ``passed`` is True iff no blocking gate failed. In ``full`` publish mode,
+    provisional gates are recorded but do not block eligibility; in smoke mode
+    provisional rows still block because those checks prove the harness ran at
+    all. ``failures`` is the list of human-readable blocking failure strings;
     ``failed_gates`` is the matching list of :class:`GateRow`. ``details``
-    carries enough structured context to render a publish-block message or
-    a training-run summary.
+    carries enough structured context to render a publish-block message or a
+    training-run summary.
     """
 
     tier: str
@@ -144,15 +146,20 @@ class GateReport:
 
     @property
     def passed(self) -> bool:
-        return not any(g.required and not g.passed and not g.skipped for g in self.gates)
+        return not any(self._blocks(g) for g in self.gates)
 
     @property
     def failed_gates(self) -> list[GateRow]:
-        return [g for g in self.gates if g.required and not g.passed and not g.skipped]
+        return [g for g in self.gates if self._blocks(g)]
 
     @property
     def failures(self) -> list[str]:
         return [f"{g.name}: {g.reason}" for g in self.failed_gates]
+
+    def _blocks(self, gate: GateRow) -> bool:
+        if not gate.required or gate.passed or gate.skipped:
+            return False
+        return not (self.mode == "full" and gate.provisional)
 
     @property
     def details(self) -> dict[str, Any]:

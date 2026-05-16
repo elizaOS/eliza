@@ -43,10 +43,10 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("prepare_distill_dataset")
 
-# Mirrors distill_dflash_drafter.DEFAULT_STUDENT_BASE / DEFAULT_TARGET_MODEL —
-# the canonical Eliza-1 tier set lives in that script. Listed here so the prep
-# step refuses an unknown tier early.
-KNOWN_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
+# Mirrors distill_dflash_drafter.TRAINING_SUPPORTED_TIERS. 0_8b is a
+# target-only bundle with DFlash disabled, so there is no drafter distillation
+# dataset for that tier.
+KNOWN_TIERS = ("2b", "4b", "9b", "27b", "27b-256k")
 
 
 def _sha256_file(path: Path) -> str:

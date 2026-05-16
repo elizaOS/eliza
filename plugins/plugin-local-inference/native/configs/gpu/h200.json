@@ -52,10 +52,6 @@
     "eliza-1-27b": {
       "ctx_size": 131072,
       "max_parallel": 16
-    },
-    "eliza-1-27b-256k": {
-      "ctx_size": 262144,
-      "max_parallel": 6
     }
   },
   "expected_metrics": {

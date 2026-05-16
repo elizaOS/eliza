@@ -188,12 +188,12 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
 		expect(res?.flags.ctx_size).toBe(32768);
 	});
 
-	it("H200 + eliza-1-27b-256k -> 6 parallel @ 256k", () => {
+	it("H200 + eliza-1-27b -> 16 parallel @ 128k", () => {
 		const res = selectGpuConfig(info("NVIDIA H200", 141248), {
-			bundleId: "eliza-1-27b-256k",
+			bundleId: "eliza-1-27b",
 		});
-		expect(res?.flags.n_parallel).toBe(6);
-		expect(res?.flags.ctx_size).toBe(262_144);
+		expect(res?.flags.n_parallel).toBe(16);
+		expect(res?.flags.ctx_size).toBe(131_072);
 	});
 
 	it("voice bundle narrows batch / ubatch on every card", () => {
@@ -218,11 +218,12 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
 		expect(res?.flags.cache_type_v).toBe("q4_0");
 	});
 
-	it("5090 + eliza-1-27b-256k opts into kvSpillToCpu", () => {
+	it("5090 + eliza-1-27b uses the active 128k tier without KV spill", () => {
 		const res = selectGpuConfig(info("NVIDIA GeForce RTX 5090", 32768), {
-			bundleId: "eliza-1-27b-256k",
+			bundleId: "eliza-1-27b",
 		});
-		expect(res?.flags.no_kv_offload).toBe(true);
+		expect(res?.flags.ctx_size).toBe(131_072);
+		expect(res?.flags.no_kv_offload).toBe(false);
 	});
 
 	it("per-call overrides take precedence over bundle overrides", () => {

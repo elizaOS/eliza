@@ -12,6 +12,7 @@ import { Preferences } from "@capacitor/preferences";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
 import {
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   getBootConfig,
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
@@ -114,7 +115,8 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     if (apiBase) details.apiBase = apiBase;
     if (authToken) details.authToken = authToken;
     if (ctx.isAndroid && runtimeConfig.mode === "local") {
-      details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
+      details.localApiBase = ANDROID_LOCAL_AGENT_IPC_BASE;
+      details.localRouteKernel = "agent-service-ipc";
     }
     if (ctx.isIOS && runtimeConfig.mode === "local") {
       details.localApiBase = IOS_LOCAL_AGENT_IPC_BASE;
@@ -254,7 +256,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
             ? { pairingToken: runtimeConfig.tunnelPairingToken }
             : {}),
           ...(ctx.isAndroid
-            ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
+            ? { localAgentApiBase: ANDROID_LOCAL_AGENT_IPC_BASE }
             : {}),
         });
         console.info(

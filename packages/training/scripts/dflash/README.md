@@ -16,14 +16,17 @@ Today this is:
 0_8b, 2b, 4b, 9b, 27b, 27b-256k
 ```
 
-These IDs name the **target** text models — the bundles a user downloads
-from `elizaos/eliza-1` under `bundles/<tier>/` on Hugging Face. Every other surface in
-this repo (DFlash distill scripts, manifest plan, readiness doc, gates
-table) MUST refer to the same set.
+These IDs name the **target** text models — the bundles a user downloads from
+`elizalabs/eliza-1` under `bundles/<tier>/` on Hugging Face.
 
-`0_8b` is training-supported so a drafter can be produced and validated for
-that tier. It is not required-by-manifest; keep that publish policy in the
-manifest layer rather than removing the tier from DFlash training scripts.
+DFlash drafter training is intentionally narrower:
+
+```
+2b, 4b, 9b, 27b, 27b-256k
+```
+
+`0_8b` is target-only by design. Its bundle metadata must keep DFlash disabled,
+must not require a drafter, and must not carry a DFlash acceptance gate.
 
 ## Drafter vs target
 
@@ -34,9 +37,9 @@ Two ideas not to conflate:
   bundle ships it as `text/eliza-1-<tier>-<ctx>.gguf`.
 - **Drafter model** — a *separate, smaller* model that proposes tokens
   for the target to verify. Lives alongside the target in the same
-  bundle as `dflash/drafter-<tier>.gguf`. The drafter's own parameter
-  count is usually smaller than the target (e.g. a 0.8B Qwen3.5 student
-  drafts for a 2B target). See
+  bundle as `dflash/drafter-<tier>.gguf` for drafter-enabled tiers. The
+  drafter's own parameter count is usually smaller than the target (e.g. a
+  0.8B Qwen3.5 student drafts for a 2B target). See
   `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` for the per-tier
   student base.
 
@@ -51,18 +54,21 @@ refers to the *target tier*, never the drafter's own size. So
 Each `jobs/distill_dflash_<tier>.sh` script:
 
 1. Sources `_lib.sh` for shared validation + log routing.
-2. Sets `TIER` to the catalog tier (e.g. `TIER="0_8b"`).
+2. Sets `TIER` to the catalog tier (e.g. `TIER="2b"`).
 3. Sets recipe defaults (`EPOCHS`, `BATCH_SIZE`, `GRAD_ACCUM`, `LR`,
    `MAX_SEQ_LEN`) — these are starting points, not gospel; tune
    empirically per release.
 4. Calls `dflash_run_distill "$@"`.
+
+The `distill_dflash_0_8b.sh` wrapper is deliberately disabled and exits
+non-zero: 0.8B is the target-only no-drafter tier.
 
 To run a script:
 
 ```bash
 # Real run (requires GPU + dataset + target checkpoint + target GGUF).
 TARGET_CHECKPOINT=checkpoints/eliza-1-2b/final \
-TARGET_GGUF=out/eliza-1-2b/text/eliza-1-2b-32k.gguf \
+TARGET_GGUF=out/eliza-1-2b/text/eliza-1-2b-128k.gguf \
 DATASET=out/distill/eliza-1-2b/train.jsonl \
 bash packages/training/scripts/dflash/jobs/distill_dflash_2b.sh
 
@@ -71,9 +77,9 @@ bash packages/training/scripts/dflash/jobs/distill_dflash_2b.sh \
     --synthetic-smoke
 ```
 
-The smoke flag exports `DFLASH_SMOKE=1` and bypasses input validation;
-the script writes a metadata-only `drafter-<tier>.gguf` plus the run
-manifest, then exits zero. This is what CI exercises.
+The smoke flag exports `DFLASH_SMOKE=1`, bypasses input validation, exercises
+the CLI/control-flow path, and exits zero without writing release artifacts.
+This is what CI exercises.
 
 ## Adding a new tier
 
@@ -86,13 +92,15 @@ When the catalog adds a new tier (e.g. someone publishes
    `SUPPORTED_BACKENDS_BY_TIER`, `VOICE_QUANT_BY_TIER`,
    `REQUIRED_PLATFORM_EVIDENCE_BY_TIER` in `eliza1_platform_plan.py` /
    `eliza1_manifest.py`.
-3. Add the student base + acceptance gate to
-   `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` /
+3. If the new tier is drafter-enabled, add the student base + acceptance gate
+   to `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` /
    `ACCEPTANCE_GATE` / `DEFAULT_TARGET_MODEL`.
-4. Add `KNOWN_TIERS` entry in `prepare_distill_dataset.py` (and the
-   validator will read the gate from `distill_dflash_drafter.py`).
-5. Copy one of the existing `jobs/distill_dflash_<tier>.sh` scripts and
-   change the `TIER=` line + the hyperparameters.
+4. If the new tier is drafter-enabled, add `KNOWN_TIERS` entry in
+   `prepare_distill_dataset.py` (and the validator will read the gate from
+   `distill_dflash_drafter.py`).
+5. If the new tier is drafter-enabled, copy one of the existing
+   `jobs/distill_dflash_<tier>.sh` scripts and change the `TIER=` line + the
+   hyperparameters.
 6. Regenerate `ELIZA_1_GGUF_READINESS.md` with
    `uv run python -m scripts.manifest.eliza1_platform_plan` (from
    `packages/training/`).

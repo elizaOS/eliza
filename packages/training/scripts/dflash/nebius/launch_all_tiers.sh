@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Launch DFlash drafter distillation for all 7 Eliza-1 tiers on Nebius H200.
+# Launch DFlash drafter distillation for all 5 drafter-enabled Eliza-1 tiers
+# on Nebius H200. eliza-1-0_8b is target-only and intentionally excluded.
 #
 # By default, jobs run sequentially. Use --tiers to run a subset.
 #
@@ -29,16 +30,17 @@
 #
 # Optional env vars:
 #   TARGET_GGUF_ROOT         Directory containing per-tier text GGUFs:
-#                              <root>/eliza-1-<tier>/text/eliza-1-<tier>-32k.gguf
+#                              <root>/eliza-1-<tier>/text/eliza-1-<tier>-128k.gguf
+#                            except 27b-256k, which uses ...-256k.gguf
 #                            If unset, GGUF hash stamping is skipped (training
 #                            still runs; stamp manually after conversion).
 #   EXTRA_TRAIN_ARGS         Extra args passed to distill_drafter_h200.py.
 #
 # Tier-to-hardware mapping (1 GPU unless noted):
-#   0_8b  2b  4b  9b  → 1× H200 each
+#   2b  4b  9b  → 1× H200 each
 #   27b  27b-256k  → 2× H200 each (target + student don't fit on 1)
 #
-# All 6 tiers are listed in canonical order matching the tier-ID table in
+# All 5 drafter-enabled tiers are listed in canonical order matching
 # ELIZA_1_GGUF_READINESS.md and packages/shared/src/local-inference/catalog.ts.
 set -euo pipefail
 
@@ -49,7 +51,6 @@ TRAINING_SCRIPT="${SCRIPT_DIR}/distill_drafter_h200.py"
 # Canonical tier list + drafter sizes (matches ELIZA_1_GGUF_READINESS.md).
 # Format: TIER:DRAFTER_SIZE_B:EPOCHS:BATCH_SIZE:GRAD_ACCUM:LR
 ALL_TIERS=(
-  "0_8b:0.5:3:16:2:2e-4"
   "2b:0.5:3:16:2:2e-4"
   "4b:1.5:3:8:4:2e-4"
   "9b:1.5:5:8:4:1.5e-4"
@@ -121,6 +122,39 @@ tier_in_selected() {
   return 1
 }
 
+known_dflash_tier() {
+  local needle="$1"
+  local entry tier
+  for entry in "${ALL_TIERS[@]}"; do
+    IFS=':' read -r tier _ <<< "${entry}"
+    if [[ "${tier}" == "${needle}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+validate_selected_tiers() {
+  if [[ -z "${SELECTED_TIERS}" ]]; then
+    return 0
+  fi
+  local IFS=','
+  local invalid=()
+  local tier
+  for tier in ${SELECTED_TIERS}; do
+    tier="${tier// /}"
+    if [[ -z "${tier}" ]]; then
+      continue
+    fi
+    if ! known_dflash_tier "${tier}"; then
+      invalid+=("${tier}")
+    fi
+  done
+  if (( ${#invalid[@]} )); then
+    die "unsupported DFlash drafter tier(s): ${invalid[*]}. Allowed: 2b,4b,9b,27b,27b-256k. eliza-1-0_8b is target-only."
+  fi
+}
+
 resolve_python() {
   # Prefer the training venv if present (has torch, APOLLO, flash-attn).
   if [[ -x "${HOME}/train-env/bin/python" ]]; then
@@ -146,6 +180,7 @@ fi
 
 OUTPUT_ROOT="${OUTPUT_ROOT:-/tmp/dflash-out}"
 PY="$(resolve_python)"
+validate_selected_tiers
 
 # --------------------------------------------------------------------------
 # Main loop
@@ -182,14 +217,21 @@ for entry in "${ALL_TIERS[@]}"; do
     # Smoke doesn't need real data paths.
     cmd+=(--dataset-path "/dev/null")
   else
-    dataset="${DATASET_ROOT}/eliza-1-${TIER}/distill.jsonl"
-    checkpoint="${TARGET_CHECKPOINT_ROOT}/eliza-1-${TIER}"
+    dataset_root="${DATASET_ROOT:-/data/distill}"
+    checkpoint_root="${TARGET_CHECKPOINT_ROOT:-/data/checkpoints}"
+    dataset="${dataset_root}/eliza-1-${TIER}/distill.jsonl"
+    checkpoint="${checkpoint_root}/eliza-1-${TIER}"
     cmd+=(
       --dataset-path "${dataset}"
       --target-checkpoint "${checkpoint}"
     )
-    if [[ -n "${TARGET_GGUF_ROOT:-}" ]]; then
-      gguf="${TARGET_GGUF_ROOT}/eliza-1-${TIER}/text/eliza-1-${TIER}-32k.gguf"
+    gguf_root="${TARGET_GGUF_ROOT:-}"
+    if [[ -n "${gguf_root}" ]]; then
+      ctx="128k"
+      if [[ "${TIER}" == "27b-256k" ]]; then
+        ctx="256k"
+      fi
+      gguf="${gguf_root}/eliza-1-${TIER}/text/eliza-1-${TIER}-${ctx}.gguf"
       cmd+=(--target-gguf "${gguf}")
     fi
   fi

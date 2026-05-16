@@ -9,13 +9,13 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
+  - dataset ``elizalabs/eliza-1-training``  (the broader SFT corpus — refreshed
     only if ``data/final/{train,val,test}.jsonl`` exists locally)
-  - dataset ``elizaos/eliza-1-evals``     (the eval/bench results, kernel-verify
+  - dataset ``elizalabs/eliza-1-evals``     (the eval/bench results, kernel-verify
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
-  - the active device bundles ``elizaos/eliza-1/bundles/<tier>`` — gated on the
+  - the active device bundles ``elizalabs/eliza-1/bundles/<tier>`` — gated on the
     fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
     base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus
@@ -40,7 +40,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 log = logging.getLogger("publish_eliza1_all")
 
 TRAINING_ROOT = Path(__file__).resolve().parents[2]
@@ -50,12 +52,14 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-ORG = "elizaos"
+ORG = "elizalabs"
 MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
 # by deprecation tooling, not by the current release publisher.
-BUNDLE_TIERS: Final[tuple[str, ...]] = M.ELIZA_1_TIERS
+BUNDLE_TIERS: Final[tuple[str, ...]] = tuple(
+    tier for tier in M.ELIZA_1_TIERS if tier != "27b-256k"
+)
 
 # Where the staged bundles live on a dev box (see docs/eliza-1-pipeline/06-test-matrix.md). The path can
 # be overridden with --bundles-root.
@@ -74,8 +78,15 @@ class Outcome:
     detail: str
 
 
-def _upload_dataset_folder(api, repo_id: str, folder: Path, *, message: str,
-                           ignore: list[str] | None, dry_run: bool) -> Outcome:
+def _upload_dataset_folder(
+    api,
+    repo_id: str,
+    folder: Path,
+    *,
+    message: str,
+    ignore: list[str] | None,
+    dry_run: bool,
+) -> Outcome:
     if not folder.is_dir():
         return Outcome(repo_id, "dataset", "skipped", f"local source missing: {folder}")
     rel = folder.relative_to(REPO_ROOT) if folder.is_relative_to(REPO_ROOT) else folder
@@ -89,8 +100,12 @@ def _upload_dataset_folder(api, repo_id: str, folder: Path, *, message: str,
         ignore_patterns=ignore or [],
         commit_message=message,
     )
-    return Outcome(repo_id, "dataset", "published",
-                   f"https://huggingface.co/datasets/{repo_id} (from {rel})")
+    return Outcome(
+        repo_id,
+        "dataset",
+        "published",
+        f"https://huggingface.co/datasets/{repo_id} (from {rel})",
+    )
 
 
 def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
@@ -99,24 +114,49 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
     # 1) eliza-1-training — the broader SFT corpus (only if the full final split
     #    + its manifest exist locally; otherwise it is already populated on HF).
     final = TRAINING_ROOT / "data" / "final"
-    have_train = (final / "train.jsonl").exists() or (final / "train_final.jsonl").exists()
-    have_manifest = (final / "manifest.json").exists() or (final / "manifest_final.json").exists()
-    have_splits = have_train and (final / "val.jsonl").exists() and (final / "test.jsonl").exists()
+    have_train = (final / "train.jsonl").exists() or (
+        final / "train_final.jsonl"
+    ).exists()
+    have_manifest = (final / "manifest.json").exists() or (
+        final / "manifest_final.json"
+    ).exists()
+    have_splits = (
+        have_train
+        and (final / "val.jsonl").exists()
+        and (final / "test.jsonl").exists()
+    )
     if have_splits and have_manifest:
         # Use the existing allowlist-guarded publisher.
         repo = f"{ORG}/eliza-1-training"
-        cmd = [sys.executable, str(TRAINING_ROOT / "scripts" / "publish_dataset_to_hf.py"),
-               "--dataset", "training", "--repo-id", repo]
+        cmd = [
+            sys.executable,
+            str(TRAINING_ROOT / "scripts" / "publish_dataset_to_hf.py"),
+            "--dataset",
+            "training",
+            "--repo-id",
+            repo,
+        ]
         if dry_run:
             cmd.append("--dry-run")
         rc = subprocess.run(cmd, cwd=str(TRAINING_ROOT)).returncode
-        out.append(Outcome(repo, "dataset",
-                           "pending" if dry_run else ("published" if rc == 0 else "skipped"),
-                           f"publish_dataset_to_hf.py --dataset training (rc={rc})"))
+        out.append(
+            Outcome(
+                repo,
+                "dataset",
+                "pending" if dry_run else ("published" if rc == 0 else "skipped"),
+                f"publish_dataset_to_hf.py --dataset training (rc={rc})",
+            )
+        )
     else:
-        out.append(Outcome(f"{ORG}/eliza-1-training", "dataset", "skipped",
-                           "data/final/{train,val,test}.jsonl not present in this checkout "
-                           "(already populated on HF; nothing to refresh)"))
+        out.append(
+            Outcome(
+                f"{ORG}/eliza-1-training",
+                "dataset",
+                "skipped",
+                "data/final/{train,val,test}.jsonl not present in this checkout "
+                "(already populated on HF; nothing to refresh)",
+            )
+        )
 
     # 2) eliza-1-evals — the eval/bench results + kernel-verify evidence + gates.
     #    Assemble a staging tree from the bench/eval JSON that exists in-checkout.
@@ -124,29 +164,59 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
     gates_yaml = TRAINING_ROOT / "benchmarks" / "eliza1_gates.yaml"
     gates_py = TRAINING_ROOT / "benchmarks" / "eliza1_gates.py"
     models_status = TRAINING_ROOT / "benchmarks" / "MODELS_STATUS.md"
-    for src, dst in ((gates_yaml, "gates/eliza1_gates.yaml"),
-                     (gates_py, "gates/eliza1_gates.py"),
-                     (models_status, "gates/MODELS_STATUS-training.md")):
+    for src, dst in (
+        (gates_yaml, "gates/eliza1_gates.yaml"),
+        (gates_py, "gates/eliza1_gates.py"),
+        (models_status, "gates/MODELS_STATUS-training.md"),
+    ):
         if src.exists():
             eval_sources.append((src, dst))
     if not eval_sources:
-        out.append(Outcome(f"{ORG}/eliza-1-evals", "dataset", "skipped",
-                           "no eval/gates artifacts found locally (repo already populated on HF)"))
+        out.append(
+            Outcome(
+                f"{ORG}/eliza-1-evals",
+                "dataset",
+                "skipped",
+                "no eval/gates artifacts found locally (repo already populated on HF)",
+            )
+        )
     elif dry_run:
-        out.append(Outcome(f"{ORG}/eliza-1-evals", "dataset", "pending",
-                           f"would upload {len(eval_sources)} gate/eval files (dry-run)"))
+        out.append(
+            Outcome(
+                f"{ORG}/eliza-1-evals",
+                "dataset",
+                "pending",
+                f"would upload {len(eval_sources)} gate/eval files (dry-run)",
+            )
+        )
     else:
         from huggingface_hub import CommitOperationAdd
-        api.create_repo(repo_id=f"{ORG}/eliza-1-evals", repo_type="dataset",
-                        private=False, exist_ok=True)
-        ops = [CommitOperationAdd(path_in_repo=dst, path_or_fileobj=str(src))
-               for src, dst in eval_sources]
-        api.create_commit(repo_id=f"{ORG}/eliza-1-evals", repo_type="dataset",
-                          operations=ops,
-                          commit_message="Refresh eliza1_gates.yaml/.py thresholds + training MODELS_STATUS")
-        out.append(Outcome(f"{ORG}/eliza-1-evals", "dataset", "published",
-                           f"https://huggingface.co/datasets/{ORG}/eliza-1-evals "
-                           f"({len(eval_sources)} gate/eval files refreshed)"))
+
+        api.create_repo(
+            repo_id=f"{ORG}/eliza-1-evals",
+            repo_type="dataset",
+            private=False,
+            exist_ok=True,
+        )
+        ops = [
+            CommitOperationAdd(path_in_repo=dst, path_or_fileobj=str(src))
+            for src, dst in eval_sources
+        ]
+        api.create_commit(
+            repo_id=f"{ORG}/eliza-1-evals",
+            repo_type="dataset",
+            operations=ops,
+            commit_message="Refresh eliza1_gates.yaml/.py thresholds + training MODELS_STATUS",
+        )
+        out.append(
+            Outcome(
+                f"{ORG}/eliza-1-evals",
+                "dataset",
+                "published",
+                f"https://huggingface.co/datasets/{ORG}/eliza-1-evals "
+                f"({len(eval_sources)} gate/eval files refreshed)",
+            )
+        )
     return out
 
 
@@ -155,17 +225,33 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
     repo = MODEL_REPO_ID
     remote = f"bundles/{tier}/"
     if not bundle_dir.is_dir():
-        return Outcome(repo, "model-bundle", "pending",
-                       f"{remote}: no staged bundle at {bundle_dir} — assemble it "
-                       "(docs/eliza-1-pipeline/06-test-matrix.md), then the orchestrator dry-run reports the gate")
-    cmd = [sys.executable, "-m", "scripts.publish.orchestrator",
-           "--tier", tier, "--bundle-dir", str(bundle_dir), "--dry-run"]
+        return Outcome(
+            repo,
+            "model-bundle",
+            "pending",
+            f"{remote}: no staged bundle at {bundle_dir} — assemble it "
+            "(docs/eliza-1-pipeline/06-test-matrix.md), then the orchestrator dry-run reports the gate",
+        )
+    cmd = [
+        sys.executable,
+        "-m",
+        "scripts.publish.orchestrator",
+        "--tier",
+        tier,
+        "--bundle-dir",
+        str(bundle_dir),
+        "--dry-run",
+    ]
     proc = subprocess.run(cmd, cwd=str(TRAINING_ROOT), capture_output=True, text=True)
     if proc.returncode == 0:
-        return Outcome(repo, "model-bundle", "pending",
-                       f"{remote}: orchestrator dry-run is GREEN / upload-ready, "
-                       "but no upload is proven until a non-dry-run publish returns "
-                       "HF commit/url/uploadedPaths evidence")
+        return Outcome(
+            repo,
+            "model-bundle",
+            "pending",
+            f"{remote}: orchestrator dry-run is GREEN / upload-ready, "
+            "but no upload is proven until a non-dry-run publish returns "
+            "HF commit/url/uploadedPaths evidence",
+        )
     # Pull the first "orchestrator error: ..." line + the bulleted blockers.
     msg = ""
     capture = False
@@ -178,9 +264,13 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
             msg += f" | {line.strip()[2:]}"
         elif capture and line.strip() and not line.startswith("  "):
             break
-    return Outcome(repo, "model-bundle", "pending",
-                   f"{remote}: orchestrator dry-run exit={proc.returncode}: "
-                   f"{msg or 'see stderr'}")
+    return Outcome(
+        repo,
+        "model-bundle",
+        "pending",
+        f"{remote}: orchestrator dry-run exit={proc.returncode}: "
+        f"{msg or 'see stderr'}",
+    )
 
 
 def _bundle_status(bundles_root: Path) -> list[Outcome]:
@@ -195,39 +285,73 @@ def _sft_weights_status(tier: str = "0_8b") -> Outcome:
     """Report whether a full-corpus active-tier SFT is done + cleared its gate."""
     ckpt_root = TRAINING_ROOT / "checkpoints"
     repo = MODEL_REPO_ID
-    runs = sorted(ckpt_root.glob(f"eliza-1-{tier}-apollo-fullcorpus-*")) if ckpt_root.is_dir() else []
+    runs = (
+        sorted(ckpt_root.glob(f"eliza-1-{tier}-apollo-fullcorpus-*"))
+        if ckpt_root.is_dir()
+        else []
+    )
     if not runs:
-        return Outcome(repo, "model-weights", "pending",
-                       f"{tier} full-corpus Qwen3.5 SFT run not found in checkpoints/")
+        return Outcome(
+            repo,
+            "model-weights",
+            "pending",
+            f"{tier} full-corpus Qwen3.5 SFT run not found in checkpoints/",
+        )
     run = runs[-1]
     final = run / "final"
     gate = run / "gate_report.json"
     if not final.is_dir():
-        return Outcome(repo, "model-weights", "pending",
-                       f"SFT run {run.name} has no final/ checkpoint yet (still training or stalled)")
+        return Outcome(
+            repo,
+            "model-weights",
+            "pending",
+            f"SFT run {run.name} has no final/ checkpoint yet (still training or stalled)",
+        )
     if not gate.exists():
-        return Outcome(repo, "model-weights", "pending",
-                       f"SFT run {run.name} has final/ but no gate_report.json — run the bench tail")
+        return Outcome(
+            repo,
+            "model-weights",
+            "pending",
+            f"SFT run {run.name} has final/ but no gate_report.json — run the bench tail",
+        )
     blob = json.loads(gate.read_text())
     if blob.get("passed") is True:
-        return Outcome(repo, "model-weights", "published",
-                       f"SFT gate GREEN ({run.name}) — run "
-                       f"`python scripts/push_model_to_hf.py --registry-key eliza-1-{tier} "
-                       f"--checkpoint {final} --repo-id {repo}` then publish under "
-                       f"`bundles/{tier}/` in the single model repo")
-    return Outcome(repo, "model-weights", "pending",
-                   f"SFT gate RED ({run.name}): {blob.get('failures') or blob.get('error')}")
+        return Outcome(
+            repo,
+            "model-weights",
+            "published",
+            f"SFT gate GREEN ({run.name}) — run "
+            f"`python scripts/push_model_to_hf.py --registry-key eliza-1-{tier} "
+            f"--checkpoint {final} --repo-id {repo}` then publish under "
+            f"`bundles/{tier}/` in the single model repo",
+        )
+    return Outcome(
+        repo,
+        "model-weights",
+        "pending",
+        f"SFT gate RED ({run.name}): {blob.get('failures') or blob.get('error')}",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--dry-run", action="store_true",
-                    help="Report what would publish; push nothing.")
-    ap.add_argument("--bundles-root", type=Path, default=DEFAULT_BUNDLES_ROOT,
-                    help=f"Parent dir of the staged eliza-1-<tier>.bundle dirs "
-                         f"(default {DEFAULT_BUNDLES_ROOT}).")
-    ap.add_argument("--skip-bundle-status", action="store_true",
-                    help="Skip the per-tier bundle orchestrator dry-runs.")
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would publish; push nothing.",
+    )
+    ap.add_argument(
+        "--bundles-root",
+        type=Path,
+        default=DEFAULT_BUNDLES_ROOT,
+        help=f"Parent dir of the staged eliza-1-<tier>.bundle dirs "
+        f"(default {DEFAULT_BUNDLES_ROOT}).",
+    )
+    ap.add_argument(
+        "--skip-bundle-status",
+        action="store_true",
+        help="Skip the per-tier bundle orchestrator dry-runs.",
+    )
     args = ap.parse_args(argv)
 
     dry_run = args.dry_run
@@ -239,12 +363,14 @@ def main(argv: list[str] | None = None) -> int:
     api = None
     if not dry_run:
         from huggingface_hub import HfApi
+
         api = HfApi(token=_hf_token())
 
     log.info("=== publish datasets + evals ===")
     if dry_run:
         # In dry-run we still want a clean report without an API object.
         from types import SimpleNamespace
+
         api = SimpleNamespace(
             create_repo=lambda **k: None,
             upload_folder=lambda **k: None,
@@ -253,7 +379,9 @@ def main(argv: list[str] | None = None) -> int:
     outcomes += _publish_datasets(api, dry_run)
 
     if not args.skip_bundle_status:
-        log.info("=== per-tier bundle status (orchestrator dry-run, refuses-on-red) ===")
+        log.info(
+            "=== per-tier bundle status (orchestrator dry-run, refuses-on-red) ==="
+        )
         outcomes += _bundle_status(args.bundles_root)
 
     log.info("=== active-tier SFT weights status ===")
@@ -276,7 +404,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  . {o.repo}  [{o.kind}]  {o.detail}")
     print("============================================================")
     if dry_run:
-        print("(dry-run — nothing was pushed; set HF_TOKEN and drop --dry-run to publish)")
+        print(
+            "(dry-run — nothing was pushed; set HF_TOKEN and drop --dry-run to publish)"
+        )
     return 0
 
 

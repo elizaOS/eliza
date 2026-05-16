@@ -176,7 +176,6 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 ]);
 
 const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",

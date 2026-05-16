@@ -85,7 +85,9 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _verify_recipe_pins(rep: Report, sidecar: dict | None, key: str, target: str) -> None:
+def _verify_recipe_pins(
+    rep: Report, sidecar: dict | None, key: str, target: str
+) -> None:
     """Assert the recipe kernel_manifest fragment matches the canonical pins."""
     if sidecar is None:
         rep.check(f"{key}.kernel_manifest present", False, "sidecar missing")
@@ -121,9 +123,7 @@ def verify_opt_dir(opt_dir: Path) -> Report:
     polar = _read_json(opt_dir / "stage-polarquant" / "polarquant_config.json")
     qjl = _read_json(opt_dir / "stage-qjl" / "qjl_config.json")
     tbq = _read_json(opt_dir / "stage-turboquant" / "turboquant.json")
-    fused_tbq = _read_json(
-        opt_dir / "stage-fused_turboquant" / "fused_turboquant.json"
-    )
+    fused_tbq = _read_json(opt_dir / "stage-fused_turboquant" / "fused_turboquant.json")
 
     _verify_recipe_pins(rep, polar, "polarquant", "polar_q4")
     _verify_recipe_pins(rep, qjl, "qjl", "qjl1_256")
@@ -162,7 +162,11 @@ def verify_opt_dir(opt_dir: Path) -> Report:
         full = tbq.get("full_attention_layers")
         skipped = tbq.get("linear_attention_layers_skipped") or []
         n_total = tbq.get("num_hidden_layers")
-        if isinstance(full, list) and isinstance(skipped, list) and isinstance(n_total, int):
+        if (
+            isinstance(full, list)
+            and isinstance(skipped, list)
+            and isinstance(n_total, int)
+        ):
             union_covers = set(full) | set(skipped) == set(range(n_total))
             rep.check(
                 "turboquant.full + skipped covers every decoder layer",
@@ -257,21 +261,33 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument(
         "--bundle-dir",
         type=Path,
-        help="Staged Eliza-1 bundle dir (the dir uploaded under elizaos/eliza-1/bundles/<tier>).",
+        help="Staged Eliza-1 bundle dir (the dir uploaded under elizalabs/eliza-1/bundles/<tier>).",
     )
     ap.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Emit JSON instead of human-readable report.",
     )
     args = ap.parse_args(argv)
 
-    rep = verify_opt_dir(args.opt_dir) if args.opt_dir else verify_bundle_dir(args.bundle_dir)
+    rep = (
+        verify_opt_dir(args.opt_dir)
+        if args.opt_dir
+        else verify_bundle_dir(args.bundle_dir)
+    )
     if args.json:
-        print(json.dumps({
-            "bundle": rep.bundle,
-            "ok": rep.ok,
-            "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in rep.checks],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "bundle": rep.bundle,
+                    "ok": rep.ok,
+                    "checks": [
+                        {"name": n, "ok": ok, "detail": d} for n, ok, d in rep.checks
+                    ],
+                },
+                indent=2,
+            )
+        )
     else:
         print(rep.render())
     return 0 if rep.ok else 1

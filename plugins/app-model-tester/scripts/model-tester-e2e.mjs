@@ -68,7 +68,7 @@ async function main() {
     try {
       const result = await fetchJson("/api/model-tester/run", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           test,
           prompt: "Say exactly one short sentence proving the Eliza model tester works.",
@@ -92,6 +92,14 @@ async function main() {
       fail(`${result.test} failed unexpectedly:\n${error}`);
     } else {
       console.log(`  unavailable backend: ${error.split("\n")[0]}`);
+    }
+  }
+
+  for (const result of results) {
+    if (result.test !== "text-small" && result.test !== "text-large") continue;
+    const text = result.output?.text;
+    if (result.ok && (typeof text !== "string" || text.trim().length === 0)) {
+      fail(`${result.test} returned ok=true with empty text output`);
     }
   }
 }

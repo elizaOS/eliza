@@ -11,6 +11,7 @@ from scripts.distill_dflash_drafter import (
     ACTIVE_TIERS,
     DEFAULT_TARGET_MODEL,
     DEFAULT_STUDENT_BASE,
+    DFLASH_DRAFTER_TIERS,
     QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
     TRAINING_SUPPORTED_TIERS,
     _build_manifest,
@@ -60,7 +61,7 @@ class FakeTokenizer:
 
 def _args(**overrides) -> argparse.Namespace:
     base = {
-        "tier": "0_8b",
+        "tier": "2b",
         "student_base": None,
         "allow_non_default_student_base": False,
         "target_model_id": None,
@@ -129,10 +130,10 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
     manifest = _build_manifest(
         args=args,
-        student_base=DEFAULT_STUDENT_BASE["0_8b"],
-        target_model_id="elizaos/eliza-1/bundles/0_8b",
-        target_checkpoint=Path("checkpoints/eliza-1-0_8b/final"),
-        target_gguf=Path("out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf"),
+        student_base=DEFAULT_STUDENT_BASE["2b"],
+        target_model_id="elizalabs/eliza-1/bundles/2b",
+        target_checkpoint=Path("checkpoints/eliza-1-2b/final"),
+        target_gguf=Path("out/eliza-1-2b/text/eliza-1-2b-128k.gguf"),
         target_sha256="0" * 64,
         tokenizer_parity=parity,
         dataset_hash="1" * 64,
@@ -142,7 +143,7 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
         synthetic=False,
     )
 
-    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/0_8b"
+    assert manifest["targetModelId"] == "elizalabs/eliza-1/bundles/2b"
     assert manifest["targetTokenizerSha256"] == parity["target"]["sha256"]
     assert manifest["studentTokenizerSha256"] == parity["student"]["sha256"]
     assert manifest["tokenizerParity"]["matches"] is True
@@ -150,20 +151,23 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
     assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
-    assert TRAINING_SUPPORTED_TIERS == ACTIVE_TIERS
+    assert DFLASH_DRAFTER_TIERS == ("2b", "4b", "9b", "27b", "27b-256k")
+    assert TRAINING_SUPPORTED_TIERS == DFLASH_DRAFTER_TIERS
     assert "0_6b" not in DEFAULT_STUDENT_BASE
     assert "1_7b" not in DEFAULT_STUDENT_BASE
     assert "0_6b" not in DEFAULT_TARGET_MODEL
     assert "1_7b" not in DEFAULT_TARGET_MODEL
 
 
-def test_0_8b_is_training_supported_not_manifest_required_here() -> None:
-    assert "0_8b" in TRAINING_SUPPORTED_TIERS
-    assert DEFAULT_TARGET_MODEL["0_8b"] == "elizaos/eliza-1/bundles/0_8b"
-    assert ACCEPTANCE_GATE["0_8b"] == pytest.approx(0.40)
+def test_0_8b_is_target_only_and_not_drafter_supported() -> None:
+    assert "0_8b" in ACTIVE_TIERS
+    assert "0_8b" not in TRAINING_SUPPORTED_TIERS
+    assert "0_8b" not in DEFAULT_STUDENT_BASE
+    assert "0_8b" not in DEFAULT_TARGET_MODEL
+    assert "0_8b" not in ACCEPTANCE_GATE
 
 
-@pytest.mark.parametrize("tier", ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"])
+@pytest.mark.parametrize("tier", DFLASH_DRAFTER_TIERS)
 def test_qwen35_tiers_default_to_qwen35_student_base(tier: str) -> None:
     assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B-Base"
 
@@ -180,6 +184,29 @@ def test_nebius_derives_vocab_size_from_tokenizer() -> None:
     tok = FakeTokenizer(vocab={"a": 0, "b": 1, "c": 2})
 
     assert distill_drafter_h200._tokenizer_vocab_size(tok) == 3
+
+
+def test_nebius_rejects_same_vocab_different_tokenizer_metadata() -> None:
+    args = argparse.Namespace(target_tier="2b")
+    target = FakeTokenizer(
+        tokenizer_payload={"model": {"type": "BPE", "merges": ["a b"]}}
+    )
+    student = FakeTokenizer(
+        tokenizer_payload={"model": {"type": "BPE", "merges": ["a c"]}}
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        distill_drafter_h200._require_tokenizer_parity(
+            target_tok=target,
+            student_tok=student,
+            args=args,
+        )
+
+    assert exc.value.code == 3
+    assert args.tokenizer_parity["matches"] is False
+    assert args.tokenizer_parity["target"]["vocabSha256"] == args.tokenizer_parity[
+        "student"
+    ]["vocabSha256"]
 
 
 def test_convert_script_prefers_plugin_local_inference_checkout(

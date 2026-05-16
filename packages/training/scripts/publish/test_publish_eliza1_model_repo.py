@@ -100,7 +100,9 @@ def _write_bundle(
             ],
         },
     }
-    (bundle / "eliza-1.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
     release = {
         "schemaVersion": 1,
         "tier": tier,
@@ -196,7 +198,9 @@ def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
 
     assert (staging / "bundles" / "2b" / "eliza-1.manifest.json").is_file()
     assert (staging / "bundles" / "2b" / "text" / "eliza-1-2b-128k.gguf").is_file()
-    assert not (staging / "bundles" / "2b" / "source" / "text" / "raw-qwen.gguf").exists()
+    assert not (
+        staging / "bundles" / "2b" / "source" / "text" / "raw-qwen.gguf"
+    ).exists()
 
 
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
@@ -213,14 +217,13 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
 
 
-def test_tier_choices_cover_full_eliza1_matrix() -> None:
+def test_tier_choices_cover_release_size_matrix() -> None:
     assert P.TIERS == (
         "0_8b",
         "2b",
         "4b",
         "9b",
         "27b",
-        "27b-256k",
     )
 
 
@@ -305,21 +308,35 @@ def test_plan_bundle_blocks_harness_eval_missing_from_evidence_and_checksums(
 
     assert plan.uploadable is False
     assert any("evalReports missing shipped eval file" in e for e in plan.errors)
-    assert any("checksums/SHA256SUMS missing publishable path" in e for e in plan.errors)
+    assert any(
+        "checksums/SHA256SUMS missing publishable path" in e for e in plan.errors
+    )
 
 
-def test_plan_bundle_accepts_0_8b_dflash_weight_claim(tmp_path: Path):
+def test_plan_bundle_blocks_0_8b_dflash_weight_claim(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "0_8b")
     release_path = bundle / "evidence" / "release.json"
     release = json.loads(release_path.read_text())
-    assert "dflash/drafter-0_8b.gguf" in release["weights"]
+    dflash = bundle / "dflash" / "drafter-0_8b.gguf"
+    dflash.parent.mkdir(parents=True, exist_ok=True)
+    dflash.write_bytes(b"unexpected-drafter")
+    manifest_path = bundle / "eliza-1.manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["files"]["dflash"] = [
+        {
+            "path": "dflash/drafter-0_8b.gguf",
+            "sha256": _sha(b"unexpected-drafter"),
+        }
+    ]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    release["weights"].append("dflash/drafter-0_8b.gguf")
     release_path.write_text(json.dumps(release), encoding="utf-8")
     _write_checksums(bundle)
 
     plan = P.plan_bundle(tmp_path, "0_8b")
 
-    assert plan.uploadable is True
-    assert not any("weights lists DFlash path" in e for e in plan.errors)
+    assert plan.uploadable is False
+    assert any("weights lists DFlash path" in e for e in plan.errors)
 
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):

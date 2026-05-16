@@ -34,7 +34,7 @@ def _seed_assets(bundle: Path) -> None:
     _write(bundle / "tts" / "kokoro" / "voices" / "af_bella.bin", b"kokoro-voice")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
     _write(bundle / "asr" / "eliza-1-asr-mmproj.gguf", b"asr-mmproj")
-    _write(bundle / "vad" / "silero-vad-v5.1.2.ggml.bin", b"vad")
+    _write(bundle / "vad" / "silero-vad-v5.gguf", b"vad")
     _write(bundle / "cache" / "voice-preset-default.bin", b"cache")
     _write(bundle / "licenses" / "LICENSE.voice", "voice license\n")
     _write(bundle / "licenses" / "LICENSE.asr", "asr license\n")
@@ -71,6 +71,11 @@ def _seed_recipes(root: Path) -> Path:
 
 def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(stage, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        stage,
+        "text_context_for_manifest",
+        lambda path: 262144 if path.name == "eliza-1-0_8b-128k.gguf" else None,
+    )
     bundle = tmp_path / "eliza-1-0_8b.bundle"
     bundle.mkdir(parents=True)
     _seed_assets(bundle)
@@ -101,12 +106,12 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.8B@deadbeef"
     # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
-    assert manifest["lineage"]["drafter"]["base"].startswith("dflash-0_8b-drafter")
-    assert manifest["files"]["text"][0]["ctx"] == 131072
+    assert "drafter" not in manifest["lineage"]
+    assert manifest["files"]["text"][0]["ctx"] == 262144
     assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
-    assert manifest["files"]["dflash"][0]["path"] == "dflash/drafter-0_8b.gguf"
+    assert manifest["files"]["dflash"] == []
     assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-0_8b.gguf"
-    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
+    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.gguf"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["falseBargeInRate"] == 1.0
@@ -117,12 +122,13 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert release["final"]["evals"] is False
 
     target_meta = json.loads((bundle / "dflash" / "target-meta.json").read_text())
-    assert target_meta["status"] == "weights-staged"
+    assert target_meta["status"] == "disabled"
+    assert target_meta["dflashEnabled"] is False
     assert target_meta["targetText"]["finalElizaWeights"] is True
-    assert target_meta["drafter"]["path"] == "dflash/drafter-0_8b.gguf"
+    assert target_meta["drafter"] is None
     assert target_meta["kernelCaps"]["required"]
-    assert not (bundle / "dflash" / "dflash-disabled-0_8b.release-policy.json").exists()
-    assert (bundle / "dflash" / "drafter-0_8b.gguf").is_file()
+    assert (bundle / "dflash" / "dflash-disabled-0_8b.release-policy.json").is_file()
+    assert not (bundle / "dflash" / "drafter-0_8b.gguf").exists()
 
     # wakeword lineage entry must have been dropped (no wakeword files staged).
     lineage = json.loads((bundle / "lineage.json").read_text())

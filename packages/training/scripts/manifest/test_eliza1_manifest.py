@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.manifest import eliza1_manifest as manifest_mod
 from scripts.manifest.eliza1_manifest import (
     ELIZA_1_DFLASH_TIERS,
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
@@ -23,6 +24,7 @@ from scripts.manifest.eliza1_manifest import (
     build_manifest,
     parse_ctx_string,
     parse_text_ctx_from_filename,
+    text_context_for_manifest,
     validate_manifest,
     write_manifest,
 )
@@ -71,7 +73,7 @@ def base_kwargs(tier: str = "4b") -> dict:
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
             "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
             "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
-            "vad": [FileEntry(path="vad/silero-vad-v5.1.2.ggml.bin", sha256=SHA)],
+            "vad": [FileEntry(path="vad/silero-vad-v5.gguf", sha256=SHA)],
         },
         kernels_required=list(REQUIRED_KERNELS_BY_TIER[tier]),
         kernels_optional=[],
@@ -121,6 +123,22 @@ def test_schema_version_constant():
     assert ELIZA_1_MANIFEST_SCHEMA_VERSION == "1"
 
 
+def test_text_context_prefers_gguf_metadata_over_filename(
+    tmp_path: Path,
+    monkeypatch,
+):
+    text_path = tmp_path / "text" / "eliza-1-0_8b-32k.gguf"
+    text_path.parent.mkdir(parents=True)
+    text_path.write_bytes(b"stand-in")
+    monkeypatch.setattr(
+        manifest_mod,
+        "read_gguf_context_length",
+        lambda path: 262144 if path == text_path else None,
+    )
+
+    assert text_context_for_manifest(text_path) == 262144
+
+
 def test_eliza1_tier_ids_are_canonical():
     assert ELIZA_1_TIERS == (
         "0_8b",
@@ -134,7 +152,6 @@ def test_eliza1_tier_ids_are_canonical():
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
@@ -284,10 +301,7 @@ def test_eagle3_kernel_rejects_invalid_known_fields():
     assert any("kernels.eagle3.maxDraftTokens" in e for e in exc.value.errors)
 
 
-@pytest.mark.parametrize(
-    "tier",
-    ["0_8b", "2b", "4b"],
-)
+@pytest.mark.parametrize("tier", ELIZA_1_TIERS)
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
     assert validate_manifest(manifest) == ()
@@ -540,6 +554,16 @@ def test_text_context_below_128k_is_rejected():
     assert any("128k" in e for e in exc.value.errors)
 
 
+def test_32k_release_path_is_rejected_even_when_gguf_metadata_is_long():
+    kwargs = base_kwargs("0_8b")
+    kwargs["files"]["text"] = [
+        FileEntry(path="text/eliza-1-0_8b-32k.gguf", sha256=SHA, ctx=262144)
+    ]
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("32k/64k" in e for e in exc.value.errors)
+
+
 def test_validate_rejects_bad_sha256():
     manifest = build_manifest(**base_kwargs())
     manifest["files"]["text"][0]["sha256"] = "not-a-hash"
@@ -695,7 +719,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 
@@ -715,8 +739,9 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert validate_manifest(manifest) == ()
 
 
-def test_base_v1_27b_provenance_requires_qwen36_text_source():
-    kwargs = base_kwargs("27b")
+@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
+def test_base_v1_27b_provenance_requires_qwen36_text_source(tier: str):
+    kwargs = base_kwargs(tier)
     prov = _base_v1_provenance()
     prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.6-27B"}
     kwargs["provenance"] = prov
@@ -813,8 +838,7 @@ def test_voice_quant_ladder_covers_every_tier():
 
 
 def test_voice_quant_ladder_mobile_tiers_publish_narrow_omnivoice_ladder():
-    """Mobile tiers (0_8b / 2b / 4b) publish the narrow OmniVoice ladder
-    and keep Kokoro bundled as the fallback backend."""
+    """OmniVoice-capable mobile tiers publish the narrow quant ladder."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
     for tier in ("0_8b", "2b", "4b"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected

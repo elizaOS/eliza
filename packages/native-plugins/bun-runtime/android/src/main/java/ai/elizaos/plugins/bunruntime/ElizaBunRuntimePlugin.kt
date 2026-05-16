@@ -9,10 +9,6 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Locale
 
 /**
@@ -23,11 +19,11 @@ import java.util.Locale
  * managed by `ElizaAgentService` — a foreground service that handles asset
  * extraction, process lifecycle, watchdog health-checks, and crash restarts.
  *
- * This plugin therefore delegates lifecycle operations to the host app's
- * `ElizaAgentService` through the host app package (no compile-time
- * dependency on the host package) and routes all RPC calls — `sendMessage`,
- * `call`, `getStatus` — over the loopback HTTP surface that the service
- * binds on `127.0.0.1:31337`.
+ * This plugin therefore delegates lifecycle operations and all local-agent
+ * route dispatch to the host app's `ElizaAgentService` through reflection
+ * (no compile-time dependency on the host package). `ElizaAgentService`
+ * currently owns the loopback implementation detail, while this plugin stays
+ * on the service request bridge so callers do not depend on a port.
  *
  * Wire protocol parity with the iOS side:
  *   - `start(opts)`      → start the `ElizaAgentService`; poll readiness
@@ -35,8 +31,8 @@ import java.util.Locale
  *   - `getStatus()`      → GET /api/health + service state probe
  *   - `stop()`           → stop the `ElizaAgentService`
  *   - `call({ method, args })` → dispatch to the registered bridge handler
- *                          via POST /api/bridge/call (Android-specific
- *                          loopback RPC endpoint)
+ *                          via POST /api/bridge/call through the service
+ *                          request bridge
  *
  * The `engine` field in `GetStatusResult` is always `"bun"` on Android
  * because the Bun process is the only runtime the service supports — there
@@ -52,11 +48,10 @@ class ElizaBunRuntimePlugin : Plugin() {
 
     companion object {
         private const val TAG = "ElizaBunRuntime"
-        private const val LOCAL_AGENT_BASE = "http://127.0.0.1:31337"
+        private const val LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc"
         private const val DEFAULT_START_TIMEOUT_MS = 120_000L
         private const val POLL_INTERVAL_MS = 2_000L
         private const val DEFAULT_TIMEOUT_MS = 30_000
-        private const val MAX_BODY_BYTES = 10 * 1024 * 1024 // 10 MB
     }
 
     // ── start ───────────────────────────────────────────────────────────────
@@ -254,10 +249,17 @@ class ElizaBunRuntimePlugin : Plugin() {
                     val health = loopbackGet("/api/health", minOf(timeoutMs, 30_000))
                     mapOf(
                         "ready" to health.optBoolean("ready", false),
+                        "apiBase" to LOCAL_AGENT_IPC_BASE,
                         "apiPort" to 31337,
+                        "transport" to "agent-service",
                     )
                 } catch (_: Exception) {
-                    mapOf("ready" to false, "apiPort" to 0)
+                    mapOf(
+                        "ready" to false,
+                        "apiBase" to LOCAL_AGENT_IPC_BASE,
+                        "apiPort" to 0,
+                        "transport" to "agent-service",
+                    )
                 }
             }
 
@@ -385,7 +387,7 @@ class ElizaBunRuntimePlugin : Plugin() {
             ?.name
     }
 
-    // ── Loopback HTTP helpers ────────────────────────────────────────────────
+    // ── Local-agent request helpers ──────────────────────────────────────────
 
     private fun loopbackGet(path: String, timeoutMs: Int, token: String? = readLocalAgentToken()): JSONObject {
         val raw = loopbackRequestRaw("GET", path, null, null, timeoutMs, token)
@@ -413,46 +415,8 @@ class ElizaBunRuntimePlugin : Plugin() {
         timeoutMs: Int,
         token: String?,
     ): Pair<Int, String> {
-        val url = URL(LOCAL_AGENT_BASE + path)
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            instanceFollowRedirects = false
-            useCaches = false
-            setRequestProperty("Accept", "application/json")
-            if (body != null) setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            if (token != null) setRequestProperty("Authorization", "Bearer $token")
-            headers?.keys()?.forEach { key ->
-                headers.getString(key)?.let { v -> setRequestProperty(key, v) }
-            }
-            if (body != null && method !in listOf("GET", "HEAD")) {
-                doOutput = true
-                outputStream.write(body.toByteArray(Charsets.UTF_8))
-            }
-        }
-        return try {
-            val status = conn.responseCode
-            val stream: InputStream? = if (status >= 400) conn.errorStream else conn.inputStream
-            val raw = if (stream == null) "" else {
-                val out = ByteArrayOutputStream()
-                var total = 0
-                val buf = ByteArray(8192)
-                stream.use {
-                    var n = it.read(buf)
-                    while (n >= 0) {
-                        total += n
-                        if (total > MAX_BODY_BYTES) error("Response body too large")
-                        out.write(buf, 0, n)
-                        n = it.read(buf)
-                    }
-                }
-                out.toString("UTF-8")
-            }
-            Pair(status, raw)
-        } finally {
-            conn.disconnect()
-        }
+        val response = agentServiceRequest(method, path, headers, body, timeoutMs, token)
+        return Pair(response.optInt("status", 0), response.optString("body", ""))
     }
 
     private fun loopbackRequest(
@@ -462,17 +426,20 @@ class ElizaBunRuntimePlugin : Plugin() {
         body: String?,
         timeoutMs: Int,
     ): Map<String, Any?> {
-        val (statusCode, raw) = loopbackRequestWithStatus(method, path, headers, body, timeoutMs, readLocalAgentToken())
+        val response = agentServiceRequest(method, path, headers, body, timeoutMs, readLocalAgentToken())
+        val statusCode = response.optInt("status", 0)
+        val raw = response.optString("body", "")
         // Return a structure that mirrors the iOS bridge http_request response shape.
         return mapOf(
             "status" to statusCode,
-            "statusText" to statusTextForCode(statusCode),
+            "statusText" to response.optString("statusText", statusTextForCode(statusCode)),
+            "headers" to (response.optJSONObject("headers") ?: JSONObject()),
             "body" to raw,
-            "bodyBase64" to android.util.Base64.encodeToString(
-                raw.toByteArray(Charsets.UTF_8),
-                android.util.Base64.NO_WRAP,
+            "bodyBase64" to response.optString(
+                "bodyBase64",
+                android.util.Base64.encodeToString(raw.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP),
             ),
-            "bodyEncoding" to "utf-8",
+            "bodyEncoding" to response.optString("bodyEncoding", "utf-8"),
         )
     }
 
@@ -491,50 +458,43 @@ class ElizaBunRuntimePlugin : Plugin() {
         timeoutMs: Int,
         token: String?,
     ): String {
-        val url = URL(LOCAL_AGENT_BASE + path)
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            instanceFollowRedirects = false
-            useCaches = false
-            setRequestProperty("Accept", "application/json")
-            if (body != null) {
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-            if (token != null) {
-                setRequestProperty("Authorization", "Bearer $token")
-            }
-            headers?.keys()?.forEach { key ->
-                val v = headers.getString(key)
-                if (v != null) setRequestProperty(key, v)
-            }
-            if (body != null && method !in listOf("GET", "HEAD")) {
-                doOutput = true
-                outputStream.write(body.toByteArray(Charsets.UTF_8))
-            }
-        }
+        return agentServiceRequest(method, path, headers, body, timeoutMs, token).optString("body", "")
+    }
 
-        return try {
-            val status = conn.responseCode
-            val stream: InputStream? = if (status >= 400) conn.errorStream else conn.inputStream
-            if (stream == null) return ""
-            val out = ByteArrayOutputStream()
-            var total = 0
-            val buf = ByteArray(8192)
-            stream.use {
-                var n = it.read(buf)
-                while (n >= 0) {
-                    total += n
-                    if (total > MAX_BODY_BYTES) error("Response body too large")
-                    out.write(buf, 0, n)
-                    n = it.read(buf)
-                }
-            }
-            out.toString("UTF-8")
-        } finally {
-            conn.disconnect()
+    private fun agentServiceRequest(
+        method: String,
+        path: String,
+        headers: JSObject?,
+        body: String?,
+        timeoutMs: Int,
+        token: String?,
+    ): JSONObject {
+        val requestHeaders = JSONObject(headers?.toString() ?: "{}")
+        if (!token.isNullOrBlank() && !hasHeader(requestHeaders, "authorization")) {
+            requestHeaders.put("Authorization", "Bearer $token")
         }
+        val request = JSONObject().apply {
+            put("method", method)
+            put("path", path)
+            put("headers", requestHeaders)
+            put("body", body ?: JSONObject.NULL)
+            put("timeoutMs", timeoutMs)
+        }
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
+        val serviceClass = Class.forName(serviceClassName)
+        val bridge = serviceClass.getMethod("requestLocalAgent", String::class.java)
+        val raw = bridge.invoke(null, request.toString()) as? String
+            ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
+        return JSONObject(raw)
+    }
+
+    private fun hasHeader(headers: JSONObject, expected: String): Boolean {
+        val keys = headers.keys()
+        while (keys.hasNext()) {
+            if (expected.equals(keys.next(), ignoreCase = true)) return true
+        }
+        return false
     }
 
     // ── Conversation helpers ──────────────────────────────────────────────────

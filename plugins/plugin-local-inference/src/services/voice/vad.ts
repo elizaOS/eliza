@@ -9,11 +9,12 @@
  *            acoustic activity right now".
  *
  *   Tier 2 — a model VAD provider. Resolver order is Qwen toolkit adapter
- *            when supplied, otherwise the native libelizainference Silero v5
- *            GGML backend (`vad/silero-vad-v5.1.2.ggml.bin` in the Eliza-1
- *            bundle layout). 512-sample windows at 16 kHz (32 ms hop), one
- *            speech probability per window. This is the *authoritative*
- *            speech/no-speech signal — it gates ASR and drives turn-taking.
+ *            when supplied, otherwise the standalone `silero-vad-cpp` GGUF
+ *            backend (`vad/silero-vad-v5.gguf` in the Eliza-1 bundle layout),
+ *            then the legacy fused libelizainference VAD ABI. 512-sample
+ *            windows at 16 kHz (32 ms hop), one speech probability per window.
+ *            This is the *authoritative* speech/no-speech signal — it gates
+ *            ASR and drives turn-taking.
  *
  *   `VadDetector` wires both together and emits the `VadEvent` stream
  *   (`speech-start` / `speech-active` / `speech-pause` / `speech-end` /
@@ -24,15 +25,12 @@
  * "VAD unavailable — voice features degrade" — there is no silent downgrade to
  * the RMS gate (AGENTS.md §3).
  *
- * GGML migration: the runtime VAD used to be Silero v5 in ONNX
+ * Native VAD migration: the runtime VAD used to be Silero v5 in ONNX
  * (`silero-vad-int8.onnx`) loaded via `onnxruntime-node`. That dependency is
- * gone — every local-inference path is ggml/llama.cpp-native now. The
- * authoritative VAD goes through the `eliza_inference_vad_*` FFI on
- * libelizainference, which loads the Silero v5 GGML binary
- * (`silero-vad-v5.1.2.ggml.bin`) into the shared ggml context. The bundled
- * GGML file uses the whisper.cpp `whisper_vad_*`-style layout so a single
- * upstream-aligned converter (`tools/convert_silero_vad_to_ggml.py` in
- * whisper.cpp) produces the artifact.
+ * gone. The preferred path is now `silero-vad-cpp`: a standalone Bun FFI
+ * binding to `libsilero_vad` that loads `vad/silero-vad-v5.gguf`, produced by
+ * `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
+ * The older libelizainference VAD ABI remains as a temporary fallback only.
  */
 
 import { existsSync } from "node:fs";
@@ -69,22 +67,32 @@ export class VadUnavailableError extends Error {
 	}
 }
 
-/** Relative path of the Silero v5 GGML VAD model inside an Eliza-1 bundle.
- *  The file is produced by whisper.cpp's `convert_silero_vad_to_ggml.py`. */
+/** Relative path of the preferred Silero v5 GGUF VAD model inside an Eliza-1
+ *  bundle. The file is produced by
+ *  `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`. */
 export const SILERO_VAD_BUNDLE_REL_PATH = path.join(
+	"vad",
+	"silero-vad-v5.gguf",
+);
+
+/** Legacy fused-libelizainference VAD artifact. Kept only for the temporary
+ *  `silero-ggml` fallback ABI. */
+const LEGACY_SILERO_VAD_GGML_REL_PATH = path.join(
 	"vad",
 	"silero-vad-v5.1.2.ggml.bin",
 );
 
 /**
- * Resolve the Silero GGML model on disk. An explicit `modelPath` is honored
- * exactly — if it is set but missing, the result is `null` (no silent
- * substitution of a different model). When `modelPath` is not given the
- * search order is:
+ * Resolve the legacy fused-libelizainference Silero GGML model on disk. An
+ * explicit `modelPath` is honored exactly — if it is set but missing, the
+ * result is `null` (no silent substitution of a different model). When
+ * `modelPath` is not given the search order is:
  *   1. `<bundleRoot>/vad/silero-vad-v5.1.2.ggml.bin`
  *   2. `<state-dir>/local-inference/vad/silero-vad-v5.1.2.ggml.bin`
  *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
+ *
+ * @deprecated Prefer {@link resolveSileroVadCppGgufPath}.
  */
 export function resolveSileroVadPath(opts: {
 	modelPath?: string;
@@ -95,9 +103,9 @@ export function resolveSileroVadPath(opts: {
 	}
 	const candidates: Array<string | undefined> = [
 		opts.bundleRoot
-			? path.join(opts.bundleRoot, SILERO_VAD_BUNDLE_REL_PATH)
+			? path.join(opts.bundleRoot, LEGACY_SILERO_VAD_GGML_REL_PATH)
 			: undefined,
-		path.join(localInferenceRoot(), SILERO_VAD_BUNDLE_REL_PATH),
+		path.join(localInferenceRoot(), LEGACY_SILERO_VAD_GGML_REL_PATH),
 		process.env.ELIZA_VAD_MODEL_PATH?.trim() || undefined,
 	];
 	for (const c of candidates) {
@@ -106,18 +114,11 @@ export function resolveSileroVadPath(opts: {
 	return null;
 }
 
-/** Relative path of the standalone silero-vad-cpp GGUF (produced by
- *  `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`).
- *  Distinct from `SILERO_VAD_BUNDLE_REL_PATH` above (which points at
- *  the whisper.cpp-format `.bin` consumed by libelizainference's
- *  legacy whisper-style VAD ABI). */
-export const SILERO_VAD_CPP_BUNDLE_REL_PATH = path.join(
-	"vad",
-	"silero-vad-v5.gguf",
-);
+/** @deprecated `SILERO_VAD_BUNDLE_REL_PATH` is now the standalone GGUF. */
+export const SILERO_VAD_CPP_BUNDLE_REL_PATH = SILERO_VAD_BUNDLE_REL_PATH;
 
 /** Resolve the standalone silero-vad-cpp GGUF on disk. Search order
- *  mirrors {@link resolveSileroVadPath}:
+ *  mirrors the bundle/state-dir/env fallback order:
  *    1. `opts.modelPath` if supplied (no fallback if missing).
  *    2. `<bundleRoot>/vad/silero-vad-v5.gguf`.
  *    3. `<state-dir>/local-inference/vad/silero-vad-v5.gguf`.
@@ -134,9 +135,9 @@ export function resolveSileroVadCppGgufPath(opts: {
 	}
 	const candidates: Array<string | undefined> = [
 		opts.bundleRoot
-			? path.join(opts.bundleRoot, SILERO_VAD_CPP_BUNDLE_REL_PATH)
+			? path.join(opts.bundleRoot, SILERO_VAD_BUNDLE_REL_PATH)
 			: undefined,
-		path.join(localInferenceRoot(), SILERO_VAD_CPP_BUNDLE_REL_PATH),
+		path.join(localInferenceRoot(), SILERO_VAD_BUNDLE_REL_PATH),
 		process.env.ELIZA_SILERO_VAD_GGUF?.trim() || undefined,
 		path.join(
 			process.cwd(),
@@ -165,11 +166,11 @@ function validateSileroSampleRate(sampleRate: number): void {
 }
 
 /**
- * Native libelizainference-backed Silero v5 GGML VAD. The model
+ * Legacy libelizainference-backed Silero v5 GGML VAD. The model
  * (`silero-vad-v5.1.2.ggml.bin`) is loaded by the shared ggml context owned
- * by the FFI; `process()` runs one 512-sample 16 kHz window through the
- * native VAD and returns the speech probability. `reset()` clears the
- * recurrent state at utterance boundaries.
+ * by the FFI; `process()` runs one 512-sample 16 kHz window through the native
+ * VAD and returns the speech probability. `reset()` clears the recurrent state
+ * at utterance boundaries.
  */
 export class GgmlSileroVad {
 	readonly sampleRate: number;
@@ -554,7 +555,7 @@ export async function resolveVadProvider(
 				if (!modelPath) {
 					throw new VadUnavailableError(
 						"model-missing",
-						`[voice] Silero v5 GGML VAD model not found. Looked for ${SILERO_VAD_BUNDLE_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}. Stage the whisper.cpp-converted GGML file there, or set ELIZA_VAD_MODEL_PATH.`,
+						`[voice] Legacy Silero v5 GGML VAD model not found. Looked for ${LEGACY_SILERO_VAD_GGML_REL_PATH} in the Eliza-1 bundle and under ${localInferenceRoot()}. Prefer staging ${SILERO_VAD_BUNDLE_REL_PATH} for silero-cpp, or set ELIZA_VAD_MODEL_PATH for the legacy fallback.`,
 					);
 				}
 				return {
@@ -719,17 +720,22 @@ export class VadDetector {
 		// Tier 1: synchronous, no model.
 		this.energyGate.push(frame);
 
-		// Anchor the clock to the first frame so timestamps are mic-domain.
-		if (this.pending.length === 0 && this.clockMs === 0) {
-			this.clockMs = frame.timestampMs;
-		}
-		// Append to the re-windowing buffer.
-		const merged = new Float32Array(this.pending.length + frame.pcm.length);
-		merged.set(this.pending, 0);
-		merged.set(frame.pcm, this.pending.length);
-		this.pending = merged;
-
-		const run = this.busy.then(() => this.drainWindows());
+		const pcm = frame.pcm.slice();
+		const timestampMs = frame.timestampMs;
+		const run = this.busy.then(async () => {
+			// Anchor the clock to the first frame so timestamps are mic-domain.
+			if (this.pending.length === 0 && this.clockMs === 0) {
+				this.clockMs = timestampMs;
+			}
+			// Append to the re-windowing buffer while holding the serialized
+			// drain chain. Fire-and-forget callers can overlap model inference;
+			// the shared pending buffer must still advance one frame at a time.
+			const merged = new Float32Array(this.pending.length + pcm.length);
+			merged.set(this.pending, 0);
+			merged.set(pcm, this.pending.length);
+			this.pending = merged;
+			await this.drainWindows();
+		});
 		// Keep the chain alive even if a window throws (the throw still
 		// surfaces via the returned promise).
 		this.busy = run.catch(() => {
@@ -740,17 +746,22 @@ export class VadDetector {
 
 	/** Flush any partial trailing samples (zero-padded to a full window) and
 	 *  finalize an open segment. Call at end-of-stream. */
-	async flush(): Promise<void> {
-		await this.busy;
-		if (this.pending.length > 0) {
-			const w = new Float32Array(this.silero.windowSamples);
-			w.set(this.pending.subarray(0, this.silero.windowSamples));
-			this.pending = new Float32Array(0);
-			await this.processWindow(w);
-		}
-		if (this.phase !== "idle") {
-			this.endSegment(this.clockMs);
-		}
+	flush(): Promise<void> {
+		const run = this.busy.then(async () => {
+			if (this.pending.length > 0) {
+				const w = new Float32Array(this.silero.windowSamples);
+				w.set(this.pending.subarray(0, this.silero.windowSamples));
+				this.pending = new Float32Array(0);
+				await this.processWindow(w);
+			}
+			if (this.phase !== "idle") {
+				this.endSegment(this.clockMs);
+			}
+		});
+		this.busy = run.catch(() => {
+			this.droppedFrames++;
+		});
+		return run;
 	}
 
 	reset(): void {

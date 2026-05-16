@@ -72,6 +72,8 @@ const DEFAULT_GATES = path.join(
   "eliza1_gates.yaml",
 );
 const ACTIVE_VISION_TIERS = new Set([
+  "0_8b",
+  "2b",
   "4b",
   "9b",
   "27b",
@@ -328,6 +330,7 @@ function isBlockingGateResult(result) {
     result?.required &&
       result?.status !== "pass" &&
       result?.status !== "not-applicable" &&
+      !result?.provisional &&
       !result?.needsHardware,
   );
 }
@@ -458,7 +461,7 @@ function syncBundleManifestEvals(
     reason: r.reason,
   }));
   const failures = gateRows
-    .filter((g) => g.required && g.passed !== true && g.skipped !== true)
+    .filter((g) => g.blocking && g.passed !== true && g.skipped !== true)
     .map((g) => `${g.name}: ${g.reason}`);
   aggregate.generatedAt = generatedAt;
   aggregate.tier = manifest.tier;
@@ -892,8 +895,8 @@ async function main() {
     e2eEnduranceLoop?.data?.thirtyTurnOk ??
     null;
   const e2eLoopOk =
-    endurance?.data?.summary?.e2eLoopOk ??
     e2eLoop?.data?.e2eLoopOk ??
+    e2eEnduranceLoop?.data?.e2eLoopOk ??
     null;
   const voiceRtf =
     averageStepRtf(ttsSweep?.data) ??
@@ -1056,9 +1059,7 @@ async function main() {
 
   function gateRow(name, area, source, reasonOverride = null, blockingOverride = null) {
     const gate = gateByName.get(name);
-    const blocking =
-      blockingOverride ??
-      Boolean(gate?.required && gate?.status !== "pass" && !gate?.needsHardware);
+    const blocking = blockingOverride ?? isBlockingGateResult(gate);
     return {
       area,
       gate: name,

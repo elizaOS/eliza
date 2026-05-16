@@ -349,7 +349,7 @@ describe("pickVoiceTierSlot", () => {
 	it("picks workstation-27b for 27B id", () => {
 		expect(
 			pickVoiceTierSlot({
-				textModelId: "eliza-1-27b-256k",
+				textModelId: "eliza-1-27b",
 				deviceTier: "MAX",
 			}),
 		).toBe("workstation-27b");

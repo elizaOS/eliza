@@ -61,7 +61,7 @@ import type {
 } from "./types";
 import {
 	createSileroVadDetector,
-	resolveSileroVadPath,
+	resolveSileroVadCppGgufPath,
 	type VadDetector,
 } from "./vad";
 import { writeVoicePresetFile } from "./voice-preset-format";
@@ -239,10 +239,13 @@ try {
 
 describe("interactive voice path — wiring (stub backends)", () => {
 	it("(a) VAD emits speech-start → speech-active → speech-pause → speech-end in order off synthetic input", async () => {
-		const modelPath = resolveSileroVadPath({
-			modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-			bundleRoot,
-		});
+			const modelPath =
+				typeof (globalThis as { Bun?: unknown }).Bun !== "undefined"
+					? resolveSileroVadCppGgufPath({
+							modelPath: process.env.ELIZA_SILERO_VAD_GGUF,
+							bundleRoot,
+						})
+					: null;
 		const order: string[] = [];
 		if (modelPath) {
 			// Real Silero VAD over the synthetic `silence + speech + silence`
@@ -253,9 +256,9 @@ describe("interactive voice path — wiring (stub backends)", () => {
 				speechSec: 1.0,
 				tailSilenceSec: 0.9,
 			});
-			const det: VadDetector = await createSileroVadDetector({
-				modelPath,
-				config: {
+				const det: VadDetector = await createSileroVadDetector({
+					sileroCppGgufPath: modelPath,
+					config: {
 					onsetThreshold: 0.5,
 					pauseHangoverMs: 200,
 					endHangoverMs: 450,

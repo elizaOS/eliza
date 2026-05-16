@@ -44,7 +44,6 @@ const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
-const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
 
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
@@ -60,7 +59,7 @@ const SLOT_LADDERS: Record<
   },
   "linux-gpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "linux-cpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
@@ -68,7 +67,7 @@ const SLOT_LADDERS: Record<
   },
   "desktop-gpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-cpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],

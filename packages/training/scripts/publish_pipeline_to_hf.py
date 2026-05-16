@@ -4,7 +4,7 @@ This creates an HF *model* repo (HF has no separate "pipeline" repo type)
 that bundles the training scripts so a fresh Vast.ai box can:
 
     git clone <nothing — straight HF download>
-    hf download elizaos/eliza-1-pipeline --local-dir /workspace/training
+    hf download elizalabs/eliza-1-pipeline --local-dir /workspace/training
     cd /workspace/training && uv sync --extra train
     bash scripts/train_vast.sh ...
 
@@ -17,10 +17,10 @@ and ``scripts/publish/publish_model.py``. Those wrappers forward here.
 Usage::
 
     uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizaos/eliza-1-pipeline --dry-run
+        --repo-id elizalabs/eliza-1-pipeline --dry-run
 
     HF_TOKEN=hf_xxx uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizaos/eliza-1-pipeline
+        --repo-id elizalabs/eliza-1-pipeline
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ EXCLUDE_PATTERNS: tuple[str, ...] = (
     "*.egg-info",
     "*.egg-info/*",
     ".DS_Store",
-    "*.so",            # vendored CUDA build outputs
+    "*.so",  # vendored CUDA build outputs
     "*.o",
     ".vast_instance_id",
 )
@@ -84,8 +84,8 @@ log = logging.getLogger("publish_pipeline")
 
 @dataclass(frozen=True)
 class PipelineFile:
-    src: Path             # absolute on local disk
-    path_in_repo: str     # relative path inside the HF repo
+    src: Path  # absolute on local disk
+    path_in_repo: str  # relative path inside the HF repo
 
 
 def hf_token() -> str | None:
@@ -110,7 +110,9 @@ def _walk_scripts() -> list[PipelineFile]:
         if _matches_exclude(rel_str):
             continue
         # also skip if any path component is __pycache__ etc.
-        if any(part in {"__pycache__", ".pytest_cache", ".egg-info"} for part in rel.parts):
+        if any(
+            part in {"__pycache__", ".pytest_cache", ".egg-info"} for part in rel.parts
+        ):
             continue
         out.append(PipelineFile(src=path, path_in_repo=rel_str))
     return out
@@ -152,9 +154,9 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Companion repos:\n"
         "\n"
-        "- `elizaos/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
+        "- `elizalabs/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
         "adversarial scam set under `scambench/`, and small Claude-teacher synthesis sets under `synthesized/`.\n"
-        "- `elizaos/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
+        "- `elizalabs/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
         "\n"
         "## Vast.ai bootstrap\n"
         "\n"
@@ -164,7 +166,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "```bash\n"
         f"hf download {repo_id} --local-dir /workspace/training\n"
-        "hf download elizaos/eliza-1-training --repo-type dataset \\\n"
+        "hf download elizalabs/eliza-1-training --repo-type dataset \\\n"
         "    --local-dir /workspace/training/data/final\n"
         "cd /workspace/training\n"
         "uv sync --extra train\n"
@@ -237,14 +239,18 @@ def _remote_sha256(api, repo_id: str, path_in_repo: str) -> str | None:
             continue
         lfs = getattr(sibling, "lfs", None)
         if lfs:
-            return getattr(lfs, "sha256", None) or (lfs.get("sha256") if isinstance(lfs, dict) else None)
+            return getattr(lfs, "sha256", None) or (
+                lfs.get("sha256") if isinstance(lfs, dict) else None
+            )
         return None
     return None
 
 
 def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
     if not hf_token():
-        log.error("HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing to push.")
+        log.error(
+            "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing to push."
+        )
         return 1
     if not files:
         log.error("no files matched; refusing to publish an empty repo.")
@@ -325,7 +331,7 @@ def main() -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help="Destination HF model repo id (e.g. elizaos/eliza-1-pipeline).",
+        help="Destination HF model repo id (e.g. elizalabs/eliza-1-pipeline).",
     )
     ap.add_argument(
         "--private",

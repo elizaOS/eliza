@@ -70,6 +70,7 @@ import {
   isElectrobunRuntime,
   isElizaOS,
   loadUiTheme,
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
@@ -332,7 +333,10 @@ const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
-  "In one short sentence, confirm the iOS full Bun local backend is running.";
+  "Reply with exactly these four words: ios smoke model works.";
+const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
+const IOS_FULL_BUN_SMOKE_FAILURE_RE =
+  /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
@@ -674,6 +678,28 @@ async function fetchIosFullBunSmokeText(
   return text;
 }
 
+function normalizeIosFullBunSmokeReply(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function assertIosFullBunSmokeModelReply(
+  label: string,
+  value: unknown,
+): void {
+  const text = String(value ?? "");
+  if (
+    normalizeIosFullBunSmokeReply(text) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||
+    IOS_FULL_BUN_SMOKE_FAILURE_RE.test(text)
+  ) {
+    throw new Error(
+      `full Bun ${label} did not return the expected local model reply: ${text.slice(0, 500)}`,
+    );
+  }
+}
+
 function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} did not return an object`);
@@ -983,7 +1009,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
 
     if (hubInstalled.length === 0) {
       throw new Error(
-        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
+        "local-inference hub had no installed Eliza-1 GGUF model; full-Bun smoke requires a staged local model",
       );
     }
 
@@ -1112,6 +1138,10 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       },
       IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
     );
+    assertIosFullBunSmokeModelReply(
+      "conversation message",
+      sendMessage.text ?? sendMessage.reply,
+    );
     const streamMessage = await fetchIosFullBunSmokeText(
       "WebView fetch bridge POST /api/conversations/:id/messages/stream",
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
@@ -1132,8 +1162,9 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     );
     if (
       !streamMessage.includes('"type":"done"') ||
-      /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
-        streamMessage,
+      IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage) ||
+      !normalizeIosFullBunSmokeReply(streamMessage).includes(
+        IOS_FULL_BUN_SMOKE_EXPECTED_REPLY,
       )
     ) {
       throw new Error(
@@ -1893,7 +1924,8 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
   if (apiBase) details.apiBase = apiBase;
   if (authToken) details.authToken = authToken;
   if (isAndroid && runtimeConfig.mode === "local") {
-    details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
+    details.localApiBase = ANDROID_LOCAL_AGENT_IPC_BASE;
+    details.localRouteKernel = "agent-service-ipc";
   }
   if (isIOS && runtimeConfig.mode === "local") {
     details.localApiBase = IOS_LOCAL_AGENT_IPC_BASE;
@@ -2028,7 +2060,7 @@ async function initializeMobileAgentTunnel(): Promise<void> {
           ? { pairingToken: runtimeConfig.tunnelPairingToken }
           : {}),
         ...(isAndroid
-          ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
+          ? { localAgentApiBase: ANDROID_LOCAL_AGENT_IPC_BASE }
           : {}),
       });
       console.info(

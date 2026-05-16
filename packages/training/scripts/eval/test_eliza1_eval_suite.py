@@ -125,11 +125,16 @@ def test_gate_verdict_is_publish_blocking_for_standin(tmp_path: Path, monkeypatc
     assert agg["passed"] is False
     rep = agg["gateReport"]
     failed = {f.split(":")[0] for f in rep["failures"]}
-    # The required gates with no measurement must be failing.
-    assert "voice_rtf" in failed
-    assert "asr_wer" in failed
+    # Non-provisional required gates with no measurement must be blocking.
     assert "e2e_loop_ok" in failed
     assert "thirty_turn_ok" in failed
+    # Provisional voice gates are still recorded as failed rows, but do not
+    # block publish eligibility while the thresholds are being calibrated.
+    gates = {g["name"]: g for g in rep["gates"]}
+    assert gates["voice_rtf"]["passed"] is False
+    assert gates["voice_rtf"]["provisional"] is True
+    assert gates["asr_wer"]["passed"] is False
+    assert gates["asr_wer"]["provisional"] is True
 
 
 def test_aggregate_is_consumable_by_gate_engine(tmp_path: Path, monkeypatch) -> None:
@@ -158,7 +163,7 @@ def _make_real_bundle(root: Path) -> Path:
     (bundle / "tts" / "omnivoice-base-Q4_K_M.gguf").write_bytes(big)
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").write_bytes(big)
     (bundle / "asr" / "eliza-1-asr.gguf").write_bytes(big)
-    (bundle / "vad" / "silero-vad-int8.onnx").write_bytes(b"\0" * (200 * 1024))
+    (bundle / "vad" / "silero-vad-v5.gguf").write_bytes(big)
     (bundle / "dflash" / "drafter-0_8b.gguf").write_bytes(drafter_big)
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle

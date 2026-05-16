@@ -104,14 +104,15 @@ export const RUNTIME_TO_ELIZA1_KERNEL = {
 export const ELIZA_1_BACKENDS = ["metal", "vulkan", "cuda", "rocm", "cpu"];
 // Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
 // - All tiers require turboquant + qjl + polarquant.
-// - Every active tier requires DFlash.
+// - DFlash is required on 2B+ tiers; 0.8B currently has no production
+//   drafter companion/source and remains the low-memory non-DFlash tier.
 // - All text tiers require `turbo3_tcq` because every shipped text GGUF has
 //   at least a 128k context window.
 //
 // Q4 is the release text quant baseline. TCQ is part of the release contract
 // for the full text ladder, including the smallest 0.8B and 2B bundles.
 export const REQUIRED_KERNELS_BY_TIER = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
 	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],

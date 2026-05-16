@@ -245,26 +245,14 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
 		expect(e.fittingVariantId).toBeNull();
 	});
 
-	it("names the largest fitting context variant when one exists", () => {
-		// 40 GB host: 27b (32 GB) fits, 27b-256k (96 GB) does not.
-		// The fit hint stays inside the 27B context-variant line.
-		const m = makeInstalledModel(
-			"eliza-1-27b-256k",
-			"/tmp/eliza-1-27b-256k.gguf",
-		);
-		let caught: unknown;
-		try {
+	it("accepts the active 27B tier on a host that meets its RAM floor", () => {
+		const m = makeInstalledModel("eliza-1-27b", "/tmp/eliza-1-27b.gguf");
+		expect(() =>
 			assertModelFitsHost(m, 40 * 1024, {
 				manifestLoader: noopManifestLoader,
 				reserveMb: 1536,
-			});
-		} catch (err) {
-			caught = err;
-		}
-		expect(caught).toBeInstanceOf(ModelDoesNotFitError);
-		const e = caught as ModelDoesNotFitError;
-		expect(e.fittingVariantId).toBe("eliza-1-27b");
-		expect(e.message).toContain("eliza-1-27b");
+			}),
+		).not.toThrow();
 	});
 
 	it("reports tight (no throw) when usable RAM is between floor and recommended", () => {

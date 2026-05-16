@@ -13,10 +13,10 @@
 import crypto from "node:crypto";
 import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
-import { withTimeout } from "../../../test/helpers/test-utils.ts";
-import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
-import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
+import { selectLiveProvider } from "../../../packages/test/helpers/live-provider.ts";
+import { withTimeout } from "../../../packages/test/helpers/test-utils.ts";
+import type { MockedTestRuntime } from "../../../packages/test/mocks/helpers/mock-runtime.ts";
+import { createMockedTestRuntime } from "../../../packages/test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;

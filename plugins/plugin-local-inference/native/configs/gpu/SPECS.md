@@ -121,13 +121,10 @@ kernel on the Polar fork).
 - 9B: 26.6 GiB / 3 GiB @ 64k = 8 → **12 parallel @ 64k**.
 - 27B: 12 GiB / 2 GiB @ 32k = 6 → **6 parallel @ 32k**; at 128k it's
   8 GiB per slot → 1.5 → **1 parallel @ 128k**.
-- 27b-256k: ~16 GiB per slot → 0 parallel headroom; **1 parallel** with
-  `kvSpillToCpu` opt-in.
 
 **H200 (141 GiB)** — the marquee box.
 
-- 27b-256k: 16 GiB per slot → **6 parallel**.
-- 27b: 2 GiB per slot @ 32k → **16 parallel** (capped).
+- 27b: 8 GiB per slot @ 128k → **16 parallel** (capped).
 - 9b: ~0.45 GiB per slot @ 8k → **64 parallel**.
 
 ### Batch / ubatch derivation

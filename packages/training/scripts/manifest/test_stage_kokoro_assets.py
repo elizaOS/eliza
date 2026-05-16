@@ -25,6 +25,7 @@ def _write_bundle(root: Path) -> Path:
         "text/eliza-1-2b-128k.gguf": b"text",
         "tts/omnivoice-base-Q4_K_M.gguf": b"omni",
         "dflash/drafter-2b.gguf": b"draft",
+        "vision/mmproj-2b.gguf": b"vision",
         "cache/voice-preset-default.bin": b"cache",
     }
     for rel, payload in files.items():
@@ -41,6 +42,10 @@ def _write_bundle(root: Path) -> Path:
             "text": {"base": "Qwen/Qwen3.5-2B", "license": "apache-2.0"},
             "voice": {"base": "Serveurperso/OmniVoice-GGUF", "license": "apache-2.0"},
             "drafter": {"base": "Qwen/Qwen3.5-0.8B", "license": "apache-2.0"},
+            "vision": {
+                "base": "unsloth/Qwen3.5-2B-GGUF/mmproj-F16.gguf",
+                "license": "apache-2.0",
+            },
         },
         "files": {
             "text": [
@@ -57,7 +62,12 @@ def _write_bundle(root: Path) -> Path:
                 }
             ],
             "asr": [],
-            "vision": [],
+            "vision": [
+                {
+                    "path": "vision/mmproj-2b.gguf",
+                    "sha256": _sha(files["vision/mmproj-2b.gguf"]),
+                }
+            ],
             "dflash": [
                 {
                     "path": "dflash/drafter-2b.gguf",
@@ -156,7 +166,7 @@ def test_voice_remote_template_overrides_default_path(tmp_path: Path) -> None:
     Per-voice staging releases ship `voice.bin` at the release-dir root
     (rather than `voices/<voice>.bin`) — the template lets the caller override
     the remote path even though all voices now consolidate under
-    `elizaos/eliza-1` at `voice/kokoro/voices/<voice>.bin`.
+    `elizalabs/eliza-1` at `voice/kokoro/voices/<voice>.bin`.
     """
     bundle = _write_bundle(tmp_path)
     report = stage.stage_kokoro_bundle(

@@ -2376,6 +2376,7 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"",
 	"rules:",
 	"- answer directly in the agent's voice",
+	"- when the user asks for exact words, output only those exact words",
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
 ].join("\n");
@@ -2387,6 +2388,7 @@ available_contexts:
 
 direct/private rules:
 - Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations should use contexts=["simple"] and put the final answer in replyText.
+- For simple requests, replyText must be a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 - Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
 - For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
 - If schema omits shouldRespond, do not invent it.
@@ -2418,7 +2420,9 @@ function directReplyPromptForMessage(args: {
 		contextText ? "" : "",
 		`user_message: ${latestText}`,
 		`routing_thought: ${args.messageHandler.thought}`,
-	].filter((line) => line.length > 0).join("\n");
+	]
+		.filter((line) => line.length > 0)
+		.join("\n");
 }
 
 async function generateDirectReplyModel(args: {
@@ -2427,12 +2431,17 @@ async function generateDirectReplyModel(args: {
 	state: State;
 	messageHandler: MessageHandlerResult;
 	signal?: AbortSignal;
-}): Promise<{ text: string; raw: string | GenerateTextResult; prompt: string }> {
+}): Promise<{
+	text: string;
+	raw: string | GenerateTextResult;
+	prompt: string;
+}> {
 	const prompt = directReplyPromptForMessage(args);
 	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
 		signal: args.signal,
+		providerOptions: { eliza: { thinking: "off" } },
 	})) as string | GenerateTextResult;
 	return { text: getV5ModelText(raw).trim(), raw, prompt };
 }
@@ -2444,6 +2453,19 @@ async function generateDirectReplyOnce(args: {
 	messageHandler: MessageHandlerResult;
 }): Promise<string> {
 	return (await generateDirectReplyModel(args)).text;
+}
+
+function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
+	const trimmed = typeof reply === "string" ? reply.trim() : "";
+	if (!trimmed) return true;
+	if (/^[\s{}\[\]":,]+$/.test(trimmed)) return true;
+	if (/^\d+$/.test(trimmed)) return true;
+	if (/(.)\1{4,}/u.test(trimmed)) return true;
+	if (/^[A-Z]{2,8}$/.test(trimmed)) {
+		const allowed = new Set(["OK", "YES", "NO", "STOP"]);
+		return !allowed.has(trimmed);
+	}
+	return false;
 }
 
 /**
@@ -3114,7 +3136,9 @@ function shouldUseDirectReplyFastPath(args: {
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
-	if (inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0) {
+	if (
+		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
+	) {
 		return false;
 	}
 	if (/https?:\/\//iu.test(text)) return false;
@@ -3724,7 +3748,8 @@ async function executeV5PlannedToolCall(
 		(candidate) => candidate.name === toolCall.name,
 	);
 
-	const hasDispatcherActionParameter = plannerToolCallHasActionParameter(toolCall);
+	const hasDispatcherActionParameter =
+		plannerToolCallHasActionParameter(toolCall);
 	if (action && actionHasSubActions(action) && !hasDispatcherActionParameter) {
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
@@ -4157,6 +4182,14 @@ export async function runV5MessageRuntimeStage1(args: {
 		const stage1SpanSamplerPlan = buildSpanSamplerPlan(
 			responseGrammar.responseSkeleton,
 		);
+		const stage1ProviderOptions = withGuidedDecodeProviderOptions(
+			messageHandlerProviderOptions,
+		);
+		stage1ProviderOptions.eliza = {
+			...((stage1ProviderOptions as { eliza?: Record<string, unknown> })
+				.eliza ?? {}),
+			thinking: "off",
+		};
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
@@ -4180,9 +4213,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			// deterministic-token prefill plan and the fork fast-forwards the
 			// forced scaffold spans. Opt out with `ELIZA_LOCAL_GUIDED_DECODE=0`.
 			// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
-			providerOptions: withGuidedDecodeProviderOptions(
-				messageHandlerProviderOptions,
-			),
+			providerOptions: stage1ProviderOptions,
 		};
 		// Empty-completion retry: cloud reasoning models reached over
 		// OpenAI-compatible providers intermittently return a completion with no
@@ -4381,17 +4412,16 @@ export async function runV5MessageRuntimeStage1(args: {
 			// `replyText` (→ `route.reply`) is part of the HANDLE_RESPONSE envelope
 			// and is `required` in the schema, so the direct-reply path normally
 			// emits it inline with no extra model call. `generateDirectReplyOnce`
-			// only runs as a degenerate fallback when Stage-1 produced no usable
-			// reply text at all (malformed output that even the tolerant parser
-			// could not recover a reply from).
-			const reply =
-				route.reply ||
-				(await generateDirectReplyOnce({
-					runtime: args.runtime,
-					message: args.message,
-					state: args.state,
-					messageHandler,
-				}));
+			// runs when Stage-1 produced no usable reply text or a known
+			// low-quality scaffold/fragment pattern from strict JSON generation.
+			const reply = shouldRegenerateStage1ReplyText(route.reply)
+				? await generateDirectReplyOnce({
+						runtime: args.runtime,
+						message: args.message,
+						state: args.state,
+						messageHandler,
+					})
+				: route.reply;
 			return {
 				kind: "direct_reply",
 				messageHandler,

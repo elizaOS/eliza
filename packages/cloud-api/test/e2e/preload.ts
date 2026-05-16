@@ -14,16 +14,20 @@
 
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
-import { dbWrite } from "../../../cloud-shared/src/db/helpers";
-import { apiKeysService } from "../../../cloud-shared/src/lib/services/api-keys";
-import { agentSandboxesRepository } from "../../../cloud-shared/src/db/repositories/agent-sandboxes";
-import { organizations } from "../../../cloud-shared/src/db/schemas/organizations";
-import { users } from "../../../cloud-shared/src/db/schemas/users";
-import { usersRepository } from "../../../cloud-shared/src/db/repositories/users";
 
-for (const envPath of [resolve("../../.env"), resolve("../../.env.local"), resolve("../../.env.test")]) {
+for (const envPath of [
+  resolve("../../.env"),
+  resolve("../../.env.local"),
+  resolve("../../.env.test"),
+]) {
   config({ path: envPath });
 }
 
@@ -99,7 +103,11 @@ async function ensureTestUser({
 
   await dbWrite
     .update(organizations)
-    .set({ credit_balance: "1000.000000", is_active: true, updated_at: new Date() })
+    .set({
+      credit_balance: "1000.000000",
+      is_active: true,
+      updated_at: new Date(),
+    })
     .where(eq(organizations.id, organization.id));
   await dbWrite
     .update(users)
@@ -113,7 +121,9 @@ async function ensureTestUser({
     .where(eq(users.id, user.id));
   await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
 
-  const sandboxes = await agentSandboxesRepository.listByOrganization(organization.id);
+  const sandboxes = await agentSandboxesRepository.listByOrganization(
+    organization.id,
+  );
   if (sandboxes.length === 0) {
     await agentSandboxesRepository.create({
       organization_id: organization.id,
@@ -159,7 +169,8 @@ process.env.TEST_API_KEY = owner.plainKey;
 process.env.TEST_MEMBER_API_KEY = member.plainKey;
 process.env.TEST_AFFILIATE_API_KEY = owner.plainKey;
 process.env.TEST_USER_ID = owner.user.id;
-process.env.TEST_USER_EMAIL = owner.user.email ?? "playwright-owner@example.test";
+process.env.TEST_USER_EMAIL =
+  owner.user.email ?? "playwright-owner@example.test";
 process.env.TEST_ORGANIZATION_ID = owner.organization.id;
 
 if (process.env.REQUIRE_E2E_SERVER !== "0") {

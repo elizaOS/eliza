@@ -54,9 +54,11 @@ def test_mobile_tier_uses_qwen35_2b_source(
     report = stage.stage_sources(_args(tmp_path, "2b"))
 
     assert "unsloth/Qwen3.5-2B-GGUF" in report["sources"]
+    assert stage.DRAFTER_SOURCES["2b"] is None
+    assert any("No upstream DFlash drafter" in b for b in report["blockers"])
 
 
-def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
+def test_4b_tier_records_text_dflash_and_vision_sources(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -64,9 +66,10 @@ def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
 
     report = stage.stage_sources(_args(tmp_path, "4b"))
 
-    assert [f["kind"] for f in report["files"]] == ["text", "vision"]
+    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
     assert "unsloth/Qwen3.5-4B-GGUF" in report["sources"]
-    assert any("No upstream DFlash drafter" in b for b in report["blockers"])
+    assert "z-lab/Qwen3.5-4B-DFlash" in report["sources"]
+    assert any("not a final GGUF" in b for b in report["blockers"])
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
 
@@ -79,6 +82,7 @@ def test_stage_sources_accepts_large_active_tier(
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
 
 
 @pytest.mark.parametrize("tier", ["27b", "27b-256k"])
@@ -92,21 +96,62 @@ def test_27b_class_tiers_use_qwen36_source(
     report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
     assert all(
         "Qwen3.5-27B" not in f["repo"]
         for f in report["files"]
-        if f["kind"] == "text"
+        if f["kind"] in {"text", "dflash", "vision"}
     )
+    drafter_files = [f for f in report["files"] if f["kind"] == "dflash"]
+    assert drafter_files == [
+        {
+            "kind": "dflash",
+            "repo": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+            "filename": "dflash-draft-3.6-q8_0.gguf",
+            "destination": f"source/dflash/qwen3.6-{tier}-dflash-q8_0.gguf",
+            "license": "mit",
+            "status": "source-gguf",
+            "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
+            "revision": "sha-spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+            "path": str(
+                tmp_path
+                / f"eliza-1-{tier}.bundle"
+                / f"source/dflash/qwen3.6-{tier}-dflash-q8_0.gguf"
+            ),
+            "dryRun": True,
+        }
+    ]
+    assert any("acceptance against the Eliza-1 text checkpoint" in b for b in report["blockers"])
+
+
+def test_known_dflash_sources_are_wired_without_faking_small_tiers() -> None:
+    assert stage.DRAFTER_SOURCES["0_8b"] is None
+    assert stage.DRAFTER_SOURCES["2b"] is None
+
+    assert stage.DRAFTER_SOURCES["4b"].repo == "z-lab/Qwen3.5-4B-DFlash"
+    assert stage.DRAFTER_SOURCES["4b"].filename == "model.safetensors"
+    assert stage.DRAFTER_SOURCES["4b"].license == "mit"
+
+    assert stage.DRAFTER_SOURCES["9b"].repo == "z-lab/Qwen3.5-9B-DFlash"
+    assert stage.DRAFTER_SOURCES["9b"].filename == "model.safetensors"
+    assert stage.DRAFTER_SOURCES["9b"].license == "mit"
+
+    for tier in ("27b", "27b-256k"):
+        artifact = stage.DRAFTER_SOURCES[tier]
+        assert artifact is not None
+        assert artifact.repo == "spiritbuun/Qwen3.6-27B-DFlash-GGUF"
+        assert artifact.filename == "dflash-draft-3.6-q8_0.gguf"
+        assert artifact.status == "source-gguf"
 
 
 def test_every_active_tier_has_vision_source() -> None:
-    """Every Qwen3.5 release tier must source its own mmproj-F16.gguf.
+    """Every active release tier must source its own mmproj-F16.gguf.
 
-    The 27b / 27b-256k text-context variants all reuse the
-    `unsloth/Qwen3.5-27B-GGUF` projector by design (the projector arch is
-    shared across the 27B family). The 0_8b/2b/4b/9b tiers each have a
-    distinct upstream mmproj source. The 0_8b tier ships Q4_K_M; every
-    other tier ships Q8_0.
+    The 27b / 27b-256k text-context variants reuse the
+    `unsloth/Qwen3.6-27B-GGUF` projector by design (the projector arch is
+    shared across the 27B family). The 0_8b/2b/4b/9b tiers each source the
+    matching Qwen3.5 projector. The 0_8b tier ships Q4_K_M; every other
+    tier ships Q8_0.
     """
     for tier in ("0_8b", "2b", "4b", "9b", "27b", "27b-256k"):
         assert stage.VISION_SOURCES[tier] is not None, tier
@@ -114,7 +159,9 @@ def test_every_active_tier_has_vision_source() -> None:
         assert artifact.kind == "vision"
         assert artifact.filename == "mmproj-F16.gguf"
         if tier.startswith("27b"):
-            assert artifact.repo == "unsloth/Qwen3.5-27B-GGUF"
+            assert artifact.repo == "unsloth/Qwen3.6-27B-GGUF"
+        else:
+            assert artifact.repo.startswith("unsloth/Qwen3.5-")
         assert tier in stage.MMPROJ_QUANT_BY_TIER
         assert tier in stage.MMPROJ_QUANT_TENSOR_OVERRIDES
         assert stage.MMPROJ_QUANT_BY_TIER["0_8b"] == "Q4_K_M"

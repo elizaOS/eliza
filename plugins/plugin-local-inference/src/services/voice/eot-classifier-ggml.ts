@@ -6,7 +6,7 @@
  * `<|im_end|>`, and reads `P(<|im_end|>)` from the next-token
  * distribution. The upstream `livekit/turn-detector` ships an ONNX
  * graph; this binding consumes the **GGUF** export published at
- * `elizaos/eliza-1` under `voice/turn-detector/onnx/turn-detector-en-q8.gguf`
+ * `elizalabs/eliza-1` under `voice/turn-detector/onnx/turn-detector-en-q8.gguf`
  * (and the multilingual variant at
  * `voice/turn/intl/turn-detector-intl-q8.gguf`), running through the
  * canonical fork wrapper `node-llama-cpp` (per
@@ -67,7 +67,7 @@ export class EotGgmlUnavailableError extends Error {
 // ---------------------------------------------------------------------------
 
 /** HF mono-repo holding every voice sub-model. */
-export const LIVEKIT_TURN_DETECTOR_HF_REPO = "elizaos/eliza-1";
+export const LIVEKIT_TURN_DETECTOR_HF_REPO = "elizalabs/eliza-1";
 
 /** Canonical English GGUF asset path inside the bundle. */
 export const DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_EN =

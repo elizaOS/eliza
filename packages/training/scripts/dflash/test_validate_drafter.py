@@ -200,6 +200,57 @@ def test_real_validation_skips_acceptance_after_metadata_failure(
     ]["detail"]
 
 
+def test_metadata_only_mode_skips_full_target_hash_and_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    target = tmp_path / "target.gguf"
+    drafter = tmp_path / "drafter.gguf"
+    report_path = tmp_path / "report.json"
+    target.write_bytes(b"target")
+    drafter.write_bytes(b"drafter")
+
+    target_meta = _meta(size_bytes=200)
+    drafter_meta = _meta(size_bytes=100)
+    drafter_meta["targetCheckpointSha256"] = "a" * 64
+
+    def fake_read_metadata(path: Path) -> dict:
+        return drafter_meta if path == drafter else target_meta
+
+    def fail_hash(_path: Path) -> str:
+        raise AssertionError("metadata-only validation must not hash target bytes")
+
+    def fail_rollout(*_args, **_kwargs) -> dict:
+        raise AssertionError("metadata-only validation must not run acceptance rollout")
+
+    monkeypatch.setattr(validate, "_read_gguf_metadata", fake_read_metadata)
+    monkeypatch.setattr(validate, "_sha256_file", fail_hash)
+    monkeypatch.setattr(validate, "_run_acceptance_rollout", fail_rollout)
+
+    rc = validate._run_real(
+        argparse.Namespace(
+            tier="2b",
+            drafter_gguf=str(drafter),
+            target_gguf=str(target),
+            allow_dflash_draft_architecture=False,
+            metadata_only=True,
+            skip_acceptance_rollout=True,
+            prompts_file=None,
+            acceptance_tokens=8,
+            acceptance_gate=None,
+            report_out=str(report_path),
+        )
+    )
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert rc == 3
+    assert report["metadataOnly"] is True
+    assert report["pass"] is False
+    assert report["checks"]["hashMatch"]["pass"] is False
+    assert "skipped (--metadata-only)" in report["checks"]["hashMatch"]["detail"]
+    assert report["checks"]["tokenizerMetadataMatch"]["pass"] is True
+
+
 def test_architecture_check_rejects_dflash_draft_without_loader_evidence() -> None:
     ok, detail = validate._architecture_check(
         _meta(arch="dflash-draft"),
@@ -232,7 +283,7 @@ def test_synthetic_smoke_uses_current_qwen35_vocab_fixture(tmp_path: Path) -> No
     report_path = tmp_path / "validate.json"
 
     rc = validate._run_synthetic_smoke(
-        argparse.Namespace(tier="0_8b", report_out=str(report_path))
+        argparse.Namespace(tier="2b", report_out=str(report_path))
     )
 
     assert rc == 0

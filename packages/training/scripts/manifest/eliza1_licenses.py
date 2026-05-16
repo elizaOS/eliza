@@ -186,14 +186,15 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="MIT",
         text_file=_MIT,
         upstream_repo=(
-            "ggml-org/whisper-vad (native GGML Silero VAD v5.1.2); "
+            "Eliza-1 release repo voice/vad/silero-vad-v5.gguf "
+            "(native silero-vad-cpp Silero VAD v5); "
             "optional fallback: onnx-community/silero-vad (snakers4/silero-vad)"
         ),
-        upstream_url="https://huggingface.co/ggml-org/whisper-vad",
+        upstream_url="https://huggingface.co/elizalabs/eliza-1",
         copyright_holder="Silero Team",
         note=(
             "Voice-activity detection model, shipped for native inference as "
-            "the GGML artifact vad/silero-vad-v5.1.2.ggml.bin. Legacy bundles "
+            "the GGUF artifact vad/silero-vad-v5.gguf. Legacy bundles "
             "may also include the int8 ONNX fallback vad/silero-vad-int8.onnx. "
             "Drives barge-in cancellation and gates ASR past silent frames. "
             "Licensed MIT."
@@ -204,8 +205,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="DFlash speculative-decode drafter",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
-        upstream_url="https://huggingface.co/elizaos/eliza-1",
+        upstream_repo="elizalabs/eliza-1/bundles/<tier> (distilled from the text backbone)",
+        upstream_url="https://huggingface.co/elizalabs/eliza-1",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
             "The DFlash drafter is a small student model aligned to the Eliza-1 "
@@ -238,12 +239,15 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="vision (mmproj projector)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="unsloth/Qwen3.5-4B-GGUF (mmproj-F16.gguf)",
-        upstream_url="https://huggingface.co/unsloth/Qwen3.5-4B-GGUF",
+        upstream_repo=(
+            "unsloth/Qwen3.5-{0.8B,2B,4B,9B}-GGUF and "
+            "unsloth/Qwen3.6-27B-GGUF (mmproj-F16.gguf)"
+        ),
+        upstream_url="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "The vision projector (mmproj) is part of the Qwen3.5 multimodal "
-            "lineage; active Eliza-1 release tiers ship a tier-compatible "
+            "The vision projector (mmproj) is part of the Qwen3.5/Qwen3.6 "
+            "multimodal lineage; active Eliza-1 release tiers ship a tier-compatible "
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
@@ -277,8 +281,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="Eliza-1 bundle (umbrella)",
         spdx="CC-BY-NC-SA-4.0",
         text_file=_CC_BY_NC_SA,
-        upstream_repo="elizaos/eliza-1/bundles/<tier>",
-        upstream_url="https://huggingface.co/elizaos/eliza-1",
+        upstream_repo="elizalabs/eliza-1/bundles/<tier>",
+        upstream_url="https://huggingface.co/elizalabs/eliza-1",
         copyright_holder="elizaOS / Eliza Labs and the upstream component authors (see per-component LICENSE.* files)",
         note=(
             "Eliza-1 is a non-commercial open-source on-device model line. This "

@@ -6,8 +6,6 @@
 
 import type { MdxModule, NavItem } from "@elizaos/ui";
 
-export type { DocsFrontmatter, MdxModule, NavItem } from "@elizaos/ui";
-
 type MetaValue =
   | string
   | {

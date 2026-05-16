@@ -6,7 +6,7 @@ selected in priority order:
   1. **Wav2Small cls7 ONNX (production, H2.a default)**
      When the bench can resolve the real `wav2small-cls7-int8.onnx` (either
      via an explicit `onnx_path`, the bundle cache, or an HF download from
-     `elizaos/eliza-1` at `voice/emotion/wav2small-cls7-int8.onnx`), the
+     `elizalabs/eliza-1` at `voice/emotion/wav2small-cls7-int8.onnx`), the
      adapter loads it through
      `onnxruntime`. The model emits 7-class logits aligned with
      `EXPRESSIVE_EMOTION_TAGS` — argmax over softmax gives the discrete
@@ -52,9 +52,9 @@ logger = logging.getLogger(__name__)
 
 
 # HF repo + canonical filenames for the production Wav2Small classifier.
-# All voice models live under the consolidated elizaos/eliza-1 repo;
+# All voice models live under the consolidated elizalabs/eliza-1 repo;
 # matches `packages/shared/src/local-inference/voice-models.ts` voice-emotion entry.
-_WAV2SMALL_HF_REPO = "elizaos/eliza-1"
+_WAV2SMALL_HF_REPO = "elizalabs/eliza-1"
 # cls7 head: canonical path is voice/emotion/. msp-dim (vad head) lives
 # under voice/voice-emotion/ since it is a separate ONNX artifact.
 _WAV2SMALL_CLS7_FILENAME = "voice/emotion/wav2small-cls7-int8.onnx"
@@ -68,7 +68,7 @@ def _resolve_wav2small_onnx(
 
       1. `explicit_path` if it exists.
       2. `ELIZA_WAV2SMALL_CLS7_ONNX` / `ELIZA_WAV2SMALL_VAD_ONNX` env vars.
-      3. HuggingFace download from the consolidated `elizaos/eliza-1` repo
+      3. HuggingFace download from the consolidated `elizalabs/eliza-1` repo
          (cls7 head preferred). Requires `huggingface_hub` and either an
          `HF_TOKEN` env or anonymous access (the repo is public).
 
@@ -177,7 +177,7 @@ class ClassifierAdapter:
     onnx_path: Path | None = None
     """Optional explicit Wav2Small ONNX path. When None, the adapter
     auto-resolves the production model from `ELIZA_WAV2SMALL_*_ONNX` env vars
-    or HuggingFace (`elizaos/eliza-1` under `voice/emotion/` or
+    or HuggingFace (`elizalabs/eliza-1` under `voice/emotion/` or
     `voice/voice-emotion/`)."""
 
     prefer_superb: bool = False

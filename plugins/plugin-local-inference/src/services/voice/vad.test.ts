@@ -5,12 +5,19 @@
  *   - `VadDetector`: speech state machine driven by a *deterministic fake
  *     Silero* (probability scripted per window), asserting the full
  *     `VadEvent` sequence (start → active → pause → end / blip).
- *   - `GgmlSileroVad`: the native libelizainference VAD backend.
- *     Exercised here via the fake FFI fixture; the real backend is covered
- *     by the integration suite in `interactive-session.e2e.test.ts` when
- *     libelizainference is built with the VAD ABI.
+ *   - `GgmlSileroVad`: the temporary fused libelizainference fallback.
+ *     Exercised here via the fake FFI fixture; the standalone silero-vad-cpp
+ *     resolver is covered with path and provider-selection tests below.
  */
 
+import {
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import type { PcmFrame, VadEvent } from "./types";
@@ -20,12 +27,15 @@ import {
 	GgmlSileroVad,
 	NativeSileroVad,
 	RmsEnergyGate,
+	resolveSileroVadCppGgufPath,
 	resolveVadProvider,
 	rms,
+	SILERO_VAD_BUNDLE_REL_PATH,
 	VadDetector,
 	VadUnavailableError,
 	vadProviderOrder,
 } from "./vad";
+import { resolveSileroVadGgmlLibrary } from "./vad-ggml";
 
 const SR = 16_000;
 const FRAME = 512; // one Silero window
@@ -61,6 +71,47 @@ class ScriptedSilero {
 	 *  stream — so the scripted probability cursor stays where it is. */
 	reset(): void {
 		this.resets++;
+	}
+}
+
+class DeferredSilero {
+	readonly sampleRate = SR;
+	readonly windowSamples = FRAME;
+	readonly calls: Float32Array[] = [];
+	private readonly resolvers: Array<(prob: number) => void> = [];
+	private readonly waiters: Array<{ n: number; resolve: () => void }> = [];
+
+	async process(window: Float32Array): Promise<number> {
+		this.calls.push(window.slice());
+		this.notify();
+		return new Promise<number>((resolve) => {
+			this.resolvers.push(resolve);
+		});
+	}
+
+	reset(): void {}
+
+	resolveNext(prob: number): void {
+		const resolve = this.resolvers.shift();
+		if (!resolve) throw new Error("no pending Silero process call");
+		resolve(prob);
+	}
+
+	waitForCalls(n: number): Promise<void> {
+		if (this.calls.length >= n) return Promise.resolve();
+		return new Promise((resolve) => {
+			this.waiters.push({ n, resolve });
+		});
+	}
+
+	private notify(): void {
+		for (let i = this.waiters.length - 1; i >= 0; i--) {
+			const waiter = this.waiters[i];
+			if (this.calls.length >= waiter.n) {
+				this.waiters.splice(i, 1);
+				waiter.resolve();
+			}
+		}
 	}
 }
 
@@ -255,9 +306,105 @@ describe("VadDetector", () => {
 			}),
 		).rejects.toThrow(/16000/);
 	});
+
+	it("serializes pending-buffer mutation per pushFrame call", async () => {
+		const silero = new DeferredSilero();
+		const det = new VadDetector(silero);
+		const p1 = det.pushFrame(sineFrame(0, 0.1));
+		const p2 = det.pushFrame(sineFrame(FRAME_MS, 0.1));
+
+		await silero.waitForCalls(1);
+		expect(silero.calls).toHaveLength(1);
+		silero.resolveNext(0.1);
+		const p1SettledBeforeSecondWindowStarts = await Promise.race([
+			p1.then(() => true),
+			silero.waitForCalls(2).then(() => false),
+		]);
+
+		await silero.waitForCalls(2);
+		expect(silero.calls).toHaveLength(2);
+		silero.resolveNext(0.1);
+		await Promise.all([p1, p2]);
+
+		expect(p1SettledBeforeSecondWindowStarts).toBe(true);
+		expect(det.droppedFrames).toBe(0);
+	});
 });
 
 describe("GgmlSileroVad", () => {
+	it("uses the canonical bundled silero-cpp GGUF path", () => {
+		const root = mkdtempSync(path.join(os.tmpdir(), "vad-bundle-"));
+		try {
+			const gguf = path.join(root, SILERO_VAD_BUNDLE_REL_PATH);
+			mkdirSync(path.dirname(gguf), { recursive: true });
+			writeFileSync(gguf, "gguf");
+			expect(SILERO_VAD_BUNDLE_REL_PATH).toBe(
+				path.join("vad", "silero-vad-v5.gguf"),
+			);
+			expect(resolveSileroVadCppGgufPath({ bundleRoot: root })).toBe(gguf);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("prefers the platform-native silero-vad-cpp library name", () => {
+		const root = mkdtempSync(path.join(os.tmpdir(), "vad-lib-"));
+		try {
+			const build = path.join(
+				root,
+				"packages",
+				"native-plugins",
+				"silero-vad-cpp",
+				"build",
+			);
+			mkdirSync(build, { recursive: true });
+			for (const name of [
+				"libsilero_vad.so",
+				"libsilero_vad.dylib",
+				"silero_vad.dll",
+			]) {
+				writeFileSync(path.join(build, name), "");
+			}
+			const expected =
+				process.platform === "darwin"
+					? "libsilero_vad.dylib"
+					: process.platform === "win32"
+						? "silero_vad.dll"
+						: "libsilero_vad.so";
+			expect(resolveSileroVadGgmlLibrary({ repoRoot: root })).toBe(
+				path.join(build, expected),
+			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("does not auto-select a non-native silero-vad-cpp library name", () => {
+		const root = mkdtempSync(path.join(os.tmpdir(), "vad-lib-"));
+		try {
+			const build = path.join(
+				root,
+				"packages",
+				"native-plugins",
+				"silero-vad-cpp",
+				"build",
+			);
+			mkdirSync(build, { recursive: true });
+			const nonNativeNames =
+				process.platform === "darwin"
+					? ["libsilero_vad.so", "silero_vad.dll"]
+					: process.platform === "win32"
+						? ["libsilero_vad.so", "libsilero_vad.dylib"]
+						: ["libsilero_vad.dylib", "silero_vad.dll"];
+			for (const name of nonNativeNames) {
+				writeFileSync(path.join(build, name), "");
+			}
+			expect(resolveSileroVadGgmlLibrary({ repoRoot: root })).toBeNull();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("documents the auto provider order: Qwen toolkit → standalone Silero → fused native Silero", () => {
 		expect(vadProviderOrder()).toEqual([
 			"qwen-toolkit",

@@ -19,6 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPORTS_ROOT = path.join(__dirname, "..", "reports");
 const E2E_BENCH = path.join(__dirname, "e2e_loop_bench.mjs");
+const KOKORO_E2E_BENCH = path.join(__dirname, "kokoro_e2e_loop_bench.mjs");
+const KOKORO_TIERS = new Set(["0_8b", "2b", "4b"]);
+const NO_DRAFTER_TIERS = new Set(["0_8b"]);
 
 function timestamp() {
   return new Date()
@@ -202,32 +205,60 @@ function latestLocalE2eReportPath(tier) {
 function runE2eBench(args, bundle) {
   const report = latestLocalE2eReportPath(bundle.tier);
   const bun = process.env.BUN_BIN || "bun";
-  const childArgs = [
-    E2E_BENCH,
-    "--bundle",
-    bundle.bundleDir,
-    "--tier",
-    bundle.tier,
-    "--backend",
-    args.backend,
-    "--turns",
-    "1",
-    "--n-predict",
-    String(args.nPredict),
-    "--tts-steps",
-    String(args.ttsSteps),
-    "--ctx",
-    String(args.ctx),
-    "--ngl",
-    String(args.ngl),
-    "--start-timeout",
-    String(args.startTimeoutS),
-    "--turn-timeout",
-    String(args.turnTimeoutS),
-    "--report",
-    report,
-    "--quiet",
-  ];
+  const useKokoro = KOKORO_TIERS.has(bundle.tier);
+  const childArgs = useKokoro
+    ? [
+        KOKORO_E2E_BENCH,
+        "--bundle",
+        bundle.bundleDir,
+        "--tier",
+        bundle.tier,
+        "--backend",
+        args.backend,
+        "--turns",
+        "1",
+        "--n-predict",
+        String(args.nPredict),
+        "--ctx",
+        String(args.ctx),
+        "--ngl",
+        String(args.ngl),
+        "--start-timeout",
+        String(args.startTimeoutS),
+        "--turn-timeout",
+        String(args.turnTimeoutS),
+        "--report",
+        report,
+        "--skip-embedding",
+        "--no-save-audio",
+        "--quiet",
+      ]
+    : [
+        E2E_BENCH,
+        "--bundle",
+        bundle.bundleDir,
+        "--tier",
+        bundle.tier,
+        "--backend",
+        args.backend,
+        "--turns",
+        "1",
+        "--n-predict",
+        String(args.nPredict),
+        "--tts-steps",
+        String(args.ttsSteps),
+        "--ctx",
+        String(args.ctx),
+        "--ngl",
+        String(args.ngl),
+        "--start-timeout",
+        String(args.startTimeoutS),
+        "--turn-timeout",
+        String(args.turnTimeoutS),
+        "--report",
+        report,
+        "--quiet",
+      ];
   if (args.binDir) childArgs.splice(7, 0, "--bin-dir", args.binDir);
 
   const res = spawnSync(bun, childArgs, {
@@ -240,7 +271,7 @@ function runE2eBench(args, bundle) {
     return {
       ok: false,
       status: "needs-runtime",
-      reason: `${bun} executable could not run e2e_loop_bench.mjs: ${res.error.message}`,
+      reason: `${bun} executable could not run ${path.basename(childArgs[0])}: ${res.error.message}`,
       e2eReportPath: report,
     };
   }
@@ -249,7 +280,7 @@ function runE2eBench(args, bundle) {
     return {
       ok: false,
       status: "failed",
-      reason: `e2e_loop_bench.mjs exited ${res.status}${stderr ? `: ${stderr}` : ""}`,
+      reason: `${path.basename(childArgs[0])} exited ${res.status}${stderr ? `: ${stderr}` : ""}`,
       e2eReportPath: report,
     };
   }
@@ -257,7 +288,7 @@ function runE2eBench(args, bundle) {
     return {
       ok: false,
       status: "failed",
-      reason: `e2e_loop_bench.mjs completed without writing ${report}`,
+      reason: `${path.basename(childArgs[0])} completed without writing ${report}`,
       e2eReportPath: report,
     };
   }
@@ -265,6 +296,7 @@ function runE2eBench(args, bundle) {
 }
 
 function finite(value) {
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -280,6 +312,21 @@ function selectE2eRun(report, tier) {
     runs[0] ??
     null
   );
+}
+
+function dflashRequiredForRun(run, fallbackTier = null) {
+  const tier = run?.request?.tier ?? run?.bundle?.tier ?? fallbackTier;
+  const requiredOptimizations =
+    run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
+  if (
+    requiredOptimizations.dflashRequired === false ||
+    run?.summary?.dflashPolicy?.requiresDrafter === false ||
+    run?.dflashPolicy?.requiresDrafter === false ||
+    NO_DRAFTER_TIERS.has(tier)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function buildBlockedReport(args, block, bundle = null) {
@@ -347,6 +394,7 @@ function buildBargeInReportFromE2e({
     barge.ttsStreamSupported === true ||
     run.summary?.requiredOptimizations?.streamingTtsActive === true ||
     run.requiredOptimizations?.streamingTtsActive === true;
+  const dflashRequired = dflashRequiredForRun(run, bundle?.tier ?? args.tier);
   const dflashActive =
     run.summary?.requiredOptimizations?.dflashDraftingActive === true ||
     run.requiredOptimizations?.dflashDraftingActive === true;
@@ -363,10 +411,10 @@ function buildBargeInReportFromE2e({
       key: "missing-native-streaming-tts",
       reason:
         barge.note ||
-        "native streaming TTS cancel support was not active; rebuild libelizainference with eliza_inference_tts_synthesize_stream",
+        "streaming TTS cancel support was not active in the assembled voice loop",
     });
   }
-  if (!dflashActive) {
+  if (dflashRequired && !dflashActive) {
     blockers.push({
       key: "missing-dflash",
       reason: "DFlash drafting was not active in the assembled voice loop",
@@ -381,13 +429,15 @@ function buildBargeInReportFromE2e({
   if (ttsCancelMs === null) {
     blockers.push({
       key: "missing-tts-cancel-ms",
-      reason: "e2e loop did not emit native TTS cancel latency",
+      reason: "e2e loop did not emit streaming TTS cancel latency",
     });
   }
   if (llmCancelMs === null) {
     blockers.push({
       key: "missing-llm-cancel-ms",
-      reason: "e2e loop did not emit LLM/DFlash abort latency",
+      reason: dflashRequired
+        ? "e2e loop did not emit LLM/DFlash abort latency"
+        : "e2e loop did not emit LLM stream abort latency",
     });
   }
 
@@ -428,7 +478,11 @@ function buildBargeInReportFromE2e({
       passRecordable,
       rawBargeInCancelMs: round1(rawBargeInCancelMs),
       blockers,
-      source: "assembled-local-voice-e2e-loop",
+      source:
+        run.voiceLoop?.backend === "kokoro"
+          ? "assembled-local-kokoro-voice-e2e-loop"
+          : "assembled-local-voice-e2e-loop",
+      dflashRequired,
     },
     summary: {
       vadVoiceDetectedToTtsCancelledMs: round1(ttsCancelMs),

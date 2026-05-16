@@ -107,9 +107,7 @@ def _build_fixture_bundle(
     # Weight files — content irrelevant; sha256 is the contract.
     _write(bundle / "text" / f"eliza-1-{tier}-128k.gguf", b"\x00text-128k\x00")
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"\x00tts\x00")
-    _write(
-        bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00"
-    )
+    _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00")
     _write(bundle / "tts" / "kokoro" / "model_q4.onnx", b"\x00kokoro\x00")
     _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"{}")
     _write(
@@ -186,7 +184,9 @@ def _build_fixture_bundle(
     )
     _write(
         bundle / "quantization" / "polarquant_config.json",
-        json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest("polar_q4")}),
+        json.dumps(
+            {"method": "polarquant", "kernel_manifest": kernel_manifest("polar_q4")}
+        ),
     )
 
     # Licenses — written with the real attestation generator so the
@@ -264,7 +264,7 @@ def _build_fixture_bundle(
                     "status": "pass",
                     "runtimeReady": True,
                     "atCommit": "deadbee",
-                    "modelSha256": "a" * 64,
+                    "modelSha256": text_sha,
                     "kernelSet": graph_kernel_set,
                     "graphDispatch": {
                         "cacheFamilies": graph_kernel_set,
@@ -315,7 +315,9 @@ def _build_fixture_bundle(
                     "status": "pass",
                     "device": f"fixture-{target}",
                     "atCommit": "deadbee",
-                    "voiceAbi": True if target == "ios-arm64-metal" else "not-applicable",
+                    "voiceAbi": (
+                        True if target == "ios-arm64-metal" else "not-applicable"
+                    ),
                     "report": f"{target}.txt",
                 }
             ),
@@ -351,7 +353,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
-            "repo": "elizaos/eliza-1",
+            "repo": ELIZA_1_HF_REPO,
             "file": "bundles/4b/dflash/drafter-4b.gguf",
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
@@ -368,7 +370,9 @@ def _write_release_evidence(
 ) -> None:
     def rels(subdir: str) -> list[str]:
         base = bundle / subdir
-        return sorted(str(p.relative_to(bundle)) for p in base.rglob("*") if p.is_file())
+        return sorted(
+            str(p.relative_to(bundle)) for p in base.rglob("*") if p.is_file()
+        )
 
     evidence: dict[str, Any] = {
         "schemaVersion": 1,
@@ -495,9 +499,7 @@ def _ctx(
         repo_id=ELIZA_1_HF_REPO,
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
-        template_path=(
-            Path(__file__).resolve().parent / "templates" / "README.md.j2"
-        ),
+        template_path=(Path(__file__).resolve().parent / "templates" / "README.md.j2"),
     )
 
 
@@ -523,7 +525,7 @@ def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
     )
     write_bundle_licenses(
         bundle / "licenses",
-        ["text", "voice", "asr", "vad", "dflash"],
+        ["text", "voice", "asr", "vad", "dflash", "vision"],
     )
     text_rel = f"text/eliza-1-{tier}-128k.gguf"
     text_sha = _sha256(bundle / text_rel)
@@ -564,7 +566,7 @@ def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_layout_rejects_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
+def test_layout_accepts_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(
         tmp_path,
         tier="0_8b",
@@ -572,11 +574,10 @@ def test_layout_rejects_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
     )
     _disable_dflash_for_tier(bundle, "0_8b")
 
-    with pytest.raises(OrchestratorError) as excinfo:
-        validate_bundle_layout(_ctx("0_8b", bundle))
+    layout = validate_bundle_layout(_ctx("0_8b", bundle))
 
-    assert excinfo.value.exit_code == EXIT_BUNDLE_LAYOUT_FAIL
-    assert "dflash/ must contain at least one .gguf" in str(excinfo.value)
+    assert not [path for path in layout["dflash"] if path.suffix == ".gguf"]
+    assert (bundle / "dflash" / "target-meta.json").is_file()
 
 
 def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
@@ -601,8 +602,13 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     }
     assert manifest["voice"]["frozen"] is True
     assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags", "singing"]
-    assert manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"
-    assert manifest["voice"]["cache"]["phraseCacheSeed"] == "cache/voice-preset-default.bin"
+    assert (
+        manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"
+    )
+    assert (
+        manifest["voice"]["cache"]["phraseCacheSeed"]
+        == "cache/voice-preset-default.bin"
+    )
 
     # README written + non-empty.
     readme = bundle / "README.md"
@@ -707,9 +713,7 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
     ctx = _ctx("4b", bundle, metal=metal, dry_run=True)
-    bad = PublishContext(
-        **{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-4b"}
-    )
+    bad = PublishContext(**{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-4b"})
     rc = run(bad)
     assert rc == EXIT_USAGE
 
@@ -795,7 +799,9 @@ def test_stale_omnivoice_checksum_fails_release_evidence(tmp_path: Path) -> None
     checksum_path = bundle / "checksums" / "SHA256SUMS"
     lines = checksum_path.read_text().splitlines()
     target_i = next(
-        i for i, line in enumerate(lines) if "tts/omnivoice-tokenizer-Q4_K_M.gguf" in line
+        i
+        for i, line in enumerate(lines)
+        if "tts/omnivoice-tokenizer-Q4_K_M.gguf" in line
     )
     _, rel_path = lines[target_i].split(None, 1)
     lines[target_i] = f"{'f' * 64}  {rel_path}"
@@ -874,9 +880,7 @@ def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
     release_path = bundle / "evidence" / "release.json"
     release = json.loads(release_path.read_text())
     release["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"}
-    release["sourceModels"]["embedding"] = {
-        "repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"
-    }
+    release["sourceModels"]["embedding"] = {"repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"}
     release_path.write_text(json.dumps(release, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
@@ -897,6 +901,22 @@ def test_bad_checksum_manifest_blocks_publish(tmp_path: Path) -> None:
     checksum_path.write_text("\n".join(lines) + "\n")
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_release_evidence_weights_must_include_vad_payload(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["weights"] = [
+        rel for rel in release["weights"] if not rel.startswith("vad/")
+    ]
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -939,13 +959,27 @@ def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
+def test_runtime_dispatch_report_must_match_staged_text_sha(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "evals" / "metal_dispatch.json"
+    report = json.loads(report_path.read_text())
+    report["modelSha256"] = "f" * 64
+    report_path.write_text(json.dumps(report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
 def test_platform_evidence_is_target_keyed(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     release_path = bundle / "evidence" / "release.json"
     release = json.loads(release_path.read_text())
-    release["platformEvidence"]["ios-arm64-metal"] = (
-        "evidence/platform/darwin-arm64-metal.json"
-    )
+    release["platformEvidence"][
+        "ios-arm64-metal"
+    ] = "evidence/platform/darwin-arm64-metal.json"
     release_path.write_text(json.dumps(release, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
@@ -971,9 +1005,7 @@ def test_evidence_sidecars_must_be_checksummed(tmp_path: Path) -> None:
     checksum_path = bundle / "checksums" / "SHA256SUMS"
     lines = checksum_path.read_text().splitlines()
     lines = [
-        line
-        for line in lines
-        if "  evidence/platform/ios-arm64-metal.json" not in line
+        line for line in lines if "  evidence/platform/ios-arm64-metal.json" not in line
     ]
     checksum_path.write_text("\n".join(lines) + "\n")
     metal = _metal_report(tmp_path)
@@ -1091,6 +1123,44 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
         line for line in checksum_lines if "  evidence/release.json" in line
     )
     assert release_line.startswith(_sha256(bundle / "evidence" / "release.json"))
+
+
+def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
+    tmp_path: Path,
+) -> None:
+    from scripts.publish.orchestrator import (  # noqa: PLC0415
+        _build_upload_list,
+        finalize_release_evidence,
+        validate_bundle_layout,
+    )
+
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["final"]["sizeFirstRepoIds"] = False
+    release_path.write_text(json.dumps(release, indent=2), encoding="utf-8")
+    _write_checksums(bundle)
+
+    ctx = _ctx("4b", bundle, metal=_metal_report(tmp_path), dry_run=False)
+    layout = validate_bundle_layout(ctx)
+    finalize_release_evidence(
+        ctx,
+        layout,
+        {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "payload123",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/payload123",
+            "uploadedPaths": [
+                "bundles/4b/eliza-1.manifest.json",
+                "bundles/4b/README.md",
+                *[target for _, target in _build_upload_list(ctx, layout)],
+            ],
+        },
+    )
+
+    release = json.loads(release_path.read_text())
+    assert release["final"]["sizeFirstRepoIds"] is True
 
 
 def test_real_base_v1_publish_preserves_release_state(
@@ -1254,9 +1324,7 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_dry_run_tag_is_printed_not_executed(
-    tmp_path: Path, caplog
-) -> None:
+def test_dry_run_tag_is_printed_not_executed(tmp_path: Path, caplog) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
 

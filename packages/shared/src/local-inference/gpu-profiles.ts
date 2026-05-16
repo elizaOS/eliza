@@ -17,9 +17,9 @@
  * `f16`) so that `appendOptimizationFlags` + `applyGpuProfile` can pass
  * them straight through to `--cache-type-k` / `--cache-type-v`.
  *
- * The active mobile/local release exposes Qwen3.5-backed Eliza-1 0_8b, 2b,
- * 4b, 9b, and 27b tiers, with larger cards recommended toward the biggest
- * installed bundle that leaves memory headroom.
+ * The active mobile/local release exposes Eliza-1 0_8b, 2b, 4b, 9b, and 27b
+ * tiers, with larger cards recommended toward the biggest installed bundle
+ * that leaves memory headroom.
  */
 
 import type { Eliza1TierId } from "./catalog.js";
@@ -175,7 +175,7 @@ const RTX_4090: GpuProfile = {
 /**
  * RTX 5090 — Blackwell, 32 GiB, FP8/FP4 first-class.
  *
- * Best current release fit: Eliza-1 27B-256k. Blackwell sm_120 is new enough that
+ * Best current release fit: Eliza-1 27B. Blackwell sm_120 is new enough that
  * the Polar/QJL kernels may not be pre-built — the runtime should probe
  * `CAPABILITIES.json` and surface a structured error rather than silently
  * falling back.
@@ -188,7 +188,6 @@ const RTX_5090: GpuProfile = {
   memoryBandwidthGBs: 1792,
   fp8: true,
   recommendedBundles: [
-    "eliza-1-27b-256k",
     "eliza-1-27b",
     "eliza-1-9b",
     "eliza-1-4b",
@@ -199,7 +198,7 @@ const RTX_5090: GpuProfile = {
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
   nGpuLayers: -1,
-  contextSize: 262144,
+  contextSize: 131072,
   parallel: 8,
   batchSize: 4096,
   ubatchSize: 1024,
@@ -213,7 +212,7 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best current release fit: Eliza-1 27B-256k (262k natural context).
+ * Best current release fit: Eliza-1 27B.
  */
 const H200: GpuProfile = {
   id: "h200",
@@ -223,7 +222,6 @@ const H200: GpuProfile = {
   memoryBandwidthGBs: 4800,
   fp8: true,
   recommendedBundles: [
-    "eliza-1-27b-256k",
     "eliza-1-27b",
     "eliza-1-9b",
     "eliza-1-4b",
@@ -234,7 +232,7 @@ const H200: GpuProfile = {
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
   nGpuLayers: -1,
-  contextSize: 262144,
+  contextSize: 131072,
   parallel: 16,
   batchSize: 4096,
   ubatchSize: 2048,

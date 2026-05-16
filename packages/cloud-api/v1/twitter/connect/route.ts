@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { fetchHonoRoot } from "@/lib/api/hono-root-request";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { cache } from "@/lib/cache/client";
 import {
@@ -116,5 +115,3 @@ app.post("/", async (c) => {
 });
 
 export default app;
-
-export const POST = (request: Request) => fetchHonoRoot(app, request);

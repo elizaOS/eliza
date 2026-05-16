@@ -29,8 +29,8 @@ def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
     assert rc == 0
     out = capsys.readouterr().out
     assert "Eliza-1 HF publish summary" in out
-    assert "elizaos/eliza-1-training" in out
-    assert "elizaos/eliza-1-evals" in out
+    assert "elizalabs/eliza-1-training" in out
+    assert "elizalabs/eliza-1-evals" in out
     # Nothing pushed in dry-run.
     assert "nothing was pushed" in out
 
@@ -63,12 +63,11 @@ def test_sft_weights_status_pending_without_final(monkeypatch, tmp_path):
     assert out.repo == P.MODEL_REPO_ID
 
 
-def test_bundle_tiers_cover_full_active_matrix():
+def test_bundle_tiers_cover_release_size_matrix():
     assert P.BUNDLE_TIERS == (
         "0_8b",
         "2b",
         "4b",
         "9b",
         "27b",
-        "27b-256k",
     )

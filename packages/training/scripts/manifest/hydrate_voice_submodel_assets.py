@@ -137,9 +137,9 @@ ASSETS: Final[tuple[AssetSpec, ...]] = (
     ),
     AssetSpec(
         "vad",
-        "silero-vad-v5.1.2.ggml.bin",
-        "ggml-org/whisper-vad",
-        "ggml-silero-v5.1.2.bin",
+        "silero-vad-v5.gguf",
+        "elizalabs/eliza-1",
+        "voice/vad/silero-vad-v5.gguf",
     ),
 )
 

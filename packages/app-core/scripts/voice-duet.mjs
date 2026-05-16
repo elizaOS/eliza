@@ -753,11 +753,13 @@ async function main() {
 
   // ── Boot agent A's engine (sink → aToB ring) ───────────────────────────
   const vadA = await vadMod.createSileroVadDetector({
+    sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
     modelPath: process.env.ELIZA_VAD_MODEL_PATH,
   });
   const vadB = args.twoProcess
     ? null
     : await vadMod.createSileroVadDetector({
+        sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
         modelPath: process.env.ELIZA_VAD_MODEL_PATH,
       });
 
@@ -1285,6 +1287,7 @@ async function runAsPeerB(args) {
     engine.startVoice({ bundleRoot, useFfiBackend: true, sink: replySink });
     await engine.armVoice();
     const vad = await vadMod.createSileroVadDetector({
+      sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
     });
     await engine.startVoiceSession({

@@ -11,7 +11,6 @@ import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
 const DFLASH_TIERS = new Set<Eliza1Tier>([
-	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -73,7 +72,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 			vision: [],
 			dflash: [],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
-			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
+			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},
 		kernels: {
 			required: [...REQUIRED_KERNELS_BY_TIER[tier]],
@@ -165,6 +164,14 @@ describe("validateManifest — valid input", () => {
 		expect(result.ok).toBe(true);
 	});
 
+	it("keeps the canonical bundled VAD artifact on GGUF for every tier", () => {
+		for (const tier of ELIZA_1_TIERS) {
+			expect(baseManifest(tier).files.vad?.[0]?.path).toBe(
+				"vad/silero-vad-v5.gguf",
+			);
+		}
+	});
+
 	it("accepts optional component lineage, files, evals, and voice capabilities", () => {
 		const m = baseManifest();
 		m.lineage.embedding = { base: "eliza-1-embedding", license: "apache-2.0" };
@@ -213,7 +220,7 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
-		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).toContain(
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).toContain(
 			"dflash",
 		);
 		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).not.toContain(
@@ -572,7 +579,7 @@ describe("canSetAsDefault", () => {
 			sourceModels: {
 				text: { repo: "Qwen/Qwen3.5-9B" },
 				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
-				drafter: { repo: "elizaos/eliza-1" },
+				drafter: { repo: "elizalabs/eliza-1" },
 				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
 				embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
 				vad: { repo: "onnx-community/silero-vad" },

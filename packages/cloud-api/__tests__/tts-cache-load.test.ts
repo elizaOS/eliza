@@ -9,123 +9,20 @@
  *
  * Assertion: hit-rate > 30% on the realistic distribution.
  *
- * The test uses `CloudFirstLineCacheService` with an in-memory R2 stub and a
- * mock Drizzle DB (in-memory Map) so no real Postgres or R2 is required.
+ * The test uses a lightweight in-memory cache implementation that mirrors the
+ * cloud key contract, so no real Postgres or R2 is required.
  *
  * Load test numbers committed here serve as the baseline for future
  * regression tracking (see .swarm/impl/W3-8-tts-cache.md §5).
  */
 
-import { describe, expect, mock, test } from "bun:test";
-import crypto from "node:crypto";
+import { describe, expect, test } from "bun:test";
 import {
   type CloudFirstLineCacheKey,
   type CloudFirstLineCachePutInput,
   fingerprintCloudVoiceSettings,
   hashCloudCacheKey,
-} from "../../cloud-shared/src/lib/services/tts-first-line-cache";
-
-// ---------------------------------------------------------------------------
-// In-memory R2 stub
-// ---------------------------------------------------------------------------
-
-const r2Store = new Map<string, Uint8Array>();
-
-mock.module("../../cloud-shared/src/lib/storage/r2-runtime-binding", () => ({
-  getRuntimeR2Bucket: () => ({
-    get: async (key: string) => {
-      const data = r2Store.get(key);
-      if (!data) return null;
-      return {
-        arrayBuffer: async () =>
-          data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
-        text: async () => new TextDecoder().decode(data),
-      };
-    },
-    put: async (key: string, data: ArrayBuffer) => {
-      r2Store.set(key, new Uint8Array(data));
-    },
-    delete: async (key: string) => {
-      r2Store.delete(key);
-    },
-  }),
-}));
-
-// ---------------------------------------------------------------------------
-// In-memory DB stub (replaces Drizzle)
-// ---------------------------------------------------------------------------
-
-type DbRow = {
-  id: string;
-  keyHash: string;
-  scope: string;
-  algoVersion: string;
-  provider: string;
-  voiceId: string;
-  voiceRevision: string;
-  sampleRate: number;
-  codec: string;
-  voiceSettingsFp: string;
-  normalizedText: string;
-  rawText: string;
-  contentType: string;
-  durationMs: number;
-  byteSize: number;
-  wordCount: number;
-  blobKey: string;
-  hitCount: number;
-  generatedAt: Date;
-  lastAccessedAt: Date;
-};
-
-const dbTable = new Map<string, DbRow>();
-
-function makeRowId(): string {
-  return crypto.randomUUID();
-}
-
-mock.module("../../../packages/db/client", () => ({
-  dbRead: {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: async (n: number) => {
-            // Return the first matching row.
-            // This is called by `get`, `has`, and `put`.
-            const rows = [...dbTable.values()];
-            return rows.slice(0, n);
-          },
-        }),
-      }),
-    }),
-  },
-  dbWrite: {
-    insert: () => ({
-      values: async (row: DbRow) => {
-        dbTable.set(row.id ?? makeRowId(), {
-          ...row,
-          id: row.id ?? makeRowId(),
-          hitCount: row.hitCount ?? 0,
-          generatedAt: new Date(),
-          lastAccessedAt: new Date(),
-        });
-      },
-    }),
-    update: () => ({
-      set: () => ({
-        where: async () => {},
-      }),
-    }),
-    delete: () => ({
-      where: async () => {},
-    }),
-  },
-}));
-
-// We need a per-key lookup, so override the mock with a smarter one.
-// The above rough mock won't correctly look up by (keyHash, scope).
-// Let's write the actual load test against the real service but with the
-// in-memory stubs for R2 + DB we control directly.
+} from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
 
 // ---------------------------------------------------------------------------
 // Direct-implementation load test (no Drizzle mock needed)

@@ -19,13 +19,13 @@ target (current Qwen3.5 tokenizer family; scripts derive vocab size from the
 loaded tokenizer) and distilled from the exact target checkpoint it ships with.
 
 The drafter remains publish-gated on target/drafter tokenizer parity. These
-scripts produce a freshly distilled, vocab-aligned drafter for each tier.
+scripts produce a freshly distilled, vocab-aligned drafter for each
+drafter-enabled tier. `0_8b` is target-only and intentionally excluded.
 
 ## Tier mapping
 
 | Target tier | Drafter size | Student base |
 |---|---|---|
-| 0_8b | 0.5B | Qwen/Qwen3.5-0.8B-Base |
 | 2b | 0.5B | Qwen/Qwen3.5-0.8B-Base |
 | 4b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
 | 9b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
@@ -62,14 +62,13 @@ Estimated wall times and cost per tier (1 GPU unless noted):
 
 | Tier | Est. wall time | Est. cost |
 |---|---|---|
-| 0_8b | 6 h | ~$24 |
 | 2b | 8–10 h | ~$40 |
 | 4b | 12 h | ~$48 |
 | 9b | 24 h | ~$96 |
 | 27b | 72 h (2 GPU) | ~$576 |
 | 27b-256k | 72 h (2 GPU) | ~$576 |
 
-Total for all 6 tiers: budget **~$1,375** (single-pass, no retries).
+Total for all 5 drafter-enabled tiers: budget **~$1,336** (single-pass, no retries).
 
 ## Quickstart
 
@@ -143,7 +142,7 @@ bash packages/training/scripts/dflash/nebius/launch_all_tiers.sh \
 |---|---|
 | `container_setup.sh` | One-time container setup (pip installs, APOLLO, flash-attn) |
 | `distill_drafter_h200.py` | H200-optimized core training script |
-| `launch_all_tiers.sh` | Submit all 7 tiers sequentially (or subset via `--tiers`) |
+| `launch_all_tiers.sh` | Submit all 5 drafter-enabled tiers sequentially (or subset via `--tiers`) |
 | `validate_h200_env.py` | Pre-flight H200 environment check |
 | `README.md` | This file |
 

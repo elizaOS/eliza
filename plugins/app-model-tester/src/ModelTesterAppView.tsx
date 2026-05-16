@@ -187,7 +187,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
       try {
         const res = await fetch("/api/model-tester/run", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
             test,
             prompt,

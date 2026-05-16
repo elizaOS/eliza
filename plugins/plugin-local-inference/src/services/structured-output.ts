@@ -103,6 +103,13 @@ export interface StructuredGenerateParams {
 	 * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
+	/**
+	 * Per-request chat-template thinking control for reasoning-capable local
+	 * models. `off` maps to `chat_template_kwargs.enable_thinking=false` for
+	 * response-handler/direct-reply calls that must emit user-visible text, while
+	 * planner/action calls can omit this and use the catalog/server default.
+	 */
+	thinking?: "auto" | "on" | "off";
 }
 
 /** True when `kind` is a span the model actually samples. */
@@ -306,7 +313,10 @@ function stripPrefilledPrefixFromGrammar(
 	const escapedPrefix = `"${gbnfEscapeLiteral(prefix)}"`;
 	const body = root.slice(rootPrefix.length);
 	if (body === escapedPrefix) {
-		return { source: [rootPrefix + '""', ...lines.slice(1)].join("\n"), lazy: false };
+		return {
+			source: [rootPrefix + '""', ...lines.slice(1)].join("\n"),
+			lazy: false,
+		};
 	}
 	if (!body.startsWith(`${escapedPrefix} `)) return null;
 
@@ -681,10 +691,10 @@ export function resolveGuidedDecodeForParams(
 		// Only use the plan's prefix when the caller didn't already supply one.
 		const prefill =
 			typeof params.prefill === "string" && params.prefill.length > 0
-					? params.prefill
-					: plan && plan.prefix.length > 0
-						? plan.prefix
-						: null;
+				? params.prefill
+				: plan && plan.prefix.length > 0
+					? plan.prefix
+					: null;
 		const grammar =
 			baseGrammar && prefill && plan?.prefix === prefill
 				? (stripPrefilledPrefixFromGrammar(baseGrammar, prefill) ?? baseGrammar)

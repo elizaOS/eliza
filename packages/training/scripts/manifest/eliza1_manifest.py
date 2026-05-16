@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import json
 import re
+import struct
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Iterable, Mapping, Sequence
+from typing import Any, BinaryIO, Final, Iterable, Mapping, Sequence
 
 # ---------------------------------------------------------------------------
 # Constants — keep in sync with schema.ts
@@ -32,7 +33,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -44,7 +45,9 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "27b-256k",
 )
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
+    tier for tier in ELIZA_1_TIERS if tier != "0_8b"
+)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -153,7 +156,6 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
         "turbo3_tcq",
     ),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
@@ -204,7 +206,9 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
+    tier for tier in ELIZA_1_TIERS if tier != "0_8b"
+)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -250,9 +254,8 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line mirrors the runtime catalog: OmniVoice is the default backend
-    for 0_8b/2b/4b/9b with Kokoro bundled as the fallback, and 27B-class tiers
-    ship OmniVoice only.
+    release line mirrors the staged release contract: 0_8b/2b/4b/9b bundle
+    OmniVoice with Kokoro fallback, and 27B-class tiers ship OmniVoice only.
     """
 
     out: list[str] = []
@@ -269,6 +272,7 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
         )
     return tuple(out)
 
+
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
 # Matches Zod's ``z.string().datetime()`` default: UTC ``Z`` suffix only,
@@ -276,9 +280,7 @@ _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
 # accepted — the TS validator rejects them and the publish orchestrator
 # always emits ``...Z``. Keeping the two validators in lockstep prevents
 # manifests that pass Python validation from being rejected at runtime.
-_DATETIME_RE = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$"
-)
+_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
 # Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144,
@@ -330,6 +332,139 @@ def parse_text_ctx_from_filename(p: Path) -> int | None:
         except ValueError:
             continue
     return None
+
+
+_GGUF_PRIMITIVE_SIZES: Final[Mapping[int, int]] = {
+    0: 1,  # uint8
+    1: 1,  # int8
+    2: 2,  # uint16
+    3: 2,  # int16
+    4: 4,  # uint32
+    5: 4,  # int32
+    6: 4,  # float32
+    7: 1,  # bool
+    10: 8,  # uint64
+    11: 8,  # int64
+    12: 8,  # float64
+}
+
+
+def _read_exact(fh: BinaryIO, n: int) -> bytes:
+    data = fh.read(n)
+    if len(data) != n:
+        raise EOFError
+    return data
+
+
+def _read_u32(fh: BinaryIO) -> int:
+    return struct.unpack("<I", _read_exact(fh, 4))[0]
+
+
+def _read_u64(fh: BinaryIO) -> int:
+    return struct.unpack("<Q", _read_exact(fh, 8))[0]
+
+
+def _read_gguf_string(fh: BinaryIO) -> str:
+    n = _read_u64(fh)
+    if n > 16 * 1024 * 1024:
+        raise ValueError(f"GGUF metadata string is too large: {n} bytes")
+    return _read_exact(fh, n).decode("utf-8", errors="replace")
+
+
+def _skip_gguf_value(fh: BinaryIO, value_type: int) -> None:
+    if value_type == 8:  # string
+        n = _read_u64(fh)
+        fh.seek(n, 1)
+        return
+    if value_type == 9:  # array
+        item_type = _read_u32(fh)
+        n = _read_u64(fh)
+        item_size = _GGUF_PRIMITIVE_SIZES.get(item_type)
+        if item_size is not None:
+            fh.seek(n * item_size, 1)
+            return
+        for _ in range(n):
+            _skip_gguf_value(fh, item_type)
+        return
+    size = _GGUF_PRIMITIVE_SIZES.get(value_type)
+    if size is None:
+        raise ValueError(f"unsupported GGUF metadata value type {value_type}")
+    fh.seek(size, 1)
+
+
+def _read_gguf_int_value(fh: BinaryIO, value_type: int) -> int | None:
+    if value_type == 0:
+        return struct.unpack("<B", _read_exact(fh, 1))[0]
+    if value_type == 1:
+        return struct.unpack("<b", _read_exact(fh, 1))[0]
+    if value_type == 2:
+        return struct.unpack("<H", _read_exact(fh, 2))[0]
+    if value_type == 3:
+        return struct.unpack("<h", _read_exact(fh, 2))[0]
+    if value_type == 4:
+        return struct.unpack("<I", _read_exact(fh, 4))[0]
+    if value_type == 5:
+        return struct.unpack("<i", _read_exact(fh, 4))[0]
+    if value_type == 10:
+        return struct.unpack("<Q", _read_exact(fh, 8))[0]
+    if value_type == 11:
+        return struct.unpack("<q", _read_exact(fh, 8))[0]
+    _skip_gguf_value(fh, value_type)
+    return None
+
+
+def read_gguf_context_length(path: Path) -> int | None:
+    """Return the declared GGUF training/native context length, if readable.
+
+    Filename suffixes are release labels. The actual context capability comes
+    from GGUF metadata such as ``qwen35.context_length``; staging should prefer
+    that when available so a stale ``32k`` source filename cannot force a false
+    below-floor manifest.
+    """
+
+    preferred = (
+        "qwen35.context_length",
+        "qwen36.context_length",
+        "qwen3.context_length",
+        "llama.context_length",
+        "general.context_length",
+    )
+
+    try:
+        with path.open("rb") as fh:
+            if _read_exact(fh, 4) != b"GGUF":
+                return None
+            _version = _read_u32(fh)
+            _tensor_count = _read_u64(fh)
+            metadata_count = _read_u64(fh)
+            if metadata_count > 1_000_000:
+                return None
+            fallback: int | None = None
+            for _ in range(metadata_count):
+                key = _read_gguf_string(fh)
+                value_type = _read_u32(fh)
+                if key in preferred or key.endswith(".context_length"):
+                    value = _read_gguf_int_value(fh, value_type)
+                    if value is not None and value > 0:
+                        if key in preferred:
+                            return value
+                        fallback = fallback or value
+                    continue
+                _skip_gguf_value(fh, value_type)
+            return fallback
+    except Exception:
+        return None
+    return None
+
+
+def text_context_for_manifest(path: Path) -> int | None:
+    """Context value for manifest ``files.text[].ctx``.
+
+    Prefer GGUF-declared context. Fall back to the filename suffix only for
+    stand-ins and older local fixtures that are not parseable GGUF files.
+    """
+
+    return read_gguf_context_length(path) or parse_text_ctx_from_filename(path)
 
 
 class Eliza1ManifestError(ValueError):
@@ -427,7 +562,9 @@ def merge_kernel_manifest_fragments(
             continue
         targets = frag.get("kernel_target")
         if not isinstance(targets, list) or not targets:
-            errors.append("kernel_manifest fragment.kernel_target must be a non-empty array")
+            errors.append(
+                "kernel_manifest fragment.kernel_target must be a non-empty array"
+            )
             continue
         for target in targets:
             entry: dict[str, Any] = {}
@@ -570,9 +707,13 @@ def validate_manifest(
                 errors.append(f"lineage.{slot}: must be an object when present")
                 continue
             if not entry.get("base"):
-                errors.append(f"lineage.{slot}.base: required when lineage.{slot} present")
+                errors.append(
+                    f"lineage.{slot}.base: required when lineage.{slot} present"
+                )
             if not entry.get("license"):
-                errors.append(f"lineage.{slot}.license: required when lineage.{slot} present")
+                errors.append(
+                    f"lineage.{slot}.license: required when lineage.{slot} present"
+                )
 
     # ── files ────────────────────────────────────────────────────────────
     files = manifest["files"]
@@ -700,7 +841,11 @@ def validate_manifest(
                             f"kernels.recipeManifest.{target}.codebookHash: required non-empty string"
                         )
                     tol = pins.get("perBlockTolerance")
-                    if not isinstance(tol, (int, float)) or isinstance(tol, bool) or tol <= 0:
+                    if (
+                        not isinstance(tol, (int, float))
+                        or isinstance(tol, bool)
+                        or tol <= 0
+                    ):
                         errors.append(
                             f"kernels.recipeManifest.{target}.perBlockTolerance: required positive number"
                         )
@@ -934,9 +1079,7 @@ def validate_manifest(
                 eagle3_passed = (
                     passed_value
                     if isinstance(passed_value, bool)
-                    else pass_value
-                    if isinstance(pass_value, bool)
-                    else None
+                    else pass_value if isinstance(pass_value, bool) else None
                 )
                 if eagle3_passed is True and (
                     eagle3_eval.get("acceptanceRate") is None
@@ -986,7 +1129,9 @@ def validate_manifest(
                 for field in ("speakerPreset", "phraseCacheSeed"):
                     value = cache.get(field)
                     if not isinstance(value, str) or not value:
-                        errors.append(f"voice.cache.{field}: must be a non-empty string")
+                        errors.append(
+                            f"voice.cache.{field}: must be a non-empty string"
+                        )
             capabilities = voice.get("capabilities")
             if not isinstance(capabilities, list):
                 errors.append("voice.capabilities: must be an array")
@@ -1141,9 +1286,7 @@ def validate_manifest(
         errors.append(
             f"files.cache: missing required frozen voice cache {VOICE_PRESET_CACHE_PATH}"
         )
-    if _is_object(manifest.get("voice")) and _is_object(
-        manifest["voice"].get("cache")
-    ):
+    if _is_object(manifest.get("voice")) and _is_object(manifest["voice"].get("cache")):
         voice_cache = manifest["voice"]["cache"]
         for field in ("speakerPreset", "phraseCacheSeed"):
             path = voice_cache.get(field)
@@ -1234,8 +1377,7 @@ def validate_manifest(
         if not dflash_enabled:
             errors.append(f"evals.dflash: unsupported for DFlash-disabled tier {tier}")
         if dflash_gate["passed"] and (
-            dflash_gate["acceptanceRate"] is None
-            or dflash_gate["speedup"] is None
+            dflash_gate["acceptanceRate"] is None or dflash_gate["speedup"] is None
         ):
             errors.append(
                 "evals.dflash: passed=true but acceptanceRate/speedup is null"
@@ -1245,10 +1387,7 @@ def validate_manifest(
                 readiness_errors.append(
                     "evals.dflash.passed: false for defaultEligible manifest"
                 )
-            if (
-                dflash_gate["acceptanceRate"] is None
-                or dflash_gate["speedup"] is None
-            ):
+            if dflash_gate["acceptanceRate"] is None or dflash_gate["speedup"] is None:
                 errors.append(
                     "evals.dflash: defaultEligible requires measured acceptanceRate and speedup"
                 )
@@ -1440,7 +1579,9 @@ def build_manifest(
         }
     if vad_latency_ms_median is not None or vad_latency_ms_passed is not None:
         evals["vadLatencyMs"] = {
-            "median": vad_latency_ms_median if vad_latency_ms_median is not None else -1,
+            "median": (
+                vad_latency_ms_median if vad_latency_ms_median is not None else -1
+            ),
             "passed": bool(vad_latency_ms_passed),
         }
         if vad_boundary_ms is not None:
@@ -1512,8 +1653,7 @@ def build_manifest(
             "required": list(kernels_required),
             "optional": list(kernels_optional),
             "verifiedBackends": {
-                b: _verified_backend_dict(v)
-                for b, v in verified_backends.items()
+                b: _verified_backend_dict(v) for b, v in verified_backends.items()
             },
         },
         "evals": evals,
@@ -1523,13 +1663,17 @@ def build_manifest(
     # fragments emitted by the quantization recipes); never both.
     if recipe_manifest is not None and kernel_manifest_fragments is not None:
         raise Eliza1ManifestError(
-            ["build_manifest: pass recipe_manifest OR kernel_manifest_fragments, not both"]
+            [
+                "build_manifest: pass recipe_manifest OR kernel_manifest_fragments, not both"
+            ]
         )
     merged_recipe_manifest: dict[str, Any] | None = None
     if recipe_manifest is not None:
         merged_recipe_manifest = {k: dict(v) for k, v in recipe_manifest.items()}
     elif kernel_manifest_fragments is not None:
-        merged_recipe_manifest = merge_kernel_manifest_fragments(kernel_manifest_fragments)
+        merged_recipe_manifest = merge_kernel_manifest_fragments(
+            kernel_manifest_fragments
+        )
     if merged_recipe_manifest is not None:
         manifest["kernels"]["recipeManifest"] = merged_recipe_manifest
     if eagle3_kernel is not None:

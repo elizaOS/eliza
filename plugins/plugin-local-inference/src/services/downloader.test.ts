@@ -25,7 +25,7 @@ function eliza1Manifest(overrides: {
 	const drafterPath = "dflash/drafter-2b.gguf";
 	const cachePath = "cache/voice-preset-default.bin";
 	const vadPath = "vad/eliza-1-vad.onnx";
-	const visionPath = "vision/mmproj.gguf";
+	const visionPath = "vision/mmproj-2b.gguf";
 	const verifiedBackends = overrides.verifiedBackends ?? {
 		metal: { status: "pass", atCommit: "t", report: "metal" },
 		vulkan: { status: "pass", atCommit: "t", report: "vulkan" },
@@ -265,7 +265,7 @@ describe("local inference downloader status", () => {
 		const vadPath = "vad/eliza-1-vad.onnx";
 		const drafterPath = "dflash/drafter-2b.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
-		const visionPath = "vision/mmproj.gguf";
+		const visionPath = "vision/mmproj-2b.gguf";
 		const manifest = JSON.stringify({
 			id: "eliza-1-2b",
 			tier: "2b",
@@ -390,6 +390,7 @@ describe("local inference downloader status", () => {
 		expect(fs.existsSync(path.join(bundleRoot, voicePath))).toBe(true);
 		expect(fs.existsSync(path.join(bundleRoot, asrPath))).toBe(true);
 		expect(fs.existsSync(path.join(bundleRoot, vadPath))).toBe(true);
+		expect(fs.existsSync(path.join(bundleRoot, visionPath))).toBe(true);
 		expect(companion.runtimeRole).toBe("dflash-drafter");
 		expect(companion.companionFor).toBe(model.id);
 		expect(companion.path.endsWith(drafterPath)).toBe(true);
@@ -486,7 +487,7 @@ describe("local inference downloader status", () => {
 		const voicePath = "tts/voice.gguf";
 		const drafterPath = "dflash/drafter-27b-256k.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
-		const visionPath = "vision/mmproj.gguf";
+		const visionPath = "vision/mmproj-27b-256k.gguf";
 		const manifest = JSON.stringify({
 			id: "eliza-1-27b-256k",
 			tier: "27b-256k",
@@ -627,7 +628,7 @@ describe("local inference downloader status", () => {
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
 				[eliza1BundleRemotePath("dflash/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
-				[eliza1BundleRemotePath("vision/mmproj.gguf"), bytes.vision],
+				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
 			]),
 		);
 
@@ -679,7 +680,7 @@ describe("local inference downloader status", () => {
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
 				[eliza1BundleRemotePath("dflash/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
-				[eliza1BundleRemotePath("vision/mmproj.gguf"), bytes.vision],
+				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
 			]),
 		);
 

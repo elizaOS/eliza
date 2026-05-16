@@ -72,10 +72,10 @@ export async function captureRealDisplays(
   options: { readonly delayMs?: number } = {},
 ): Promise<RealCaptureResult> {
   const displaysModule = (await import(
-    "../../../../plugins/plugin-computeruse/src/platform/displays.ts" as string
+    "../../../../../plugins/plugin-computeruse/src/platform/displays.ts" as string
   )) as PluginComputerUseDisplaysModule;
   const captureModule = (await import(
-    "../../../../plugins/plugin-computeruse/src/platform/capture.ts" as string
+    "../../../../../plugins/plugin-computeruse/src/platform/capture.ts" as string
   )) as PluginComputerUseCaptureModule;
 
   if (displaysModule.isHeadless()) {

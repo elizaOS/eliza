@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Stage upstream source text / drafter GGUFs for Eliza-1 conversion.
+"""Stage upstream source text / drafter weights for Eliza-1 conversion.
 
 This script acquires the best currently available upstream GGUF payloads that
-can seed Eliza-1 training/quantization, but it deliberately writes them under
+can seed Eliza-1 training/quantization plus upstream DFlash drafter sources
+where a license-clear source exists. It deliberately writes them under
 ``source/`` and records blockers. These files are not final Eliza-1 release
 weights until the training/eval/publish gates emit the required ``text/`` and
 ``dflash/`` artifacts listed by ``eliza1_platform_plan.py``.
@@ -146,17 +147,61 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "0_8b": None,
     "2b": None,
-    "4b": None,
-    "9b": None,
-    "27b": None,
-    "27b-256k": None,
+    "4b": SourceArtifact(
+        kind="dflash",
+        repo="z-lab/Qwen3.5-4B-DFlash",
+        filename="model.safetensors",
+        destination="source/dflash/qwen3.5-4b-dflash.safetensors",
+        license="mit",
+        status="source-safetensors",
+        notes=(
+            "Official upstream DFlash drafter source for Qwen/Qwen3.5-4B.",
+            "Final Eliza-1 4B still needs tokenizer merge, GGUF conversion, quantization, and DFlash acceptance against the Eliza-1 text checkpoint.",
+        ),
+    ),
+    "9b": SourceArtifact(
+        kind="dflash",
+        repo="z-lab/Qwen3.5-9B-DFlash",
+        filename="model.safetensors",
+        destination="source/dflash/qwen3.5-9b-dflash.safetensors",
+        license="mit",
+        status="source-safetensors",
+        notes=(
+            "Official upstream DFlash drafter source for Qwen/Qwen3.5-9B.",
+            "Final Eliza-1 9B still needs tokenizer merge, GGUF conversion, quantization, and DFlash acceptance against the Eliza-1 text checkpoint.",
+        ),
+    ),
+    "27b": SourceArtifact(
+        kind="dflash",
+        repo="spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+        filename="dflash-draft-3.6-q8_0.gguf",
+        destination="source/dflash/qwen3.6-27b-dflash-q8_0.gguf",
+        license="mit",
+        status="source-gguf",
+        notes=(
+            "GGUF quantization of z-lab/Qwen3.6-27B-DFlash; Q8_0 is the upstream recommended quant for the Qwen3.6 drafter.",
+            "Final Eliza-1 27B still needs DFlash acceptance against the Eliza-1 text checkpoint before publish.",
+        ),
+    ),
+    "27b-256k": SourceArtifact(
+        kind="dflash",
+        repo="spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+        filename="dflash-draft-3.6-q8_0.gguf",
+        destination="source/dflash/qwen3.6-27b-256k-dflash-q8_0.gguf",
+        license="mit",
+        status="source-gguf",
+        notes=(
+            "GGUF quantization of z-lab/Qwen3.6-27B-DFlash; shared with the 27B text target because the long-context tier is the same Qwen3.6 backbone.",
+            "Final Eliza-1 27B-256k still needs long-context DFlash acceptance against the Eliza-1 text checkpoint before publish.",
+        ),
+    ),
 }
 
-# mmproj-F16 sources per tier. Every Qwen3.5 base (0.8B/2B/4B/9B/27B) ships
-# its own `mmproj-F16.gguf` in the matching unsloth repo. The 27B projector
-# is shared verbatim across the 27b / 27b-256k text-context variants
-# (per the catalog comment at packages/shared/src/local-inference/catalog.ts
-# and `plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md`),
+# mmproj-F16 sources per tier. Every active Qwen3.5 base
+# (0.8B/2B/4B/9B) ships its own `mmproj-F16.gguf` in the matching unsloth
+# repo. The Qwen3.6 27B projector is also published in the matching
+# unsloth/Qwen3.6-27B-GGUF repo and is shared verbatim across the
+# 27b / 27b-256k text-context variants,
 # so the long-context tiers reuse the 27B source byte-for-byte.
 #
 # Per-tier quantization (handled downstream by `llama-quantize` against the
@@ -169,28 +214,29 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
 # documented in the 2026-05-14 plan memo cited above and in
 # `packages/training/release-staging/mmproj/manifest.json` once Phase 2
 # has executed.
-def _vision_source(tier: str, size: str) -> SourceArtifact:
+def _vision_source(tier: str, family: str, size: str) -> SourceArtifact:
+    family_slug = family.lower()
     return SourceArtifact(
         kind="vision",
-        repo=f"unsloth/Qwen3.5-{size}-GGUF",
+        repo=f"unsloth/{family}-{size}-GGUF",
         filename="mmproj-F16.gguf",
-        destination=f"source/vision/qwen3.5-{tier}-mmproj-f16.gguf",
+        destination=f"source/vision/{family_slug}-{tier}-mmproj-f16.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            f"Upstream mmproj-F16 for the {size} projector; quantized to "
+            f"Upstream mmproj-F16 for the {family}-{size} projector; quantized to "
             f"{'Q4_K_M' if tier == '0_8b' else 'Q8_0'} during Phase 2 staging.",
         ),
     )
 
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_8b": _vision_source("0_8b", "0.8B"),
-    "2b": _vision_source("2b", "2B"),
-    "4b": _vision_source("4b", "4B"),
-    "9b": _vision_source("9b", "9B"),
-    "27b": _vision_source("27b", "27B"),
-    "27b-256k": _vision_source("27b-256k", "27B"),
+    "0_8b": _vision_source("0_8b", "Qwen3.5", "0.8B"),
+    "2b": _vision_source("2b", "Qwen3.5", "2B"),
+    "4b": _vision_source("4b", "Qwen3.5", "4B"),
+    "9b": _vision_source("9b", "Qwen3.5", "9B"),
+    "27b": _vision_source("27b", "Qwen3.6", "27B"),
+    "27b-256k": _vision_source("27b-256k", "Qwen3.6", "27B"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live
@@ -436,9 +482,18 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     blockers = []
-    if DRAFTER_SOURCES[args.tier] is None:
+    drafter_source = DRAFTER_SOURCES[args.tier]
+    if drafter_source is None:
         blockers.append(
-            f"No upstream DFlash drafter GGUF found for tier {args.tier}; final dflash/drafter-{args.tier}.gguf remains missing."
+            f"No upstream DFlash drafter source found for tier {args.tier}; final dflash/drafter-{args.tier}.gguf remains missing."
+        )
+    elif not drafter_source.filename.lower().endswith(".gguf"):
+        blockers.append(
+            f"Upstream DFlash source for tier {args.tier} is {drafter_source.repo}/{drafter_source.filename}, not a final GGUF; final dflash/drafter-{args.tier}.gguf still needs tokenizer merge, GGUF conversion, quantization, and acceptance."
+        )
+    else:
+        blockers.append(
+            f"Upstream DFlash GGUF source is staged for tier {args.tier}; final dflash/drafter-{args.tier}.gguf still needs acceptance against the Eliza-1 text checkpoint."
         )
     blockers.extend(
         [

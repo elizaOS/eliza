@@ -1,42 +1,42 @@
-import { statfs } from "node:fs/promises";
-<<<<<<< HEAD
 import { exec } from "node:child_process";
+import { statfs } from "node:fs/promises";
+import os from "node:os";
 import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-const DEFAULT_SAFETY_MARGIN_BYTES = 2 * 1024 * 1024 * 1024;
+const DEFAULT_SAFETY_MARGIN_BYTES = 2 * 1024 ** 3;
 
 export interface DiskSpace {
-  freeBytes: number;
-  totalBytes: number;
+  path?: string;
   pathProbed: string;
-=======
-import os from "node:os";
-
-export interface DiskSpace {
-  path: string;
   totalBytes: number;
   freeBytes: number;
-  availableBytes: number;
-  probed: boolean;
->>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
+  availableBytes?: number;
+  probed?: boolean;
 }
 
 export type DiskSpaceWarning = "low-disk" | "critical-disk";
 
 export interface DiskSpaceAdvice {
-<<<<<<< HEAD
   fits: boolean;
   warning?: DiskSpaceWarning;
   freeAfterDownloadBytes: number;
+  requiredBytes: number;
+  safetyMarginBytes: number;
 }
 
 interface StatfsResult {
   bavail: bigint | number;
+  bfree?: bigint | number;
   blocks: bigint | number;
   frsize?: bigint | number;
   bsize?: bigint | number;
+}
+
+interface WmicVolume {
+  freeBytes: number;
+  totalBytes: number;
 }
 
 function toNumber(value: bigint | number | undefined): number {
@@ -45,17 +45,51 @@ function toNumber(value: bigint | number | undefined): number {
   return 0;
 }
 
-async function probePosixDiskSpace(path: string): Promise<DiskSpace> {
-  const stats = (await statfs(path, { bigint: true })) as unknown as StatfsResult;
-  const blockSize = toNumber(stats.frsize) || toNumber(stats.bsize);
-  const freeBytes = toNumber(stats.bavail) * blockSize;
-  const totalBytes = toNumber(stats.blocks) * blockSize;
-  return { freeBytes, totalBytes, pathProbed: path };
+function diskSpaceFromValues(
+  path: string,
+  values: {
+    totalBytes: number;
+    freeBytes: number;
+    availableBytes?: number;
+    probed: boolean;
+  },
+): DiskSpace {
+  const availableBytes = values.availableBytes ?? values.freeBytes;
+  return {
+    path,
+    pathProbed: path,
+    totalBytes: values.totalBytes,
+    freeBytes: values.freeBytes,
+    availableBytes,
+    probed: values.probed,
+  };
 }
 
-interface WmicVolume {
-  freeBytes: number;
-  totalBytes: number;
+function fallbackDiskSpace(path: string): DiskSpace {
+  const totalBytes = os.totalmem();
+  const freeBytes = os.freemem();
+  return diskSpaceFromValues(path, {
+    totalBytes,
+    freeBytes,
+    availableBytes: freeBytes,
+    probed: false,
+  });
+}
+
+async function probePosixDiskSpace(path: string): Promise<DiskSpace> {
+  const stats = (await statfs(path, {
+    bigint: true,
+  })) as unknown as StatfsResult;
+  const blockSize = toNumber(stats.frsize) || toNumber(stats.bsize);
+  const availableBytes = toNumber(stats.bavail) * blockSize;
+  const freeBytes = toNumber(stats.bfree) * blockSize || availableBytes;
+  const totalBytes = toNumber(stats.blocks) * blockSize;
+  return diskSpaceFromValues(path, {
+    totalBytes,
+    freeBytes,
+    availableBytes,
+    probed: true,
+  });
 }
 
 function parseWmicOutput(stdout: string): WmicVolume | null {
@@ -63,118 +97,88 @@ function parseWmicOutput(stdout: string): WmicVolume | null {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !/^FreeSpace\s+Size$/i.test(line));
+
   for (const line of lines) {
     const parts = line.split(/\s+/);
     if (parts.length < 2) continue;
-    const free = Number(parts[0]);
-    const size = Number(parts[1]);
-    if (Number.isFinite(free) && Number.isFinite(size) && size > 0) {
-      return { freeBytes: free, totalBytes: size };
+    const freeBytes = Number(parts[0]);
+    const totalBytes = Number(parts[1]);
+    if (
+      Number.isFinite(freeBytes) &&
+      Number.isFinite(totalBytes) &&
+      totalBytes > 0
+    ) {
+      return { freeBytes, totalBytes };
     }
   }
+
   return null;
 }
 
 async function probeWindowsViaWmic(path: string): Promise<DiskSpace> {
-  const { stdout } = await execAsync(
-    "wmic logicaldisk get freespace,size",
-    { windowsHide: true },
-  );
+  const { stdout } = await execAsync("wmic logicaldisk get freespace,size", {
+    windowsHide: true,
+  });
   const parsed = parseWmicOutput(stdout);
   if (!parsed) {
     throw new Error("wmic logicaldisk produced no parseable output");
   }
-  return { ...parsed, pathProbed: path };
-=======
-  warning?: DiskSpaceWarning;
-  requiredBytes: number;
-  safetyMarginBytes: number;
-}
-
-const DEFAULT_SAFETY_MARGIN_BYTES = 2 * 1024 ** 3;
-
-function fallbackDiskSpace(path: string): DiskSpace {
-  const totalBytes = os.totalmem();
-  const freeBytes = os.freemem();
-  return {
-    path,
-    totalBytes,
-    freeBytes,
-    availableBytes: freeBytes,
-    probed: false,
-  };
->>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
+  return diskSpaceFromValues(path, {
+    ...parsed,
+    availableBytes: parsed.freeBytes,
+    probed: true,
+  });
 }
 
 export async function probeDiskSpace(path: string): Promise<DiskSpace> {
   try {
-<<<<<<< HEAD
     return await probePosixDiskSpace(path);
-  } catch (statfsError) {
+  } catch {
     if (process.platform !== "win32") {
-      throw statfsError;
+      return fallbackDiskSpace(path);
     }
+
     try {
       return await probeWindowsViaWmic(path);
-    } catch (wmicError) {
-      const original = statfsError instanceof Error ? statfsError.message : String(statfsError);
-      const fallback = wmicError instanceof Error ? wmicError.message : String(wmicError);
-      throw new Error(
-        `disk space probe failed: statfs(${original}) + wmic(${fallback})`,
-      );
+    } catch {
+      return fallbackDiskSpace(path);
     }
-=======
-    const stats = await statfs(path);
-    const totalBytes = Number(stats.blocks) * Number(stats.bsize);
-    const freeBytes = Number(stats.bfree) * Number(stats.bsize);
-    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
-    return {
-      path,
-      totalBytes,
-      freeBytes,
-      availableBytes,
-      probed: true,
-    };
-  } catch {
-    return fallbackDiskSpace(path);
->>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
   }
 }
 
 export function adviseDiskSpace(
   probe: DiskSpace,
   modelSizeBytes: number,
-<<<<<<< HEAD
-  safetyMarginBytes: number = DEFAULT_SAFETY_MARGIN_BYTES,
-): DiskSpaceAdvice {
-  const required = modelSizeBytes + safetyMarginBytes;
-  const fits = probe.freeBytes >= required;
-  const freeAfterDownloadBytes = probe.freeBytes - modelSizeBytes;
-  if (probe.freeBytes < modelSizeBytes) {
-    return { fits, warning: "critical-disk", freeAfterDownloadBytes };
-  }
-  if (probe.freeBytes < required) {
-    return { fits, warning: "low-disk", freeAfterDownloadBytes };
-  }
-  return { fits, freeAfterDownloadBytes };
-}
-
-export const DISK_SPACE_DEFAULT_SAFETY_MARGIN_BYTES = DEFAULT_SAFETY_MARGIN_BYTES;
-=======
-): DiskSpaceAdvice {
-  const safetyMarginBytes = Math.max(
+  safetyMarginBytes: number = Math.max(
     DEFAULT_SAFETY_MARGIN_BYTES,
     Math.ceil(modelSizeBytes * 0.25),
-  );
+  ),
+): DiskSpaceAdvice {
   const requiredBytes = modelSizeBytes + safetyMarginBytes;
   const freeBytes = Math.max(0, probe.availableBytes || probe.freeBytes);
+  const fits = freeBytes >= requiredBytes;
+  const freeAfterDownloadBytes = freeBytes - modelSizeBytes;
 
   if (freeBytes < modelSizeBytes) {
-    return { warning: "critical-disk", requiredBytes, safetyMarginBytes };
+    return {
+      fits,
+      warning: "critical-disk",
+      freeAfterDownloadBytes,
+      requiredBytes,
+      safetyMarginBytes,
+    };
   }
   if (freeBytes < requiredBytes) {
-    return { warning: "low-disk", requiredBytes, safetyMarginBytes };
+    return {
+      fits,
+      warning: "low-disk",
+      freeAfterDownloadBytes,
+      requiredBytes,
+      safetyMarginBytes,
+    };
   }
-  return { requiredBytes, safetyMarginBytes };
+  return { fits, freeAfterDownloadBytes, requiredBytes, safetyMarginBytes };
 }
->>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
+
+export const DISK_SPACE_DEFAULT_SAFETY_MARGIN_BYTES =
+  DEFAULT_SAFETY_MARGIN_BYTES;

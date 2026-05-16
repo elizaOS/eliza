@@ -335,7 +335,7 @@ function createEmbeddingHandler() {
 		return normalizeEmbeddingResult(await service.embed({ input }));
 	};
 }
-// Dimensions match `bundles/0_8b/text/eliza-1-0_8b-32k.gguf` (and most current
+// Dimensions match `bundles/0_8b/text/eliza-1-0_8b-128k.gguf` (and most current
 // embedding models we ship). When operators wire a different-dimension model
 // later, the agent re-indexes anyway, so this constant is for the boot path
 // only — never persisted as real data.
