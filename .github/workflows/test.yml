@@ -150,7 +150,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
           fetch-depth: 1
 
       - name: Setup Node.js
@@ -238,7 +238,7 @@ jobs:
         if: steps.cloud.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Setup Node.js
         if: steps.cloud.outputs.skip != 'true'
