@@ -76,6 +76,11 @@ export {
   RevenueFlowDiagram,
 } from "./cloud-ui/components/monetization";
 export { NavigationProgress } from "./cloud-ui/components/navigation-progress";
+export {
+  ProductSwitcher,
+  type ProductSwitcherItem,
+  type ProductSwitcherProps,
+} from "./cloud-ui/components/product-switcher";
 export { PromoteAppDialog } from "./cloud-ui/components/promotion/promote-app-dialog";
 export { SocialConnectionHint } from "./cloud-ui/components/promotion/social-connection-hint";
 export {

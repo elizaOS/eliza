@@ -91,7 +91,7 @@ export function OpenApiViewer({ value, className }: OpenApiViewerProps) {
             readOnly: true,
             fontSize: 13,
             fontFamily:
-              '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
+              'var(--font-mono)',
             lineHeight: 21,
             tabSize: 2,
             insertSpaces: true,

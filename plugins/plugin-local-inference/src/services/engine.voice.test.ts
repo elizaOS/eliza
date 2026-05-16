@@ -577,11 +577,7 @@ describe("LocalInferenceEngine voice surface", () => {
 		expect(asrTranscribe).toHaveBeenCalledOnce();
 		expect(asrTranscribe.mock.calls[0]?.[0].sampleRateHz).toBe(16_000);
 		expect(asrTranscribe.mock.calls[0]?.[0].pcm).toHaveLength(4);
-		expect(calls).toEqual([
-			"acquire:tts",
-			"acquire:asr",
-			"asr:4:16000",
-		]);
+		expect(calls).toEqual(["acquire:tts", "acquire:asr", "asr:4:16000"]);
 		await engine.stopVoice();
 	});
 

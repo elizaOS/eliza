@@ -1,6 +1,7 @@
 # Eliza App installer and release pipeline spec
 
-Status: proposed
+Status: implemented for current CI preflight/artifact policy; remaining store
+approval and signing inputs are external launch blockers.
 Owner: Eliza App release engineering
 Scope: `packages/app` release packaging and distribution only
 
@@ -37,8 +38,10 @@ Scope: `packages/app` release packaging and distribution only
 - The Android native project lives under `packages/app/android` and has
   Fastlane lanes in `packages/app/android/fastlane/Fastfile` for signed AAB
   builds and Play Store track promotion.
-- GitHub workflows already separate mobile smoke builds, Apple store release,
-  Android release, package publishing, and desktop release concerns.
+- GitHub workflows separate mobile smoke builds, Apple store release, Android
+  release, package publishing, and desktop release concerns. The Android
+  release workflow now builds signed AAB and APK outputs from the same release
+  signing inputs and attaches checksums.
 
 ## Distribution model
 
@@ -66,8 +69,9 @@ The supported Android installer paths are:
    project release key or clearly labeled as debug.
 4. Play Store AAB as the canonical public artifact.
 
-The release pipeline may attach `.apk` files to GitHub Releases for QA and
-developer convenience. The public Play Store artifact remains the `.aab`.
+The release pipeline attaches signed `.apk` files to GitHub Releases for QA and
+developer convenience when release signing credentials are available. The
+public Play Store artifact remains the `.aab`.
 
 ### Desktop
 
@@ -260,7 +264,7 @@ Android release jobs must verify:
 The release pipeline should produce:
 
 - Debug APK for smoke testing on pull requests and manual workflow runs.
-- Signed release APK for direct QA install when requested.
+- Signed release APK for direct QA install.
 - Signed release AAB for Play Store upload.
 
 GitHub Release attachment rules:
@@ -270,6 +274,8 @@ GitHub Release attachment rules:
 - Attach signed release AAB for traceability when release policy allows.
 - Never attach an unsigned release APK without an explicit `unsigned` label.
 - Attach checksums for every Android binary artifact.
+- Run `bun run preflight:android:store` after the release keystore is decoded
+  and before Gradle builds release outputs.
 
 ### Play Store
 

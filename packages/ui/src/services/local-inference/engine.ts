@@ -79,9 +79,7 @@ interface DflashTargetMeta {
   };
 }
 
-export function getDflashTargetMetaBlockReason(
-  input: unknown,
-): string | null {
+export function getDflashTargetMetaBlockReason(input: unknown): string | null {
   if (!input || typeof input !== "object") return null;
   const meta = input as DflashTargetMeta;
   if (meta.publishEligible === false) return "target-meta is not publishable";
@@ -89,9 +87,7 @@ export function getDflashTargetMetaBlockReason(
     return "drafter does not match the target checkpoint";
   }
   const provenance =
-    typeof meta.drafter?.provenance === "string"
-      ? meta.drafter.provenance
-      : "";
+    typeof meta.drafter?.provenance === "string" ? meta.drafter.provenance : "";
   if (provenance.includes("stamp-only")) return "drafter is stamp-only";
   const drafterSha =
     typeof meta.drafter?.sha256 === "string" ? meta.drafter.sha256 : null;

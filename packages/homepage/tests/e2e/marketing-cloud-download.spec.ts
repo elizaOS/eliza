@@ -1,46 +1,63 @@
-import { expect, test } from "playwright/test";
+import { expect, type Locator, test } from "playwright/test";
 import { releaseData } from "../../src/generated/release-data";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+async function expectCloudPath(locator: Locator) {
+  const href = await locator.getAttribute("href");
+  expect(href).toBeTruthy();
+  expect(new URL(href ?? "", "https://www.elizacloud.ai").pathname).toMatch(
+    /^\/dashboard\/my-agents\/?$/,
+  );
+}
+
+async function expectExternalOrLocal(locator: Locator, productionHost: string) {
+  const href = await locator.getAttribute("href");
+  expect(href).toBeTruthy();
+  const host = new URL(href ?? "", `https://${productionHost}`).hostname;
+  expect([productionHost, "localhost", "127.0.0.1"]).toContain(host);
+}
+
 test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
   await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document.documentElement.scrollWidth -
-          document.documentElement.clientWidth,
-      ),
-    )
+    .poll(async () => {
+      try {
+        return await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        );
+      } catch {
+        return Number.POSITIVE_INFINITY;
+      }
+    })
     .toBe(0);
 
   await expect(
     page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /^Try Eliza Cloud$/ }),
-  ).toHaveAttribute(
-    "href",
-    /^https:\/\/www\.elizacloud\.ai\/dashboard\/my-agents\/?$/,
-  );
+  await expectCloudPath(page.getByRole("link", { name: /^Try Eliza Cloud$/ }));
   await expect(
     page.getByRole("link", { name: /^Download the app$/ }).first(),
   ).toHaveAttribute("href", "#download");
   const productSwitcher = page.getByRole("navigation").first();
-  await expect(
+  await expectExternalOrLocal(
     productSwitcher.getByRole("link", { name: /^ElizaOS$/ }),
-  ).toHaveAttribute("href", "https://elizaos.ai");
+    "elizaos.ai",
+  );
   await expect(
     productSwitcher.getByRole("link", { name: /^Eliza App$/ }),
   ).toHaveAttribute("href", "/");
-  await expect(
+  await expectExternalOrLocal(
     productSwitcher.getByRole("link", { name: /^Eliza Cloud$/ }),
-  ).toHaveAttribute("href", /^https:\/\/www\.elizacloud\.ai\/?$/);
+    "www.elizacloud.ai",
+  );
   await expect(page).toHaveTitle("Eliza App - Your Eliza, everywhere.");
 
   await expect(
@@ -49,11 +66,8 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
   await expect(
     page.getByText(/Hosted runtime, dashboard, API keys, billing/i),
   ).toBeVisible();
-  await expect(
+  await expectCloudPath(
     page.getByRole("link", { name: /Eliza Cloud.*Try Eliza Cloud/ }),
-  ).toHaveAttribute(
-    "href",
-    /^https:\/\/www\.elizacloud\.ai\/dashboard\/my-agents\/?$/,
   );
 
   await page
@@ -77,6 +91,9 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
   );
   await expect(
     page.getByRole("link", { name: /AppImage|Tarball/i }).first(),
+  ).toHaveAttribute("href", /releases\/latest\/download|github\.com/);
+  await expect(
+    page.getByRole("link", { name: /Android APK/i }),
   ).toHaveAttribute("href", /releases\/latest\/download|github\.com/);
 
   await expect(page.locator('[aria-disabled="true"]')).toHaveCount(4);
@@ -117,6 +134,7 @@ test("homepage exposes app downloads, stores, and cloud entrypoints", async ({
       "linux-x64",
       "linux-deb",
       "linux-rpm",
+      "android-apk",
     ]);
     const downloadIds = new Set(
       releaseData.release.downloads.map((download) => download.id),

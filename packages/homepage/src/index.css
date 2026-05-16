@@ -1,19 +1,17 @@
 /* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/open-sans";
 @import "tailwindcss";
 @import "tw-animate-css";
+@source "../../ui/src";
 
 :root {
-  --font-geist-sans:
-    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    sans-serif;
-  --font-geist-mono:
-    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-sans: var(--font-open-sans);
+  --font-mono: var(--font-open-sans);
 }
 
 body {
-  font-family: var(--font-geist-sans);
+  font-family: var(--font-sans);
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -22,9 +20,9 @@ body {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-brand-orange: #ff5800;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-inter: var(--font-geist-sans);
+  --font-sans: var(--font-open-sans);
+  --font-mono: var(--font-mono);
+  --font-inter: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -71,14 +69,11 @@ body {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -96,6 +91,39 @@ body {
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --bg: #f7f4ef;
+  --bg-accent: #f0ece4;
+  --bg-elevated: rgba(255, 255, 255, 0.88);
+  --bg-hover: rgba(255, 255, 255, 0.96);
+  --bg-muted: #ede8de;
+  --surface: rgba(255, 255, 255, 0.82);
+  --text: #171717;
+  --text-strong: #0a0a0a;
+  --chat-text: var(--text);
+  --txt: var(--text);
+  --muted-strong: rgba(23, 23, 23, 0.72);
+  --border-strong: rgba(23, 23, 23, 0.2);
+  --border-hover: #ff8a24;
+  --accent-rgb: 255, 138, 36;
+  --accent-hover: #ff9a3d;
+  --accent-muted: #d95f16;
+  --accent-subtle: rgba(255, 138, 36, 0.16);
+  --accent-foreground: #fff7ee;
+  --primary: #ff8a24;
+  --primary-foreground: #fff7ee;
+  --ok: hsl(142 76% 36%);
+  --ok-muted: hsla(142 76% 36% / 0.7);
+  --ok-subtle: hsla(142 76% 36% / 0.1);
+  --warn: #ff8a24;
+  --warn-muted: rgba(255, 138, 36, 0.72);
+  --warn-subtle: rgba(255, 138, 36, 0.16);
+  --danger: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --destructive-subtle: hsla(0 84% 60% / 0.1);
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-chat: var(--font-sans);
+  --mono: var(--font-mono);
 }
 
 .dark {

@@ -27,6 +27,14 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(packageDir, "./src"),
+      "@elizaos/ui/button": path.resolve(
+        packageDir,
+        "../ui/src/cloud-ui/components/button.tsx",
+      ),
+      "@elizaos/ui/product-switcher": path.resolve(
+        packageDir,
+        "../ui/src/cloud-ui/components/product-switcher.tsx",
+      ),
     },
   },
   server: {

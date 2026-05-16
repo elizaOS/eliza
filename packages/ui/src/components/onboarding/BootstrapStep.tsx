@@ -45,7 +45,7 @@ import {
 } from "./onboarding-step-chrome";
 
 const SESSION_STORAGE_KEY = "eliza_session";
-const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
+const MONO_FONT = "'Open Sans', Arial, system-ui, sans-serif";
 const BOOTSTRAP_HASH_PARAM = "bootstrap";
 
 /**

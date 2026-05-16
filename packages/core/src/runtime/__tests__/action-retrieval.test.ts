@@ -286,6 +286,30 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
+	it("still uses recent conversation for continuation turns with candidate hints", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "MUSIC",
+				description: "Control music playback.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Do that again",
+			candidateActions: ["play_music"],
+			recentConversationText: "Build a small app with a button",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["bm25"]),
+		});
+	});
+
 	it("does not retrieve actions from context match alone", () => {
 		const catalog = buildActionCatalog([
 			{

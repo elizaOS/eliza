@@ -59,6 +59,9 @@ function dflashSupportedForTier(id: Eliza1TierId): boolean {
   return _ELIZA_1_DFLASH_TIER_ID_SET.has(id);
 }
 
+const MROPE_DFLASH_DISABLED_REASON =
+  "M-RoPE draft-model speculative decoding is gated until elizaOS/eliza#7631 has hardware validation against the current llama.cpp verifier path";
+
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
@@ -514,6 +517,7 @@ function runtimeForTier(
       gpuLayers: "auto",
       draftGpuLayers: "auto",
       disableThinking: false,
+      disabledReason: MROPE_DFLASH_DISABLED_REASON,
     };
   }
 

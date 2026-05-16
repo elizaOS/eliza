@@ -33,15 +33,15 @@ Status terms:
 | Public deploy blocks without release assets | Repo-ready | `bun run check:release-data` fails until required artifacts exist. |
 | App Store, Play Store, Mac App Store, Microsoft Store | External blocker | Create store listings, finish review, then replace disabled cards with real URLs and review status. |
 | TestFlight first iOS path | External blocker | Configure Apple credentials, upload a beta build, and publish TestFlight status. |
-| Android APK bridge | External blocker | Publish a signed APK for QA/developer install and Play internal testing. |
+| Android APK bridge | Repo-ready / external blocker | `bun run --cwd packages/app install:android:adb -- --build` handles local ADB installs. Android release CI now produces and attaches a signed QA APK beside the Play AAB when release signing credentials are available. |
 
 ## iOS Developer Install
 
 | Requirement | Status | Remaining work |
 |---|---:|---|
 | Honest sideload copy | Repo-ready | Homepage warns that App Store/TestFlight is the normal path. |
-| Developer sideload helper | Repo TODO | Add a first-party CLI/script that checks Xcode, device state, signing team, and opens the workspace or runs the local-device lane. |
-| Sideload smoke verification | External blocker | Run on a real iPhone or configured simulator with signing credentials. |
+| Developer sideload helper | Repo-ready | `bun run --cwd packages/app install:ios:sideload` checks Xcode/device prerequisites and opens the workspace; pass `-- --build-device` or `-- --build-sim` to build first. |
+| Sideload smoke verification | External blocker | CI runs the developer-install preflight, but real install validation still requires a real iPhone or configured simulator with signing credentials. |
 | Public iOS installer without Apple review | Not supported | Do not ship this. Use TestFlight/App Store for normal users. |
 
 ## Messaging Onboarding
@@ -51,10 +51,10 @@ Status terms:
 | Homepage entrypoints for iMessage, Discord, Telegram, WhatsApp | Repo-ready | Cards link into `/get-started?method=...`. |
 | Shared stateless onboarding worker | Repo TODO | Finish structural handoff checks and route all unlinked messaging identities through the same worker. |
 | Cerebras `gpt-oss-120b` onboarding model | External blocker | Configure production Cerebras credentials and verify worker routing. |
-| Discord bot invite/onboarding | Repo TODO / external blocker | Wire production bot OAuth, invite URL, callback validation, and gateway deploy. |
-| Telegram bot onboarding | Repo TODO / external blocker | Configure BotFather token/username, webhook secret, and signed identity linking. |
-| WhatsApp onboarding | External blocker | Configure official WhatsApp Business Platform account, webhook verification, templates, and opt-in compliance. |
-| iMessage blue-text gateway | External blocker | Set up user-owned Mac, spare iPhone, BlueBubbles, Headscale node, relay credentials, and health checks. |
+| Discord bot invite/onboarding | Repo TODO / external blocker | `bun run --cwd packages/cloud-shared preflight:messaging-gateways` exposes missing credentials; still need production OAuth/gateway deployment. |
+| Telegram bot onboarding | Repo TODO / external blocker | Gateway preflight checks BotFather token and webhook secret; still need signed identity-link completion. |
+| WhatsApp onboarding | External blocker | Gateway preflight checks Meta env; still need official WhatsApp Business Platform account, templates, and opt-in compliance. |
+| iMessage blue-text gateway | External blocker | Gateway preflight checks relay/headscale env; still need user-owned Mac, spare iPhone, BlueBubbles, Headscale node, relay credentials, and health checks. |
 | Transcript handoff into real agent | Repo TODO | Persist source platform, setup session, target agent, and copied transcript state. |
 
 ## Cloud Console And One-Agent Admin
@@ -72,8 +72,8 @@ Status terms:
 |---|---:|---|
 | Homepage typecheck/build/e2e | Repo-ready | CI now runs homepage e2e in homepage quality gates. |
 | Release-data contract | Repo-ready | `check:release-data` blocks deploy when metadata/artifacts are missing. |
-| Release orchestrator waits for desktop artifacts | Repo TODO | Make `release-orchestrator.yml` call or depend on the desktop release workflow before homepage deploy. |
-| Checksums | Repo TODO / external blocker | Generate and attach `SHA256SUMS.txt`; make `check:release-data` require it once release jobs publish checksums consistently. |
+| Release orchestrator waits for desktop artifacts | Repo-ready | `release-orchestrator.yml` can call the desktop release workflow before homepage deploy when `publish_desktop` is enabled. |
+| Checksums | Repo-ready / external blocker | Android release jobs now attach checksums for AAB/APK outputs. Desktop release assets still need consistently published checksums before `check:release-data` can require them globally. |
 | Actual GitHub release assets | External blocker | Cut a release tag and run signed desktop/mobile jobs. |
 | Store rollout metadata in homepage | Repo-ready / external blocker | Generated release data now carries store target status/review fields. Add real URLs only after store review approves them. |
 

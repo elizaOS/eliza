@@ -3,14 +3,7 @@
  * CSS custom properties (--font-dm-mono, --font-inter, --font-open-sans)
  * match what we apply on the `<body>` via RootLayout className.
  */
-@import "@fontsource-variable/inter";
 @import "@fontsource-variable/open-sans";
-@import "@fontsource/dm-mono/300.css";
-@import "@fontsource/dm-mono/400.css";
-@import "@fontsource/dm-mono/500.css";
-@import "@fontsource/dm-mono/300-italic.css";
-@import "@fontsource/dm-mono/400-italic.css";
-@import "@fontsource/dm-mono/500-italic.css";
 
 @import "tailwindcss";
 @import "@rainbow-me/rainbowkit/styles.css";
@@ -26,9 +19,10 @@
 @plugin "@tailwindcss/typography";
 
 :root {
-  --font-dm-mono: "DM Mono", ui-monospace, monospace;
-  --font-inter: "Inter", system-ui, sans-serif;
-  --font-open-sans: "Open Sans", system-ui, sans-serif;
+  --font-open-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-dm-mono: var(--font-open-sans);
+  --font-inter: var(--font-open-sans);
+  --font-roboto-mono: var(--font-open-sans);
 }
 
 @plugin "tailwind-scrollbar" {
@@ -212,12 +206,11 @@
   --radius-xl: 1rem;
   --radius-2xl: 1.25rem;
   --radius-3xl: 1.5rem;
-  --font-body:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-sans-default: var(--font-open-sans);
+  --font-body: var(--font-sans-default);
   --font-display: var(--font-body);
-  --font-chat:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --mono: "Courier New", Courier, monospace;
+  --font-chat: var(--font-sans-default);
+  --mono: var(--font-sans-default);
   color-scheme: light;
 }
 
@@ -1962,4 +1955,75 @@ button:not(:disabled),
 .stwd-eliza-login .stwd-login__btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.checkout-visual {
+  align-items: center;
+  aspect-ratio: 1 / 1;
+  background: #0057ff;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 18px;
+  display: grid;
+  justify-items: center;
+  min-height: 18rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.checkout-visual.phone {
+  border: 8px solid #050505;
+  border-radius: 2rem;
+}
+
+.checkout-visual.usb {
+  aspect-ratio: 1.65 / 1;
+  min-height: 12rem;
+}
+
+.checkout-visual.usb::after {
+  background: linear-gradient(90deg, #d6d6d1, #fff);
+  border: 1px solid rgba(17, 17, 17, 0.18);
+  border-radius: 0.25rem;
+  content: "";
+  height: 42%;
+  position: absolute;
+  right: -0.5rem;
+  top: 29%;
+  width: 18%;
+}
+
+.checkout-visual.box {
+  background: #df9038;
+}
+
+.checkout-visual.chibi {
+  background: #fff;
+}
+
+.checkout-visual > img {
+  display: block;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: cover;
+}
+
+.checkout-visual.phone > img,
+.checkout-visual.usb > img {
+  width: 44%;
+}
+
+.checkout-visual.box > img,
+.checkout-visual.chibi > img {
+  height: 100%;
+  width: 100%;
+}
+
+.checkout-visual span {
+  bottom: 1.25rem;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 760;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
 }

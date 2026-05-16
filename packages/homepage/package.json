@@ -17,8 +17,8 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@fontsource-variable/geist": "^5.2.8",
-    "@fontsource-variable/geist-mono": "^5.2.7",
+    "@elizaos/ui": "workspace:*",
+    "@fontsource-variable/open-sans": "^5.2.7",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.4",
     "@react-spring/three": "^10.0.3",

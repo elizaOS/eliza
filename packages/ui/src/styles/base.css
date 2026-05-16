@@ -84,13 +84,12 @@
   --link-color: #0c5f9e;
   --link-hover-color: #d95f16;
 
-  --mono: "Courier New", Courier, monospace;
-  --font-body:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --mono: var(--font-sans);
+  --font-body: var(--font-sans);
   --font-display:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
-  --font-chat:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    var(--font-sans);
+  --font-chat: var(--font-sans);
 
   /* Legacy */
   --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.04);
@@ -214,7 +213,7 @@
   --link-color: var(--text);
   --link-hover-color: #f0b90b;
 
-  --mono: "Courier New", Courier, monospace;
+  --mono: var(--font-sans);
   --font-body:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
   --font-display:

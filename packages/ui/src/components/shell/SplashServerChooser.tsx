@@ -2,7 +2,7 @@ import type { GatewayDiscoveryEndpoint } from "../../bridge/gateway-discovery";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 
-const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
+const MONO_FONT = "'Open Sans', Arial, system-ui, sans-serif";
 
 interface SplashServerChooserProps {
   discoveryLoading: boolean;

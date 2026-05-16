@@ -274,7 +274,7 @@ export async function fetchMetricsSnapshot(
 					`llama-server metrics scrape timed out after ${timeoutMs}ms`,
 					"TimeoutError",
 				),
-		),
+			),
 		Math.max(1, Math.floor(timeoutMs)),
 	);
 	let res: Response | null = null;

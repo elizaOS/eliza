@@ -1743,7 +1743,9 @@ export async function handleConversationRoutes(
               "Chat generation failed after an assistant reply was already persisted — streaming persisted reply",
             );
             if (resolvedPersistedText) {
-              for (const chunk of chunkVisibleTextForSse(resolvedPersistedText)) {
+              for (const chunk of chunkVisibleTextForSse(
+                resolvedPersistedText,
+              )) {
                 if (disconnectTracker.isAborted()) break;
                 streamedText += chunk;
                 writeChatTokenSse(res, chunk, streamedText);
@@ -1755,7 +1757,7 @@ export async function handleConversationRoutes(
               fullText: resolvedPersistedText,
               agentName: state.agentName,
             });
-            return;
+            return true;
           }
           const providerIssueReply = getChatFailureReply(err, state.logBuffer);
           const failureKind = classifyChatFailure(err, state.logBuffer);

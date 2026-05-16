@@ -22,16 +22,12 @@ export function getDflashTargetMetaBlockReason(input: unknown): string | null {
 		return "drafter does not match the target checkpoint";
 	}
 	const provenance =
-		typeof meta.drafter?.provenance === "string"
-			? meta.drafter.provenance
-			: "";
+		typeof meta.drafter?.provenance === "string" ? meta.drafter.provenance : "";
 	if (provenance.includes("stamp-only")) return "drafter is stamp-only";
 	const drafterSha =
 		typeof meta.drafter?.sha256 === "string" ? meta.drafter.sha256 : null;
 	const targetSha =
-		typeof meta.targetText?.sha256 === "string"
-			? meta.targetText.sha256
-			: null;
+		typeof meta.targetText?.sha256 === "string" ? meta.targetText.sha256 : null;
 	if (drafterSha && targetSha && drafterSha === targetSha) {
 		return "drafter bytes match the target model";
 	}

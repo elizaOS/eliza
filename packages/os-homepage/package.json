@@ -17,8 +17,8 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@fontsource-variable/geist": "^5.2.8",
-    "@fontsource-variable/geist-mono": "^5.2.7",
+    "@elizaos/ui": "workspace:*",
+    "@fontsource-variable/open-sans": "^5.2.7",
     "@tailwindcss/vite": "^4",
     "@vitejs/plugin-react": "^6.0.0",
     "lucide-react": "^1.0.0",

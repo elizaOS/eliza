@@ -36,11 +36,11 @@ import {
 	type DflashTurnStats,
 	parseDflashFieldFromSseChunk,
 } from "./dflash-event-schema";
-import { getDflashDrafterBlockReason } from "./dflash-target-meta";
 import {
 	DflashMetricsCollector,
 	dflashTurnHistory,
 } from "./dflash-metrics-collector";
+import { getDflashDrafterBlockReason } from "./dflash-target-meta";
 import {
 	type DflashVerifyEvent,
 	type DflashVerifyStats,
@@ -3158,18 +3158,24 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `restartWithoutDrafter()` uses for memory eviction): the server runs
 		// target-only, no `-md`. Loud warning because this departs from the
 		// always-on DFlash contract.
-		const drafterUnavailable = !drafter || drafterBlockReason !== null;
-		const disabledDrafterReason = !drafter
-			? `companion drafter '${dflash.drafterModelId}' is not installed`
-			: drafterBlockReason
-				? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
-				: undefined;
+		const catalogDrafterDisabledReason = dflash.disabledReason?.trim();
+		const drafterUnavailable =
+			!!catalogDrafterDisabledReason || !drafter || drafterBlockReason !== null;
+		const disabledDrafterReason = catalogDrafterDisabledReason
+			? catalogDrafterDisabledReason
+			: !drafter
+				? `companion drafter '${dflash.drafterModelId}' is not installed`
+				: drafterBlockReason
+					? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
+					: undefined;
 		if (drafterUnavailable) {
 			console.warn(
-				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
-					`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +
-					`(speculative decoding OFF). Install a valid drafter to restore the ` +
-					`always-on DFlash path.`,
+				catalogDrafterDisabledReason
+					? `[dflash] ⚠️  ${target.displayName}: ${catalogDrafterDisabledReason} — loading target-only (speculative decoding OFF).`
+					: `[dflash] ⚠️  ${target.displayName}: companion drafter ` +
+							`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +
+							`(speculative decoding OFF). Install a valid drafter to restore the ` +
+							`always-on DFlash path.`,
 			);
 		}
 

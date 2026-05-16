@@ -207,26 +207,26 @@ export function retrieveActions(
 	const parentActionHints = dedupeNormalizedStrings(input.parentActionHints);
 	const recentConversationText = shouldUseRecentConversationForActionSearch(
 		input.messageText ?? "",
-		candidateActions,
-		parentActionHints,
 	)
 		? normalizeTextList(input.recentConversationText)
 		: [];
+	const candidateActionsForSearch =
+		recentConversationText.length > 0 ? [] : candidateActions;
 	const queryText = [
 		input.messageText ?? "",
 		...recentConversationText,
-		...candidateActions,
+		...candidateActionsForSearch,
 	].join("\n");
 	const queryTokens = tokenizeActionSearchText(queryText);
 	const keywordQueryTexts = [
 		input.messageText ?? "",
 		...recentConversationText,
-		...candidateActions,
+		...candidateActionsForSearch,
 	].filter((text) => text.trim().length > 0);
 	const exactScores = scoreExactHints(input.catalog.parents, parentActionHints);
 	const regexScores = scoreCandidateRegex(
 		input.catalog.parents,
-		candidateActions,
+		candidateActionsForSearch,
 	);
 	const keywordScores = scoreKeywordMatches(
 		input.catalog.parents,
@@ -706,12 +706,9 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 function shouldUseRecentConversationForActionSearch(
 	messageText: string,
-	candidateActions: readonly string[],
-	parentActionHints: readonly string[],
 ): boolean {
 	const normalized = messageText.toLowerCase().replace(/\s+/g, " ").trim();
 	if (!normalized) return false;
-	if (candidateActions.length > 0 || parentActionHints.length > 0) return false;
 	return (
 		/\b(?:again|continue|redo|rerun|retry|same|another\s+one|one\s+more|also|too)\b/iu.test(
 			normalized,

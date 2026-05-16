@@ -127,7 +127,7 @@ public class ElizaBootReceiver extends BroadcastReceiver {
             Object value = get.invoke(null, key, "");
             return value instanceof String ? (String) value : "";
         } catch (Exception error) {
-            Log.w(TAG, "Unable to read system property " + key, error);
+            Log.d(TAG, "SystemProperties reflection unavailable while reading " + key, error);
             return "";
         }
     }

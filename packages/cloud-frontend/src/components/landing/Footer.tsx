@@ -11,10 +11,10 @@ import { Link } from "react-router-dom";
 export default function Footer() {
   return (
     <footer
-      className="relative border-t border-white/30 bg-sky-500/30 backdrop-blur-xl"
+      className="relative border-t border-white/18 bg-[#0647ff]/72 backdrop-blur-xl"
       style={{ flexShrink: 0 }}
     >
-      <div className="container mx-auto px-6 py-8 md:py-16 relative z-10">
+      <div className="container mx-auto px-6 py-8 relative z-10">
         <div className="grid grid-cols-2 items-start gap-8">
           {/* 1. Left section (Text/Copyright) */}
           <div className="flex flex-col gap-8">

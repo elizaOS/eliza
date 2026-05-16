@@ -107,6 +107,9 @@ function noteForAsset(name) {
   if (/\.exe$/i.test(name)) {
     return "Windows installer";
   }
+  if (/\.apk$/i.test(name)) {
+    return "Android APK";
+  }
   if (/\.zip$/i.test(name)) {
     return "ZIP package";
   }
@@ -266,6 +269,16 @@ function buildRelease(release) {
       pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /linux/i.test(asset.name) && /\.rpm$/i.test(asset.name),
         (asset) => /\.rpm$/i.test(asset.name),
+      ]),
+    },
+    {
+      id: "android-apk",
+      label: "Android APK",
+      pick: pickAssetFromReleases(prioritizedReleases, [
+        (asset) => /android/i.test(asset.name) && /\.apk$/i.test(asset.name),
+        (asset) => /Eliza-\d/i.test(asset.name) && /\.apk$/i.test(asset.name),
+        (asset) =>
+          /app-release/i.test(asset.name) && /\.apk$/i.test(asset.name),
       ]),
     },
   ]

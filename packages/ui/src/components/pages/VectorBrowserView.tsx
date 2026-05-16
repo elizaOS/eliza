@@ -124,7 +124,7 @@ function VectorGraph({
 
     // Axis labels
     ctx.fillStyle = mutedColor;
-    ctx.font = "10px monospace";
+    ctx.font = "10px "Open Sans", Arial, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("PC1", W / 2, H - 8);
     ctx.save();

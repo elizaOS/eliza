@@ -167,6 +167,16 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
+      - name: Run Android store preflight
+        working-directory: packages/app
+        env:
+          ELIZAOS_KEYSTORE_PATH: /tmp/elizaos-upload.jks
+          ELIZAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ELIZAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: bun run preflight:android:store
+
       - name: Build signed AAB
         working-directory: packages/app/android
         env:
@@ -180,29 +190,51 @@ jobs:
           chmod +x gradlew
           ./gradlew bundleRelease
 
-      - name: Verify AAB
+      - name: Build signed APK
+        working-directory: packages/app/android
+        env:
+          ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.name }}
+          ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.code }}
+          ELIZAOS_KEYSTORE_PATH: /tmp/elizaos-upload.jks
+          ELIZAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ELIZAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Verify Android release artifacts
         run: |
           AAB_PATH="packages/app/android/app/build/outputs/bundle/release/app-release.aab"
+          APK_PATH="packages/app/android/app/build/outputs/apk/release/app-release.apk"
           if [[ ! -f "$AAB_PATH" ]]; then
             echo "ERROR: AAB not found at $AAB_PATH"
             ls -la packages/app/android/app/build/outputs/bundle/release/ 2>/dev/null || echo "Release dir not found"
             exit 1
           fi
+          if [[ ! -f "$APK_PATH" ]]; then
+            echo "ERROR: APK not found at $APK_PATH"
+            ls -la packages/app/android/app/build/outputs/apk/release/ 2>/dev/null || echo "Release dir not found"
+            exit 1
+          fi
           echo "AAB size: $(du -h "$AAB_PATH" | cut -f1)"
+          echo "APK size: $(du -h "$APK_PATH" | cut -f1)"
           file "$AAB_PATH"
-          sha256sum "$AAB_PATH" > packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt
-          cat packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt
+          file "$APK_PATH"
+          sha256sum "$AAB_PATH" "$APK_PATH" > packages/app/android/app/build/outputs/release-SHA256SUMS.txt
+          cat packages/app/android/app/build/outputs/release-SHA256SUMS.txt
 
-      - name: Upload AAB artifact
+      - name: Upload Android release artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: eliza-release-aab
+          name: eliza-android-release
           path: |
             packages/app/android/app/build/outputs/bundle/release/app-release.aab
-            packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt
+            packages/app/android/app/build/outputs/apk/release/app-release.apk
+            packages/app/android/app/build/outputs/release-SHA256SUMS.txt
           retention-days: 90
 
-      - name: Attach AAB to GitHub Release
+      - name: Attach Android artifacts to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -214,9 +246,11 @@ jobs:
           fi
           cp packages/app/android/app/build/outputs/bundle/release/app-release.aab \
              "Eliza-${VERSION}.aab"
-          cp packages/app/android/app/build/outputs/bundle/release/SHA256SUMS.txt \
-             "Eliza-${VERSION}.aab.SHA256SUMS.txt"
-          gh release upload "$TAG" "Eliza-${VERSION}.aab" "Eliza-${VERSION}.aab.SHA256SUMS.txt" --clobber
+          cp packages/app/android/app/build/outputs/apk/release/app-release.apk \
+             "Eliza-${VERSION}.apk"
+          cp packages/app/android/app/build/outputs/release-SHA256SUMS.txt \
+             "Eliza-${VERSION}.android.SHA256SUMS.txt"
+          gh release upload "$TAG" "Eliza-${VERSION}.aab" "Eliza-${VERSION}.apk" "Eliza-${VERSION}.android.SHA256SUMS.txt" --clobber
 
       - name: Clean up keystore
         if: always()
@@ -234,7 +268,7 @@ jobs:
       - name: Download AAB
         uses: actions/download-artifact@v8
         with:
-          name: eliza-release-aab
+          name: eliza-android-release
           path: aab/
 
       - name: Setup Ruby

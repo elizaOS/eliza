@@ -69,7 +69,7 @@ for contributors and QA, not the public mobile install path.
 | Windows | `.exe` installer |
 | Linux | `.AppImage`, `.deb`, `.rpm` when attached to the release |
 | iOS | TestFlight / App Store (coming soon); local Xcode sideload for development |
-| Android | Play Store (coming soon); signed QA APK only when explicitly attached |
+| Android | Play Store (coming soon); signed QA APK attached by release CI for QA/developer install |
 
 Developer preflight checks:
 
@@ -78,6 +78,17 @@ bun run preflight:ios:sideload
 bun run preflight:ios:store
 bun run preflight:android:sideload
 bun run preflight:android:store
+```
+
+Developer install helpers:
+
+```bash
+# iOS: checks Xcode/device prerequisites and opens the workspace.
+bun run install:ios:sideload
+
+# Android: installs the latest local APK with adb, or builds first.
+bun run install:android:adb -- --build
+bun run install:android:adb -- --apk ./android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Quick Start

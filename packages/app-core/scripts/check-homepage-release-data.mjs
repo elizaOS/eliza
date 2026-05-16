@@ -18,6 +18,7 @@ const REQUIRED_IDS = new Set([
   "linux-x64",
   "linux-deb",
   "linux-rpm",
+  "android-apk",
 ]);
 
 function parseGeneratedModule(source) {

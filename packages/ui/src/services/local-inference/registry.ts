@@ -141,7 +141,10 @@ async function maybeRecoverDflashCompanion(
     return null;
   }
 
-  const drafterPath = resolveBundleFilePath(model.bundleRoot, drafterEntry.path);
+  const drafterPath = resolveBundleFilePath(
+    model.bundleRoot,
+    drafterEntry.path,
+  );
   if (!drafterPath || !isWithinElizaRoot(drafterPath)) return null;
 
   try {

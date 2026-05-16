@@ -75,6 +75,10 @@ jobs:
         working-directory: ${{ env.APP_DIR }}/ios/App
         run: pod install
 
+      - name: Run iOS developer-install preflight
+        working-directory: ${{ env.APP_DIR }}
+        run: bun run preflight:ios:sideload
+
       - name: Determine version
         id: version
         run: |

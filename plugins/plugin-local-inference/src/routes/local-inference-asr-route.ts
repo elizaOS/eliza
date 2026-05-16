@@ -110,7 +110,7 @@ async function useLocalInferenceAsr(
 			const transcript = normalizeTranscriptResult(
 				await runtime.useModel(
 					ModelType.TRANSCRIPTION,
-					{ audio, ...(signal ? { signal } : {}) },
+					{ audio, ...(signal ? { signal } : {}) } as never,
 					provider,
 				),
 			);

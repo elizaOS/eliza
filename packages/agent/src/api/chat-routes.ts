@@ -1014,8 +1014,9 @@ export async function getRecentVisibleAssistantMemoryTextSince(
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
 
     return (
-      (persistedAssistantTurn?.content as { text?: string } | undefined)?.text?.trim() ??
-      null
+      (
+        persistedAssistantTurn?.content as { text?: string } | undefined
+      )?.text?.trim() ?? null
     );
   } catch {
     return null;

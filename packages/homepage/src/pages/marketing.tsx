@@ -1,3 +1,4 @@
+import { ProductSwitcher as SharedProductSwitcher } from "@elizaos/ui/product-switcher";
 import {
   ArrowRight,
   Bot,
@@ -33,7 +34,13 @@ type OS =
   | "unknown";
 
 type DownloadButton = {
-  id: OS | "linux-deb" | "linux-rpm" | "linux-appimage" | "linux-tar";
+  id:
+    | OS
+    | "linux-deb"
+    | "linux-rpm"
+    | "linux-appimage"
+    | "linux-tar"
+    | "android-apk";
   label: string;
   sublabel?: string;
   href: string;
@@ -49,18 +56,23 @@ type Workstream = {
   items: string[];
 };
 
-const CLOUD_URL = getElizacloudUrl();
+const LOCAL_APP_URL = import.meta.env.VITE_ELIZA_APP_URL || "/";
+const CLOUD_URL = import.meta.env.VITE_ELIZA_CLOUD_URL || getElizacloudUrl();
 const DOCS_URL = "https://eliza.how";
 const GITHUB_URL = "https://github.com/elizaOS/eliza";
-const OS_URL = "https://elizaos.ai";
-const APP_URL = "https://eliza.app";
+const OS_URL = import.meta.env.VITE_ELIZA_OS_URL || "https://elizaos.ai";
+const APP_URL = LOCAL_APP_URL;
 
 const PRODUCT_SWITCHER_ITEMS = [
-  { label: "ElizaOS", href: OS_URL },
-  { label: "Eliza App", href: "/" },
-  { label: "Eliza Cloud", href: CLOUD_URL },
-  { label: "Docs", href: DOCS_URL },
-  { label: "GitHub", href: GITHUB_URL },
+  { label: "ElizaOS", href: OS_URL, external: !OS_URL.startsWith("/") },
+  { label: "Eliza App", href: "/", active: true },
+  {
+    label: "Eliza Cloud",
+    href: CLOUD_URL,
+    external: !CLOUD_URL.startsWith("/") && !CLOUD_URL.includes("localhost"),
+  },
+  { label: "Docs", href: DOCS_URL, external: true },
+  { label: "GitHub", href: GITHUB_URL, external: true },
 ];
 
 const FALLBACK_MAC_BUTTONS: DownloadButton[] = [
@@ -121,6 +133,16 @@ const FALLBACK_LINUX_BUTTONS: DownloadButton[] = [
   },
 ];
 
+const FALLBACK_MOBILE_BUTTONS: DownloadButton[] = [
+  {
+    id: "android-apk",
+    label: "Android APK",
+    sublabel: "Signed QA APK pending",
+    href: `${GITHUB_URL}/releases`,
+    direct: false,
+  },
+];
+
 function detailForStoreTarget(target: ReleaseDataStoreTarget): string {
   switch (target.platform) {
     case "ios":
@@ -166,7 +188,7 @@ const PLATFORM_TAXONOMY = [
   "macOS: Apple Silicon .dmg and Intel .dmg",
   "Windows: x64 installer .exe",
   "Linux: .deb, .rpm, AppImage, and .tar.gz",
-  "Mobile: iOS App Store and Android Play Store coming soon",
+  "Mobile: iOS App Store and Android Play Store coming soon; signed Android APK for QA",
 ];
 
 const ONBOARDING_CHANNELS = [
@@ -211,7 +233,7 @@ const WORKSTREAMS: Workstream[] = [
     body: "Make the app download path feel first-party on every platform before leaning on app stores.",
     items: [
       "Desktop releases: .dmg, .exe, AppImage, .deb, .rpm, and tarball from GitHub release assets.",
-      "Mobile releases: App Store and Play Store are coming soon; TestFlight and APK bridge the gap.",
+      "Mobile releases: App Store and Play Store are coming soon; TestFlight and signed Android APK bridge the gap.",
       "Release page: show generated release metadata and keep stale package-manager commands out of the main CTA path.",
     ],
   },
@@ -311,6 +333,16 @@ function buildButtonFromGenerated(
         releaseUrl: d.releaseUrl,
         releasePublishedAtLabel: d.releasePublishedAtLabel,
       };
+    case "android-apk":
+      return {
+        id: "android-apk",
+        label: "Android APK",
+        sublabel,
+        href: d.url,
+        releaseTagName: d.releaseTagName,
+        releaseUrl: d.releaseUrl,
+        releasePublishedAtLabel: d.releasePublishedAtLabel,
+      };
     default:
       return null;
   }
@@ -322,6 +354,7 @@ function partitionGeneratedDownloads(
   const mac: DownloadButton[] = [];
   const windows: DownloadButton[] = [];
   const linux: DownloadButton[] = [];
+  const mobile: DownloadButton[] = [];
   for (const d of downloads) {
     const button = buildButtonFromGenerated(d);
     if (!button) continue;
@@ -329,11 +362,13 @@ function partitionGeneratedDownloads(
       mac.push(button);
     } else if (button.id === "windows") {
       windows.push(button);
+    } else if (button.id === "android-apk") {
+      mobile.push(button);
     } else {
       linux.push(button);
     }
   }
-  return { mac, windows, linux };
+  return { mac, windows, linux, mobile };
 }
 
 const generated = partitionGeneratedDownloads(releaseData.release.downloads);
@@ -344,6 +379,8 @@ const WINDOWS_BUTTONS: DownloadButton[] =
   generated.windows.length > 0 ? generated.windows : FALLBACK_WINDOWS_BUTTONS;
 const LINUX_BUTTONS: DownloadButton[] =
   generated.linux.length > 0 ? generated.linux : FALLBACK_LINUX_BUTTONS;
+const MOBILE_BUTTONS: DownloadButton[] =
+  generated.mobile.length > 0 ? generated.mobile : FALLBACK_MOBILE_BUTTONS;
 
 const RELEASE_TAG_LABEL =
   releaseData.release.tagName !== "unavailable"
@@ -366,31 +403,14 @@ function detectOS(): OS {
   return "unknown";
 }
 
-function ProductSwitcher() {
+function ProductNav() {
   return (
-    <nav className="flex flex-wrap items-center justify-end gap-2 text-sm text-neutral-500">
-      {PRODUCT_SWITCHER_ITEMS.map((item) =>
-        item.href === "/" ? (
-          <a
-            key={item.label}
-            href={item.href}
-            className="rounded-md bg-neutral-950 px-3 py-2 font-medium text-white"
-          >
-            {item.label}
-          </a>
-        ) : (
-          <a
-            key={item.label}
-            href={item.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-md px-3 py-2 transition-colors hover:bg-neutral-100 hover:text-neutral-950"
-          >
-            {item.label}
-          </a>
-        ),
-      )}
-    </nav>
+    <SharedProductSwitcher
+      activeClassName="bg-neutral-950 text-white"
+      className="border-neutral-950/10 bg-white/70 text-neutral-500"
+      inactiveClassName="hover:bg-white hover:text-neutral-950"
+      items={PRODUCT_SWITCHER_ITEMS}
+    />
   );
 }
 
@@ -537,7 +557,7 @@ export default function Marketing() {
               Eliza App
             </span>
           </a>
-          <ProductSwitcher />
+          <ProductNav />
         </div>
       </header>
 
@@ -763,7 +783,7 @@ export default function Marketing() {
             </ul>
           </div>
 
-          <div className="mt-10 grid grid-cols-1 gap-8 md:grid-cols-3">
+          <div className="mt-10 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
             <DownloadColumn
               title="macOS"
               buttons={MAC_BUTTONS}
@@ -779,6 +799,11 @@ export default function Marketing() {
               buttons={LINUX_BUTTONS}
               highlightId={highlightId}
             />
+            <DownloadColumn
+              title="Mobile"
+              buttons={MOBILE_BUTTONS}
+              highlightId={null}
+            />
           </div>
 
           <div className="mt-12 flex items-end justify-between gap-4">
@@ -787,8 +812,9 @@ export default function Marketing() {
                 App stores
               </h3>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-                Store listings are intentionally grayed out until they are live.
-                Use the release downloads above for current installs.
+                Store listings are intentionally grayed out until they are live;
+                Android APK is available above only when release CI attaches a
+                signed QA build.
               </p>
             </div>
           </div>

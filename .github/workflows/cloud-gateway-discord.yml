@@ -36,29 +36,31 @@ on:
     branches: [main, develop]
     paths:
       - "packages/cloud-services/gateway-discord/**"
-      - "packages/cloud-shared/packages/lib/services/gateway-discord/**"
-      - "packages/cloud-shared/packages/lib/auth/jwks.ts"
-      - "packages/cloud-shared/packages/lib/auth/jwt-internal.ts"
-      - "packages/cloud-shared/packages/lib/auth/internal-api.ts"
+      - "packages/cloud-shared/src/lib/services/gateway-discord/**"
+      - "packages/cloud-shared/src/lib/auth/jwks.ts"
+      - "packages/cloud-shared/src/lib/auth/jwt-internal.ts"
+      - "packages/cloud-shared/src/lib/auth/internal-api.ts"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
       - "packages/cloud-api/v1/discord/**"
       - "packages/cloud-api/internal/discord/**"
       - "packages/cloud-api/internal/auth/**"
       - "packages/cloud-api/.well-known/jwks.json/**"
-      - "packages/cloud-shared/packages/tests/unit/discord-connections*"
+      - "packages/cloud-shared/src/db/**/discord-connections.ts"
       - ".github/workflows/cloud-gateway-discord.yml"
   pull_request:
     branches: [main, develop]
     paths:
       - "packages/cloud-services/gateway-discord/**"
-      - "packages/cloud-shared/packages/lib/services/gateway-discord/**"
-      - "packages/cloud-shared/packages/lib/auth/jwks.ts"
-      - "packages/cloud-shared/packages/lib/auth/jwt-internal.ts"
-      - "packages/cloud-shared/packages/lib/auth/internal-api.ts"
+      - "packages/cloud-shared/src/lib/services/gateway-discord/**"
+      - "packages/cloud-shared/src/lib/auth/jwks.ts"
+      - "packages/cloud-shared/src/lib/auth/jwt-internal.ts"
+      - "packages/cloud-shared/src/lib/auth/internal-api.ts"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
       - "packages/cloud-api/v1/discord/**"
       - "packages/cloud-api/internal/discord/**"
       - "packages/cloud-api/internal/auth/**"
       - "packages/cloud-api/.well-known/jwks.json/**"
-      - "packages/cloud-shared/packages/tests/unit/discord-connections*"
+      - "packages/cloud-shared/src/db/**/discord-connections.ts"
       - ".github/workflows/cloud-gateway-discord.yml"
   workflow_dispatch:
     inputs:
@@ -126,14 +128,15 @@ jobs:
               - 'packages/cloud-services/gateway-discord/Dockerfile'
               - 'packages/cloud-services/gateway-discord/package.json'
               - 'packages/cloud-services/gateway-discord/tsconfig.json'
-              - 'packages/cloud-shared/packages/lib/services/gateway-discord/**'
-              - 'packages/cloud-shared/packages/lib/auth/jwks.ts'
-              - 'packages/cloud-shared/packages/lib/auth/jwt-internal.ts'
-              - 'packages/cloud-shared/packages/lib/auth/internal-api.ts'
+              - 'packages/cloud-shared/src/lib/services/gateway-discord/**'
+              - 'packages/cloud-shared/src/lib/auth/jwks.ts'
+              - 'packages/cloud-shared/src/lib/auth/jwt-internal.ts'
+              - 'packages/cloud-shared/src/lib/auth/internal-api.ts'
+              - 'packages/cloud-shared/scripts/messaging-gateway-preflight.mjs'
               - 'packages/cloud-api/v1/discord/**'
               - 'packages/cloud-api/internal/discord/**'
               - 'packages/cloud-api/internal/auth/**'
-              - 'packages/cloud-shared/packages/tests/unit/discord-connections*'
+              - 'packages/cloud-shared/src/db/**/discord-connections.ts'
 
       - name: Determine target environment
         id: env
@@ -412,6 +415,9 @@ jobs:
       - name: Install root dependencies
         run: bun install --no-save && git diff --exit-code -- bun.lock
 
+      - name: Run messaging gateway preflight
+        run: bun run preflight:messaging-gateways
+
       - name: Install service dependencies
         working-directory: packages/cloud-services/gateway-discord
         run: bun install --no-save && git diff --exit-code -- bun.lock
@@ -512,6 +518,24 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+
+      - name: Run strict messaging gateway preflight
+        env:
+          ELIZA_CLOUD_API_URL: ${{ secrets.ELIZA_CLOUD_URL }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID }}
+          ELIZA_APP_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_APP_DISCORD_CLIENT_SECRET }}
+          ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          ELIZA_APP_WHATSAPP_ACCESS_TOKEN: ${{ secrets.ELIZA_APP_WHATSAPP_ACCESS_TOKEN }}
+          ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID }}
+          ELIZA_APP_WHATSAPP_APP_SECRET: ${{ secrets.ELIZA_APP_WHATSAPP_APP_SECRET }}
+          ELIZA_APP_WHATSAPP_VERIFY_TOKEN: ${{ secrets.ELIZA_APP_WHATSAPP_VERIFY_TOKEN }}
+          ELIZA_APP_BLOOIO_API_URL: ${{ secrets.ELIZA_APP_BLOOIO_API_URL }}
+          ELIZA_APP_BLOOIO_API_KEY: ${{ secrets.ELIZA_APP_BLOOIO_API_KEY }}
+          HEADSCALE_IMESSAGE_GATEWAY_TAG: ${{ vars.HEADSCALE_IMESSAGE_GATEWAY_TAG }}
+        run: node scripts/messaging-gateway-preflight.mjs --strict --channels=shared,discord
 
       - name: Verify image digest (if build ran)
         if: needs.build.result == 'success'

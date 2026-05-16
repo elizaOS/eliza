@@ -131,6 +131,18 @@ describe("Eliza-1 runtime quant metadata", () => {
     expect(entry?.sourceModel?.components.drafter).toBeUndefined();
   });
 
+  it("gates M-RoPE DFlash tiers until the verifier path is hardware-validated", () => {
+    for (const id of [
+      "eliza-1-2b",
+      "eliza-1-4b",
+      "eliza-1-9b",
+      "eliza-1-27b",
+    ]) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.runtime?.dflash?.disabledReason).toMatch(/7631/);
+    }
+  });
+
   it("points every voice-enabled tier at the bundled Silero VAD GGUF", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);

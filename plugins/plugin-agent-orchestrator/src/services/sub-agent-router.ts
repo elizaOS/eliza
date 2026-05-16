@@ -791,6 +791,7 @@ function shouldInject(event: SessionEventName): boolean {
 }
 
 function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
+  if (!text.includes("[tool output:")) return text;
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const retained: string[] = [];
   let insideToolOutput = false;

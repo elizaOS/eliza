@@ -15,6 +15,8 @@ builds, but it is not enough for launch.
 - `releaseData.release.downloads` includes current macOS Apple Silicon, macOS
   Intel, Windows, Linux archive/AppImage, Linux `.deb`, and Linux `.rpm`
   artifacts for the release being announced.
+- Android release jobs have produced both the Play `.aab` and signed QA `.apk`
+  artifacts when mobile release is part of the launch.
 - Every generated download URL contains
   `/releases/download/<releaseData.release.tagName>/`.
 - Every generated download shown on the homepage comes from the same release
@@ -58,5 +60,6 @@ Record the following in the launch notes:
 - Release tag and GitHub release URL.
 - macOS, Windows, and Linux artifact names.
 - Checksum file name or reason checksums are not published.
+- Android AAB/APK checksum file name when mobile artifacts are published.
 - Store card state for iOS, Android, macOS, and Windows.
 - Known degraded install paths and the owner for each follow-up.

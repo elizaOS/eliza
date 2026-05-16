@@ -2479,9 +2479,9 @@ function directReplyPromptForMessage(args: {
 		contextText ? "" : "",
 		`user_message: ${latestText}`,
 		`routing_thought: ${args.messageHandler.thought}`,
-		]
-			.filter((line) => line.length > 0)
-			.join("\n");
+	]
+		.filter((line) => line.length > 0)
+		.join("\n");
 }
 
 function extractExactWordsReply(

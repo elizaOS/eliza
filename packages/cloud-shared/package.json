@@ -22,6 +22,8 @@
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
+    "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run ../../packages/scripts/cloud/admin/migrate-with-diagnostics.ts",

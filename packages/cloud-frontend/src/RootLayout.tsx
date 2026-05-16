@@ -2,6 +2,7 @@ import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
+import { StewardWalletProviders } from "@/pages/login/steward-wallet-providers";
 import { CreditsProvider } from "@/providers/CreditsProvider";
 import { StewardAuthProvider } from "@/providers/StewardProvider";
 
@@ -76,34 +77,36 @@ export default function RootLayout() {
        * ThemeProvider — client-only. Reads user preference from localStorage + OS
        * and sets the "dark" / "light" class on <html> for Tailwind dark-mode.
        */}
-      <StewardAuthProvider>
-        <CreditsProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="light"
-            enableSystem={false}
-            disableTransitionOnChange
-          >
-            <NavigationProgress />
-            <Outlet />
-            <Toaster
-              richColors
-              theme="light"
-              position="top-right"
-              toastOptions={{
-                style: {
-                  background: "rgba(255, 255, 255, 0.82)",
-                  border: "1px solid rgba(255, 255, 255, 0.34)",
-                  color: "#06131f",
-                  backdropFilter: "blur(12px)",
-                  borderRadius: "18px",
-                },
-                className: "font-open-sans",
-              }}
-            />
-          </ThemeProvider>
-        </CreditsProvider>
-      </StewardAuthProvider>
+      <StewardWalletProviders>
+        <StewardAuthProvider>
+          <CreditsProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="light"
+              enableSystem={false}
+              disableTransitionOnChange
+            >
+              <NavigationProgress />
+              <Outlet />
+              <Toaster
+                richColors
+                theme="light"
+                position="top-right"
+                toastOptions={{
+                  style: {
+                    background: "rgba(255, 255, 255, 0.82)",
+                    border: "1px solid rgba(255, 255, 255, 0.34)",
+                    color: "#06131f",
+                    backdropFilter: "blur(12px)",
+                    borderRadius: "18px",
+                  },
+                  className: "font-open-sans",
+                }}
+              />
+            </ThemeProvider>
+          </CreditsProvider>
+        </StewardAuthProvider>
+      </StewardWalletProviders>
     </>
   );
 }

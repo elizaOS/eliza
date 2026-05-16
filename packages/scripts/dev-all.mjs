@@ -11,6 +11,9 @@ const skipPrepare =
   args.has("--no-prepare") || process.env.DEV_ALL_SKIP_PREPARE === "1";
 const skipCloudDb =
   args.has("--no-cloud-db") || process.env.DEV_ALL_SKIP_CLOUD_DB === "1";
+const enableTestAuth =
+  args.has("--test-auth") ||
+  process.env.DEV_ALL_ENABLE_TEST_AUTH !== "0";
 
 const repoRoot = process.cwd();
 const bunBin =
@@ -31,6 +34,7 @@ const ports = {
   agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "2138"),
   frontend: envDefault("DEV_ALL_FRONTEND_PORT", "5173"),
   homepage: envDefault("DEV_ALL_HOMEPAGE_PORT", "4444"),
+  osHomepage: envDefault("DEV_ALL_OS_HOMEPAGE_PORT", "4455"),
   cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
   cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
   cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
@@ -40,10 +44,15 @@ const urls = {
   agentApi: `http://127.0.0.1:${ports.agentApi}`,
   frontend: `http://localhost:${ports.frontend}`,
   homepage: `http://localhost:${ports.homepage}`,
+  osHomepage: `http://localhost:${ports.osHomepage}`,
   cloudWeb: `http://localhost:${ports.cloudWeb}`,
   cloudApi: `http://localhost:${ports.cloudApi}`,
   cloudDb: `postgresql://postgres@127.0.0.1:${ports.cloudDb}/postgres`,
 };
+const localTestAuthSecret = envDefault(
+  "PLAYWRIGHT_TEST_AUTH_SECRET",
+  "playwright-local-auth-secret",
+);
 
 const packagedCloudAvailable =
   existsSync(`${repoRoot}/packages/cloud-api/package.json`) &&
@@ -62,6 +71,17 @@ const cloudSharedEnv = {
   NEXT_PUBLIC_ELIZA_API_URL: urls.cloudApi,
   NEXT_PUBLIC_ELIZA_PROXY_URL: urls.cloudWeb,
   NEXT_PUBLIC_STEWARD_API_URL: `${urls.cloudApi}/steward`,
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth
+    ? {
+        AGENT_TEST_BOOTSTRAP_ADMIN: "true",
+        PLAYWRIGHT_TEST_AUTH: "true",
+        PLAYWRIGHT_TEST_AUTH_SECRET: localTestAuthSecret,
+        RATE_LIMIT_DISABLED: "true",
+      }
+    : {}),
   VITE_API_PROXY_TARGET: urls.cloudApi,
   VITE_ALLOWED_HOSTS: [
     "localhost",
@@ -119,11 +139,28 @@ const frontendEnv = {
     "VITE_ASSET_BASE_URL",
     "https://blob.elizacloud.ai",
   ),
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const homepageEnv = {
   ...commonEnv,
   PORT: ports.homepage,
   VITE_ELIZACLOUD_API_URL: urls.cloudApi,
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
+};
+const osHomepageEnv = {
+  ...commonEnv,
+  PORT: ports.osHomepage,
+  VITE_ELIZACLOUD_API_URL: urls.cloudApi,
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const cloudDbEnv = {
   ...cloudSharedEnv,
@@ -210,6 +247,12 @@ const services = [
     ],
     env: homepageEnv,
   },
+  {
+    name: "os-homepage",
+    cwd: "packages/os-homepage",
+    command: [bunBin, "run", "dev", "--", "--host", "0.0.0.0"],
+    env: osHomepageEnv,
+  },
 ].filter(Boolean);
 
 const cloudDevVarsCommand = packagedCloudAvailable
@@ -251,11 +294,15 @@ function printPlan() {
   console.log("[dev:all] local stack");
   console.log(`  agent API:  ${urls.agentApi}`);
   console.log(`  frontend:   ${urls.frontend}`);
-  console.log(`  homepage:   ${urls.homepage}`);
+  console.log(`  app home:   ${urls.homepage}`);
+  console.log(`  OS home:    ${urls.osHomepage}`);
   console.log(`  cloud web:  ${urls.cloudWeb}`);
   console.log(`  cloud API:  ${urls.cloudApi}`);
   console.log(`  cloud src:  ${cloudMode}`);
   if (!skipCloudDb) console.log(`  cloud DB:   ${urls.cloudDb}`);
+  console.log(
+    `  test auth:  ${enableTestAuth ? "enabled (local only)" : "disabled"}`,
+  );
   console.log("");
 }
 

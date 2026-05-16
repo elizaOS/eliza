@@ -38,6 +38,12 @@
       "@elizaos/plugin-app-manager/*": [
         "../plugin-app-manager/src/*"
       ],
+      "@elizaos/plugin-agent-skills": [
+        "../plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills/*": [
+        "../plugin-agent-skills/src/*"
+      ],
       "@elizaos/plugin-wallet": [
         "../plugin-wallet/src/index.ts"
       ],

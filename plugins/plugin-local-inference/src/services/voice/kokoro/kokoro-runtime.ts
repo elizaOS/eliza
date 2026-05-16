@@ -114,7 +114,7 @@ type OrtInputMetadata = Readonly<{ name?: string; type?: string }>;
 
 interface OrtSession {
 	run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
-	release(): Promise<void>;
+	release?(): Promise<void>;
 	/**
 	 * Optional — present on real onnxruntime-node sessions, absent on test
 	 * stubs. When present we use it to detect whether the loaded export
@@ -366,7 +366,7 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 
 	dispose(): void {
 		if (this.session) {
-			void this.session.release();
+			void this.session.release?.();
 			this.session = null;
 		}
 		this.voiceCache.clear();

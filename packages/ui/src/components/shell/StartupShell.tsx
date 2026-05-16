@@ -34,7 +34,7 @@ import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
 import { PairingView } from "./PairingView";
 import { StartupFailureView } from "./StartupFailureView";
 
-const FONT = "'Courier New', 'Courier', 'Monaco', monospace";
+const FONT = "'Open Sans', Arial, system-ui, sans-serif";
 
 const PHASE_PROGRESS: Record<string, number> = {
   splash: 0,

@@ -81,7 +81,7 @@ function getDiscordBotApplicationId(): string {
   return getDiscordClientId();
 }
 
-const MONO = "'Courier New', 'Courier', 'Monaco', monospace";
+const MONO = "'Open Sans', Arial, system-ui, sans-serif";
 
 function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
   const { messages, sendMessage, containerStatus, isLoading, isReady } =

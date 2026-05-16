@@ -411,6 +411,7 @@ const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
  */
 export class LiveKitTurnDetector implements EotClassifier {
 	private readonly modelDir: string;
+	private readonly onnxPath: string;
 	private readonly maxHistoryTokens: number;
 	private readonly intraOpNumThreads: number;
 	private readonly model: string;
@@ -711,6 +712,7 @@ export interface TurnsenseEotClassifierOptions {
  */
 export class TurnsenseEotClassifier implements EotClassifier {
 	private readonly modelDir: string;
+	private readonly onnxPath: string;
 	private readonly maxHistoryTokens: number;
 	private readonly intraOpNumThreads: number;
 	private readonly model: string;

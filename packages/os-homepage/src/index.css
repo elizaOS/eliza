@@ -1,19 +1,65 @@
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/open-sans";
 @import "tailwindcss";
 @import "tw-animate-css";
+@source "../../ui/src";
 
 :root {
-  --font-geist-sans:
-    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    sans-serif;
+  --font-sans: "Open Sans", Arial, system-ui, sans-serif;
   --ink: #111111;
   --muted: #6a6660;
   --line: #ded8cf;
   --paper: #f7f5ef;
   --panel: #ffffff;
-  --orange: #ff5800;
-  --blue: #0057ff;
+  --orange: #ff8a24;
+  --blue: #1d91e8;
+  --bg: var(--paper);
+  --bg-accent: #eef8ff;
+  --bg-elevated: rgba(255, 255, 255, 0.88);
+  --bg-hover: rgba(255, 255, 255, 0.96);
+  --bg-muted: #e4f3ff;
+  --card: rgba(255, 255, 255, 0.88);
+  --card-foreground: var(--ink);
+  --surface: rgba(255, 255, 255, 0.82);
+  --text: var(--ink);
+  --text-strong: #070707;
+  --chat-text: var(--ink);
+  --txt: var(--ink);
+  --muted-strong: rgba(17, 17, 17, 0.72);
+  --border: rgba(17, 17, 17, 0.12);
+  --border-strong: rgba(17, 17, 17, 0.2);
+  --border-hover: var(--orange);
+  --input: rgba(255, 255, 255, 0.9);
+  --ring: var(--orange);
+  --accent: var(--orange);
+  --accent-rgb: 255, 138, 36;
+  --accent-hover: #ff9a3d;
+  --accent-muted: #d95f16;
+  --accent-subtle: rgba(255, 138, 36, 0.16);
+  --accent-foreground: #fff7ee;
+  --primary: var(--orange);
+  --primary-foreground: #fff7ee;
+  --ok: hsl(142 76% 36%);
+  --ok-muted: hsla(142 76% 36% / 0.7);
+  --ok-subtle: hsla(142 76% 36% / 0.1);
+  --warn: var(--orange);
+  --warn-muted: rgba(255, 138, 36, 0.72);
+  --warn-subtle: rgba(255, 138, 36, 0.16);
+  --danger: hsl(0 84.2% 60.2%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --destructive-subtle: hsla(0 84% 60% / 0.1);
+  --background: var(--bg);
+  --foreground: var(--text);
+  --popover: var(--card);
+  --popover-foreground: var(--text);
+  --secondary: var(--bg-accent);
+  --secondary-foreground: var(--text);
+  --muted-foreground: var(--muted);
+  --radius: 0.5rem;
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-chat: var(--font-sans);
+  --mono: var(--font-sans);
 }
 
 * {
@@ -31,7 +77,7 @@ body {
     radial-gradient(circle at 12% 28%, rgb(255 88 0 / 12%), transparent 26rem),
     var(--paper);
   color: var(--ink);
-  font-family: var(--font-geist-sans);
+  font-family: var(--font-sans);
 }
 
 a {
@@ -98,10 +144,10 @@ a {
 .hero {
   align-items: center;
   display: grid;
-  gap: clamp(28px, 6vw, 76px);
+  gap: clamp(24px, 5vw, 64px);
   grid-template-columns: minmax(0, 0.88fr) minmax(360px, 1fr);
   min-height: calc(92vh - 64px);
-  padding: clamp(34px, 6vw, 76px) clamp(18px, 5vw, 72px) 42px;
+  padding: clamp(24px, 4.5vw, 58px) clamp(18px, 5vw, 72px) 34px;
 }
 
 .hero-copy {
@@ -121,7 +167,7 @@ a {
 .hero h1,
 .section-heading h2,
 .purchase-flow h2 {
-  font-size: clamp(42px, 6vw, 76px);
+  font-size: clamp(38px, 5.4vw, 68px);
   letter-spacing: 0;
   line-height: 0.95;
   margin: 0;

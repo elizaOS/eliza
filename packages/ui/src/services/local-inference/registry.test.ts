@@ -27,8 +27,8 @@ describe("local inference registry", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-registry-test-"));
     process.env.ELIZA_STATE_DIR = root;
 
-    const model = findCatalogModel("eliza-1-0_8b");
-    const companion = findCatalogModel("eliza-1-0_8b-drafter");
+    const model = findCatalogModel("eliza-1-2b");
+    const companion = findCatalogModel("eliza-1-2b-drafter");
     expect(model).toBeDefined();
     expect(companion).toBeDefined();
     if (!model || !companion) throw new Error("missing catalog fixture");
@@ -37,7 +37,7 @@ describe("local inference registry", () => {
       root,
       "local-inference",
       "models",
-      "eliza-1-0_8b.bundle",
+      "eliza-1-2b.bundle",
     );
     const manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
     const targetPath = path.join(bundleRoot, model.ggufFile);
@@ -82,18 +82,16 @@ describe("local inference registry", () => {
       lastVerifiedAt: "2026-05-16T00:00:00.000Z",
       runtimeRole: "chat",
     };
-    const registryPath = path.join(
-      root,
-      "local-inference",
-      "registry.json",
-    );
+    const registryPath = path.join(root, "local-inference", "registry.json");
     writeJson(registryPath, {
       version: 1,
       models: [targetInstalled],
     });
 
     const installed = await listInstalledModels();
-    const healedCompanion = installed.find((entry) => entry.id === companion.id);
+    const healedCompanion = installed.find(
+      (entry) => entry.id === companion.id,
+    );
     expect(healedCompanion).toMatchObject({
       id: companion.id,
       displayName: companion.displayName,
@@ -118,8 +116,8 @@ describe("local inference registry", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-registry-test-"));
     process.env.ELIZA_STATE_DIR = root;
 
-    const model = findCatalogModel("eliza-1-0_8b");
-    const companion = findCatalogModel("eliza-1-0_8b-drafter");
+    const model = findCatalogModel("eliza-1-2b");
+    const companion = findCatalogModel("eliza-1-2b-drafter");
     expect(model).toBeDefined();
     expect(companion).toBeDefined();
     if (!model || !companion) throw new Error("missing catalog fixture");
@@ -128,7 +126,7 @@ describe("local inference registry", () => {
       root,
       "local-inference",
       "models",
-      "eliza-1-0_8b.bundle",
+      "eliza-1-2b.bundle",
     );
     const manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
     const targetPath = path.join(bundleRoot, model.ggufFile);

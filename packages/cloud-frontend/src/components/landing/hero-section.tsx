@@ -3,6 +3,9 @@
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+const appUrl = import.meta.env.VITE_ELIZA_APP_URL || "https://eliza.app";
+const osUrl = import.meta.env.VITE_ELIZA_OS_URL || "https://elizaos.ai";
+
 export default function HeroSection() {
   const navigate = useNavigate();
 
@@ -29,13 +32,13 @@ export default function HeroSection() {
             <ArrowRight className="h-5 w-5" />
           </button>
           <a
-            href="https://eliza.app"
+            href={appUrl}
             className="inline-flex items-center gap-2 rounded-full border border-white/36 bg-white/12 px-6 py-4 font-[family-name:var(--font-body)] text-base font-semibold text-white shadow-[0_18px_46px_rgba(0,24,122,0.18)] backdrop-blur-xl transition-all hover:bg-white/22 sm:text-lg"
           >
             Get App
           </a>
           <a
-            href="https://elizaos.ai"
+            href={osUrl}
             className="inline-flex items-center gap-2 rounded-full border border-white/36 bg-white/12 px-6 py-4 font-[family-name:var(--font-body)] text-base font-semibold text-white shadow-[0_18px_46px_rgba(0,24,122,0.18)] backdrop-blur-xl transition-all hover:bg-white/22 sm:text-lg"
           >
             Install OS

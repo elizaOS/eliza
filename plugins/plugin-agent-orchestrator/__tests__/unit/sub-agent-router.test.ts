@@ -773,7 +773,7 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[tool output:");
     });
 
-    it("reports routed app page URLs instead of asset-only completions", async () => {
+    it("keeps asset-only completions while recording verified routed page URLs", async () => {
       const tmpRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "sub-agent-router-"),
       );
@@ -834,8 +834,8 @@ describe("SubAgentRouter", () => {
         const posted = handleMessage.mock.calls[0]?.[1];
         expect(posted?.content?.text).toContain(localPage);
         expect(posted?.content?.text).toContain(publicPage);
-        expect(posted?.content?.text).not.toContain("style.css");
-        expect(posted?.content?.text).not.toContain("app.js");
+        expect(posted?.content?.text).toContain("style.css");
+        expect(posted?.content?.text).toContain("app.js");
         expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
           localPage,
           publicPage,
@@ -1010,6 +1010,8 @@ describe("SubAgentRouter", () => {
           localUrl,
           publicUrl,
         ]);
+        expect(posted?.content?.text).toContain(localUrl);
+        expect(posted?.content?.text).not.toContain(publicUrl);
         expect(posted?.content?.text).not.toContain("[verification:");
       } finally {
         fs.rmSync(tmpRoot, { recursive: true, force: true });

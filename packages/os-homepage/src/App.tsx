@@ -1,3 +1,5 @@
+import { Button } from "@elizaos/ui/button";
+import { ProductSwitcher as SharedProductSwitcher } from "@elizaos/ui/product-switcher";
 import {
   ArrowRight,
   Boxes,
@@ -14,14 +16,17 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-const CLOUD_URL = "https://elizacloud.ai";
+const CLOUD_URL =
+  import.meta.env.VITE_ELIZA_CLOUD_URL || "https://elizacloud.ai";
+const APP_URL = import.meta.env.VITE_ELIZA_APP_URL || "https://eliza.app";
+const OS_URL = import.meta.env.VITE_ELIZA_OS_URL || "https://elizaos.ai";
 
 const productLinks = [
-  { label: "ElizaOS", href: "https://elizaos.ai", active: true },
-  { label: "App", href: "https://eliza.app" },
-  { label: "Cloud", href: CLOUD_URL },
-  { label: "Docs", href: "https://docs.elizaos.ai" },
-  { label: "GitHub", href: "https://github.com/elizaOS/eliza" },
+  { label: "ElizaOS", href: OS_URL, active: true },
+  { label: "Eliza App", href: APP_URL },
+  { label: "Eliza Cloud", href: CLOUD_URL },
+  { label: "Docs", href: "https://eliza.how", external: true },
+  { label: "GitHub", href: "https://github.com/elizaOS/eliza", external: true },
 ];
 
 const colors = [
@@ -83,17 +88,18 @@ const installTiles = [
 
 function ProductSwitcher() {
   return (
-    <nav className="product-switcher" aria-label="Product switcher">
-      {productLinks.map((link) => (
-        <a
-          className={link.active ? "switcher-link active" : "switcher-link"}
-          href={link.href}
-          key={link.label}
-        >
-          {link.label}
-        </a>
-      ))}
-    </nav>
+    <SharedProductSwitcher
+      activeClassName="active"
+      className="product-switcher"
+      inactiveClassName="switcher-link"
+      items={productLinks.map((link) => ({
+        ...link,
+        external:
+          link.external ||
+          (!link.href.startsWith("/") && !link.href.includes("localhost")),
+      }))}
+      linkClassName="switcher-link"
+    />
   );
 }
 
@@ -107,10 +113,12 @@ function CtaLink({
   variant?: "primary" | "secondary";
 }) {
   return (
-    <a className={`cta ${variant}`} href={href}>
-      {children}
-      <ArrowRight aria-hidden="true" size={18} />
-    </a>
+    <Button asChild variant={variant === "primary" ? "default" : "outline"}>
+      <a className={`cta ${variant}`} href={href}>
+        {children}
+        <ArrowRight aria-hidden="true" size={18} />
+      </a>
+    </Button>
   );
 }
 
@@ -119,15 +127,19 @@ function FaceLogo() {
 }
 
 function Swatches({ names }: { names: string[] }) {
+  const occurrences = new Map<string, number>();
+
   return (
     <ul aria-label="Available colors" className="swatches">
       {names.map((name) => {
+        const occurrence = occurrences.get(name) ?? 0;
+        occurrences.set(name, occurrence + 1);
         const color = colors.find((item) => item.name === name) ?? colors[0];
         return (
           <li
             aria-label={name}
             className="swatch"
-            key={name}
+            key={`${name}-${occurrence}`}
             style={{ background: color.value }}
             title={name}
           />
@@ -152,7 +164,10 @@ function ProductVisual({ className }: { className: string }) {
   if (className === "box-render") {
     return (
       <div className="visual box-render">
-        <img alt="Orange ElizaOS Box concept" src="/assets/elizaos-box-concept.avif" />
+        <img
+          alt="Orange ElizaOS Box concept"
+          src="/assets/elizaos-box-concept.avif"
+        />
         <span className="brand-mark">Box</span>
       </div>
     );

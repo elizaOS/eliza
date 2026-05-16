@@ -96,7 +96,16 @@ function shellArgsForCommand(shell: {
   args: string[];
 }): string[] {
   const basename = importPath.basename(shell.command).toLowerCase();
-  if (basename === "bash") {
+  if (basename === "bash" || basename === "zsh") {
+    const commandFlagIndex = shell.args.lastIndexOf("-c");
+    if (commandFlagIndex >= 0) {
+      return [
+        "-o",
+        "pipefail",
+        ...shell.args.slice(0, commandFlagIndex),
+        ...shell.args.slice(commandFlagIndex),
+      ];
+    }
     return ["-o", "pipefail", ...shell.args];
   }
   return shell.args;

@@ -18,7 +18,10 @@
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@elizaos/ui/product-switcher": [
+        "../ui/src/cloud-ui/components/product-switcher.tsx"
+      ]
     },
     "types": ["vite/client"]
   },

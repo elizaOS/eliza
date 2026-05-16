@@ -128,8 +128,10 @@ describe("useVoiceChat local ASR", () => {
       resume: vi.fn(() => new Promise<void>(() => {})),
     } as unknown as AudioContext;
 
-    const resumed =
-      __voiceChatInternals.resumeAudioContextForPlayback(context, 25);
+    const resumed = __voiceChatInternals.resumeAudioContextForPlayback(
+      context,
+      25,
+    );
     await vi.advanceTimersByTimeAsync(25);
 
     await expect(resumed).resolves.toBe(false);

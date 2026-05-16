@@ -244,6 +244,10 @@ jobs:
           echo "APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA" >> "$GITHUB_ENV"
           echo "Resolved: APP_IDENTIFIER=$APP_ID, APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA"
 
+      - name: Run iOS store preflight
+        working-directory: packages/app
+        run: bun run preflight:ios:store
+
       - name: Build and upload
         working-directory: packages/app/ios
         env:

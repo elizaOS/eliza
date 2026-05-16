@@ -64,6 +64,10 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: bun run build:android
 
+      - name: Run Android developer-install preflight
+        working-directory: ${{ env.APP_DIR }}
+        run: bun run preflight:android:sideload
+
       - name: Override Gradle JDK path for CI
         working-directory: ${{ env.APP_DIR }}/android
         run: |
@@ -127,6 +131,15 @@ jobs:
 
           rm /tmp/keystore.jks
 
+      - name: Generate Android checksums
+        if: github.event_name == 'release'
+        run: |
+          find "${{ env.APP_DIR }}/android/app/build/outputs" \
+            \( -name "*.apk" -o -name "*.aab" \) -type f -print0 \
+            | sort -z \
+            | xargs -0 sha256sum > "${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt"
+          cat "${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt"
+
       - name: Upload debug APK artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
@@ -142,6 +155,7 @@ jobs:
           path: |
             ${{ env.APP_DIR }}/android/app/build/outputs/apk/release/*.apk
             ${{ env.APP_DIR }}/android/app/build/outputs/bundle/release/*.aab
+            ${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)
@@ -152,4 +166,5 @@ jobs:
             ${{ env.APP_DIR }}/android/app/build/outputs/apk/release/*.apk
             ${{ env.APP_DIR }}/android/app/build/outputs/bundle/release/*.aab
             ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+            ${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt
           fail_on_unmatched_files: false

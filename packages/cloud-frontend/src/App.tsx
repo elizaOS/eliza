@@ -53,6 +53,7 @@ function preloadAll(...preloads: PreloadFn[]): PreloadFn {
 
 const Home = lazyWithPreload(() => import("./pages/page"));
 const ElizaOs = lazyWithPreload(() => import("./pages/os/page"));
+const CheckoutPage = lazyWithPreload(() => import("./pages/checkout/page"));
 const TermsOfService = lazyWithPreload(
   () => import("./pages/terms-of-service/page"),
 );
@@ -62,6 +63,7 @@ const PrivacyPolicy = lazyWithPreload(
 const SandboxProxy = lazyWithPreload(
   () => import("./pages/sandbox-proxy/page"),
 );
+const BscPromo = lazyWithPreload(() => import("./pages/bsc/page"));
 const PublicChat = lazyWithPreload(
   () => import("./pages/chat/[characterRef]/page"),
 );
@@ -196,6 +198,7 @@ const AdminRedemptionsPage = lazyWithPreload(
  * because `/dashboard/apps/:id` also matches `/dashboard/apps/create`.
  */
 const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
+  { path: "/checkout", preload: CheckoutPage.preload },
   {
     path: "/dashboard/admin/infrastructure",
     preload: preloadAll(
@@ -260,6 +263,7 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     path: "/dashboard/billing",
     preload: preloadAll(DashboardLayout.preload, BillingPage.preload),
   },
+  { path: "/bsc", preload: BscPromo.preload },
   {
     path: "/dashboard/containers/agents/:id",
     preload: preloadAll(
@@ -546,6 +550,10 @@ function App() {
         <Route index element={<SuspenseRoute component={Home} />} />
         <Route path="os" element={<SuspenseRoute component={ElizaOs} />} />
         <Route
+          path="checkout"
+          element={<SuspenseRoute component={CheckoutPage} />}
+        />
+        <Route
           path="terms-of-service"
           element={<SuspenseRoute component={TermsOfService} />}
         />
@@ -557,6 +565,7 @@ function App() {
           path="sandbox-proxy"
           element={<SuspenseRoute component={SandboxProxy} />}
         />
+        <Route path="bsc" element={<SuspenseRoute component={BscPromo} />} />
         <Route
           path="chat/:characterRef"
           element={<SuspenseRoute component={PublicChat} />}
