@@ -118,7 +118,7 @@ jobs:
         run: |
           set -e
           bun run --cwd packages/core typecheck
-          bun run --cwd packages/scenario-runner typecheck
+          bun run --cwd packages/scenario-runner build
           bun run --cwd plugins/plugin-lifeops build:types
           bun run --cwd plugins/plugin-training build:types
 
