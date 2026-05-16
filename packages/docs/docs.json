@@ -5,13 +5,16 @@
   "homepage": "index",
   "colors": {
     "primary": "#0B35F1",
-    "light": "#0B35F1",
+    "light": "#FF5800",
     "dark": "#0B35F1"
+  },
+  "fonts": {
+    "family": "Poppins"
   },
   "favicon": "/favicon.svg",
   "logo": {
-    "light": "/logo/light.png",
-    "dark": "/logo/dark.png"
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
   },
   "navbar": {
     "links": [
