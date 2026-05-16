@@ -162,6 +162,7 @@ jobs:
           bun run --cwd packages/core build
           bun run --cwd packages/shared build
           bun run --cwd packages/vault build
+          bun run --cwd packages/cloud-sdk build
           bun run --cwd packages/app-core build:dist
 
       - name: Prepare Android platform
