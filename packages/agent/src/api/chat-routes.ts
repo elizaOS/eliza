@@ -379,9 +379,64 @@ const NO_PROVIDER_CHAT_MESSAGE =
   "or pick Eliza Cloud from the runtime picker.";
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
+type SyntheticChatFailureKind =
+  | ChatFailureKind
+  | "no_response"
+  | "transient_failure";
 
 function isExecutableFallbackAction(action: { name: string }): boolean {
   return !NON_EXECUTABLE_FALLBACK_ACTIONS.has(action.name);
+}
+
+function classifySyntheticChatFailureText(
+  text: string,
+): SyntheticChatFailureKind | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, " ");
+  if (!normalized) return null;
+  if (normalized === PROVIDER_ISSUE_CHAT_REPLY.toLowerCase()) {
+    return "provider_issue";
+  }
+  if (/\bprovider issue\b/.test(normalized)) {
+    return "provider_issue";
+  }
+  if (normalized === NO_RESPONSE_FALLBACK_REPLY.toLowerCase()) {
+    return "no_response";
+  }
+  if (normalized === INSUFFICIENT_CREDITS_CHAT_REPLY.toLowerCase()) {
+    return "insufficient_credits";
+  }
+  if (normalized === NO_PROVIDER_CHAT_MESSAGE.toLowerCase()) {
+    return "no_provider";
+  }
+  if (normalized === "something went wrong on my end. please try again.") {
+    return "transient_failure";
+  }
+  return null;
+}
+
+export function markSyntheticChatFailureContent<T extends Content>(
+  content: T,
+): T {
+  const text = extractCompatTextContent(content);
+  const failureKind =
+    typeof content.failureKind === "string"
+      ? (content.failureKind as SyntheticChatFailureKind)
+      : classifySyntheticChatFailureText(text);
+  if (!failureKind) return content;
+
+  const metadata = asRecord(content.metadata) ?? {};
+  return {
+    ...content,
+    metadata: {
+      ...metadata,
+      elizaSyntheticFailure: true,
+      chatFailureKind: failureKind,
+    },
+  } as T;
 }
 
 function normalizeActionName(value: unknown): string {
@@ -957,7 +1012,7 @@ export async function persistAssistantConversationMemory(
   channelType: ChannelType,
   dedupeSinceMs?: number,
 ): Promise<void> {
-  const persistedContent =
+  const persistedContent = markSyntheticChatFailureContent(
     typeof content === "string"
       ? ({
           text: content,
@@ -973,7 +1028,8 @@ export async function persistAssistantConversationMemory(
             typeof content.channelType === "string"
               ? content.channelType
               : channelType,
-        } satisfies Content);
+        } satisfies Content),
+  );
   const trimmed = persistedContent.text.trim();
   if (!trimmed) return;
 
@@ -1614,8 +1670,10 @@ export async function generateChatResponse(
                       (crypto.randomUUID() as UUID),
                     roomId: message.roomId,
                     entityId: runtime.agentId,
-                    content: ensureMessageMemoryContent(
-                      responseMessage.content ?? { text: "" },
+                    content: markSyntheticChatFailureContent(
+                      ensureMessageMemoryContent(
+                        responseMessage.content ?? { text: "" },
+                      ),
                     ),
                   });
                   memoryLike.metadata = message.metadata;

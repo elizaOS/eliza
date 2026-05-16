@@ -20,7 +20,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { KokoroTtsBackend } from "@elizaos/shared/local-inference";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalInferenceEngine } from "./engine";
 import {
 	AsrUnavailableError,
@@ -51,6 +51,14 @@ import {
 	VOICE_PRESET_VERSION_V1,
 	writeVoicePresetFile,
 } from "./voice/voice-preset-format";
+
+const ffiState = vi.hoisted(() => ({
+	loadElizaInferenceFfi: vi.fn(),
+}));
+
+vi.mock("./voice/ffi-bindings", () => ({
+	loadElizaInferenceFfi: ffiState.loadElizaInferenceFfi,
+}));
 
 /**
  * TTS backend whose synthesis only completes when `release()` is
@@ -283,6 +291,8 @@ describe("LocalInferenceEngine voice surface", () => {
 
 	beforeEach(() => {
 		bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-voice-bundle-"));
+		ffiState.loadElizaInferenceFfi.mockReset();
+		ffiState.loadElizaInferenceFfi.mockReturnValue(fakeFfi([]));
 	});
 
 	afterEach(() => {
@@ -376,6 +386,7 @@ describe("LocalInferenceEngine voice surface", () => {
 			const bridge = await engine.ensureActiveBundleVoiceReady();
 			expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
 			expect(bridge.bundlePath()).not.toBe(bundleRoot);
+			expect(ffiState.loadElizaInferenceFfi).not.toHaveBeenCalled();
 			await engine.stopVoice();
 		} finally {
 			rmSync(kokoroRoot, { recursive: true, force: true });
@@ -398,6 +409,8 @@ describe("LocalInferenceEngine voice surface", () => {
 		try {
 			writeLegacySamanthaPlaceholder(bundleRoot);
 			writeOmniVoiceBundleMarkers(bundleRoot);
+			mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+			writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
 			writeKokoroModelRoot(path.join(bundleRoot, "tts", "kokoro"));
 			process.env.ELIZA_KOKORO_MODEL_DIR = path.join(
 				tmpdir(),
@@ -422,7 +435,8 @@ describe("LocalInferenceEngine voice surface", () => {
 
 			const bridge = await engine.ensureActiveBundleVoiceReady();
 			expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
-			expect(bridge.bundlePath()).not.toBe(bundleRoot);
+			expect(bridge.bundlePath()).toBe(bundleRoot);
+			expect(ffiState.loadElizaInferenceFfi).toHaveBeenCalledTimes(1);
 			await engine.stopVoice();
 		} finally {
 			if (previousModelDir === undefined) {
@@ -436,6 +450,50 @@ describe("LocalInferenceEngine voice surface", () => {
 				process.env.ELIZA_TTS_BACKEND = previousBackend;
 			}
 		}
+	});
+
+	it("uses fused batch ASR directly when Kokoro overrides only TTS", async () => {
+		writePresetBundle(bundleRoot);
+		writeOmniVoiceBundleMarkers(bundleRoot);
+		mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+		writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
+
+		const calls: string[] = [];
+		const asrTranscribe = vi.fn(
+			(args: Parameters<ElizaInferenceFfi["asrTranscribe"]>[0]) => {
+				calls.push(`asr:${args.pcm.length}:${args.sampleRateHz}`);
+				return " hello local ";
+			},
+		);
+		ffiState.loadElizaInferenceFfi.mockReturnValue({
+			...fakeFfi(calls),
+			asrTranscribe,
+		});
+
+		const engine = new LocalInferenceEngine();
+		const bridge = engine.startVoice({
+			bundleRoot,
+			useFfiBackend: true,
+			ttsBackendOverride: new CountingBackend(),
+		});
+		await engine.armVoice();
+
+		const transcript = await engine.transcribePcm({
+			pcm: new Float32Array([0.1, 0.2]),
+			sampleRate: 8000,
+		});
+
+		expect(transcript).toBe("hello local");
+		expect(bridge.bundlePath()).toBe(bundleRoot);
+		expect(asrTranscribe).toHaveBeenCalledOnce();
+		expect(asrTranscribe.mock.calls[0]?.[0].sampleRateHz).toBe(16_000);
+		expect(asrTranscribe.mock.calls[0]?.[0].pcm).toHaveLength(4);
+		expect(calls).toEqual([
+			"acquire:tts",
+			"acquire:asr",
+			"asr:4:16000",
+		]);
+		await engine.stopVoice();
 	});
 
 	it("seeds the phrase cache from the speaker preset bundle", async () => {
@@ -1352,6 +1410,8 @@ describe("LocalInferenceEngine.startVoiceSession", () => {
 
 	beforeEach(() => {
 		bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-voice-session-"));
+		ffiState.loadElizaInferenceFfi.mockReset();
+		ffiState.loadElizaInferenceFfi.mockReturnValue(fakeFfi([]));
 	});
 
 	afterEach(() => {

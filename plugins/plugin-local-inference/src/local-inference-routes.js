@@ -31,6 +31,7 @@ import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
 } from "./services/active-model.js";
+import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
 let activeModelState = { modelId: null, loadedAt: null, status: "idle" };
 export function getLocalInferenceActiveModelId() {
@@ -1105,6 +1106,7 @@ export async function handleLocalInferenceRoutes(req, res) {
 				status: "ready",
 			};
 			sendJson(res, activeModelState);
+			void prewarmLocalVoiceStackForModel(installed.id);
 		} catch (error) {
 			activeModelState = {
 				modelId: installed.id,

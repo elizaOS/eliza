@@ -6,7 +6,8 @@
  *     the stream grows (no sentence-boundary wait — lower time-to-first-audio).
  *  2. Browser SpeechSynthesis — fallback when ElevenLabs isn't configured.
  *
- * STT: Web Speech API (SpeechRecognition) for user voice input.
+ * STT: local-inference ASR on local desktop, then native TalkMode or browser
+ * SpeechRecognition fallback.
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -39,6 +40,11 @@ import {
   ttsDebugTextPreview,
 } from "../utils/tts-debug";
 import { hasConfiguredApiKey } from "../voice";
+import {
+  isLocalAsrCaptureSupported,
+  type LocalAsrRecorder,
+  startLocalAsrRecorder,
+} from "../voice/local-asr-capture";
 import {
   collapseWhitespace,
   nextIdleMouthOpen,
@@ -108,8 +114,33 @@ export type {
 // ── Shared mutable state ─────────────────────────────────────────────
 
 let sharedAudioCtx: AudioContext | null = null;
+const AUDIO_CONTEXT_RESUME_TIMEOUT_MS = 1200;
+const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
 
 // ── Internal helpers ─────────────────────────────────────────────────
+
+async function resumeAudioContextForPlayback(
+  ctx: AudioContext,
+  timeoutMs = AUDIO_CONTEXT_RESUME_TIMEOUT_MS,
+): Promise<boolean> {
+  if (ctx.state !== "suspended") return true;
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const resumed = await Promise.race([
+      ctx.resume().then(
+        () => true,
+        () => false,
+      ),
+      new Promise<boolean>((resolve) => {
+        timeoutId = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+    return resumed && ctx.state !== "suspended";
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
@@ -131,6 +162,10 @@ function shouldAutoRestartBrowserRecognition(): boolean {
     return false;
   }
   return true;
+}
+
+function shouldUseLocalInferenceAsr(config: VoiceConfig | null): boolean {
+  return config?.asr?.provider === "local-inference";
 }
 
 const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
@@ -164,6 +199,8 @@ export const __voiceChatInternals = {
   isWindowsElectrobunRenderer,
   shouldPreferNativeTalkMode,
   shouldAutoRestartBrowserRecognition,
+  shouldUseLocalInferenceAsr,
+  resumeAudioContextForPlayback,
   splitFirstSentence,
   remainderAfter,
   queueableSpeechPrefix,
@@ -192,7 +229,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   // Refs — stable across renders, read from animation loop & callbacks
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const sttBackendRef = useRef<"browser" | "talkmode" | null>(null);
+  const localAsrRecorderRef = useRef<LocalAsrRecorder | null>(null);
+  const sttBackendRef = useRef<
+    "browser" | "local-inference" | "talkmode" | null
+  >(null);
   const talkModeHandlesRef = useRef<PluginListenerHandle[]>([]);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -356,6 +396,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
     const syncVoiceSupport = async () => {
       const browserSpeechSupported = !!getSpeechRecognitionCtor();
+      const localAsrSupported =
+        shouldUseLocalInferenceAsr(voiceConfigRef.current) &&
+        isLocalAsrCaptureSupported();
+      if (localAsrSupported) {
+        if (!cancelled) {
+          setSupported(true);
+        }
+        return;
+      }
       if (!shouldPreferNativeTalkMode()) {
         if (!cancelled) {
           setSupported(browserSpeechSupported);
@@ -385,7 +434,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [effectiveVoiceConfig?.asr?.provider]);
 
   // ── Mouth animation loop ──────────────────────────────────────────
 
@@ -533,6 +582,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     transcriptBufferRef.current = "";
     latestTranscriptTurnRef.current = null;
     recognitionRef.current = null;
+    localAsrRecorderRef.current = null;
     sttBackendRef.current = null;
     enabledRef.current = false;
     listeningModeRef.current = "idle";
@@ -598,6 +648,63 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     );
     talkModeHandlesRef.current = [transcriptHandle, errorHandle, stateHandle];
   }, [applyTranscriptUpdate, resetListeningState]);
+
+  const transcribeLocalInferenceAudio = useCallback(
+    async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
+      const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/wav",
+          Accept: "application/json",
+        },
+        body: audio,
+        signal,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(
+          `Local inference ASR ${res.status}: ${body.slice(0, 200)}`,
+        );
+      }
+
+      const body = (await res.json().catch(() => null)) as {
+        text?: unknown;
+      } | null;
+      const text = typeof body?.text === "string" ? body.text.trim() : "";
+      if (!text) {
+        throw new Error("Local inference ASR returned an empty transcript");
+      }
+      return text;
+    },
+    [],
+  );
+
+  const startLocalInferenceRecognition = useCallback(
+    async (mode: Exclude<VoiceCaptureMode, "idle">) => {
+      if (!shouldUseLocalInferenceAsr(voiceConfigRef.current)) {
+        return false;
+      }
+      if (!isLocalAsrCaptureSupported()) {
+        return false;
+      }
+
+      try {
+        const recorder = await startLocalAsrRecorder();
+        localAsrRecorderRef.current = recorder;
+        sttBackendRef.current = "local-inference";
+        enabledRef.current = true;
+        listeningModeRef.current = mode;
+        setSupported(true);
+        setCaptureMode(mode);
+        setIsListening(true);
+        return true;
+      } catch {
+        localAsrRecorderRef.current = null;
+        return false;
+      }
+    },
+    [],
+  );
 
   const startBrowserRecognition = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle">) => {
@@ -771,6 +878,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         interruptSpeechRef.current();
       }
 
+      const localStarted = await startLocalInferenceRecognition(mode);
+      if (localStarted) {
+        return;
+      }
+
       if (shouldPreferNativeTalkMode()) {
         const started = await startTalkModeRecognition(mode);
         if (started) {
@@ -780,7 +892,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
       startBrowserRecognition(mode);
     },
-    [startBrowserRecognition, startTalkModeRecognition],
+    [
+      startBrowserRecognition,
+      startLocalInferenceRecognition,
+      startTalkModeRecognition,
+    ],
   );
 
   const stopListening = useCallback(
@@ -800,6 +916,27 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         await new Promise((resolve) =>
           window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
         );
+      } else if (sttBackendRef.current === "local-inference") {
+        const recorder = localAsrRecorderRef.current;
+        localAsrRecorderRef.current = null;
+        if (recorder) {
+          try {
+            const audio = await recorder.stop();
+            const transcript = await transcribeLocalInferenceAudio(audio);
+            applyTranscriptUpdate(transcript, true, {
+              mode:
+                normalizeActiveVoiceSessionMode(mode) ??
+                normalizeActiveVoiceSessionMode(listeningModeRef.current) ??
+                "compose",
+              source: "local-inference",
+              metadata: { source: "local-inference" },
+            });
+          } catch (error) {
+            ttsDebug("asr:local-inference:error", {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
       } else {
         recognitionRef.current?.stop();
         await new Promise((resolve) =>
@@ -809,7 +946,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
       finalizeRecognition(submit);
     },
-    [finalizeRecognition],
+    [applyTranscriptUpdate, finalizeRecognition, transcribeLocalInferenceAudio],
   );
 
   const toggleListening = useCallback(() => {
@@ -885,13 +1022,16 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {
-        try {
-          await ctx.resume();
-        } catch {
-          // Force a fresh context if resume fails
-          ctx.close().catch(() => {});
-          ctx = new AudioContext();
-          sharedAudioCtx = ctx;
+        const resumed = await resumeAudioContextForPlayback(ctx);
+        if (!resumed) {
+          ttsDebug("play:audio-context-blocked", {
+            provider: "elevenlabs",
+            state: ctx.state,
+          });
+          throw new DOMException(
+            "Audio playback is blocked until a user gesture unlocks the audio context",
+            "NotAllowedError",
+          );
         }
       }
 
@@ -1161,12 +1301,16 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {
-        try {
-          await ctx.resume();
-        } catch {
-          ctx.close().catch(() => {});
-          ctx = new AudioContext();
-          sharedAudioCtx = ctx;
+        const resumed = await resumeAudioContextForPlayback(ctx);
+        if (!resumed) {
+          ttsDebug("play:audio-context-blocked", {
+            provider: "local-inference",
+            state: ctx.state,
+          });
+          throw new DOMException(
+            "Audio playback is blocked until a user gesture unlocks the audio context",
+            "NotAllowedError",
+          );
         }
       }
 
@@ -1188,6 +1332,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       if (!audioBytes) {
         const controller = new AbortController();
         activeFetchAbortRef.current = controller;
+        const timeoutId = setTimeout(() => {
+          controller.abort(
+            new DOMException("Local inference TTS timed out", "TimeoutError"),
+          );
+        }, LOCAL_INFERENCE_TTS_TIMEOUT_MS);
         let res: Response;
         try {
           res = await fetchWithCsrf(resolveApiUrl("/api/tts/local-inference"), {
@@ -1200,6 +1349,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             signal: controller.signal,
           });
         } finally {
+          clearTimeout(timeoutId);
           if (activeFetchAbortRef.current === controller) {
             activeFetchAbortRef.current = null;
           }
@@ -1511,6 +1661,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     const workerGeneration = generationRef.current;
 
     void (async () => {
+      let workerError: unknown = null;
       try {
         while (queueRef.current.length > 0) {
           if (workerGeneration !== generationRef.current) break;
@@ -1553,7 +1704,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               }
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
-              throw error;
+              workerError = error;
+              queueRef.current = [];
+              ttsDebug("useVoiceChat:local-inference-failed", {
+                err:
+                  error instanceof Error
+                    ? `${error.name}: ${error.message.slice(0, 200)}`
+                    : String(error).slice(0, 200),
+              });
+              break;
             }
           }
 
@@ -1585,7 +1744,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               });
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
-              throw error;
+              workerError = error;
+              queueRef.current = [];
+              break;
             }
           } else {
             usingAudioAnalysisRef.current = false;
@@ -1602,10 +1763,25 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
           await speakBrowser(task.text, task, workerGeneration);
         }
+      } catch (error) {
+        workerError = error;
+        queueRef.current = [];
+        ttsDebug("processQueue:error", {
+          err:
+            error instanceof Error
+              ? `${error.name}: ${error.message.slice(0, 200)}`
+              : String(error).slice(0, 200),
+        });
       } finally {
         queueWorkerRunningRef.current = false;
       }
       if (workerGeneration !== generationRef.current) return;
+      if (workerError) {
+        usingAudioAnalysisRef.current = false;
+        setUsingAudioAnalysis(false);
+        setIsSpeaking(false);
+        return;
+      }
       if (queueRef.current.length > 0) {
         processQueue();
         return;

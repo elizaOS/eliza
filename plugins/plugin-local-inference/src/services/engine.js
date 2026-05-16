@@ -44,6 +44,8 @@ import {
 } from "./voice/embedding";
 import { embeddingServerForRoute } from "./voice/embedding-server";
 import {
+	createKokoroSpeakerPreset,
+	createKokoroTtsBackend,
 	EngineVoiceBridge,
 	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
@@ -548,6 +550,7 @@ export class LocalInferenceEngine {
 	 * a hard error.
 	 */
 	voiceBridge = null;
+	voiceReadyPromise = null;
 	/**
 	 * The general onload/offload coordinator (W10 / J5). One registry per
 	 * engine: text + voice both ref-count their shared resources against it,
@@ -1119,6 +1122,15 @@ export class LocalInferenceEngine {
 	 * need custom sinks or test backends.
 	 */
 	async ensureActiveBundleVoiceReady() {
+		if (this.voiceReadyPromise) return this.voiceReadyPromise;
+		this.voiceReadyPromise = this.ensureActiveBundleVoiceReadyOnce();
+		try {
+			return await this.voiceReadyPromise;
+		} finally {
+			this.voiceReadyPromise = null;
+		}
+	}
+	async ensureActiveBundleVoiceReadyOnce() {
 		let bridge = this.voiceBridge;
 		if (!bridge) {
 			const bundle = this.activeEliza1Bundle;
@@ -1171,9 +1183,10 @@ export class LocalInferenceEngine {
 								`[voice] Falling back to bundled Kokoro voice ${kokoro.defaultVoiceId} from ${kokoro.layout.root} because OmniVoice has only the placeholder Samantha preset.`,
 							);
 							bridge = this.startVoice({
-								bundleRoot: "",
-								useFfiBackend: false,
-								kokoroOnly: kokoro,
+								bundleRoot: bundle.root,
+								useFfiBackend: true,
+								speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
+								ttsBackendOverride: createKokoroTtsBackend(kokoro),
 							});
 						} else if (mode !== "omnivoice") {
 							throw new VoiceStartupError(

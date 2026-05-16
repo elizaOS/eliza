@@ -1720,6 +1720,28 @@ export async function handleConversationRoutes(
             { err: getErrorMessage(err) },
             "Chat generation failed with no streamed text",
           );
+          const alreadyPersistedVisibleAssistantTurn =
+            await hasRecentVisibleAssistantMemorySince(
+              runtime,
+              conv.roomId,
+              turnStartedAt,
+            );
+          if (alreadyPersistedVisibleAssistantTurn) {
+            logger.warn(
+              {
+                err: getErrorMessage(err),
+                conversationId: conv.id,
+                roomId: conv.roomId,
+              },
+              "Chat generation failed after an assistant reply was already persisted — suppressing synthetic fallback",
+            );
+            writeSseJson(res, {
+              type: "done",
+              fullText: "",
+              agentName: state.agentName,
+            });
+            return;
+          }
           const providerIssueReply = getChatFailureReply(err, state.logBuffer);
           const failureKind = classifyChatFailure(err, state.logBuffer);
           try {

@@ -28,6 +28,71 @@ const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
 	"[/tool output]",
 	"[sub-agent:",
 ];
+const SYNTHETIC_ASSISTANT_FAILURE_TEXTS = new Set([
+	"sorry, i'm having a provider issue",
+	"something went wrong on my end. please try again.",
+	"i don't have a reply for that — try rephrasing?",
+	"i don't have a reply for that - try rephrasing?",
+]);
+const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
+	"provider_issue",
+	"local_inference",
+	"no_provider",
+	"insufficient_credits",
+	"no_response",
+	"transient_failure",
+]);
+
+function asObjectRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function hasSyntheticFailureMetadata(record: Record<string, unknown> | null) {
+	if (!record) return false;
+	if (
+		record.elizaSyntheticFailure === true ||
+		record.syntheticChatFailure === true
+	) {
+		return true;
+	}
+	const failureKind =
+		typeof record.failureKind === "string"
+			? record.failureKind
+			: typeof record.chatFailureKind === "string"
+				? record.chatFailureKind
+				: "";
+	return SYNTHETIC_ASSISTANT_FAILURE_KINDS.has(failureKind);
+}
+
+function isSyntheticAssistantFailureMessage(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+
+	const content = asObjectRecord(memory.content);
+	if (
+		hasSyntheticFailureMetadata(content) ||
+		hasSyntheticFailureMetadata(asObjectRecord(content?.metadata)) ||
+		hasSyntheticFailureMetadata(asObjectRecord(memory.metadata))
+	) {
+		return true;
+	}
+
+	const normalized = normalizeDialogueText(memory)
+		.toLowerCase()
+		.replace(/[’]/g, "'")
+		.replace(/\s+/g, " ");
+	if (!normalized) return false;
+	if (SYNTHETIC_ASSISTANT_FAILURE_TEXTS.has(normalized)) return true;
+
+	return (
+		/\bprovider issue\b/.test(normalized) ||
+		/^something went wrong on my end\b/.test(normalized)
+	);
+}
 
 function isInternalBridgeMessage(memory: Memory): boolean {
 	const source =
@@ -336,6 +401,7 @@ export const recentMessagesProvider: Provider = {
 					(msg) =>
 						!(msg.content && msg.content.type === "action_result") &&
 						!isInternalBridgeMessage(msg) &&
+						!isSyntheticAssistantFailureMessage(msg, runtime.agentId) &&
 						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
 						!isLeakedAssistantPathDump(msg, runtime.agentId),
 				)
