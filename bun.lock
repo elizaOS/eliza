@@ -73,6 +73,7 @@
         "tsx": "^4.21.0",
         "turbo": "^2.7.4",
         "typescript": "^6.0.3",
+        "vite": "8.0.13",
         "vitest": "^4.0.17",
       },
     },
@@ -269,6 +270,7 @@
         "@elizaos/ui": "workspace:*",
         "@elizaos/vault": "workspace:*",
         "@node-rs/argon2": "^2.0.2",
+        "@upstash/redis": "^1.37.0",
         "chalk": "^5.3.0",
         "commander": "^14.0.0",
         "dotenv": "^17.2.3",
@@ -2138,6 +2140,20 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
+        "@elizaos/core": "workspace:*",
+        "@types/bun": "^1.3.9",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
+    "plugins/plugin-anthropic-proxy": {
+      "name": "@elizaos/plugin-anthropic-proxy",
+      "version": "0.2.0",
+      "devDependencies": {
         "@elizaos/core": "workspace:*",
         "@types/bun": "^1.3.9",
         "@types/node": "^25.0.3",
@@ -4713,6 +4729,8 @@
     "@elizaos/plugin-agent-skills": ["@elizaos/plugin-agent-skills@workspace:plugins/plugin-agent-skills"],
 
     "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@workspace:plugins/plugin-anthropic"],
+
+    "@elizaos/plugin-anthropic-proxy": ["@elizaos/plugin-anthropic-proxy@workspace:plugins/plugin-anthropic-proxy"],
 
     "@elizaos/plugin-aosp-local-inference": ["@elizaos/plugin-aosp-local-inference@workspace:plugins/plugin-aosp-local-inference"],
 
