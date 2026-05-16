@@ -1831,7 +1831,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // ── Public speak APIs ─────────────────────────────────────────────
 
   const speak = useCallback(
-    (text: string, speakOptions?: { append?: boolean }) => {
+    (
+      text: string,
+      speakOptions?: {
+        append?: boolean;
+        telemetry?: VoiceAssistantSpeechTelemetry;
+      },
+    ) => {
       if (assistantTtsDebounceRef.current != null) {
         clearTimeout(assistantTtsDebounceRef.current);
         assistantTtsDebounceRef.current = null;
@@ -1841,6 +1847,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         text,
         append: Boolean(speakOptions?.append),
         segment: "full",
+        telemetry: speakOptions?.telemetry,
       });
     },
     [enqueueSpeech],
@@ -1923,7 +1930,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           latestSpeakable: "",
           finalQueued: false,
           replacePlaybackOnFirstClip: queueOptions?.replace !== false,
-          telemetry: queueOptions?.telemetry,
+          telemetry: { messageId, ...queueOptions?.telemetry },
         };
       } else if (queueOptions?.telemetry) {
         current.telemetry = {

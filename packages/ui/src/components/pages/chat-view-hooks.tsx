@@ -414,6 +414,13 @@ export function useChatVoiceController(options: {
 
   const handleVoicePlaybackStart = useCallback(
     (event: VoicePlaybackStartEvent) => {
+      if (event.messageId) {
+        rememberCompanionSpeech(
+          activeConversationId,
+          event.messageId,
+          event.text,
+        );
+      }
       ttsDebug("chat:playback-start", {
         provider: event.provider,
         segment: event.segment,
@@ -465,7 +472,7 @@ export function useChatVoiceController(options: {
             : (prev?.assistantStreamToVoiceStartMs ?? null),
       }));
     },
-    [],
+    [activeConversationId],
   );
 
   const cloudVoiceAvailable = useMemo(() => {
@@ -511,8 +518,9 @@ export function useChatVoiceController(options: {
     voiceUnlockedGeneration,
   } = voice;
 
-  // After the user gesture unlocks audio, clear progressive TTS dedupe state so
-  // auto-speak can queue the greeting again (ElevenLabs was likely skipped once).
+  // After the user gesture unlocks audio, clear only the progressive TTS dedupe
+  // state so auto-speak can retry. Do not stop speaking here: this effect runs
+  // from the same click that may have just queued Play Greeting / Play Message.
   const prevVoiceUnlockGenRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (prevVoiceUnlockGenRef.current === null) {
@@ -521,8 +529,8 @@ export function useChatVoiceController(options: {
     }
     if (prevVoiceUnlockGenRef.current === voiceUnlockedGeneration) return;
     prevVoiceUnlockGenRef.current = voiceUnlockedGeneration;
-    stopSpeaking();
-  }, [voiceUnlockedGeneration, stopSpeaking]);
+    companionBootstrapAutoSpeakRef.current = null;
+  }, [voiceUnlockedGeneration]);
 
   const beginVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
@@ -557,10 +565,9 @@ export function useChatVoiceController(options: {
     (messageId: string, text: string) => {
       if (!text.trim()) return;
       suppressedAssistantSpeechRef.current = { messageId, text };
-      rememberCompanionSpeech(activeConversationId, messageId, text);
-      speak(text);
+      speak(text, { telemetry: { messageId } });
     },
-    [activeConversationId, speak],
+    [speak],
   );
 
   const handleEditMessage = useCallback(
@@ -743,7 +750,6 @@ export function useChatVoiceController(options: {
       replace: replacePlayback,
       telemetry,
     });
-    rememberCompanionSpeech(activeConversationId, messageId, text);
     suppressedAssistantSpeechRef.current = null;
     companionBootstrapAutoSpeakRef.current = {
       tick,
