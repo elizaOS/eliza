@@ -96,12 +96,12 @@ type DispatchRoute = (args: {
 	runtime: IAgentRuntime;
 	method: string;
 	path: string;
-	headers: Headers;
-	query: URLSearchParams;
+	headers: Record<string, string>;
+	query: Record<string, string | string[]>;
 	body: unknown;
 	inProcess: true;
 	isAuthorized: () => true;
-}) => Promise<Response>;
+}) => Promise<BufferedHttpResponse | null | undefined>;
 
 type AgentModule = {
 	bootElizaRuntime: () => Promise<IAgentRuntime>;

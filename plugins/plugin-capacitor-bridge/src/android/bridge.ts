@@ -232,7 +232,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
 			"../mobile-device-bridge-bootstrap.ts"
 		);
-		await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+		await ensureMobileDeviceBridgeInferenceHandlers(runtime as never);
 	}
 
 	// Keep the process alive indefinitely — ElizaAgentService will SIGTERM
