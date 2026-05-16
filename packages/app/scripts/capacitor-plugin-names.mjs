@@ -40,3 +40,6 @@ export const CAPACITOR_PLUGIN_NAMES = fs
 export function resolveNativePluginDir(name) {
   return path.join(NATIVE_PLUGINS_ROOT, `${NATIVE_PLUGIN_PREFIX}${name}`);
 }
+
+// Alias kept for callers that adopted the shorter name.
+export const nativePluginDir = resolveNativePluginDir;
