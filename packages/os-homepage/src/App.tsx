@@ -239,7 +239,7 @@ function Header({ solid = false }: { solid?: boolean }) {
       </a>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
-          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
+          src={`${BRAND_PATHS.logos}/${solid ? LOGO_FILES.osWhite : LOGO_FILES.osBlack}`}
           alt="elizaOS"
           draggable={false}
         />

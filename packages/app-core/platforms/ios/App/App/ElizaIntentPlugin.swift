@@ -230,7 +230,7 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
     /// `ProcessInfo` / `utsname` stdlib calls — no third-party deps.
     ///
     /// Shape matches the JS `DeviceCapabilities` interface
-    /// (`eliza/packages/native-plugins/llama/src/device-bridge-client.ts`).
+    /// (`eliza/plugins/plugin-native-llama/src/device-bridge-client.ts`).
     @objc public func getDeviceCapabilities(_ call: CAPPluginCall) {
         let info = ProcessInfo.processInfo
         let device = UIDevice.current

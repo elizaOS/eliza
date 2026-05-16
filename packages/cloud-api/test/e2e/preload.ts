@@ -12,7 +12,6 @@
  * Run with: bun test --preload <this-file> apps/api/test/e2e
  */
 
-import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
@@ -22,6 +21,7 @@ import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
+import { privateKeyToAccount } from "viem/accounts";
 
 for (const envPath of [
   resolve("../../.env"),
@@ -33,6 +33,9 @@ for (const envPath of [
 
 const DEFAULT_TEST_SECRETS_MASTER_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const PLAYWRIGHT_E2E_WALLET_ADDRESS = privateKeyToAccount(
+  "0x1111111111111111111111111111111111111111111111111111111111111111",
+).address;
 
 if (!process.env.SECRETS_MASTER_KEY) {
   process.env.SECRETS_MASTER_KEY = DEFAULT_TEST_SECRETS_MASTER_KEY;
@@ -94,7 +97,7 @@ async function ensureTestUser({
           organization_id: organization.id,
           role,
           steward_user_id: stewardUserId,
-          wallet_address: `0x${randomUUID().replaceAll("-", "").slice(0, 40)}`,
+          wallet_address: PLAYWRIGHT_E2E_WALLET_ADDRESS,
           wallet_chain_type: "evm",
           wallet_verified: true,
         })
@@ -115,6 +118,9 @@ async function ensureTestUser({
       email,
       organization_id: organization.id,
       role,
+      wallet_address: PLAYWRIGHT_E2E_WALLET_ADDRESS,
+      wallet_chain_type: "evm",
+      wallet_verified: true,
       is_active: true,
       updated_at: new Date(),
     })

@@ -32,7 +32,10 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const pluginsRoot = path.join(repoRoot, "plugins");
-const nodeModulesRoot = path.join(repoRoot, "node_modules");
+const nodeModulesRoots = [
+  path.join(repoRoot, "node_modules"),
+  path.join(repoRoot, "packages", "app", "node_modules"),
+];
 
 if (!existsSync(pluginsRoot)) {
   process.exit(0);
@@ -62,54 +65,57 @@ for (const dirName of readdirSync(pluginsRoot)) {
     continue;
   }
 
-  const targetDir = path.join(nodeModulesRoot, ...pkgName.split("/"));
-  const parentDir = path.dirname(targetDir);
-  // Relative path from the symlink location to the workspace dir, so the
-  // symlink keeps working if node_modules is moved with the repo (it
-  // shouldn't be, but a stable target is more portable than an absolute
-  // /Users/... path).
-  const relativeTarget = path.relative(parentDir, pkgDir);
+  for (const nodeModulesRoot of nodeModulesRoots) {
+    if (!existsSync(nodeModulesRoot)) continue;
+    const targetDir = path.join(nodeModulesRoot, ...pkgName.split("/"));
+    const parentDir = path.dirname(targetDir);
+    // Relative path from the symlink location to the workspace dir, so the
+    // symlink keeps working if node_modules is moved with the repo (it
+    // shouldn't be, but a stable target is more portable than an absolute
+    // /Users/... path).
+    const relativeTarget = path.relative(parentDir, pkgDir);
 
-  // Already a correct symlink? Leave it.
-  let needLink = true;
-  if (existsSync(targetDir)) {
-    try {
-      const stat = lstatSync(targetDir);
-      if (stat.isSymbolicLink()) {
-        const currentTarget = realpathSync(targetDir);
-        const expectedTarget = realpathSync(pkgDir);
-        if (currentTarget === expectedTarget) {
-          needLink = false;
-          alreadyOk += 1;
-        } else {
-          rmSync(targetDir, { recursive: true, force: true });
-        }
-      } else {
-        // Real directory at the same path — bun installed something
-        // unrelated under the same name. Leave it; printing here would
-        // surface a real conflict.
-        skipped += 1;
-        continue;
-      }
-    } catch {
-      // Stat failure — fall through to (re)create.
+    // Already a correct symlink? Leave it.
+    let needLink = true;
+    if (existsSync(targetDir)) {
       try {
-        rmSync(targetDir, { recursive: true, force: true });
-      } catch {}
+        const stat = lstatSync(targetDir);
+        if (stat.isSymbolicLink()) {
+          const currentTarget = realpathSync(targetDir);
+          const expectedTarget = realpathSync(pkgDir);
+          if (currentTarget === expectedTarget) {
+            needLink = false;
+            alreadyOk += 1;
+          } else {
+            rmSync(targetDir, { recursive: true, force: true });
+          }
+        } else {
+          // Real directory at the same path — bun installed something
+          // unrelated under the same name. Leave it; printing here would
+          // surface a real conflict.
+          skipped += 1;
+          continue;
+        }
+      } catch {
+        // Stat failure — fall through to (re)create.
+        try {
+          rmSync(targetDir, { recursive: true, force: true });
+        } catch {}
+      }
     }
-  }
 
-  if (needLink) {
-    mkdirSync(parentDir, { recursive: true });
-    try {
-      symlinkSync(relativeTarget, targetDir, "dir");
-      linked += 1;
-    } catch (err) {
-      console.error(
-        `[ensure-native-plugins-linked] failed to link ${pkgName} → ${pkgDir}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+    if (needLink) {
+      mkdirSync(parentDir, { recursive: true });
+      try {
+        symlinkSync(relativeTarget, targetDir, "dir");
+        linked += 1;
+      } catch (err) {
+        console.error(
+          `[ensure-native-plugins-linked] failed to link ${pkgName} → ${pkgDir}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
   }
 }

@@ -181,7 +181,6 @@
     "packages/examples/*/*/*",
     "packages/app-core/platforms/*",
     "packages/app-core/deploy/cloud-agent-template",
-    "packages/os/linux/agent",
     "packages/cloud-services/*",
     "plugins/*"
   ],

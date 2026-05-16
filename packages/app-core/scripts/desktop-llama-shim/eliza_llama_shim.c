@@ -189,7 +189,7 @@ void eliza_llama_dflash_stats(void* ctx, int32_t* out) {
 
 // ─── token-tree sampler ──────────────────────────────────────────────────────
 //
-// Wire format (mirrors packages/native-plugins/llama/src/token-tree-codec.ts):
+// Wire format (mirrors plugins/plugin-native-llama/src/token-tree-codec.ts):
 //   u32  magic       = 0x544B5452 ("RTKT", little-endian)
 //   u32  version     = 1
 //   u32  path_len    (utf-8 byte count; not consumed by the sampler itself,

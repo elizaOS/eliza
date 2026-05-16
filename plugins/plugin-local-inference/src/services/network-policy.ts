@@ -115,7 +115,7 @@ export const HEADLESS_PROBE: NetworkProbe = {
  * Reads connection type from `@capacitor/network` and metered status from
  * a native shim exposed at `(window as any).ElizaNetworkPolicy` (provided
  * by the `@elizaos/capacitor-network-policy` Capacitor plugin at
- * `packages/native-plugins/network-policy/`). Importing the plugin from
+ * `plugins/plugin-native-network-policy/`). Importing the plugin from
  * the app bootstrap installs `globalThis.ElizaNetworkPolicy` via the
  * plugin's `installNetworkPolicyGlobal()` side-effect, so the runtime
  * picks it up automatically. When the shim is missing the metered flag
@@ -145,7 +145,7 @@ export function capacitorAndroidProbe(): NetworkProbe {
  * Capacitor iOS probe (R5 §4.2). Connection type from `@capacitor/network`
  * plus iOS `NWPathMonitor.currentPath.isExpensive` via the
  * `@elizaos/capacitor-network-policy` Capacitor plugin at
- * `packages/native-plugins/network-policy/`. The plugin exposes
+ * `plugins/plugin-native-network-policy/`. The plugin exposes
  * `(window as any).ElizaNetworkPolicy.getPathHints()`; falls back to
  * `metered: null` when the bridge is missing.
  */
