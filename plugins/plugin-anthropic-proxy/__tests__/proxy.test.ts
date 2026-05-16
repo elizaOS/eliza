@@ -197,17 +197,27 @@ describe("AnthropicProxyService modes", () => {
 	it("does not poison ANTHROPIC_BASE_URL when inline startup falls back to off", async () => {
 		const previous = process.env.ANTHROPIC_BASE_URL;
 		process.env.ANTHROPIC_BASE_URL = "auto";
+		const blocker = createServer((_req, res) => {
+			res.writeHead(204);
+			res.end();
+		});
+		await new Promise<void>((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+		const port = (blocker.address() as { port: number }).port;
+		cleanup.push(
+			() => new Promise<void>((resolve) => blocker.close(() => resolve())),
+		);
 		try {
 			const service = await withEnv(
 				{
 					CLAUDE_MAX_PROXY_MODE: "inline",
-					CLAUDE_CODE_OAUTH_TOKEN: undefined,
-					CLAUDE_MAX_CREDENTIALS_PATH: "/nonexistent/path/that/does/not/exist.json",
+					CLAUDE_MAX_PROXY_PORT: String(port),
+					CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
 				},
 				() => AnthropicProxyService.start({} as unknown as never),
 			);
 			cleanup.push(() => service.stop());
 			expect(service.getEffectiveMode()).toBe("off");
+			expect(service.getStartError()).toMatch(/EADDRINUSE/);
 			expect(process.env.ANTHROPIC_BASE_URL).toBe("auto");
 		} finally {
 			if (previous === undefined) delete process.env.ANTHROPIC_BASE_URL;

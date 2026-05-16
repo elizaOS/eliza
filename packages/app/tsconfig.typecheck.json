@@ -3,6 +3,13 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
+      "@elizaos/app-core/agent-bridge": [
+        "../app-core/dist/agent-bridge.d.ts"
+      ],
+      "@elizaos/app-core/onboarding/onboarding-config": [
+        "../app-core/dist/onboarding/onboarding-config.d.ts"
+      ],
       "@elizaos/app-*": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/app-*/register": ["./src/types/app-plugin-modules.d.ts"],
       "@elizaos/plugin-elizamaker": [

@@ -8033,12 +8033,36 @@ export const allActionsSpec = {
 				},
 				{
 					name: "metadata",
-					description: "Additional metadata for action=create.",
+					description:
+						"Additional metadata for action=create / action=spawn_agent.",
 					required: false,
 					schema: {
 						type: "object",
 					},
-					descriptionCompressed: "Additional metadata for action=create.",
+					descriptionCompressed:
+						"Additional metadata for action=create/action=spawn_agent.",
+				},
+				{
+					name: "taskRoomId",
+					description:
+						"Optional task-owner swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional task-owner swarm room id for action=create/action=spawn_agent.",
+				},
+				{
+					name: "worktreeRoomId",
+					description:
+						"Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional worktree coordination swarm room id for action=create/action=spawn_agent.",
 				},
 			],
 			descriptionCompressed:
@@ -8190,6 +8214,8 @@ export const allActionsSpec = {
 							maxRetries: "example",
 							onVerificationFail: "retry",
 							metadata: "example",
+							taskRoomId: "example",
+							worktreeRoomId: "example",
 						},
 					},
 				},

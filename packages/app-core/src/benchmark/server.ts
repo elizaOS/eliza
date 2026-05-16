@@ -781,8 +781,8 @@ export async function startBenchmarkServer() {
     : CORE_PLUGINS;
   const shouldLoadTaskAgentPlugin = Boolean(
     process.env.BENCHMARK_TASK_AGENT?.trim() ||
-    process.env.ELIZA_ACP_DEFAULT_AGENT?.trim() ||
-    process.env.ELIZA_DEFAULT_AGENT_TYPE?.trim(),
+      process.env.ELIZA_ACP_DEFAULT_AGENT?.trim() ||
+      process.env.ELIZA_DEFAULT_AGENT_TYPE?.trim(),
   );
   const corePluginsToLoad = shouldLoadTaskAgentPlugin
     ? Array.from(
