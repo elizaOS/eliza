@@ -9,13 +9,13 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizalabs/eliza-1-training``  (the broader SFT corpus — refreshed
-    only if ``data/final/{train,val,test}.jsonl`` exists locally)
-  - dataset ``elizalabs/eliza-1-evals``     (the eval/bench results, kernel-verify
-    evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
+  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
+    only if ``data/final/{train,val,test}.jsonl`` exists locally; evals,
+    kernel-verify evidence, gates, throughput snapshots, and pipeline source
+    also live in this repo under ``evals/`` and ``pipeline/``)
 
 Gated (this script reports the blocker, never bypasses it):
-  - the active device bundles ``elizalabs/eliza-1/bundles/<tier>`` — gated on the
+  - the active device bundles ``elizaos/eliza-1/bundles/<tier>`` — gated on the
     fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
     base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus
@@ -52,7 +52,7 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-ORG = "elizalabs"
+ORG = "elizaos"
 MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
@@ -158,23 +158,23 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
             )
         )
 
-    # 2) eliza-1-evals — the eval/bench results + kernel-verify evidence + gates.
-    #    Assemble a staging tree from the bench/eval JSON that exists in-checkout.
+    # 2) eval/bench results + kernel-verify evidence + gates. These are part of
+    #    the single eliza-1-training dataset repo under evals/.
     eval_sources: list[tuple[Path, str]] = []
     gates_yaml = TRAINING_ROOT / "benchmarks" / "eliza1_gates.yaml"
     gates_py = TRAINING_ROOT / "benchmarks" / "eliza1_gates.py"
     models_status = TRAINING_ROOT / "benchmarks" / "MODELS_STATUS.md"
     for src, dst in (
-        (gates_yaml, "gates/eliza1_gates.yaml"),
-        (gates_py, "gates/eliza1_gates.py"),
-        (models_status, "gates/MODELS_STATUS-training.md"),
+        (gates_yaml, "evals/gates/eliza1_gates.yaml"),
+        (gates_py, "evals/gates/eliza1_gates.py"),
+        (models_status, "evals/gates/MODELS_STATUS-training.md"),
     ):
         if src.exists():
             eval_sources.append((src, dst))
     if not eval_sources:
         out.append(
             Outcome(
-                f"{ORG}/eliza-1-evals",
+                f"{ORG}/eliza-1-training",
                 "dataset",
                 "skipped",
                 "no eval/gates artifacts found locally (repo already populated on HF)",
@@ -183,7 +183,7 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
     elif dry_run:
         out.append(
             Outcome(
-                f"{ORG}/eliza-1-evals",
+                f"{ORG}/eliza-1-training",
                 "dataset",
                 "pending",
                 f"would upload {len(eval_sources)} gate/eval files (dry-run)",
@@ -193,7 +193,7 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
         from huggingface_hub import CommitOperationAdd
 
         api.create_repo(
-            repo_id=f"{ORG}/eliza-1-evals",
+            repo_id=f"{ORG}/eliza-1-training",
             repo_type="dataset",
             private=False,
             exist_ok=True,
@@ -203,17 +203,17 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
             for src, dst in eval_sources
         ]
         api.create_commit(
-            repo_id=f"{ORG}/eliza-1-evals",
+            repo_id=f"{ORG}/eliza-1-training",
             repo_type="dataset",
             operations=ops,
             commit_message="Refresh eliza1_gates.yaml/.py thresholds + training MODELS_STATUS",
         )
         out.append(
             Outcome(
-                f"{ORG}/eliza-1-evals",
+                f"{ORG}/eliza-1-training",
                 "dataset",
                 "published",
-                f"https://huggingface.co/datasets/{ORG}/eliza-1-evals "
+                f"https://huggingface.co/datasets/{ORG}/eliza-1-training "
                 f"({len(eval_sources)} gate/eval files refreshed)",
             )
         )

@@ -29,7 +29,7 @@ A streaming HF parquet input is also supported via ``--hf-stream`` for
 auditing the published dataset without re-downloading:
 
     uv run python scripts/classify_records_by_phase.py \
-        --hf-stream elizalabs/eliza-1-training --split train \
+        --hf-stream elizaos/eliza-1-training --split train \
         --sample 100000 --out previews/
 """
 

@@ -5,7 +5,7 @@ Coverage:
 - the bundle dry-run wrapper turns a red orchestrator verdict into a "pending"
   outcome (never "published"), and a missing staged bundle into "pending" too
 - the active-tier SFT-weights status reports "pending" when there is no final/ checkpoint
-- the "publishable today" datasets are surfaced (eliza-1-training, eliza-1-evals)
+- the single publishable dataset is surfaced (eliza-1-training)
 """
 
 from __future__ import annotations
@@ -29,8 +29,8 @@ def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
     assert rc == 0
     out = capsys.readouterr().out
     assert "Eliza-1 HF publish summary" in out
-    assert "elizalabs/eliza-1-training" in out
-    assert "elizalabs/eliza-1-evals" in out
+    assert "elizaos/eliza-1-training" in out
+    assert "elizaos/eliza-1-training" in out
     # Nothing pushed in dry-run.
     assert "nothing was pushed" in out
 

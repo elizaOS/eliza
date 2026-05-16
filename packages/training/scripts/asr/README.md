@@ -51,7 +51,7 @@ python3 packages/training/scripts/asr/finetune_asr.py \
     --data-dir packages/training/data/voice/same \
     --real-train \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \
-    --hf-repo elizalabs/eliza-1-asr-same-v01 \
+    --hf-repo elizaos/eliza-1-asr-same-v01 \
     --hf-push-if beats-baseline \
     --operator-sign-off
 ```

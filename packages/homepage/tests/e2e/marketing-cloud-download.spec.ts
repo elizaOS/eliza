@@ -56,14 +56,14 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   );
 
   await expect(
-    page.getByRole("link", { name: /^Download the app$/ }).first(),
+    page.getByRole("link", { name: /^Download$/ }).first(),
   ).toHaveAttribute("href", "#download");
   await expectCloudPath(
     page.getByRole("link", { name: /^Launch Eliza$/ }).first(),
   );
 
   await page
-    .getByRole("link", { name: /^Download the app$/ })
+    .getByRole("link", { name: /^Download$/ })
     .first()
     .click();
   await expect(page).toHaveURL(/#download$/);
@@ -97,13 +97,13 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(page.locator('[aria-disabled="true"]')).toHaveCount(0);
 
   await expect(
-    page.getByRole("heading", { name: /^Install the OS\.$/ }),
+    page.getByRole("heading", { name: /^Build on ElizaOS\.$/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /^ElizaOS$/ }).first(),
   ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/?$/);
   await expect(
-    page.getByRole("heading", { name: /^Run in cloud\.$/ }),
+    page.getByRole("heading", { name: /^Run it in the cloud\.$/ }),
   ).toBeVisible();
   await expectCloudPath(
     page.getByRole("link", { name: /^Launch Eliza$/ }).last(),

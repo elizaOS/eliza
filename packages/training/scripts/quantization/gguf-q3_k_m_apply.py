@@ -12,7 +12,7 @@ Wraps llama.cpp's two-stage GGUF conversion:
 
 Output is written to ``<output>/eliza-1-<size>-Q3_K_M.gguf``, matching the
 sibling K-quant levels (``-Q4_K_M``, ``-Q5_K_M``, ``-Q6_K``) so the publish
-layer can upload them under the single ``elizalabs/eliza-1`` bundle repo.
+layer can upload them under the single ``elizaos/eliza-1`` bundle repo.
 
 The converter + binary come from the in-repo llama.cpp fork submodule at
 ``packages/inference/llama.cpp`` — the single canonical llama.cpp checkout
@@ -151,7 +151,7 @@ def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
 def _resolve_output_basename(model_id_or_path: str, output_dir: Path) -> str:
     """Pick the gguf filename from the model dir or HF repo id.
 
-    For elizalabs/eliza-1 bundles we want the publishable filename
+    For elizaos/eliza-1 bundles we want the publishable filename
     ``eliza-1-<size>-Q3_K_M.gguf``. Falls back to <last-path-segment>.
     """
     last = model_id_or_path.rstrip("/").split("/")[-1]

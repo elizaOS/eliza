@@ -131,7 +131,7 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
     manifest = _build_manifest(
         args=args,
         student_base=DEFAULT_STUDENT_BASE["2b"],
-        target_model_id="elizalabs/eliza-1/bundles/2b",
+        target_model_id="elizaos/eliza-1/bundles/2b",
         target_checkpoint=Path("checkpoints/eliza-1-2b/final"),
         target_gguf=Path("out/eliza-1-2b/text/eliza-1-2b-128k.gguf"),
         target_sha256="0" * 64,
@@ -143,7 +143,7 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
         synthetic=False,
     )
 
-    assert manifest["targetModelId"] == "elizalabs/eliza-1/bundles/2b"
+    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/2b"
     assert manifest["targetTokenizerSha256"] == parity["target"]["sha256"]
     assert manifest["studentTokenizerSha256"] == parity["student"]["sha256"]
     assert manifest["tokenizerParity"]["matches"] is True
@@ -163,7 +163,7 @@ def test_0_8b_has_a_tiny_drafter_recipe() -> None:
     assert "0_8b" in ACTIVE_TIERS
     assert "0_8b" in TRAINING_SUPPORTED_TIERS
     assert DEFAULT_STUDENT_BASE["0_8b"] == "Qwen/Qwen3.5-0.8B-Base"
-    assert DEFAULT_TARGET_MODEL["0_8b"] == "elizalabs/eliza-1/bundles/0_8b"
+    assert DEFAULT_TARGET_MODEL["0_8b"] == "elizaos/eliza-1/bundles/0_8b"
     assert ACCEPTANCE_GATE["0_8b"] == 0.40
 
 

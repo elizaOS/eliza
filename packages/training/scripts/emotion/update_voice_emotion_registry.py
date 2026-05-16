@@ -114,7 +114,7 @@ def _replace_voice_emotion_entry(
         '    id: "voice-emotion",\n'
         '    version: "0.1.0",\n'
         '    publishedToHfAt: "2026-05-14T00:00:00Z",\n'
-        '    hfRepo: "elizalabs/eliza-1",\n'
+        '    hfRepo: "elizaos/eliza-1",\n'
         f'    hfRevision: "{hf_revision}",\n'
         "    ggufAssets: [\n"
         "      {\n"
@@ -149,7 +149,7 @@ def _append_changelog(
         "\n"
         "### 0.1.0 — 2026-05-14 (Wav2Small distilled, real artifact)\n"
         "\n"
-        f"- **HF repo:** `elizalabs/eliza-1` @ rev `{hf_revision}`.\n"
+        f"- **HF repo:** `elizaos/eliza-1` @ rev `{hf_revision}`.\n"
         "- **What changed:** First real distilled `wav2small-msp-dim-int8.onnx`\n"
         f"  uploaded — sha256 `{sha256}`, size {size_bytes:,} bytes.\n"
         "  Distilled from `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`\n"

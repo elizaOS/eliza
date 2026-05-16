@@ -29,8 +29,11 @@ test.beforeEach(async ({ context, browserName }) => {
   // resolve outside of an isolated test context. Firefox/WebKit ignore the
   // permission name — keep this scoped to chromium so it doesn't throw.
   if (browserName === "chromium") {
+    const origin = new URL(
+      process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:4173",
+    ).origin;
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-      origin: "http://127.0.0.1:4173",
+      origin,
     });
   }
 });
@@ -39,10 +42,10 @@ test("api-key: create → copy → clipboard contains the plaintext key", async 
   page,
 }) => {
   // 1. Listing call — empty list so the page renders the "create" CTA.
-  await page.route("**/api/api-keys", (route) => {
+  await page.route("**/api/v1/api-keys", (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({
-        json: { success: true, keys: [], summary: { total: 0, active: 0 } },
+        json: { keys: [] },
       });
     }
     if (route.request().method() === "POST") {
@@ -54,12 +57,14 @@ test("api-key: create → copy → clipboard contains the plaintext key", async 
             id: "key_1",
             name: KEY_NAME,
             description: "",
-            preview: "eliza_test_pk_abc1…",
+            key_prefix: "eliza_test_pk_abc1",
+            is_active: true,
             permissions: ["agents:read"],
+            usage_count: 0,
             rate_limit: 100,
             created_at: new Date().toISOString(),
             last_used_at: null,
-            disabled: false,
+            expires_at: null,
           },
         },
       });
@@ -68,13 +73,17 @@ test("api-key: create → copy → clipboard contains the plaintext key", async 
   });
 
   // Catch-all for any other /api/** call the page makes during render.
-  await page.route("**/api/**", (route) => {
-    if (route.request().url().includes("/api/api-keys"))
-      return route.fallback();
-    return route.fulfill({
-      json: { success: true, data: [], items: [], balance: 100 },
-    });
-  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    (route) => {
+      if (new URL(route.request().url()).pathname === "/api/v1/api-keys") {
+        return route.fallback();
+      }
+      return route.fulfill({
+        json: { success: true, data: [], items: [], balance: 100 },
+      });
+    },
+  );
 
   await page.goto("/dashboard/api-keys");
   await expect(page).not.toHaveURL(/\/login/);

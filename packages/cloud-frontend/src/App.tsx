@@ -534,14 +534,15 @@ function DashboardRedirect({ to }: { to: string }) {
 
 function ElizaOsCheckoutRedirect() {
   const location = useLocation();
+  const target = `https://elizaos.ai/checkout${location.search}`;
 
   useEffect(() => {
-    window.location.replace(`https://elizaos.ai/checkout${location.search}`);
-  }, [location.search]);
+    window.location.replace(target);
+  }, [target]);
 
   return (
-    <main className="min-h-screen bg-black p-8 font-poppins text-white">
-      Redirecting to elizaOS checkout.
+    <main className="min-h-screen bg-black p-8 text-white">
+      <a href={target}>Continue to elizaOS checkout</a>
     </main>
   );
 }
@@ -553,6 +554,7 @@ function App() {
     <Routes>
       <Route element={<RootLayout />}>
         <Route index element={<SuspenseRoute component={Home} />} />
+        <Route path="os" element={<SuspenseRoute component={Home} />} />
         <Route path="checkout" element={<ElizaOsCheckoutRedirect />} />
         <Route
           path="terms-of-service"
@@ -567,6 +569,7 @@ function App() {
           element={<SuspenseRoute component={SandboxProxy} />}
         />
         <Route path="bsc" element={<SuspenseRoute component={BscPromo} />} />
+        <Route path="blog" element={<SuspenseRoute component={Home} />} />
         <Route
           path="chat/:characterRef"
           element={<SuspenseRoute component={PublicChat} />}
@@ -647,7 +650,6 @@ function App() {
           path="docs/*"
           element={<SuspenseRoute component={DocsRouter} />}
         />
-
         {/*
          * Dashboard subtree. Suspense for the layout itself stays here, but
          * the inner per-page `<Outlet />` gets its own Suspense inside

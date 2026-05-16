@@ -6,6 +6,8 @@ import { type OsArtifact, OsDownloads } from "./components/OsDownloads";
 const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
 const checkoutBaseUrl = "https://elizaos.ai/checkout";
+const githubUrl = "https://github.com/elizaOS/eliza";
+const xUrl = "https://x.com/elizaos";
 const cloudApiUrl =
   import.meta.env.VITE_ELIZA_CLOUD_API_URL || "https://api.elizacloud.ai";
 const stewardApiUrl = `${cloudApiUrl.replace(/\/$/, "")}/steward`;
@@ -253,6 +255,8 @@ function Footer() {
       <nav aria-label="Community">
         <a href={appUrl}>App</a>
         <a href={cloudUrl}>Cloud</a>
+        <a href={githubUrl}>GitHub</a>
+        <a href={xUrl}>X</a>
       </nav>
     </footer>
   );
@@ -824,17 +828,13 @@ function HomePage() {
     <div className="os-shell">
       <Header />
       <main>
-        <section className="band band-blue hero-os">
-          <div className="band-inner hero-os-inner">
-            <img
-              src="/brand/logos/logo_white_bluebg.svg"
-              alt=""
-              aria-hidden="true"
-              className="hero-mark"
-              draggable={false}
-            />
+        <CloudHero>
+          <div className="hero-os-inner">
             <h1>The agentic operating system.</h1>
             <p className="hero-copy">For devices that run themselves.</p>
+            <p className="hero-copy">
+              Local first. Open source. Runs on your phone.
+            </p>
             <div className="hero-actions">
               <a href="#download" className="button">
                 Download
@@ -846,7 +846,7 @@ function HomePage() {
               </a>
             </div>
           </div>
-        </section>
+        </CloudHero>
 
         <section id="download" className="band band-white">
           <div className="band-inner split-band">

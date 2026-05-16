@@ -209,12 +209,12 @@ the device's RAM budget at activation time.
 
 ### Bundle layout (binding)
 
-All tiers ship in a single HuggingFace mono-repo `elizalabs/eliza-1`, with
+All tiers ship in a single HuggingFace mono-repo `elizaos/eliza-1`, with
 each tier living under `bundles/<tier>/`. The manifest is the source of
 truth; never derive contents from filenames.
 
 ```
-elizalabs/eliza-1/
+elizaos/eliza-1/
   bundles/<tier>/
     eliza-1.manifest.json          # canonical schema, see §6
     text/
@@ -547,7 +547,7 @@ catalogs drift from it — generate them.
   required kernel is verified on every supported backend for that tier
   AND every eval has `passed: true`. The recommendation engine MUST
   refuse to surface a bundle with `defaultEligible: false` as a default.
-- HF-search results from outside `elizalabs/eliza-1` MUST never set
+- HF-search results from outside `elizaos/eliza-1` MUST never set
   `defaultEligible: true`. They are user-installed customs only.
 - The runtime MUST validate the manifest against `kernels.required`
   before activating the bundle. A capability mismatch is a hard error.

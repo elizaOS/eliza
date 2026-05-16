@@ -158,7 +158,7 @@ host_arch_target() {
 
 if [[ -n "${CUDA_REMOTE:-}" ]]; then
     REMOTE_DELEGATED="true"
-    REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza}/packages/inference/verify"
+    REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza/plugins/plugin-local-inference/native/verify}"
     REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/eliza-llama-cpp}"
     REMOTE_REPORT_PATH="${CUDA_REMOTE_REPORT:-}"
     if [[ -n "$REPORT_PATH" && -z "$REMOTE_REPORT_PATH" ]]; then

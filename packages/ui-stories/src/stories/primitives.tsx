@@ -1,7 +1,8 @@
-import { useState } from "react";
-import type { StoryDefinition } from "../Story.tsx";
-
-import { Alert, AlertDescription, AlertTitle } from "@ui-src/components/ui/alert.tsx";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@ui-src/components/ui/alert.tsx";
 import { Badge } from "@ui-src/components/ui/badge.tsx";
 import { Button } from "@ui-src/components/ui/button.tsx";
 import {
@@ -37,7 +38,12 @@ import { Skeleton } from "@ui-src/components/ui/skeleton.tsx";
 import { Spinner } from "@ui-src/components/ui/spinner.tsx";
 import { StatusBadge, StatusDot } from "@ui-src/components/ui/status-badge.tsx";
 import { Switch } from "@ui-src/components/ui/switch.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ui-src/components/ui/tabs.tsx";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@ui-src/components/ui/tabs.tsx";
 import { Textarea } from "@ui-src/components/ui/textarea.tsx";
 import {
   Tooltip,
@@ -46,6 +52,8 @@ import {
   TooltipTrigger,
 } from "@ui-src/components/ui/tooltip.tsx";
 import { Heading, Text } from "@ui-src/components/ui/typography.tsx";
+import { useState } from "react";
+import type { StoryDefinition } from "../Story.tsx";
 
 function ControlledSwitch() {
   const [on, setOn] = useState(true);
@@ -65,7 +73,8 @@ function ControlledCheckbox() {
 export const primitiveStories: StoryDefinition[] = [
   {
     name: "Alert",
-    importPath: 'import { Alert, AlertTitle, AlertDescription } from "@elizaos/ui/components/ui/alert"',
+    importPath:
+      'import { Alert, AlertTitle, AlertDescription } from "@elizaos/ui/components/ui/alert"',
     render: () => (
       <div style={{ display: "grid", gap: 12, width: "100%" }}>
         <Alert>
@@ -74,7 +83,9 @@ export const primitiveStories: StoryDefinition[] = [
         </Alert>
         <Alert variant="destructive">
           <AlertTitle>Inference failed</AlertTitle>
-          <AlertDescription>Model `eliza-1` is not downloaded.</AlertDescription>
+          <AlertDescription>
+            Model `eliza-1` is not downloaded.
+          </AlertDescription>
         </Alert>
       </div>
     ),
@@ -110,12 +121,15 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Card",
-    importPath: 'import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@elizaos/ui/components/ui/card"',
+    importPath:
+      'import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@elizaos/ui/components/ui/card"',
     render: () => (
       <Card style={{ maxWidth: 360 }}>
         <CardHeader>
           <CardTitle>Eliza Cloud</CardTitle>
-          <CardDescription>Managed inference, billing, and deploys.</CardDescription>
+          <CardDescription>
+            Managed inference, billing, and deploys.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Text>Sign in once. Use it everywhere.</Text>
@@ -138,7 +152,8 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Dialog",
-    importPath: 'import { Dialog, DialogTrigger, DialogContent, ... } from "@elizaos/ui/components/ui/dialog"',
+    importPath:
+      'import { Dialog, DialogTrigger, DialogContent, ... } from "@elizaos/ui/components/ui/dialog"',
     render: () => (
       <Dialog>
         <DialogTrigger asChild>
@@ -147,7 +162,9 @@ export const primitiveStories: StoryDefinition[] = [
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm deploy</DialogTitle>
-            <DialogDescription>This will publish your agent to Eliza Cloud.</DialogDescription>
+            <DialogDescription>
+              This will publish your agent to Eliza Cloud.
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost">Cancel</Button>
@@ -181,7 +198,8 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Select",
-    importPath: 'import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@elizaos/ui/components/ui/select"',
+    importPath:
+      'import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@elizaos/ui/components/ui/select"',
     render: () => (
       <Select defaultValue="eliza-1">
         <SelectTrigger style={{ width: 200 }}>
@@ -197,7 +215,8 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Separator",
-    importPath: 'import { Separator } from "@elizaos/ui/components/ui/separator"',
+    importPath:
+      'import { Separator } from "@elizaos/ui/components/ui/separator"',
     render: () => (
       <div style={{ width: 320 }}>
         <Text>Above</Text>
@@ -229,13 +248,14 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "StatusBadge + StatusDot",
-    importPath: 'import { StatusBadge, StatusDot } from "@elizaos/ui/components/ui/status-badge"',
+    importPath:
+      'import { StatusBadge, StatusDot } from "@elizaos/ui/components/ui/status-badge"',
     render: () => (
       <>
-        <StatusBadge tone="success">Connected</StatusBadge>
-        <StatusBadge tone="warning">Pending</StatusBadge>
-        <StatusBadge tone="danger">Offline</StatusBadge>
-        <StatusBadge tone="info">Cloud</StatusBadge>
+        <StatusBadge tone="success" label="Connected" />
+        <StatusBadge tone="warning" label="Pending" />
+        <StatusBadge tone="danger" label="Offline" />
+        <StatusBadge tone="info" label="Cloud" />
         <StatusDot tone="success" />
         <StatusDot tone="danger" />
       </>
@@ -253,7 +273,8 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Tabs",
-    importPath: 'import { Tabs, TabsList, TabsTrigger, TabsContent } from "@elizaos/ui/components/ui/tabs"',
+    importPath:
+      'import { Tabs, TabsList, TabsTrigger, TabsContent } from "@elizaos/ui/components/ui/tabs"',
     render: () => (
       <Tabs defaultValue="local" style={{ width: 360 }}>
         <TabsList>
@@ -280,7 +301,8 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Tooltip",
-    importPath: 'import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@elizaos/ui/components/ui/tooltip"',
+    importPath:
+      'import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@elizaos/ui/components/ui/tooltip"',
     render: () => (
       <TooltipProvider>
         <Tooltip>
@@ -294,7 +316,8 @@ export const primitiveStories: StoryDefinition[] = [
   },
   {
     name: "Typography (Heading + Text)",
-    importPath: 'import { Heading, Text } from "@elizaos/ui/components/ui/typography"',
+    importPath:
+      'import { Heading, Text } from "@elizaos/ui/components/ui/typography"',
     render: () => (
       <div style={{ display: "grid", gap: 6 }}>
         <Heading level="h1">Run elizaOS locally.</Heading>

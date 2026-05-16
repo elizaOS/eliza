@@ -5,7 +5,7 @@ Thin wrapper that dispatches to
 ``packages/training/scripts/publish/`` so all three publisher entry points
 (model, dataset, pipeline) sit together as the consolidated operator surface.
 
-The pipeline repo (``elizalabs/eliza-1-pipeline``) packages the training
+The pipeline repo (``elizaos/eliza-1-training``) packages the training
 ``scripts/`` tree so a fresh Vast.ai / Nebius box can ``hf download`` it,
 ``uv sync --extra train``, and run ``train_vast.sh`` end-to-end without a
 local source checkout.

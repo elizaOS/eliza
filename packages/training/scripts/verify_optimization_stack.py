@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument(
         "--bundle-dir",
         type=Path,
-        help="Staged Eliza-1 bundle dir (the dir uploaded under elizalabs/eliza-1/bundles/<tier>).",
+        help="Staged Eliza-1 bundle dir (the dir uploaded under elizaos/eliza-1/bundles/<tier>).",
     )
     ap.add_argument(
         "--json",

@@ -252,6 +252,8 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "@fontsource-variable/open-sans": "^5.2.7",
+        "@fontsource/poppins": "^5.2.7",
         "@pixiv/three-vrm": "^3.4.5",
         "llama-cpp-capacitor": "^0.1.5",
         "react": "^19.0.0",

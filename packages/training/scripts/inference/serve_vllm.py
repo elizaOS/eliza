@@ -43,7 +43,7 @@ Usage:
     ELIZA_VLLM_DFLASH=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key qwen3.5-4b \\
-        --dflash elizalabs/eliza-1-dflash-4b \\
+        --dflash elizaos/eliza-1-dflash-4b \\
         --port 8000
 
     # Print the assembled command without executing (audit / CI)
@@ -230,7 +230,7 @@ def _build_speculative_config(
     return None
 
 
-_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizalabs/eliza-1")
+_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizaos/eliza-1")
 
 
 def _is_hybrid_qwen(model_id: str) -> bool:

@@ -26,3 +26,11 @@ declare module "react-syntax-highlighter/dist/esm/styles/prism/index.js" {
   export const oneLight: SyntaxHighlighterStyle;
   export const vscDarkPlus: SyntaxHighlighterStyle;
 }
+
+declare module "react-syntax-highlighter/dist/esm/styles/prism" {
+  import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
+
+  export const oneDark: SyntaxHighlighterStyle;
+  export const oneLight: SyntaxHighlighterStyle;
+  export const vscDarkPlus: SyntaxHighlighterStyle;
+}

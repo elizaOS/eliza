@@ -1,10 +1,10 @@
 """Publish the eliza-1 training pipeline to HuggingFace Hub.
 
-This creates an HF *model* repo (HF has no separate "pipeline" repo type)
-that bundles the training scripts so a fresh Vast.ai box can:
+This publishes the training scripts into the canonical eliza-1 training
+dataset repo under ``pipeline/`` so a fresh Vast.ai box can:
 
     git clone <nothing — straight HF download>
-    hf download elizalabs/eliza-1-pipeline --local-dir /workspace/training
+    hf download elizaos/eliza-1-training pipeline --repo-type dataset --local-dir /workspace/training
     cd /workspace/training && uv sync --extra train
     bash scripts/train_vast.sh ...
 
@@ -17,10 +17,10 @@ and ``scripts/publish/publish_model.py``. Those wrappers forward here.
 Usage::
 
     uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizalabs/eliza-1-pipeline --dry-run
+        --repo-id elizaos/eliza-1-training --dry-run
 
     HF_TOKEN=hf_xxx uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizalabs/eliza-1-pipeline
+        --repo-id elizaos/eliza-1-training
 """
 
 from __future__ import annotations
@@ -154,9 +154,9 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Companion repos:\n"
         "\n"
-        "- `elizalabs/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
+        "- `elizaos/eliza-1-training` — SFT data: top-level `train/val/test.jsonl + manifest.json`, "
         "adversarial scam set under `scambench/`, and small Claude-teacher synthesis sets under `synthesized/`.\n"
-        "- `elizalabs/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
+        "- `elizaos/eliza-1` — single app-facing model repo; GGUF bundles live under `bundles/<tier>/`.\n"
         "\n"
         "## Vast.ai bootstrap\n"
         "\n"
@@ -166,7 +166,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "```bash\n"
         f"hf download {repo_id} --local-dir /workspace/training\n"
-        "hf download elizalabs/eliza-1-training --repo-type dataset \\\n"
+        "hf download elizaos/eliza-1-training --repo-type dataset \\\n"
         "    --local-dir /workspace/training/data/final\n"
         "cd /workspace/training\n"
         "uv sync --extra train\n"
@@ -231,7 +231,7 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
 
 def _remote_sha256(api, repo_id: str, path_in_repo: str) -> str | None:
     try:
-        info = api.repo_info(repo_id, repo_type="model", files_metadata=True)
+        info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
     except Exception:
         return None
     for sibling in getattr(info, "siblings", []) or []:
@@ -262,13 +262,13 @@ def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
     api = HfApi(token=hf_token())
 
     try:
-        api.repo_info(repo_id, repo_type="model")
+        api.repo_info(repo_id, repo_type="dataset")
         log.info("repo %s already exists", repo_id)
     except RepositoryNotFoundError:
         log.info("repo %s does not exist — creating (private=%s)", repo_id, not public)
         api.create_repo(
             repo_id=repo_id,
-            repo_type="model",
+            repo_type="dataset",
             private=not public,
             exist_ok=False,
         )
@@ -276,7 +276,7 @@ def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
     # Build remote sha index in one shot so we can skip unchanged LFS blobs.
     remote_shas: dict[str, str] = {}
     try:
-        info = api.repo_info(repo_id, repo_type="model", files_metadata=True)
+        info = api.repo_info(repo_id, repo_type="dataset", files_metadata=True)
         for sib in getattr(info, "siblings", []) or []:
             lfs = getattr(sib, "lfs", None)
             if not lfs:
@@ -291,13 +291,13 @@ def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
 
     operations: list[CommitOperationAdd] = [
         CommitOperationAdd(
-            path_in_repo="README.md",
+            path_in_repo="pipeline/README.md",
             path_or_fileobj=build_pipeline_card(repo_id).encode("utf-8"),
         )
     ]
     skipped = 0
     for f in files:
-        target = f.path_in_repo
+        target = f"pipeline/{f.path_in_repo}"
         if target in remote_shas:
             local_sha = _sha256_file(f.src)
             if remote_shas[target] == local_sha:
@@ -317,12 +317,12 @@ def publish(files: list[PipelineFile], repo_id: str, public: bool) -> int:
     )
     api.create_commit(
         repo_id=repo_id,
-        repo_type="model",
+        repo_type="dataset",
         operations=operations,
         commit_message=f"eliza-1-pipeline: publish {len(operations)} files",
     )
 
-    log.info("done. https://huggingface.co/%s", repo_id)
+    log.info("done. https://huggingface.co/datasets/%s/tree/main/pipeline", repo_id)
     return 0
 
 
@@ -331,7 +331,7 @@ def main() -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help="Destination HF model repo id (e.g. elizalabs/eliza-1-pipeline).",
+        help="Destination HF dataset repo id (e.g. elizaos/eliza-1-training).",
     )
     ap.add_argument(
         "--private",

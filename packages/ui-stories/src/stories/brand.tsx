@@ -1,10 +1,8 @@
-import { useState } from "react";
-import { Activity, Cloud, Cpu } from "lucide-react";
-
-import type { StoryDefinition } from "../Story.tsx";
-
 import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
-import { BrandCard, AgentCard } from "@ui-src/cloud-ui/components/brand/brand-card.tsx";
+import {
+  AgentCard,
+  BrandCard,
+} from "@ui-src/cloud-ui/components/brand/brand-card.tsx";
 import {
   BrandTabs,
   BrandTabsContent,
@@ -21,18 +19,26 @@ import { DashboardSection } from "@ui-src/cloud-ui/components/brand/dashboard-se
 import { DashboardStatCard } from "@ui-src/cloud-ui/components/brand/dashboard-stat-card.tsx";
 import { ElizaCloudLockup } from "@ui-src/cloud-ui/components/brand/eliza-cloud-lockup.tsx";
 import { ElizaLogo } from "@ui-src/cloud-ui/components/brand/eliza-logo.tsx";
+import { HUDContainer } from "@ui-src/cloud-ui/components/brand/hud-container.tsx";
 import {
-  KeyMetricsGrid,
   type KeyMetric,
+  KeyMetricsGrid,
 } from "@ui-src/cloud-ui/components/brand/key-metrics-grid.tsx";
+import { LockOnButton } from "@ui-src/cloud-ui/components/brand/lock-on-button.tsx";
 import { MiniStatCard } from "@ui-src/cloud-ui/components/brand/mini-stat-card.tsx";
-import { PromptCard, PromptCardGrid } from "@ui-src/cloud-ui/components/brand/prompt-card.tsx";
+import {
+  PromptCard,
+  PromptCardGrid,
+} from "@ui-src/cloud-ui/components/brand/prompt-card.tsx";
 import {
   SectionHeader,
   SectionLabel,
 } from "@ui-src/cloud-ui/components/brand/section-header.tsx";
+import { Activity, Cloud, Cpu, Zap } from "lucide-react";
+import { useState } from "react";
+import type { StoryDefinition } from "../Story.tsx";
 
-const sampleMetrics: KeyMetric[] = [
+const sampleMetrics = [
   {
     label: "Local inference",
     value: "1.2k tok/s",
@@ -55,7 +61,7 @@ const sampleMetrics: KeyMetric[] = [
     icon: Activity,
     accent: "emerald",
   },
-];
+] as unknown as KeyMetric[];
 
 const tabItems: TabItem[] = [
   { value: "local", label: "Local" },
@@ -66,9 +72,16 @@ const tabItems: TabItem[] = [
 function ResponsiveTabsExample({ id }: { id: string }) {
   const [value, setValue] = useState("local");
   return (
-    <BrandTabsResponsive id={id} tabs={tabItems} value={value} onValueChange={setValue}>
+    <BrandTabsResponsive
+      id={id}
+      tabs={tabItems}
+      value={value}
+      onValueChange={setValue}
+    >
       <BrandTabsContent value="local">Runs on this device.</BrandTabsContent>
-      <BrandTabsContent value="cloud">Routed through Eliza Cloud.</BrandTabsContent>
+      <BrandTabsContent value="cloud">
+        Routed through Eliza Cloud.
+      </BrandTabsContent>
       <BrandTabsContent value="mobile">iOS / Android agent.</BrandTabsContent>
     </BrandTabsResponsive>
   );
@@ -88,7 +101,8 @@ function SimpleTabsExample() {
 export const brandStories: StoryDefinition[] = [
   {
     name: "BrandButton",
-    importPath: 'import { BrandButton } from "@elizaos/ui/cloud-ui/components/brand/brand-button"',
+    importPath:
+      'import { BrandButton } from "@elizaos/ui/cloud-ui/components/brand/brand-button"',
     render: () => (
       <>
         <BrandButton>Run in Cloud</BrandButton>
@@ -105,11 +119,21 @@ export const brandStories: StoryDefinition[] = [
   },
   {
     name: "BrandCard",
-    importPath: 'import { BrandCard, AgentCard } from "@elizaos/ui/cloud-ui/components/brand/brand-card"',
+    importPath:
+      'import { BrandCard, AgentCard } from "@elizaos/ui/cloud-ui/components/brand/brand-card"',
     render: () => (
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr", width: "100%" }}>
+      <div
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: "1fr 1fr",
+          width: "100%",
+        }}
+      >
         <BrandCard hover>
-          <h4 style={{ color: "#fff", margin: 0, marginBottom: 8 }}>Local Inference</h4>
+          <h4 style={{ color: "#fff", margin: 0, marginBottom: 8 }}>
+            Local Inference
+          </h4>
           <p style={{ color: "rgba(255,255,255,.6)", margin: 0, fontSize: 13 }}>
             Connected.
           </p>
@@ -126,7 +150,8 @@ export const brandStories: StoryDefinition[] = [
   },
   {
     name: "BrandTabs",
-    importPath: 'import { BrandTabs, BrandTabsList, BrandTabsTrigger, BrandTabsContent } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs"',
+    importPath:
+      'import { BrandTabs, BrandTabsList, BrandTabsTrigger, BrandTabsContent } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs"',
     render: () => (
       <BrandTabs defaultValue="local" style={{ width: 360 }}>
         <BrandTabsList>
@@ -134,23 +159,28 @@ export const brandStories: StoryDefinition[] = [
           <BrandTabsTrigger value="cloud">Cloud</BrandTabsTrigger>
         </BrandTabsList>
         <BrandTabsContent value="local">Runs on this device.</BrandTabsContent>
-        <BrandTabsContent value="cloud">Routed through Eliza Cloud.</BrandTabsContent>
+        <BrandTabsContent value="cloud">
+          Routed through Eliza Cloud.
+        </BrandTabsContent>
       </BrandTabs>
     ),
   },
   {
     name: "SimpleBrandTabs",
-    importPath: 'import { SimpleBrandTabs } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs"',
+    importPath:
+      'import { SimpleBrandTabs } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs"',
     render: () => <SimpleTabsExample />,
   },
   {
     name: "BrandTabsResponsive",
-    importPath: 'import { BrandTabsResponsive } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs-responsive"',
+    importPath:
+      'import { BrandTabsResponsive } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs-responsive"',
     render: () => <ResponsiveTabsExample id="story-brand-tabs-responsive" />,
   },
   {
     name: "CornerBrackets",
-    importPath: 'import { CornerBrackets } from "@elizaos/ui/cloud-ui/components/brand/corner-brackets"',
+    importPath:
+      'import { CornerBrackets } from "@elizaos/ui/cloud-ui/components/brand/corner-brackets"',
     render: () => (
       <div
         style={{
@@ -167,7 +197,8 @@ export const brandStories: StoryDefinition[] = [
   },
   {
     name: "DashboardSection",
-    importPath: 'import { DashboardSection } from "@elizaos/ui/cloud-ui/components/brand/dashboard-section"',
+    importPath:
+      'import { DashboardSection } from "@elizaos/ui/cloud-ui/components/brand/dashboard-section"',
     render: () => (
       <DashboardSection
         label="Inference"
@@ -179,28 +210,54 @@ export const brandStories: StoryDefinition[] = [
   },
   {
     name: "DashboardStatCard",
-    importPath: 'import { DashboardStatCard } from "@elizaos/ui/cloud-ui/components/brand/dashboard-stat-card"',
+    importPath:
+      'import { DashboardStatCard } from "@elizaos/ui/cloud-ui/components/brand/dashboard-stat-card"',
     render: () => (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, width: "100%" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 12,
+          width: "100%",
+        }}
+      >
         <DashboardStatCard label="Status" value="Connected." accent="emerald" />
-        <DashboardStatCard label="Today" value="$0.42" accent="orange" helper="Cloud spend" />
+        <DashboardStatCard
+          label="Today"
+          value="$0.42"
+          accent="orange"
+          helper="Cloud spend"
+        />
         <DashboardStatCard label="Agents" value={3} accent="blue" />
       </div>
     ),
   },
   {
     name: "ElizaCloudLockup",
-    importPath: 'import { ElizaCloudLockup } from "@elizaos/ui/cloud-ui/components/brand/eliza-cloud-lockup"',
+    importPath:
+      'import { ElizaCloudLockup } from "@elizaos/ui/cloud-ui/components/brand/eliza-cloud-lockup"',
     render: () => <ElizaCloudLockup />,
   },
   {
     name: "ElizaLogo",
-    importPath: 'import { ElizaLogo } from "@elizaos/ui/cloud-ui/components/brand/eliza-logo"',
+    importPath:
+      'import { ElizaLogo } from "@elizaos/ui/cloud-ui/components/brand/eliza-logo"',
     render: () => <ElizaLogo />,
   },
   {
+    name: "HUDContainer",
+    importPath:
+      'import { HUDContainer } from "@elizaos/ui/cloud-ui/components/brand/hud-container"',
+    render: () => (
+      <HUDContainer className="p-6" cornerSize="md">
+        <p style={{ color: "#fff", margin: 0 }}>Install elizaOS</p>
+      </HUDContainer>
+    ),
+  },
+  {
     name: "KeyMetricsGrid",
-    importPath: 'import { KeyMetricsGrid } from "@elizaos/ui/cloud-ui/components/brand/key-metrics-grid"',
+    importPath:
+      'import { KeyMetricsGrid } from "@elizaos/ui/cloud-ui/components/brand/key-metrics-grid"',
     render: () => (
       <div style={{ width: "100%" }}>
         <KeyMetricsGrid metrics={sampleMetrics} columns={3} />
@@ -208,10 +265,35 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
-    name: "MiniStatCard",
-    importPath: 'import { MiniStatCard } from "@elizaos/ui/cloud-ui/components/brand/mini-stat-card"',
+    name: "LockOnButton",
+    importPath:
+      'import { LockOnButton } from "@elizaos/ui/cloud-ui/components/brand/lock-on-button"',
     render: () => (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+      <>
+        <LockOnButton variant="primary">Lock on</LockOnButton>
+        <LockOnButton variant="outline">Outline</LockOnButton>
+        <LockOnButton variant="ghost">Ghost</LockOnButton>
+        <LockOnButton variant="hud" icon={<Zap />}>
+          HUD
+        </LockOnButton>
+        <LockOnButton size="sm">Small</LockOnButton>
+        <LockOnButton size="lg">Large</LockOnButton>
+        <LockOnButton disabled>Disabled</LockOnButton>
+      </>
+    ),
+  },
+  {
+    name: "MiniStatCard",
+    importPath:
+      'import { MiniStatCard } from "@elizaos/ui/cloud-ui/components/brand/mini-stat-card"',
+    render: () => (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 12,
+        }}
+      >
         <MiniStatCard label="Tok/s" value="1.2k" />
         <MiniStatCard label="Models" value="4" color="text-[#FF5800]" />
         <MiniStatCard label="Agents" value="3" />
@@ -220,7 +302,8 @@ export const brandStories: StoryDefinition[] = [
   },
   {
     name: "PromptCard + PromptCardGrid",
-    importPath: 'import { PromptCard, PromptCardGrid } from "@elizaos/ui/cloud-ui/components/brand/prompt-card"',
+    importPath:
+      'import { PromptCard, PromptCardGrid } from "@elizaos/ui/cloud-ui/components/brand/prompt-card"',
     render: () => (
       <div style={{ width: "100%" }}>
         <PromptCardGrid
@@ -239,7 +322,8 @@ export const brandStories: StoryDefinition[] = [
   },
   {
     name: "SectionHeader + SectionLabel",
-    importPath: 'import { SectionHeader, SectionLabel } from "@elizaos/ui/cloud-ui/components/brand/section-header"',
+    importPath:
+      'import { SectionHeader, SectionLabel } from "@elizaos/ui/cloud-ui/components/brand/section-header"',
     render: () => (
       <div style={{ display: "grid", gap: 16, width: "100%" }}>
         <SectionLabel>Connected.</SectionLabel>

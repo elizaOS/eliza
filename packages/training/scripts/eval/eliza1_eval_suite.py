@@ -70,7 +70,7 @@ SCHEMA_VERSION = 1
 #
 # Source of truth: the eliza-1 training dataset's held-out test split at
 # ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` (also published as
-# ``elizalabs/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
+# ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
 # extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
 # uses that concatenation as the perplexity corpus.
 #

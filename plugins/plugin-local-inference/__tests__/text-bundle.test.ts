@@ -9,7 +9,7 @@
  *   - the bundle's drafter GGUF path is declared only on tiers with a
  *     distilled DFlash companion,
  *   - the HuggingFace resolve URL for the text and embedding components
- *     resolves to `elizalabs/eliza-1` and includes the expected
+ *     resolves to `elizaos/eliza-1` and includes the expected
  *     per-tier prefix.
  *
  * Why this matters: the publish pipeline stages a bundle per tier; if a
@@ -101,7 +101,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 				}
 			});
 
-			it("resolves the text component to a HuggingFace URL on elizalabs/eliza-1", () => {
+			it("resolves the text component to a HuggingFace URL on elizaos/eliza-1", () => {
 				const file = model?.sourceModel?.components.text?.file;
 				expect(file).toBeTruthy();
 				if (!model || !file) return;

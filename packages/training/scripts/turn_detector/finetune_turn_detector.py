@@ -47,7 +47,7 @@ DEFAULT_REPO_EN: Final[str] = "livekit/turn-detector"
 DEFAULT_REVISION_EN: Final[str] = "v1.2.2-en"
 DEFAULT_REVISION_INTL: Final[str] = "v0.4.1-intl"
 DEFAULT_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
-DEFAULT_ELIZA1_REPO: Final[str] = "elizalabs/eliza-1"
+DEFAULT_ELIZA1_REPO: Final[str] = "elizaos/eliza-1"
 
 # Supported teacher backends. `eliza-1-drafter` produces a GGUF LoRA
 # adapter the runtime layers onto the in-process drafter at voice

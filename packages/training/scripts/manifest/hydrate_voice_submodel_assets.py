@@ -138,7 +138,7 @@ ASSETS: Final[tuple[AssetSpec, ...]] = (
     AssetSpec(
         "vad",
         "silero-vad-v5.gguf",
-        "elizalabs/eliza-1",
+        "elizaos/eliza-1",
         "voice/vad/silero-vad-v5.gguf",
     ),
 )
