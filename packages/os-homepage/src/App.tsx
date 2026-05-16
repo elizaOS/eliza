@@ -213,13 +213,10 @@ function ProductVisual({ className }: { className: string }) {
 }
 
 function ProductCard({ product }: { product: (typeof products)[number] }) {
-  const { Icon } = product;
-
   return (
     <Card className="product-card" variant="flat">
       <ProductVisual className={product.className} />
       <div className="product-info">
-        <Icon aria-hidden="true" />
         <div>
           <h3>{product.name}</h3>
           <p>{product.status}</p>

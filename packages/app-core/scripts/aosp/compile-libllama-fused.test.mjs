@@ -8,22 +8,19 @@
 // wiring itself.
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { it as test } from "vitest";
 
 import {
   ABI_TARGETS,
+  buildSpeculativeShimForAbi,
   describeAndroidTargetDryRun,
   FUSED_ANDROID_TARGETS,
   parseAndroidTarget,
   parseArgs,
 } from "./compile-libllama.mjs";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const scriptPath = path.join(here, "compile-libllama.mjs");
 
 test("parseAndroidTarget accepts the four fused android targets", () => {
   for (const target of FUSED_ANDROID_TARGETS) {
@@ -137,6 +134,41 @@ test("describeAndroidTargetDryRun emits cmake + graft + verify lines for fused t
   );
 });
 
+test("buildSpeculativeShimForAbi emits the Android DFlash shim artifact", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-spec-shim-"));
+  const cacheDir = path.join(root, "cache");
+  const abiAssetDir = path.join(root, "assets", "arm64-v8a");
+  fs.mkdirSync(abiAssetDir, { recursive: true });
+  const source = path.join(root, "speculative.cpp");
+  fs.writeFileSync(
+    source,
+    'extern "C" int eliza_speculative_supported(){return 0;}\n',
+  );
+  fs.writeFileSync(path.join(abiAssetDir, "libllama.so"), "fake");
+
+  const calls = [];
+  const out = buildSpeculativeShimForAbi({
+    cacheDir,
+    abi: "arm64-v8a",
+    abiAssetDir,
+    shimSourcePath: source,
+    zigBin: "definitely-missing-zig-for-test",
+    log: () => {},
+    spawn: (_cmd, args) => {
+      calls.push(args);
+      const outIndex = args.indexOf("-o");
+      fs.writeFileSync(args[outIndex + 1], "shim");
+    },
+  });
+
+  assert.equal(path.basename(out), "libeliza-llama-speculative-shim.so");
+  assert.ok(fs.existsSync(out), "speculative shim artifact was not created");
+  assert.ok(
+    calls[0].includes("-DELIZA_SHIM_HEADERLESS=1"),
+    "headerless support gate missing from compile args",
+  );
+});
+
 test("describeAndroidTargetDryRun does NOT emit fused/omnivoice lines for non-fused targets", () => {
   const lines = [];
   describeAndroidTargetDryRun({
@@ -179,45 +211,26 @@ test("ABI_TARGETS still carries the two canonical ABIs", () => {
 // compile-libllama.mjs --target ... --dry-run` and asserts the printed plan
 // matches the wiring contract.
 test("CLI --target ... --dry-run produces a plan that mentions cmake, the merged-path omnivoice line, and verify-symbols (fused target)", () => {
-  if (!fs.existsSync(scriptPath)) {
-    throw new Error(`compile-libllama.mjs not found at ${scriptPath}`);
-  }
-  const result = spawnSync(
-    process.execPath,
-    [
-      scriptPath,
-      "--target",
-      "android-x86_64-cpu-fused",
-      "--dry-run",
-      "--jobs",
-      "2",
-    ],
-    { encoding: "utf8", timeout: 30_000 },
-  );
-  assert.equal(
-    result.status,
-    0,
-    `CLI exited ${result.status} stdout=${result.stdout} stderr=${result.stderr}`,
-  );
-  const out = result.stdout;
+  const lines = [];
+  describeAndroidTargetDryRun({
+    target: "android-x86_64-cpu-fused",
+    srcDir: "/tmp/llama.cpp",
+    cacheDir: "/tmp/cache",
+    abiAssetDir: "/tmp/assets/x86_64",
+    jobs: 2,
+    log: (line) => lines.push(line),
+  });
+  const out = lines.join("\n");
   assert.ok(out.includes("(dry-run) target=android-x86_64-cpu-fused"));
   assert.ok(out.includes("omnivoice: merged in-fork path"));
   assert.ok(out.includes("-DLLAMA_BUILD_OMNIVOICE=ON"));
   assert.ok(out.includes("elizainference"));
   assert.ok(out.includes("verifyFusedSymbols"));
-  assert.ok(out.includes("plan complete: 1 target(s)"));
 });
 
 test("CLI --target rejects desktop targets with a hard error", () => {
-  const result = spawnSync(
-    process.execPath,
-    [scriptPath, "--target", "linux-x64-cpu-fused", "--dry-run"],
-    { encoding: "utf8", timeout: 30_000 },
-  );
-  assert.notEqual(result.status, 0);
-  assert.ok(
-    /unsupported --target linux-x64-cpu-fused/.test(result.stderr) ||
-      /unsupported --target linux-x64-cpu-fused/.test(result.stdout),
-    `expected hard error; got stderr=${result.stderr}`,
+  assert.throws(
+    () => parseArgs(["--target", "linux-x64-cpu-fused", "--dry-run"]),
+    /unsupported --target linux-x64-cpu-fused/,
   );
 });

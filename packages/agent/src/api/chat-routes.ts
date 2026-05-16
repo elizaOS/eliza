@@ -131,6 +131,9 @@ const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
 const ANDROID_LOCAL_CURRENT_DATA_PATTERN =
   /\b(latest|current|today|tomorrow|yesterday|weather|price|calendar|email|file|repo|repository|log|logs|issue|issues|pr|pull\s+request|wallet|transaction|account|contact|contacts)\b/i;
 
+const ANDROID_LOCAL_CONTEXTUAL_MEMORY_PATTERN =
+  /\b(what\s+did\s+i\s+just\s+say|what\s+(?:is|'s)\s+my\s+name|who\s+am\s+i|do\s+you\s+remember|remember\s+(?:me|my|that)|what\s+was\s+my|what\s+did\s+we|previous(?:ly)?|earlier|last\s+(?:message|thing|question|conversation)|recent\s+(?:message|conversation)|my\s+(?:name|email|address|phone|preference|preferences))\b/i;
+
 function readRuntimeStringSetting(
   runtime: AgentRuntime,
   key: string,
@@ -158,20 +161,21 @@ function readPositiveIntegerSetting(
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optOut = readRuntimeStringSetting(
+  const optIn = readRuntimeStringSetting(
     runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
   );
-  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
-    return false;
-  }
   const platform =
     readRuntimeStringSetting(runtime, "ELIZA_MOBILE_PLATFORM") ??
     readRuntimeStringSetting(runtime, "ELIZA_PLATFORM");
   const localLlama =
     readRuntimeStringSetting(runtime, "ELIZA_LOCAL_LLAMA") === "1" ||
     readRuntimeStringSetting(runtime, "ELIZA_DEVICE_BRIDGE_ENABLED") === "1";
-  return platform?.toLowerCase() === "android" && localLlama;
+  return (
+    platform?.toLowerCase() === "android" &&
+    localLlama &&
+    /^(1|true|yes|on)$/i.test(optIn ?? "")
+  );
 }
 
 function hasAndroidLocalDirectChatBlockingContent(
@@ -200,13 +204,7 @@ function hasAndroidLocalDirectChatBlockingContent(
 
 function isAndroidLocalDirectChatChannel(content: Content): boolean {
   const channelType = (content as Record<string, unknown>).channelType;
-  return (
-    channelType === ChannelType.API ||
-    channelType === ChannelType.DM ||
-    channelType === ChannelType.SELF ||
-    channelType === ChannelType.VOICE_DM ||
-    channelType === undefined
-  );
+  return channelType === ChannelType.VOICE_DM;
 }
 
 function shouldUseAndroidLocalDirectChat(
@@ -231,6 +229,9 @@ function shouldUseAndroidLocalDirectChat(
     return false;
   }
   if (ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN.test(text)) {
+    return false;
+  }
+  if (ANDROID_LOCAL_CONTEXTUAL_MEMORY_PATTERN.test(text)) {
     return false;
   }
   if (ANDROID_LOCAL_CURRENT_DATA_PATTERN.test(text)) {

@@ -739,6 +739,9 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
+	const explicitMessageToUser = getNonEmptyString(
+		(raw as unknown as Record<string, unknown>).messageToUser,
+	);
 
 	// gpt-oss-class models narrate planner calls in the text channel. There
 	// are two observed shapes:
@@ -782,10 +785,13 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: text,
+				: (explicitMessageToUser ?? text),
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
+			...(explicitMessageToUser
+				? { messageToUser: explicitMessageToUser }
+				: {}),
 			...(recoverySource ? { textRecoverySource: recoverySource } : {}),
 		} as Record<string, unknown>,
 	};

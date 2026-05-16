@@ -181,15 +181,22 @@ describe("generateChatResponse token streaming", () => {
         const values: Record<string, string> = {
           ELIZA_MOBILE_PLATFORM: "android",
           ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
         };
         return values[key] ?? null;
       },
       useModel,
     });
 
+    const message = createChatMessage("can you hear me locally?");
+    message.content = {
+      ...message.content,
+      channelType: ChannelType.VOICE_DM,
+    } as typeof message.content;
+
     const result = await generateChatResponse(
       runtime,
-      createChatMessage("can you hear me locally?"),
+      message,
       "Streaming Agent",
       {
         timeoutDuration: 5_000,
@@ -226,6 +233,86 @@ describe("generateChatResponse token streaming", () => {
         streamedChunks: 2,
       }),
     );
+  });
+
+  it("keeps contextual Android local turns on the normal message runtime", async () => {
+    const useModel = vi.fn(async () => "generic local reply");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "You just told me your name is Ada." },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "contextual-turn",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("what did I just say?"),
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(useModel).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("You just told me your name is Ada.");
+  });
+
+  it("keeps tool-like Android local turns on the normal message runtime", async () => {
+    const useModel = vi.fn(async () => "generic local reply");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "I need the normal runtime for that." },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "tool-like-turn",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("remember that my favorite model is eliza"),
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(useModel).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("I need the normal runtime for that.");
   });
 
   it("aborts the message runtime when the chat generation timeout fires", async () => {

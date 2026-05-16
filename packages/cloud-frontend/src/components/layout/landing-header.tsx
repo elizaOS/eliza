@@ -52,7 +52,7 @@ export default function LandingHeader() {
                 size="sm"
                 onClick={handleGetStarted}
                 disabled={!ready}
-                className="rounded-full border border-white/34 bg-white/12 font-[family-name:var(--font-body)] text-white shadow-[0_12px_36px_rgba(0,24,122,0.24)] backdrop-blur-xl hover:bg-white hover:text-[#0647ff]"
+                className="rounded-full border border-white/60 bg-white font-[family-name:var(--font-body)] text-[#0647ff] shadow-[0_12px_36px_rgba(0,24,122,0.18)] backdrop-blur-xl hover:bg-white/92 hover:text-[#0647ff]"
               >
                 Open Cloud
               </Button>

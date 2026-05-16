@@ -169,12 +169,12 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   fusedCmakeBuildTargets,
   fusedExtraCmakeFlags,
 } from "../build-helpers/omnivoice-merged.mjs";
 import { verifyFusedSymbols } from "../build-helpers/verify-fused-symbols.mjs";
+import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import { main as compileShimMain } from "./compile-shim.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -208,8 +208,6 @@ export const LLAMA_CPP_TAG = "v1.2.0-eliza";
 export const LLAMA_CPP_COMMIT = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
-const SWA_SPEC_DECODE_FALLBACK_COMMIT =
-  "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
 
 // The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
@@ -1187,6 +1185,85 @@ export function buildShimForAbi({
 }
 
 /**
+ * Compile the optional in-process DFlash speculative shim. This shared object
+ * is loaded separately from the struct-by-value llama shim so Android builds
+ * can require it (`ELIZA_DFLASH_REQUIRED=1`) or fall back loudly when the
+ * current llama.cpp checkout only supports the headerless stub.
+ */
+export function buildSpeculativeShimForAbi({
+  cacheDir,
+  abi,
+  abiAssetDir,
+  shimSourcePath = path.join(
+    here,
+    "llama-shim",
+    "eliza_llama_shim_speculative.cpp",
+  ),
+  zigBin = "zig",
+  log = console.log,
+  spawn = run,
+}) {
+  if (!fs.existsSync(shimSourcePath)) {
+    throw new Error(
+      `[compile-libllama] Speculative shim source not found at ${shimSourcePath}.`,
+    );
+  }
+  const llamaSo = path.join(abiAssetDir, "libllama.so");
+  if (!fs.existsSync(llamaSo)) {
+    throw new Error(
+      `[compile-libllama] Cannot link speculative shim: ${llamaSo} is missing. ` +
+        `Run buildLibllamaForAbi() before buildSpeculativeShimForAbi().`,
+    );
+  }
+
+  const { cxxPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
+  const shimOut = path.join(abiAssetDir, "libeliza-llama-speculative-shim.so");
+
+  log(
+    `[compile-libllama] Compiling libeliza-llama-speculative-shim.so for ${abi}`,
+  );
+  spawn(
+    cxxPath,
+    [
+      "-shared",
+      "-fPIC",
+      "-O2",
+      "-std=c++17",
+      "-DELIZA_SHIM_HEADERLESS=1",
+      `-L${abiAssetDir}`,
+      "-Wl,--disable-new-dtags",
+      "-o",
+      shimOut,
+      shimSourcePath,
+      "-lllama",
+    ],
+    {},
+  );
+
+  if (!fs.existsSync(shimOut)) {
+    throw new Error(
+      `[compile-libllama] Speculative shim compile reported success but ${shimOut} is missing.`,
+    );
+  }
+  const sizeBefore = fs.statSync(shimOut).size;
+  const stripped = stripBinary({ filePath: shimOut, zigBin, log });
+  if (stripped) {
+    const sizeAfter = fs.statSync(shimOut).size;
+    if (sizeAfter === 0) {
+      throw new Error(
+        `[compile-libllama] Strip produced an empty libeliza-llama-speculative-shim.so ` +
+          `(was ${sizeBefore} bytes).`,
+      );
+    }
+    log(
+      `[compile-libllama] Stripped libeliza-llama-speculative-shim.so for ${abi} ` +
+        `(${sizeBefore} -> ${sizeAfter} bytes).`,
+    );
+  }
+  return shimOut;
+}
+
+/**
  * Find every `libggml*.so` under the build tree. b4500 shipped plain .so
  * files; the apothic fork (built off b8198) ships SONAME-versioned files
  * (e.g. `libggml.so.0.9.7`) plus an unversioned symlink chain
@@ -1539,7 +1616,9 @@ export function describeAndroidTargetDryRun({
     `  cmake --build ${buildDir} --target ${buildTargets.join(" ")} -j ${jobs}`,
   );
   log(`  expected output layout under ${abiAssetDir}:`);
-  log(`    libllama.so libggml*.so llama-server libeliza-llama-shim.so`);
+  log(
+    `    libllama.so libggml*.so llama-server libeliza-llama-shim.so libeliza-llama-speculative-shim.so`,
+  );
   if (parsed.fused) {
     log(
       `    libelizainference.so omnivoice-tts omnivoice-codec (merged-tree artifacts)`,
@@ -1579,11 +1658,17 @@ export async function main(argv = process.argv.slice(2)) {
       abi,
       "libeliza-llama-shim.so",
     );
+    const speculativeShim = path.join(
+      args.androidAssetsDir,
+      abi,
+      "libeliza-llama-speculative-shim.so",
+    );
     const llamaServer = path.join(args.androidAssetsDir, abi, "llama-server");
     if (
       !fs.existsSync(llama) ||
       !fs.existsSync(ggml) ||
       !fs.existsSync(shim) ||
+      !fs.existsSync(speculativeShim) ||
       !fs.existsSync(llamaServer)
     ) {
       allPresent = false;
@@ -1691,6 +1776,13 @@ export async function main(argv = process.argv.slice(2)) {
       log: console.log,
       spawn: run,
     });
+    buildSpeculativeShimForAbi({
+      cacheDir: args.cacheDir,
+      abi,
+      abiAssetDir,
+      log: console.log,
+      spawn: run,
+    });
   }
 
   // Cross-compile the SIGSYS-handler shim + loader-wrap for x86_64. ARM64
@@ -1706,7 +1798,7 @@ export async function main(argv = process.argv.slice(2)) {
   await compileShimMain(["--skip-if-present"]);
 
   console.log(
-    `[compile-libllama] Built libllama.so + libeliza-llama-shim.so + llama-server for ` +
+    `[compile-libllama] Built libllama.so + libeliza-llama-shim.so + libeliza-llama-speculative-shim.so + llama-server for ` +
       `${args.abis.join(", ")} (${srcDescription}).`,
   );
 }
@@ -1842,6 +1934,13 @@ export async function mainTargets(args) {
       abi: parsed.androidAbi,
       abiAssetDir,
       llamaIncludeDir: path.join(srcDir, "include"),
+      log: console.log,
+      spawn: run,
+    });
+    buildSpeculativeShimForAbi({
+      cacheDir: args.cacheDir,
+      abi: parsed.androidAbi,
+      abiAssetDir,
       log: console.log,
       spawn: run,
     });
