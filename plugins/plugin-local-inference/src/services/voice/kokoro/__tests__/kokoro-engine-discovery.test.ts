@@ -8,6 +8,10 @@ import {
 	kokoroEngineModelDir,
 	resolveKokoroEngineConfig,
 } from "../kokoro-engine-discovery";
+import {
+	KOKORO_DEFAULT_VOICE_ID,
+	KOKORO_FALLBACK_VOICE_ID,
+} from "../voice-presets";
 
 function makeStaged(opts: { modelFile?: string; voices?: string[] }): {
 	root: string;
@@ -73,7 +77,7 @@ describe("resolveKokoroEngineConfig", () => {
 		expect(resolveKokoroEngineConfig()).toBeNull();
 	});
 
-	it("returns the canonical Bella default when staged", () => {
+	it("returns the canonical Samantha default when staged", () => {
 		const fx = makeStaged({
 			modelFile: "kokoro-v1.0.onnx",
 			voices: ["af_same.bin", "af_bella.bin"],
@@ -82,7 +86,7 @@ describe("resolveKokoroEngineConfig", () => {
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
-		expect(cfg?.defaultVoiceId).toBe("af_bella");
+		expect(cfg?.defaultVoiceId).toBe(KOKORO_DEFAULT_VOICE_ID);
 		expect(cfg?.layout.modelFile).toBe("kokoro-v1.0.onnx");
 		expect(cfg?.layout.sampleRate).toBe(24_000);
 		expect(cfg?.layout.root).toBe(fx.root);
@@ -105,8 +109,14 @@ describe("resolveKokoroEngineConfig", () => {
 		try {
 			const cfg = resolveKokoroEngineConfig();
 			expect(cfg).not.toBeNull();
-			expect(cfg?.defaultVoiceId).toBe("af_bella");
-			expect(warnings).toEqual([]);
+			expect(cfg?.defaultVoiceId).toBe(KOKORO_FALLBACK_VOICE_ID);
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain(
+				`default voice ${KOKORO_DEFAULT_VOICE_ID} preset not staged`,
+			);
+			expect(warnings[0]).toContain(
+				`falling back to ${KOKORO_FALLBACK_VOICE_ID}`,
+			);
 		} finally {
 			console.warn = origWarn;
 		}
