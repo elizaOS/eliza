@@ -101,7 +101,15 @@ type DispatchRoute = (args: {
 	body: unknown;
 	inProcess: true;
 	isAuthorized: () => true;
-}) => Promise<BufferedHttpResponse | null | undefined>;
+}) => Promise<
+	| {
+			status: number;
+			headers?: Record<string, string>;
+			body?: unknown;
+	  }
+	| null
+	| undefined
+>;
 
 type AgentModule = {
 	bootElizaRuntime: () => Promise<IAgentRuntime>;
