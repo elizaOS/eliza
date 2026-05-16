@@ -97,13 +97,13 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(page.locator('[aria-disabled="true"]')).toHaveCount(0);
 
   await expect(
-    page.getByRole("heading", { name: /^Build on ElizaOS\.$/ }),
+    page.getByRole("heading", { name: /^Install the OS\.$/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /^ElizaOS$/ }).first(),
   ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/?$/);
   await expect(
-    page.getByRole("heading", { name: /^Run it in the cloud\.$/ }),
+    page.getByRole("heading", { name: /^Run in cloud\.$/ }),
   ).toBeVisible();
   await expectCloudPath(
     page.getByRole("link", { name: /^Launch Eliza$/ }).last(),
