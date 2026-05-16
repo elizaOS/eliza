@@ -1220,7 +1220,7 @@ async function main() {
       "--spec-type", "dflash",
       "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
       "--port", String(port),
-      "-c", String(args.ctx), "-cd", String(args.ctx),
+      "-c", String(args.ctx),
       "-ngl", String(args.ngl),
       "-t", String(args.threads),
       "--no-warmup",

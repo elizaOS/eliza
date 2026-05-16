@@ -1184,7 +1184,7 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         "-md", str(drafter),
         "-p", "Write a short paragraph explaining speculative decoding.",
         "-n", str(n_predict),
-        "-c", "1024", "-cd", "1024",
+        "-c", "1024",
         "-ngl", "0", "-ngld", "0",
         "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
         "--device", "none", "--device-draft", "none",

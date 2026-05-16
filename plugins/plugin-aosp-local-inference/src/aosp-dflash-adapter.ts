@@ -208,8 +208,6 @@ export function buildDflashServerArgv(
     String(port),
     "--ctx-size",
     String(args.contextSize ?? 4096),
-    "--ctx-size-draft",
-    String(args.draftContextSize ?? args.contextSize ?? 4096),
     "--spec-draft-n-min",
     String(args.draftMin ?? 4),
     "--spec-draft-n-max",

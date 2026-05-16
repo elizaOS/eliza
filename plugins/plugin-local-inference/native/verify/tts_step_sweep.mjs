@@ -439,8 +439,6 @@ async function main() {
       String(port),
       "-c",
       String(args.ctx),
-      "-cd",
-      String(args.ctx),
       "-ngl",
       String(args.ngl),
       "-t",
