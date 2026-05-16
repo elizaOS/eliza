@@ -26,9 +26,21 @@ export type BrandColor = keyof typeof BRAND_COLORS;
  * `packages/ui/src/styles/base.css`.
  */
 export const SURFACE_THEMES = {
-  cloud: { themeClass: "theme-cloud", background: BRAND_COLORS.black, text: BRAND_COLORS.white },
-  os: { themeClass: "theme-os", background: BRAND_COLORS.blue, text: BRAND_COLORS.white },
-  app: { themeClass: "theme-app", background: BRAND_COLORS.orange, text: BRAND_COLORS.black },
+  cloud: {
+    themeClass: "theme-cloud",
+    background: BRAND_COLORS.black,
+    text: BRAND_COLORS.white,
+  },
+  os: {
+    themeClass: "theme-os",
+    background: BRAND_COLORS.blue,
+    text: BRAND_COLORS.white,
+  },
+  app: {
+    themeClass: "theme-app",
+    background: BRAND_COLORS.orange,
+    text: BRAND_COLORS.black,
+  },
 } as const;
 
 export type Surface = keyof typeof SURFACE_THEMES;

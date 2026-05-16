@@ -168,9 +168,9 @@ p {
 }
 
 h1 {
-  max-width: 14ch;
+  max-width: 18ch;
   margin-bottom: 1.25rem;
-  font-size: clamp(3.25rem, 7vw, 6.2rem);
+  font-size: clamp(3rem, 6vw, 5.3rem);
   font-weight: 800;
   line-height: 0.94;
   letter-spacing: 0;
