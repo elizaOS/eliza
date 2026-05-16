@@ -216,7 +216,7 @@ jobs:
           ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease
+          ./gradlew -PelizaCloudBuild=true -PelizaStripAgentAssets=true bundleRelease
 
       - name: Build signed APK
         working-directory: packages/app/android
@@ -229,7 +229,7 @@ jobs:
           ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew -PelizaCloudBuild=true -PelizaStripAgentAssets=true assembleRelease
 
       - name: Verify Android release artifacts
         run: |
