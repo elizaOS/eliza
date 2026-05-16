@@ -45,6 +45,7 @@ const WRITE_BUILD_INFO_SCRIPT = fs.existsSync(
 )
   ? path.join(ROOT, "scripts", "write-build-info.ts")
   : path.join(ROOT, "packages", "scripts", "write-build-info.ts");
+const CORE_PACKAGE_DIR = path.join(ROOT, "packages", "core");
 const SHARED_PACKAGE_DIR = path.join(ROOT, "packages", "shared");
 
 const argv = process.argv.slice(2);
@@ -554,23 +555,28 @@ function ensureRootRuntimeBundle() {
   fs.writeFileSync(path.join(distDir, "package.json"), '{"type":"module"}\n');
 }
 
-function ensureSharedRuntimePackageBuilt() {
-  const sharedPackageJson = path.join(SHARED_PACKAGE_DIR, "package.json");
-  if (!fs.existsSync(sharedPackageJson)) {
-    fail(`Expected @elizaos/shared package not found: ${SHARED_PACKAGE_DIR}`);
+function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
+  const packageJson = path.join(packageDir, "package.json");
+  if (!fs.existsSync(packageJson)) {
+    fail(`Expected ${packageName} package not found: ${packageDir}`);
   }
 
   runBun(["run", "build"], {
-    cwd: SHARED_PACKAGE_DIR,
-    label: "Building @elizaos/shared runtime package",
+    cwd: packageDir,
+    label: `Building ${packageName} runtime package`,
   });
+}
+
+function ensureWorkspaceRuntimePackagesBuilt() {
+  ensureWorkspaceRuntimePackageBuilt("@elizaos/core", CORE_PACKAGE_DIR);
+  ensureWorkspaceRuntimePackageBuilt("@elizaos/shared", SHARED_PACKAGE_DIR);
 }
 
 function stageDesktopBuild() {
   ensureAppDirs();
 
   ensureRootRuntimeBundle();
-  ensureSharedRuntimePackageBuilt();
+  ensureWorkspaceRuntimePackagesBuilt();
 
   runNode(["--import", "tsx", WRITE_BUILD_INFO_SCRIPT], {
     cwd: ROOT,
