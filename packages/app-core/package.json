@@ -47,7 +47,10 @@
     "entitlements:audit": "node ./scripts/lib/apple-entitlement-audit.mjs",
     "test:apple-entitlements": "node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/lib/apple-entitlement-audit.test.mjs",
     "codesign:mas": "node ./scripts/codesign-mas.mjs",
-    "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run"
+    "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run",
+    "sms-gateway:homepage": "node ./scripts/check-homepage-public-readiness.mjs",
+    "sms-gateway:readiness": "node ./scripts/check-sms-gateway-readiness.mjs",
+    "sms-gateway:verify:bluebubbles": "node ./scripts/verify-bluebubbles-gateway-e2e.mjs"
   },
   "exports": {
     "./package.json": "./package.json",

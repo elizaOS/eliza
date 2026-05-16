@@ -105,9 +105,36 @@
     "pluginParameters": {
       "ELIZA_ACP_CLI": {
         "type": "string",
-        "description": "Legacy path or command name for an ACP-compatible subprocess transport. Prefer the native TypeScript ACP transport when available.",
+        "description": "Path or command name for the legacy acpx command-wrapper transport when ELIZA_ACP_TRANSPORT=cli.",
         "required": false,
         "default": "acpx",
+        "sensitive": false
+      },
+      "ELIZA_ACP_TRANSPORT": {
+        "type": "string",
+        "description": "ACP transport mode. Use cli/acpx for the existing acpx command wrapper; opt in to the embedded TypeScript client with native/direct.",
+        "required": false,
+        "default": "cli",
+        "sensitive": false
+      },
+      "ELIZA_CODEX_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Codex sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "required": false,
+        "default": "npx -y @zed-industries/codex-acp@0.14.0",
+        "sensitive": false
+      },
+      "ELIZA_CLAUDE_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Claude sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "required": false,
+        "default": "npx -y @agentclientprotocol/claude-agent-acp@0.34.0",
+        "sensitive": false
+      },
+      "ELIZA_OPENCODE_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for OpenCode sessions when ELIZA_ACP_TRANSPORT=native. Defaults to the bundled OpenCode shim when available, otherwise opencode acp.",
+        "required": false,
         "sensitive": false
       },
       "ELIZA_ACP_FORMAT": {

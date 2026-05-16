@@ -239,6 +239,13 @@ def _build_source_context(instance: SWEBenchInstance) -> str:
 def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
     """Build a single prompt asking for a unified diff fix."""
     source_context = _build_source_context(instance)
+    fail_to_pass = (
+        "Fail-to-pass tests named by SWE-bench:\n"
+        + "\n".join(f"- {test}" for test in instance.fail_to_pass)
+        + "\n\n"
+        if instance.fail_to_pass
+        else ""
+    )
     retry_prefix = (
         "Your previous response did not contain an applicable unified diff. "
         "This time return only the diff text, starting with `diff --git`.\n\n"
@@ -253,8 +260,12 @@ def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
         "Problem statement:\n"
         f"{instance.problem_statement}\n\n"
         + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
+        + fail_to_pass
         + (f"{source_context}\n\n" if source_context else "")
         + "Respond with a SINGLE unified diff that resolves the issue. "
+        "Prefer the smallest local edit that makes the named tests pass. "
+        "Do not replace whole classes, whole modules, or public APIs unless the issue requires it. "
+        "Preserve surrounding signatures, imports, formatting, and behavior outside the bug. "
         "Start the response with `diff --git`; a fenced ```diff block is also acceptable. "
         "Do not include commentary outside the diff. The diff must be applicable with `git apply` from "
         "the repository root."

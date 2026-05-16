@@ -9,6 +9,7 @@ import benchmarks.swe_bench.cli as swe_cli
 from benchmarks.swe_bench.cli import (
     _BaselineClient,
     _build_client_for_harness,
+    _build_prompt,
     _build_report,
     _capability_report,
     _default_task_agent_provider,
@@ -193,6 +194,15 @@ def test_baseline_client_random_is_seeded() -> None:
     assert first.send_message(text="", context=context).text == second.send_message(
         text="", context=context
     ).text
+
+
+def test_build_prompt_includes_test_targets_and_narrow_patch_guidance() -> None:
+    prompt = _build_prompt(_mock_instance())
+
+    assert "Fail-to-pass tests named by SWE-bench:" in prompt
+    assert "- test_hello" in prompt
+    assert "Prefer the smallest local edit" in prompt
+    assert "Do not replace whole classes" in prompt
 
 
 def test_config_validates_baseline_name() -> None:

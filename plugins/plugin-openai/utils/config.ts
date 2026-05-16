@@ -204,6 +204,7 @@ function getCerebrasModel(runtime: IAgentRuntime): string | undefined {
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_SMALL_MODEL") ??
+
     getCerebrasModel(runtime) ??
     getSetting(runtime, "SMALL_MODEL") ??
     "gpt-5.4-mini"
@@ -231,6 +232,7 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_LARGE_MODEL") ??
+
     getCerebrasModel(runtime) ??
     getSetting(runtime, "LARGE_MODEL") ??
     "gpt-5"
@@ -249,6 +251,7 @@ export function getResponseHandlerModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_RESPONSE_HANDLER_MODEL") ??
     getSetting(runtime, "OPENAI_SHOULD_RESPOND_MODEL") ??
+
     getCerebrasModel(runtime) ??
     getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
     getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
@@ -260,6 +263,7 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_ACTION_PLANNER_MODEL") ??
     getSetting(runtime, "OPENAI_PLANNER_MODEL") ??
+
     getCerebrasModel(runtime) ??
     getSetting(runtime, "ACTION_PLANNER_MODEL") ??
     getSetting(runtime, "PLANNER_MODEL") ??

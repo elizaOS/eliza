@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -20,9 +21,57 @@ class RepositoryManager:
     def __init__(self, workspace_dir: str):
         self.workspace_dir = Path(workspace_dir)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = Path(
+            os.environ.get("SWE_BENCH_REPO_CACHE_DIR", self.workspace_dir / ".repo-cache")
+        )
         self.current_repo: Path | None = None
         self.current_instance: SWEBenchInstance | None = None
         self._current_repo_resolved: Path | None = None
+
+    def _repo_cache_path(self, repo: str) -> Path:
+        cache_name = repo.replace("/", "__").replace(":", "_")
+        return self.cache_dir / f"{cache_name}.git"
+
+    async def _ensure_repo_mirror(self, instance: SWEBenchInstance) -> Path | None:
+        """Create or update a bare mirror for a GitHub repository.
+
+        Multiple SWE-bench instances often come from the same repository but use
+        different base commits. A mirror lets each per-instance workspace clone
+        locally instead of paying a fresh network clone for every task.
+        """
+        if os.environ.get("SWE_BENCH_DISABLE_REPO_CACHE", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            return None
+
+        mirror_dir = self._repo_cache_path(instance.repo)
+        clone_url = f"https://github.com/{instance.repo}.git"
+        try:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            if mirror_dir.exists() and (mirror_dir / "HEAD").exists():
+                await self._run_command(
+                    ["git", "fetch", "--prune", "origin"],
+                    cwd=mirror_dir,
+                    check=False,
+                    timeout=180.0,
+                )
+                return mirror_dir
+
+            if mirror_dir.exists():
+                shutil.rmtree(mirror_dir)
+            logger.info(f"Creating repository mirror cache: {mirror_dir}")
+            await self._run_command(
+                ["git", "clone", "--mirror", clone_url, str(mirror_dir)],
+                timeout=600.0,
+            )
+            return mirror_dir
+        except Exception as exc:
+            logger.warning("Repository mirror cache unavailable: %s", exc)
+            if mirror_dir.exists():
+                shutil.rmtree(mirror_dir, ignore_errors=True)
+            return None
 
     def _resolve_repo_path(self, file_path: str) -> Path | None:
         """Resolve a repository-relative path safely.
@@ -91,13 +140,21 @@ class RepositoryManager:
 
         # Clone the repository (use longer timeout for git operations)
         clone_url = f"https://github.com/{instance.repo}.git"
-        logger.info(f"Cloning {clone_url} to {repo_dir}...")
+        mirror_dir = await self._ensure_repo_mirror(instance)
+        clone_source = str(mirror_dir) if mirror_dir is not None else clone_url
+        logger.info(f"Cloning {clone_source} to {repo_dir}...")
 
         try:
-            await self._run_command(
-                ["git", "clone", "--depth", "1000", clone_url, str(repo_dir)],
-                timeout=300.0,  # 5 minute timeout for clone
-            )
+            if mirror_dir is not None:
+                await self._run_command(
+                    ["git", "clone", "--shared", str(mirror_dir), str(repo_dir)],
+                    timeout=180.0,
+                )
+            else:
+                await self._run_command(
+                    ["git", "clone", "--depth", "1000", clone_url, str(repo_dir)],
+                    timeout=300.0,  # 5 minute timeout for clone
+                )
         except subprocess.CalledProcessError:
             # Try without depth limit if shallow clone fails
             logger.warning("Shallow clone failed, trying full clone...")

@@ -5,6 +5,7 @@ import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
+import { NativeAcpClient } from "./acp-native-transport.js";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -144,12 +145,17 @@ export class AcpService extends Service {
   private readonly logger: RuntimeLogger;
   private readonly store: SessionStore;
   private readonly cliPath: string;
+  private readonly transportMode: "native" | "cli";
   private readonly defaultAgent: AgentType;
   private readonly maxSessions: number;
   private readonly sessionTimeoutMs?: number;
   private readonly sessionCallbacks: SessionEventCallback[] = [];
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
+  private readonly nativeClients = new Map<string, NativeAcpClient>();
+  private readonly nativePromptSessionIds = new Set<string>();
+  private readonly nativeCancelledPromptSessionIds = new Set<string>();
+  private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
   private started = false;
   private healthCheckTimer: NodeJS.Timeout | undefined;
@@ -160,6 +166,10 @@ export class AcpService extends Service {
     this.logger = (this.runtime.logger ?? {}) as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
+    this.transportMode =
+      normalizeTransportMode(
+        this.setting("ELIZA_ACP_TRANSPORT") ?? this.setting("ACPX_TRANSPORT"),
+      ) ?? "cli";
     this.defaultAgent =
       normalizeTaskAgentAdapter(
         this.setting("BENCHMARK_TASK_AGENT") ??
@@ -202,6 +212,7 @@ export class AcpService extends Service {
     this.started = true;
     this.log("debug", "AcpService initialized", {
       cliPath: this.cliPath,
+      transportMode: this.transportMode,
       defaultAgent: this.defaultAgent,
       defaultApprovalPreset: this.defaultApprovalPreset,
     });
@@ -308,7 +319,10 @@ export class AcpService extends Service {
     const stops = Array.from(this.activeProcesses.keys()).map((sessionId) =>
       this.stopTrackedProcess(sessionId),
     );
-    await Promise.allSettled(stops);
+    const nativeStops = Array.from(this.nativeClients.keys()).map((sessionId) =>
+      this.stopNativeClient(sessionId),
+    );
+    await Promise.allSettled([...stops, ...nativeStops]);
     this.started = false;
   }
 
@@ -436,6 +450,33 @@ export class AcpService extends Service {
     };
     await this.store.create(session);
 
+    if (this.transportMode === "native") {
+      const result = await this.spawnNativeSession(id, session, opts);
+      if (opts.initialTask?.trim()) {
+        const keepAliveAfterComplete =
+          (opts.metadata as Record<string, unknown> | undefined)
+            ?.keepAliveAfterComplete === true;
+        void this.sendPrompt(id, opts.initialTask, {
+          timeoutMs: opts.timeoutMs,
+          model: opts.model,
+        })
+          .catch((err: unknown) => {
+            this.log("error", "initial prompt failed", {
+              sessionId: id,
+              agentType,
+              promptLength: opts.initialTask?.length ?? 0,
+              promptPreview: preview(opts.initialTask ?? ""),
+              error: errorMessage(err),
+            });
+          })
+          .finally(() => {
+            if (keepAliveAfterComplete) return;
+            void this.closeInitialTaskSession(id);
+          });
+      }
+      return result;
+    }
+
     const args = this.baseArgs({
       workdir,
       approvalPreset,
@@ -532,6 +573,13 @@ export class AcpService extends Service {
       }
     }
     const startedAt = Date.now();
+    if (this.transportMode === "native") {
+      if (this.nativePromptSessionIds.has(sessionId)) {
+        throw new Error(`ACP session is already busy: ${sessionId}`);
+      }
+      await this.store.updateStatus(sessionId, "busy");
+      return this.sendNativePrompt(session, text, opts, startedAt);
+    }
     await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
       workdir: session.workdir,
@@ -608,6 +656,17 @@ export class AcpService extends Service {
 
   async cancelSession(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
+    if (this.transportMode === "native") {
+      const client = this.nativeClients.get(sessionId);
+      if (this.nativePromptSessionIds.has(sessionId)) {
+        this.nativeCancelledPromptSessionIds.add(sessionId);
+      }
+      await client?.cancel(
+        session.acpxSessionId ?? session.agentSessionId ?? session.id,
+      );
+      await this.store.updateStatus(sessionId, "cancelled");
+      return;
+    }
     const active = this.activeProcesses.get(sessionId);
     if (active) {
       active.cancelled = true;
@@ -630,6 +689,22 @@ export class AcpService extends Service {
 
   async closeSession(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
+    if (this.transportMode === "native") {
+      this.nativeStoppingSessionIds.add(sessionId);
+      try {
+        await this.stopNativeClient(sessionId);
+        await this.store.updateStatus(sessionId, "stopped");
+        this.emitSessionEvent(sessionId, "stopped", {
+          sessionId,
+          response: this.lastOutput(sessionId),
+        });
+      } finally {
+        if (!this.nativePromptSessionIds.has(sessionId)) {
+          this.nativeStoppingSessionIds.delete(sessionId);
+        }
+      }
+      return;
+    }
     await this.stopTrackedProcess(sessionId);
     const args = [
       "--format",
@@ -908,6 +983,249 @@ export class AcpService extends Service {
     return resolveVendoredOpencodeAcpCommand();
   }
 
+  private async spawnNativeSession(
+    id: string,
+    session: SessionInfo,
+    opts: SpawnOptions,
+  ): Promise<SpawnResult> {
+    const command = this.nativeAgentCommand(session.agentType);
+    const stderr: string[] = [];
+    const client = new NativeAcpClient({
+      command,
+      cwd: session.workdir,
+      approvalPreset: session.approvalPreset,
+      timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+      terminal: !this.shouldDisableTerminalCapability(),
+      env: this.buildEnv(
+        opts.env,
+        opts.customCredentials,
+        opts.model,
+        session.agentType,
+      ),
+      onEvent: (event, protocolSessionId) => {
+        this.handleAcpEvent(
+          event,
+          id,
+          "",
+          Date.now(),
+          false,
+          new Set<string>(),
+        );
+        if (protocolSessionId && protocolSessionId !== id) {
+          void this.store
+            .update(id, { acpxSessionId: protocolSessionId })
+            .catch(() => undefined);
+        }
+      },
+      onStderr: (chunk) => {
+        stderr.push(chunk);
+      },
+    });
+    try {
+      await client.start();
+      const nativeSession = await client.createSession(session.workdir);
+      this.nativeClients.set(id, client);
+      await this.store.update(id, {
+        status: "ready",
+        pid: undefined,
+        acpxSessionId: nativeSession.sessionId,
+        agentSessionId: nativeSession.agentSessionId,
+        lastActivityAt: new Date(),
+      });
+      this.emitSessionEvent(id, "ready", {
+        sessionId: id,
+        name: session.name,
+        agentType: session.agentType,
+        workdir: session.workdir,
+      });
+      const updated = await this.store.get(id);
+      return toSpawnResult(updated ?? { ...session, status: "ready" });
+    } catch (err) {
+      await client.close().catch(() => undefined);
+      const message = stderr.join("").trim() || errorMessage(err);
+      await this.store.updateStatus(id, "errored", message);
+      this.emitSessionEvent(id, "error", {
+        message,
+        failureKind: isAuthText(message) ? "auth" : undefined,
+      });
+      throw new Error(message);
+    }
+  }
+
+  private async sendNativePrompt(
+    session: SessionInfo,
+    text: string,
+    opts: SendOptions,
+    startedAt: number,
+  ): Promise<PromptResult> {
+    const client = this.nativeClients.get(session.id);
+    if (!client) {
+      await this.store.updateStatus(
+        session.id,
+        "errored",
+        "Native ACP client is not attached",
+      );
+      throw new Error(`Native ACP client is not attached: ${session.id}`);
+    }
+    const protocolSessionId =
+      session.acpxSessionId ?? session.agentSessionId ?? session.id;
+    let finalText = "";
+    let eventStopReason: string | undefined;
+    const capturedToolOutputs = new Set<string>();
+    const previousOnAcp = (event: AcpJsonRpcMessage) => {
+      const handled = this.handleAcpEvent(
+        event,
+        session.id,
+        finalText,
+        startedAt,
+        true,
+        capturedToolOutputs,
+      );
+      finalText = handled.finalText;
+      eventStopReason = handled.stopReason ?? eventStopReason;
+    };
+    this.nativePromptSessionIds.add(session.id);
+    client.setEventHandler(previousOnAcp);
+    client.setTimeoutMs(opts.timeoutMs ?? this.sessionTimeoutMs);
+    try {
+      const result = await client.prompt(protocolSessionId, text);
+      const stopReason = result.stopReason ?? eventStopReason ?? "end_turn";
+      const cancelled =
+        stopReason === "cancelled" ||
+        this.nativeCancelledPromptSessionIds.has(session.id);
+      const stopped = this.nativeStoppingSessionIds.has(session.id);
+      const finalStopReason = stopped
+        ? "stopped"
+        : cancelled
+          ? "cancelled"
+          : stopReason;
+      const promptResult: PromptResult = {
+        sessionId: session.id,
+        response: finalText,
+        finalText,
+        stopReason: finalStopReason,
+        durationMs: Date.now() - startedAt,
+        exitCode: 0,
+        signal: null,
+        ...(finalStopReason === "error"
+          ? { error: "ACP prompt ended with stopReason error" }
+          : {}),
+      };
+      if (stopped) {
+        await this.store.updateStatus(session.id, "stopped");
+      } else if (cancelled) {
+        await this.store.updateStatus(session.id, "cancelled");
+      } else if (finalStopReason === "error") {
+        await this.store.updateStatus(
+          session.id,
+          "errored",
+          "ACP prompt ended with stopReason error",
+        );
+      } else {
+        await this.store.update(session.id, {
+          status: "ready",
+          lastActivityAt: new Date(),
+        });
+      }
+      return promptResult;
+    } catch (err) {
+      const message = errorMessage(err);
+      if (this.nativeStoppingSessionIds.has(session.id)) {
+        await this.store.updateStatus(session.id, "stopped");
+        return {
+          sessionId: session.id,
+          response: finalText,
+          finalText,
+          stopReason: "stopped",
+          durationMs: Date.now() - startedAt,
+          exitCode: null,
+          signal: null,
+        };
+      }
+      if (this.nativeCancelledPromptSessionIds.has(session.id)) {
+        await this.store.updateStatus(session.id, "cancelled");
+        return {
+          sessionId: session.id,
+          response: finalText,
+          finalText,
+          stopReason: "cancelled",
+          durationMs: Date.now() - startedAt,
+          exitCode: null,
+          signal: null,
+        };
+      }
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", { message });
+      return {
+        sessionId: session.id,
+        response: finalText,
+        finalText,
+        stopReason: "error",
+        durationMs: Date.now() - startedAt,
+        exitCode: 1,
+        signal: null,
+        error: message,
+      };
+    } finally {
+      client.setEventHandler((event, protocolSessionId) => {
+        this.handleAcpEvent(
+          event,
+          session.id,
+          "",
+          Date.now(),
+          false,
+          new Set<string>(),
+        );
+        if (protocolSessionId && protocolSessionId !== session.id) {
+          void this.store
+            .update(session.id, { acpxSessionId: protocolSessionId })
+            .catch(() => undefined);
+        }
+      });
+      this.nativePromptSessionIds.delete(session.id);
+      this.nativeCancelledPromptSessionIds.delete(session.id);
+      this.nativeStoppingSessionIds.delete(session.id);
+    }
+  }
+
+  private nativeAgentCommand(agentType: AgentType): string {
+    const normalizedAgentType =
+      normalizeTaskAgentAdapter(agentType) ?? agentType;
+    if (normalizedAgentType === "opencode") {
+      const command = this.opencodeAgentCommand();
+      if (command) return command;
+      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
+    }
+    const override = this.setting(
+      `ELIZA_${String(normalizedAgentType)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "_")}_ACP_COMMAND`,
+    );
+    if (override?.trim()) return override.trim();
+    if (normalizedAgentType === "codex")
+      return (
+        this.setting("ELIZA_CODEX_ACP_COMMAND") ??
+        "npx -y @zed-industries/codex-acp@0.14.0"
+      );
+    if (normalizedAgentType === "claude")
+      return (
+        this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
+        "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
+      );
+    return String(normalizedAgentType);
+  }
+
+  private async stopNativeClient(sessionId: string): Promise<void> {
+    const client = this.nativeClients.get(sessionId);
+    if (!client) return;
+    this.nativeClients.delete(sessionId);
+    const session = await this.store.get(sessionId);
+    const protocolSessionId =
+      session?.acpxSessionId ?? session?.agentSessionId ?? sessionId;
+    await client.closeSession(protocolSessionId).catch(() => undefined);
+    await client.close().catch(() => undefined);
+  }
+
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
     if (agentType !== "opencode") return [agentType, ...args];
     const command = this.opencodeAgentCommand();
@@ -1162,7 +1480,16 @@ export class AcpService extends Service {
           }),
         );
     }
-    for (const callback of this.acpCallbacks) callback(event, sessionId);
+    for (const callback of [...this.acpCallbacks]) {
+      try {
+        callback(event, sessionId);
+      } catch (err) {
+        this.log("warn", "ACP event callback failed", {
+          sessionId,
+          error: errorMessage(err),
+        });
+      }
+    }
     const method = typeof event.method === "string" ? event.method : undefined;
     const params = asRecord(event.params);
     const result = asRecord(event.result);
@@ -1181,9 +1508,17 @@ export class AcpService extends Service {
       this.emitSessionEvent(sessionId, "ready", { event });
     }
 
-    if (sessionId && method === "permission/request") {
+    if (
+      sessionId &&
+      (method === "permission/request" ||
+        method === "session/request_permission")
+    ) {
       const description = stringifyMaybe(
-        params?.description ?? params?.message ?? "permission required",
+        params?.description ??
+          params?.message ??
+          asRecord(params?.toolCall)?.title ??
+          asRecord(params?.toolCall)?.kind ??
+          "permission required",
       );
       this.emitSessionEvent(sessionId, "blocked", {
         message: description,
@@ -1303,6 +1638,17 @@ export class AcpService extends Service {
       }
       // usage_update is informational; we don't currently surface it but could log
       // available_commands_update is metadata; ignore for now
+    }
+
+    if (sessionId && result) {
+      const resultText = extractPromptResultText(result);
+      if (resultText) {
+        const merged = mergeTerminalResultText(finalText, resultText);
+        if (merged !== finalText) {
+          finalText = merged;
+          this.appendOutput(sessionId, resultText);
+        }
+      }
     }
 
     if (sessionId && result && typeof result.stopReason === "string") {
@@ -1541,6 +1887,21 @@ function normalizeApprovalPreset(value: string | undefined): ApprovalPreset {
   return "autonomous";
 }
 
+function normalizeTransportMode(
+  value: string | undefined,
+): "native" | "cli" | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === "native" ||
+    normalized === "embedded" ||
+    normalized === "direct"
+  )
+    return "native";
+  if (normalized === "cli" || normalized === "legacy" || normalized === "acpx")
+    return "cli";
+  return undefined;
+}
+
 function shouldForwardEnv(key: string): boolean {
   return (
     key === "PATH" ||
@@ -1599,6 +1960,60 @@ function stringifyMaybe(value: unknown): string {
 function appendTextBlock(current: string, block: string): string {
   if (!current) return block;
   return `${current}${current.endsWith("\n") ? "" : "\n"}${block}`;
+}
+
+function mergeTerminalResultText(current: string, resultText: string): string {
+  if (!resultText) return current;
+  if (!current) return resultText;
+  if (current === resultText || current.endsWith(resultText)) return current;
+  if (resultText.startsWith(current)) return resultText;
+  return appendTextBlock(current, resultText);
+}
+
+function extractPromptResultText(
+  result: Record<string, unknown>,
+): string | undefined {
+  return extractAssistantText(result);
+}
+
+function extractAssistantText(
+  value: unknown,
+  depth = 0,
+  seen = new Set<object>(),
+): string | undefined {
+  if (value === undefined || value === null || depth > 5) return undefined;
+  if (typeof value === "string") return value.length > 0 ? value : undefined;
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((entry) => extractAssistantText(entry, depth + 1, seen))
+      .filter((entry): entry is string => entry !== undefined);
+    return parts.join("") || undefined;
+  }
+  if (typeof value !== "object") return undefined;
+  if (seen.has(value)) return undefined;
+  seen.add(value);
+
+  const record = value as Record<string, unknown>;
+  const role = typeof record.role === "string" ? record.role : undefined;
+  if (role && role !== "assistant") return undefined;
+  if (record.type === "text" && typeof record.text === "string") {
+    return record.text;
+  }
+  for (const key of [
+    "finalText",
+    "response",
+    "output",
+    "text",
+    "content",
+    "message",
+  ]) {
+    if (!(key in record)) continue;
+    const extracted = extractAssistantText(record[key], depth + 1, seen);
+    if (extracted) return extracted;
+  }
+  return undefined;
 }
 
 function captureTerminalToolOutput(

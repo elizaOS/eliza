@@ -29,6 +29,14 @@ class TestRepositoryManager:
         """Test initialization creates workspace."""
         manager = RepositoryManager(str(temp_workspace / "new_workspace"))
         assert manager.workspace_dir.exists()
+        assert manager.cache_dir == manager.workspace_dir / ".repo-cache"
+
+    def test_repo_cache_path_is_repo_scoped(self, repo_manager: RepositoryManager) -> None:
+        """Test repository mirror cache paths are stable per source repo."""
+        assert (
+            repo_manager._repo_cache_path("astropy/astropy").name
+            == "astropy__astropy.git"
+        )
 
     def test_read_file_no_repo(self, repo_manager: RepositoryManager) -> None:
         """Test reading file with no repo set up."""

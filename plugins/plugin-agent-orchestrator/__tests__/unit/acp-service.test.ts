@@ -2,24 +2,113 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  AcpJsonRpcMessage,
+  ApprovalPreset,
+} from "../../src/services/types.js";
+
+type NativeEventHandler = (
+  event: AcpJsonRpcMessage,
+  sessionId?: string,
+) => void;
+type NativeOptions = {
+  command: string;
+  cwd: string;
+  approvalPreset: ApprovalPreset;
+  timeoutMs?: number;
+  terminal?: boolean;
+  onEvent?: NativeEventHandler;
+  onStderr?: (chunk: string) => void;
+};
+type MockNativeClient = {
+  opts: NativeOptions;
+  eventHandler?: NativeEventHandler;
+  start: ReturnType<typeof vi.fn>;
+  createSession: ReturnType<typeof vi.fn>;
+  prompt: ReturnType<typeof vi.fn>;
+  cancel: ReturnType<typeof vi.fn>;
+  closeSession: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  setEventHandler: (handler: NativeEventHandler | undefined) => void;
+  setTimeoutMs: (timeoutMs: number | undefined) => void;
+  emit: (event: AcpJsonRpcMessage, sessionId?: string) => void;
+};
+type NativeMockState = {
+  NativeAcpClient?: new (opts: NativeOptions) => MockNativeClient;
+  instances: MockNativeClient[];
+};
+
+function getNativeMockState(): NativeMockState {
+  const globalWithMock = globalThis as typeof globalThis & {
+    __acpServiceNativeMock?: NativeMockState;
+  };
+  globalWithMock.__acpServiceNativeMock ??= { instances: [] };
+  return globalWithMock.__acpServiceNativeMock;
+}
+
+const nativeClientMock = getNativeMockState();
+
+vi.mock("../../src/services/acp-native-transport.js", () => {
+  const state = getNativeMockState();
+  state.NativeAcpClient = class MockNativeAcpClient
+    implements MockNativeClient
+  {
+    opts: NativeOptions;
+    eventHandler?: NativeEventHandler;
+    start = vi.fn(async () => undefined);
+    createSession = vi.fn(async () => ({
+      sessionId: "protocol-session",
+      agentSessionId: "agent-session",
+    }));
+    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
+    cancel = vi.fn(async () => undefined);
+    closeSession = vi.fn(async () => undefined);
+    close = vi.fn(async () => undefined);
+
+    constructor(opts: NativeOptions) {
+      this.opts = opts;
+      this.eventHandler = opts.onEvent;
+      getNativeMockState().instances.push(this);
+    }
+
+    setEventHandler(handler: NativeEventHandler | undefined) {
+      this.eventHandler = handler;
+      this.opts.onEvent = handler;
+    }
+
+    setTimeoutMs(timeoutMs: number | undefined) {
+      this.opts.timeoutMs = timeoutMs;
+    }
+
+    emit(event: AcpJsonRpcMessage, sessionId?: string) {
+      this.eventHandler?.(event, sessionId);
+    }
+  };
+  return { NativeAcpClient: state.NativeAcpClient };
+});
+
 import { AcpService } from "../../src/services/acp-service.js";
 
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, spawn: vi.fn() };
-});
+vi.mock("node:child_process", () => ({
+  exec: vi.fn(),
+  execFile: vi.fn(),
+  execFileSync: vi.fn(),
+  spawn: vi.fn(),
+}));
 
 type MockProc = EventEmitter & {
   stdout: EventEmitter;
   stderr: EventEmitter;
   stdin: Writable;
+  stdinWrites: string[];
   killed: boolean;
   kill: ReturnType<typeof vi.fn>;
 };
 
-const spawnMock = vi.mocked(spawn);
+const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
 function runtime(settings: Record<string, string | undefined> = {}) {
+  const values = { ELIZA_ACP_TRANSPORT: "cli", ...settings };
   return {
     logger: {
       debug: vi.fn(),
@@ -27,7 +116,7 @@ function runtime(settings: Record<string, string | undefined> = {}) {
       warn: vi.fn(),
       error: vi.fn(),
     },
-    getSetting: vi.fn((key: string) => settings[key]),
+    getSetting: vi.fn((key: string) => values[key]),
     services: new Map<string, unknown[]>(),
   } as never;
 }
@@ -36,8 +125,10 @@ function proc(): MockProc {
   const p = new EventEmitter() as MockProc;
   p.stdout = new EventEmitter();
   p.stderr = new EventEmitter();
+  p.stdinWrites = [];
   p.stdin = new Writable({
-    write(_chunk, _enc, cb) {
+    write(chunk, _enc, cb) {
+      p.stdinWrites.push(chunk.toString());
       cb();
     },
   });
@@ -124,11 +215,18 @@ async function waitForSessionStatus(
 
 beforeEach(() => {
   spawnMock.mockReset();
+  nativeClientMock.instances.length = 0;
 });
 
 afterEach(() => {
   vi.useRealTimers();
 });
+
+function firstNativeClient(): MockNativeClient {
+  const client = nativeClientMock.instances[0];
+  if (!client) throw new Error("expected NativeAcpClient to be constructed");
+  return client;
+}
 
 describe("AcpService", () => {
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
@@ -233,6 +331,47 @@ describe("AcpService", () => {
 
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).toContain("--no-terminal");
+  });
+
+  it("keeps the CLI transport as the default unless native is explicitly configured", async () => {
+    const reg = nextProc();
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "default-cli",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    closeOk(reg);
+    await spawned;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(nativeClientMock.instances).toHaveLength(0);
+  });
+
+  it("uses native transport only when explicitly configured", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      }),
+    );
+    await service.start();
+
+    const result = await service.spawnSession({
+      name: "native",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(result.status).toBe("ready");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "codex-acp --stdio",
+    );
   });
 
   it("does not emit task_complete from the session creation command", async () => {
@@ -344,6 +483,77 @@ describe("AcpService", () => {
       | undefined;
     expect(env?.OPENCODE_MODEL).toBeUndefined();
     expect(env?.OPENAI_MODEL).toBeUndefined();
+  });
+
+  it("runs the opt-in native transport through initialize, session creation, prompt, and completion", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      }),
+    );
+    const events: Array<[string, unknown]> = [];
+    service.onSessionEvent((_sid, event, payload) =>
+      events.push([event, payload]),
+    );
+    await service.start();
+
+    const spawned = service.spawnSession({
+      name: "native-codex",
+      agentType: "codex",
+      workdir: "/tmp/acp-native-test",
+    });
+    const session = await spawned;
+    const client = firstNativeClient();
+
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(client?.opts.command).toBe("codex-acp --stdio");
+    expect(client?.opts.cwd).toBe("/tmp/acp-native-test");
+    expect(client?.createSession).toHaveBeenCalledWith("/tmp/acp-native-test");
+    expect(session.status).toBe("ready");
+    expect(session.acpxSessionId).toBe("protocol-session");
+    expect(events.some(([event]) => event === "ready")).toBe(true);
+
+    client?.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: "protocol-session",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "native done" },
+          },
+        },
+      });
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        result: { stopReason: "end_turn" },
+      });
+      return { stopReason: "end_turn" };
+    });
+    const sent = service.sendPrompt(session.sessionId, "hello native");
+    const result = await sent;
+
+    expect(client?.prompt).toHaveBeenCalledWith(
+      "protocol-session",
+      "hello native",
+    );
+    expect(result.response).toBe("native done");
+    expect(result.stopReason).toBe("end_turn");
+    expect(events).toEqual(
+      expect.arrayContaining([
+        ["message", { text: "native done" }],
+        [
+          "task_complete",
+          expect.objectContaining({
+            response: "native done",
+            stopReason: "end_turn",
+          }),
+        ],
+      ]),
+    );
   });
 
   it("uses an explicit OpenCode ACP command override when configured", async () => {
@@ -473,6 +683,128 @@ describe("AcpService", () => {
     expect(events).not.toContain("stopped");
     expect(events.indexOf("message")).toBeLessThan(
       events.indexOf("task_complete"),
+    );
+  });
+
+  it("native sendPrompt preserves final text returned on the terminal prompt result", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const taskCompletePayloads: Array<{ response?: string }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      if (event === "task_complete") {
+        taskCompletePayloads.push(payload as { response?: string });
+      }
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-final",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "end_turn",
+          content: [{ type: "text", text: "final answer" }],
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn" };
+    });
+
+    const result = await service.sendPrompt(sessionId, "answer");
+
+    expect(result.response).toBe("final answer");
+    expect(result.finalText).toBe("final answer");
+    expect(taskCompletePayloads[0]?.response).toBe("final answer");
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
+
+  it("native sendPrompt rejects overlapping prompts before swapping event handlers", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-overlap",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let resolvePrompt: (value: { stopReason: string }) => void = () =>
+      undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    );
+
+    const first = service.sendPrompt(sessionId, "first");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await expect(service.sendPrompt(sessionId, "second")).rejects.toThrow(
+      /already busy/,
+    );
+    resolvePrompt({ stopReason: "end_turn" });
+    await first;
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("native cancel preserves cancelled status when the prompt later resolves", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-cancel",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let resolvePrompt: (value: { stopReason: string }) => void = () =>
+      undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    );
+
+    const sent = service.sendPrompt(sessionId, "long running");
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.cancelSession(sessionId);
+    resolvePrompt({ stopReason: "end_turn" });
+    const result = await sent;
+
+    expect(client.cancel).toHaveBeenCalledWith("protocol-session");
+    expect(result.stopReason).toBe("cancelled");
+    expect(result.error).toBeUndefined();
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
+  it("native permission requests emit blocked and login_required events", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    await service.spawnSession({
+      name: "native-permission",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+
+    client.emit({
+      jsonrpc: "2.0",
+      id: "permission",
+      method: "session/request_permission",
+      params: {
+        sessionId: "protocol-session",
+        description: "login required to continue",
+      },
+    } as AcpJsonRpcMessage);
+
+    expect(events).toEqual(
+      expect.arrayContaining(["blocked", "login_required"]),
     );
   });
 
