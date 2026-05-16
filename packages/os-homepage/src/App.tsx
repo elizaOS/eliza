@@ -221,8 +221,12 @@ function HomePage() {
           <div className="band-inner hero-layout">
             <div>
               <p className="section-kicker">elizaOS</p>
-              <h1>The agentic operating system for devices that run themselves.</h1>
-              <p className="hero-copy">Install the runtime. Boot the hardware.</p>
+              <h1>
+                The agentic operating system for devices that run themselves.
+              </h1>
+              <p className="hero-copy">
+                Install the runtime. Boot the hardware.
+              </p>
               <div className="hero-actions">
                 <a href="#downloads" className="button">
                   Download/install elizaOS

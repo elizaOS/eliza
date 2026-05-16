@@ -1,5 +1,8 @@
 import { ArrowRight, Download, ExternalLink } from "lucide-react";
-import { releaseData, type ReleaseDataDownload } from "@/generated/release-data";
+import {
+  type ReleaseDataDownload,
+  releaseData,
+} from "@/generated/release-data";
 
 const cloudUrl = "https://www.elizacloud.ai/dashboard/my-agents";
 const osUrl = "https://elizaos.ai";
@@ -68,7 +71,11 @@ export default function MarketingPage() {
               <p className="app-lede">
                 Your Eliza agent on desktop, mobile, and the web.
               </p>
-              <div className="app-cta-row" aria-label="Primary actions">
+              <div
+                className="app-cta-row"
+                role="group"
+                aria-label="Primary actions"
+              >
                 <a href="#download" className="app-cta app-cta--black">
                   <Download className="app-icon" aria-hidden="true" />
                   Download the app
@@ -77,7 +84,10 @@ export default function MarketingPage() {
                   ElizaOS
                   <ExternalLink className="app-icon" aria-hidden="true" />
                 </a>
-                <a href={cloudUrl} className="app-cta app-cta--orange-secondary">
+                <a
+                  href={cloudUrl}
+                  className="app-cta app-cta--orange-secondary"
+                >
                   Eliza Cloud
                   <ExternalLink className="app-icon" aria-hidden="true" />
                 </a>
@@ -99,13 +109,21 @@ export default function MarketingPage() {
               <h2 className="app-h2 app-h2--light">Install Eliza App.</h2>
             </div>
 
-            <div className="app-download-list" aria-label="App downloads">
+            <div
+              className="app-download-list"
+              role="group"
+              aria-label="App downloads"
+            >
               {downloads.map((download) => (
                 <DownloadLink key={download.id} {...download} />
               ))}
             </div>
 
-            <div className="app-store-list" aria-label="Store availability">
+            <div
+              className="app-store-list"
+              role="group"
+              aria-label="Store availability"
+            >
               {releaseData.storeTargets.map((store) => (
                 <div
                   key={store.platform}
@@ -154,7 +172,6 @@ export default function MarketingPage() {
             loop
             playsInline
             poster="/clouds/poster.jpg"
-            aria-hidden="true"
           >
             <source src="/clouds/clouds_4x_720p.webm" type="video/webm" />
             <source src="/clouds/clouds_4x_720p.mp4" type="video/mp4" />

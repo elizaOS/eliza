@@ -218,18 +218,18 @@ export default function CheckoutPage() {
                 <div className="flex items-center gap-3">
                   <ProductIcon product={product} />
                   <div>
-                    <h2 className="text-2xl font-semibold">{product.name}</h2>
-                    <p className="text-sm text-[#6a6660]">{product.subtitle}</p>
+                    <h2 className="text-2xl font-semibold text-white">{product.name}</h2>
+                    <p className="text-sm text-white/60">{product.subtitle}</p>
                   </div>
                 </div>
                 <div className="mt-5 flex flex-wrap gap-2">
                   {product.colors.map((color) => (
                     <button
                       aria-label={`Select ${color.name}`}
-                      className={`size-7 rounded-full border shadow-[inset_0_0_0_2px_rgba(255,255,255,0.55)] ${
+                      className={`size-7 border ${
                         selectedColor.id === color.id
-                          ? "border-[#111] ring-2 ring-[#FF5800]"
-                          : "border-black/20"
+                          ? "border-white ring-2 ring-[#FF5800]"
+                          : "border-white/30"
                       }`}
                       key={color.id}
                       onClick={() => setSelectedColor(color)}
@@ -239,7 +239,7 @@ export default function CheckoutPage() {
                     />
                   ))}
                 </div>
-                <div className="mt-6 grid gap-2 rounded-lg bg-[#f7f5ef] p-4 text-sm text-[#5f5a53]">
+                <div className="mt-6 grid gap-2 border border-white/14 bg-white/[0.04] p-4 text-sm text-white/70">
                   <span className="flex items-center gap-2">
                     <Palette className="size-4 text-[#FF5800]" />
                     {selectedColor.name} is captured with the order.
@@ -250,11 +250,11 @@ export default function CheckoutPage() {
                   </span>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-black/10 pt-4">
-                <strong className="text-xl">{product.price}</strong>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/14 pt-4">
+                <strong className="text-xl text-white">{product.price}</strong>
                 {session.authenticated ? (
                   <button
-                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex min-h-11 items-center gap-2 bg-[#FF5800] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#FF5800]/85 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={isStartingCheckout}
                     onClick={beginHardwareCheckout}
                     type="button"
@@ -273,7 +273,7 @@ export default function CheckoutPage() {
                 ) : (
                   <Link
                     to={loginTarget}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#111] px-4 text-sm font-semibold text-white"
+                    className="inline-flex min-h-11 items-center gap-2 bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/85"
                   >
                     <CreditCard aria-hidden="true" className="size-4" />
                     Sign in to buy

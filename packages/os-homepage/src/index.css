@@ -1,0 +1,477 @@
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource/poppins/800.css";
+@import "../../ui/src/styles/base.css";
+@import "../../ui/src/styles/tailwind-theme.css";
+@import "tailwindcss";
+@import "tw-animate-css";
+@source "../../ui/src";
+
+:root {
+  --brand-blue: #0b35f1;
+  --brand-orange: #ff5800;
+  --brand-white: #ffffff;
+  --brand-black: #000000;
+  --brand-gray: #d1d0d4;
+  --background: var(--brand-blue);
+  --foreground: var(--brand-white);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: "Poppins", sans-serif;
+  background: var(--brand-blue);
+  color: var(--brand-white);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea,
+pre,
+code {
+  font-family: "Poppins", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+}
+
+.os-shell {
+  min-height: 100vh;
+  background: var(--brand-black);
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem clamp(1rem, 4vw, 3rem);
+  background: var(--brand-blue);
+}
+
+.brand img,
+.site-footer img {
+  display: block;
+  width: auto;
+  height: 1.7rem;
+}
+
+.site-nav,
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(0.9rem, 2.5vw, 1.8rem);
+  align-items: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.site-nav a,
+.site-footer a {
+  opacity: 0.88;
+}
+
+.site-nav a:hover,
+.site-footer a:hover {
+  opacity: 1;
+  color: var(--brand-orange);
+}
+
+.band {
+  width: 100%;
+  padding: clamp(4rem, 9vw, 8rem) clamp(1rem, 4vw, 3rem);
+}
+
+.band-blue {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.band-white {
+  background: var(--brand-white);
+  color: var(--brand-black);
+}
+
+.band-orange {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.band-black {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.band-inner {
+  width: min(100%, 82rem);
+  margin: 0 auto;
+}
+
+.hero-band {
+  min-height: calc(100vh - 4rem);
+  display: flex;
+  align-items: center;
+  padding-top: clamp(3rem, 7vw, 6rem);
+  padding-bottom: clamp(3rem, 7vw, 6rem);
+}
+
+.hero-layout,
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+
+.hero-layout {
+  min-height: min(42rem, calc(100vh - 10rem));
+}
+
+@media (min-width: 900px) {
+  .hero-layout,
+  .detail-grid {
+    grid-template-columns: minmax(0, 1.08fr) minmax(20rem, 0.92fr);
+  }
+}
+
+.section-kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  max-width: 14ch;
+  margin-bottom: 1.25rem;
+  font-size: clamp(3.25rem, 8vw, 7.5rem);
+  font-weight: 800;
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+h2 {
+  max-width: 13ch;
+  margin-bottom: 0;
+  font-size: clamp(2.35rem, 6vw, 5rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: 0;
+}
+
+h3 {
+  margin-bottom: 0.25rem;
+  font-size: clamp(1.5rem, 3.2vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.hero-copy {
+  max-width: 30rem;
+  margin-bottom: 0;
+  font-size: clamp(1.1rem, 1.8vw, 1.45rem);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 2rem;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0 1.25rem;
+  background: var(--brand-white);
+  color: var(--brand-blue);
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.button:hover {
+  background: var(--brand-gray);
+}
+
+.button-dark {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.button-dark:hover {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+}
+
+.hero-image,
+.product-image {
+  display: block;
+  width: 100%;
+  object-fit: cover;
+  background: var(--brand-gray);
+}
+
+.hero-image {
+  aspect-ratio: 1 / 1;
+}
+
+.split-band,
+.section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (min-width: 860px) {
+  .split-band,
+  .section-head {
+    grid-template-columns: minmax(0, 0.9fr) minmax(18rem, 1.1fr);
+  }
+}
+
+.download-stack {
+  display: grid;
+  gap: 0;
+}
+
+.download-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 1.15rem 0;
+  color: var(--brand-black);
+}
+
+.download-line + .download-line {
+  box-shadow: 0 -1px 0 var(--brand-black);
+}
+
+@media (min-width: 620px) {
+  .download-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+.download-line span {
+  font-size: clamp(1.35rem, 3vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.download-line strong {
+  color: var(--brand-blue);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.punch-band {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 800px) {
+  .punch-band {
+    flex-direction: row;
+    align-items: end;
+    justify-content: space-between;
+  }
+}
+
+.punch-band p {
+  max-width: 24rem;
+  margin-bottom: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.section-head {
+  margin-bottom: clamp(2.5rem, 6vw, 4.5rem);
+}
+
+.section-head .button {
+  justify-self: start;
+  align-self: end;
+}
+
+.product-rows {
+  display: grid;
+  gap: 0;
+}
+
+.product-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 10rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1.25rem, 3vw, 2rem) 0;
+}
+
+.product-row + .product-row {
+  box-shadow: 0 -1px 0 var(--brand-gray);
+}
+
+@media (min-width: 860px) {
+  .product-row {
+    grid-template-columns: minmax(10rem, 15rem) minmax(0, 1fr) auto;
+    gap: clamp(1.5rem, 4vw, 3rem);
+  }
+}
+
+.product-media {
+  display: block;
+}
+
+.product-row .product-image {
+  aspect-ratio: 1 / 1;
+}
+
+.product-copy p:not(.section-kicker) {
+  max-width: 26rem;
+  margin-bottom: 0;
+  color: var(--brand-gray);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.product-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--brand-gray);
+  font-weight: 800;
+}
+
+@media (min-width: 860px) {
+  .product-actions {
+    grid-column: auto;
+    justify-content: flex-end;
+    min-width: 14rem;
+  }
+}
+
+.product-detail-hero {
+  min-height: calc(100vh - 4rem);
+}
+
+.product-detail-hero h1 {
+  max-width: 12ch;
+}
+
+.product-detail-hero p {
+  max-width: 34rem;
+  margin-bottom: 0;
+  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.detail-grid .product-image {
+  aspect-ratio: 1 / 1;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.detail-note {
+  margin-top: 1.25rem;
+  color: var(--brand-gray);
+}
+
+.text-link {
+  display: inline-flex;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.site-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 2rem clamp(1rem, 4vw, 3rem);
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+@media (min-width: 700px) {
+  .site-footer {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .brand img,
+  .site-footer img {
+    height: 1.45rem;
+  }
+
+  .button {
+    width: 100%;
+  }
+}
