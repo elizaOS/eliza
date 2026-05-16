@@ -42,6 +42,7 @@
     "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-elevenlabs": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
