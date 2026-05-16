@@ -513,6 +513,20 @@ export class DockerSandboxProvider implements SandboxProvider {
         stewardTenant.apiKey,
       );
 
+      // Pass the shared Upstash credentials through to the sandbox so it can
+      // self-register `agent:<id>:server` + `server:<name>:url` keys that
+      // gateway-discord / gateway-webhook resolve for inbound platform
+      // messages. Omit when the orchestrator env doesn't carry them — the
+      // sandbox will skip registration silently in that case.
+      const registryRedisUrl = process.env.KV_REST_API_URL?.trim() ?? "";
+      const registryRedisToken = process.env.KV_REST_API_TOKEN?.trim() ?? "";
+      const canSelfRegister = registryRedisUrl !== "" && registryRedisToken !== "";
+      if (!canSelfRegister) {
+        logger.warn(
+          "[docker-sandbox] KV_REST_API_URL / KV_REST_API_TOKEN missing from orchestrator env — sandbox will not register in Redis and gateways will not route inbound platform messages to it",
+        );
+      }
+
       const allEnv: Record<string, string> = {
         ...baseEnv,
         STEWARD_AGENT_TOKEN: stewardAgentToken,
@@ -536,6 +550,19 @@ export class DockerSandboxProvider implements SandboxProvider {
         // lives only in the per-container PGlite, so a unique per-launch key
         // is fine.
         ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        // Gateway service discovery — see SandboxRegistry in app-core.
+        // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
+        // VPN IP set later at line ~653) because the gateways on Railway can't
+        // route through Hetzner's private VPN.
+        ...(canSelfRegister
+          ? {
+              SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
+              SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken,
+              SANDBOX_AGENT_ID: agentId,
+              SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
+              SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
+            }
+          : {}),
       };
 
       // Validate env keys/values before they are interpolated into remote shell commands.

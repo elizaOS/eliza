@@ -662,6 +662,76 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("adds verified public route aliases when a completion only mentions loopback", async () => {
+      const tmpRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "sub-agent-router-"),
+      );
+      try {
+        const localUrl = "http://127.0.0.1:6900/apps/tea-fortune/";
+        const publicUrl = "https://example.test/apps/tea-fortune/";
+        const appDir = path.join(tmpRoot, "data/apps/tea-fortune");
+        fs.mkdirSync(appDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(appDir, "index.html"),
+          "<html><body>tea fortunes</body></html>",
+        );
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === localUrl || url === publicUrl) {
+            return new Response("<html><body>tea fortunes</body></html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            });
+          }
+          return new Response("not found", { status: 404 });
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        session = {
+          ...sessionWithTask(`build and verify ${publicUrl}`, undefined, {
+            workdirRoute: {
+              id: "static-apps",
+              workdir: tmpRoot,
+              urlMappings: [
+                {
+                  urlPrefix: "http://127.0.0.1:6900/apps/",
+                  localPath: "data/apps/",
+                },
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          }),
+          workdir: tmpRoot,
+        };
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
+
+        acp.emit(SESSION_ID, "task_complete", {
+          response: localUrl,
+        });
+        await new Promise((r) => setTimeout(r, 200));
+
+        const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+        expect(fetched).toContain(localUrl);
+        expect(fetched).toContain(publicUrl);
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
+          localUrl,
+          publicUrl,
+        ]);
+        expect(posted?.content?.text).not.toContain("[verification:");
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    });
+
     it("focuses verification on the referenced app route instead of header telemetry", async () => {
       const appBase = "https://nubilio.org/apps/cache-safe/";
       const styleUrl = `${appBase}style-v2.css`;

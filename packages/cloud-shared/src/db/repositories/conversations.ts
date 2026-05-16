@@ -154,7 +154,7 @@ export class ConversationsRepository {
 
     if (!conversation) return undefined;
     const messages = await Promise.all(
-      conversation.messages.map((message: ConversationMessage) => hydrateMessage(message)),
+      (conversation.messages as ConversationMessage[]).map((message) => hydrateMessage(message)),
     );
     return { ...conversation, messages } as ConversationWithMessages;
   }

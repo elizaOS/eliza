@@ -521,8 +521,8 @@ export function flagsToLlamaServerArgv(flags: LlamaServerFlags): string[] {
 	if (flags.mlock) argv.push("--mlock");
 	if (flags.no_mmap) argv.push("--no-mmap");
 	if (flags.no_kv_offload) argv.push("--no-kv-offload");
-	argv.push("--draft-min", String(flags.draft_min));
-	argv.push("--draft-max", String(flags.draft_max));
+	argv.push("--spec-draft-n-min", String(flags.draft_min));
+	argv.push("--spec-draft-n-max", String(flags.draft_max));
 	// ctx-checkpoints/interval are only meaningful when the runtime probe
 	// says the fork supports them; the spawn site applies them conditionally.
 	argv.push("--ctx-checkpoints", String(flags.ctx_checkpoints));

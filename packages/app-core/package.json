@@ -35,7 +35,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../scripts/copy-package-assets.mjs packages/app-core src/styles src/registry/entries scripts platforms packaging patches test/scripts test/helpers && node ../scripts/prepare-package-dist.mjs packages/app-core",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../scripts/copy-package-assets.mjs packages/app-core src/styles src/registry/entries scripts platforms packaging patches test/scripts test/helpers && node ../scripts/prepare-package-dist.mjs packages/app-core && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts",
     "voice:interactive": "bun ./scripts/voice-interactive.mjs",
@@ -75,6 +75,11 @@
       "types": "./dist/api/response.d.ts",
       "import": "./dist/api/response.js",
       "default": "./dist/api/response.js"
+    },
+    "./onboarding/onboarding-config": {
+      "types": "./dist/onboarding/onboarding-config.d.ts",
+      "import": "./dist/onboarding/onboarding-config.js",
+      "default": "./dist/onboarding/onboarding-config.js"
     },
     "./registry": {
       "types": "./dist/registry/index.d.ts",
@@ -152,6 +157,7 @@
     "@elizaos/ui": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "@node-rs/argon2": "^2.0.2",
+    "@upstash/redis": "^1.37.0",
     "chalk": "^5.3.0",
     "commander": "^14.0.0",
     "dotenv": "^17.2.3",

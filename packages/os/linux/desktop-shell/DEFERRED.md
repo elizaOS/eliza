@@ -36,3 +36,30 @@ this session.
 
 Search for `// IMPL:` comments in `src/providers/LinuxSystemProvider.tsx`
 for the exact integration points.
+
+## Native skeleton
+
+`native/` now contains a Rust crate skeleton
+(`eliza-linux-desktop-bridge`) that mirrors the JS-side channel map in
+`src/bridge/bridge-contract.ts`. Every function in `native/src/lib.rs` is
+`unimplemented!()`. Landing the integration requires:
+
+- A real D-Bus client (`zbus` async preferred, `dbus-rs` sync acceptable)
+  with method-call wrappers for NetworkManager, UPower, login1, and
+  systemd-timedated.
+- PipeWire bindings (`pipewire-rs`) with a PulseAudio fallback
+  (`libpulse-binding`) when PipeWire is absent.
+- A Polkit policy file in `/usr/share/polkit-1/actions/` granting the
+  desktop-session user `org.freedesktop.login1.power-off` etc., or running
+  the bridge inside an active local session that already has the
+  capability.
+- An IPC transport — preferred is a unix socket at
+  `$XDG_RUNTIME_DIR/eliza-linux-desktop-bridge.sock` with
+  newline-delimited JSON framing matching the channel/payload shape that
+  `BridgeTransport` expects. The shell embed (GTK4 + WebKitGTK or
+  wlroots-native compositor) is responsible for installing
+  `window.__elizaLinuxBridge` on the JS side, bridging to that socket.
+- A replaceable shell surface — GNOME Shell is not replaceable today, so
+  this lands on a wlroots-based session (`labwc`/`sway`-derived) or as a
+  layer-shell surface (`zwlr_layer_shell_v1`) injected over the existing
+  compositor.

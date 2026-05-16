@@ -21,6 +21,8 @@
 		"incremental": false,
 		"skipLibCheck": true,
 		"paths": {
+			"@elizaos/contracts": ["../contracts/dist/index.d.ts"],
+			"@elizaos/contracts/*": ["../contracts/dist/*.d.ts"],
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/shared": ["../shared/src/index.ts"]
 		}

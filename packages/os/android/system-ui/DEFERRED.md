@@ -52,3 +52,33 @@ for this session.
 Search for `// IMPL:` comments in
 `src/providers/AndroidSystemProvider.tsx` for the exact integration
 points.
+
+## Native skeleton
+
+`native/` now contains an Android library skeleton
+(`eliza-android-system-bridge`, package `ai.elizaos.system.bridge`) that
+mirrors the JS-side channel map in `src/bridge/bridge-contract.ts`.
+Every method in `SystemBridge.kt` throws `NotImplementedError`. Landing
+the integration requires:
+
+- A SystemUI replacement APK that hosts the React surface in a `WebView`
+  and exposes `SystemBridge` to JS via
+  `WebView.addJavascriptInterface(bridge, "__elizaAndroidBridge")`.
+  That bound name is what `getBridgeTransport()` looks up.
+- The bridge APK installed in `/system/priv-app/` and signed with the
+  AOSP platform key.
+- A vendor partition allowlist
+  (`vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml`)
+  granting `REBOOT`, `DEVICE_POWER`, `WRITE_SECURE_SETTINGS`, and the
+  rest of the signature-level permissions. The library's own
+  `AndroidManifest.xml` only **declares** them.
+- SELinux policy in `vendor/eliza/sepolicy/` for the bridge service
+  domain (read + write contexts for power control, AudioManager IPC,
+  ConnectivityManager IPC, TelephonyManager IPC).
+- Replacing `frameworks/base/packages/SystemUI` in the AOSP build with
+  this APK (or an overlay product variant under
+  `vendor/eliza/products/`).
+- A real lock-screen integration via `KeyguardService` replacement; the
+  JS-side `dismissLockscreen` command currently maps to
+  `KeyguardManager.requestDismissKeyguard`, which only works from a
+  foreground activity context.

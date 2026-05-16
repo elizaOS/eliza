@@ -95,10 +95,12 @@ import {
 } from "../runtime/response-handler-evaluators";
 import type {
 	ResponseHandlerFieldContext,
+	ResponseHandlerFieldEvaluator,
 	ResponseHandlerFieldRunResult,
 	ResponseHandlerResult,
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
+import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -214,6 +216,28 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
+const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
+const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
+const DEFAULT_STAGE1_MAX_TOKENS = 1024;
+const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
+	"shouldRespond",
+	"facts",
+	"relationships",
+	"addressedTo",
+	"emotion",
+]);
+
+function buildDirectChannelResponseFieldSelection(
+	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
+): ResponseHandlerFieldSelectionOptions {
+	const includeFieldNames = new Set<string>();
+	for (const field of fields) {
+		if (!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name)) {
+			includeFieldNames.add(field.name);
+		}
+	}
+	return { includeFieldNames };
+}
 
 function mergeAbortSignals(
 	signals: Array<AbortSignal | undefined>,
@@ -800,6 +824,7 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
+	"RUNTIME_MODEL_CONTEXT",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
@@ -1580,31 +1605,19 @@ function appendPriorDialogueEvents(
 		return;
 	}
 	const dialogue = recentMessages
-			.filter((memory): memory is Memory => {
-				if (!memory || typeof memory !== "object") return false;
-				const m = memory as Memory;
-				if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
-				if (m.agentId === runtime.agentId || m.entityId === runtime.agentId) {
-					return false;
-				}
-				if (
-					typeof m.content?.source === "string" &&
-					m.content.source.includes("sub-agent")
-				) {
-					return false;
-				}
-				if (
-					m.content?.metadata &&
-					typeof m.content.metadata === "object" &&
-					(m.content.metadata as { subAgent?: unknown }).subAgent === true
-				) {
-					return false;
-				}
-				const contentType =
+		.filter((memory): memory is Memory => {
+			if (!memory || typeof memory !== "object") return false;
+			const m = memory as Memory;
+			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+			if (m.entityId === runtime.agentId) {
+				return false;
+			}
+			const contentType =
 				m.content && typeof m.content === "object"
 					? (m.content as { type?: string }).type
 					: undefined;
 			if (contentType === "action_result") return false;
+			if (isSubAgentCompletionArtifact(m)) return false;
 			const text =
 				typeof m.content?.text === "string" ? m.content.text.trim() : "";
 			if (looksLikePriorDialogueArtifact(text)) return false;
@@ -1636,6 +1649,20 @@ function looksLikePriorDialogueArtifact(text: string): boolean {
 	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
 		text,
 	);
+}
+
+function isSubAgentCompletionArtifact(memory: Memory): boolean {
+	const content = memory.content;
+	if (!content || typeof content !== "object") return false;
+	const metadata =
+		content.metadata && typeof content.metadata === "object"
+			? (content.metadata as Record<string, unknown>)
+			: {};
+	if (metadata.subAgent === true) return true;
+	const source = typeof content.source === "string" ? content.source : "";
+	if (source.startsWith("acpx:sub-agent-router")) return true;
+	const text = typeof content.text === "string" ? content.text.trim() : "";
+	return text.startsWith("[sub-agent:");
 }
 
 function hasStructuredRecentMessagesProvider(state: State): boolean {
@@ -1681,6 +1708,7 @@ function getRecentConversationSearchText(
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
 			}
+			if (isSubAgentCompletionArtifact(memory)) return false;
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -2152,16 +2180,22 @@ async function createV5MessageContextObject(args: {
 	];
 	appendStateProviderEvents(events, args.state, renderExclusions);
 
-	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
-	if (events.some((event) => event.id.startsWith("history:"))) {
+	if (hasStructuredRecentMessagesProvider(args.state)) {
 		events.push({
 			id: "prior-dialogue-policy",
-			type: "provider",
-			source: "message-runtime",
-			name: "PRIOR_DIALOGUE_POLICY",
-			text: "prior_dialogue_policy: prior assistant/tool outputs are historical context only; satisfy the current user request with current tool calls when tools are required.",
+			type: "segment",
+			source: "message-service",
+			segment: {
+				id: "prior-dialogue-policy",
+				label: "system",
+				content:
+					"prior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+				stable: true,
+			},
 		});
 	}
+
+	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -2346,29 +2380,70 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- do not include internal reasoning",
 ].join("\n");
 
+const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
+
+available_contexts:
+{{availableContexts}}
+
+direct/private rules:
+- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations should use contexts=["simple"] and put the final answer in replyText.
+- Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
+- If schema omits shouldRespond, do not invent it.
+- contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
+
+Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
+`;
+
+function directReplyPromptForMessage(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	messageHandler: MessageHandlerResult;
+}): string {
+	const latestText = getUserMessageText(args.message) ?? "";
+	const contextText = truncateToCompleteSentence(
+		(args.state.text ?? "").trim(),
+		1000,
+	);
+	const instructions = resolveOptimizedPromptForRuntime(
+		args.runtime,
+		"response",
+		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
+	);
+	return [
+		instructions,
+		"",
+		contextText ? `recent_context:\n${contextText}` : "",
+		contextText ? "" : "",
+		`user_message: ${latestText}`,
+		`routing_thought: ${args.messageHandler.thought}`,
+	].filter((line) => line.length > 0).join("\n");
+}
+
+async function generateDirectReplyModel(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	messageHandler: MessageHandlerResult;
+	signal?: AbortSignal;
+}): Promise<{ text: string; raw: string | GenerateTextResult; prompt: string }> {
+	const prompt = directReplyPromptForMessage(args);
+	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
+		prompt,
+		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+		signal: args.signal,
+	})) as string | GenerateTextResult;
+	return { text: getV5ModelText(raw).trim(), raw, prompt };
+}
+
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
 	messageHandler: MessageHandlerResult;
 }): Promise<string> {
-	const latestText = getUserMessageText(args.message) ?? "";
-	const instructions = resolveOptimizedPromptForRuntime(
-		args.runtime,
-		"response",
-		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
-	);
-	const prompt = [
-		instructions,
-		"",
-		"context:",
-		args.state.text,
-		"",
-		`user_message: ${latestText}`,
-		`routing_thought: ${args.messageHandler.thought}`,
-	].join("\n");
-	const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-	return getV5ModelText(raw).trim();
+	return (await generateDirectReplyModel(args)).text;
 }
 
 /**
@@ -2378,6 +2453,7 @@ async function generateDirectReplyOnce(args: {
  */
 export function formatAvailableContextsForPrompt(
 	contexts: readonly ContextDefinition[],
+	options?: { compact?: boolean },
 ): string {
 	if (contexts.length === 0) {
 		return "(no contexts registered)";
@@ -2406,6 +2482,9 @@ export function formatAvailableContextsForPrompt(
 				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
+			if (options?.compact) {
+				return `- ${definition.id}${suffix}`;
+			}
 			return description
 				? `- ${definition.id}${suffix}: ${description}`
 				: `- ${definition.id}${suffix}`;
@@ -2461,15 +2540,20 @@ function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean; responseHandlerFields?: string },
 ): string {
+	const baselineTemplate = options?.directMessage
+		? DIRECT_MESSAGE_HANDLER_TEMPLATE
+		: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
-		messageHandlerTemplate,
+		baselineTemplate,
 	);
 	const rendered = composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
-			availableContexts: formatAvailableContextsForPrompt(availableContexts),
+			availableContexts: formatAvailableContextsForPrompt(availableContexts, {
+				compact: options?.directMessage === true,
+			}),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: baseline,
@@ -2746,8 +2830,12 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
 	const currentMessageText = runtimeContext?.messageText ?? "";
+	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
+		candidateActions,
+		runtimeContext,
+	);
 	const inferredAckCandidateActions =
-		candidateActions.length === 0 &&
+		!hasRunnableCandidateAction &&
 		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
 			? inferAckIntentCandidateActions(
 					result,
@@ -2886,6 +2974,25 @@ export function messageHandlerFromFieldResult(
 	};
 }
 
+function candidateActionsContainRunnableAction(
+	candidateActions: readonly string[],
+	runtimeContext:
+		| {
+				actions: ReadonlyArray<Pick<Action, "name">>;
+		  }
+		| undefined,
+): boolean {
+	if (candidateActions.length === 0) return false;
+	if (!runtimeContext) return true;
+	return candidateActions.some((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		if (canonicalPlannerControlActionName(normalized) !== null) return true;
+		return runtimeContext.actions.some(
+			(action) => normalizeActionIdentifier(action.name) === normalized,
+		);
+	});
+}
+
 const PLANNING_ACK_REPLIES = new Set([
 	"got it.",
 	"looking into it.",
@@ -2921,7 +3028,7 @@ function hasAckOnlyActionableIntent(
 	return (
 		looksLikeLocalShellRequest(actionText) ||
 		looksLikeWebSearchRequest(actionText) ||
-		looksLikeCodingDelegationRequest(actionText)
+		looksLikeCodingWorkRequest(actionText)
 	);
 }
 
@@ -2953,7 +3060,7 @@ function inferAckIntentCandidateActions(
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
 	}
-	if (looksLikeCodingDelegationRequest(actionText)) {
+	if (looksLikeCodingWorkRequest(actionText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
 			"TASKS_SPAWN_AGENT",
@@ -2987,7 +3094,7 @@ function inferDirectCurrentRequestCandidateActions(
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
 	}
-	if (looksLikeCodingDelegationRequest(messageText)) {
+	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
 			"TASKS_SPAWN_AGENT",
@@ -2999,6 +3106,26 @@ function inferDirectCurrentRequestCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	return [];
+}
+
+function shouldUseDirectReplyFastPath(args: {
+	message: Memory;
+	actions: ReadonlyArray<Pick<Action, "name">>;
+}): boolean {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text || text.length > 280) return false;
+	if (inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0) {
+		return false;
+	}
+	if (/https?:\/\//iu.test(text)) return false;
+	if (
+		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|update|delete|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|window|device|workflow|automation)\b/iu.test(
+			text,
+		)
+	) {
+		return false;
+	}
+	return true;
 }
 
 function findWebLookupActionName(
@@ -3843,6 +3970,61 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
+		if (
+			directMessageChannel &&
+			shouldUseDirectReplyFastPath({
+				message: args.message,
+				actions: args.runtime.actions,
+			})
+		) {
+			const fastStartedAt = Date.now();
+			const fastMessageHandler: MessageHandlerResult = {
+				processMessage: "RESPOND",
+				thought: "Direct private chat fast path.",
+				plan: {
+					contexts: [SIMPLE_CONTEXT_ID],
+					reply: "",
+					simple: true,
+					requiresTool: false,
+				},
+			};
+			const generated = await generateDirectReplyModel({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				messageHandler: fastMessageHandler,
+				signal: stage1TurnSignal,
+			});
+			const fastEndedAt = Date.now();
+			fastMessageHandler.plan.reply = generated.text;
+			if (recorder && trajectoryId) {
+				await recordMessageHandlerStage({
+					recorder,
+					trajectoryId,
+					messages: [{ role: "user", content: generated.prompt }],
+					providerOptions: {
+						eliza: {
+							directReplyFastPath: true,
+							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+						},
+					},
+					raw: generated.raw,
+					parsed: fastMessageHandler,
+					startedAt: fastStartedAt,
+					endedAt: fastEndedAt,
+					logger: args.runtime.logger,
+				});
+			}
+			return {
+				kind: "direct_reply",
+				messageHandler: fastMessageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: generated.text,
+					thought: fastMessageHandler.thought,
+				}),
+			};
+		}
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
 			message: args.message,
@@ -3850,12 +4032,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			senderRole: senderRole as ResponseHandlerSenderRole,
 			turnSignal: stage1TurnSignal,
 		};
+		const responseHandlerFields =
+			args.runtime.responseHandlerFieldRegistry.list();
+		const responseHandlerFieldSelection = directMessageChannel
+			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
+			: undefined;
+		const selectedResponseHandlerFields =
+			args.runtime.responseHandlerFieldRegistry.list(
+				responseHandlerFieldSelection,
+			);
 		const responseHandlerFieldPrompt =
 			await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
 				responseHandlerFieldContext,
+				responseHandlerFieldSelection,
 			);
 		const responseHandlerSchema =
-			args.runtime.responseHandlerFieldRegistry.composeSchema();
+			args.runtime.responseHandlerFieldRegistry.composeSchema(
+				responseHandlerFieldSelection,
+			);
 		const messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
@@ -3939,10 +4133,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseGrammar = buildResponseGrammar(
 			{
 				actions: args.runtime.actions ?? [],
-				responseHandlerFields:
-					args.runtime.responseHandlerFieldRegistry?.list() ?? [],
+				responseHandlerFields: selectedResponseHandlerFields,
 				responseHandlerFieldSignature:
-					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
+						responseHandlerFieldSelection,
+					),
 			},
 			{
 				contexts: availableContexts.map((definition) => String(definition.id)),
@@ -3967,7 +4162,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			maxTokens: 1024,
+			maxTokens: directMessageChannel
+				? DIRECT_CHANNEL_STAGE1_MAX_TOKENS
+				: DEFAULT_STAGE1_MAX_TOKENS,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to
@@ -5592,7 +5789,7 @@ function looksLikeWebSearchRequest(text: string): boolean {
 	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
 }
 
-function looksLikeCodingDelegationRequest(text: string): boolean {
+function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
 		return false;

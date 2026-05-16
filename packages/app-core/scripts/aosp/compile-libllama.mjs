@@ -46,7 +46,7 @@
 //   deferred effort — see docs/porting/upstream-rebase-plan.md.
 //
 //   v0.2.0-eliza (subset of this pin) added DFlash speculative decoding
-//   CLI surface (--spec-type dflash, --draft-min-prob alias, n_drafted_total
+//   CLI surface (--spec-type dflash, --spec-draft-n-min/max, n_drafted_total
 //   / n_drafted_accepted_total Prometheus counters) on top of v0.1.0-eliza.
 //
 // Why this fork (not stock ggml-org/llama.cpp b8198):

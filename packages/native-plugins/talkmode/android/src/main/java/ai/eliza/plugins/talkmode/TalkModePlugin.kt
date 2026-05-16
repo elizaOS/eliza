@@ -2,6 +2,7 @@ package ai.eliza.plugins.talkmode
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -1162,6 +1163,9 @@ class TalkModePlugin : Plugin() {
     }
 
     private fun isPermissionGranted(permission: String): Boolean {
+        if (permission == Manifest.permission.RECORD_AUDIO) {
+            return context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        }
         return getPermissionState(permission) == com.getcapacitor.PermissionState.GRANTED
     }
 

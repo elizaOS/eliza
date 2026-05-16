@@ -4,7 +4,7 @@ import path from "node:path";
 // @ts-expect-error -- repo-root is a runtime .mjs helper.
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
 
-const rootDir = resolveRepoRoot(import.meta.url);
+const rootDir = resolveRepoRoot(import.meta.url, 2);
 const distDir = path.join(rootDir, "dist");
 const pkgPath = path.join(rootDir, "package.json");
 

@@ -30,6 +30,9 @@ export type KokoroBackendId = "fork" | "onnx" | "mock";
 export interface KokoroBackendInputs {
   /** Override the env-resolved backend (tests / programmatic selection). */
   backend?: KokoroBackendId;
+  /** Default backend derived from the discovered model layout. Used when no
+   *  explicit backend and no `KOKORO_BACKEND` env override are set. */
+  defaultBackend?: KokoroBackendId;
   /** Construction options for the ONNX path. Used iff backend === "onnx". */
   onnx?: KokoroOnnxRuntimeOptions;
   /** Construction options for the fork (HTTP) path. Used iff backend === "fork". */
@@ -68,7 +71,8 @@ export function readKokoroBackendFromEnv(
  *
  *   1. Explicit `inputs.backend` wins.
  *   2. Else env (`KOKORO_BACKEND`).
- *   3. Else default → `fork`.
+ *   3. Else `inputs.defaultBackend`.
+ *   4. Else default → `fork`.
  *
  * If the chosen backend's options block is missing the call throws a
  * structured error (no silent downgrade). Callers must wire the options
@@ -78,7 +82,9 @@ export function pickKokoroRuntimeBackend(
   inputs: KokoroBackendInputs,
 ): KokoroBackendDecision {
   const fromEnv = readKokoroBackendFromEnv(inputs.env);
-  const backend: KokoroBackendId = inputs.backend ?? fromEnv ?? "fork";
+  const fromDefault = inputs.backend === undefined && fromEnv === undefined;
+  const backend: KokoroBackendId =
+    inputs.backend ?? fromEnv ?? inputs.defaultBackend ?? "fork";
 
   if (backend === "fork") {
     if (!inputs.fork) {
@@ -90,9 +96,13 @@ export function pickKokoroRuntimeBackend(
     }
     return {
       backend,
-      reason: fromEnv
-        ? `KOKORO_BACKEND=${fromEnv} → fork (llama-server /v1/audio/speech)`
-        : "default → fork (llama-server /v1/audio/speech)",
+      reason: inputs.backend
+        ? "explicit backend=fork (llama-server /v1/audio/speech)"
+        : fromEnv
+          ? `KOKORO_BACKEND=${fromEnv} → fork (llama-server /v1/audio/speech)`
+          : fromDefault && inputs.defaultBackend === "fork"
+            ? "model layout default → fork (llama-server /v1/audio/speech)"
+            : "default → fork (llama-server /v1/audio/speech)",
       runtime: new KokoroGgufRuntime(inputs.fork),
     };
   }
@@ -106,9 +116,11 @@ export function pickKokoroRuntimeBackend(
     }
     return {
       backend,
-      reason: fromEnv
-        ? `KOKORO_BACKEND=onnx → onnxruntime-node (deprecation runway)`
-        : "explicit backend=onnx (deprecation runway)",
+      reason: inputs.backend
+        ? "explicit backend=onnx (deprecation runway)"
+        : fromEnv
+          ? "KOKORO_BACKEND=onnx → onnxruntime-node (deprecation runway)"
+          : "model layout default → onnxruntime-node (ONNX model file)",
       runtime: new KokoroOnnxRuntime(inputs.onnx),
     };
   }

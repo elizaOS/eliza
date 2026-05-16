@@ -17,6 +17,7 @@
  */
 import { ResponseSkeletonStreamExtractor } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
+import path from "node:path";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
 import { ELIZA_1_PLACEHOLDER_IDS, findCatalogModel } from "./catalog";
 import { conversationRegistry } from "./conversation-registry";
@@ -41,7 +42,15 @@ import {
 	isValidEmbeddingDim,
 } from "./voice/embedding";
 import { embeddingServerForRoute } from "./voice/embedding-server";
-import { EngineVoiceBridge, VoiceStartupError } from "./voice/engine-bridge";
+import {
+	EngineVoiceBridge,
+	isOmniVoiceBundleAvailable,
+	VoiceStartupError,
+} from "./voice/engine-bridge";
+import {
+	readVoiceBackendModeFromEnv,
+	selectVoiceBackend,
+} from "./voice/kokoro/runtime-selection";
 import { dflashTextRunner } from "./voice/pipeline-impls";
 import {
 	createEvictableModelRole,
@@ -1113,10 +1122,72 @@ export class LocalInferenceEngine {
 		if (!bridge) {
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
-				bridge = this.startVoice({
-					bundleRoot: bundle.root,
-					useFfiBackend: true,
+				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
+				const kokoro =
+					resolveKokoroEngineConfig(bundleKokoroRoot) ??
+					resolveKokoroEngineConfig();
+				const mode = readVoiceBackendModeFromEnv();
+				const decision = selectVoiceBackend({
+					mode,
+					kokoroAvailable: kokoro !== null,
+					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
+					tierVoiceBackends: bundle.voiceBackends,
 				});
+				console.info(
+					`[voice] Selected ${decision.backend} backend for ${bundle.tierId}: ${decision.reason}`,
+				);
+				if (decision.backend === "kokoro") {
+					if (!kokoro) {
+						throw new VoiceStartupError(
+							"missing-bundle-root",
+							"[voice] Kokoro was selected but its model artifacts are not staged under ~/.eliza/local-inference/models/kokoro/.",
+						);
+					}
+					bridge = this.startVoice({
+						bundleRoot: "",
+						useFfiBackend: false,
+						kokoroOnly: kokoro,
+					});
+				} else {
+					const { ensureSamanthaPresetReady } = await import(
+						"./voice/samantha-preset-regenerator"
+					);
+					const outcome = await ensureSamanthaPresetReady(bundle.root);
+					if (outcome.kind === "regenerated") {
+						console.info(
+							`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
+						);
+					} else if (outcome.kind === "placeholder-no-regen") {
+						console.warn(
+							`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
+						);
+						if (
+							mode !== "omnivoice" &&
+							kokoro &&
+							bundle.voiceBackends?.includes("kokoro")
+						) {
+							console.warn(
+								`[voice] Falling back to bundled Kokoro voice ${kokoro.defaultVoiceId} from ${kokoro.layout.root} because OmniVoice has only the placeholder Samantha preset.`,
+							);
+							bridge = this.startVoice({
+								bundleRoot: "",
+								useFfiBackend: false,
+								kokoroOnly: kokoro,
+							});
+						} else if (mode !== "omnivoice") {
+							throw new VoiceStartupError(
+								"missing-speaker-preset",
+								`[voice] OmniVoice selected for ${bundle.tierId}, but its Samantha preset is still the placeholder and no bundle-supported Kokoro fallback is staged. ${outcome.detail}`,
+							);
+						}
+					}
+					if (!bridge) {
+						bridge = this.startVoice({
+							bundleRoot: bundle.root,
+							useFfiBackend: true,
+						});
+					}
+				}
 			} else {
 				// No Eliza-1 bundle. Fall back to the Kokoro-only path when its
 				// artifacts are staged. No silent degrade: when both are absent

@@ -257,7 +257,7 @@ export class RoomsService {
 
     return await dbWrite.transaction(async (tx): Promise<Room> => {
       // Create room
-      const rows = await tx
+      const rows = (await tx
         .insert(roomTable)
         .values({
           id: roomId,
@@ -268,8 +268,8 @@ export class RoomsService {
           metadata: roomInput.metadata,
           createdAt: new Date(),
         } as typeof roomTable.$inferInsert)
-        .returning();
-      const room = rows[0] as Room;
+        .returning()) as unknown as Room[];
+      const room = rows[0];
 
       // Create entity (upsert - ignore if exists)
       // Must use tx so the insert is visible within this transaction

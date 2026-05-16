@@ -195,6 +195,23 @@ describe("resolveSpawnWorkdir", () => {
     expect(result.route).toBeUndefined();
   });
 
+  it("uses the route when lockWorkdir points at a missing planner-guessed path", () => {
+    process.env[ENV_KEY] = JSON.stringify([
+      { id: "static-apps", workdir: appsDir, matchAny: ["build"] },
+    ]);
+
+    const result = resolveSpawnWorkdir(
+      undefined,
+      "build me an app",
+      "build me an app",
+      path.join(tmpRoot, "planner-workdir-typo-does-not-exist"),
+      { lockWorkdir: true },
+    );
+
+    expect(result.workdir).toBe(appsDir);
+    expect(result.route?.id).toBe("static-apps");
+  });
+
   it("keeps the explicit workdir when it exists on disk and no route matches", () => {
     delete process.env[ENV_KEY];
     const fresh = path.join(tmpRoot, "fresh-scratch");

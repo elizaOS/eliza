@@ -17,19 +17,21 @@ interface NicknamePattern {
   confidence: number;
 }
 
+const NAME_TOKEN = "[A-Z][a-zA-Z'\\-]{0,30}";
+
 const PATTERNS: NicknamePattern[] = [
   {
-    regex: /\bcall me ([A-Z][a-zA-Z'\- ]{0,30})\b/,
+    regex: new RegExp(`\\bcall me (${NAME_TOKEN})\\b`),
     subject: "owner",
     confidence: 0.85,
   },
   {
-    regex: /\bmy name is ([A-Z][a-zA-Z'\- ]{0,30})\b/,
+    regex: new RegExp(`\\bmy name is (${NAME_TOKEN})\\b`),
     subject: "owner",
     confidence: 0.95,
   },
   {
-    regex: /\bI go by ([A-Z][a-zA-Z'\- ]{0,30})\b/,
+    regex: new RegExp(`\\bI go by (${NAME_TOKEN})\\b`),
     subject: "owner",
     confidence: 0.8,
   },

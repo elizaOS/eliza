@@ -22,7 +22,7 @@
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk": ["../../packages/cloud-sdk/src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"]

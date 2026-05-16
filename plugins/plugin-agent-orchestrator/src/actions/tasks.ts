@@ -2238,17 +2238,6 @@ export const tasksAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "lockWorkdir",
-      description:
-        "When true, the supplied `workdir` is used verbatim and operator " +
-        "workdir routes (TASK_AGENT_WORKDIR_ROUTES) are NOT consulted. Set " +
-        "this only from scaffold-aware callers that have already created " +
-        "the exact target directory (e.g. APP_CREATE). Leave unset for " +
-        "normal planner spawns so routes can correct guessed paths.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
       name: "memoryContent",
       description:
         "Additional memory/context for action=create / action=spawn_agent.",

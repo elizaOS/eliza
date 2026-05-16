@@ -709,6 +709,29 @@ class GbnfBuilder {
 
 const stage1Cache = new Map<string, ResponseGrammarResult>();
 
+const DIRECT_CHANNEL_TYPES = new Set(["DM", "API", "SELF"]);
+const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
+	"shouldRespond",
+	"facts",
+	"relationships",
+	"addressedTo",
+	"emotion",
+]);
+
+function isDirectResponseChannel(channelType: string | undefined): boolean {
+	return channelType ? DIRECT_CHANNEL_TYPES.has(channelType) : false;
+}
+
+function selectResponseFieldsForChannel(
+	fields: ResponseHandlerFieldShape[],
+	channelType: string | undefined,
+): ResponseHandlerFieldShape[] {
+	if (!isDirectResponseChannel(channelType)) return fields;
+	return fields.filter(
+		(field) => !DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name),
+	);
+}
+
 /** Stable hash of a string set (order-insensitive). */
 function hashStringSet(values: ReadonlyArray<string>): string {
 	const sorted = Array.from(new Set(values)).sort();
@@ -856,10 +879,14 @@ export function buildResponseGrammar(
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
 	const suppliedFields = runtime.responseHandlerFields ?? [];
-	const fields = sortFields(
+	const baseFields = sortFields(
 		suppliedFields.length > 0
 			? suppliedFields
 			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	);
+	const fields = selectResponseFieldsForChannel(
+		baseFields,
+		options.channelType,
 	);
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
@@ -867,13 +894,21 @@ export function buildResponseGrammar(
 			(options.actions ?? runtime.actions).map((a) => a.name).filter(Boolean),
 		),
 	).sort();
+	const suppliedFieldSignature =
+		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(baseFields);
 	const fieldSignature =
-		runtime.responseHandlerFieldSignature ?? deriveFieldSignature(fields);
+		fields.length === baseFields.length
+			? suppliedFieldSignature
+			: `${suppliedFieldSignature}|selected:${deriveFieldSignature(fields)}`;
+	const channelProfile = isDirectResponseChannel(options.channelType)
+		? "direct"
+		: "default";
 
 	const cacheKey = [
 		"stage1",
 		hashStringSet(contextIds),
 		hashStringSet(actionNames),
+		channelProfile,
 		fieldSignature,
 	].join("#");
 	const cached = stage1Cache.get(cacheKey);

@@ -1,3 +1,5 @@
+import type { CloudSetupSessionService } from "@elizaos/cloud-sdk/cloud-setup-session";
+import { useCloudSetupSession } from "../../../api/cloud-setup";
 import { AvatarHost } from "../../../avatar-runtime";
 
 export interface CloudProvisioningProgress {
@@ -10,10 +12,13 @@ export interface StateCloudChatProps {
   transcript?: string;
   progress?: CloudProvisioningProgress;
   onEnterChat: () => void;
+  /** When provided, the live setup-agent transcript is rendered via `useCloudSetupSession`. */
+  service?: CloudSetupSessionService;
+  tenantId?: string;
 }
 
 export function StateCloudChat(props: StateCloudChatProps): React.JSX.Element {
-  const { transcript, progress, onEnterChat } = props;
+  const { transcript, progress, onEnterChat, service, tenantId } = props;
   const status = progress?.status ?? "provisioning";
   const statusLabel =
     status === "running"
@@ -21,6 +26,7 @@ export function StateCloudChat(props: StateCloudChatProps): React.JSX.Element {
       : status === "error"
         ? "needs attention"
         : "provisioning";
+
   return (
     <section
       className="eliza-ob-screen centered"
@@ -33,10 +39,14 @@ export function StateCloudChat(props: StateCloudChatProps): React.JSX.Element {
         >
           <AvatarHost />
         </div>
-        <div className="eliza-ob-transcript">
-          {transcript ??
-            "I'm online now. I'll ask a few questions and show you around while your real server provisions."}
-        </div>
+        {service ? (
+          <LiveTranscript service={service} tenantId={tenantId} />
+        ) : (
+          <div className="eliza-ob-transcript">
+            {transcript ??
+              "I'm online now. I'll ask a few questions and show you around while your real server provisions."}
+          </div>
+        )}
       </div>
       <div className="eliza-ob-tutorial-card">
         <strong>Cloud onboarding chat</strong>
@@ -71,4 +81,28 @@ export function StateCloudChat(props: StateCloudChatProps): React.JSX.Element {
       </div>
     </section>
   );
+}
+
+function LiveTranscript(props: {
+  service: CloudSetupSessionService;
+  tenantId?: string;
+}): React.JSX.Element {
+  const { transcript, status, error } = useCloudSetupSession({
+    service: props.service,
+    tenantId: props.tenantId,
+  });
+  if (error) {
+    return (
+      <div className="eliza-ob-transcript">Setup agent error: {error.message}</div>
+    );
+  }
+  const latest = transcript[transcript.length - 1];
+  if (!latest) {
+    return (
+      <div className="eliza-ob-transcript">
+        Connecting to the setup agent ({status})…
+      </div>
+    );
+  }
+  return <div className="eliza-ob-transcript">{latest.content}</div>;
 }

@@ -569,11 +569,9 @@ function serverArgs(args, variant, port) {
     out.push(
       "-md",
       args.drafter,
-      "--ctx-size-draft",
-      String(args.draftContextSize),
-      "--draft-min",
+      "--spec-draft-n-min",
       String(args.draftMin),
-      "--draft-max",
+      "--spec-draft-n-max",
       String(args.draftMax),
     );
     if (args.backend !== "cpu") {
