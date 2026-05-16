@@ -26,12 +26,16 @@ public class ElizaBootReceiver extends BroadcastReceiver {
             return;
         }
         // PACKAGE_USAGE_STATS has both a manifest permission (granted via
-        // privapp-permissions whitelist) and an appop. The privapp grant
-        // covers the permission; the appop must be flipped to ALLOWED
-        // separately. AppOpsManager#setMode(String, int, String, int)
-        // is hidden API, so we invoke via reflection — visible to system
-        // apps at runtime, no-ops cleanly otherwise.
-        allowUsageStatsAppOp(context);
+        // privapp-permissions whitelist) and an appop. Only the privileged
+        // AOSP/system image is allowed to flip the appop itself; stock APK
+        // installs must not try hidden AppOpsManager#setMode because Android
+        // will reject it with MANAGE_APP_OPS_MODES and log a scary startup
+        // warning even though local chat/voice still work.
+        if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
+            allowUsageStatsAppOp(context);
+        } else {
+            Log.i(TAG, "Skipping GET_USAGE_STATS appop auto-grant on non-privileged APK install.");
+        }
         GatewayConnectionService.start(context);
         // Only auto-start the on-device agent on branded devices (AOSP /
         // ElizaOS) or when the user has opted into Local runtime mode.
@@ -94,6 +98,22 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         } catch (SecurityException error) {
             // Non-priv installs cannot setMode on themselves.
             Log.w(TAG, "GET_USAGE_STATS appop grant denied; user grant required.", error);
+        }
+    }
+
+    private static boolean isBrandedDevice() {
+        return !readSystemProperty("ro.elizaos.product").isEmpty();
+    }
+
+    private static String readSystemProperty(String key) {
+        try {
+            Class<?> systemProperties = Class.forName("android.os.SystemProperties");
+            Method get = systemProperties.getMethod("get", String.class, String.class);
+            Object value = get.invoke(null, key, "");
+            return value instanceof String ? (String) value : "";
+        } catch (Exception error) {
+            Log.w(TAG, "Unable to read system property " + key, error);
+            return "";
         }
     }
 }
