@@ -3088,6 +3088,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			);
 		}
 		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
+		const disabledReason =
+			typeof dflash.disabledReason === "string"
+				? dflash.disabledReason.trim()
+				: "";
 		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
 		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
 		// — not a usable draft model — and some bundles ship no drafter at all.
@@ -3096,13 +3100,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `restartWithoutDrafter()` uses for memory eviction): the server runs
 		// target-only, no `-md`. Loud warning because this departs from the
 		// always-on DFlash contract.
-		const drafterUnavailable = !drafter;
+		const drafterUnavailable = !drafter || disabledReason.length > 0;
+		const disabledDrafterReason =
+			disabledReason ||
+			(drafterUnavailable
+				? `companion drafter '${dflash.drafterModelId}' is not installed`
+				: undefined);
 		if (drafterUnavailable) {
 			console.warn(
-				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
-					`'${dflash.drafterModelId}' is not installed — loading target-only ` +
-					`(speculative decoding OFF). Install a valid drafter to restore the ` +
-					`always-on DFlash path.`,
+				disabledReason.length > 0
+					? `[dflash] ⚠️  ${target.displayName}: catalog disables DFlash ` +
+						`(${disabledReason}) — loading target-only (speculative decoding OFF).`
+					: `[dflash] ⚠️  ${target.displayName}: companion drafter ` +
+						`'${dflash.drafterModelId}' is not installed — loading target-only ` +
+						`(speculative decoding OFF). Install a valid drafter to restore the ` +
+						`always-on DFlash path.`,
 			);
 		}
 
@@ -3169,9 +3181,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				// passed to llama-server (`-md`) while `disableDrafter` is true.
 				drafterModelPath: drafter?.path ?? target.path,
 				disableDrafter: drafterUnavailable,
-				disabledDrafterReason: drafterUnavailable
-					? `companion drafter '${dflash.drafterModelId}' is not installed`
-					: undefined,
+				disabledDrafterReason,
 				contextSize,
 				draftContextSize: dflash.draftContextSize,
 				draftMin: dflash.draftMin,

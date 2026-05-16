@@ -514,6 +514,8 @@ function runtimeForTier(
     dflash: {
       drafterModelId: drafterId(id),
       specType: "dflash",
+      disabledReason:
+        "Pending hardware validation for M-RoPE speculative decoding; see elizaOS/eliza#7631.",
       contextSize: contextLength,
       draftContextSize: Math.min(contextLength, 65536),
       draftMin: 2,

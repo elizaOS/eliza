@@ -111,6 +111,7 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
       );
+      expect(entry?.runtime?.dflash?.disabledReason).toContain("#7631");
     }
   });
 });

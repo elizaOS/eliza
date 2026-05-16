@@ -275,6 +275,12 @@ export interface LocalRuntimeAcceleration {
     /** Catalog id of the hidden drafter GGUF companion. */
     drafterModelId: string;
     specType: "dflash";
+    /**
+     * Optional catalog-level disable reason. When set, the runtime keeps the
+     * drafter metadata bundled but launches target-only until the backend
+     * path is validated again.
+     */
+    disabledReason?: string;
     /** llama-server context for the target model. */
     contextSize: number;
     /** llama-server context for the drafter. */
