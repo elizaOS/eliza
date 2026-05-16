@@ -1,4 +1,5 @@
 import { DocsLayout, type MdxModule } from "@elizaos/ui";
+import "@elizaos/ui/cloud-ui/styles/docs.css";
 import { type ReactElement, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";

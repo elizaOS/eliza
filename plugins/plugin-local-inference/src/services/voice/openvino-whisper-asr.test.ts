@@ -107,7 +107,33 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
 		t.dispose();
 	});
 
-	it("auto chain uses OpenVINO by default when artifacts are present and no fused build is available", () => {
+	it("auto chain requires OpenVINO opt-in when artifacts are present and no fused build is available", () => {
+		mockState.runtimeFixture = {
+			pythonBin: "/fake/python",
+			workerScript: "/fake/worker.py",
+			modelDir: "/fake/model",
+			deviceChain: "NPU,CPU",
+		};
+		expect(() => createStreamingTranscriber({})).toThrow(AsrUnavailableError);
+		expect(mockState.disposeCalls.count).toBe(0);
+	});
+
+	it("auto chain uses OpenVINO when ELIZA_LOCAL_ASR_ALLOW_OPENVINO is enabled", () => {
+		vi.stubEnv("ELIZA_LOCAL_ASR_ALLOW_OPENVINO", "1");
+		mockState.runtimeFixture = {
+			pythonBin: "/fake/python",
+			workerScript: "/fake/worker.py",
+			modelDir: "/fake/model",
+			deviceChain: "NPU,CPU",
+		};
+		const t = createStreamingTranscriber({});
+		expect(t).toBeInstanceOf(OpenVinoStreamingTranscriber);
+		t.dispose();
+		expect(mockState.disposeCalls.count).toBe(1);
+	});
+
+	it("ELIZA_LOCAL_ASR_BACKEND=openvino selects the OpenVINO tier directly", () => {
+		vi.stubEnv("ELIZA_LOCAL_ASR_BACKEND", "openvino");
 		mockState.runtimeFixture = {
 			pythonBin: "/fake/python",
 			workerScript: "/fake/worker.py",
