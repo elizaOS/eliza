@@ -39,10 +39,6 @@ export default function MarketingPage() {
           <br />
           everywhere.
         </h1>
-        <p className="app-lede">
-          Voice, chat, connectors, automations. Eliza is the companion app for
-          your agent — on your desktop, your phone, and your watch.
-        </p>
         <div className="app-cta-row">
           <a href="#download" className="app-cta app-cta--dark">
             Download for macOS
@@ -62,33 +58,15 @@ export default function MarketingPage() {
             <Feature
               icon={<MessageCircle />}
               title="Chat with Eliza"
-              body="Threaded conversations, attachments, memory, and skills. Switch between your local agent and your cloud agent without changing chat history."
             />
-            <Feature
-              icon={<Mic />}
-              title="Voice that listens"
-              body="Push-to-talk and always-on voice modes. Speak naturally — Eliza takes notes, runs tasks, and answers in your voice of choice."
-            />
+            <Feature icon={<Mic />} title="Voice" />
             <Feature
               icon={<Cloud />}
-              title="Connectors built in"
-              body="iMessage, Slack, Discord, Notion, Obsidian, Calendar, Reminders. Eliza plugs into the tools you already use."
+              title="Connectors"
             />
-            <Feature
-              icon={<Cpu />}
-              title="Local or cloud"
-              body="Run inference on-device for privacy, or route to your Eliza Cloud agent for heavy lifting. Eliza picks the right one automatically."
-            />
-            <Feature
-              icon={<Smartphone />}
-              title="Mobile native"
-              body="True native apps for iOS and Android. Notifications, widgets, share extensions, shortcuts — feels at home on the platform."
-            />
-            <Feature
-              icon={<Cloud />}
-              title="Open source"
-              body="Powered by elizaOS. Inspect, fork, self-host. The agent app you can audit and own."
-            />
+            <Feature icon={<Cpu />} title="Local or cloud" />
+            <Feature icon={<Smartphone />} title="Mobile" />
+            <Feature icon={<Cloud />} title="Open source" />
           </div>
         </div>
       </section>
@@ -136,10 +114,6 @@ export default function MarketingPage() {
         <div className="app-narrow app-split">
           <div>
             <h2 className="app-h2 app-h2--invert">Powered by elizaOS.</h2>
-            <p className="app-paragraph">
-              The open-source runtime that does the actual thinking. Eliza the
-              app is just the face — the OS is what makes it tick.
-            </p>
           </div>
           <a href={osUrl} className="app-cta app-cta--white">
             Install elizaOS
@@ -152,10 +126,6 @@ export default function MarketingPage() {
         <div className="app-narrow app-split">
           <div>
             <h2 className="app-h2">Or skip install. Open the cloud.</h2>
-            <p className="app-paragraph app-paragraph--dark">
-              Eliza Cloud is the same agent, running in our managed cloud. Sign
-              in from any browser.
-            </p>
           </div>
           <a href={cloudUrl} className="app-cta app-cta--dark">
             <Cloud className="app-icon" /> Open Eliza Cloud
@@ -187,11 +157,9 @@ export default function MarketingPage() {
 function Feature({
   icon,
   title,
-  body,
 }: {
   icon: React.ReactNode;
   title: string;
-  body: string;
 }) {
   return (
     <article className="app-feature-tile">
@@ -199,7 +167,6 @@ function Feature({
         {icon}
       </span>
       <h3>{title}</h3>
-      <p>{body}</p>
     </article>
   );
 }
