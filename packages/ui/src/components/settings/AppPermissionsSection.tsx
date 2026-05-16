@@ -194,13 +194,6 @@ export function AppPermissionsSection() {
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs-tight text-muted">
-          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-          <span>
-            Grants are recorded but not yet enforced. Enforcement lands in a
-            future release.
-          </span>
-        </div>
         <button
           type="button"
           onClick={() => void refresh()}
@@ -224,15 +217,7 @@ export function AppPermissionsSection() {
 
       {listStatus.state !== "loading" && grantableRows.length === 0 && (
         <div className="rounded-xl border border-border/60 bg-card/92 px-4 py-6 text-center text-xs-tight text-muted">
-          No registered apps declare permissions yet. Apps loaded via
-          <code className="mx-1 rounded bg-bg-hover px-1 py-0.5 font-mono text-2xs">
-            APP load_from_directory
-          </code>
-          that include an
-          <code className="mx-1 rounded bg-bg-hover px-1 py-0.5 font-mono text-2xs">
-            elizaos.app.permissions
-          </code>
-          block will appear here.
+          No apps declare permissions yet.
         </div>
       )}
 

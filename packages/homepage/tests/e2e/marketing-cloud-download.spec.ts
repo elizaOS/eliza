@@ -44,8 +44,9 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   const productNav = page.getByRole("navigation", {
     name: "Eliza products",
   });
-  await expect(productNav.getByRole("link", { name: /^Eliza App$/ }))
-    .toHaveAttribute("href", "/");
+  await expect(
+    productNav.getByRole("link", { name: /^Eliza App$/ }),
+  ).toHaveAttribute("href", "/");
   await expectExternalOrLocal(
     productNav.getByRole("link", { name: /^ElizaOS$/ }),
     "elizaos.ai",
@@ -91,7 +92,10 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     await expect(page.getByText("Opens release page")).toHaveCount(4);
     await expect(
       page.getByRole("link", { name: /macOS Apple Silicon/i }),
-    ).toHaveAttribute("href", /^https:\/\/github\.com\/elizaOS\/eliza\/releases$/);
+    ).toHaveAttribute(
+      "href",
+      /^https:\/\/github\.com\/elizaOS\/eliza\/releases$/,
+    );
   }
 
   await expect(page.locator('[aria-disabled="true"]')).toHaveCount(4);
@@ -116,9 +120,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   ).toBeVisible();
   await expectCloudPath(page.getByRole("link", { name: /^Try Eliza Cloud$/ }));
 
-  await expect(
-    page.locator(".app-shell"),
-  ).toHaveCSS("font-family", "Poppins");
+  await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
   await expect(page.locator(".brand-section").first()).toHaveCSS(
     "border-radius",
     "0px",

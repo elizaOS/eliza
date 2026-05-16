@@ -44,9 +44,7 @@ export default function HeroSection() {
           </button>
           <button
             type="button"
-            onClick={() =>
-              navigate("/checkout?collection=elizaos-hardware")
-            }
+            onClick={() => navigate("/checkout?collection=elizaos-hardware")}
             className="inline-flex min-h-14 items-center justify-center border border-white/40 bg-transparent px-7 py-4 text-base font-semibold text-white transition hover:bg-white hover:text-black"
             style={{ borderRadius: 0 }}
           >

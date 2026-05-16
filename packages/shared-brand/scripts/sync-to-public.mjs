@@ -40,5 +40,17 @@ if (!target) {
 
 const resolvedTarget = resolve(target);
 copyDir(join(ASSETS_ROOT, "logos"), join(resolvedTarget, "brand", "logos"));
+copyDir(
+  join(ASSETS_ROOT, "concepts"),
+  join(resolvedTarget, "brand", "concepts"),
+);
+copyDir(
+  join(ASSETS_ROOT, "background"),
+  join(resolvedTarget, "brand", "background"),
+);
+copyDir(
+  join(ASSETS_ROOT, "favicons"),
+  join(resolvedTarget, "brand", "favicons"),
+);
 copyDir(join(ASSETS_ROOT, "clouds"), join(resolvedTarget, "clouds"));
 console.log(`[shared-brand] synced into ${resolvedTarget}`);

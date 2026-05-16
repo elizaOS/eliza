@@ -218,7 +218,9 @@ export default function CheckoutPage() {
                 <div className="flex items-center gap-3">
                   <ProductIcon product={product} />
                   <div>
-                    <h2 className="text-2xl font-semibold text-white">{product.name}</h2>
+                    <h2 className="text-2xl font-semibold text-white">
+                      {product.name}
+                    </h2>
                     <p className="text-sm text-white/60">{product.subtitle}</p>
                   </div>
                 </div>
@@ -292,7 +294,9 @@ export default function CheckoutPage() {
 
         {collection === "elizaos-hardware" ? (
           <section className="border border-white/14 bg-black p-4 md:col-span-2">
-            <h2 className="text-xl font-semibold text-white">ElizaOS hardware catalog</h2>
+            <h2 className="text-xl font-semibold text-white">
+              ElizaOS hardware catalog
+            </h2>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               {products.map((item) => (
                 <Link
@@ -304,7 +308,9 @@ export default function CheckoutPage() {
                   key={item.sku}
                   to={`/checkout?collection=elizaos-hardware&sku=${item.sku}`}
                 >
-                  <span className="text-sm font-semibold text-white">{item.name}</span>
+                  <span className="text-sm font-semibold text-white">
+                    {item.name}
+                  </span>
                   <span className="mt-1 block text-xs text-white/60">
                     {item.price}
                   </span>

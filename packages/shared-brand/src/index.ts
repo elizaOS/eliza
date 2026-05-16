@@ -44,8 +44,37 @@ export const FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
  */
 export const BRAND_PATHS = {
   logos: "/brand/logos",
+  concepts: "/brand/concepts",
+  background: "/brand/background",
+  favicons: "/brand/favicons",
   clouds: "/clouds",
   poster: "/clouds/poster.jpg",
+  cloudBackgroundPoster: "/brand/background/clouds_background.jpg",
+} as const;
+
+export const BRAND_FAVICONS = {
+  ico: "/brand/favicons/favicon.ico",
+  svg: "/brand/favicons/favicon.svg",
+  png16: "/brand/favicons/favicon-16x16.png",
+  png32: "/brand/favicons/favicon-32x32.png",
+  appleTouchIcon: "/brand/favicons/apple-touch-icon.png",
+  androidChrome192: "/brand/favicons/android-chrome-192x192.png",
+  androidChrome512: "/brand/favicons/android-chrome-512x512.png",
+} as const;
+
+export const CONCEPT_PRODUCT_IMAGES = {
+  billboard: "/brand/concepts/billboard_concept.jpg",
+  chibiUsb: "/brand/concepts/chibi_usb_concept.jpg",
+  miniPc: "/brand/concepts/concept_minipc.jpg",
+  phone: "/brand/concepts/concept_phone.jpg",
+  usbDrive: "/brand/concepts/concept_usbdrive.jpg",
+} as const;
+
+export const CLOUD_BACKGROUND_ASSETS = {
+  poster: "/brand/background/clouds_background.jpg",
+  source1080pMp4: "/brand/background/Clouds_Loop_HQ_1080p.mp4",
+  sourceMobile480pMp4: "/brand/background/Clouds_Loop_Mobile_480p.mp4",
+  optimizedBasePath: "/brand/background/optimized",
 } as const;
 
 /**

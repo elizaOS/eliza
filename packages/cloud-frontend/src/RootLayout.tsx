@@ -62,11 +62,21 @@ export default function RootLayout() {
           name="twitter:description"
           content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
         />
-        <meta name="twitter:image" content="/brand/logos/logo_white_blackbg.svg" />
-        <link rel="icon" type="image/svg+xml" href="/brand/favicons/favicon.svg" />
+        <meta
+          name="twitter:image"
+          content="/brand/logos/logo_white_blackbg.svg"
+        />
+        <link
+          rel="icon"
+          type="image/svg+xml"
+          href="/brand/favicons/favicon.svg"
+        />
         <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
         <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
-        <link rel="apple-touch-icon" href="/brand/favicons/apple-touch-icon.png" />
+        <link
+          rel="apple-touch-icon"
+          href="/brand/favicons/apple-touch-icon.png"
+        />
         <link rel="manifest" href="/site.webmanifest" />
       </Helmet>
       {/*

@@ -896,9 +896,6 @@ export default function GetStartedPage() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-neutral-900 font-medium">WhatsApp</p>
-                    <p className="text-sm text-neutral-500">
-                      Use the WhatsApp app
-                    </p>
                   </div>
                 </animated.button>
 
@@ -912,9 +909,6 @@ export default function GetStartedPage() {
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-neutral-900 font-medium">Discord</p>
-                    <p className="text-sm text-neutral-500">
-                      Use the Discord app
-                    </p>
                   </div>
                 </animated.button>
               </div>
@@ -1001,7 +995,6 @@ export default function GetStartedPage() {
                 {isSubmittingPhone ? "Setting up..." : "Complete Setup"}
               </Button>
 
-              <p className="text-xs text-neutral-400 text-center mt-4"></p>
             </>
           )}
 
