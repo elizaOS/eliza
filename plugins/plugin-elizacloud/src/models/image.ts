@@ -114,9 +114,13 @@ export async function handleImageDescription(
     let response: Response | null = null;
     let attemptedRetry = false;
     for (let attempt = 0; attempt < 2; attempt++) {
-      response = await client.routes.postApiV1ChatCompletionsRaw({
+      const attemptResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
       });
+      if (!attemptResponse) {
+        continue;
+      }
+      response = attemptResponse;
       if (response.status !== 429 || attemptedRetry) break;
 
       // `Number(null) === 0`, so guard against a missing header before

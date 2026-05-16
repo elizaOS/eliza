@@ -12,86 +12,116 @@ import type {
 import {
 	isVisionFallbackOutcome,
 	type LocalVisionOutcome,
+	type LocalVisionResult,
 	normalizeVisionDescription,
 	type VisionFallbackReason,
 	type WrappedImageDescriptionHandler,
 } from "./cloud-fallback";
 
 export interface VisionVastFallbackOptions {
-	handler?: (
-		params: ImageDescriptionParams | string,
-		reason: VisionFallbackReason,
-	) => Promise<ImageDescriptionResult | string>;
+	enabled?: boolean;
 	apiKey?: string;
 	baseUrl?: string;
 	fetch?: typeof fetch;
+	handler?: (
+		params: ImageDescriptionParams | string,
+		reason: VisionFallbackReason,
+	) => Promise<LocalVisionOutcome>;
 	log?: (message: string, detail?: Record<string, unknown>) => void;
+}
+
+function resolveVastApiKey(options: VisionVastFallbackOptions): string | null {
+	return (
+		options.apiKey?.trim() || process.env.ELIZA_VAST_API_KEY?.trim() || null
+	);
+}
+
+function resolveVastBaseUrl(options: VisionVastFallbackOptions): string {
+	return (
+		options.baseUrl?.trim() ||
+		process.env.ELIZA_VAST_BASE_URL?.trim() ||
+		"https://api.vast.ai"
+	).replace(/\/+$/, "");
+}
+
+function imageRequestBody(params: ImageDescriptionParams | string): {
+	image: { kind: "url"; url: string } | { kind: "data"; data: string };
+	prompt?: string;
+} {
+	if (typeof params === "string") {
+		return params.startsWith("data:")
+			? { image: { kind: "data", data: params } }
+			: { image: { kind: "url", url: params } };
+	}
+	const imageUrl = (params as { imageUrl?: string }).imageUrl;
+	const image = (params as { image?: string }).image;
+	const source = imageUrl ?? image;
+	const body = source?.startsWith("data:")
+		? { image: { kind: "data" as const, data: source } }
+		: { image: { kind: "url" as const, url: source ?? "" } };
+	if (params.prompt) return { ...body, prompt: params.prompt };
+	return body;
+}
+
+async function callVastVision(
+	params: ImageDescriptionParams | string,
+	options: VisionVastFallbackOptions,
+): Promise<ImageDescriptionResult> {
+	const apiKey = resolveVastApiKey(options);
+	if (!apiKey) {
+		throw new Error("VAST image fallback is not configured");
+	}
+	const fetchImpl = options.fetch ?? fetch;
+	const response = await fetchImpl(
+		`${resolveVastBaseUrl(options)}/v1/vision/describe`,
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify(imageRequestBody(params)),
+		},
+	);
+	if (!response.ok) {
+		throw new Error(`VAST image fallback failed with ${response.status}`);
+	}
+	return normalizeVisionDescription(
+		(await response.json()) as LocalVisionResult,
+	);
 }
 
 export function wrapImageDescriptionHandlerWithVastFallback(
 	previous: WrappedImageDescriptionHandler,
 	options: VisionVastFallbackOptions = {},
 ): WrappedImageDescriptionHandler {
+	const enabled = options.enabled ?? true;
 	const log = options.log ?? (() => undefined);
 	return async (params): Promise<LocalVisionOutcome> => {
 		const outcome = await previous(params);
 		if (!isVisionFallbackOutcome(outcome)) {
 			return normalizeVisionDescription(outcome);
 		}
+		if (!enabled) return outcome;
 
-		log("[vision/vast-fallback] previous handler requested fallback", {
+		const apiKey = resolveVastApiKey(options);
+		if (!options.handler && !apiKey) return outcome;
+
+		log("[vision/vast-fallback] upstream IMAGE_DESCRIPTION fallback", {
 			reason: outcome.reason,
 		});
-		const handler =
-			options.handler ??
-			(options.apiKey
-				? async (fallbackParams: ImageDescriptionParams | string) =>
-						describeWithHttpFallback(fallbackParams, {
-							apiKey: options.apiKey as string,
-							baseUrl: options.baseUrl ?? "https://api.vast.ai",
-							fetchImpl: options.fetch ?? fetch,
-						})
-				: null);
-		if (!handler) return outcome;
-
 		try {
-			return normalizeVisionDescription(
-				await handler(params, outcome.reason),
-			);
-		} catch (err) {
+			const vastOutcome = options.handler
+				? await options.handler(params, outcome.reason)
+				: await callVastVision(params, options);
+			if (isVisionFallbackOutcome(vastOutcome)) return vastOutcome;
+			return normalizeVisionDescription(vastOutcome);
+		} catch (error) {
 			return {
 				kind: "fallback",
-				reason: "local-error",
-				cause: err instanceof Error ? err : undefined,
+				reason: "vast-error",
+				cause: error instanceof Error ? error : new Error(String(error)),
 			};
 		}
 	};
-}
-
-async function describeWithHttpFallback(
-	params: ImageDescriptionParams | string,
-	options: { apiKey: string; baseUrl: string; fetchImpl: typeof fetch },
-): Promise<ImageDescriptionResult> {
-	const body =
-		typeof params === "string"
-			? { image: { kind: "url", url: params } }
-			: {
-					image: { kind: "url", url: params.imageUrl },
-					...(params.prompt ? { prompt: params.prompt } : {}),
-				};
-	const response = await options.fetchImpl(
-		`${options.baseUrl.replace(/\/+$/, "")}/v1/vision/describe`,
-		{
-			method: "POST",
-			headers: {
-				authorization: `Bearer ${options.apiKey}`,
-				"content-type": "application/json",
-			},
-			body: JSON.stringify(body),
-		},
-	);
-	if (!response.ok) {
-		throw new Error(`vision fallback failed with ${response.status}`);
-	}
-	return (await response.json()) as ImageDescriptionResult;
 }

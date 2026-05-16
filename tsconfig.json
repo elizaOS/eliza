@@ -44,6 +44,8 @@
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",
+    "**/vendor/**",
+    "vendor/**",
     "**/cypress/**",
     "**/*.cy.tsx",
     "**/*.cy.ts",

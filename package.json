@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-tsup-dts.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && node packages/scripts/ensure-native-plugins-linked.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs",
+    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-tsup-dts.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && node packages/scripts/ensure-native-plugins-linked.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs",
     "fix-deps": "bun packages/scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun packages/scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun packages/scripts/fix-workspace-deps.mjs --restore",
@@ -84,7 +84,7 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "clean": "turbo run clean --concurrency=100% && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",
-    "build:core": "turbo run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-shared --filter=@elizaos/vault --filter=@elizaos/plugin-local-inference --filter=@elizaos/plugin-ollama --filter=@elizaos/plugin-commands --filter=@elizaos/plugin-shell --filter=@elizaos/plugin-coding-tools --filter=@elizaos/plugin-agent-orchestrator --filter=@elizaos/plugin-video --filter=@elizaos/plugin-background-runner --filter=@elizaos/plugin-mlx --filter=@elizaos/plugin-anthropic --filter=@elizaos/plugin-openai --filter=@elizaos/plugin-elizacloud --no-cache",
+    "build:core": "turbo run build --filter=@elizaos/contracts --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-sdk --filter=@elizaos/cloud-shared --filter=@elizaos/vault --filter=@elizaos/app-core --filter=@elizaos/plugin-local-inference --filter=@elizaos/plugin-ollama --filter=@elizaos/plugin-commands --filter=@elizaos/plugin-shell --filter=@elizaos/plugin-coding-tools --filter=@elizaos/plugin-agent-orchestrator --filter=@elizaos/plugin-app-manager --filter=@elizaos/plugin-wallet --filter=@elizaos/plugin-video --filter=@elizaos/plugin-background-runner --filter=@elizaos/plugin-mlx --filter=@elizaos/plugin-anthropic --filter=@elizaos/plugin-openai --filter=@elizaos/plugin-elizacloud --no-cache",
     "build:server": "turbo run build --filter=@elizaos/agent --no-cache",
     "lint": "turbo run lint && node packages/scripts/run-examples-benchmarks.mjs lint",
     "lint:check": "turbo run lint:check",
@@ -122,7 +122,7 @@
     "dev:cloud": "concurrently -n api,web -c blue,magenta \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
     "dev:cloud:api": "bun run --cwd packages/cloud-api dev",
     "dev:cloud:web": "bun run --cwd packages/cloud-frontend dev",
-    "dev:cloud:full": "concurrently -n db,api,web -c yellow,blue,magenta \"bun run db:cloud:pglite\" \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
+    "dev:cloud:full": "bun run dev:cloud",
     "build:cloud": "bun run --cwd packages/cloud-api build && bun run --cwd packages/cloud-frontend build",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
@@ -133,7 +133,8 @@
     "test:cloud:playwright": "bun run --cwd packages/cloud-frontend test",
     "test:ci": "TEST_LANE=pr node packages/scripts/run-all-tests.mjs --only=test --no-cloud",
     "test:ci:live": "TEST_LANE=post-merge node packages/scripts/run-all-tests.mjs --all --no-cloud",
-    "test:e2e": "TEST_LANE=pr node packages/scripts/run-all-tests.mjs --only=e2e --no-cloud",
+    "test:e2e": "TEST_LANE=pr node packages/scripts/run-all-tests.mjs --only=e2e --no-cloud --exclude eliza/plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts --exclude eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts --exclude eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts --exclude eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
+    "test:e2e:heavy": "TEST_LANE=post-merge bunx vitest run --config packages/test/vitest/real.config.ts --passWithNoTests eliza/plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts packages/app-core/test/app/memory-relationships.real.e2e.test.ts eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts packages/app-core/test/app/onboarding-companion.live.e2e.test.ts eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
     "test:e2e:live": "TEST_LANE=post-merge node packages/scripts/run-all-tests.mjs --only=e2e --no-cloud",
     "test:lifeops": "node packages/scripts/run-all-tests.mjs --filter=plugins/plugin-lifeops --only=e2e",
     "lifeops:verify-cerebras": "bun --bun plugins/plugin-lifeops/scripts/verify-cerebras-wiring.ts",
@@ -216,6 +217,7 @@
     "tsx": "^4.21.0",
     "turbo": "^2.7.4",
     "typescript": "^6.0.3",
+    "vite": "8.0.13",
     "vitest": "^4.0.17"
   },
   "resolutions": {
@@ -295,7 +297,6 @@
     "tsup@8.5.1": "patches/tsup@8.5.1.patch",
     "vitest@4.1.5": "patches/vitest@4.1.5.patch",
     "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch",
-    "llama-cpp-capacitor@0.1.5": "patches/llama-cpp-capacitor@0.1.5.patch",
     "@farcaster/quick-auth@0.0.8": "patches/@farcaster%2Fquick-auth@0.0.8.patch",
     "@farcaster/quick-auth@0.0.6": "patches/@farcaster%2Fquick-auth@0.0.6.patch",
     "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",

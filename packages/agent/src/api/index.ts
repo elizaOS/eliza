@@ -4,7 +4,9 @@ const computerUseModule = (await import(
   handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
 };
 const signalModule = await import("@elizaos/plugin-signal");
-const whatsAppModule = (await import("@elizaos/plugin-whatsapp")) as {
+const whatsAppModule = (await import(
+  "@elizaos/plugin-whatsapp"
+)) as unknown as {
   applyWhatsAppQrOverride: (...args: unknown[]) => unknown;
   handleWhatsAppRoute: (...args: unknown[]) => unknown;
 };

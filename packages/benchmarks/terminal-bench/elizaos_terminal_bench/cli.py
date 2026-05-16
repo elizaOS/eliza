@@ -26,11 +26,13 @@ def resolve_task_agent(explicit: Optional[str] = None) -> str:
     configured = os.environ.get("BENCHMARK_TASK_AGENT", "").strip().lower()
     if configured:
         return configured
+    if os.environ.get("CEREBRAS_API_KEY"):
+        return "elizaos"
     if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY"):
         return "claude"
     if os.environ.get("CODEX_API_KEY") or os.environ.get("OPENAI_API_KEY"):
         return "codex"
-    return "opencode"
+    return "elizaos"
 
 
 def setup_logging(verbose: bool = False, debug: bool = False) -> None:
@@ -222,11 +224,12 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--task-agent",
         type=str,
-        choices=["opencode", "codex", "claude"],
+        choices=["elizaos", "pi-agent", "opencode", "codex", "claude"],
         default=None,
         help=(
             "Task agent requested from the elizaOS TS bridge. Defaults to "
-            "opencode unless Claude or Codex API-key env vars imply those agents."
+            "elizaos, with explicit CLI/env overrides for pi-agent, opencode, "
+            "codex, or claude."
         ),
     )
     parser.add_argument(
@@ -393,7 +396,7 @@ async def run_cli(args: argparse.Namespace) -> int:
         max_tasks=args.max_tasks,
         max_iterations=args.max_iterations,
         timeout_per_task_seconds=args.timeout,
-        network_mode=args.network_mode,
+        network_mode=getattr(args, "network_mode", None),
         model_name=model_name,
         model_provider=args.model_provider,
         temperature=args.temperature,

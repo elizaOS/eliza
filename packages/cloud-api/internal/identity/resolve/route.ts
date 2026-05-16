@@ -1,6 +1,6 @@
+import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { desc, eq } from "drizzle-orm";
 import { dbRead } from "@/db/helpers";
 import {
   type IdentityProvider,

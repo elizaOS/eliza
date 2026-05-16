@@ -187,8 +187,10 @@ export interface LocalRuntimeOptimizations {
   lookahead?: number;
   /**
    * Built-in n-gram drafter (no separate drafter model). Maps to
-   * `--draft-min` / `--draft-max` / `--draft-min-prob`. Mutually exclusive
-   * with DFlash speculative decoding.
+   * `--spec-type ngram-mod` plus `--spec-ngram-mod-n-min` /
+   * `--spec-ngram-mod-n-max`. Mutually exclusive with DFlash speculative
+   * decoding. `minProb` is kept for older configs and ignored by current
+   * llama.cpp ngram-mod.
    */
   ngramDraft?: { min: number; max: number; minProb: number };
   /**

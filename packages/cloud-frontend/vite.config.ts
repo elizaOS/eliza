@@ -120,8 +120,7 @@ export default defineConfig(({ mode }) => {
         enforce: "pre",
         transform(source, id) {
           const queryIndex = id.indexOf("?");
-          const filePath =
-            queryIndex === -1 ? id : id.slice(0, queryIndex);
+          const filePath = queryIndex === -1 ? id : id.slice(0, queryIndex);
           const query = queryIndex === -1 ? "" : id.slice(queryIndex + 1);
           if (query === "raw" || query.includes("&raw")) {
             return null;

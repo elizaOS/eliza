@@ -1234,6 +1234,21 @@ export async function startEliza(
       console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
       console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
+      const { buildSandboxRegistryFromEnv } = await import(
+        "../services/sandbox-registry.js"
+      );
+      const sandboxRegistry = buildSandboxRegistryFromEnv();
+      if (sandboxRegistry) {
+        try {
+          await sandboxRegistry.register();
+        } catch (err) {
+          logger.error(
+            `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        sandboxRegistry.startHeartbeat(30_000);
+      }
+
       const keepAlive = setInterval(() => {}, 1 << 30);
       let isCleaningUp = false;
       const cleanup = async () => {
@@ -1249,6 +1264,16 @@ export async function startEliza(
         }, 10_000);
         forceExitTimer.unref();
         stopTelegramBotPolling("SIGINT");
+        if (sandboxRegistry) {
+          sandboxRegistry.stopHeartbeat();
+          try {
+            await sandboxRegistry.unregister();
+          } catch (err) {
+            logger.warn(
+              `[eliza] Sandbox unregister failed (keys will expire via TTL): ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
         }

@@ -1240,6 +1240,26 @@ function locateBundleLibrary(bundleRoot) {
 		libraryFilenames()[0] ?? "libelizainference.so",
 	);
 }
+function bundleHasOmniVoiceWeights(bundleRoot) {
+	const ttsDir = path.join(bundleRoot, "tts");
+	if (!existsSync(ttsDir)) return false;
+	try {
+		return readdirSync(ttsDir, { withFileTypes: true }).some(
+			(entry) => entry.isFile() && /^omnivoice-.+\.gguf$/i.test(entry.name),
+		);
+	} catch {
+		return false;
+	}
+}
+export function isOmniVoiceBundleAvailable(bundleRoot) {
+	if (!bundleRoot || !existsSync(bundleRoot)) return false;
+	const presetPath = path.join(bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
+	return (
+		existsSync(presetPath) &&
+		bundleHasOmniVoiceWeights(bundleRoot) &&
+		existsSync(locateBundleLibrary(bundleRoot))
+	);
+}
 function directoryHasRegularFile(dir) {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		if (entry.isFile()) return true;

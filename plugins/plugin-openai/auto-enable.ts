@@ -6,9 +6,9 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-const ENV_KEYS = ["OPENAI_API_KEY"] as const;
+const ENV_KEYS = ["OPENAI_API_KEY", "CEREBRAS_API_KEY"] as const;
 
-/** Enable when an OpenAI API key is present in the environment. */
+/** Enable when an OpenAI-compatible API key is present in the environment. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   return ENV_KEYS.some((k) => {
     const v = ctx.env[k];

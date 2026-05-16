@@ -46,18 +46,18 @@ mock.module("./hetzner-cloud-api", () => ({
       this.name = "HetznerCloudError";
     }
   },
-    getHetznerCloudClient: () => ({
-      createServer: mocks.createServer,
-      deleteServer: mocks.deleteServer,
-    }),
-    isHetznerCloudConfigured: mocks.isConfigured,
+  getHetznerCloudClient: () => ({
+    createServer: mocks.createServer,
+    deleteServer: mocks.deleteServer,
+  }),
+  isHetznerCloudConfigured: mocks.isConfigured,
 }));
 
 mock.module("./node-bootstrap", () => ({
   buildContainerNodeUserData: mocks.buildUserData,
 }));
 
-import { NodeAutoscaler, type AutoscalePolicy } from "./node-autoscaler";
+import { type AutoscalePolicy, NodeAutoscaler } from "./node-autoscaler";
 
 const policy: AutoscalePolicy = {
   minFreeSlotsBuffer: 4,

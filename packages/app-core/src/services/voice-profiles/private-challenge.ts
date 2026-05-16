@@ -34,8 +34,7 @@ export class InMemoryChallengeService implements ChallengeService {
     const createdAt = this.now();
     const id = randomUUID();
     const prompt = seed ?? "Confirm your private phrase";
-    const answerSource =
-      this.expectedAnswer ?? `${id}:${seed ?? "default"}`;
+    const answerSource = this.expectedAnswer ?? `${id}:${seed ?? "default"}`;
     const challenge: OwnerChallenge = {
       id,
       prompt,

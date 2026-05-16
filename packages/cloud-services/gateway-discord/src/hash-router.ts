@@ -60,7 +60,8 @@ function getDirectTarget(serverUrl: string): string | null {
   if (url.hostname.endsWith(".svc") || url.hostname.includes(".svc.")) {
     return null;
   }
-  return url.origin;
+  const basePath = url.pathname.replace(/\/$/, "");
+  return basePath && basePath !== "/" ? `${url.origin}${basePath}` : url.origin;
 }
 
 interface EndpointSliceList {

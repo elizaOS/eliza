@@ -2536,9 +2536,9 @@ export function appendOptimizationFlags(
 			? null
 			: (ngramConfig ?? (ngramEnvOn ? { min: 4, max: 8, minProb: 0.5 } : null));
 	if (ngramEffective) {
-		args.push("--draft-min", String(ngramEffective.min));
-		args.push("--draft-max", String(ngramEffective.max));
-		args.push("--draft-min-prob", String(ngramEffective.minProb));
+		args.push("--spec-type", "ngram-mod");
+		args.push("--spec-ngram-mod-n-min", String(ngramEffective.min));
+		args.push("--spec-ngram-mod-n-max", String(ngramEffective.max));
 	}
 
 	appendPositiveIntFlag(
@@ -2643,7 +2643,7 @@ export function applyUnsupportedKernelEnv(
  *  - It DOES push `--cache-type-k/-v`, `--parallel`, `--batch-size`,
  *    `--ubatch-size`, `--mlock`, `--no-mmap`, `-fa on`,
  *    `--no-kv-offload` (when `kvSpillToCpu` is set), and DFlash
- *    `--draft-min` / `--draft-max`.
+ *    `--spec-draft-n-min` / `--spec-draft-n-max`.
  *
  * Idempotent on flags already present: if `args` already contains a
  * `--batch-size` token, we don't push a second copy.
@@ -2676,11 +2676,11 @@ export function applyGpuProfile(args: string[], profile: GpuProfile): string[] {
 	if (profile.kvSpillToCpu && !args.includes("--no-kv-offload")) {
 		args.push("--no-kv-offload");
 	}
-	if (!args.includes("--draft-min")) {
-		args.push("--draft-min", String(profile.dflashDraftMin));
+	if (!args.includes("--spec-draft-n-min") && !args.includes("--draft-min")) {
+		args.push("--spec-draft-n-min", String(profile.dflashDraftMin));
 	}
-	if (!args.includes("--draft-max")) {
-		args.push("--draft-max", String(profile.dflashDraftMax));
+	if (!args.includes("--spec-draft-n-max") && !args.includes("--draft-max")) {
+		args.push("--spec-draft-n-max", String(profile.dflashDraftMax));
 	}
 	return args;
 }

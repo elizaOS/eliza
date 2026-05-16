@@ -42,6 +42,7 @@
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
@@ -71,6 +72,12 @@
       "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
+      "@elizaos/cloud-sdk/cloud-setup-session": [
+        "../cloud-sdk/src/cloud-setup-session/index.ts"
+      ],
+      "@elizaos/cloud-sdk/cloud-setup-session/*": [
+        "../cloud-sdk/src/cloud-setup-session/*"
+      ],
       "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
       "@elizaos/ui/*": ["./src/*"],

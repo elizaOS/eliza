@@ -43,6 +43,10 @@ export { registerAppShellPage } from "./app-shell-registry";
 export * from "./avatar-runtime/index";
 export * from "./backgrounds/index";
 export * from "./bridge/index";
+export {
+  invokeDesktopBridgeRequest,
+  isElectrobunRuntime,
+} from "./bridge/index";
 export * from "./character-catalog";
 export {
   DEFAULT_ELIZA_CHARACTER_ASSET,
@@ -67,20 +71,43 @@ export {
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
 } from "./components";
+export * from "./components/apps/AppWindowRenderer";
+export * from "./components/apps/extensions/registry";
+export * from "./components/apps/extensions/surface";
+export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
-export * from "./components/apps/AppWindowRenderer";
+export * from "./components/apps/surfaces/GameOperatorShell";
+export * from "./components/apps/surfaces/registry";
+export * from "./components/apps/surfaces/types";
+export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
+export {
+  EmptyWidgetState,
+  WidgetSection,
+} from "./components/chat/widgets/shared";
+export type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "./components/chat/widgets/types";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
+export { SidebarContent } from "./components/composites/sidebar/sidebar-content";
+export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel";
+export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region";
 export * from "./components/index";
+export {
+  LanguageDropdown,
+  ThemeToggle,
+} from "./components/index";
 export * from "./components/onboarding/states/index";
-export * from "./components/pages/vector-browser-utils";
+export type { TranslateFn } from "./components/pages/config-page-sections";
 export type {
   MemoryRecord,
   VectorGraph2DBounds,
   VectorGraph2DLayout,
   ViewMode,
 } from "./components/pages/vector-browser-utils";
+export * from "./components/pages/vector-browser-utils";
 export {
   buildVectorGraph2DLayout,
   DIM_COLUMNS,
@@ -96,14 +123,16 @@ export {
   VECTOR_GRAPH_2D_PALETTE,
 } from "./components/pages/vector-browser-utils";
 export * from "./components/primitives/index";
+export { AppPageSidebar } from "./components/shared/AppPageSidebar";
 export { Switch } from "./components/ui/switch";
-export { Textarea } from "./components/ui/textarea";
 export {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "./components/ui/tabs";
+export { Textarea } from "./components/ui/textarea";
+export { IconTooltip } from "./components/ui/tooltip-extended";
 export type {
   ActionConfirm,
   ActionDefinition,
@@ -129,11 +158,11 @@ export type {
   CharacterAssetEntry,
   CharacterCatalogData,
   ClientMiddleware,
-  CondExpr,
   CodingAgentTasksPanelProps,
   CompanionInferenceNotice,
   CompanionSceneStatus,
   CompanionShellComponentProps,
+  CondExpr,
   CustomProviderOption,
   DynamicProp,
   FieldCatalog,
@@ -149,10 +178,10 @@ export type {
   PatchOp,
   PathVisibility,
   RepeatConfig,
+  ResolveCompanionInferenceNoticeArgs,
   ResolvedCharacterAsset,
   ResolvedField,
   ResolvedInjectedCharacter,
-  ResolveCompanionInferenceNoticeArgs,
   StewardApprovalQueueProps,
   StewardLogoProps,
   StewardTransactionHistoryProps,
@@ -252,6 +281,7 @@ export { useActivityEvents } from "./hooks/useActivityEvents";
 export { useMediaQuery } from "./hooks/useMediaQuery";
 export { useRenderGuard } from "./hooks/useRenderGuard";
 export { useTimeout } from "./hooks/useTimeout";
+export type { UiLanguage } from "./i18n/index";
 export * from "./i18n/index";
 export * from "./i18n/messages";
 export * from "./layouts/index";
@@ -260,8 +290,8 @@ export * from "./lib/floating-layers";
 export { Z_GLOBAL_EMOTE, Z_SYSTEM_CRITICAL } from "./lib/floating-layers";
 export * from "./lib/utils";
 export { cn } from "./lib/utils";
-export * from "./navigation/index";
 export type { Tab } from "./navigation/index";
+export * from "./navigation/index";
 export {
   installOnboardingDeepLinkListener,
   routeOnboardingDeepLink,
@@ -273,13 +303,13 @@ export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
-export * from "./state/index";
 export type {
   ActionNotice,
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
   InventoryChainFilters,
 } from "./state/index";
+export * from "./state/index";
 export {
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
   computeStreamingDelta,
@@ -375,32 +405,6 @@ export {
   ttsDebugTextPreview,
 } from "./utils";
 export type { DesktopPowerState } from "./utils/desktop-workspace";
-export {
-  invokeDesktopBridgeRequest,
-  isElectrobunRuntime,
-} from "./bridge/index";
-export type { UiLanguage } from "./i18n/index";
-export type { TranslateFn } from "./components/pages/config-page-sections";
-export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
-export {
-  AppPageSidebar,
-} from "./components/shared/AppPageSidebar";
-export { SidebarContent } from "./components/composites/sidebar/sidebar-content";
-export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel";
-export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region";
-export {
-  LanguageDropdown,
-  ThemeToggle,
-} from "./components/index";
-export {
-  EmptyWidgetState,
-  WidgetSection,
-} from "./components/chat/widgets/shared";
-export type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "./components/chat/widgets/types";
-export { IconTooltip } from "./components/ui/tooltip-extended";
 export * from "./views/view-event-bus";
 export * from "./views/view-event-types";
 export * from "./voice";

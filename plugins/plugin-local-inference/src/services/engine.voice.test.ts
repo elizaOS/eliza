@@ -36,6 +36,7 @@ import type {
 	ElizaInferenceFfi,
 	ElizaInferenceRegion,
 } from "./voice/ffi-bindings";
+import { SAMANTHA_PLACEHOLDER_BYTE_LENGTH } from "./voice/samantha-preset-placeholder";
 import type {
 	AudioChunk,
 	OmniVoiceBackend,
@@ -45,7 +46,11 @@ import type {
 	TextToken,
 	VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
-import { writeVoicePresetFile } from "./voice/voice-preset-format";
+import {
+	VOICE_PRESET_MAGIC,
+	VOICE_PRESET_VERSION_V1,
+	writeVoicePresetFile,
+} from "./voice/voice-preset-format";
 
 /**
  * TTS backend whose synthesis only completes when `release()` is
@@ -125,7 +130,38 @@ function writePresetBundle(
 	);
 }
 
+function writeLegacySamanthaPlaceholder(root: string): void {
+	mkdirSync(path.join(root, "cache"), { recursive: true });
+	const blob = new Uint8Array(SAMANTHA_PLACEHOLDER_BYTE_LENGTH);
+	const view = new DataView(blob.buffer);
+	view.setUint32(0, VOICE_PRESET_MAGIC, true);
+	view.setUint32(4, VOICE_PRESET_VERSION_V1, true);
+	view.setUint32(8, 24, true);
+	view.setUint32(12, 256 * 4, true);
+	view.setUint32(16, 24 + 256 * 4, true);
+	view.setUint32(20, 4, true);
+	view.setUint32(24 + 256 * 4, 0, true);
+	writeFileSync(
+		path.join(root, "cache", "voice-preset-default.bin"),
+		Buffer.from(blob),
+	);
+}
+
+function writeOmniVoiceBundleMarkers(root: string): void {
+	mkdirSync(path.join(root, "tts"), { recursive: true });
+	writeFileSync(
+		path.join(root, "tts", "omnivoice-base-Q4_K_M.gguf"),
+		Buffer.alloc(4),
+	);
+	mkdirSync(path.join(root, "lib"), { recursive: true });
+	writeFileSync(
+		path.join(root, "lib", "libelizainference.so"),
+		Buffer.alloc(4),
+	);
+}
+
 function writeKokoroModelRoot(root: string): void {
+	mkdirSync(root, { recursive: true });
 	writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
 	mkdirSync(path.join(root, "voices"), { recursive: true });
 	writeFileSync(path.join(root, "voices", "af_bella.bin"), Buffer.alloc(1024));
@@ -343,6 +379,52 @@ describe("LocalInferenceEngine voice surface", () => {
 			await engine.stopVoice();
 		} finally {
 			rmSync(kokoroRoot, { recursive: true, force: true });
+			if (previousModelDir === undefined) {
+				delete process.env.ELIZA_KOKORO_MODEL_DIR;
+			} else {
+				process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
+			}
+			if (previousBackend === undefined) {
+				delete process.env.ELIZA_TTS_BACKEND;
+			} else {
+				process.env.ELIZA_TTS_BACKEND = previousBackend;
+			}
+		}
+	});
+
+	it("falls back to bundle-local Kokoro when OmniVoice only has the placeholder preset", async () => {
+		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
+		const previousBackend = process.env.ELIZA_TTS_BACKEND;
+		try {
+			writeLegacySamanthaPlaceholder(bundleRoot);
+			writeOmniVoiceBundleMarkers(bundleRoot);
+			writeKokoroModelRoot(path.join(bundleRoot, "tts", "kokoro"));
+			process.env.ELIZA_KOKORO_MODEL_DIR = path.join(
+				tmpdir(),
+				"missing-global-kokoro",
+			);
+			delete process.env.ELIZA_TTS_BACKEND;
+
+			const engine = new LocalInferenceEngine();
+			(
+				engine as unknown as {
+					activeEliza1Bundle: {
+						root: string;
+						tierId: "eliza-1-0_8b";
+						voiceBackends: ["omnivoice", "kokoro"];
+					};
+				}
+			).activeEliza1Bundle = {
+				root: bundleRoot,
+				tierId: "eliza-1-0_8b",
+				voiceBackends: ["omnivoice", "kokoro"],
+			};
+
+			const bridge = await engine.ensureActiveBundleVoiceReady();
+			expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
+			expect(bridge.bundlePath()).not.toBe(bundleRoot);
+			await engine.stopVoice();
+		} finally {
 			if (previousModelDir === undefined) {
 				delete process.env.ELIZA_KOKORO_MODEL_DIR;
 			} else {

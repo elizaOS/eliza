@@ -384,12 +384,32 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
-  it("does not suppress incomplete build reports", async () => {
+  it("surfaces incomplete build reports without spawning another agent", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nDone: https://example.test/apps/demo/\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]",
+      text: "[sub-agent: demo (opencode) — task_complete]\nDone: https://example.test/apps/demo/\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]\n  - https://example.test/apps/demo/ → HTTP 404",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "On it — spawning opencode sub-agent to handle your request.",
+          requiresTool: true,
+          candidateActions: ["TASKS_SPAWN_AGENT"],
+          parentActionHints: ["TASKS"],
+        },
+      },
     });
 
-    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "The sub-agent reported completion, but verification failed, so I am not treating the app as live yet.\nUnreachable URL(s):\n- https://example.test/apps/demo/ → HTTP 404",
+      debug: [
+        "sub-agent completion failed verification; surfacing failure without re-dispatch",
+      ],
+    });
   });
 
   it("does not handle non-completion sub-agent events", async () => {

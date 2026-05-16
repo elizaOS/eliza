@@ -300,6 +300,38 @@ export function disableLocalElizaWorkspace(
     }
   }
 
+  // Bun 1.3.x has a known bug applying patches that create a new file inside
+  // a nested directory of a cached package: it fails with
+  // "EACCES: Permission denied (mkdir())" on the parent directory even though
+  // that directory already exists. See
+  // https://github.com/oven-sh/bun/issues/13770 and
+  // https://github.com/oven-sh/bun/issues/13330.
+  //
+  // The llama-cpp-capacitor patch creates android/src/main/eliza-dflash-jni.cpp
+  // which trips this bug whenever the cache restore between CI runs gives Bun
+  // a partly-extracted unpacked package. The patch is Android-only — the
+  // server Docker image never compiles Android sources — so we can safely drop
+  // the patch entry from patchedDependencies when running in
+  // ELIZA_SKIP_LOCAL_UPSTREAMS mode (Docker CI Smoke, packaged build jobs).
+  // The runtime patch-deps.mjs script still applies the equivalent Gradle /
+  // JNI fixes for mobile builds via collectInstalledPackageDirs() + targeted
+  // rewrites, so dropping the static patch only loses redundancy here.
+  const ANDROID_ONLY_PATCHES = ["llama-cpp-capacitor@0.1.5"];
+  const removedPatches = [];
+  if (rootPkg.patchedDependencies && typeof rootPkg.patchedDependencies === "object") {
+    for (const key of ANDROID_ONLY_PATCHES) {
+      if (Object.hasOwn(rootPkg.patchedDependencies, key)) {
+        delete rootPkg.patchedDependencies[key];
+        removedPatches.push(key);
+      }
+    }
+    if (removedPatches.length > 0) {
+      log(
+        `[disable-local-eliza-workspace] Removed Android-only patchedDependencies entries (${removedPatches.join(", ")}) to work around Bun patch mkdir() EACCES on cached packages`,
+      );
+    }
+  }
+
   writePackageJson(packageJsonPath, rawRootPkg, rootPkg);
 
   const pinnedWorkspaceVersions = resolvePinnedWorkspaceVersions(repoRoot, {

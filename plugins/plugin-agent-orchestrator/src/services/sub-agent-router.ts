@@ -15,6 +15,9 @@ import type { SessionEventName, SessionInfo } from "./types.js";
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 const DEFAULT_ROUND_TRIP_CAP = 32;
+const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
+const AGENT_COORDINATION = "AGENT_COORDINATION";
+const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
 
 // Matches an http(s) URL embedded in free text. Excludes whitespace,
 // quotes, brackets, parens, backticks AND `*` — so a markdown-bolded link
@@ -414,15 +417,6 @@ export class SubAgentRouter extends Service {
           error: err instanceof Error ? err.message : String(err),
         });
       });
-    await this.runtime
-      .addParticipant(subAgentEntityId, origin.roomId)
-      .catch((err) => {
-        this.log("warn", "addParticipant for sub-agent failed", {
-          sessionId,
-          event,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
     // Normalize URLs in the sub-agent's narration before anything else
     // reads it. Weak coding models (gpt-oss-class) emit Unicode look-alike
     // dashes (non-breaking hyphen U+2011, en/em dashes) inside URLs, so the
@@ -472,40 +466,22 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
     }
-    const memory: Memory = {
-      id: randomUUID() as UUID,
-      entityId: subAgentEntityId,
-      agentId: this.runtime.agentId,
-      roomId: origin.roomId,
-      ...(origin.worldId ? { worldId: origin.worldId } : {}),
-      content: {
-        text,
-        source: ACPX_ROUTER_SOURCE,
-        ...(origin.parentMessageId
-          ? { inReplyTo: origin.parentMessageId }
-          : {}),
-        metadata: {
-          subAgent: true,
-          subAgentSessionId: sessionId,
-          subAgentLabel: origin.label,
-          subAgentEvent: capExceeded ? "round_trip_cap_exceeded" : event,
-          subAgentStatus: capExceeded ? "stopped" : session.status,
-          subAgentAgentType: session.agentType,
-          subAgentRoundTrip: nextCount,
-          subAgentRoundTripCap: this.roundTripCap,
-          ...(capExceeded ? { subAgentCapExceeded: true } : {}),
-          ...(verifiedUrls.length > 0
-            ? { subAgentVerifiedUrls: verifiedUrls }
-            : {}),
-          ...(origin.userId ? { originUserId: origin.userId } : {}),
-          ...(origin.parentMessageId
-            ? { originMessageId: origin.parentMessageId }
-            : {}),
-          ...(origin.source ? { originSource: origin.source } : {}),
-        },
-      },
-      createdAt: Date.now(),
-    };
+    const routingKind = routingKindForEvent(event, data, capExceeded);
+    const targets = swarmTargetsForRouting(origin, routingKind);
+    await Promise.all(
+      targets.map((target) =>
+        this.runtime
+          .addParticipant(subAgentEntityId, target.roomId)
+          .catch((err) => {
+            this.log("warn", "addParticipant for sub-agent failed", {
+              sessionId,
+              event,
+              roomId: target.roomId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }),
+      ),
+    );
 
     // The Discord plugin wires a callback bound to the originating channel
     // when it calls handleMessage; without that callback, the planner has
@@ -513,56 +489,112 @@ export class SubAgentRouter extends Service {
     // narration is dropped silently (the user sees only "On it…" and never
     // the actual result). For synthetic router posts we build the same
     // callback from `runtime.sendMessageToTarget`, scoped to the origin
-    // source/room. If the connector isn't registered, fall through to
+    // source and selected swarm room. If the connector isn't registered, fall through to
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
-    const replyCallback = this.buildReplyCallback(origin, sessionId);
-    // messageService.handleMessage saves the memory itself ("Saving message
-    // to memory" inside SERVICE:MESSAGE). When that path is available, skip
-    // the explicit createMemory — otherwise we double-save with the same
-    // primary key and the second insert dies on a unique-constraint
-    // violation, killing the planner trip and dropping the sub-agent answer.
-    if (this.runtime.messageService?.handleMessage) {
-      await this.runtime.messageService
-        .handleMessage(this.runtime, memory, replyCallback)
-        .catch((err) => {
-          this.log("error", "handleMessage for sub-agent post failed", {
+    for (const target of targets) {
+      const memory: Memory = {
+        id: randomUUID() as UUID,
+        entityId: subAgentEntityId,
+        agentId: this.runtime.agentId,
+        roomId: target.roomId,
+        ...(origin.worldId ? { worldId: origin.worldId } : {}),
+        content: {
+          text,
+          source: ACPX_ROUTER_SOURCE,
+          ...(origin.parentMessageId
+            ? { inReplyTo: origin.parentMessageId }
+            : {}),
+          metadata: {
+            subAgent: true,
+            subAgentSessionId: sessionId,
+            subAgentLabel: origin.label,
+            subAgentEvent: capExceeded ? "round_trip_cap_exceeded" : event,
+            subAgentStatus: capExceeded ? "stopped" : session.status,
+            subAgentAgentType: session.agentType,
+            subAgentRoundTrip: nextCount,
+            subAgentRoundTripCap: this.roundTripCap,
+            subAgentRoutingKind: routingKind,
+            subAgentTargetRoomId: target.roomId,
+            subAgentTargetRoomRole: target.roles[0],
+            subAgentTargetRoomRoles: target.roles,
+            // Cast: swarmRoomsMetadata returns
+            // `Array<Record<string, string | string[]>>` which is structurally
+            // a JsonValue but TypeScript widens it to SwarmRoomTarget[] when
+            // inlined into the Content.metadata literal. Cast to the
+            // metadata-shape type-checked sibling fields use.
+            subAgentSwarmRooms: swarmRoomsMetadata(
+              origin.swarmRooms,
+            ) as unknown as Array<{ [key: string]: string | string[] }>,
+            taskRoomId: origin.taskRoomId,
+            ...(origin.worktreeRoomId
+              ? { worktreeRoomId: origin.worktreeRoomId }
+              : {}),
+            ...(capExceeded ? { subAgentCapExceeded: true } : {}),
+            ...(verifiedUrls.length > 0
+              ? { subAgentVerifiedUrls: verifiedUrls }
+              : {}),
+            ...(origin.userId ? { originUserId: origin.userId } : {}),
+            ...(origin.parentMessageId
+              ? { originMessageId: origin.parentMessageId }
+              : {}),
+            ...(origin.source ? { originSource: origin.source } : {}),
+          },
+        },
+        createdAt: Date.now(),
+      };
+      const replyCallback = this.buildReplyCallback(origin, sessionId, target);
+      // messageService.handleMessage saves the memory itself ("Saving message
+      // to memory" inside SERVICE:MESSAGE). When that path is available, skip
+      // the explicit createMemory — otherwise we double-save with the same
+      // primary key and the second insert dies on a unique-constraint
+      // violation, killing the planner trip and dropping the sub-agent answer.
+      if (this.runtime.messageService?.handleMessage) {
+        await this.runtime.messageService
+          .handleMessage(this.runtime, memory, replyCallback)
+          .catch((err) => {
+            this.log("error", "handleMessage for sub-agent post failed", {
+              sessionId,
+              event,
+              roomId: target.roomId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+      } else {
+        this.log(
+          "warn",
+          "runtime.messageService unavailable; falling back to MESSAGE_RECEIVED emit",
+          {
             sessionId,
             event,
+            roomId: target.roomId,
+          },
+        );
+        await this.runtime.createMemory(memory, "messages").catch((err) => {
+          this.log("warn", "createMemory for sub-agent post failed", {
+            sessionId,
+            event,
+            roomId: target.roomId,
             error: err instanceof Error ? err.message : String(err),
           });
         });
-    } else {
-      this.log(
-        "warn",
-        "runtime.messageService unavailable; falling back to MESSAGE_RECEIVED emit",
-        {
-          sessionId,
-          event,
-        },
-      );
-      await this.runtime.createMemory(memory, "messages").catch((err) => {
-        this.log("warn", "createMemory for sub-agent post failed", {
-          sessionId,
-          event,
-          error: err instanceof Error ? err.message : String(err),
+        const emit = this.runtime.emitEvent.bind(this.runtime) as (
+          name: string,
+          payload: { source: string; message: Memory; runtime: IAgentRuntime },
+        ) => Promise<void>;
+        await emit("MESSAGE_RECEIVED", {
+          runtime: this.runtime,
+          message: memory,
+          source: ACPX_ROUTER_SOURCE,
         });
-      });
-      const emit = this.runtime.emitEvent.bind(this.runtime) as (
-        name: string,
-        payload: { source: string; message: Memory; runtime: IAgentRuntime },
-      ) => Promise<void>;
-      await emit("MESSAGE_RECEIVED", {
-        runtime: this.runtime,
-        message: memory,
-        source: ACPX_ROUTER_SOURCE,
-      });
+      }
     }
   }
 
   private buildReplyCallback(
     origin: OriginInfo,
     sessionId: string,
+    target: SwarmRoomTarget,
   ): HandlerCallback | undefined {
     const sendToTarget = (
       this.runtime as unknown as {
@@ -582,14 +614,14 @@ export class SubAgentRouter extends Service {
       const delivered = await sendToTarget(
         {
           source,
-          roomId: origin.roomId,
+          roomId: target.roomId,
         },
         response,
       ).catch((err) => {
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
           source,
-          roomId: origin.roomId,
+          roomId: target.roomId,
           error: err instanceof Error ? err.message : String(err),
         });
         return undefined;
@@ -738,7 +770,13 @@ Do not report done until every referenced URL in the final page resolves without
 }
 
 function shouldInject(event: SessionEventName): boolean {
-  return event === "task_complete" || event === "error" || event === "blocked";
+  return (
+    event === "task_complete" ||
+    event === "error" ||
+    event === "blocked" ||
+    event === QUESTION_FOR_TASK_CREATOR ||
+    event === AGENT_COORDINATION
+  );
 }
 
 function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
@@ -769,6 +807,9 @@ function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
 
 interface OriginInfo {
   roomId: UUID;
+  taskRoomId: UUID;
+  worktreeRoomId?: UUID;
+  swarmRooms: SwarmRoomTarget[];
   worldId?: UUID;
   userId?: UUID;
   parentMessageId?: UUID;
@@ -776,19 +817,160 @@ interface OriginInfo {
   source?: string;
 }
 
+interface SwarmRoomTarget {
+  roomId: UUID;
+  roles: string[];
+}
+
+function swarmRoomsMetadata(
+  rooms: SwarmRoomTarget[],
+): Array<Record<string, string | string[]>> {
+  return rooms.map((room) => ({
+    roomId: room.roomId,
+    roles: room.roles,
+  }));
+}
+
 function readOrigin(session: SessionInfo): OriginInfo | null {
   const meta = session.metadata as Record<string, unknown> | undefined;
   if (!meta) return null;
-  const roomId = pickUuid(meta.roomId);
-  if (!roomId) return null;
+  const taskRoomId = pickUuid(meta.taskRoomId) ?? pickUuid(meta.roomId);
+  const roomId = taskRoomId ?? pickUuid(meta.roomId);
+  if (!roomId || !taskRoomId) return null;
+  const worktreeRoomId = pickUuid(meta.worktreeRoomId);
+  const swarmRooms = normalizeSwarmRooms(
+    meta.swarmRooms,
+    taskRoomId,
+    worktreeRoomId,
+  );
   return {
     roomId,
+    taskRoomId,
+    ...(worktreeRoomId ? { worktreeRoomId } : {}),
+    swarmRooms,
     worldId: pickUuid(meta.worldId),
     userId: pickUuid(meta.userId),
     parentMessageId: pickUuid(meta.messageId),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
+}
+
+function normalizeSwarmRooms(
+  value: unknown,
+  taskRoomId: UUID,
+  worktreeRoomId: UUID | undefined,
+): SwarmRoomTarget[] {
+  const byRoom = new Map<string, SwarmRoomTarget>();
+  const add = (roomId: UUID | undefined, roles: readonly string[]) => {
+    if (!roomId) return;
+    const current = byRoom.get(roomId) ?? { roomId, roles: [] };
+    for (const role of roles) {
+      if (role === "task" || role === "worktree" || role === "origin") {
+        if (!current.roles.includes(role)) current.roles.push(role);
+      }
+    }
+    byRoom.set(roomId, current);
+  };
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!entry || typeof entry !== "object") continue;
+      const record = entry as Record<string, unknown>;
+      const roomId = pickUuid(record.roomId);
+      const roles = Array.isArray(record.roles)
+        ? record.roles.filter(
+            (role): role is string => typeof role === "string",
+          )
+        : typeof record.role === "string"
+          ? [record.role]
+          : [];
+      add(roomId, roles);
+    }
+  }
+  add(taskRoomId, ["task"]);
+  add(worktreeRoomId, ["worktree"]);
+  return [...byRoom.values()]
+    .map((target) => ({ ...target, roles: sortSwarmRoles(target.roles) }))
+    .sort(compareSwarmRooms);
+}
+
+function compareSwarmRooms(a: SwarmRoomTarget, b: SwarmRoomTarget): number {
+  const roleRank = (target: SwarmRoomTarget) =>
+    target.roles.includes("task")
+      ? 0
+      : target.roles.includes("worktree")
+        ? 1
+        : 2;
+  const rank = roleRank(a) - roleRank(b);
+  return rank !== 0 ? rank : a.roomId.localeCompare(b.roomId);
+}
+
+function sortSwarmRoles(roles: string[]): string[] {
+  return [...roles].sort((a, b) => {
+    const aRank = SWARM_ROLE_ORDER.indexOf(
+      a as (typeof SWARM_ROLE_ORDER)[number],
+    );
+    const bRank = SWARM_ROLE_ORDER.indexOf(
+      b as (typeof SWARM_ROLE_ORDER)[number],
+    );
+    return (aRank === -1 ? 99 : aRank) - (bRank === -1 ? 99 : bRank);
+  });
+}
+
+function routingKindForEvent(
+  event: SessionEventName,
+  data: unknown,
+  capExceeded: boolean,
+): string {
+  if (capExceeded) return "ROUND_TRIP_CAP_EXCEEDED";
+  if (event === QUESTION_FOR_TASK_CREATOR) return QUESTION_FOR_TASK_CREATOR;
+  if (event === AGENT_COORDINATION) return AGENT_COORDINATION;
+  const rawKind =
+    pickPayloadString(data, "routingKind") ??
+    pickPayloadString(data, "type") ??
+    pickPayloadString(data, "kind") ??
+    pickPayloadString(data, "purpose");
+  const normalized = rawKind?.trim().toUpperCase();
+  if (normalized === QUESTION_FOR_TASK_CREATOR)
+    return QUESTION_FOR_TASK_CREATOR;
+  if (normalized === AGENT_COORDINATION) return AGENT_COORDINATION;
+  if (event === "blocked") return QUESTION_FOR_TASK_CREATOR;
+  return "TASK_STATUS";
+}
+
+function swarmTargetsForRouting(
+  origin: OriginInfo,
+  routingKind: string,
+): SwarmRoomTarget[] {
+  if (routingKind === QUESTION_FOR_TASK_CREATOR) {
+    return [targetForRoom(origin, origin.taskRoomId, "task")];
+  }
+  if (routingKind === AGENT_COORDINATION) {
+    const roomId = origin.worktreeRoomId ?? origin.taskRoomId;
+    return [
+      targetForRoom(
+        origin,
+        roomId,
+        origin.worktreeRoomId ? "worktree" : "task",
+      ),
+    ];
+  }
+  return origin.swarmRooms.length > 0
+    ? origin.swarmRooms
+    : [targetForRoom(origin, origin.taskRoomId, "task")];
+}
+
+function targetForRoom(
+  origin: OriginInfo,
+  roomId: UUID,
+  fallbackRole: string,
+): SwarmRoomTarget {
+  return (
+    origin.swarmRooms.find((target) => target.roomId === roomId) ?? {
+      roomId,
+      roles: [fallbackRole],
+    }
+  );
 }
 
 function pickUuid(v: unknown): UUID | undefined {
@@ -855,6 +1037,64 @@ function routeVerificationForSession(
   };
 }
 
+function expandRouteUrlAliases(
+  urls: readonly string[],
+  routeVerification: RouteUrlVerification | undefined,
+): string[] {
+  if (!routeVerification) return [...urls];
+  const expanded = new Set(urls);
+  for (const url of urls) {
+    const relativePath = routeRelativePathForUrl(
+      url,
+      routeVerification.mappings,
+    );
+    if (!relativePath) continue;
+    for (const mapping of routeVerification.mappings) {
+      const alias = urlForRouteMapping(mapping, relativePath);
+      if (alias) expanded.add(alias);
+    }
+  }
+  return [...expanded];
+}
+
+function routeRelativePathForUrl(
+  url: string,
+  mappings: readonly RouteUrlMapping[],
+): string | undefined {
+  for (const mapping of mappings) {
+    let parsed: URL;
+    let prefix: URL;
+    try {
+      parsed = new URL(url);
+      prefix = new URL(mapping.urlPrefix);
+    } catch {
+      continue;
+    }
+    if (parsed.origin !== prefix.origin) continue;
+    const prefixPath = prefix.pathname.endsWith("/")
+      ? prefix.pathname
+      : `${prefix.pathname}/`;
+    if (!parsed.pathname.startsWith(prefixPath)) continue;
+    const relativePath = parsed.pathname.slice(prefixPath.length);
+    if (relativePath) return relativePath;
+  }
+  return undefined;
+}
+
+function urlForRouteMapping(
+  mapping: RouteUrlMapping,
+  relativePath: string,
+): string | undefined {
+  try {
+    const prefix = mapping.urlPrefix.endsWith("/")
+      ? mapping.urlPrefix
+      : `${mapping.urlPrefix}/`;
+    return new URL(relativePath, prefix).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 function mergeCachedStaleMissUrls(
   prior: Set<string>,
   dead: DeadUrl[],
@@ -882,6 +1122,22 @@ function composeNarration(
   data: unknown,
 ): string {
   const header = `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
+  if (event === QUESTION_FOR_TASK_CREATOR) {
+    const message =
+      pickPayloadString(data, "question") ??
+      pickPayloadString(data, "message") ??
+      pickPayloadString(data, "prompt") ??
+      "sub-agent has a question for the task creator";
+    return `${header}\n${message}`;
+  }
+  if (event === AGENT_COORDINATION) {
+    const message =
+      pickPayloadString(data, "message") ??
+      pickPayloadString(data, "coordination") ??
+      pickPayloadString(data, "prompt") ??
+      "sub-agent posted a coordination update";
+    return `${header}\n${message}`;
+  }
   if (event === "error") {
     const message =
       pickPayloadString(data, "message") ?? "sub-agent reported an error";
@@ -937,7 +1193,10 @@ async function annotateUnverifiedUrls(
   runtime?: IAgentRuntime,
   routeVerification?: RouteUrlVerification,
 ): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
-  const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
+  const urls = expandRouteUrlAliases(
+    extractVerifiableUrls(text, 5, referenceText, ignoredUrls),
+    routeVerification,
+  );
   if (urls.length === 0) return { text, dead: [], verifiedUrls: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,

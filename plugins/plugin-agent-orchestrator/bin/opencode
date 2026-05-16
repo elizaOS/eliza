@@ -4,5 +4,23 @@
 # the PR #26763 (Cerebras reasoning fix) vendored source without needing a
 # compiled binary.
 SHIM_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-OC_DIR="$SHIM_DIR/../../../vendor/opencode/packages/opencode"
-exec bun run --cwd "$OC_DIR" --conditions=browser src/index.ts "$@"
+OC_DIR="$SHIM_DIR/../vendor/opencode/packages/opencode"
+if [ -f "$OC_DIR/src/index.ts" ]; then
+  exec bun run --cwd "$OC_DIR" --conditions=browser src/index.ts "$@"
+fi
+
+if [ -n "${ELIZA_OPENCODE_BIN:-}" ] && [ -x "$ELIZA_OPENCODE_BIN" ]; then
+  exec "$ELIZA_OPENCODE_BIN" "$@"
+fi
+
+IFS=:
+for DIR in $PATH; do
+  [ -n "$DIR" ] || continue
+  [ "$(cd "$DIR" 2>/dev/null && pwd)" = "$SHIM_DIR" ] && continue
+  if [ -x "$DIR/opencode" ]; then
+    exec "$DIR/opencode" "$@"
+  fi
+done
+unset IFS
+
+exec bunx opencode "$@"

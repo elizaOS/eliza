@@ -32,6 +32,8 @@
 			],
 			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
+			"@elizaos/plugin-mlx": ["../plugin-mlx/dist/node/index.d.ts"],
+			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],

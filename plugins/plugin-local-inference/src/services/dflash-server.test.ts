@@ -1615,6 +1615,22 @@ describe("llama-server optimization flags", () => {
 
 		expect(args).toEqual(["--cache-reuse", "64", "--no-cont-batching"]);
 	});
+
+	it("uses current llama.cpp ngram speculative flags", () => {
+		const args: string[] = [];
+		appendOptimizationFlags(args, {
+			ngramDraft: { min: 4, max: 8, minProb: 0.5 },
+		});
+
+		expect(args).toEqual([
+			"--spec-type",
+			"ngram-mod",
+			"--spec-ngram-mod-n-min",
+			"4",
+			"--spec-ngram-mod-n-max",
+			"8",
+		]);
+	});
 });
 
 describe("appendCtxCheckpointFlags", () => {

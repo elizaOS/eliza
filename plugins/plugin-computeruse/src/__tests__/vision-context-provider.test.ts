@@ -1,11 +1,21 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Scene } from "../scene/scene-types.js";
 import {
   VISION_CONTEXT_SERVICE_TYPE,
   VISION_CONTEXT_TASK_GOAL_CACHE_KEY,
   VisionContextProvider,
 } from "../services/vision-context-provider.js";
+
+vi.mock("../platform/process-list.js", () => ({
+  listProcesses: vi.fn(() => [] as Array<{ pid: number; name: string }>),
+}));
+
+vi.mock("../platform/windows-list.js", () => ({
+  listWindows: vi.fn(
+    () => [] as Array<{ id: string; title: string; app: string }>,
+  ),
+}));
 
 function makeScene(): Scene {
   return {

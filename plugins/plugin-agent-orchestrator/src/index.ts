@@ -1,8 +1,8 @@
 /**
  * Agent Orchestrator Plugin for Eliza
  *
- * Canonical orchestration plugin: combines the ACP-based subprocess spawn
- * surface (acpx) with workspace lifecycle, GitHub integration, task share,
+ * Canonical orchestration plugin: combines native ACP task-agent orchestration
+ * with workspace lifecycle, GitHub integration, task share,
  * task history, runtime-driven sub-agent routing, and supporting services.
  *
  * @module @elizaos/plugin-agent-orchestrator
@@ -96,14 +96,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / opencode / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; adapter/multi-step",
+                "delegate ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex; adapter/multi-step",
             },
           },
         }),
@@ -126,10 +126,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
   return {
     name: "@elizaos/plugin-agent-orchestrator",
     description: codeExecutionAllowed
-      ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
+      ? "Orchestrate coding sub-agents via native Agent Client Protocol transports with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS stub that explains the limitation when the planner reaches for a coding-agent action."),
-    // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
+    // Services manage ACP task-agent sessions, workspaces, and sub-agent routing.
     services: orchestratorServices,
     actions: orchestratorActions,
     providers: orchestratorProviders,

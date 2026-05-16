@@ -77,9 +77,11 @@ function readRuntimeMode(): string | null {
   } catch {
     // localStorage can be unavailable in tests and early native startup.
   }
-  const env = (import.meta as ImportMeta & {
-    env?: Record<string, string | boolean | undefined>;
-  }).env;
+  const env = (
+    import.meta as ImportMeta & {
+      env?: Record<string, string | boolean | undefined>;
+    }
+  ).env;
   const androidRuntimeMode =
     typeof env?.VITE_ELIZA_ANDROID_RUNTIME_MODE === "string"
       ? env.VITE_ELIZA_ANDROID_RUNTIME_MODE.trim()
@@ -168,7 +170,9 @@ async function normalizeFetchBridgeInit(
   init?: RequestInit,
 ): Promise<RequestInit | null> {
   const request = input instanceof Request ? input.clone() : null;
-  const method = (init?.method ?? request?.method ?? "GET").trim().toUpperCase();
+  const method = (init?.method ?? request?.method ?? "GET")
+    .trim()
+    .toUpperCase();
   const headers = init?.headers ?? request?.headers;
   if (!methodAllowsBody(method)) {
     return {

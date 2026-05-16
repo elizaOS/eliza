@@ -13,7 +13,7 @@ import {
   Settings as SettingsIcon,
   TriangleAlert,
 } from "lucide-react";
-import { type JSX, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state/useApp";

@@ -1085,6 +1085,7 @@ export class EngineVoiceBridge {
 		const forkModelId =
 			process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
 		const decision = pickKokoroRuntimeBackend({
+			defaultBackend: kokoro.runtimeKind === "onnx" ? "onnx" : "fork",
 			fork: {
 				serverUrl: forkUrl,
 				modelId: forkModelId,

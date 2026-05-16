@@ -316,8 +316,8 @@ describe("flagsToLlamaServerArgv", () => {
 		expect(argv).toContain("--cache-type-v");
 		expect(argv).toContain("--split-mode");
 		expect(argv).toContain("--main-gpu");
-		expect(argv).toContain("--draft-min");
-		expect(argv).toContain("--draft-max");
+		expect(argv).toContain("--spec-draft-n-min");
+		expect(argv).toContain("--spec-draft-n-max");
 		expect(argv).toContain("--ctx-checkpoints");
 		expect(argv).toContain("--ctx-checkpoint-interval");
 		expect(argv).toContain("-fa");

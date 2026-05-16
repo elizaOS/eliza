@@ -16,6 +16,7 @@
  * instead of crashing the process.
  */
 
+import path from "node:path";
 import {
 	logger,
 	type ResponseSkeleton,
@@ -1505,9 +1506,13 @@ export class LocalInferenceEngine {
 		if (!bridge) {
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
-				const kokoro = resolveKokoroEngineConfig();
+				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
+				const kokoro =
+					resolveKokoroEngineConfig(bundleKokoroRoot) ??
+					resolveKokoroEngineConfig();
+				const mode = readVoiceBackendModeFromEnv();
 				const decision = selectVoiceBackend({
-					mode: readVoiceBackendModeFromEnv(),
+					mode,
 					kokoroAvailable: kokoro !== null,
 					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
 					tierVoiceBackends: bundle.voiceBackends,
@@ -1540,11 +1545,32 @@ export class LocalInferenceEngine {
 						logger.warn(
 							`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
 						);
+						if (
+							mode !== "omnivoice" &&
+							kokoro &&
+							bundle.voiceBackends?.includes("kokoro")
+						) {
+							logger.warn(
+								`[voice] Falling back to bundled Kokoro voice ${kokoro.defaultVoiceId} from ${kokoro.layout.root} because OmniVoice has only the placeholder Samantha preset.`,
+							);
+							bridge = this.startVoice({
+								bundleRoot: "",
+								useFfiBackend: false,
+								kokoroOnly: kokoro,
+							});
+						} else if (mode !== "omnivoice") {
+							throw new VoiceStartupError(
+								"missing-speaker-preset",
+								`[voice] OmniVoice selected for ${bundle.tierId}, but its Samantha preset is still the placeholder and no bundle-supported Kokoro fallback is staged. ${outcome.detail}`,
+							);
+						}
 					}
-					bridge = this.startVoice({
-						bundleRoot: bundle.root,
-						useFfiBackend: true,
-					});
+					if (!bridge) {
+						bridge = this.startVoice({
+							bundleRoot: bundle.root,
+							useFfiBackend: true,
+						});
+					}
 				}
 			} else {
 				// No Eliza-1 bundle. Fall back to the Kokoro-only path when its

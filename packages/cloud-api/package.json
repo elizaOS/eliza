@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "dev": "bun run ../scripts/cloud/admin/sync-api-dev-vars.ts && wrangler dev --port ${API_DEV_PORT:-8787} --local",
+    "dev": "node ../scripts/cloud/admin/dev/cloud-api-dev.mjs",
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "codegen": "node src/_generate-router.mjs",

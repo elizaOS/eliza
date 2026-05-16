@@ -30,9 +30,9 @@ describe("vision fallback chain", () => {
 			},
 		});
 
-		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toEqual(
-			localResult,
-		);
+		await expect(
+			handler({} as never, "data:image/png;base64,a"),
+		).resolves.toEqual(localResult);
 		expect(cloudCalls).toBe(0);
 	});
 
@@ -45,9 +45,9 @@ describe("vision fallback chain", () => {
 			cloud: { handler: async () => cloudResult },
 		});
 
-		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toEqual(
-			cloudResult,
-		);
+		await expect(
+			handler({} as never, "data:image/png;base64,a"),
+		).resolves.toEqual(cloudResult);
 	});
 
 	it("falls through cloud to vast", async () => {
@@ -61,9 +61,9 @@ describe("vision fallback chain", () => {
 			},
 		);
 
-		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toEqual(
-			vastResult,
-		);
+		await expect(
+			handler({} as never, "data:image/png;base64,a"),
+		).resolves.toEqual(vastResult);
 	});
 
 	it("throws a structured error when every provider falls back", async () => {

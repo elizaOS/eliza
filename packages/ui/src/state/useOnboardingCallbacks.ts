@@ -16,11 +16,13 @@ import {
   getDefaultStylePreset,
 } from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
-import type { StylePreset } from "../api";
-import { ElizaClient, type VoiceConfig } from "../api";
+import type { client as apiClient, StylePreset, VoiceConfig } from "../api";
+import { ElizaClient } from "../api/client-base";
+
+type OnboardingClient = typeof apiClient;
 
 const ensureOnboardedAgentRunning = async (
-  client: ElizaClient,
+  client: OnboardingClient,
 ): Promise<void> => {
   try {
     const status = await client.getStatus();
@@ -52,7 +54,7 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
-import { buildOnboardingRuntimeConfig } from "@elizaos/app-core";
+import { buildOnboardingRuntimeConfig } from "@elizaos/app-core/onboarding/onboarding-config";
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
@@ -213,7 +215,7 @@ async function persistOnboardingStyleVoice(args: {
   voiceProvider: string;
   voiceApiKey: string;
   cloudTtsSelected: boolean;
-  clientRef: ElizaClient;
+  clientRef: OnboardingClient;
 }): Promise<void> {
   const voiceConfig = buildOnboardingStyleVoiceConfig(args);
   if (!voiceConfig) {
@@ -313,7 +315,7 @@ export interface OnboardingCallbacksDeps {
   ) => void;
   retryStartup: () => void;
   forceLocalBootstrapRef: RefObject<boolean>;
-  client: ElizaClient;
+  client: OnboardingClient;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────

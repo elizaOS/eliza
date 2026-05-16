@@ -67,7 +67,9 @@ _DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
     "codex": _CODE_PROVIDER_CAPABILITIES,
     "direct_shell": _CODE_PROVIDER_CAPABILITIES,
     "eliza-code": _CODE_PROVIDER_CAPABILITIES,
+    "elizaos": _CODE_PROVIDER_CAPABILITIES,
     "opencode": _CODE_PROVIDER_CAPABILITIES,
+    "pi-agent": _CODE_PROVIDER_CAPABILITIES,
     "swe-agent": _CODE_PROVIDER_CAPABILITIES,
 }
 _CLAUDE_AGENT_KEY_ENVS = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CLAUDE_CODE_API_KEY")
@@ -107,11 +109,16 @@ def _env_has_value(*names: str) -> bool:
 
 def _default_task_agent_provider() -> str:
     """Infer the task-agent provider without exposing credential values."""
+    configured = os.environ.get("BENCHMARK_TASK_AGENT", "").strip().lower()
+    if configured:
+        return configured
+    if _env_has_value("CEREBRAS_API_KEY"):
+        return "elizaos"
     if _env_has_value(*_CODEX_AGENT_KEY_ENVS):
         return "codex"
     if _env_has_value(*_CLAUDE_AGENT_KEY_ENVS):
         return "claude-code"
-    return "opencode"
+    return "elizaos"
 
 
 def _normalize_patch_text(text: str) -> str:

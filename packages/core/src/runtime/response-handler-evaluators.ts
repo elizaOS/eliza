@@ -195,7 +195,8 @@ export async function runResponseHandlerEvaluators(args: {
 	evaluators?: readonly ResponseHandlerEvaluator[];
 }): Promise<ResponseHandlerEvaluationRunResult> {
 	const registered = Array.isArray(args.runtime.responseHandlerEvaluators)
-		? (args.runtime.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
+		? (args.runtime
+				.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
 		: [];
 	const candidates = [...(args.evaluators ?? []), ...registered].sort(
 		(a, b) =>

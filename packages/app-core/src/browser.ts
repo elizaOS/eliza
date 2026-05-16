@@ -1,4 +1,5 @@
 export * from "@elizaos/ui";
+export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 
 export type CompatRuntimeState = {
   current: unknown;
@@ -35,8 +36,10 @@ export function sharedVault(): never {
 }
 
 // Reach-through to the full app-core surface so eliza's `main.tsx` can
-// resolve symbols like `DesktopOnboardingRuntime`, `AppProvider`,
-// `client`, etc. that the minimal browser entry omits. We import from
+// resolve desktop runtime symbols that the minimal browser entry omits. UI
+// symbols are bridged from `@elizaos/ui` for legacy plugin UI modules, but
+// AppWindowRenderer is exported explicitly above so the same-named UI renderer
+// does not create an ambiguous star export. We import from
 // `./index.ts` (the source barrel) — tsconfig.build.json has
 // `rewriteRelativeImportExtensions: true`, so this becomes `./index.js`
 // in the published dist. Same file at runtime; no pre-built `dist/`

@@ -2,8 +2,6 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
-import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import {
   AgentRuntime,
   type Content,
@@ -15,6 +13,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
+import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
   LifeOpsBenchHandler,
@@ -91,6 +91,49 @@ autoWireCerebras();
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 
+function normalizeBenchmarkTaskAgentEnv(): void {
+  const benchmarkRequested = process.env.BENCHMARK_TASK_AGENT?.trim();
+  const requested =
+    benchmarkRequested ||
+    process.env.ELIZA_ACP_DEFAULT_AGENT?.trim() ||
+    process.env.ELIZA_DEFAULT_AGENT_TYPE?.trim();
+  if (!requested) return;
+
+  const normalized = requested.toLowerCase().replace(/_/g, "-");
+  const acpAgent =
+    normalized === "elizaos" ||
+    normalized === "eliza-os" ||
+    normalized === "pi-agent" ||
+    normalized === "pi agent"
+      ? "opencode"
+      : normalized === "claude-code" || normalized === "claude code"
+        ? "claude"
+        : normalized === "openai" ||
+            normalized === "openai-codex" ||
+            normalized === "openai codex"
+          ? "codex"
+          : normalized === "open-code" || normalized === "open code"
+            ? "opencode"
+            : normalized;
+
+  process.env.BENCHMARK_TASK_AGENT ??= requested;
+  process.env.ELIZA_AGENT_ORCHESTRATOR ??= "1";
+  process.env.ELIZA_AGENT_SELECTION_STRATEGY ??= "fixed";
+  if (benchmarkRequested) {
+    process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
+    process.env.ELIZA_ACP_DEFAULT_AGENT = acpAgent;
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = acpAgent;
+  } else {
+    process.env.ELIZA_ACP_DEFAULT_AGENT ??= acpAgent;
+    process.env.ELIZA_DEFAULT_AGENT_TYPE ??= acpAgent;
+  }
+  elizaLogger.info(
+    `[bench] Benchmark task-agent ${requested} mapped to ACP adapter ${acpAgent}`,
+  );
+}
+
+normalizeBenchmarkTaskAgentEnv();
+
 function isLocaBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "loca_bench" || normalized === "loca-bench";
@@ -100,7 +143,7 @@ function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
 
-function isTauBenchmarkName(benchmark: string): boolean {
+function _isTauBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "tau_bench" || normalized === "tau-bench";
 }
@@ -177,7 +220,7 @@ function normalizeBfclNativeMessages(
   ];
 }
 
-function normalizeTauNativeMessages(
+function _normalizeTauNativeMessages(
   text: string,
   context: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
@@ -733,12 +776,30 @@ export async function startBenchmarkServer() {
   }
 
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
-  const corePluginsToLoad = skipCorePlugins
+  const corePluginsToLoadBase = skipCorePlugins
     ? ["@elizaos/plugin-sql"]
     : CORE_PLUGINS;
+  const shouldLoadTaskAgentPlugin = Boolean(
+    process.env.BENCHMARK_TASK_AGENT?.trim() ||
+      process.env.ELIZA_ACP_DEFAULT_AGENT?.trim() ||
+      process.env.ELIZA_DEFAULT_AGENT_TYPE?.trim(),
+  );
+  const corePluginsToLoad = shouldLoadTaskAgentPlugin
+    ? Array.from(
+        new Set([
+          ...corePluginsToLoadBase,
+          "@elizaos/plugin-agent-orchestrator",
+        ]),
+      )
+    : corePluginsToLoadBase;
   if (skipCorePlugins) {
     elizaLogger.info(
       "[bench] Loading minimal core plugins for benchmark smoke run",
+    );
+  }
+  if (shouldLoadTaskAgentPlugin) {
+    elizaLogger.info(
+      "[bench] Loading @elizaos/plugin-agent-orchestrator for benchmark task-agent routing",
     );
   }
 
@@ -1077,6 +1138,7 @@ export async function startBenchmarkServer() {
   const envKeys = [
     "GROQ_API_KEY",
     "OPENAI_API_KEY",
+    "CEREBRAS_API_KEY",
     "ANTHROPIC_API_KEY",
     "OPENROUTER_API_KEY",
     "GOOGLE_GENERATIVE_AI_API_KEY",
@@ -1122,6 +1184,11 @@ export async function startBenchmarkServer() {
     "OPENAI_PLANNER_MODEL",
     "OPENAI_RESPONSE_HANDLER_MODEL",
     "OPENAI_SHOULD_RESPOND_MODEL",
+    "CEREBRAS_MODEL",
+    "BENCHMARK_TASK_AGENT",
+    "ELIZA_ACP_DEFAULT_AGENT",
+    "ELIZA_DEFAULT_AGENT_TYPE",
+    "ELIZA_AGENT_SELECTION_STRATEGY",
     "OPENROUTER_SMALL_MODEL",
     "OPENROUTER_LARGE_MODEL",
     "OPENROUTER_NANO_MODEL",

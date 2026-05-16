@@ -293,6 +293,35 @@ export function resolveGrammarForParams(
 	return null;
 }
 
+function stripPrefilledPrefixFromGrammar(
+	grammar: GbnfGrammar,
+	prefix: string,
+): GbnfGrammar | null {
+	if (!prefix) return grammar;
+	const lines = grammar.source.split("\n");
+	const root = lines[0] ?? "";
+	const rootPrefix = "root ::= ";
+	if (!root.startsWith(rootPrefix)) return null;
+
+	const escapedPrefix = `"${gbnfEscapeLiteral(prefix)}"`;
+	const body = root.slice(rootPrefix.length);
+	if (body === escapedPrefix) {
+		return {
+			source: [`${rootPrefix}""`, ...lines.slice(1)].join("\n"),
+			lazy: false,
+		};
+	}
+	if (!body.startsWith(`${escapedPrefix} `)) return null;
+
+	return {
+		source: [
+			`${rootPrefix}${body.slice(escapedPrefix.length).trimStart()}`,
+			...lines.slice(1),
+		].join("\n"),
+		lazy: false,
+	};
+}
+
 /**
  * Build the OpenAI-/llama-server-compatible request-body fragment for a
  * grammar. Returns `grammar` + (when lazy) `grammar_lazy` / `grammar_triggers`.
@@ -647,7 +676,7 @@ export function resolveGuidedDecodeForParams(
 	if (!params) return { grammar: null, prefillPlan: null, prefill: null };
 	const schema = params.elizaSchema;
 	if (schema) {
-		const grammar: GbnfGrammar | null =
+		const baseGrammar: GbnfGrammar | null =
 			typeof schema.grammar === "string" && schema.grammar.trim().length > 0
 				? { source: schema.grammar, lazy: false }
 				: compileSkeletonToGbnf(schema.skeleton);
@@ -659,6 +688,10 @@ export function resolveGuidedDecodeForParams(
 				: plan && plan.prefix.length > 0
 					? plan.prefix
 					: null;
+		const grammar =
+			baseGrammar && prefill && plan?.prefix === prefill
+				? (stripPrefilledPrefixFromGrammar(baseGrammar, prefill) ?? baseGrammar)
+				: baseGrammar;
 		return { grammar, prefillPlan: plan, prefill };
 	}
 	return {

@@ -126,6 +126,13 @@ jobs:
           bun run --cwd packages/core build
           echo "::endgroup::"
 
+          echo "::group::Build packages/shared"
+          # plugin-agent-skills (and others) consume @elizaos/shared via dist
+          # exports (RouteRequestContext, ReadJsonBodyOptions, route schemas).
+          # Must build before any plugin that imports from it.
+          bun run --cwd packages/shared build
+          echo "::endgroup::"
+
           provider_package=""
           if [ -n "${GROQ_API_KEY:-}" ]; then
             provider_package="plugins/plugin-groq"

@@ -281,7 +281,7 @@ class TerminalBenchConfig:
     # Task-agent selection for the elizaOS TS bridge. The Python harness keeps
     # routing through ``agent_harness``; this value is exported as
     # ``BENCHMARK_TASK_AGENT`` for bridge-side task-agent selection.
-    task_agent: str = "opencode"
+    task_agent: str = "elizaos"
 
     # Seed used by the local random baseline harness.
     baseline_random_seed: int = 0

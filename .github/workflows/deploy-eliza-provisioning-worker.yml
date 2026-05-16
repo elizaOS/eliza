@@ -87,13 +87,37 @@ jobs:
             rm -f .git/index.lock
 
             # Discard local drift, preserve env files.
-            git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
+            git clean -fdx \
+              -e .env \
+              -e .env.local \
+              -e .env.* \
+              -e cloud/.env.local \
+              -e cloud/.env.* \
+              -e node_modules || true
             git checkout -- . 2>/dev/null || true
+
+            # bun.lock became tracked at 4ae092dcda; the host's previous deploy
+            # may have left an untracked copy from `bun install` that pre-dates
+            # the tracking change. `git clean -fdx` *should* remove it but
+            # occasionally races with bun's lockfile rewrite, so force a delete
+            # before the fetch + branch-checkout below.
+            rm -f bun.lock
 
             # Use a refspec so a single-branch / shallow clone still creates
             # the remote-tracking ref for $DEPLOY_BRANCH on first deploy.
-            git fetch origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
-            git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+            #
+            # --no-recurse-submodules on both fetch + checkout: the provisioning
+            # worker daemon and agent router are pure Node/tsx code and never
+            # touch the llama.cpp / omnivoice.cpp / opencode submodules. If the
+            # deploy host has `fetch.recurseSubmodules=on-demand` (the default
+            # when submodules are present), recursing through a superproject
+            # commit whose submodule SHA was never pushed to the fork kills the
+            # whole deploy with `upload-pack: not our ref`. Skip submodule
+            # traversal entirely on this path.
+            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules \
+              origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+            git -c submodule.recurse=false checkout --no-recurse-submodules \
+              -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 
             # Pin bun version on first install to narrow `curl | bash` blast radius.
             if ! command -v bun >/dev/null 2>&1; then
@@ -102,31 +126,20 @@ jobs:
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
 
-            # cloud/ is a separate bun project (not a sub-workspace of the
-            # outer monorepo, whose `workspaces` is `packages/*`). Install from
-            # /opt/eliza/cloud so the worker's deps end up in cloud/node_modules.
-            #
-            # No --frozen-lockfile: cloud/bun.lock currently has a duplicate
-            # package path for @elizaos/plugin-workflow (workspace + registry
-            # entries for the same name) that bun rejects under frozen mode.
-            # Cloud-CF deploys hit the same upstream bug; until the lockfile is
-            # cleaned at source, allow bun to recompute the deps tree.
-            cd /opt/eliza/cloud
+            cd /opt/eliza
             for attempt in 1 2 3; do
-              if bun install; then
+              if bun install --frozen-lockfile --ignore-scripts; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then exit 1; fi
               echo "bun install attempt $attempt failed; retrying in 10s..."
               sleep 10
             done
-            cd /opt/eliza
 
             # The daemons run under Node/tsx rather than Bun. Node resolves
             # linked workspace packages through their built `node` exports, so
             # refresh linked package dist files after installing dependencies.
-            bun run --cwd cloud build:linked-core
-            bun run --cwd cloud build:linked-billing
+            bun run build:core
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core

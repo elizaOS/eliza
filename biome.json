@@ -16,6 +16,8 @@
       "!**/build",
       "!**/.next",
       "!**/node_modules",
+      "!**/vendor",
+      "!**/vendor/**",
       "!**/public",
       "!packages/inference/llama.cpp",
       "!packages/inference/reports",

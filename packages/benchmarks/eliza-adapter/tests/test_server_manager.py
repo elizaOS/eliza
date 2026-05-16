@@ -152,10 +152,46 @@ def test_server_manager_maps_cerebras_env_to_openai_compatible_settings(
     assert env["ELIZA_PROVIDER"] == "cerebras"
     assert env["OPENAI_API_KEY"] == "csk-test"
     assert env["OPENAI_BASE_URL"] == "https://api.cerebras.ai/v1"
+    assert env["CEREBRAS_MODEL"] == "gpt-oss-120b"
     assert env["OPENAI_SMALL_MODEL"] == "gpt-oss-120b"
     assert env["OPENAI_LARGE_MODEL"] == "gpt-oss-120b"
     assert env["OPENAI_RESPONSE_HANDLER_MODEL"] == "gpt-oss-120b"
     assert env["OPENAI_ACTION_PLANNER_MODEL"] == "gpt-oss-120b"
+
+
+def test_server_manager_maps_elizaos_task_agent_to_acp_opencode(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    server = tmp_path / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
+    server.parent.mkdir(parents=True)
+    server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProcess()
+
+    manager = ElizaServerManager(repo_root=tmp_path, port=0)
+    monkeypatch.setattr(manager.client, "is_ready", lambda: True)
+    monkeypatch.setattr(manager.client, "health", lambda: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
+    monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    monkeypatch.delenv("ELIZA_ACP_DEFAULT_AGENT", raising=False)
+    monkeypatch.delenv("ELIZA_DEFAULT_AGENT_TYPE", raising=False)
+    monkeypatch.delenv("ELIZA_AGENT_ORCHESTRATOR", raising=False)
+    monkeypatch.delenv("ELIZA_AGENT_SELECTION_STRATEGY", raising=False)
+    monkeypatch.setenv("BENCHMARK_TASK_AGENT", "elizaos")
+
+    manager.start()
+    manager._proc = None
+
+    env = captured["kwargs"]["env"]
+    assert env["BENCHMARK_TASK_AGENT"] == "elizaos"
+    assert env["ELIZA_AGENT_ORCHESTRATOR"] == "1"
+    assert env["ELIZA_AGENT_SELECTION_STRATEGY"] == "fixed"
+    assert env["ELIZA_ACP_DEFAULT_AGENT"] == "opencode"
+    assert env["ELIZA_DEFAULT_AGENT_TYPE"] == "opencode"
 
 
 def test_server_manager_prefers_bun_for_typescript_server(monkeypatch, tmp_path: Path) -> None:

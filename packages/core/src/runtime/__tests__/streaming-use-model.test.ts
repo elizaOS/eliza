@@ -125,6 +125,43 @@ describe("AgentRuntime structured streaming", () => {
 		expect(streamed.join("")).toBe("auth-ok");
 	});
 
+	it("passes streaming-context callbacks to local handlers for plain text streams", async () => {
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				stream?: boolean;
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			expect(streamingParams.stream).toBe(true);
+			expect(typeof streamingParams.onStreamChunk).toBe("function");
+			await streamingParams.onStreamChunk?.("Hello");
+			await streamingParams.onStreamChunk?.(" there.");
+			return "Hello there.";
+		});
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			handler,
+			"eliza-local-inference",
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.TEXT_LARGE, {
+					prompt: "say hello",
+				}),
+		);
+
+		expect(result).toBe("Hello there.");
+		expect(streamed).toEqual(["Hello", " there."]);
+	});
+
 	it("treats built-in Eliza local providers as local model routes", () => {
 		expect(isLocalProvider("eliza-local-inference")).toBe(true);
 		expect(isLocalProvider("eliza-device-bridge")).toBe(true);

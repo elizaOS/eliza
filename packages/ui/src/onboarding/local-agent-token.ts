@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { getElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
+
 const LOCAL_AGENT_PORT = "31337";
 const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
@@ -21,10 +22,7 @@ export function isMobileLocalAgentUrl(value: string): boolean {
   } catch {
     return false;
   }
-  if (
-    parsed.protocol === "eliza-local-agent:" &&
-    parsed.hostname === "ipc"
-  ) {
+  if (parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc") {
     return true;
   }
   return (

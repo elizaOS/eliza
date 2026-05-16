@@ -83,7 +83,8 @@ function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("File read failed"));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("File read failed"));
     reader.readAsDataURL(file);
   });
 }
@@ -97,7 +98,10 @@ async function audioFileToPayload(file: File): Promise<AudioPayload> {
   const targetRate = 16_000;
   const ratio = decoded.sampleRate / targetRate;
   const length = Math.min(targetRate * 15, Math.floor(src.length / ratio));
-  const pcmSamples = Array.from({ length }, (_, i) => src[Math.floor(i * ratio)] ?? 0);
+  const pcmSamples = Array.from(
+    { length },
+    (_, i) => src[Math.floor(i * ratio)] ?? 0,
+  );
   await context.close();
   return { audioDataUrl, pcmSamples, sampleRateHz: targetRate };
 }
@@ -112,7 +116,7 @@ function renderCards(): void {
       const status = statusFor(id);
       return `<section id="card-${id}">
         <div class="card-head">
-          <div><h2>${status?.label ?? id}</h2><div class="model">${status?.modelType ?? id}</div><div class="providers">${escapeHtml((status?.providers?.length ? status.providers.join(", ") : "no provider registered"))}</div></div>
+          <div><h2>${status?.label ?? id}</h2><div class="model">${status?.modelType ?? id}</div><div class="providers">${escapeHtml(status?.providers?.length ? status.providers.join(", ") : "no provider registered")}</div></div>
           <span class="pill ${status?.available || id === "vad" ? "ready" : ""}">${status?.available || id === "vad" ? "Ready" : "Missing"}</span>
         </div>
         <button data-run="${id}" style="margin-top:12px">Run</button>
@@ -120,14 +124,24 @@ function renderCards(): void {
       </section>`;
     })
     .join("");
-  document.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((button) => {
-    button.addEventListener("click", () => void runTest(button.dataset.run ?? ""));
-  });
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-run]")
+    .forEach((button) => {
+      button.addEventListener(
+        "click",
+        () => void runTest(button.dataset.run ?? ""),
+      );
+    });
 }
 
 function renderOutput(id: string, value: unknown): void {
   const box = el(`out-${id}`);
-  const data = value as { ok?: boolean; output?: unknown; error?: string; durationMs?: number };
+  const data = value as {
+    ok?: boolean;
+    output?: unknown;
+    error?: string;
+    durationMs?: number;
+  };
   const output = data.ok ? data.output : data.error;
   const audio =
     data.ok && id === "text-to-speech" && output && typeof output === "object"
@@ -136,14 +150,22 @@ function renderOutput(id: string, value: unknown): void {
   const images =
     data.ok && id === "image" && output && typeof output === "object"
       ? ((output as { images?: Array<{ url?: string }> }).images ?? [])
-          .map((img) => (img.url ? `<img class="preview" src="${img.url}" alt="">` : ""))
+          .map((img) =>
+            img.url ? `<img class="preview" src="${img.url}" alt="">` : "",
+          )
           .join("")
       : "";
   box.innerHTML = `${audio}${images}<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
+  return value.replace(
+    /[&<>"']/g,
+    (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        ch
+      ] ?? ch,
+  );
 }
 
 async function refresh(): Promise<void> {
@@ -153,7 +175,9 @@ async function refresh(): Promise<void> {
 }
 
 async function runTest(id: string): Promise<void> {
-  const button = document.querySelector<HTMLButtonElement>(`[data-run="${id}"]`);
+  const button = document.querySelector<HTMLButtonElement>(
+    `[data-run="${id}"]`,
+  );
   if (button) button.disabled = true;
   el(`out-${id}`).innerHTML = "<pre>Running...</pre>";
   try {
@@ -171,7 +195,11 @@ async function runTest(id: string): Promise<void> {
     });
     renderOutput(id, await response.json());
   } catch (error) {
-    renderOutput(id, { ok: false, test: id, error: error instanceof Error ? error.message : String(error) });
+    renderOutput(id, {
+      ok: false,
+      test: id,
+      error: error instanceof Error ? error.message : String(error),
+    });
   } finally {
     if (button) button.disabled = false;
   }
@@ -197,7 +225,8 @@ el<HTMLInputElement>("audio-file").addEventListener("change", async (event) => {
     el("audio-name").textContent = file.name;
     el("asset-error").textContent = "";
   } catch (error) {
-    el("asset-error").textContent = error instanceof Error ? error.message : String(error);
+    el("asset-error").textContent =
+      error instanceof Error ? error.message : String(error);
   }
 });
 

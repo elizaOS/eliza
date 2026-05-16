@@ -11,6 +11,7 @@ import {
 import type { SessionInfo } from "../../src/services/types.js";
 
 const ROOM = "11111111-2222-3333-4444-555555555555";
+const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 const WORLD = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const USER = "ffffffff-1111-2222-3333-444444444444";
 const PARENT_MSG = "99999999-8888-7777-6666-555555555555";
@@ -164,11 +165,162 @@ describe("SubAgentRouter", () => {
     expect(metadata?.subAgent).toBe(true);
     expect(metadata?.subAgentSessionId).toBe(SESSION_ID);
     expect(metadata?.subAgentEvent).toBe("task_complete");
+    expect(metadata?.subAgentRoutingKind).toBe("TASK_STATUS");
+    expect(metadata?.subAgentTargetRoomId).toBe(ROOM);
+    expect(metadata?.subAgentTargetRoomRoles).toEqual(["task"]);
     expect(metadata?.originUserId).toBe(USER);
     expect(typeof posted.content?.text).toBe("string");
     expect(posted.content?.text).toContain("PR opened");
 
     await router.stop();
+  });
+
+  it("posts terminal updates to deduped deterministic task/worktree swarm rooms", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        swarmRooms: [
+          { roomId: WORKTREE_ROOM, roles: ["worktree"] },
+          { roomId: ROOM, roles: ["task"] },
+        ],
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, addParticipant } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "all done" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(handleMessage.mock.calls.map((call) => call[1]?.roomId)).toEqual([
+      ROOM,
+      WORKTREE_ROOM,
+    ]);
+    expect(addParticipant.mock.calls.map((call) => call[1])).toEqual([
+      ROOM,
+      WORKTREE_ROOM,
+    ]);
+    const taskMeta = handleMessage.mock.calls[0]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    const worktreeMeta = handleMessage.mock.calls[1]?.[1]?.content
+      ?.metadata as Record<string, unknown>;
+    expect(taskMeta.subAgentTargetRoomRoles).toEqual(["task"]);
+    expect(worktreeMeta.subAgentTargetRoomRoles).toEqual(["worktree"]);
+    expect(taskMeta.subAgentSwarmRooms).toEqual([
+      { roomId: ROOM, roles: ["task"] },
+      { roomId: WORKTREE_ROOM, roles: ["worktree"] },
+    ]);
+  });
+
+  it("dedupes task/worktree swarm rooms when both roles share one room", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, addParticipant } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", { response: "one room update" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(addParticipant).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(ROOM);
+    expect(metadata?.subAgentTargetRoomRoles).toEqual(["task", "worktree"]);
+    expect(metadata?.subAgentSwarmRooms).toEqual([
+      { roomId: ROOM, roles: ["task", "worktree"] },
+    ]);
+  });
+
+  it("routes QUESTION_FOR_TASK_CREATOR to the task room with actionable metadata", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+      question: "Which branch should I target?",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(ROOM);
+    expect(posted?.content?.text).toContain("Which branch");
+    expect(metadata?.subAgentEvent).toBe("QUESTION_FOR_TASK_CREATOR");
+    expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
+    expect(metadata?.subAgentTargetRoomRole).toBe("task");
+    expect(metadata?.taskRoomId).toBe(ROOM);
+    expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
+  });
+
+  it("routes AGENT_COORDINATION to the worktree room with actionable metadata", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "AGENT_COORDINATION", {
+      message: "I am touching router tests.",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(WORKTREE_ROOM);
+    expect(posted?.content?.text).toContain("router tests");
+    expect(metadata?.subAgentEvent).toBe("AGENT_COORDINATION");
+    expect(metadata?.subAgentRoutingKind).toBe("AGENT_COORDINATION");
+    expect(metadata?.subAgentTargetRoomRole).toBe("worktree");
+    expect(metadata?.taskRoomId).toBe(ROOM);
+    expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
   });
 
   it("does not inject for streaming events like agent_message_chunk", async () => {
@@ -660,6 +812,76 @@ describe("SubAgentRouter", () => {
       expect(handleMessage).toHaveBeenCalledTimes(1);
       const posted = handleMessage.mock.calls[0]?.[1];
       expect(posted?.content?.text).not.toContain("[verification:");
+    });
+
+    it("adds verified public route aliases when a completion only mentions loopback", async () => {
+      const tmpRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), "sub-agent-router-"),
+      );
+      try {
+        const localUrl = "http://127.0.0.1:6900/apps/tea-fortune/";
+        const publicUrl = "https://example.test/apps/tea-fortune/";
+        const appDir = path.join(tmpRoot, "data/apps/tea-fortune");
+        fs.mkdirSync(appDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(appDir, "index.html"),
+          "<html><body>tea fortunes</body></html>",
+        );
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === localUrl || url === publicUrl) {
+            return new Response("<html><body>tea fortunes</body></html>", {
+              status: 200,
+              headers: { "content-type": "text/html" },
+            });
+          }
+          return new Response("not found", { status: 404 });
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        session = {
+          ...sessionWithTask(`build and verify ${publicUrl}`, undefined, {
+            workdirRoute: {
+              id: "static-apps",
+              workdir: tmpRoot,
+              urlMappings: [
+                {
+                  urlPrefix: "http://127.0.0.1:6900/apps/",
+                  localPath: "data/apps/",
+                },
+                {
+                  urlPrefix: "https://example.test/apps/",
+                  localPath: "data/apps/",
+                },
+              ],
+            },
+          }),
+          workdir: tmpRoot,
+        };
+        acp = makeAcpService(session);
+        const { runtime, handleMessage, spawnSession } = makeRuntime({
+          acp: acp.service,
+        });
+        await SubAgentRouter.start(runtime);
+
+        acp.emit(SESSION_ID, "task_complete", {
+          response: localUrl,
+        });
+        await new Promise((r) => setTimeout(r, 200));
+
+        const fetched = fetchMock.mock.calls.map(([url]) => String(url));
+        expect(fetched).toContain(localUrl);
+        expect(fetched).toContain(publicUrl);
+        expect(spawnSession).not.toHaveBeenCalled();
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        const posted = handleMessage.mock.calls[0]?.[1];
+        expect(posted?.content?.metadata?.subAgentVerifiedUrls).toEqual([
+          localUrl,
+          publicUrl,
+        ]);
+        expect(posted?.content?.text).not.toContain("[verification:");
+      } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
     });
 
     it("focuses verification on the referenced app route instead of header telemetry", async () => {

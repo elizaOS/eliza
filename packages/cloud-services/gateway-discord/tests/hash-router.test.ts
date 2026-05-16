@@ -8,6 +8,12 @@ describe("hash-router direct targets", () => {
     ).resolves.toEqual(["http://agent-server.railway.internal:3000"]);
   });
 
+  test("preserves direct service base paths", async () => {
+    await expect(
+      getHashTargets("http://sandbox.example:18791/api", "user-1", 2),
+    ).resolves.toEqual(["http://sandbox.example:18791/api"]);
+  });
+
   test("skips hash-ring refreshes for direct service URLs", async () => {
     await expect(
       refreshHashRing("https://agent-server.up.railway.app"),

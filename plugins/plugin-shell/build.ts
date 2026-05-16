@@ -19,7 +19,7 @@ await build({
   format: "esm",
   sourcemap: "external",
   minify: false,
-  external: ["@elizaos/core", "cross-spawn", "zod"],
+  external: ["@elizaos/core", "@elizaos/shared", "cross-spawn", "zod"],
 });
 
 console.log("Build complete!");
