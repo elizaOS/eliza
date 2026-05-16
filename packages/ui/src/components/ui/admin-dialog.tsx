@@ -18,7 +18,7 @@ export function AdminDialogContent({
   return (
     <DialogContent
       className={cn(
-        "flex w-full flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/98 p-0 shadow-2xl",
+        "flex w-full flex-col overflow-hidden rounded-sm border border-border bg-card p-0 shadow-sm",
         className,
       )}
       {...props}
@@ -78,7 +78,7 @@ export function AdminMetaBadge({ className, ...props }: AdminMetaBadgeProps) {
   return (
     <span
       className={cn(
-        "rounded-full border border-border/40 bg-bg-accent/80 px-2 py-0.5 text-2xs font-bold lowercase tracking-widest text-muted-strong",
+        "rounded-sm border border-border bg-bg-accent px-2 py-0.5 text-2xs font-bold lowercase tracking-widest text-muted-strong",
         className,
       )}
       {...props}
@@ -104,7 +104,7 @@ export function AdminInput({ className, ...props }: AdminInputProps) {
   return (
     <Input
       className={cn(
-        "h-10 w-full rounded-xl border border-border/50 bg-card/85 px-3 text-sm font-mono text-txt shadow-inner transition-[border-color,box-shadow,background-color] placeholder:text-muted/60 focus-visible:ring-accent",
+        "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt shadow-inner transition-colors placeholder:text-muted/60 focus-visible:ring-accent",
         className,
       )}
       {...props}

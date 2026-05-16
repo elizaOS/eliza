@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { db } from "@/db/client";
 import { cliAuthSessions } from "@/db/schemas/cli-auth-sessions";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -65,7 +66,7 @@ app.post("/", async (c) => {
 
     return c.json({ success: true });
   } catch (error) {
-    console.error("[CLI Auth Complete] Error:", error);
+    logger.error("[CLI Auth Complete] Error", { error });
     return c.json(
       { success: false, error: "Failed to complete CLI auth" },
       500,

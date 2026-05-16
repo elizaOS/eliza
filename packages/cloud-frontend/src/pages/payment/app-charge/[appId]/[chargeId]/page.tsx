@@ -251,7 +251,7 @@ export default function AppChargePaymentPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-cyan-100"
+            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-white"
             to="/"
           >
             Return home
@@ -281,7 +281,7 @@ export default function AppChargePaymentPage() {
     ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
     : isExpired
       ? "border-amber-300/30 bg-amber-400/10 text-amber-100"
-      : "border-cyan-300/30 bg-cyan-400/10 text-cyan-100";
+      : "border-[#0B35F1]/30 bg-[#0B35F1]/10 text-white";
   const shortId = charge.id.slice(0, 8);
 
   return (
@@ -351,7 +351,7 @@ export default function AppChargePaymentPage() {
           )}
 
           {returnedFromPayment && !isPaid && !isExpired && (
-            <div className="mt-7 flex items-center gap-3 border border-cyan-300/25 bg-cyan-400/10 p-3 text-sm text-cyan-100">
+            <div className="mt-7 flex items-center gap-3 border border-[#0B35F1]/25 bg-[#0B35F1]/10 p-3 text-sm text-white">
               <Loader2 className="h-5 w-5 shrink-0 animate-spin text-cyan-200" />
               <span>Waiting for confirmation.</span>
             </div>

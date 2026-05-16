@@ -600,7 +600,8 @@ function shouldPrunePackageRelativePath(
   if (packageName === "@elizaos/plugin-local-inference") {
     return (
       normalizedPath === "native/llama.cpp/tools/server/webui" ||
-      normalizedPath.startsWith("native/llama.cpp/tools/server/webui/")
+      normalizedPath.startsWith("native/llama.cpp/tools/server/webui/") ||
+      /^native\/llama\.cpp\/build(?:[-/]|$)/.test(normalizedPath)
     );
   }
 

@@ -43,7 +43,7 @@ export function ChatAttachmentStrip({
             title={removeLabel(item)}
             aria-label={removeLabel(item)}
             onClick={() => onRemove(item.id, index)}
-            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full text-2xs opacity-100 transition-opacity focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-sm text-2xs opacity-100 transition-opacity focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
           >
             ×
           </Button>

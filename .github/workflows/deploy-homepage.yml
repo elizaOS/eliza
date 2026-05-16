@@ -85,7 +85,7 @@ jobs:
 
       - name: Install homepage dependencies
         working-directory: packages/homepage
-        run: bun install --frozen-lockfile
+        run: bun install --no-save --ignore-scripts
 
       - name: Refresh homepage release data
         working-directory: packages/homepage

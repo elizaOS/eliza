@@ -63,6 +63,7 @@ export default function MarketingPage() {
             muted
             loop
             playsInline
+            preload="metadata"
             poster="/clouds/poster.jpg"
           >
             <source src="/clouds/clouds_4x_720p.webm" type="video/webm" />

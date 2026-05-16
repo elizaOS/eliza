@@ -128,7 +128,7 @@ function PipelineNodeButton({
       </span>
       <span
         className={`
-          rounded-full px-2 py-0.5 text-2xs font-bold leading-none
+          rounded-sm px-2 py-0.5 text-2xs font-bold leading-none
           ${countBg[node.status]}
         `}
       >

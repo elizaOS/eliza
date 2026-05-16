@@ -52,7 +52,6 @@ function preloadAll(...preloads: PreloadFn[]): PreloadFn {
 }
 
 const Home = lazyWithPreload(() => import("./pages/page"));
-const ElizaOs = lazyWithPreload(() => import("./pages/os/page"));
 const CheckoutPage = lazyWithPreload(() => import("./pages/checkout/page"));
 const TermsOfService = lazyWithPreload(
   () => import("./pages/terms-of-service/page"),
@@ -114,9 +113,6 @@ const ApprovalPage = lazyWithPreload(
 const BallotPage = lazyWithPreload(
   () => import("./pages/ballot/[ballotId]/page"),
 );
-
-const BlogIndex = lazyWithPreload(() => import("./pages/blog/page"));
-const BlogPost = lazyWithPreload(() => import("./pages/blog/[slug]/page"));
 
 const DocsRouter = lazyWithPreload(() => import("./docs/DocsRouter"));
 
@@ -327,9 +323,6 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     path: "/dashboard",
     preload: preloadAll(DashboardLayout.preload, DashboardIndex.preload),
   },
-  { path: "/blog/:slug", preload: BlogPost.preload },
-  { path: "/blog", preload: BlogIndex.preload },
-  { path: "/os", preload: ElizaOs.preload },
   { path: "/docs", preload: DocsRouter.preload },
   { path: "/docs/*", preload: DocsRouter.preload },
   {
@@ -548,7 +541,6 @@ function App() {
     <Routes>
       <Route element={<RootLayout />}>
         <Route index element={<SuspenseRoute component={Home} />} />
-        <Route path="os" element={<SuspenseRoute component={ElizaOs} />} />
         <Route
           path="checkout"
           element={<SuspenseRoute component={CheckoutPage} />}
@@ -641,14 +633,6 @@ function App() {
           path="ballot/:ballotId"
           element={<SuspenseRoute component={BallotPage} />}
         />
-
-        <Route path="blog">
-          <Route index element={<SuspenseRoute component={BlogIndex} />} />
-          <Route
-            path=":slug"
-            element={<SuspenseRoute component={BlogPost} />}
-          />
-        </Route>
 
         <Route
           path="docs/*"

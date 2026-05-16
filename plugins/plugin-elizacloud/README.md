@@ -173,7 +173,7 @@ const speech = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 When the Cloud API adds or changes public routes, update the SDK first:
 
 ```bash
-cd ../../cloud/packages/sdk
+cd ../../packages/cloud-sdk
 bun run generate:routes
 bun run check:routes
 bun run test:e2e
@@ -196,7 +196,7 @@ npm pack --dry-run
 From the SDK package:
 
 ```bash
-cd ../../cloud/packages/sdk
+cd ../../packages/cloud-sdk
 bun run check:routes
 bun run test:e2e
 ```

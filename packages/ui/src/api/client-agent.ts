@@ -1013,9 +1013,8 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
   try {
-    const viaRpc = await getDesktopStatusRpc<AgentSelfStatusSnapshot>(
-      "getAgentSelfStatus",
-    );
+    const viaRpc =
+      await getDesktopStatusRpc<AgentSelfStatusSnapshot>("getAgentSelfStatus");
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */

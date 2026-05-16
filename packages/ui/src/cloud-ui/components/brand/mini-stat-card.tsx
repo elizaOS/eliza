@@ -10,12 +10,17 @@ interface MiniStatCardProps {
 export function MiniStatCard({
   label,
   value,
-  color = "text-white",
+  color = "text-txt-strong",
   className,
 }: MiniStatCardProps) {
   return (
-    <div className={cn("bg-neutral-900 rounded-xl p-3", className)}>
-      <p className="text-[10px] text-neutral-500">{label}</p>
+    <div
+      className={cn(
+        "rounded-sm border border-border bg-bg-elevated p-3",
+        className,
+      )}
+    >
+      <p className="text-[10px] text-muted-foreground">{label}</p>
       <p className={cn("text-lg font-semibold mt-0.5", color)}>{value}</p>
     </div>
   );

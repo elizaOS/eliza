@@ -56,7 +56,7 @@ export function PageLayoutMobileDrawer({
             variant="outline"
             size="sm"
             className={cn(
-              "h-[2.375rem] max-w-[min(11rem,100%)] rounded-full border-border/40 bg-card/92 px-3 text-sm font-semibold text-txt shadow-sm backdrop-blur-md",
+              "h-[2.375rem] max-w-[min(11rem,100%)] rounded-sm border-border bg-card px-3 text-sm font-semibold text-txt shadow-xs",
               mobileSidebarTriggerClassName,
             )}
             data-testid="page-layout-mobile-sidebar-trigger"

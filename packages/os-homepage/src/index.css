@@ -14,7 +14,7 @@
   --brand-gray: #d1d0d4;
   --background: var(--brand-blue);
   --foreground: var(--brand-white);
-  --radius-xs: 3px;
+  --radius-xs: 0;
 }
 
 * {
@@ -69,7 +69,7 @@ img {
   gap: 1.5rem;
   padding: 1rem clamp(1rem, 4vw, 3rem);
   background: transparent;
-  color: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .site-header-solid {
@@ -135,43 +135,24 @@ img {
   margin: 0 auto;
 }
 
-.hero-cloud {
-  position: relative;
+.hero-mark {
+  display: block;
+  width: clamp(3.25rem, 5vw, 4.5rem);
+  height: auto;
+  margin-bottom: 1.25rem;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.18));
+}
+
+.hero-os {
   display: flex;
+  min-height: 100svh;
   align-items: center;
-  min-height: 100vh;
   padding-top: clamp(7rem, 10vw, 10rem);
   padding-bottom: clamp(2rem, 5vw, 4.5rem);
-  color: var(--brand-black);
-  overflow: hidden;
-  isolation: isolate;
 }
 
-.cloud-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: -2;
-  pointer-events: none;
-}
-
-.cloud-scrim {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.1);
-  z-index: -1;
-  pointer-events: none;
-}
-
-.hero-cloud-inner {
-  max-width: 50rem;
-}
-
-.hero-cloud h1,
-.hero-cloud .hero-copy {
-  color: var(--brand-black);
+.hero-os-inner {
+  max-width: 52rem;
 }
 
 .detail-grid {
@@ -262,7 +243,6 @@ h3 {
   font-size: 0.96rem;
   font-weight: 500;
   line-height: 1;
-  border-radius: var(--radius-xs);
 }
 
 .button:hover {
@@ -290,7 +270,6 @@ h3 {
   width: 100%;
   object-fit: cover;
   background: var(--brand-gray);
-  border-radius: var(--radius-xs);
 }
 
 .split-band,
@@ -318,11 +297,6 @@ h3 {
   padding: 1.25rem 1.4rem;
   background: var(--brand-white);
   color: var(--brand-black);
-  border-radius: var(--radius-xs);
-}
-
-.install-card:hover .os-code {
-  background: var(--brand-blue);
 }
 
 .install-card-head {
@@ -344,19 +318,6 @@ h3 {
   color: var(--brand-blue);
   font-size: 0.92rem;
   font-weight: 500;
-}
-
-.os-code {
-  margin: 0;
-  padding: 0.85rem 1rem;
-  background: var(--brand-black);
-  color: var(--brand-white);
-  font-size: 0.92rem;
-  font-weight: 300;
-  line-height: 1.3;
-  border-radius: var(--radius-xs);
-  overflow-x: auto;
-  transition: background 120ms ease;
 }
 
 .punch-band {
@@ -390,6 +351,93 @@ h3 {
   align-self: end;
 }
 
+#hardware {
+  scroll-margin-top: 4rem;
+}
+
+.hw-featured {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(1.25rem, 3vw, 2.5rem);
+  align-items: center;
+  margin-bottom: clamp(2rem, 5vw, 3.5rem);
+  padding: clamp(1.25rem, 2vw, 1.75rem);
+  background: var(--brand-black);
+  color: var(--brand-white);
+  transition: transform 160ms ease;
+}
+
+.hw-featured:hover {
+  transform: translateY(-2px);
+}
+
+@media (min-width: 800px) {
+  .hw-featured {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  }
+}
+
+.hw-featured-media .product-image {
+  aspect-ratio: 4 / 3;
+  background: var(--brand-blue);
+}
+
+.hw-featured-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hw-featured-kicker {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-orange);
+}
+
+.hw-featured-body h3 {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.02;
+  margin: 0;
+}
+
+.hw-featured-body p {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 1.05rem;
+  font-weight: 300;
+  line-height: 1.4;
+  opacity: 0.88;
+}
+
+.hw-featured-meta {
+  display: flex;
+  gap: 1.25rem;
+  align-items: baseline;
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.hw-featured-meta strong {
+  font-size: 1.4rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.hw-featured-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--brand-orange);
+}
+
 .hw-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
@@ -400,14 +448,8 @@ h3 {
   display: flex;
   flex-direction: column;
   padding: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--radius-xs);
+  background: var(--brand-black);
   color: var(--brand-white);
-  transition: border-color 120ms ease;
-}
-
-.hw-tile:hover {
-  border-color: var(--brand-white);
 }
 
 .hw-tile .product-image {

@@ -10,6 +10,10 @@
       href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
         color-scheme: light;
@@ -25,6 +29,16 @@
         --glass: rgba(255, 255, 255, 0.18);
         --glass-strong: rgba(255, 255, 255, 0.78);
         --shadow: 0 28px 90px rgba(3, 28, 58, 0.28);
+        /* elizaOS brand tokens (shared-brand) */
+        --brand-blue: #0b35f1;
+        --brand-orange: #ff5800;
+        --brand-sky: #1d91e8;
+        --brand-warm: #ff8a24;
+        --brand-cream: #fff7ee;
+        --brand-ink: #06131f;
+        --brand-white: #ffffff;
+        --brand-black: #000000;
+        --font-brand: "Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
       }
 
       * {
@@ -41,8 +55,18 @@
         overflow-x: hidden;
         background: #ffffff;
         color: var(--black);
-        font-family: "Open Sans", Arial, sans-serif;
+        font-family: "Poppins", "Open Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
         letter-spacing: 0;
+      }
+
+      /* Linux + AOSP scenes use Poppins as the OS system font */
+      .linux-desktop,
+      .linux-desktop *,
+      .aosp-phone,
+      .aosp-phone *,
+      .windows-desktop,
+      .windows-desktop * {
+        font-family: var(--font-brand);
       }
 
       button,
@@ -1182,32 +1206,70 @@
         gap: 9px;
       }
 
+      /* Invisible click target around any pill — lets users click a generous zone */
+      .pill-hit {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 18px 24px;
+        margin: 0;
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        line-height: 0;
+      }
+      .pill-hit:focus { outline: none; }
+      .pill-hit:focus-visible > .tray-pill,
+      .pill-hit:focus-visible > .scene-pill {
+        box-shadow:
+          0 0 0 2px rgba(255, 255, 255, 0.85),
+          0 4px 18px rgba(0, 0, 0, 0.26);
+      }
+
       /* The collapsed pill — tiny, nothing inside, just a glass sliver */
       .tray-pill {
-        width: 52px;
+        width: 56px;
         height: 8px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.32);
         backdrop-filter: blur(24px) saturate(200%);
         box-shadow:
           0 4px 18px rgba(0, 0, 0, 0.26),
-          inset 0 1px 0 rgba(255, 255, 255, 0.58),
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.36);
+          inset 0 1px 0 rgba(255, 255, 255, 0.62),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.4);
         border: 0;
         cursor: pointer;
         padding: 0;
-        transition: box-shadow 0.3s ease, opacity 0.16s ease, transform 0.16s ease;
+        transition:
+          box-shadow 0.32s ease,
+          background 0.22s ease,
+          transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+          width 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
       }
 
-      .tray-pill:hover { opacity: 0.82; transform: scaleX(1.06); }
+      .pill-hit:hover > .tray-pill {
+        transform: scale(1.18);
+        background: rgba(255, 255, 255, 0.5);
+        box-shadow:
+          0 8px 26px rgba(0, 0, 0, 0.34),
+          0 0 18px rgba(255, 255, 255, 0.28),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.6);
+      }
 
       .tray-pill.recording {
         box-shadow:
-          0 0 0 1.5px rgba(255, 50, 38, 0.7),
-          0 0 22px rgba(255, 50, 38, 0.44),
+          0 0 0 1.5px rgba(255, 50, 38, 0.78),
+          0 0 28px rgba(255, 50, 38, 0.56),
           0 4px 18px rgba(0, 0, 0, 0.26),
           inset 0 1px 0 rgba(255, 255, 255, 0.5);
-        background: rgba(255, 80, 60, 0.38);
+        background: rgba(255, 70, 50, 0.55);
+        animation: pill-rec-pulse 1.8s ease-in-out infinite;
+      }
+
+      @keyframes pill-rec-pulse {
+        0%, 100% { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.78), 0 0 28px rgba(255, 50, 38, 0.56), 0 4px 18px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+        50%      { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.92), 0 0 38px rgba(255, 50, 38, 0.72), 0 4px 18px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
       }
 
       /* Expanded panel — transparent container, bubbles carry the glass */
@@ -1409,7 +1471,7 @@
 
       .linux-pill-anchor {
         position: absolute;
-        bottom: 22px;
+        bottom: 28px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -1603,14 +1665,349 @@
 
       .macos-pill-anchor {
         position: absolute;
-        bottom: 16px;
+        bottom: 64px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 9px;
+        z-index: 20;
       }
+
+      /* ── Linux launcher: centered avatar + greeting ────────────────── */
+      .linux-launcher-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding-bottom: 96px; /* daylight above the pill anchor */
+        pointer-events: none;
+        z-index: 5;
+      }
+
+      .scene-avatar-canvas {
+        width: min(64%, 460px);
+        height: auto;
+        aspect-ratio: 520 / 320;
+        filter: drop-shadow(0 6px 26px rgba(0, 0, 0, 0.28));
+      }
+
+      .scene-greeting {
+        font-family: var(--font-brand);
+        font-weight: 500;
+        font-size: 22px;
+        color: #ffffff;
+        opacity: 0.86;
+        text-shadow: 0 2px 14px rgba(4, 49, 93, 0.45);
+        letter-spacing: 0.2px;
+      }
+
+      /* ── Boot/loading screen shared (Linux + AOSP splash) ───────────── */
+      .boot-screen {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        overflow: hidden;
+      }
+
+      .boot-screen.linux-loading {
+        /* The parent .linux-desktop already paints the sky; clouds animate behind. */
+        background: transparent;
+      }
+
+      .boot-screen.aosp-splash {
+        background: var(--brand-blue);
+      }
+
+      .brand-wordmark {
+        font-family: var(--font-brand);
+        font-weight: 700;
+        font-size: 56px;
+        letter-spacing: -1px;
+        color: #ffffff;
+        line-height: 1;
+        text-shadow: 0 4px 24px rgba(4, 20, 56, 0.35);
+      }
+
+      .brand-wordmark .os { font-weight: 800; }
+
+      .boot-screen.aosp-splash .brand-wordmark {
+        font-weight: 800;
+        color: #ffffff;
+        font-size: 46px;
+        letter-spacing: -0.6px;
+        text-shadow: 0 3px 16px rgba(0, 8, 32, 0.4);
+      }
+
+      /* Linux loading: thin minimalist progress bar */
+      .loading-bar-thin {
+        position: relative;
+        width: 300px;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.22);
+        overflow: hidden;
+      }
+
+      .loading-bar-thin > i {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 30%;
+        background: #ffffff;
+        border-radius: 2px;
+        animation: thin-bar-slide 2.8s ease-in-out infinite;
+      }
+
+      @keyframes thin-bar-slide {
+        0% { left: -30%; width: 30%; }
+        50% { left: 50%; width: 40%; }
+        100% { left: 100%; width: 30%; }
+      }
+
+      .loading-substr {
+        font-family: var(--font-brand);
+        font-weight: 500;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.62);
+      }
+
+      /* AOSP retro progress bar — white on brand blue */
+      .loading-bar-retro {
+        position: relative;
+        width: 300px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.06);
+        overflow: hidden;
+      }
+
+      .loading-bar-retro > i {
+        display: block;
+        height: 100%;
+        width: 0%;
+        background: rgba(255, 255, 255, 0.18);
+        border-right: 2px solid rgba(255, 255, 255, 0.9);
+        animation: retro-bar-fill 3s ease-out infinite;
+      }
+
+      @keyframes retro-bar-fill {
+        0% { width: 0%; }
+        80%, 100% { width: 100%; }
+      }
+
+      .loading-substr-mono {
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.7);
+        letter-spacing: 0.2px;
+      }
+
+      /* ── AOSP phone frame ───────────────────────────────────────────── */
+      .aosp-stage {
+        display: flex;
+        justify-content: center;
+        padding: 18px 0;
+      }
+
+      .aosp-phone {
+        position: relative;
+        width: 360px;
+        height: 780px;
+        border-radius: 38px;
+        background: #0b1018;
+        box-shadow:
+          0 30px 60px rgba(3, 22, 48, 0.36),
+          inset 0 0 0 6px #0a0f17;
+        overflow: hidden;
+      }
+
+      .aosp-phone::before {
+        content: "";
+        position: absolute;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #07111b;
+        z-index: 30;
+      }
+
+      .aosp-screen {
+        position: absolute;
+        inset: 8px;
+        border-radius: 32px;
+        overflow: hidden;
+        background: var(--brand-sky);
+      }
+
+      .aosp-statusbar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 30px;
+        padding: 0 18px 0 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 600;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+        z-index: 15;
+      }
+
+      .aosp-statusbar .right { display: flex; gap: 8px; align-items: center; font-size: 11px; }
+
+      .aosp-launcher-area {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .aosp-pill-anchor {
+        position: absolute;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 9px;
+        z-index: 20;
+      }
+
+      /* Android 12+ gesture-bar at the very bottom of the AOSP screen */
+      .aosp-gesture-bar {
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 96px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.62);
+        z-index: 14;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+      }
+
+      .aosp-greeting {
+        font-family: var(--font-brand);
+        font-weight: 500;
+        font-size: 18px;
+        color: #ffffff;
+        opacity: 0.86;
+        text-shadow: 0 2px 10px rgba(4, 49, 93, 0.4);
+      }
+
+      .aosp-launcher-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding-bottom: 110px; /* clearance for pill + gesture bar */
+        pointer-events: none;
+        z-index: 5;
+      }
+
+      .aosp-avatar-canvas {
+        width: 80%;
+        max-width: 320px;
+        height: auto;
+        aspect-ratio: 320 / 200;
+        filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.32));
+      }
+
+      /* ── Windows scene ──────────────────────────────────────────────── */
+      .windows-desktop {
+        background: linear-gradient(135deg, #0078d4 0%, #00bcf2 50%, #66ccff 100%);
+        position: relative;
+      }
+
+      .windows-wallpaper {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .windows-pill-anchor {
+        position: absolute;
+        bottom: 64px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 9px;
+        z-index: 20;
+      }
+
+      .windows-taskbar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 14px;
+        background: rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(28px) saturate(180%);
+        box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.32);
+        z-index: 12;
+      }
+
+      .windows-start {
+        position: absolute;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        font-size: 18px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .windows-taskbar-icons {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .windows-tb-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        background: rgba(255, 255, 255, 0.1);
+        transition: transform 0.18s ease;
+      }
+
+      .windows-tb-icon:hover { transform: translateY(-2px) scale(1.08); }
+      .windows-tb-icon.eliza-tb { background: linear-gradient(135deg, #1d91e8, #47b8ff); color: #fff; font-weight: 800; }
 
       .macos-home-content {
         position: absolute;
@@ -1675,32 +2072,49 @@
         font-size: 14px;
       }
 
-      /* ── Shared scene pill (Linux + macOS) — same thin glass sliver ── */
+      /* ── Shared scene pill (Linux + macOS + Windows + AOSP) — same thin glass sliver ── */
       .scene-pill {
-        width: 46px;
-        height: 7px;
+        width: 56px;
+        height: 8px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.34);
         backdrop-filter: blur(24px) saturate(200%);
         box-shadow:
           0 3px 14px rgba(0, 0, 0, 0.22),
-          inset 0 1px 0 rgba(255, 255, 255, 0.6),
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.38);
+          inset 0 1px 0 rgba(255, 255, 255, 0.62),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.42);
         border: 0;
         cursor: pointer;
         padding: 0;
-        transition: box-shadow 0.3s ease, opacity 0.16s ease, transform 0.16s ease;
+        transition:
+          box-shadow 0.32s ease,
+          background 0.22s ease,
+          transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
       }
 
-      .scene-pill:hover { opacity: 0.78; transform: scaleX(1.08); }
+      .pill-hit:hover > .scene-pill {
+        transform: scale(1.18);
+        background: rgba(255, 255, 255, 0.52);
+        box-shadow:
+          0 6px 22px rgba(0, 0, 0, 0.3),
+          0 0 16px rgba(255, 255, 255, 0.26),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.58);
+      }
 
       .scene-pill.recording {
-        background: rgba(255, 80, 60, 0.4);
+        background: rgba(255, 70, 50, 0.55);
         box-shadow:
-          0 0 0 1.5px rgba(255, 50, 38, 0.7),
-          0 0 18px rgba(255, 50, 38, 0.42),
+          0 0 0 1.5px rgba(255, 50, 38, 0.78),
+          0 0 24px rgba(255, 50, 38, 0.54),
           0 3px 14px rgba(0, 0, 0, 0.22),
           inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        animation: pill-rec-pulse-sm 1.8s ease-in-out infinite;
+      }
+
+      @keyframes pill-rec-pulse-sm {
+        0%, 100% { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.78), 0 0 24px rgba(255, 50, 38, 0.54), 0 3px 14px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+        50%      { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.92), 0 0 36px rgba(255, 50, 38, 0.72), 0 3px 14px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
       }
 
       /* Transparent container — bubbles carry the glass */
@@ -1818,7 +2232,15 @@
         flex-shrink: 0;
       }
 
-      [data-macos-scene][hidden] { display: none; }
+      .scene-ctrl-btn.recording-on {
+        background: rgba(255, 50, 38, 0.72);
+        box-shadow: 0 0 12px rgba(255, 50, 38, 0.48), inset 0 0 0 0.5px rgba(255, 100, 80, 0.5);
+        color: #fff;
+      }
+
+      [data-macos-scene][hidden],
+      [data-linux-scene][hidden],
+      [data-aosp-scene][hidden] { display: none; }
 
       svg {
         width: 18px;
@@ -1853,9 +2275,15 @@
       @media (prefers-reduced-motion: reduce) {
         .codepen-cloud,
         .screen-cloud-shader::before,
-        .voice-line i {
+        .voice-line i,
+        .loading-bar-thin > i,
+        .loading-bar-retro > i,
+        .tray-pill.recording,
+        .scene-pill.recording {
           animation: none;
         }
+        .loading-bar-retro > i { width: 60%; }
+        .loading-bar-thin > i { left: 0; width: 60%; }
       }
     </style>
   </head>
@@ -1870,6 +2298,8 @@
           <button class="root-tab active" type="button" data-root-tab="prototype">Prototype</button>
           <button class="root-tab" type="button" data-root-tab="linux">Linux</button>
           <button class="root-tab" type="button" data-root-tab="macos">macOS</button>
+          <button class="root-tab" type="button" data-root-tab="windows">Windows</button>
+          <button class="root-tab" type="button" data-root-tab="aosp">AOSP</button>
           <button class="root-tab" type="button" data-root-tab="prd">PRD</button>
           <button class="root-tab" type="button" data-root-tab="research">Research</button>
           <button class="root-tab" type="button" data-root-tab="plan">Plan</button>
@@ -2290,7 +2720,9 @@
                     </button>
                   </div>
                 </div>
-                <button class="tray-pill" id="tray-pill" type="button" aria-expanded="false" aria-label="Eliza"></button>
+                <button class="pill-hit" id="tray-pill-hit" type="button" aria-label="Eliza">
+                  <span class="tray-pill" id="tray-pill" aria-expanded="false"></span>
+                </button>
               </div>
             </div>
           </div>
@@ -2323,8 +2755,28 @@
       <!-- Linux desktop prototype -->
       <section class="doc-shell root-panel" data-root-panel="linux" hidden style="max-width:1100px;">
         <div class="desktop-scene-wrap">
-          <p style="color:rgba(6,19,31,.62);font-size:13px;margin:0 0 10px;">GNOME-style Linux desktop — blue-sky wallpaper with animated clouds. Click <strong>^</strong> on the pill to expand chat.</p>
-          <div class="desktop-scene linux-desktop" id="linux-scene">
+          <div class="desktop-sub-tabs" style="margin-bottom:14px;">
+            <button class="desktop-sub-tab" type="button" data-linux-tab="loading">Loading</button>
+            <button class="desktop-sub-tab active" type="button" data-linux-tab="launcher">Launcher</button>
+          </div>
+          <p style="color:rgba(6,19,31,.62);font-size:13px;margin:0 0 10px;">GNOME-style Linux desktop — blue-sky wallpaper with animated clouds, centered voice avatar, and the Eliza pill anchored at the bottom.</p>
+
+          <!-- Loading screen -->
+          <div class="desktop-scene linux-desktop" data-linux-scene="loading" hidden style="background: var(--brand-sky);">
+            <div class="linux-wallpaper">
+              <div class="screen-cloud-shader" style="border-radius:0;position:absolute;inset:0;" aria-hidden="true">
+                <div class="codepen-clouds" id="linux-loading-clouds"></div>
+              </div>
+            </div>
+            <div class="boot-screen linux-loading">
+              <div class="brand-wordmark">eliza<span class="os">OS</span></div>
+              <div class="loading-bar-thin"><i></i></div>
+              <div class="loading-substr">Starting your agent…</div>
+            </div>
+          </div>
+
+          <!-- Launcher (default) -->
+          <div class="desktop-scene linux-desktop" data-linux-scene="launcher" id="linux-scene">
             <!-- GNOME top bar -->
             <div class="linux-topbar">
               <span>10:30</span>
@@ -2339,29 +2791,36 @@
               <div class="screen-cloud-shader" style="border-radius:0;position:absolute;inset:0;" aria-hidden="true">
                 <div class="codepen-clouds" id="linux-clouds"></div>
               </div>
-              <!-- Pill + chat anchored at bottom center -->
-              <div class="linux-pill-anchor">
-                <div class="scene-tray-chat hidden-chat" id="linux-chat">
-                  <div class="scene-tray-messages">
-                    <div class="scene-tray-msg agent">Good morning! Ready when you are.</div>
-                    <div class="scene-tray-msg user">Set a timer for 20 minutes</div>
-                    <div class="scene-tray-msg agent">Timer set for 20 minutes. I'll let you know.</div>
-                  </div>
-                  <div class="scene-tray-composer">
-                    <button class="scene-ctrl-btn" type="button" aria-label="Add">
-                      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                    </button>
-                    <input class="scene-tray-input" placeholder="Ask Eliza…" />
-                    <button class="scene-ctrl-btn" type="button" aria-label="Audio">
-                      <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                    </button>
-                    <button class="scene-send-btn" type="button" aria-label="Send">
-                      <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
-                    </button>
-                  </div>
+            </div>
+            <!-- Centered avatar + greeting -->
+            <div class="linux-launcher-center">
+              <canvas class="scene-avatar-canvas" id="linux-avatar-canvas" width="520" height="320"></canvas>
+              <div class="scene-greeting">Hello, Shaw</div>
+            </div>
+            <!-- Pill + chat anchored at bottom center, overlays avatar -->
+            <div class="linux-pill-anchor" style="z-index:20;">
+              <div class="scene-tray-chat hidden-chat" id="linux-chat">
+                <div class="scene-tray-messages">
+                  <div class="scene-tray-msg agent">Good morning! Ready when you are.</div>
+                  <div class="scene-tray-msg user">Set a timer for 20 minutes</div>
+                  <div class="scene-tray-msg agent">Timer set for 20 minutes. I'll let you know.</div>
                 </div>
-                <button class="scene-pill" id="linux-pill" type="button" aria-expanded="false" aria-label="Eliza"></button>
+                <div class="scene-tray-composer">
+                  <button class="scene-ctrl-btn" type="button" aria-label="Add">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                  <input class="scene-tray-input" placeholder="Ask Eliza…" />
+                  <button class="scene-ctrl-btn" type="button" aria-label="Audio">
+                    <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  </button>
+                  <button class="scene-send-btn" type="button" aria-label="Send">
+                    <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                  </button>
+                </div>
               </div>
+              <button class="pill-hit" type="button" aria-label="Eliza">
+                <span class="scene-pill" id="linux-pill" aria-expanded="false"></span>
+              </button>
             </div>
           </div>
         </div>
@@ -2492,7 +2951,135 @@
                     </button>
                   </div>
                 </div>
-                <button class="scene-pill" id="macos-pill" type="button" aria-expanded="true" aria-label="Eliza"></button>
+                <button class="pill-hit" type="button" aria-label="Eliza">
+                  <span class="scene-pill" id="macos-pill" aria-expanded="true"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Windows 11 desktop prototype -->
+      <section class="doc-shell root-panel" data-root-panel="windows" hidden style="max-width:1100px;">
+        <div class="desktop-scene-wrap">
+          <p style="color:rgba(6,19,31,.62);font-size:13px;margin:0 0 10px;">Windows 11 desktop — frosted taskbar with the Eliza pill anchored above it. Click the pill to expand chat.</p>
+          <div class="desktop-scene windows-desktop" id="windows-scene">
+            <div class="windows-wallpaper">
+              <div class="screen-cloud-shader" style="border-radius:0;position:absolute;inset:0;" aria-hidden="true">
+                <div class="codepen-clouds" id="windows-clouds"></div>
+              </div>
+            </div>
+
+            <!-- Pill + chat above taskbar -->
+            <div class="windows-pill-anchor">
+              <div class="scene-tray-chat hidden-chat" id="windows-chat">
+                <div class="scene-tray-messages">
+                  <div class="scene-tray-msg agent">Hey there. What's on the list today?</div>
+                  <div class="scene-tray-msg user">Open the design doc</div>
+                  <div class="scene-tray-msg agent">On it — opening now.</div>
+                </div>
+                <div class="scene-tray-composer">
+                  <button class="scene-ctrl-btn" type="button" aria-label="Add">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                  </button>
+                  <input class="scene-tray-input" placeholder="Ask Eliza…" />
+                  <button class="scene-ctrl-btn" type="button" aria-label="Audio">
+                    <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  </button>
+                  <button class="scene-send-btn" type="button" aria-label="Send">
+                    <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <button class="pill-hit" type="button" aria-label="Eliza">
+                <span class="scene-pill" id="windows-pill" aria-expanded="false"></span>
+              </button>
+            </div>
+
+            <!-- Windows 11 taskbar -->
+            <div class="windows-taskbar">
+              <div class="windows-start" title="Start">🪟</div>
+              <div class="windows-taskbar-icons">
+                <div class="windows-tb-icon" title="Edge">🌐</div>
+                <div class="windows-tb-icon" title="Mail">📧</div>
+                <div class="windows-tb-icon" title="Explorer">📁</div>
+                <div class="windows-tb-icon eliza-tb" title="Eliza">E</div>
+                <div class="windows-tb-icon" title="Settings">⚙️</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- AOSP / Android prototype -->
+      <section class="doc-shell root-panel" data-root-panel="aosp" hidden style="max-width:1100px;">
+        <div class="desktop-scene-wrap">
+          <div class="desktop-sub-tabs" style="margin-bottom:14px;">
+            <button class="desktop-sub-tab" type="button" data-aosp-tab="splash">Splash</button>
+            <button class="desktop-sub-tab active" type="button" data-aosp-tab="launcher">Launcher</button>
+          </div>
+          <p style="color:rgba(6,19,31,.62);font-size:13px;margin:0 0 10px;">AOSP launcher — voice-first home with the Eliza pill anchored at the bottom of the phone.</p>
+
+          <!-- Splash -->
+          <div class="aosp-stage" data-aosp-scene="splash" hidden>
+            <div class="aosp-phone">
+              <div class="aosp-screen" style="background: var(--brand-blue);">
+                <div class="boot-screen aosp-splash">
+                  <div class="brand-wordmark">eliza<span class="os">OS</span></div>
+                  <div class="loading-bar-retro"><i></i></div>
+                  <div class="loading-substr-mono">Loading runtime…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Launcher (default) -->
+          <div class="aosp-stage" data-aosp-scene="launcher">
+            <div class="aosp-phone">
+              <div class="aosp-screen">
+                <!-- Status bar -->
+                <div class="aosp-statusbar">
+                  <span>10:30</span>
+                  <span class="right"><span>📶</span><span>🔊</span><span>🔋 94%</span></span>
+                </div>
+                <!-- Clouds + avatar -->
+                <div class="aosp-launcher-area">
+                  <div class="screen-cloud-shader" style="border-radius:0;position:absolute;inset:0;" aria-hidden="true">
+                    <div class="codepen-clouds" id="aosp-clouds"></div>
+                  </div>
+                  <div class="aosp-launcher-center">
+                    <canvas class="aosp-avatar-canvas" id="aosp-avatar-canvas" width="320" height="200"></canvas>
+                    <div class="aosp-greeting">Hello, Shaw</div>
+                  </div>
+                  <!-- Pill + chat anchored at bottom of the phone -->
+                  <div class="aosp-pill-anchor">
+                    <div class="scene-tray-chat hidden-chat" id="aosp-chat">
+                      <div class="scene-tray-messages">
+                        <div class="scene-tray-msg agent">Hey, what should we do first?</div>
+                        <div class="scene-tray-msg user">Remind me to call Alex at 3pm</div>
+                        <div class="scene-tray-msg agent">Done — reminder set for 3:00 PM.</div>
+                      </div>
+                      <div class="scene-tray-composer">
+                        <button class="scene-ctrl-btn" type="button" aria-label="Add">
+                          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                        </button>
+                        <input class="scene-tray-input" placeholder="Ask Eliza…" />
+                        <button class="scene-ctrl-btn" type="button" aria-label="Audio">
+                          <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                        </button>
+                        <button class="scene-send-btn" type="button" aria-label="Send">
+                          <svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <button class="pill-hit" type="button" aria-label="Eliza">
+                      <span class="scene-pill" id="aosp-pill" aria-expanded="false"></span>
+                    </button>
+                  </div>
+                  <!-- Android 12+ gesture-bar -->
+                  <div class="aosp-gesture-bar" aria-hidden="true"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -3894,6 +4481,7 @@
 
       // ── Desktop tray pill: click to expand/collapse ─────────────────
       const trayPill = document.querySelector("#tray-pill");
+      const trayPillHit = document.querySelector("#tray-pill-hit");
       const trayExpanded = document.querySelector("#tray-expanded");
       const desktopPreviewEl = document.querySelector("#desktop-preview");
       const trayVoiceBtn = document.querySelector("#tray-voice-btn");
@@ -3902,10 +4490,11 @@
         trayExpanded?.classList.toggle("open", open);
         desktopPreviewEl?.classList.toggle("tray-open", open);
         trayPill?.setAttribute("aria-expanded", String(open));
+        trayPillHit?.setAttribute("aria-expanded", String(open));
       }
 
-      trayPill?.addEventListener("click", () => {
-        setTrayOpen(trayPill.getAttribute("aria-expanded") !== "true");
+      trayPillHit?.addEventListener("click", () => {
+        setTrayOpen(trayPill?.getAttribute("aria-expanded") !== "true");
       });
 
       // Always-on voice: glow the button red AND the pill red
@@ -3921,34 +4510,54 @@
         }
       });
 
-      // ── Scene pills (Linux + macOS): same collapsed-pill pattern ────
+      // ── Scene pills (Linux + macOS + Windows + AOSP): same collapsed-pill pattern ────
       function setupScenePill(pillId, chatId, startOpen) {
         const pill = document.querySelector(`#${pillId}`);
         const chat = document.querySelector(`#${chatId}`);
         if (!pill || !chat) return;
+        const hit = pill.closest(".pill-hit") ?? pill;
 
         function setOpen(open) {
           chat.classList.toggle("hidden-chat", !open);
           pill.setAttribute("aria-expanded", String(open));
+          if (hit !== pill) hit.setAttribute("aria-expanded", String(open));
         }
 
         setOpen(startOpen);
-        pill.addEventListener("click", () => setOpen(pill.getAttribute("aria-expanded") !== "true"));
+        hit.addEventListener("click", () => setOpen(pill.getAttribute("aria-expanded") !== "true"));
+
+        // Wire the chat's audio button to toggle a red "always-on recording" state on the pill
+        const audioBtn = chat.querySelector('button[aria-label="Audio"]');
+        audioBtn?.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const on = audioBtn.classList.toggle("recording-on");
+          pill.classList.toggle("recording", on);
+        });
       }
 
       setupScenePill("linux-pill", "linux-chat", false);
       setupScenePill("macos-pill", "macos-chat", true);   // post-onboarding starts expanded
+      setupScenePill("windows-pill", "windows-chat", false);
+      setupScenePill("aosp-pill", "aosp-chat", false);
 
-      // ── macOS sub-tabs ───────────────────────────────────────────────
-      document.querySelectorAll("[data-macos-tab]").forEach((tab) => {
-        tab.addEventListener("click", () => {
-          const target = tab.dataset.macosTab;
-          document.querySelectorAll("[data-macos-tab]").forEach((t) => t.classList.toggle("active", t === tab));
-          document.querySelectorAll("[data-macos-scene]").forEach((scene) => {
-            scene.hidden = scene.dataset.macosScene !== target;
+      // ── Generic scene sub-tabs (macOS / Linux / AOSP) ───────────────
+      function wireSceneSubTabs(scope) {
+        const tabAttr = `data-${scope}-tab`;
+        const sceneAttr = `data-${scope}-scene`;
+        const tabs = document.querySelectorAll(`[${tabAttr}]`);
+        tabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            const target = tab.getAttribute(tabAttr);
+            tabs.forEach((t) => t.classList.toggle("active", t === tab));
+            document.querySelectorAll(`[${sceneAttr}]`).forEach((scene) => {
+              scene.hidden = scene.getAttribute(sceneAttr) !== target;
+            });
           });
         });
-      });
+      }
+      wireSceneSubTabs("macos");
+      wireSceneSubTabs("linux");
+      wireSceneSubTabs("aosp");
 
       // macOS inline choice selection
       document.querySelectorAll(".macos-inline-choice").forEach((btn) => {
@@ -3974,97 +4583,118 @@
       let frame = 0;
       let avatarStarted = false;
 
-      function drawAvatar() {
-        frame += 1;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
+      // Extra avatar canvases (Linux launcher, AOSP launcher). Share the same render loop.
+      const extraAvatarCanvases = [
+        document.querySelector("#linux-avatar-canvas"),
+        document.querySelector("#aosp-avatar-canvas"),
+      ].filter(Boolean);
+
+      function drawAvatarOn(targetCanvas, targetCtx) {
+        const w = targetCanvas.width;
+        const h = targetCanvas.height;
+        targetCtx.clearRect(0, 0, w, h);
+        targetCtx.save();
+        targetCtx.translate(w / 2, h / 2);
+        // Scale the drawing coordinate space so the same logic fits any canvas size.
+        // The reference design assumes a 520x320 surface.
+        const scale = Math.min(w / 520, h / 320);
+        targetCtx.scale(scale, scale);
         if (avatarMode === "jarvis") {
           for (let ring = 0; ring < 5; ring += 1) {
-            ctx.strokeStyle = ring % 2 ? "rgba(255,138,36,0.72)" : "rgba(255,255,255,0.72)";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(0, 0, 32 + ring * 20 + Math.sin(frame / 28 + ring) * 4, 0, Math.PI * 2);
-            ctx.stroke();
+            targetCtx.strokeStyle = ring % 2 ? "rgba(255,138,36,0.72)" : "rgba(255,255,255,0.72)";
+            targetCtx.lineWidth = 2;
+            targetCtx.beginPath();
+            targetCtx.arc(0, 0, 32 + ring * 20 + Math.sin(frame / 28 + ring) * 4, 0, Math.PI * 2);
+            targetCtx.stroke();
           }
         } else if (avatarMode === "vrm") {
-          ctx.fillStyle = "rgba(255,255,255,0.86)";
-          ctx.beginPath();
-          ctx.arc(0, -38, 34, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "rgba(6,19,31,0.22)";
-          ctx.beginPath();
-          ctx.roundRect(-54, 4, 108, 96, 26);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(255,138,36,0.78)";
-          ctx.lineWidth = 3;
-          ctx.stroke();
+          targetCtx.fillStyle = "rgba(255,255,255,0.86)";
+          targetCtx.beginPath();
+          targetCtx.arc(0, -38, 34, 0, Math.PI * 2);
+          targetCtx.fill();
+          targetCtx.fillStyle = "rgba(6,19,31,0.22)";
+          targetCtx.beginPath();
+          targetCtx.roundRect(-54, 4, 108, 96, 26);
+          targetCtx.fill();
+          targetCtx.strokeStyle = "rgba(255,138,36,0.78)";
+          targetCtx.lineWidth = 3;
+          targetCtx.stroke();
         } else {
           const pulse = 0.45 + 0.55 * Math.sin(frame / 34) ** 2;
-          const glow = ctx.createRadialGradient(0, 0, 8, 0, 0, 150);
+          const glow = targetCtx.createRadialGradient(0, 0, 8, 0, 0, 150);
           glow.addColorStop(0, "rgba(6,74,128,0.2)");
           glow.addColorStop(0.42, "rgba(255,255,255,0.08)");
           glow.addColorStop(1, "rgba(255,255,255,0)");
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(0, 0, 150, 0, Math.PI * 2);
-          ctx.fill();
+          targetCtx.fillStyle = glow;
+          targetCtx.beginPath();
+          targetCtx.arc(0, 0, 150, 0, Math.PI * 2);
+          targetCtx.fill();
 
-          ctx.save();
-          ctx.setLineDash([2, 8]);
-          ctx.strokeStyle = "rgba(255,255,255,0.34)";
-          ctx.lineWidth = 1.4;
-          ctx.beginPath();
-          ctx.moveTo(-235, 0);
-          ctx.lineTo(235, 0);
-          ctx.stroke();
-          ctx.restore();
+          targetCtx.save();
+          targetCtx.setLineDash([2, 8]);
+          targetCtx.strokeStyle = "rgba(255,255,255,0.34)";
+          targetCtx.lineWidth = 1.4;
+          targetCtx.beginPath();
+          targetCtx.moveTo(-235, 0);
+          targetCtx.lineTo(235, 0);
+          targetCtx.stroke();
+          targetCtx.restore();
 
-          ctx.strokeStyle = "rgba(255,255,255,0.88)";
-          ctx.shadowColor = "rgba(255,255,255,0.75)";
-          ctx.shadowBlur = 14;
-          ctx.lineWidth = 1.5;
-          ctx.lineCap = "round";
+          targetCtx.strokeStyle = "rgba(255,255,255,0.88)";
+          targetCtx.shadowColor = "rgba(255,255,255,0.75)";
+          targetCtx.shadowBlur = 14;
+          targetCtx.lineWidth = 1.5;
+          targetCtx.lineCap = "round";
           for (let x = -216; x <= 216; x += 8) {
             const center = Math.exp(-Math.abs(x) / 72);
             const tremor = Math.abs(Math.sin(x / 13 + frame / 12) + 0.42 * Math.sin(x / 7 - frame / 18));
             const height = 4 + (15 + 84 * center) * tremor * (0.32 + pulse * 0.78);
-            ctx.globalAlpha = 0.18 + center * 0.76;
-            ctx.beginPath();
-            ctx.moveTo(x, -height / 2);
-            ctx.lineTo(x, height / 2);
-            ctx.stroke();
+            targetCtx.globalAlpha = 0.18 + center * 0.76;
+            targetCtx.beginPath();
+            targetCtx.moveTo(x, -height / 2);
+            targetCtx.lineTo(x, height / 2);
+            targetCtx.stroke();
           }
-          ctx.globalAlpha = 1;
-          ctx.shadowBlur = 0;
+          targetCtx.globalAlpha = 1;
+          targetCtx.shadowBlur = 0;
 
-          ctx.strokeStyle = "rgba(255,255,255,0.96)";
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
+          targetCtx.strokeStyle = "rgba(255,255,255,0.96)";
+          targetCtx.lineWidth = 2.2;
+          targetCtx.beginPath();
           for (let x = -220; x <= 220; x += 4) {
             const amp = 7 + 58 * Math.exp(-Math.abs(x) / 74);
             const y =
               (Math.sin(x / 10 + frame / 13) + 0.35 * Math.sin(x / 4.8 - frame / 19)) *
               amp *
               (0.34 + pulse * 0.72);
-            if (x === -220) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            if (x === -220) targetCtx.moveTo(x, y);
+            else targetCtx.lineTo(x, y);
           }
-          ctx.stroke();
+          targetCtx.stroke();
 
-          ctx.fillStyle = "rgba(255,255,255,0.48)";
+          targetCtx.fillStyle = "rgba(255,255,255,0.48)";
           for (let i = 0; i < 54; i += 1) {
             const angle = i * 1.17 + frame / 72;
             const radius = 18 + ((i * 23 + frame * 1.5) % 118);
             const size = 0.9 + ((i * 7) % 13) / 16;
-            ctx.globalAlpha = 0.22 + Math.exp(-radius / 116) * 0.48;
-            ctx.beginPath();
-            ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.58, size, 0, Math.PI * 2);
-            ctx.fill();
+            targetCtx.globalAlpha = 0.22 + Math.exp(-radius / 116) * 0.48;
+            targetCtx.beginPath();
+            targetCtx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.58, size, 0, Math.PI * 2);
+            targetCtx.fill();
           }
-          ctx.globalAlpha = 1;
+          targetCtx.globalAlpha = 1;
         }
-        ctx.restore();
+        targetCtx.restore();
+      }
+
+      const extraAvatarCtxs = extraAvatarCanvases.map((c) => c.getContext("2d"));
+
+      function drawAvatar() {
+        frame += 1;
+        drawAvatarOn(canvas, ctx);
+        for (let i = 0; i < extraAvatarCanvases.length; i += 1) {
+          drawAvatarOn(extraAvatarCanvases[i], extraAvatarCtxs[i]);
+        }
         requestAnimationFrame(drawAvatar);
       }
 
@@ -4093,8 +4723,16 @@
 
       buildCodepenClouds();
       buildCodepenClouds("linux-clouds");
+      buildCodepenClouds("linux-loading-clouds");
       buildCodepenClouds("macos-ob-clouds");
       buildCodepenClouds("macos-post-clouds");
+      buildCodepenClouds("windows-clouds");
+      buildCodepenClouds("aosp-clouds");
+
+      // Kick the avatar render loop so scene launchers (Linux/AOSP) animate from page load.
+      if (extraAvatarCanvases.length > 0) {
+        startAvatar();
+      }
 
       // Mini wave canvas for macOS home preview
       (function drawMacWave() {

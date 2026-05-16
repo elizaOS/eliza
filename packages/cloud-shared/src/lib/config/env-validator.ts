@@ -294,32 +294,28 @@ export function requireValidEnvironment(): void {
 
   // Log warnings
   if (result.warnings.length > 0) {
-    console.warn("⚠️  Environment warnings:");
+    logger.warn("⚠️  Environment warnings:");
     for (const warning of result.warnings) {
-      console.warn(`  - ${warning.message}`);
+      logger.warn(`  - ${warning.message}`);
     }
-    console.warn("");
   }
 
   // Throw on errors
   if (!result.valid) {
-    console.error("❌ Environment validation failed:");
+    logger.error("❌ Environment validation failed:");
     for (const error of result.errors) {
-      console.error(`  - ${error.message}`);
+      logger.error(`  - ${error.message}`);
     }
-    console.error("");
-    console.error("Please check your .env.local file and set the required variables.");
-    console.error("See .env.example for reference.");
+    logger.error("Please check your .env.local file and set the required variables.");
+    logger.error("See .env.example for reference.");
     throw new Error("Invalid environment configuration");
   }
 
   // CRITICAL: Prevent production from running with devnet admin bypass
   if (shouldBlockDevnetBypass(process.env)) {
-    console.error("");
-    console.error("🚨 SECURITY ERROR: Production environment with DEVNET=true");
-    console.error("   This enables admin bypass for anvil wallet (0xf39F...)");
-    console.error("   DEVNET=true must NEVER be set in production.");
-    console.error("");
+    logger.error("🚨 SECURITY ERROR: Production environment with DEVNET=true");
+    logger.error("   This enables admin bypass for anvil wallet (0xf39F...)");
+    logger.error("   DEVNET=true must NEVER be set in production.");
     throw new Error("DEVNET=true is not allowed in production");
   }
 

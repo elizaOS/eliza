@@ -24,7 +24,13 @@ interface DashboardActionCardsProps {
   className?: string;
 }
 
-const ACTION_CARD_SKELETON_IDS = ["agent", "api", "billing", "instances", "apps"];
+const ACTION_CARD_SKELETON_IDS = [
+  "agent",
+  "api",
+  "billing",
+  "instances",
+  "apps",
+];
 
 export function DashboardActionCards({
   creditBalance,
@@ -55,15 +61,24 @@ export function DashboardActionCards({
         <div>
           <h3 className="text-base font-semibold">API Access</h3>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium">
-            <Link to="/dashboard/api-keys" className="inline-flex items-center gap-1.5 hover:text-[#FF5800]">
+            <Link
+              to="/dashboard/api-keys"
+              className="inline-flex items-center gap-1.5 hover:text-[#FF5800]"
+            >
               <KeyRound className="h-3 w-3" />
               Keys
             </Link>
-            <Link to="/docs" className="inline-flex items-center gap-1.5 hover:text-[#FF5800]">
+            <Link
+              to="/docs"
+              className="inline-flex items-center gap-1.5 hover:text-[#FF5800]"
+            >
               <BookOpen className="h-3 w-3" />
               Docs
             </Link>
-            <Link to="/dashboard/api-explorer" className="inline-flex items-center gap-1.5 hover:text-[#FF5800]">
+            <Link
+              to="/dashboard/api-explorer"
+              className="inline-flex items-center gap-1.5 hover:text-[#FF5800]"
+            >
               <Bot className="h-3 w-3" />
               Explorer
             </Link>

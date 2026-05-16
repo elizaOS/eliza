@@ -40,13 +40,13 @@ export const FieldSwitch = React.forwardRef<
       <span
         aria-hidden="true"
         className={cn(
-          "relative inline-flex h-[24px] w-[44px] shrink-0 items-center rounded-full border-2 border-transparent bg-input transition-colors",
+          "relative inline-flex h-[24px] w-[44px] shrink-0 items-center rounded-sm border-2 border-transparent bg-input transition-colors",
           checked && "bg-ok",
         )}
       >
         <span
           className={cn(
-            "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg transition-transform",
+            "pointer-events-none block h-5 w-5 rounded-sm bg-white shadow-xs transition-transform",
             checked ? "translate-x-5" : "translate-x-0",
           )}
         />

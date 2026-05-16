@@ -141,7 +141,7 @@ export default function PaymentRequestPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-cyan-100"
+            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-white"
             to="/"
           >
             Return home
@@ -166,7 +166,7 @@ export default function PaymentRequestPage() {
       <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center">
         <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center border border-cyan-300/30 bg-cyan-400/10">
+            <div className="flex h-16 w-16 items-center justify-center border border-[#0B35F1]/30 bg-[#0B35F1]/10">
               <CreditCard className="h-7 w-7 text-cyan-200" />
             </div>
             <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">

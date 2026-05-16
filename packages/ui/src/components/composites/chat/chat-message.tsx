@@ -150,7 +150,7 @@ function ReactionStrip({
             key={`${reaction.emoji}:${reaction.count}`}
             data-testid="chat-reaction-badge"
             title={title}
-            className="inline-flex items-center gap-1 rounded-full border border-border/28 bg-bg/70 px-2 py-1 text-xs-tight font-medium text-txt-strong shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]"
+            className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg px-2 py-1 text-xs-tight font-medium text-txt-strong shadow-xs"
           >
             <ReactionEmoji emoji={reaction.emoji} />
             {reaction.count > 1 ? <span>{reaction.count}</span> : null}
@@ -545,7 +545,7 @@ export const ChatMessage = memo(function ChatMessage({
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={handleEditKeyDown}
-                className="min-h-[110px] w-full rounded-xl border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_14px_20px_-20px_rgba(15,23,42,0.1)] focus-visible:border-accent/28 focus-visible:ring-2 focus-visible:ring-accent/12"
+                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none shadow-xs focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                 style={{ fontFamily: "var(--font-chat)" }}
                 aria-label={labels.edit ?? "Edit message"}
                 disabled={savingEdit}
@@ -583,7 +583,7 @@ export const ChatMessage = memo(function ChatMessage({
 
           {!isUser && message.interrupted ? (
             <div className="mt-2 border-t border-danger/30 pt-2">
-              <span className="inline-flex rounded-full border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
+              <span className="inline-flex rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
                 {labels.responseInterrupted ?? "Response interrupted"}
               </span>
             </div>

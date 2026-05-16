@@ -21,19 +21,19 @@ interface KeyMetricsGridProps {
 }
 
 const accentClasses: Record<NonNullable<KeyMetric["accent"]>, string> = {
-  violet: "border-violet-500/40",
-  sky: "border-sky-500/40",
-  emerald: "border-emerald-500/40",
-  amber: "border-amber-500/40",
-  rose: "border-rose-500/40",
+  violet: "border-status-info/40",
+  sky: "border-status-info/40",
+  emerald: "border-ok/40",
+  amber: "border-warn/40",
+  rose: "border-danger/40",
 };
 
 type TrendTone = "up" | "down" | "neutral";
 
 const deltaToneClasses: Record<TrendTone, string> = {
-  up: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-  down: "bg-rose-500/20 text-rose-400 border-rose-500/40",
-  neutral: "bg-white/10 text-white/60 border-white/20",
+  up: "bg-ok-subtle text-ok border-ok/40",
+  down: "bg-destructive-subtle text-danger border-danger/40",
+  neutral: "bg-bg-muted text-muted-foreground border-border",
 };
 
 export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
@@ -53,26 +53,26 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
             key={metric.label}
             corners={false}
             className={cn(
-              "relative overflow-hidden transition-colors hover:border-[#FF5800]/40",
+              "relative overflow-hidden transition-colors hover:border-accent/40",
               metric.accent ? accentClasses[metric.accent] : "",
             )}
           >
-            <div className="absolute right-5 top-5 text-white/30">
+            <div className="absolute right-5 top-5 text-muted-foreground">
               <metric.icon className="h-5 w-5" />
             </div>
             <div className="space-y-2 p-6 pb-4">
-              <h4 className="text-xs font-medium uppercase tracking-wide text-white/50">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {metric.label}
               </h4>
             </div>
             <div className="flex flex-col gap-4 p-6 pt-3">
-              <div className="break-words text-2xl font-semibold leading-tight text-white md:text-3xl">
+              <div className="break-words text-2xl font-semibold leading-tight text-txt-strong md:text-3xl">
                 {metric.value}
               </div>
               {metric.delta ? (
                 <span
                   className={cn(
-                    "w-fit rounded-none border px-2 py-1 text-xs font-bold uppercase tracking-wide",
+                    "w-fit rounded-sm border px-2 py-1 text-xs font-bold uppercase tracking-wide",
                     deltaToneClasses[tone],
                   )}
                 >
@@ -81,7 +81,7 @@ export function KeyMetricsGrid({ metrics, columns = 4 }: KeyMetricsGridProps) {
                 </span>
               ) : null}
               {metric.helper ? (
-                <p className="text-sm text-white/60">{metric.helper}</p>
+                <p className="text-sm text-muted-foreground">{metric.helper}</p>
               ) : null}
             </div>
           </BrandCard>

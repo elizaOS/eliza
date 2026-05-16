@@ -40,7 +40,7 @@ export function ChatEmptyState({
     >
       {variant === "default" ? (
         <>
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-subtle">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-sm bg-accent-subtle">
             <svg
               width="32"
               height="32"
@@ -75,7 +75,7 @@ export function ChatEmptyState({
             variant={variant === "game-modal" ? "surface" : "outline"}
             size="sm"
             className={cn(
-              "h-7 rounded-full px-3 py-1.5 text-xs transition-colors",
+              "h-7 rounded-sm px-3 py-1.5 text-xs transition-colors",
               variant === "default" &&
                 "border-border bg-bg text-muted hover:border-accent hover:text-accent",
             )}

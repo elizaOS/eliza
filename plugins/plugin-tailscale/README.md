@@ -32,7 +32,7 @@ The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 | `cloud`          | Always register `CloudTailscaleService`.                                                                                                                                     |
 | `auto` (default) | Register `CloudTailscaleService` when Eliza Cloud is connected (`ELIZAOS_CLOUD_API_KEY` set + `ELIZAOS_CLOUD_ENABLED=true`); otherwise fall back to `LocalTailscaleService`. |
 
-`isCloudConnected` from `@elizaos/cloud-shared/routing` is the source of truth.
+`isCloudConnected` from `@elizaos/cloud-routing` is the source of truth.
 
 ## Settings
 

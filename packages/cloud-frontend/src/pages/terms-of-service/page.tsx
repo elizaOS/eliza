@@ -1,23 +1,8 @@
 import { ArrowLeft } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
-import { generatePageMetadata } from "@/lib/seo";
-import type { Metadata } from "@/lib/seo/types";
 import Footer from "../../components/landing/Footer";
 import LandingHeader from "../../components/layout/landing-header";
-
-export const metadata: Metadata = generatePageMetadata({
-  title: "Terms of Service",
-  description:
-    "Terms of Service for AGENT CLOUD - Read our terms and conditions for using our AI agent development platform.",
-  path: "/terms-of-service",
-  keywords: [
-    "terms of service",
-    "terms and conditions",
-    "legal",
-    "agreement",
-    "elizaOS",
-  ],
-});
 
 const sections: Array<{ title: string; body: React.ReactNode }> = [
   {
@@ -154,6 +139,14 @@ const sections: Array<{ title: string; body: React.ReactNode }> = [
 export default function TermsOfServicePage() {
   return (
     <div className="theme-cloud flex min-h-screen w-full flex-col bg-black font-poppins text-white">
+      <Helmet>
+        <title>Terms of Service | Eliza Cloud</title>
+        <meta
+          name="description"
+          content="Terms of Service for Eliza Cloud — read the terms and conditions for using our AI agent development platform."
+        />
+      </Helmet>
+
       <LandingHeader />
 
       <main className="flex-1 px-6 pt-32 pb-16 sm:px-8 lg:px-12">

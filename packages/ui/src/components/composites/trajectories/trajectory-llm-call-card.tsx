@@ -105,7 +105,7 @@ export function TrajectoryLlmCallCard({
                 {tags.map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-full border border-border/50 bg-bg/60 px-2.5 py-1 text-[11px] font-medium text-muted"
+                    className="rounded-sm border border-border/50 bg-bg/60 px-2.5 py-1 text-[11px] font-medium text-muted"
                   >
                     {tag}
                   </span>

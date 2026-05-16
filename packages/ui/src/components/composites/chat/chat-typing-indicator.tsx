@@ -20,7 +20,7 @@ export function TypingIndicator({
       <div className={className ?? "flex w-full justify-start"}>
         <ChatBubble
           tone="assistant"
-          className="flex max-w-[min(85%,24rem)] items-center gap-1 rounded-2xl rounded-bl-sm px-4 py-3 backdrop-blur-md"
+          className="flex max-w-[min(85%,24rem)] items-center gap-1 rounded-sm px-4 py-3"
         >
           {[0, 150, 300].map((delay) => (
             <span

@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import LandingHeader from "../layout/landing-header";
+import Footer from "./Footer";
 import HeroSection from "./hero-section";
 
 interface LandingPageProps {
@@ -52,9 +53,11 @@ export function LandingPage({ accessError }: LandingPageProps) {
     }
   }, [ready, authenticated, navigate]);
 
-  if (!ready) return null;
-
-  if (authenticated) {
+  // Render the landing page on SSR and during client auth-loading so the SSR
+  // markup matches the client first paint (avoids React #418 hydration error).
+  // The useEffect above swaps in /dashboard/agents once we know the user is
+  // authenticated.
+  if (ready && authenticated) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black text-white">
         <Loader2 className="h-6 w-6 animate-spin" />
@@ -67,6 +70,7 @@ export function LandingPage({ accessError }: LandingPageProps) {
     <div className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white">
       <LandingHeader />
       <HeroSection />
+      <Footer />
     </div>
   );
 }

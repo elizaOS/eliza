@@ -58,7 +58,7 @@ export function PageLoadingState({
   return (
     <div
       className={cn(
-        "flex min-h-[18rem] flex-col items-center justify-center rounded-3xl border border-dashed border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] px-6 py-12 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_20px_28px_-24px_rgba(15,23,42,0.12)] backdrop-blur-sm dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_22px_30px_-24px_rgba(0,0,0,0.28)]",
+        "flex min-h-[18rem] flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card px-6 py-12 text-center shadow-xs",
         className,
       )}
       {...props}

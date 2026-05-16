@@ -1,5 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 
+// In live-prod mode the mocked-API specs do not apply (cookies are scoped to
+// 127.0.0.1, fixtures don't exist on real backends). Skip the whole file.
+test.skip(
+  Boolean(process.env.CLOUD_E2E_LIVE_URL),
+  "cloud-routes.spec uses local mocks; live-prod runs cloud-routes-live.spec instead",
+);
+
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 
 // Console messages we explicitly tolerate. Keep this list short and
@@ -13,9 +20,7 @@ const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
 
 // Requests we don't fail on if they 4xx/5xx — e.g. optional analytics,
 // third-party heartbeats. Keep this empty until proven necessary.
-const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [
-  /\/__telemetry__/,
-];
+const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 
 // Page-title sanity per route. The homepage title is the brand fallback;
 // when a sub-page accidentally inherits it (because of missing <title> on
@@ -24,10 +29,8 @@ const HOMEPAGE_TITLE_FALLBACK = /eliza cloud - Your Eliza, always online/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/": HOMEPAGE_TITLE_FALLBACK,
   "/login": /login/i,
-  "/os": /elizaos|operating system/i,
   "/terms-of-service": /terms/i,
   "/privacy-policy": /privacy/i,
-  "/blog": /blog/i,
   "/docs": /doc/i,
 };
 
@@ -94,10 +97,8 @@ function assertNoFailures(route: string, captured: CapturedFailures) {
 const publicRoutes = [
   "/",
   "/login",
-  "/os",
   "/terms-of-service",
   "/privacy-policy",
-  "/blog",
   "/docs",
   "/checkout?collection=elizaos-hardware",
   "/payment/pay_req_1",
@@ -121,24 +122,29 @@ const dashboardRoutes = [
   "/dashboard/my-agents",
   "/dashboard/api-keys",
   "/dashboard/mcps",
-  "/dashboard/voices",
   "/dashboard/documents",
   "/dashboard/analytics",
   "/dashboard/earnings",
   "/dashboard/affiliates",
   "/dashboard/invoices/inv_1",
-  "/dashboard/image",
-  "/dashboard/video",
-  "/dashboard/gallery",
   "/dashboard/containers",
   "/dashboard/containers/container_1",
   "/dashboard/containers/agents/agent_1",
-  "/dashboard/chat",
   "/dashboard/api-explorer",
   "/dashboard/admin",
   "/dashboard/admin/infrastructure",
   "/dashboard/admin/metrics",
   "/dashboard/admin/redemptions",
+];
+
+// Legacy paths kept for inbound links; the real implementation redirects them
+// to the canonical dashboard surface. Tested separately from the renders list.
+const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
+  ["/dashboard/chat", /\/dashboard\/my-agents$/],
+  ["/dashboard/image", /\/dashboard\/api-explorer$/],
+  ["/dashboard/video", /\/dashboard\/api-explorer$/],
+  ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
+  ["/dashboard/voices", /\/dashboard\/api-explorer$/],
 ];
 
 async function installApiMocks(page: Page) {
@@ -263,7 +269,9 @@ for (const route of publicRoutes) {
     const titleRule = ROUTE_TITLE_RULES[pathKey];
     const title = await page.title();
     if (titleRule) {
-      expect(title, `unexpected title on ${route}: ${title}`).toMatch(titleRule);
+      expect(title, `unexpected title on ${route}: ${title}`).toMatch(
+        titleRule,
+      );
     }
     if (pathKey !== "/") {
       expect(title, `route ${route} fell back to homepage title`).not.toMatch(
@@ -297,6 +305,13 @@ test("legacy dashboard routes redirect to their canonical surfaces", async ({
   await page.goto("/dashboard/apps/create");
   await expect(page).toHaveURL(/\/dashboard\/apps$/);
 });
+
+for (const [from, toPattern] of dashboardRedirects) {
+  test(`legacy dashboard redirect: ${from}`, async ({ page }) => {
+    await page.goto(from);
+    await expect(page).toHaveURL(toPattern);
+  });
+}
 
 test("anonymous protected dashboard routes redirect to login", async ({
   context,

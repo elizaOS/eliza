@@ -4,8 +4,6 @@ const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
 const checkoutBaseUrl = "https://elizaos.ai/checkout";
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
-const githubUrl = "https://github.com/elizaOS";
-const xUrl = "https://x.com/elizaos";
 
 type Product = {
   slug: string;
@@ -75,16 +73,6 @@ const hardwareProducts: Product[] = [
     detail: "AOSP build with elizaOS as the shell.",
   },
   {
-    slug: "box",
-    sku: "elizaos-box",
-    name: "ElizaOS Box",
-    ships: "Pre-order",
-    image: "/assets/billboard_concept.jpg",
-    imageAlt: "ElizaOS box campaign concept",
-    summary: "A household agent appliance.",
-    detail: "Sits on the shelf. Runs the home.",
-  },
-  {
     slug: "chibi-usb",
     sku: "elizaos-usb-chibi",
     name: "Chibi USB key",
@@ -101,28 +89,6 @@ function productCheckoutUrl(sku: string) {
   return `${checkoutBaseUrl}?sku=${sku}`;
 }
 
-function CloudHero({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="band hero-cloud" data-hero="cloud">
-      <video
-        className="cloud-video"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        poster="/clouds/poster.jpg"
-        data-testid="cloud-video"
-      >
-        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
-        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
-      </video>
-      <div className="cloud-scrim" aria-hidden="true" />
-      <div className="band-inner hero-cloud-inner">{children}</div>
-    </section>
-  );
-}
-
 function ProductImage({ product }: { product: Product }) {
   return (
     <img
@@ -131,6 +97,31 @@ function ProductImage({ product }: { product: Product }) {
       className="product-image"
       draggable={false}
     />
+  );
+}
+
+function FeaturedUsbCard() {
+  const usb = hardwareProducts.find((p) => p.slug === "usb");
+  if (!usb) return null;
+  return (
+    <a href={`/hardware/${usb.slug}`} className="hw-featured">
+      <div className="hw-featured-media">
+        <ProductImage product={usb} />
+      </div>
+      <div className="hw-featured-body">
+        <span className="hw-featured-kicker">Pre-order</span>
+        <h3>{usb.name}</h3>
+        <p>{usb.detail}</p>
+        <div className="hw-featured-meta">
+          {usb.price ? <strong>{usb.price}</strong> : null}
+          {usb.ships ? <span>{usb.ships}</span> : null}
+        </div>
+        <span className="hw-featured-cta">
+          Reserve a USB
+          <ArrowRight className="icon" />
+        </span>
+      </div>
+    </a>
   );
 }
 
@@ -202,11 +193,7 @@ function Header({ solid = false }: { solid?: boolean }) {
     <header className={solid ? "site-header site-header-solid" : "site-header"}>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
-          src={
-            solid
-              ? "/brand/logos/elizaOS_text_white.svg"
-              : "/brand/logos/elizaOS_text_black.svg"
-          }
+          src="/brand/logos/elizaOS_text_white.svg"
           alt="elizaOS"
           draggable={false}
         />
@@ -230,14 +217,7 @@ function Footer() {
       <nav aria-label="Community">
         <a href={appUrl}>App</a>
         <a href={cloudUrl}>Cloud</a>
-        <a href={githubUrl} aria-label="GitHub">
-          GitHub
-        </a>
-        <a href={xUrl} aria-label="X">
-          X
-        </a>
       </nav>
-      <p className="footer-copy">elizaOS. Local first. Open source.</p>
     </footer>
   );
 }
@@ -247,23 +227,29 @@ function HomePage() {
     <div className="os-shell">
       <Header />
       <main>
-        <CloudHero>
-          <h1>An operating system for your agent.</h1>
-          <p className="hero-copy">
-            Local first. Open source. Runs on your phone, your laptop, a USB
-            stick, or a mini PC.
-          </p>
-          <div className="hero-actions">
-            <a href="#download" className="button">
-              Download
-              <Download className="icon" />
-            </a>
-            <a href="#hardware" className="button button-dark">
-              Hardware
-              <ShoppingBag className="icon" />
-            </a>
+        <section className="band band-blue hero-os">
+          <div className="band-inner hero-os-inner">
+            <img
+              src="/brand/logos/logo_white_bluebg.svg"
+              alt=""
+              aria-hidden="true"
+              className="hero-mark"
+              draggable={false}
+            />
+            <h1>The agentic operating system.</h1>
+            <p className="hero-copy">For devices that run themselves.</p>
+            <div className="hero-actions">
+              <a href="#download" className="button">
+                Download
+                <Download className="icon" />
+              </a>
+              <a href="#hardware" className="button button-dark">
+                Hardware
+                <ShoppingBag className="icon" />
+              </a>
+            </div>
           </div>
-        </CloudHero>
+        </section>
 
         <section id="download" className="band band-white">
           <div className="band-inner split-band">
@@ -277,21 +263,18 @@ function HomePage() {
                   <span>Linux PC</span>
                   <strong>ISO + USB installer</strong>
                 </div>
-                <pre className="os-code">curl -sSL elizaos.ai/install | sh</pre>
               </a>
               <a href={appUrl} className="install-card">
                 <div className="install-card-head">
                   <span>Mac, Windows, Linux</span>
                   <strong>VM launcher</strong>
                 </div>
-                <pre className="os-code">brew install elizaos</pre>
               </a>
               <a href={betaManifestUrl} className="install-card">
                 <div className="install-card-head">
                   <span>Android</span>
                   <strong>APK + AOSP image</strong>
                 </div>
-                <pre className="os-code">adb install elizaos.apk</pre>
               </a>
             </div>
           </div>
@@ -319,6 +302,7 @@ function HomePage() {
                 <ArrowRight className="icon" />
               </a>
             </div>
+            <FeaturedUsbCard />
             <HardwareTiles />
           </div>
         </section>

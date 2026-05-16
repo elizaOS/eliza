@@ -17,11 +17,10 @@ const sidebarRootVariants = cva(
     variants: {
       variant: {
         default:
-          "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-l-none rounded-tr-2xl rounded-br-2xl border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md",
-        mobile:
-          "h-full w-full min-w-0 border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_96%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] shadow-none ring-0",
+          "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-sm border border-border bg-card",
+        mobile: "h-full w-full min-w-0 border-0 bg-card shadow-none ring-0",
         "game-modal":
-          "h-full rounded-sm border border-white/10 bg-[linear-gradient(180deg,rgba(11,12,17,0.9),rgba(8,10,14,0.82))] shadow-2xl backdrop-blur-xl",
+          "h-full rounded-sm border border-border bg-card shadow-sm",
       },
       collapsed: {
         true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent z-40",
@@ -38,18 +37,18 @@ const sidebarRootVariants = cva(
         collapsed: false,
         resizable: false,
         className:
-          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem] shadow-lg",
+          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem] shadow-sm",
       },
       {
         variant: "default",
         collapsed: false,
         resizable: true,
-        className: "shadow-lg",
+        className: "shadow-sm",
       },
       {
         variant: "default",
         collapsed: true,
-        className: "shadow-md",
+        className: "shadow-xs",
       },
     ],
     defaultVariants: {
@@ -90,10 +89,10 @@ const sidebarFooterVariants = cva(
 );
 
 const sidebarControlButtonClassName =
-  "h-11 w-11 rounded-sm border border-border/32 bg-card text-muted-strong shadow-sm transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:text-txt hover:shadow-md active:scale-95";
+  "h-11 w-11 rounded-sm border border-border bg-card text-muted-strong shadow-xs transition-colors duration-200 hover:border-border-strong hover:text-txt active:scale-95";
 
 const sidebarMobileHeaderBarClassName =
-  "sticky top-0 z-10 flex items-center justify-between bg-card/88 px-3.5 py-2.5 backdrop-blur-md";
+  "sticky top-0 z-10 flex items-center justify-between bg-card px-3.5 py-2.5";
 
 const sidebarContentLayerClassName =
   "flex min-h-0 flex-1 flex-col origin-left transform-gpu transition-[opacity,transform,filter] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform,filter] motion-reduce:transform-none motion-reduce:transition-none";

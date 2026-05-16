@@ -1,11 +1,11 @@
 export * from "@elizaos/ui";
-export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 export {
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "./runtime/desktop";
+export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
 
 export type CompatRuntimeState = {
   current: unknown;

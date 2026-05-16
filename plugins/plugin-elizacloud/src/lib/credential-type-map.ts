@@ -10,7 +10,7 @@
  * entries when the cloud gains support for additional connectors; do not
  * scatter cred-type → connector logic elsewhere.
  *
- * Cloud-side endpoint convention (see cloud/apps/api/v1/eliza/<connector>/):
+ * Cloud-side endpoint convention (see packages/cloud-api/v1/eliza/<connector>/):
  *   POST /api/v1/eliza/<connector>/connect/initiate     → { authUrl }
  *   GET  /api/v1/eliza/<connector>/status               → { connected, ... }
  *
@@ -53,7 +53,7 @@ export const credTypeToConnector: ReadonlyMap<string, CredentialTypeMapping> = n
   // ─── Google ──────────────────────────────────────────────────────────
   // Cloud endpoint: /api/v1/eliza/google/{connect/initiate,status,disconnect}
   // The cloud's capability tokens are documented in
-  // cloud/apps/api/v1/eliza/google/connect/initiate/route.ts.
+  // packages/cloud-api/v1/eliza/google/connect/initiate/route.ts.
   [
     "gmailOAuth2",
     {

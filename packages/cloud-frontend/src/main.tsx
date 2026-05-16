@@ -16,7 +16,10 @@ import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./globals.css";
+import { installApiFetchBridge } from "./lib/api-fetch-bridge";
 import { queryClient } from "./lib/query-client";
+
+installApiFetchBridge();
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Root element #root not found in index.html");

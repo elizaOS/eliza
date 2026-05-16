@@ -28,6 +28,7 @@ const publicPathPrefixes = [
   "/api/auth/pair",
   "/api/auth/cli-session",
   "/api/auth/siwe",
+  "/api/auth/siws",
   "/api/auth/steward-session",
   "/api/auth/steward-debug",
   "/api/set-anonymous-session",

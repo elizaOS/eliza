@@ -12,13 +12,13 @@ type DashboardStatAccent =
   | "white";
 
 const accentStyles: Record<DashboardStatAccent, string> = {
-  orange: "text-[#FF5800]",
-  amber: "text-amber-400",
-  blue: "text-blue-400",
-  emerald: "text-emerald-400",
-  red: "text-red-400",
-  violet: "text-violet-400",
-  white: "text-white",
+  orange: "text-accent",
+  amber: "text-warn",
+  blue: "text-status-info",
+  emerald: "text-ok",
+  red: "text-danger",
+  violet: "text-status-info",
+  white: "text-txt-strong",
 };
 
 interface DashboardStatCardProps {
@@ -47,7 +47,7 @@ export function DashboardStatCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
-          <p className="text-[11px] uppercase tracking-[0.24em] text-white/45">
+          <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
             {label}
           </p>
           <p
@@ -63,7 +63,7 @@ export function DashboardStatCard({
         {icon ? (
           <div
             className={cn(
-              "flex size-10 shrink-0 items-center justify-center border border-current/15 bg-white/[0.03]",
+              "flex size-10 shrink-0 items-center justify-center rounded-sm border border-current/15 bg-bg-elevated",
               accentStyles[accent],
             )}
           >
@@ -71,7 +71,9 @@ export function DashboardStatCard({
           </div>
         ) : null}
       </div>
-      {helper ? <p className="text-xs text-white/40">{helper}</p> : null}
+      {helper ? (
+        <p className="text-xs text-muted-foreground">{helper}</p>
+      ) : null}
     </BrandCard>
   );
 }

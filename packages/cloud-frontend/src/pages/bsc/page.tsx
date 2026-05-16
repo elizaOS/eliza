@@ -17,7 +17,11 @@ export default function BscPromoPage() {
 
   const fetchCryptoStatus = useCallback(async () => {
     const response = await fetch("/api/crypto/status");
-    if (response.ok) setStatus(await response.json());
+    if (!response.ok) return;
+    // Guard against the SPA fallback serving index.html for unknown /api/* paths.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) return;
+    setStatus(await response.json());
   }, []);
 
   useEffect(() => {

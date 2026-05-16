@@ -153,7 +153,7 @@ export function ChatVoiceSpeakerBadge({
       data-testid={dataTestId ?? "chat-voice-speaker"}
       data-owner={isOwner ? "true" : undefined}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-border/30 bg-card/40 px-1.5 py-0.5 text-[10px] font-medium text-muted",
+        "inline-flex items-center gap-1 rounded-sm border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted",
         className,
       )}
       title={isOwner ? `${label} (OWNER)` : label}

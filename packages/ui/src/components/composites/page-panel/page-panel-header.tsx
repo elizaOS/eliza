@@ -16,12 +16,12 @@ export function MetaPill({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center rounded-full px-2.5 py-1 text-xs-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_12px_18px_-18px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_18px_-18px_rgba(0,0,0,0.24)]",
+        "inline-flex min-h-6 items-center rounded-sm px-2.5 py-1 text-xs-tight shadow-xs",
         tone === "accent"
-          ? "border border-accent/55 bg-accent/16 font-bold text-txt-strong shadow-sm"
+          ? "border border-accent/55 bg-accent-subtle font-bold text-txt-strong"
           : tone === "strong"
-            ? "border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] font-medium text-txt-strong"
-            : "border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] font-medium text-muted",
+            ? "border border-border bg-card font-medium text-txt-strong"
+            : "border border-border bg-card font-medium text-muted",
         compact && "min-h-0 px-2 py-1 text-2xs",
         className,
       )}
@@ -108,7 +108,7 @@ export function SummaryCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_86%,transparent),color-mix(in_srgb,var(--bg)_96%,transparent))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_26px_-24px_rgba(15,23,42,0.12)] ring-1 ring-border/8 backdrop-blur-sm dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_28px_-24px_rgba(0,0,0,0.28)]",
+        "rounded-sm border border-border bg-card p-4 shadow-xs",
         compact && "p-3.5",
         className,
       )}
@@ -121,7 +121,7 @@ export function PageActionRail({ className, ...props }: PageActionRailProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap border border-border/24 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_16px_22px_-18px_rgba(15,23,42,0.14)] backdrop-blur-sm dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_24px_-18px_rgba(0,0,0,0.24)]",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-card shadow-xs",
         className,
       )}
       {...props}
@@ -139,14 +139,14 @@ export function PanelNotice({
   return (
     <div
       className={cn(
-        "rounded-2xl border px-4 py-3 text-sm",
+        "rounded-sm border px-4 py-3 text-sm",
         tone === "accent"
           ? "border-accent bg-accent-subtle text-txt"
           : tone === "warning"
             ? "border-warn/30 bg-warn/10 text-txt"
             : tone === "danger"
               ? "border-danger/30 bg-danger/10 text-danger"
-              : "border-border/40 bg-card/30 text-muted",
+              : "border-border bg-card text-muted",
         className,
       )}
       {...props}

@@ -371,7 +371,7 @@ export function ChatComposer({
         triggerVariant={isInline ? "ghost" : "surface"}
         triggerClassName={
           isInline
-            ? "h-8 w-8 shrink-0 rounded-full bg-bg/60 p-0 text-muted shadow-none transition-colors hover:bg-bg/60 hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0"
+            ? "h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0"
             : "h-[46px] w-[46px] shrink-0"
         }
         triggerIconClassName={isInline ? "h-4.5 w-4.5" : "h-4 w-4"}
@@ -385,7 +385,7 @@ export function ChatComposer({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-full bg-bg/60 p-0 text-muted shadow-none transition-colors hover:bg-bg/60 hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
+          className={`h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
             chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
           }`}
           onClick={onAttachImage}
@@ -437,10 +437,10 @@ export function ChatComposer({
       <Button
         variant="ghost"
         size="icon"
-        className={`h-8 w-8 shrink-0 rounded-full p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
+        className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
           voice.isListening
             ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
-            : "bg-bg/60 text-muted hover:bg-bg/60 hover:text-txt"
+            : "bg-bg text-muted hover:bg-bg hover:text-txt"
         }`}
         onClick={handleMicClick}
         onPointerDown={handleMicPointerDown}
@@ -461,7 +461,7 @@ export function ChatComposer({
         variant="ghost"
         data-testid="chat-composer-action"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-full bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
+        className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
         onClick={onSend}
         disabled={isComposerLocked || !hasDraft}
         title={actionButtonLabel}
@@ -475,7 +475,7 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-full bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
         onClick={onStop}
         size="icon"
         title={actionButtonLabel}
@@ -489,7 +489,7 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-full bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
         onClick={onStopSpeaking}
         size="icon"
         title={actionButtonLabel}
@@ -522,7 +522,7 @@ export function ChatComposer({
         className={
           isInlineMultiline
             ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border border-border/35 bg-card/45 px-1.5 py-1.5 ${chatComposerFocusResetClass}`
-            : `flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1 ${chatComposerFocusResetClass}`
+            : `flex min-h-[40px] items-center gap-1 rounded-sm border border-border/35 bg-card/45 px-1 py-1 ${chatComposerFocusResetClass}`
         }
       >
         <textarea
@@ -572,7 +572,7 @@ export function ChatComposer({
           size="icon"
           className={
             isInline
-              ? `h-8 w-8 shrink-0 rounded-full bg-bg/60 p-0 text-muted shadow-none transition-colors hover:bg-bg/60 hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
+              ? `h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
                   chatPendingImagesCount > 0
                     ? "text-accent hover:text-accent"
                     : ""
@@ -606,8 +606,8 @@ export function ChatComposer({
             isGameModal
               ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
                   voice.isListening
-                    ? "animate-pulse select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
-                    : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95"
+                    ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt shadow-xs ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
+                    : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
                 } ${isComposerLocked ? "opacity-50" : ""}`
               : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${voice.isListening ? "text-accent hover:text-accent" : ""}`
           }
@@ -645,10 +645,10 @@ export function ChatComposer({
           density={isInline ? null : undefined}
           className={
             isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-3xl border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
+              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
               : isInline
                 ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-2xl border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
+                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
@@ -681,8 +681,8 @@ export function ChatComposer({
             isGameModal
               ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
                   agentVoiceEnabled
-                    ? "select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
-                    : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95"
+                    ? "select-none rounded-sm border border-border/28 bg-card text-txt shadow-xs ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
+                    : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
                 }`
               : "h-[46px] w-[46px] shrink-0"
           }
@@ -709,8 +709,8 @@ export function ChatComposer({
           data-testid="chat-composer-action"
           className={
             isInline
-              ? "h-8 w-8 shrink-0 rounded-full bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
-              : "ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
+              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+              : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
           }
           onClick={onStop}
           size="icon"
@@ -733,8 +733,8 @@ export function ChatComposer({
           data-testid="chat-composer-action"
           className={
             isInline
-              ? "h-8 w-8 shrink-0 rounded-full bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
-              : "ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
+              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+              : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
           }
           onClick={onStopSpeaking}
           size="icon"
@@ -750,10 +750,10 @@ export function ChatComposer({
           variant="ghost"
           data-testid="chat-composer-action"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-full p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
+          className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
             voice.isListening
               ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
-              : "bg-bg/60 text-muted hover:bg-bg/60 hover:text-txt"
+              : "bg-bg text-muted hover:bg-bg hover:text-txt"
           }`}
           onClick={handleMicClick}
           onPointerDown={handleMicPointerDown}
@@ -774,13 +774,13 @@ export function ChatComposer({
           size="icon"
           className={
             isGameModal
-              ? `ml-1 flex items-center justify-center rounded-full transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 ${
+              ? `ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 ${
                   hasDraft
-                    ? "select-none rounded-full border border-border/28 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_82%,transparent),color-mix(in_srgb,var(--bg)_66%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_16px_26px_-24px_rgba(15,23,42,0.16)] ring-1 ring-inset ring-white/8 backdrop-blur-md transition-all duration-300 active:scale-95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_28px_-24px_rgba(0,0,0,0.3)]"
-                    : "select-none rounded-full border border-transparent bg-transparent text-muted-strong shadow-none ring-0 backdrop-blur-none transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_74%,transparent),color-mix(in_srgb,var(--bg)_58%,transparent))] hover:text-txt active:scale-95 opacity-80"
+                    ? "select-none rounded-sm border border-border/28 bg-card text-txt shadow-xs ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
+                    : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95 opacity-80"
                 }`
               : isInline
-                ? "h-8 w-8 shrink-0 rounded-full bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
+                ? "h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
                 : "ml-1 h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95 disabled:ring-0 disabled:opacity-40"
           }
           onClick={onSend}
