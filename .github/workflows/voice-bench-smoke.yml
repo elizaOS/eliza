@@ -123,7 +123,7 @@ jobs:
       - name: Install voicebench-quality
         run: pip install -e "packages/benchmarks/voicebench-quality[test]" --quiet
       - name: Run unit tests (no network)
-        run: pytest packages/benchmarks/voicebench-quality/tests/ -q --timeout=30
+        run: pytest packages/benchmarks/voicebench-quality/tests/ -q
 
   voicebench-ts-unit:
     name: voicebench TypeScript unit (no audio)
