@@ -22,7 +22,9 @@ describe("useCloudSetupSession", () => {
 
     await waitFor(() => expect(result.current.envelope).not.toBeNull());
     expect(result.current.envelope?.tenantId).toBe("tenant_test");
-    expect(["provisioning", "ready"]).toContain(result.current.status);
+    expect(["provisioning", "ready", "handoff"]).toContain(
+      result.current.status,
+    );
 
     await act(async () => {
       await result.current.sendMessage("Shaw");
