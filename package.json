@@ -159,6 +159,7 @@
     "db:cloud:migrate": "bun run packages/scripts/cloud/admin/migrate-with-diagnostics.ts",
     "db:cloud:studio": "bun run --cwd packages/cloud-shared db:studio",
     "db:cloud:pglite": "bun run packages/scripts/cloud/admin/dev/pglite-server.ts",
+    "cloud:local:reset": "node scripts/cloud/local-reset.mjs",
     "publish:dry-run": "bun packages/scripts/publish-from-dist.mjs",
     "publish:packages": "bun packages/scripts/publish-from-dist.mjs --apply",
     "typecheck:dist": "NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit -p tsconfig.dist-paths.json"
