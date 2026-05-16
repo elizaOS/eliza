@@ -1001,8 +1001,7 @@ export default function GetStartedPage() {
                 {isSubmittingPhone ? "Setting up..." : "Complete Setup"}
               </Button>
 
-              <p className="text-xs text-neutral-400 text-center mt-4">
-              </p>
+              <p className="text-xs text-neutral-400 text-center mt-4"></p>
             </>
           )}
 
@@ -1057,7 +1056,6 @@ export default function GetStartedPage() {
               >
                 I also want to use Telegram
               </button>
-
             </>
           )}
 
@@ -1096,7 +1094,6 @@ export default function GetStartedPage() {
               >
                 I also want to use Telegram
               </button>
-
             </>
           )}
 
