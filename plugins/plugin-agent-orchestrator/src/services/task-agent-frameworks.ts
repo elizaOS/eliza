@@ -258,6 +258,21 @@ let frameworkStateCache:
       };
     }
   | undefined;
+
+// In-flight dedup for the slow `computeTaskAgentFrameworkState` path.
+// Multiple providers (CODING_AGENT_EXAMPLES, ACTIVE_WORKSPACE_CONTEXT)
+// call `getTaskAgentFrameworkState` in parallel during a single state
+// composition. On a cold cache miss, every caller would race into
+// `computeTaskAgentFrameworkState`, which probes the filesystem for
+// installed CLI binaries and adapter availability — the dominant
+// per-turn cost when the cache is cold. With this dedup, the first
+// caller starts the probe and the rest await its promise.
+let frameworkStateInflight:
+  | Promise<{
+      configuredSubscriptionProvider?: string;
+      frameworks: TaskAgentFrameworkAvailability[];
+    }>
+  | undefined;
 const frameworkCooldowns = new Map<
   SupportedTaskAgentAdapter,
   { until: number; reason: string }
@@ -828,25 +843,63 @@ export async function getTaskAgentFrameworkState(
       profileInput,
     );
   }
+
+  // When `profileInput` is supplied the result is request-shaped (not
+  // cacheable), so we still pay the full compute. The common case
+  // (no profileInput) goes through the dedup path so parallel callers
+  // in the same state-composition cycle share one probe instead of
+  // racing N independent filesystem walks.
+  if (!profileInput) {
+    if (!frameworkStateInflight) {
+      // Forward `probe` to the cold compute so the first caller's ACP
+      // preflight data (auth/install/docs status) is reflected in the
+      // cached inventory. Without this, the dedup path would silently
+      // strip the probe and bake stale availability into the 15s cache
+      // for all parallel and subsequent callers in the window.
+      // The cached value still strips probe-dependent enrichment fields
+      // (`recommended`, `selectionScore`, `selectionSignals`) so they
+      // can be recomputed per-call from `computeTaskAgentFrameworkStateFromInventory`.
+      const inflightProbe = probe;
+      frameworkStateInflight = (async () => {
+        try {
+          const fresh = await computeTaskAgentFrameworkState(
+            runtime,
+            inflightProbe,
+          );
+          const inventory = {
+            configuredSubscriptionProvider:
+              fresh.configuredSubscriptionProvider,
+            frameworks: fresh.frameworks.map((framework) => ({
+              ...framework,
+              recommended: false,
+              selectionScore: undefined,
+              selectionSignals: undefined,
+            })),
+          };
+          frameworkStateCache = {
+            expiresAt: Date.now() + 15_000,
+            value: inventory,
+          };
+          return inventory;
+        } finally {
+          frameworkStateInflight = undefined;
+        }
+      })();
+    }
+    const inventory = await frameworkStateInflight;
+    return computeTaskAgentFrameworkStateFromInventory(
+      runtime,
+      inventory,
+      probe,
+      profileInput,
+    );
+  }
+
   const value = await computeTaskAgentFrameworkState(
     runtime,
     probe,
     profileInput,
   );
-  if (!profileInput) {
-    frameworkStateCache = {
-      expiresAt: Date.now() + 15_000,
-      value: {
-        configuredSubscriptionProvider: value.configuredSubscriptionProvider,
-        frameworks: value.frameworks.map((framework) => ({
-          ...framework,
-          recommended: false,
-          selectionScore: undefined,
-          selectionSignals: undefined,
-        })),
-      },
-    };
-  }
   return value;
 }
 
