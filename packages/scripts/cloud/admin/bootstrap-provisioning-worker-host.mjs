@@ -9,8 +9,8 @@
  * and writes the GitHub environment secrets consumed by the deploy workflow.
  *
  * Usage:
- *   HCLOUD_TOKEN=... bun run provisioning-worker:bootstrap --environment staging
- *   HETZNER_CLOUD_API_KEY=... node packages/scripts/bootstrap-provisioning-worker-host.mjs --environment production
+ *   HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment staging
+ *   HETZNER_CLOUD_API_KEY=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment production
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -138,11 +138,11 @@ Bootstrap the Hetzner host used by the Eliza provisioning-worker deploy workflow
 
 Required:
   HCLOUD_TOKEN or HETZNER_CLOUD_API_KEY in the local environment.
-  A cloud runtime env file, defaulting to cloud/.env.local.
+  A cloud runtime env file, defaulting to packages/cloud-shared/.env.local.
 
 Examples:
-  HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap --environment staging
-  HCLOUD_TOKEN=... bun run --cwd cloud provisioning-worker:bootstrap --environment production --env-file cloud/.env.production
+  HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment staging
+  HCLOUD_TOKEN=... node packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs --environment production --env-file packages/cloud-shared/.env.production
 
 Options:
   --environment staging|production   GitHub environment and deploy branch default.
@@ -417,7 +417,7 @@ async function restartWorker(host) {
     [
       "set -euo pipefail",
       "cd /opt/eliza",
-      "sudo install -m 0644 cloud/packages/scripts/eliza-provisioning-worker.service /etc/systemd/system/eliza-provisioning-worker.service",
+      "sudo install -m 0644 packages/scripts/cloud/admin/eliza-provisioning-worker.service /etc/systemd/system/eliza-provisioning-worker.service",
       "sudo systemctl daemon-reload",
       "sudo systemctl enable eliza-provisioning-worker.service",
       "sudo systemctl restart eliza-provisioning-worker.service",

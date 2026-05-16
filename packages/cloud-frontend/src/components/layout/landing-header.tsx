@@ -4,6 +4,7 @@
 
 "use client";
 
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
@@ -21,7 +22,7 @@ export default function LandingHeader() {
       <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
           <img
-            src="/brand/logos/elizacloud_logotext_black.svg"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
             alt="eliza cloud"
             className="h-7 w-auto sm:h-8"
             draggable={false}

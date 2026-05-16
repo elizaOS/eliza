@@ -1,10 +1,17 @@
 import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
+import {
+  BRAND_FAVICONS,
+  BRAND_PATHS,
+  LOGO_FILES,
+} from "@elizaos/shared-brand";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
 import { StewardWalletProviders } from "@/pages/login/steward-wallet-providers";
 import { CreditsProvider } from "@/providers/CreditsProvider";
 import { StewardAuthProvider } from "@/providers/StewardProvider";
+
+const ogImage = `${BRAND_PATHS.logos}/${LOGO_FILES.markWhiteBlackBg}`;
 
 const baseUrl =
   import.meta.env.VITE_APP_URL ||
@@ -46,10 +53,7 @@ export default function RootLayout() {
         <meta property="og:site_name" content="Eliza Cloud" />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="en_US" />
-        <meta
-          property="og:image"
-          content="/brand/logos/logo_white_blackbg.svg"
-        />
+        <meta property="og:image" content={ogImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content="Eliza Cloud" />
@@ -59,21 +63,11 @@ export default function RootLayout() {
           name="twitter:description"
           content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
         />
-        <meta
-          name="twitter:image"
-          content="/brand/logos/logo_white_blackbg.svg"
-        />
-        <link
-          rel="icon"
-          type="image/svg+xml"
-          href="/brand/favicons/favicon.svg"
-        />
-        <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
-        <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
-        <link
-          rel="apple-touch-icon"
-          href="/brand/favicons/apple-touch-icon.png"
-        />
+        <meta name="twitter:image" content={ogImage} />
+        <link rel="icon" type="image/svg+xml" href={BRAND_FAVICONS.svg} />
+        <link rel="alternate icon" href={BRAND_FAVICONS.ico} />
+        <link rel="shortcut icon" href={BRAND_FAVICONS.ico} />
+        <link rel="apple-touch-icon" href={BRAND_FAVICONS.appleTouchIcon} />
         <link rel="manifest" href="/site.webmanifest" />
       </Helmet>
       {/*

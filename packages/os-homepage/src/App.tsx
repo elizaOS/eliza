@@ -1,3 +1,9 @@
+import {
+  BRAND_COLORS,
+  BRAND_PATHS,
+  CONCEPT_PRODUCT_IMAGES,
+  LOGO_FILES,
+} from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -31,7 +37,7 @@ const hardwareProducts: Product[] = [
     name: "ElizaOS USB",
     price: "$49",
     ships: "Ships October 2026",
-    image: "/brand/concepts/concept_usbdrive.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.usbDrive,
     imageAlt: "Blue ElizaOS USB drive concept",
     summary: "Boot elizaOS from your pocket.",
     detail: "Live image on a stick. Plug into any UEFI PC and run.",
@@ -43,7 +49,7 @@ const hardwareProducts: Product[] = [
     name: "Raspberry Pi case",
     price: "$49",
     ships: "Ships October 2026",
-    image: "/brand/concepts/billboard_concept.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.billboard,
     imageAlt: "ElizaOS Raspberry Pi case concept",
     summary: "A shell for a local agent.",
     detail: "Bring your own Pi. We ship the enclosure.",
@@ -55,7 +61,7 @@ const hardwareProducts: Product[] = [
     name: "Custom Raspberry Pi + case",
     price: "$149",
     ships: "Ships October 2026",
-    image: "/brand/concepts/billboard_concept.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.billboard,
     imageAlt: "ElizaOS Raspberry Pi kit concept",
     summary: "Plug in, boot, run local.",
     detail: "Pi, case, SD card pre-imaged. One box, one cable.",
@@ -67,7 +73,7 @@ const hardwareProducts: Product[] = [
     name: "ElizaOS mini PC",
     price: "$1999",
     ships: "Ships October 2026",
-    image: "/brand/concepts/concept_minipc.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.miniPc,
     imageAlt: "ElizaOS mini PC concept",
     summary: "Always-on compute for agents.",
     detail: "Desktop-class inference at home. Quiet, owned, yours.",
@@ -78,7 +84,7 @@ const hardwareProducts: Product[] = [
     sku: "elizaos-phone",
     name: "ElizaOS Phone",
     ships: "Pre-order",
-    image: "/brand/concepts/concept_phone.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.phone,
     imageAlt: "ElizaOS phone concept",
     summary: "The runtime in your hand.",
     detail: "AOSP build with elizaOS as the shell.",
@@ -89,7 +95,7 @@ const hardwareProducts: Product[] = [
     sku: "elizaos-box",
     name: "ElizaOS Box",
     ships: "Pre-order",
-    image: "/brand/concepts/billboard_concept.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.billboard,
     imageAlt: "ElizaOS box hardware concept",
     summary: "A household agent appliance.",
     detail: "Sits on the shelf. Runs the home.",
@@ -212,7 +218,6 @@ function Header({ solid = false }: { solid?: boolean }) {
       </a>
       <nav className="site-nav" aria-label="Product switcher">
         <a href="/#download">Download</a>
-        <a href="#downloads">All downloads</a>
         <a href="/#hardware">Hardware</a>
       </nav>
     </header>
@@ -556,49 +561,34 @@ function CheckoutPage() {
   );
 }
 
-function CloudHero({ children }: { children: ReactNode }) {
-  return (
-    <section className="hero-cloud band" data-hero="cloud">
-      <video
-        className="cloud-video"
-        data-testid="cloud-video"
-        autoPlay
-        muted
-        loop
-        playsInline
-        poster="/clouds/poster.jpg"
-      >
-        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
-        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
-      </video>
-      <div className="cloud-scrim" aria-hidden="true" />
-      <div className="band-inner hero-cloud-inner">{children}</div>
-    </section>
-  );
-}
-
 function HomePage() {
   return (
     <div className="os-shell">
       <Header />
       <main>
-        <CloudHero>
-          <h1>The agentic operating system.</h1>
-          <p className="hero-copy">
-            Local first. Open source. Runs on your phone, your laptop, a USB
-            stick, or a mini PC.
-          </p>
-          <div className="hero-actions">
-            <a href="#download" className="button">
-              Download
-              <Download className="icon" />
-            </a>
-            <a href="#hardware" className="button button-dark">
-              Hardware
-              <ShoppingBag className="icon" />
-            </a>
+        <section className="band band-blue hero-os">
+          <div className="band-inner hero-os-inner">
+            <img
+              src="/brand/logos/logo_white_bluebg.svg"
+              alt=""
+              aria-hidden="true"
+              className="hero-mark"
+              draggable={false}
+            />
+            <h1>The agentic operating system.</h1>
+            <p className="hero-copy">For devices that run themselves.</p>
+            <div className="hero-actions">
+              <a href="#download" className="button">
+                Download
+                <Download className="icon" />
+              </a>
+              <a href="#hardware" className="button button-dark">
+                Hardware
+                <ShoppingBag className="icon" />
+              </a>
+            </div>
           </div>
-        </CloudHero>
+        </section>
 
         <section id="download" className="band band-white">
           <div className="band-inner split-band">

@@ -7,21 +7,19 @@ const outDir = join(import.meta.dir, "..", "test-results", "contact-sheet");
 const desktopViewport = { width: 1440, height: 900 };
 const mobileViewport = { width: 390, height: 844 };
 
-const desktopFrames: Array<{ name: string; selector?: string; full?: boolean }> = [
+const desktopFrames: Array<{ name: string; selector: string }> = [
   { name: "01-hero", selector: ".hero-os" },
   { name: "02-install", selector: "#download" },
   { name: "03-local-first", selector: ".band-orange" },
-  { name: "04-downloads", selector: "#downloads" },
-  { name: "05-hardware-top", selector: "#hardware" },
-  { name: "06-hardware-bottom", selector: "footer" },
+  { name: "04-hardware-top", selector: "#hardware" },
+  { name: "05-hardware-bottom", selector: "footer" },
 ];
 
-const mobileFrames: Array<{ name: string; selector?: string }> = [
+const mobileFrames: Array<{ name: string; selector: string }> = [
   { name: "m01-hero", selector: ".hero-os" },
   { name: "m02-install", selector: "#download" },
-  { name: "m03-downloads", selector: "#downloads" },
-  { name: "m04-hardware-top", selector: "#hardware" },
-  { name: "m05-hardware-bottom", selector: "footer" },
+  { name: "m03-hardware-top", selector: "#hardware" },
+  { name: "m04-hardware-bottom", selector: "footer" },
 ];
 
 test.describe("contact sheet", () => {

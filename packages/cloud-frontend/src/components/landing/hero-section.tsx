@@ -1,6 +1,7 @@
 "use client";
 
 import { CloudVideoBackground } from "@elizaos/ui";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -11,16 +12,16 @@ export default function HeroSection() {
 
   return (
     <CloudVideoBackground
-      basePath="/clouds"
+      basePath={BRAND_PATHS.clouds}
       speed="4x"
-      poster="/clouds/poster.jpg"
+      poster={BRAND_PATHS.poster}
       scrim={0.18}
       scrimColor="rgba(255,255,255,1)"
       style={{ minHeight: "100vh" }}
     >
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
         <img
-          src="/brand/logos/elizacloud_logotext_black.svg"
+          src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
           alt="eliza cloud"
           className="mb-10 h-9 w-auto sm:h-11"
           draggable={false}
@@ -29,10 +30,10 @@ export default function HeroSection() {
           className="max-w-4xl text-[clamp(4rem,14vw,10rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
-          Launch Eliza.
+          Run in Cloud.
         </h1>
         <p className="mt-6 max-w-xl text-xl font-light leading-snug text-black/80 sm:text-2xl">
-          Your agent, always online.
+          Your agent, always on.
         </p>
         <div className="mt-10 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap">
           <button
