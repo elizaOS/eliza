@@ -237,13 +237,13 @@ describe("assessRamFit", () => {
 });
 
 describe("pickFittingContextVariant", () => {
-	it("returns the model itself when it already fits", () => {
+	it("returns the largest same-line context variant that fits", () => {
 		const m27 = findCatalogModel("eliza-1-27b");
 		if (!m27) throw new Error("test setup");
 		const picked = pickFittingContextVariant(m27, 64 * 1024, {
 			manifestLoader: noopLoader,
 		});
-		expect(picked?.id).toBe("eliza-1-27b");
+		expect(picked?.id).toBe("eliza-1-27b-256k");
 	});
 
 	it("returns null when not even the smallest variant of the line fits", () => {

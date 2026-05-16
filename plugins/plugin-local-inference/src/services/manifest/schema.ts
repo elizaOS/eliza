@@ -48,7 +48,14 @@ export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — size-ordered across the active Eliza-1 bundles.
-export const ELIZA_1_TIERS = ["0_8b", "2b", "4b", "9b", "27b"] as const;
+export const ELIZA_1_TIERS = [
+	"0_8b",
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
@@ -149,6 +156,7 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -160,6 +168,7 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	"4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+	"27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 };
 
 // ---------------------------------------------------------------------------

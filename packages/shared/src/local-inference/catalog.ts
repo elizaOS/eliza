@@ -53,6 +53,7 @@ export const ELIZA_1_DFLASH_TIER_IDS = [
   "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
+  "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 const _ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
