@@ -1,5 +1,11 @@
 export * from "@elizaos/ui";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
+export {
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
+} from "./runtime/desktop";
 
 export type CompatRuntimeState = {
   current: unknown;
@@ -57,13 +63,6 @@ export * from "./index.ts";
 // `@elizaos/ui`.
 export { type ConfigField, getPlugins } from "./index.ts";
 
-// Noop stubs for desktop-only symbols. The mobile/web renderer does not
-// mount these; they exist so eliza's main.tsx can import them unconditionally.
-export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
-  id: string;
-  label: string;
-}> = [];
+// Noop stub for the removed desktop-onboarding runtime. The mobile/web
+// renderer does not mount it; it exists for legacy unconditional imports.
 export const DesktopOnboardingRuntime = (): null => null;
-export const DesktopSurfaceNavigationRuntime = (): null => null;
-export const DesktopTrayRuntime = (): null => null;
-export const DetachedShellRoot = (): null => null;

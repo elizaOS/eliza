@@ -19,7 +19,10 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import {
+  invokeDesktopBridgeRequest,
+  invokeDesktopBridgeRequestWithTimeout,
+} from "../bridge/electrobun-rpc";
 import {
   type AppBlockerInstalledApp,
   type AppBlockerPermissionResult,
@@ -193,6 +196,20 @@ function logSettingsClient(
 }
 
 const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
+const DESKTOP_STATUS_RPC_TIMEOUT_MS = 1_500;
+
+async function getDesktopStatusRpc<T>(
+  rpcMethod: string,
+  params?: unknown,
+): Promise<T | null> {
+  const outcome = await invokeDesktopBridgeRequestWithTimeout<T>({
+    rpcMethod,
+    ipcChannel: "agent",
+    params,
+    timeoutMs: DESKTOP_STATUS_RPC_TIMEOUT_MS,
+  });
+  return outcome.status === "ok" && outcome.value ? outcome.value : null;
+}
 
 // ---------------------------------------------------------------------------
 // Bootstrap exchange types
@@ -980,10 +997,7 @@ declare module "./client-base" {
 
 ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<AgentStatus>({
-      rpcMethod: "getAgentStatus",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await getDesktopStatusRpc<AgentStatus>("getAgentStatus");
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -999,10 +1013,9 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<AgentSelfStatusSnapshot>({
-      rpcMethod: "getAgentSelfStatus",
-      ipcChannel: "agent",
-    });
+    const viaRpc = await getDesktopStatusRpc<AgentSelfStatusSnapshot>(
+      "getAgentSelfStatus",
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
@@ -1015,11 +1028,10 @@ ElizaClient.prototype.getRuntimeSnapshot = async function (
   opts?,
 ) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<RuntimeDebugSnapshot>({
-      rpcMethod: "getRuntimeSnapshot",
-      ipcChannel: "agent",
-      params: opts,
-    });
+    const viaRpc = await getDesktopStatusRpc<RuntimeDebugSnapshot>(
+      "getRuntimeSnapshot",
+      opts,
+    );
     if (viaRpc) return viaRpc;
   } catch {
     /* fall through */
