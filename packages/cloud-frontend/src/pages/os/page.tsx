@@ -221,7 +221,7 @@ write: ready for confirmation`}</pre>
                     One account identity and design system, available as an
                     operating system, an app, or a hosted runtime.
                   </p>
-                  <div className="mt-5 grid gap-3 border-t border-white/24 pt-5">
+                  <div className="mt-5 grid gap-3 border-t border-white/14 pt-5">
                     {installTargets.map((item) => (
                       <a
                         key={item.target}

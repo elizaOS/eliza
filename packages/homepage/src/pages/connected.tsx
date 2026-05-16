@@ -171,16 +171,26 @@ export default function ConnectedPage() {
 
   if (isLoading) {
     return (
-      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
-        <div className="text-black/70 animate-pulse font-semibold">Loading…</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Loading…
+        </div>
       </main>
     );
   }
 
   if (!isAuthenticated || !user) {
     return (
-      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
-        <div className="text-black/70 animate-pulse font-semibold">Redirecting…</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Redirecting…
+        </div>
       </main>
     );
   }
@@ -200,13 +210,14 @@ export default function ConnectedPage() {
   });
 
   return (
-    <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
+    <main
+      className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4 relative"
+      style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+    >
       <div className="absolute top-4 right-4 flex items-center gap-3">
         <div className="bg-black text-white border border-black px-4 py-2.5 flex items-center gap-2">
           <span className="text-xs opacity-60">Credits</span>
-          <span className="text-sm font-semibold">
-            ${creditBalance}
-          </span>
+          <span className="text-sm font-semibold">${creditBalance}</span>
         </div>
 
         <DropdownMenu>
@@ -271,8 +282,15 @@ export default function ConnectedPage() {
         </div>
 
         <div className="text-center space-y-3">
-          <h1 className="app-display" style={{ fontSize: "clamp(2.5rem, 7vw, 4.5rem)" }}>Connected.</h1>
-          <p className="app-paragraph--dark text-black/75">Talk to Eliza on any platform you have linked.</p>
+          <h1
+            className="app-display"
+            style={{ fontSize: "clamp(2.5rem, 7vw, 4.5rem)" }}
+          >
+            Connected.
+          </h1>
+          <p className="app-paragraph--dark text-black/75">
+            Talk to Eliza on any platform you have linked.
+          </p>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-black text-white border border-black">
             <span className="w-2 h-2 bg-[#FF5800] animate-pulse" />
             <span className="text-xs font-semibold">Awake</span>

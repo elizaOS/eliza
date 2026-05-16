@@ -758,8 +758,13 @@ export default function GetStartedPage() {
 
   if (authLoading) {
     return (
-      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
-        <div className="text-black/70 animate-pulse font-semibold">Loading…</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Loading…
+        </div>
       </main>
     );
   }
@@ -773,15 +778,23 @@ export default function GetStartedPage() {
     step !== "PROVISIONING_CHAT"
   ) {
     return (
-      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
-        <div className="text-black/70 animate-pulse font-semibold">Redirecting…</div>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
+        <div className="text-black/70 animate-pulse font-semibold">
+          Redirecting…
+        </div>
       </main>
     );
   }
 
   if (isRedirectingToOAuth) {
     return (
-      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
+      <main
+        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
+        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+      >
         <div className="text-black/70 animate-pulse font-semibold">
           Redirecting to Discord…
         </div>
