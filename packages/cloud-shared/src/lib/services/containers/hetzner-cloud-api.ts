@@ -15,7 +15,7 @@
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
 
-const HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
+const HCLOUD_API_BASE = process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export type HetznerCloudErrorCode =
