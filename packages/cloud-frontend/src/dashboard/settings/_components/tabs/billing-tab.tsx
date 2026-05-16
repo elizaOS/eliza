@@ -226,7 +226,7 @@ export function BillingTab({ user }: BillingTabProps) {
           <div className="flex flex-col lg:flex-row gap-6 w-full">
             {/* Balance Display */}
             <div className="w-full lg:w-[400px] flex">
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-1 flex items-center justify-center py-6 lg:py-8">
+              <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-1 flex items-center justify-center py-6 lg:py-8">
                 <div className="flex flex-col items-center justify-center gap-1 px-4">
                   <p className="text-[40px] font-mono text-white tracking-tight">
                     ${balance.toFixed(2)}
@@ -296,7 +296,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       max={AMOUNT_LIMITS.MAX}
                       value={purchaseAmount}
                       onChange={(e) => setPurchaseAmount(e.target.value)}
-                      className="pl-7 backdrop-blur-sm bg-[rgba(29,29,29,0.3)] border border-[rgba(255,255,255,0.15)] text-[#e1e1e1] h-11 font-mono"
+                      className="pl-7 bg-[rgba(29,29,29,0.3)] border border-[rgba(255,255,255,0.15)] text-[#e1e1e1] h-11 font-mono"
                       placeholder="0.00"
                       disabled={isProcessingCheckout}
                     />
@@ -404,22 +404,22 @@ export function BillingTab({ user }: BillingTabProps) {
             <div className="min-w-[600px]">
               {/* Table Header */}
               <div className="flex w-full">
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-[1.5] p-3 md:p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-[1.5] p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
                     Date & Time
                   </p>
                 </div>
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
                     Total
                   </p>
                 </div>
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
                     Status
                   </p>
                 </div>
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
                     Actions
                   </p>
@@ -440,22 +440,22 @@ export function BillingTab({ user }: BillingTabProps) {
               ) : (
                 invoices.map((invoice) => (
                   <div key={invoice.id} className="flex w-full">
-                    <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-[1.5] p-3 md:p-4">
+                    <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-[1.5] p-3 md:p-4">
                       <p className="text-xs md:text-sm font-mono text-white">
                         {invoice.date}
                       </p>
                     </div>
-                    <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                    <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                       <p className="text-xs md:text-sm font-mono text-white uppercase">
                         {invoice.total}
                       </p>
                     </div>
-                    <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                    <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                       <p className="text-xs md:text-sm font-mono text-white uppercase">
                         {invoice.status}
                       </p>
                     </div>
-                    <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+                    <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                       <button
                         type="button"
                         onClick={() => handleViewInvoice(invoice)}

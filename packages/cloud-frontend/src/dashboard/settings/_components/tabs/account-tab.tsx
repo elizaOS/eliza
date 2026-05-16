@@ -144,7 +144,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
               <button
                 type="button"
                 onClick={() => onTabChange("analytics")}
-                className="backdrop-blur-sm bg-[rgba(10,10,10,0.5)] border border-[#e1e1e1] px-4 py-2.5 hover:bg-[rgba(255,255,255,0.05)] transition-colors w-full sm:w-auto"
+                className="bg-[rgba(10,10,10,0.5)] border border-[#e1e1e1] px-4 py-2.5 hover:bg-[rgba(255,255,255,0.05)] transition-colors w-full sm:w-auto"
               >
                 <span className="text-[#e1e1e1] font-mono font-medium text-sm md:text-base whitespace-nowrap">
                   View analytics
@@ -155,7 +155,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-0">
-            <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-1">
+            <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-1">
               <p className="text-xs md:text-sm lg:text-base font-mono text-white">
                 Total Generations
               </p>
@@ -171,7 +171,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
               </p>
             </div>
 
-            <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
+            <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
               <p className="text-xs md:text-sm lg:text-base font-mono text-white">
                 API Calls (24h)
               </p>
@@ -187,7 +187,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
               </p>
             </div>
 
-            <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t lg:border-t border-r border-b lg:border-l-0 border-brand-surface p-3 md:p-4 space-y-1">
+            <div className="bg-[rgba(10,10,10,0.75)] border-t lg:border-t border-r border-b lg:border-l-0 border-brand-surface p-3 md:p-4 space-y-1">
               <p className="text-xs md:text-sm lg:text-base font-mono text-white">
                 Image Generations
               </p>
@@ -199,7 +199,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
               <p className="text-xs md:text-sm text-white/60">All time</p>
             </div>
 
-            <div className="backdrop-blur-sm border-t lg:border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
+            <div className="border-t lg:border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
               <p className="text-xs md:text-sm lg:text-base font-mono text-white">
                 Video Renders
               </p>

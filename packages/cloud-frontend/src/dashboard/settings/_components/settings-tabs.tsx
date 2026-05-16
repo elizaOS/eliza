@@ -67,7 +67,7 @@ export function SettingsTabs({ activeTab, onTabChange }: SettingsTabsProps) {
           value={activeTab}
           onValueChange={(value) => onTabChange(value as SettingsTab)}
         >
-          <SelectTrigger className="w-full h-12 rounded-sm border border-brand-surface bg-[rgba(0,0,0,0.4)] backdrop-blur-sm text-white">
+          <SelectTrigger className="w-full h-12 rounded-sm border border-brand-surface bg-[rgba(0,0,0,0.4)] text-white">
             <SelectValue>
               <div className="flex items-center gap-2">
                 {activeTabData && (

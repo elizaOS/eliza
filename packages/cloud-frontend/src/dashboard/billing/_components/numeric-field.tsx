@@ -37,7 +37,7 @@ export function NumericField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          className="pl-7 backdrop-blur-sm bg-[rgba(29,29,29,0.3)] border border-[rgba(255,255,255,0.15)] text-[#e1e1e1] h-10 font-mono"
+          className="pl-7 bg-[rgba(29,29,29,0.3)] border border-[rgba(255,255,255,0.15)] text-[#e1e1e1] h-10 font-mono"
           placeholder="0.00"
         />
       </div>

@@ -147,12 +147,12 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
           <div className="space-y-0 w-full">
             <div className="flex w-full">
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-1 p-4">
+              <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-1 p-4">
                 <p className="text-sm font-mono text-white/60 uppercase">
                   Description
                 </p>
               </div>
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-4">
+              <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-4">
                 <p className="text-sm font-mono text-white/60 uppercase">
                   Amount
                 </p>
@@ -160,7 +160,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
 
             <div className="flex w-full">
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
+              <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
                 <p className="text-base font-mono text-white">
                   {invoice.invoice_type === "one_time_purchase"
                     ? "One-Time Credit Purchase"
@@ -169,7 +169,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                       : "Credit Purchase"}
                 </p>
               </div>
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
+              <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
                 <p className="text-base font-mono text-white">
                   ${Number(invoice.amount_paid).toFixed(2)}
                 </p>
@@ -178,12 +178,12 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
             {invoice.credits_added && (
               <div className="flex w-full">
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
                   <p className="text-base font-mono text-white">
                     Credits Added
                   </p>
                 </div>
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
                   <p className="text-base font-mono text-[#FF5800]">
                     +${Number(invoice.credits_added).toFixed(2)}
                   </p>
@@ -193,10 +193,10 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
             {paidDate && (
               <div className="flex w-full">
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
                   <p className="text-base font-mono text-white">Payment Date</p>
                 </div>
-                <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
+                <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
                   <p className="text-base font-mono text-white">{paidDate}</p>
                 </div>
               </div>

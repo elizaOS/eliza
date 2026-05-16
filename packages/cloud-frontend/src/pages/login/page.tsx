@@ -22,7 +22,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen w-full flex-col">
         <LandingHeader />
         <div className="relative z-10 flex flex-1 items-center justify-center p-4 pt-24">
-          <div className="w-full max-w-md border border-white/14 bg-black/86 p-6 text-white backdrop-blur-md md:p-8">
+          <div className="w-full max-w-md border border-white/14 bg-black/86 p-6 text-white md:p-8">
             {children}
           </div>
         </div>

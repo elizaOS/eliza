@@ -13,14 +13,15 @@ export default function LandingHeader() {
   const { ready, authenticated } = useSessionAuth();
   const navigate = useNavigate();
 
-  const runInCloud = () => navigate("/login?intent=signup");
+  const launchEliza = () => navigate("/login?intent=launch");
+  const openDashboard = () => navigate("/login?intent=dashboard");
 
   return (
     <motion.header className="pointer-events-auto fixed top-0 left-0 z-[100] w-full bg-transparent">
       <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
           <img
-            src="/brand/logos/elizacloud_logotext.svg"
+            src="/brand/logos/elizacloud_logotext_black.svg"
             alt="eliza cloud"
             className="h-7 w-auto sm:h-8"
             draggable={false}
@@ -31,29 +32,37 @@ export default function LandingHeader() {
           {authenticated ? (
             <>
               <Link
-                to="/dashboard"
-                className="inline-flex min-h-11 items-center justify-center bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-[#FF5800]"
+                to="/dashboard/agents"
+                className="inline-flex min-h-11 items-center justify-center bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1]"
               >
-                Dashboard
+                Launch Eliza
+              </Link>
+              <Link
+                to="/dashboard"
+                className="hidden min-h-11 items-center justify-center bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:inline-flex"
+              >
+                Developer Dashboard
               </Link>
               <UserMenu />
             </>
           ) : (
             <>
-              <Link
-                aria-disabled={!ready}
-                className="inline-flex min-h-11 items-center justify-center px-2 text-sm font-medium text-white transition-colors hover:text-[#FF5800]"
-                to="/login"
-              >
-                Sign in
-              </Link>
               <button
-                className="inline-flex min-h-11 items-center justify-center bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-[#FF5800] disabled:opacity-50"
-                onClick={runInCloud}
+                aria-disabled={!ready}
+                className="inline-flex min-h-11 items-center justify-center bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] disabled:opacity-50"
+                onClick={launchEliza}
                 disabled={!ready}
                 type="button"
               >
-                Run in Cloud
+                Launch Eliza
+              </button>
+              <button
+                className="hidden min-h-11 items-center justify-center bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:inline-flex"
+                onClick={openDashboard}
+                disabled={!ready}
+                type="button"
+              >
+                Developer Dashboard
               </button>
             </>
           )}

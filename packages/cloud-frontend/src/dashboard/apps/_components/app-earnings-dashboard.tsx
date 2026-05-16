@@ -173,7 +173,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
 
   if (error) {
     return (
-      <div className="bg-neutral-900 rounded-xl p-8 text-center">
+      <div className="bg-neutral-900 rounded-sm p-8 text-center">
         <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-400" />
         <h3 className="text-lg font-medium text-white mb-2">
           Error loading earnings
@@ -225,7 +225,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
 
       {/* Empty State */}
       {!summary && !isLoading && (
-        <div className="bg-neutral-900 rounded-xl p-8 text-center">
+        <div className="bg-neutral-900 rounded-sm p-8 text-center">
           <TrendingUp className="h-12 w-12 mx-auto mb-4 text-neutral-600" />
           <h3 className="text-lg font-medium text-neutral-500 mb-2">
             No earnings yet
@@ -256,7 +256,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       {summary && (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {/* Total Earnings */}
-          <div className="bg-neutral-900 rounded-xl p-4">
+          <div className="bg-neutral-900 rounded-sm p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-neutral-500">
@@ -279,7 +279,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           {/* Withdrawable Balance */}
           <div
             className={cn(
-              "bg-neutral-900 rounded-xl p-4",
+              "bg-neutral-900 rounded-sm p-4",
               canWithdraw && "border border-emerald-500/30",
             )}
           >
@@ -353,7 +353,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             { label: "This Month", data: breakdown.thisMonth },
             { label: "All Time", data: breakdown.allTime },
           ].map(({ label, data }) => (
-            <div key={label} className="bg-neutral-900 rounded-xl p-3">
+            <div key={label} className="bg-neutral-900 rounded-sm p-3">
               <p className="text-xs text-neutral-500">{label}</p>
               <p className="text-lg font-semibold text-white mt-1">
                 ${data.total.toFixed(2)}
@@ -374,7 +374,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       )}
 
       {/* Chart */}
-      <div className="bg-neutral-900 rounded-xl p-4">
+      <div className="bg-neutral-900 rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-neutral-400" />
           Earnings Over Time
@@ -437,7 +437,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       </div>
 
       {/* Recent Transactions */}
-      <div className="bg-neutral-900 rounded-xl p-4">
+      <div className="bg-neutral-900 rounded-sm p-4">
         <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
           <Clock className="h-4 w-4 text-neutral-400" />
           Recent Earnings

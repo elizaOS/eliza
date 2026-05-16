@@ -36,7 +36,7 @@ export function EndpointCard({
     <button
       type="button"
       onClick={() => onSelect(endpoint)}
-      className="group relative w-full min-w-0 text-left bg-neutral-900/50 rounded-xl p-4 transition-all border border-white/5 hover:border-white/10 hover:bg-neutral-900/70 overflow-hidden"
+      className="group relative w-full min-w-0 text-left bg-neutral-900/50 rounded-sm p-4 transition-all border border-white/5 hover:border-white/10 hover:bg-neutral-900/70 overflow-hidden"
     >
       {/* Hover indicator */}
       <div className="absolute right-4 top-4 opacity-0 transition-all duration-200 group-hover:opacity-100">

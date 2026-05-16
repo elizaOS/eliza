@@ -17,7 +17,7 @@ export function DeployFromCLI() {
   };
 
   return (
-    <div className="bg-neutral-900 rounded-xl overflow-hidden">
+    <div className="bg-neutral-900 rounded-sm overflow-hidden">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex w-full items-start justify-between gap-3 p-4 text-left transition-colors hover:bg-white/5 sm:items-center"

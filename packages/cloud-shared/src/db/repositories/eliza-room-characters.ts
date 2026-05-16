@@ -1,4 +1,5 @@
 import { count, eq, inArray, sql } from "drizzle-orm";
+import { logger } from "../../lib/utils/logger";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -80,10 +81,6 @@ export const elizaRoomCharactersRepository = {
    * Note: Always fetches from DB (caching disabled for serverless compatibility).
    */
   async findByRoomId(roomId: string): Promise<ElizaRoomCharacter | undefined> {
-    console.log(
-      `[RoomCharRepo] findByRoomId(${roomId.substring(0, 8)}...) - fetching from DB (cache disabled)`,
-    );
-
     const result = await dbRead
       .select()
       .from(elizaRoomCharactersTable)
@@ -91,7 +88,10 @@ export const elizaRoomCharactersRepository = {
       .limit(1);
 
     const character = result[0];
-    console.log(`[RoomCharRepo] DB result - characterId:`, character?.character_id || "none");
+    logger.debug("[RoomCharRepo] findByRoomId", {
+      roomId,
+      characterId: character?.character_id,
+    });
 
     return character;
   },

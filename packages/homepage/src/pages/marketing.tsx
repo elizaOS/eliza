@@ -29,7 +29,7 @@ export default function MarketingPage() {
       id,
       label: releaseDownload?.label ?? fallbackDownloads[id],
       href: releaseDownload?.url ?? releaseFallbackUrl,
-      detail: releaseDownload?.sizeLabel ?? "GitHub Releases",
+      detail: releaseDownload?.sizeLabel ?? "Release page",
       meta: releaseDownload
         ? `From ${releaseDownload.releaseTagName}`
         : "Opens release page",
@@ -39,10 +39,10 @@ export default function MarketingPage() {
   return (
     <div className="theme-app app-shell">
       <header className="app-header">
-        <a href="/" aria-label="Eliza App home" className="app-brand">
+        <a href="/" aria-label="Eliza home" className="app-brand">
           <img
             src="/brand/logos/eliza_logotext_black.svg"
-            alt="Eliza App"
+            alt="Eliza"
             draggable={false}
             className="app-brand-mark"
           />
@@ -56,62 +56,7 @@ export default function MarketingPage() {
       </header>
 
       <main>
-        <section className="brand-section brand-section--orange app-hero">
-          <div className="app-band-inner app-hero-grid">
-            <div className="app-hero-copy">
-              <h1 className="app-display">Your Eliza, everywhere.</h1>
-              <p className="app-lede">Download the app.</p>
-              <div className="app-cta-row">
-                <a href="#download" className="app-cta app-cta--black">
-                  <Download className="app-icon" aria-hidden="true" />
-                  Download the app
-                </a>
-                <a
-                  href={cloudUrl}
-                  className="app-cta app-cta--orange-secondary"
-                >
-                  Launch Eliza
-                  <ArrowRight className="app-icon" aria-hidden="true" />
-                </a>
-              </div>
-            </div>
-            <img
-              src="/brand/logos/logo_white_orangebg.svg"
-              alt=""
-              className="app-hero-mark"
-              draggable={false}
-            />
-          </div>
-        </section>
-
-        <section id="download" className="brand-section brand-section--black">
-          <div className="app-band-inner app-download-band">
-            <div>
-              <h2 className="app-h2 app-h2--light">Install.</h2>
-            </div>
-
-            <div className="app-download-list">
-              {downloads.map((download) => (
-                <DownloadLink key={download.id} {...download} />
-              ))}
-            </div>
-
-          </div>
-        </section>
-
-        <section className="brand-section brand-section--blue">
-          <div className="app-band-inner app-action-band">
-            <div>
-              <h2 className="app-h2 app-h2--light">Install the OS.</h2>
-            </div>
-            <a href={osUrl} className="app-cta app-cta--white">
-              ElizaOS
-              <ArrowRight className="app-icon" aria-hidden="true" />
-            </a>
-          </div>
-        </section>
-
-        <section className="brand-section brand-section--cloud">
+        <section className="brand-section brand-section--cloud app-hero">
           <video
             className="app-cloud-video"
             autoPlay
@@ -123,12 +68,49 @@ export default function MarketingPage() {
             <source src="/clouds/clouds_4x_720p.webm" type="video/webm" />
             <source src="/clouds/clouds_4x_720p.mp4" type="video/mp4" />
           </video>
-          <div className="app-band-inner app-action-band app-action-band--cloud">
-            <div>
-              <h2 className="app-h2">Run in cloud.</h2>
+          <div className="app-cloud-scrim" />
+          <div className="app-band-inner app-hero-copy app-hero-copy--cloud">
+            <h1 className="app-display">Your Eliza, everywhere.</h1>
+            <p className="app-lede">Desktop, mobile, and cloud — one Eliza.</p>
+            <div className="app-cta-row">
+              <a href="#download" className="app-cta app-cta--black">
+                <Download className="app-icon" aria-hidden="true" />
+                Download
+              </a>
+              <a href={cloudUrl} className="app-cta app-cta--white">
+                Launch Eliza
+                <ArrowRight className="app-icon" aria-hidden="true" />
+              </a>
             </div>
-            <a href={cloudUrl} className="app-cta app-cta--orange">
+          </div>
+        </section>
+
+        <section id="download" className="brand-section brand-section--black">
+          <div className="app-band-inner app-download-band">
+            <h2 className="app-h2 app-h2--light">Install.</h2>
+            <div className="app-download-list">
+              {downloads.map((download) => (
+                <DownloadLink key={download.id} {...download} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="brand-section brand-section--orange">
+          <div className="app-band-inner app-action-band">
+            <h2 className="app-h2">Run it in the cloud.</h2>
+            <a href={cloudUrl} className="app-cta app-cta--black">
               Launch Eliza
+              <ArrowRight className="app-icon" aria-hidden="true" />
+            </a>
+          </div>
+        </section>
+
+        <section className="brand-section brand-section--blue">
+          <div className="app-band-inner app-action-band">
+            <h2 className="app-h2 app-h2--light">Build on ElizaOS.</h2>
+            <a href={osUrl} className="app-cta app-cta--white">
+              ElizaOS
               <ArrowRight className="app-icon" aria-hidden="true" />
             </a>
           </div>

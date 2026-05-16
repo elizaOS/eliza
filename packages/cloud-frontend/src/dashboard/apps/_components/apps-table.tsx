@@ -100,7 +100,7 @@ export function AppsTable({ apps }: AppsTableProps) {
         {apps.map((app) => (
           <div
             key={app.id}
-            className="group relative overflow-hidden rounded-xl bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07] min-w-0"
+            className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07] min-w-0"
           >
             {/* Header */}
             <div className="px-3 py-2.5">

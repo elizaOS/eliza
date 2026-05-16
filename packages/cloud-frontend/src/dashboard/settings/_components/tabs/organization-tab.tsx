@@ -57,7 +57,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
               {user.organization.slug}
             </p>
           </div>
-          <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface px-4 py-3">
+          <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface px-4 py-3">
             <div className="text-left sm:text-right">
               <p className="text-xl md:text-2xl font-mono font-bold text-white">
                 ${Number(user.organization.credit_balance).toFixed(2)}

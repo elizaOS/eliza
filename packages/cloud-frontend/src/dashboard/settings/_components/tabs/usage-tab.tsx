@@ -179,7 +179,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           {/* Credits Section */}
           <div className="space-y-0 w-full">
             {/* Credits Remaining */}
-            <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4">
+            <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 w-full">
                 <p className="text-sm md:text-base font-mono text-white">
                   Credits Remaining
@@ -209,7 +209,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
             </div>
 
             {/* Current Session */}
-            <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t-0 border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4">
+            <div className="bg-[rgba(10,10,10,0.75)] border-t-0 border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <p className="text-sm md:text-base font-mono text-white">
                   Current Session
@@ -293,7 +293,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           {/* Limits Section */}
           <div className="space-y-0 w-full">
             {/* All models */}
-            <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4">
+            <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4">
               <p className="text-sm md:text-base font-mono text-white">
                 All models
               </p>
@@ -330,7 +330,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                 ([modelName, modelQuota]) => (
                   <div
                     key={modelName}
-                    className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t-0 border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4"
+                    className="bg-[rgba(10,10,10,0.75)] border-t-0 border border-brand-surface p-3 md:p-4 space-y-3 md:space-y-4"
                   >
                     <div className="flex items-center gap-2">
                       <p className="text-sm md:text-base font-mono text-white capitalize">
@@ -365,7 +365,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                 ),
               )
             ) : !quotaUsage?.global.limit ? (
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t-0 border border-brand-surface p-3 md:p-4">
+              <div className="bg-[rgba(10,10,10,0.75)] border-t-0 border border-brand-surface p-3 md:p-4">
                 <p className="text-xs md:text-sm text-white/60">
                   No model-specific limits configured. Contact your
                   administrator to set up weekly quotas.
@@ -398,7 +398,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           </div>
 
           {/* Status Card */}
-          <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-2">
+          <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-2">
             <div className="flex items-center gap-2">
               <p className="text-sm md:text-base font-mono text-white">
                 {creditsRemaining > 10

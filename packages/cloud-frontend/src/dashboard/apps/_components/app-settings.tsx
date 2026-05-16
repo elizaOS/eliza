@@ -169,7 +169,7 @@ export function AppSettings({ app }: AppSettingsProps) {
   return (
     <div className="space-y-4">
       {/* Basic Settings */}
-      <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-white flex items-center gap-2">
           <Settings className="h-4 w-4 text-[#FF5800]" />
           Basic Settings
@@ -277,7 +277,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       </div>
 
       {/* Allowed Origins */}
-      <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div>
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
             <Shield className="h-4 w-4 text-blue-400" />
@@ -355,7 +355,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       </div>
 
       {/* Danger Zone */}
-      <div className="bg-red-500/10 rounded-xl p-4 space-y-4 border border-red-500/20">
+      <div className="bg-red-500/10 rounded-sm p-4 space-y-4 border border-red-500/20">
         <h3 className="text-sm font-medium text-red-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
           Danger Zone

@@ -105,14 +105,15 @@
   --shadow-xl: 0 20px 50px -12px rgb(15 23 42 / 0.18);
   --shadow-2xl: 0 25px 60px -15px rgb(15 23 42 / 0.24);
   --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 0.05);
-  --radius-sm: 0;
-  --radius-md: 0.125rem;
-  --radius-lg: 0.25rem;
-  --radius-xl: 0.25rem;
-  --radius-2xl: 0.25rem;
-  --radius-3xl: 0.25rem;
+  /* Brand: slight xs rounding. Never hard-edged, never pill-shaped. */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
   --radius-full: 9999px;
-  --radius: 0.5rem;
+  --radius: 4px;
   --duration-normal: 150ms;
 
   /* Compact text sizes (replaces arbitrary text-[9px], text-[10px], text-[11px]) */
@@ -232,14 +233,14 @@
   --shadow-xl: 0 20px 50px -12px rgb(0 0 0 / 0.3);
   --shadow-2xl: 0 25px 60px -15px rgb(0 0 0 / 0.4);
   --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 0.04);
-  --radius-sm: 0;
-  --radius-md: 0.125rem;
-  --radius-lg: 0.25rem;
-  --radius-xl: 0.25rem;
-  --radius-2xl: 0.25rem;
-  --radius-3xl: 0.25rem;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
   --radius-full: 9999px;
-  --radius: 0.5rem;
+  --radius: 4px;
   --duration-normal: 200ms;
 
   /* Compact text sizes */

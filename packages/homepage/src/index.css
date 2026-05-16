@@ -508,27 +508,6 @@ body {
   opacity: 0.7;
 }
 
-.app-store-list {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.app-store-row {
-  display: grid;
-  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, auto) minmax(6rem, auto);
-  gap: 1rem;
-  align-items: center;
-  color: var(--brand-gray);
-  min-height: 2.5rem;
-  font-size: 0.9rem;
-  box-shadow: inset 0 -1px 0 rgba(209, 208, 212, 0.28);
-}
-
-.app-store-row span:first-child {
-  color: var(--brand-white);
-  font-weight: 600;
-}
-
 .app-mini-grid,
 .app-action-band {
   display: grid;
@@ -634,11 +613,5 @@ body {
 
   .app-download-row span:not(:first-child) {
     grid-column: 1 / -1;
-  }
-
-  .app-store-row {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
-    padding: 0.75rem 0;
   }
 }

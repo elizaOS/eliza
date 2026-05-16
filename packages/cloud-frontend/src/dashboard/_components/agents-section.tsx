@@ -149,7 +149,7 @@ export function AgentsSectionSkeleton() {
         {AGENT_SKELETON_IDS.map((id) => (
           <div
             key={id}
-            className="relative aspect-square w-full overflow-hidden rounded-xl bg-white/5"
+            className="relative aspect-square w-full overflow-hidden rounded-sm bg-white/5"
           >
             {/* Top left badges skeleton */}
             <div className="absolute top-3 left-3 flex gap-1.5">

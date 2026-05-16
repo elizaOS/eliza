@@ -497,7 +497,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
 
           <div className="flex flex-col gap-0.5">
             {isThinking ? (
-              <div className="py-2.5 px-3.5 bg-white/[0.02] border border-white/[0.05] rounded-lg backdrop-blur-sm">
+              <div className="py-2.5 px-3.5 bg-white/[0.02] border border-white/[0.05] rounded-lg">
                 <style>{`
                   @keyframes reasoningFadeIn {
                     from {

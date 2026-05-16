@@ -62,7 +62,7 @@ export function MembersList({
 }: MembersListProps) {
   if (members.length === 0) {
     return (
-      <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
+      <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
         <User className="h-12 w-12 mx-auto text-white/40 mb-4" />
         <p className="text-sm font-mono text-white/60">No members found</p>
       </div>
@@ -135,7 +135,7 @@ export function MembersList({
       {members.map((member) => (
         <div
           key={member.id}
-          className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4"
+          className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4"
         >
           <div className="flex flex-col sm:flex-row items-start gap-4">
             {/* Avatar */}

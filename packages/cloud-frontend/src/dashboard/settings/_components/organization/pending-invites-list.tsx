@@ -61,7 +61,7 @@ export function PendingInvitesList({
 
   if (pendingInvites.length === 0) {
     return (
-      <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-6 text-center">
+      <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-6 text-center">
         <Mail className="h-10 w-10 mx-auto text-white/40 mb-3" />
         <p className="text-sm font-mono text-white/60">
           No pending invitations
@@ -137,7 +137,7 @@ export function PendingInvitesList({
         return (
           <div
             key={invite.id}
-            className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4"
+            className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4"
           >
             <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
               <div className="flex-1 min-w-0 w-full space-y-2">
@@ -238,7 +238,7 @@ export function PendingInvitesList({
               .map((invite) => (
                 <div
                   key={invite.id}
-                  className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 opacity-60"
+                  className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 opacity-60"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0 space-y-2">

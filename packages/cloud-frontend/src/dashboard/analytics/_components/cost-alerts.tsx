@@ -59,14 +59,13 @@ export function CostAlerts({ costTrending, creditBalance }: CostAlertsProps) {
 
   if (alerts.length === 0) {
     return (
-      <div className="rounded-xl border border-emerald-600/30 bg-emerald-500/10 p-5 text-sm text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/20 dark:text-emerald-100">
+      <div className="rounded-sm border border-white/10 bg-white/[0.04] p-5 text-sm text-white">
         <div className="flex items-start gap-4">
           <TrendingDown className="h-5 w-5 shrink-0" />
           <div className="space-y-2">
             <p className="font-semibold">All good</p>
-            <p className="text-sm text-emerald-900/80 dark:text-emerald-50/80">
-              Usage is tracking within healthy thresholds. You&apos;re trending
-              below the projected monthly spend.
+            <p className="text-sm text-white/70">
+              Usage is tracking within healthy thresholds.
             </p>
           </div>
         </div>
@@ -75,11 +74,9 @@ export function CostAlerts({ costTrending, creditBalance }: CostAlertsProps) {
   }
 
   const toneClasses: Record<"warning" | "error" | "info", string> = {
-    warning:
-      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-100",
-    error:
-      "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-100",
-    info: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/20 dark:text-sky-100",
+    warning: "border-[#FF5800]/40 bg-[#FF5800]/10 text-white",
+    error: "border-[#FF5800] bg-[#FF5800] text-black",
+    info: "border-[#0B35F1]/40 bg-[#0B35F1]/10 text-white",
   };
 
   const iconMap: Record<"warning" | "error" | "info", ReactNode> = {
@@ -94,7 +91,7 @@ export function CostAlerts({ costTrending, creditBalance }: CostAlertsProps) {
         <div
           key={`${alert.title}-${index}`}
           className={cn(
-            "rounded-xl border bg-background/80 p-5 text-sm shadow-sm",
+            "rounded-sm border bg-background/80 p-5 text-sm shadow-sm",
             toneClasses[alert.type],
           )}
         >

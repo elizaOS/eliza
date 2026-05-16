@@ -27,7 +27,7 @@ export default function BlogCard({ post }: BlogCardProps) {
 
   return (
     <Link to={`/blog/${post.slug}`} className="group block">
-      <article className="h-full overflow-hidden rounded-xl border border-white/10 bg-neutral-950 hover:bg-neutral-900 transition-all duration-300 hover:ring-2 hover:ring-orange-500/40">
+      <article className="h-full overflow-hidden rounded-sm border border-white/10 bg-neutral-950 hover:bg-neutral-900 transition-all duration-300 hover:ring-2 hover:ring-orange-500/40">
         {post.image && (
           <div className="relative aspect-[1200/630] w-full overflow-hidden">
             <Image
@@ -48,7 +48,7 @@ export default function BlogCard({ post }: BlogCardProps) {
         <div className="p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2">
             <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${categoryClass}`}
+              className={`rounded-sm px-2.5 py-0.5 text-xs font-medium capitalize ${categoryClass}`}
             >
               {post.category}
             </span>

@@ -189,7 +189,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     <div className="space-y-4">
       {/* New API Key Alert */}
       {showKey && displayApiKey && (
-        <div className="p-4 rounded-xl bg-[#FF5800]/10 border border-[#FF5800]/20">
+        <div className="p-4 rounded-sm bg-[#FF5800]/10 border border-[#FF5800]/20">
           <div className="flex items-start gap-3">
             <Key className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -253,7 +253,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* API Key Card */}
-        <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+        <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-white flex items-center gap-2">
               <Key className="h-4 w-4 text-[#FF5800]" />
@@ -331,7 +331,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         </div>
 
         {/* Basic Info Card */}
-        <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+        <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
             <Globe className="h-4 w-4 text-[#FF5800]" />
             App Information
@@ -384,7 +384,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
 
       {/* Monetization Card */}
       {monetizationEnabled !== null && (
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-amber-500/10">
@@ -425,7 +425,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       )}
 
       {/* Allowed Origins */}
-      <div className="bg-neutral-900 rounded-xl p-4 space-y-3">
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
             <Shield className="h-4 w-4 text-blue-400" />

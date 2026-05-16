@@ -197,7 +197,7 @@ export default function ElizaOsPage() {
               </div>
 
               <aside className="grid gap-4" aria-label="ElizaOS release paths">
-                <div className="overflow-hidden rounded-lg border border-white/28 bg-[#171717] shadow-[0_24px_70px_rgba(3,28,58,0.24)]">
+                <div className="overflow-hidden rounded-sm border border-white/28 bg-[#171717]">
                   <div className="flex h-9 items-center gap-2 bg-[#24211f] px-4">
                     <span className="h-2.5 w-2.5 rounded-full bg-accent" />
                     <span className="h-2.5 w-2.5 rounded-full bg-[#f5b642]" />

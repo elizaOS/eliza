@@ -1,97 +1,119 @@
 import { expect, test } from "playwright/test";
 
-const requiredCopy = [
-  "The agentic operating system for devices that run themselves.",
-  "Download/install elizaOS",
-  "Download ElizaOS",
-  "Download Eliza App",
-  "Run in Eliza Cloud",
-  "Choose the installer for your device.",
-  "Pre-order hardware on elizaos.ai.",
+const heroCopy = [
+  "An operating system for your agent.",
+  "Local first",
+  "Open source",
+];
+
+const installerCopy = [
+  "Install elizaOS.",
+  "Linux PC",
+  "ISO + USB installer",
+  "VM launcher",
+  "Mac, Windows, Linux",
+  "Android",
+  "APK + AOSP image",
+];
+
+const hardwareCopy = [
+  "Hardware.",
   "ElizaOS USB",
   "Raspberry Pi case",
   "Custom Raspberry Pi + case",
   "ElizaOS mini PC",
+  "ElizaOS Phone",
+  "ElizaOS Box",
   "$49",
   "$149",
   "$1999",
   "Ships October 2026",
-  "Supported Mac hardware is limited",
 ];
 
-test("homepage focuses on install before integrated hardware preorder", async ({
+test("lander renders hero with cloud video and primary copy", async ({
   page,
 }) => {
   await page.goto("/");
 
-  for (const copy of requiredCopy) {
-    const matches = page.getByText(copy, { exact: false });
-    expect(await matches.count(), copy).toBeGreaterThan(0);
-    await expect(matches.first()).toBeVisible();
+  const heroVideo = page.locator('[data-testid="cloud-video"]');
+  await expect(heroVideo).toHaveCount(1);
+
+  const h1 = page.getByRole("heading", { level: 1 });
+  await expect(h1).toContainText(/operating system/i);
+  await expect(h1).toContainText(/agent/i);
+
+  for (const copy of [...heroCopy, ...installerCopy, ...hardwareCopy]) {
+    await expect(page.getByText(copy, { exact: false }).first()).toBeVisible();
   }
+});
+
+test("anchor sections #download and #hardware exist and are reachable", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await expect(page.locator("#download")).toHaveCount(1);
+  await expect(page.locator("#hardware")).toHaveCount(1);
 
   await expect(
-    page.getByRole("navigation", { name: "Product switcher" }),
-  ).toBeVisible();
+    page.getByRole("link", { name: /^Download/i }).first(),
+  ).toHaveAttribute("href", "#download");
   await expect(
-    page.getByRole("link", { name: /Download\/install elizaOS/i }).first(),
-  ).toHaveAttribute("href", "#downloads");
+    page.getByRole("link", { name: /^Hardware/i }).first(),
+  ).toHaveAttribute("href", "#hardware");
+
+  const order = await page.evaluate(() => {
+    const d = document.querySelector("#download")?.getBoundingClientRect();
+    const h = document.querySelector("#hardware")?.getBoundingClientRect();
+    return { d: d?.top ?? 0, h: h?.top ?? 0 };
+  });
+  expect(order.d).toBeLessThan(order.h);
+});
+
+test("footer renders wordmark, link nav, and social links", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const footer = page.locator("footer.site-footer");
+  await expect(footer).toBeVisible();
+  await expect(footer.locator("img")).toHaveCount(1);
+  await expect(footer.getByRole("link", { name: "App" })).toHaveAttribute(
+    "href",
+    "https://eliza.app",
+  );
+  await expect(footer.getByRole("link", { name: "Cloud" })).toHaveAttribute(
+    "href",
+    /elizacloud\.ai/,
+  );
+  await expect(footer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
+    "href",
+    /github\.com\/elizaOS/,
+  );
+  await expect(footer.getByRole("link", { name: "X" })).toHaveAttribute(
+    "href",
+    /x\.com\/elizaos/,
+  );
+});
+
+test("hero has no horizontal overflow", async ({ page }) => {
+  await page.goto("/");
+
+  const metrics = await page.evaluate(() => ({
+    horizontalOverflow:
+      document.documentElement.scrollWidth > window.innerWidth,
+  }));
+  expect(metrics.horizontalOverflow).toBe(false);
+});
+
+test("hardware tiles link to checkout per product", async ({ page }) => {
+  await page.goto("/");
   await expect(
     page.getByRole("link", { name: /Open checkout/i }),
   ).toHaveAttribute(
     "href",
     /^https:\/\/elizaos\.ai\/checkout\?collection=elizaos-hardware$/,
   );
-  await expect(
-    page
-      .locator(".product-row")
-      .getByRole("link", { name: "Pre-order" })
-      .first(),
-  ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/checkout\?sku=/);
-
-  const sectionOrder = await page.evaluate(() => {
-    const downloads = document
-      .querySelector("#downloads")
-      ?.getBoundingClientRect();
-    const hardware = document
-      .querySelector("#hardware")
-      ?.getBoundingClientRect();
-    return {
-      downloadsTop: downloads?.top ?? 0,
-      hardwareTop: hardware?.top ?? 0,
-    };
-  });
-
-  expect(sectionOrder.downloadsTop).toBeLessThan(sectionOrder.hardwareTop);
-});
-
-test("homepage removes verbose release planning copy", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page.getByText("What has to ship together")).toHaveCount(0);
-  await expect(page.getByText("Prepared for GitHub releases")).toHaveCount(0);
-  await expect(page.getByText("Source on GitHub")).toHaveCount(0);
-  await expect(page.locator(".product-card")).toHaveCount(0);
-});
-
-test("hero has no horizontal overflow and keeps primary action visible", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  const metrics = await page.evaluate(() => {
-    const cta = document
-      .querySelector(".hero-actions")
-      ?.getBoundingClientRect();
-    return {
-      ctaVisible: Boolean(cta && cta.bottom <= window.innerHeight),
-      horizontalOverflow:
-        document.documentElement.scrollWidth > window.innerWidth,
-    };
-  });
-
-  expect(metrics.horizontalOverflow).toBe(false);
-  expect(metrics.ctaVisible).toBe(true);
 });
 
 for (const product of [

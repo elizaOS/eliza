@@ -14,12 +14,12 @@ function RouteFallback() {
     <main
       className="theme-app min-h-screen flex flex-col items-center justify-center px-4"
       style={{
-        background: "#000",
-        color: "#fff",
+        background: "#000000",
+        color: "#FFFFFF",
         fontFamily: "Poppins",
       }}
     >
-      <div className="opacity-60 animate-pulse">Loading...</div>
+      <div className="opacity-70">Loading…</div>
     </main>
   );
 }
