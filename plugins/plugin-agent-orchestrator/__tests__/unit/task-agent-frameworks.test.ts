@@ -25,6 +25,7 @@ const ENV_KEYS = [
   "HOME",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
+  "PATH",
 ] as const;
 
 const savedEnv = new Map<string, string | undefined>();
@@ -43,6 +44,23 @@ function installedProbe(): TaskAgentFrameworkProbe {
       { adapter: "OpenAI Codex", installed: true },
       { adapter: "OpenCode", installed: true },
     ]),
+  };
+}
+
+function delayedInstalledProbe(): TaskAgentFrameworkProbe {
+  return {
+    checkAvailableAgents: vi.fn(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve([
+              { adapter: "Claude Code", installed: true },
+              { adapter: "OpenAI Codex", installed: true },
+              { adapter: "OpenCode", installed: true },
+            ]);
+          }, 10);
+        }),
+    ),
   };
 }
 
@@ -65,6 +83,7 @@ describe("getTaskAgentFrameworkState", () => {
     tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-frameworks-"));
     process.env.HOME = tempHome;
     process.env.ELIZA_CONFIG_PATH = path.join(tempHome, "missing-eliza.json");
+    process.env.PATH = tempHome;
     clearTaskAgentFrameworkStateCache();
   });
 
@@ -135,5 +154,47 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "claude")?.authReady,
     ).toBe(true);
+  });
+
+  it("deduplicates concurrent preflight-backed cold fills", async () => {
+    const probe = delayedInstalledProbe();
+
+    const [first, second] = await Promise.all([
+      getTaskAgentFrameworkState(runtime(), probe),
+      getTaskAgentFrameworkState(runtime(), probe),
+    ]);
+
+    expect(probe.checkAvailableAgents).toHaveBeenCalledTimes(1);
+    expect(
+      first.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(true);
+    expect(
+      second.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(true);
+  });
+
+  it("keeps static and preflight discovery caches separate", async () => {
+    const probe: TaskAgentFrameworkProbe = {
+      checkAvailableAgents: vi.fn(async () => [
+        {
+          adapter: "OpenAI Codex",
+          installed: true,
+          installCommand: "preflight-codex-install",
+        },
+      ]),
+    };
+
+    const staticState = await getTaskAgentFrameworkState(runtime());
+    const preflightState = await getTaskAgentFrameworkState(runtime(), probe);
+
+    expect(probe.checkAvailableAgents).toHaveBeenCalledTimes(1);
+    expect(
+      staticState.frameworks.find((item) => item.id === "codex")
+        ?.installCommand,
+    ).toBeUndefined();
+    expect(
+      preflightState.frameworks.find((item) => item.id === "codex")
+        ?.installCommand,
+    ).toBe("preflight-codex-install");
   });
 });
