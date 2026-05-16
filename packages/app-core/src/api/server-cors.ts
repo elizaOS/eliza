@@ -91,6 +91,7 @@ const CAPACITOR_WEBVIEW_ORIGINS: ReadonlySet<string> = new Set([
  * these origins; they are used by packaged/native app shells.
  */
 const NATIVE_WEBVIEW_PROTOCOLS: ReadonlySet<string> = new Set([
+  "views:",
   "capacitor:",
   "capacitor-electron:",
   "ionic:",

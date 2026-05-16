@@ -69,6 +69,9 @@ beforeEach(() => {
 
 afterEach(() => {
 	mockState.runtimeFixture = null;
+	vi.unstubAllEnvs();
+	delete process.env.ELIZA_LOCAL_ASR_BACKEND;
+	delete process.env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO;
 });
 
 describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {

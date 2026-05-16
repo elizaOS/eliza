@@ -68,6 +68,59 @@ export class AsrUnavailableError extends Error {
 	}
 }
 
+export type AsrBackendPreference =
+	| "auto"
+	| "fused"
+	| "ffi-batch"
+	| "openvino-whisper";
+
+function normalizeBooleanEnv(value: string | undefined): boolean {
+	const normalized = value?.trim().toLowerCase();
+	return (
+		normalized === "1" ||
+		normalized === "true" ||
+		normalized === "yes" ||
+		normalized === "on"
+	);
+}
+
+export function normalizeAsrBackendPreference(
+	value: string | null | undefined,
+): AsrBackendPreference | null {
+	const normalized = value?.trim().toLowerCase().replace(/_/g, "-");
+	if (!normalized) return null;
+	switch (normalized) {
+		case "auto":
+			return "auto";
+		case "fused":
+		case "streaming":
+		case "fused-streaming":
+			return "fused";
+		case "batch":
+		case "ffi-batch":
+		case "fused-batch":
+			return "ffi-batch";
+		case "openvino":
+		case "openvino-whisper":
+		case "whisper-openvino":
+			return "openvino-whisper";
+		default:
+			return null;
+	}
+}
+
+export function readAsrBackendPreferenceFromEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): AsrBackendPreference | null {
+	return normalizeAsrBackendPreference(env.ELIZA_LOCAL_ASR_BACKEND);
+}
+
+function allowOpenVinoWhisperFromEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	return normalizeBooleanEnv(env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO);
+}
+
 /* ==================================================================== *
  * Shared base — event fan-out, VAD gating, word detection.
  * ==================================================================== */
@@ -744,7 +797,7 @@ export interface CreateStreamingTranscriberOptions {
 	 *   `"auto"`             (default) → fused streaming → fused batch →
 	 *                                    OpenVINO whisper (when enabled) → throw.
 	 */
-	prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper";
+	prefer?: AsrBackendPreference;
 	/**
 	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
 	 * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
@@ -771,8 +824,11 @@ export interface CreateStreamingTranscriberOptions {
 export function createStreamingTranscriber(
 	opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
-	const prefer = opts.prefer ?? "auto";
-	const allowOpenVinoWhisper = opts.allowOpenVinoWhisper === true;
+	const prefer = opts.prefer ?? readAsrBackendPreferenceFromEnv() ?? "auto";
+	const allowOpenVinoWhisper =
+		opts.allowOpenVinoWhisper === true ||
+		prefer === "openvino-whisper" ||
+		allowOpenVinoWhisperFromEnv();
 
 	const tryFusedStreaming = (): StreamingTranscriber | null => {
 		if (!opts.ffi || !opts.getContext) return null;
