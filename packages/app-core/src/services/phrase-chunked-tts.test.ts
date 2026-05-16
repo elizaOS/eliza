@@ -199,8 +199,10 @@ describe("PhraseChunkedTts", () => {
 
     // No punctuation, no max-token cap hit: only the time-budget can flush.
     pipe.push("stalled words without a terminator");
-    // Wait past the 40 ms budget — the watchdog should fire.
-    await new Promise((r) => setTimeout(r, 80));
+    // Wait past the 40 ms budget — the watchdog should fire. Use a generous
+    // 300ms ceiling so a loaded CI box where setTimeout delivery slips by
+    // tens of ms doesn't cause a spurious failure.
+    await new Promise((r) => setTimeout(r, 300));
     expect(calls).toHaveLength(1);
     expect(calls[0]?.text).toBe("stalled words without a terminator");
 

@@ -130,7 +130,7 @@ describe("DflashLlamaServer P3 per-slot single-flight lock", () => {
 	});
 
 	it("does NOT serialize when slotId is -1 (any-free-slot)", async () => {
-		const mock = await startSerializationMockServer({ holdMs: 60 });
+		const mock = await startSerializationMockServer({ holdMs: 150 });
 		const patch = patchTarget(mock.baseUrl);
 		try {
 			const start = performance.now();
@@ -147,10 +147,11 @@ describe("DflashLlamaServer P3 per-slot single-flight lock", () => {
 				}),
 			]);
 			const elapsed = performance.now() - start;
-			// If unlocked, both run in parallel ≈ 60 ms total; serialized would
-			// be ≈ 120 ms. Allow a generous upper bound to keep the test
-			// non-flaky on a loaded CI box.
-			expect(elapsed).toBeLessThan(110);
+			// If unlocked, both run in parallel ≈ 150 ms total; serialized would
+			// be ≈ 300 ms. 225 ms gives a wide margin both ways so neither
+			// CI scheduler jitter (pushing parallel up) nor faster-than-budgeted
+			// hold (pushing serial down) flip the assertion.
+			expect(elapsed).toBeLessThan(225);
 			expect(mock.records).toHaveLength(2);
 		} finally {
 			patch.restore();
