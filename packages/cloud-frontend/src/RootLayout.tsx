@@ -34,13 +34,13 @@ export default function RootLayout() {
         <title>eliza cloud - Run in Cloud</title>
         <meta
           name="description"
-          content="Run your Eliza agent in Cloud. Sign in or preorder ElizaOS hardware."
+          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
         <meta property="og:title" content="eliza cloud - Run in Cloud" />
         <meta
           property="og:description"
-          content="Run your Eliza agent in Cloud. Sign in or preorder ElizaOS hardware."
+          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
         />
         <meta property="og:url" content={`${baseUrl}/`} />
         <meta property="og:site_name" content="Eliza Cloud" />
@@ -57,7 +57,7 @@ export default function RootLayout() {
         <meta name="twitter:title" content="Eliza Cloud" />
         <meta
           name="twitter:description"
-          content="Run your Eliza agent in Cloud. Sign in or preorder ElizaOS hardware."
+          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
         />
         <meta
           name="twitter:image"

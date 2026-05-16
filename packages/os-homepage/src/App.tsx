@@ -615,44 +615,47 @@ function manifestToOsArtifacts(manifest: unknown): OsArtifact[] {
     (release?.channel as OsArtifact["channel"] | undefined) ?? "beta";
   const version = release?.version ?? "0.0.0";
   const artifacts = Array.isArray(m.artifacts) ? m.artifacts : [];
-  return artifacts.map(
-    (artifact: Record<string, unknown>): OsArtifact => {
-      const target = artifact.target as Record<string, string> | null;
-      const platform = (() => {
-        const p = target?.platform ?? "";
-        if (/android|cuttlefish/i.test(p)) return "android" as const;
-        if (/macos|apple/i.test(p)) return "macos" as const;
-        if (/windows|win/i.test(p)) return "windows" as const;
-        return "linux" as const;
-      })();
-      const kind = (() => {
-        const k = String(artifact.kind ?? "");
-        if (k === "raw-image") return "iso" as const;
-        if (k === "vm-image") return "ova" as const;
-        if (k === "android-image") return "apk" as const;
-        if (k === "usb-installer") return "desktop-app" as const;
-        return "iso" as const;
-      })();
-      return {
-        id: String(artifact.id ?? ""),
-        label: String(artifact.filename ?? "").replace(/\.zst$|\.zip$/, ""),
-        description: String(artifact.notes ?? ""),
-        platform,
-        kind,
-        channel,
-        version,
-        downloadUrl: typeof artifact.downloadUrl === "string" ? artifact.downloadUrl : null,
-        checksumUrl: null,
-        sizeBytes: typeof artifact.sizeBytes === "number" ? artifact.sizeBytes : null,
-        sha256: typeof artifact.sha256 === "string" ? artifact.sha256 : null,
-        releaseNotesUrl: null,
-      };
-    },
-  );
+  return artifacts.map((artifact: Record<string, unknown>): OsArtifact => {
+    const target = artifact.target as Record<string, string> | null;
+    const platform = (() => {
+      const p = target?.platform ?? "";
+      if (/android|cuttlefish/i.test(p)) return "android" as const;
+      if (/macos|apple/i.test(p)) return "macos" as const;
+      if (/windows|win/i.test(p)) return "windows" as const;
+      return "linux" as const;
+    })();
+    const kind = (() => {
+      const k = String(artifact.kind ?? "");
+      if (k === "raw-image") return "iso" as const;
+      if (k === "vm-image") return "ova" as const;
+      if (k === "android-image") return "apk" as const;
+      if (k === "usb-installer") return "desktop-app" as const;
+      return "iso" as const;
+    })();
+    return {
+      id: String(artifact.id ?? ""),
+      label: String(artifact.filename ?? "").replace(/\.zst$|\.zip$/, ""),
+      description: String(artifact.notes ?? ""),
+      platform,
+      kind,
+      channel,
+      version,
+      downloadUrl:
+        typeof artifact.downloadUrl === "string" ? artifact.downloadUrl : null,
+      checksumUrl: null,
+      sizeBytes:
+        typeof artifact.sizeBytes === "number" ? artifact.sizeBytes : null,
+      sha256: typeof artifact.sha256 === "string" ? artifact.sha256 : null,
+      releaseNotesUrl: null,
+    };
+  });
 }
 
 // Static OS artifacts for distribution channels not yet in the manifest.
-function staticOsArtifacts(channel: OsArtifact["channel"], version: string): OsArtifact[] {
+function staticOsArtifacts(
+  channel: OsArtifact["channel"],
+  version: string,
+): OsArtifact[] {
   return [
     {
       id: `elizaos-linux-live-${channel}`,
@@ -673,7 +676,8 @@ function staticOsArtifacts(channel: OsArtifact["channel"], version: string): OsA
     {
       id: "elizaos-debian-package",
       label: "elizaOS Debian / Ubuntu package",
-      description: "Install elizaOS on an existing Debian or Ubuntu system via apt.",
+      description:
+        "Install elizaOS on an existing Debian or Ubuntu system via apt.",
       platform: "linux",
       kind: "deb",
       channel,
