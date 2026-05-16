@@ -18,7 +18,7 @@ export default function Footer() {
           <div className="flex flex-col gap-8">
             <div className="relative mr-auto flex flex-col gap-3">
               <img
-                src="/brand/logos/elizacloud_logotext_white.svg"
+                src="/brand/logos/elizacloud_logotext.svg"
                 alt="eliza cloud"
                 className="h-8 w-auto"
                 draggable={false}

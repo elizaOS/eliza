@@ -5,7 +5,6 @@
 
 "use client";
 
-import { Button } from "@elizaos/ui";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -33,8 +32,6 @@ export default function LandingHeader() {
 
   const transparent = isLanding && !scrolled;
   const logoSrc = "/brand/logos/elizacloud_logotext.svg";
-  const ghostLink = "text-white hover:bg-white/10";
-  const ctaCls = "bg-white text-black hover:bg-white/85";
 
   return (
     <motion.header
@@ -55,29 +52,31 @@ export default function LandingHeader() {
         <div className="flex items-center gap-3">
           {authenticated ? (
             <>
-              <Button size="sm" className={`rounded-none ${ctaCls}`}>
-                <Link to="/dashboard">Dashboard</Link>
-              </Button>
+              <Link
+                to="/dashboard"
+                className="inline-flex min-h-11 items-center justify-center bg-white px-5 text-sm font-semibold text-black transition-colors hover:bg-white/85"
+              >
+                Dashboard
+              </Link>
               <UserMenu />
             </>
           ) : (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!ready}
-                className={`rounded-none text-base ${ghostLink}`}
+              <Link
+                aria-disabled={!ready}
+                className="inline-flex min-h-11 items-center justify-center px-2 text-sm font-semibold text-white transition-colors hover:text-[#FF5800]"
+                to="/login"
               >
-                <Link to="/login">Sign in</Link>
-              </Button>
-              <Button
-                size="sm"
+                Sign in
+              </Link>
+              <button
+                className="inline-flex min-h-11 items-center justify-center bg-white px-5 text-sm font-semibold text-black transition-colors hover:bg-white/85 disabled:opacity-50"
                 onClick={handleGetStarted}
                 disabled={!ready}
-                className={`rounded-none ${ctaCls}`}
+                type="button"
               >
                 Run in Cloud
-              </Button>
+              </button>
             </>
           )}
         </div>

@@ -40,8 +40,7 @@ const HARDWARE_PRODUCTS = {
   "elizaos-usb": {
     amount: 49,
     name: "ElizaOS USB key preorder",
-    description:
-      "First-party ElizaOS USB installer key. Ships October 2026.",
+    description: "First-party ElizaOS USB installer key. Ships October 2026.",
   },
   "elizaos-usb-plastic": {
     amount: 49,

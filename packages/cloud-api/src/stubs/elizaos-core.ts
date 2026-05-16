@@ -752,7 +752,9 @@ export function resolveApiSecurityConfig(
   return {
     bindHost,
     isLoopbackBind:
-      bindHost === "127.0.0.1" || bindHost === "localhost" || bindHost === "::1",
+      bindHost === "127.0.0.1" ||
+      bindHost === "localhost" ||
+      bindHost === "::1",
   };
 }
 
