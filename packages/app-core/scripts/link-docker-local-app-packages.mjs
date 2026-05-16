@@ -30,6 +30,7 @@ const localPackages = [
   "eliza/packages/ui",
   "eliza/packages/vault",
   "eliza/plugins/plugin-agent-skills",
+  "eliza/plugins/plugin-app-manager",
   "eliza/plugins/plugin-browser",
   "eliza/plugins/plugin-capacitor-bridge",
   "eliza/plugins/plugin-coding-tools",

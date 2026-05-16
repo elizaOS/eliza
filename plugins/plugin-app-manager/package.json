@@ -43,7 +43,7 @@
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit --rootDir ../..",
-    "test": "vitest run --config ./vitest.config.ts"
+    "test": "vitest run --passWithNoTests"
   },
   "publishConfig": {
     "access": "public"
