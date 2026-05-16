@@ -1033,7 +1033,11 @@ class AospLlamaAdapter implements AospLoader {
     return this.loadedPath;
   }
 
-  private loadModelPointer(modelPath: string, useGpu: boolean, phase: string): Pointer {
+  private loadModelPointer(
+    modelPath: string,
+    useGpu: boolean,
+    phase: string,
+  ): Pointer {
     const modelParamsPtr = this.shim.eliza_llama_model_params_default();
     if (!modelParamsPtr) {
       throw new Error(
@@ -1187,7 +1191,8 @@ class AospLlamaAdapter implements AospLoader {
     }
     if (this.ctx === null) return;
     if (this.speculativeShim.eliza_speculative_is_compat(this.ctx) !== 1) {
-      const message = "[aosp-llama] target context is not speculative-compatible";
+      const message =
+        "[aosp-llama] target context is not speculative-compatible";
       if (required) throw new Error(message);
       logger.warn(`${message}; using target-only decode`);
       return;
@@ -1201,10 +1206,7 @@ class AospLlamaAdapter implements AospLoader {
         Math.min(2048, args.targetContextSize),
       );
     const draftBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_BATCH", args.nBatch);
-    const draftUBatch = readEnvInt(
-      "ELIZA_DFLASH_DRAFT_N_UBATCH",
-      args.nUBatch,
-    );
+    const draftUBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_UBATCH", args.nUBatch);
     const draftMax =
       args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 16);
     // Mobile chat turns are short. The fork's DFlash draft-simple path clears
@@ -2248,7 +2250,8 @@ class AospLlamaAdapter implements AospLoader {
           readEnvInt("ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_CHARS", 2048),
         ),
         outputTail:
-          output.length > 512 && process.env.ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_TAIL !== "0"
+          output.length > 512 &&
+          process.env.ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_TAIL !== "0"
             ? output.slice(-512)
             : undefined,
       });

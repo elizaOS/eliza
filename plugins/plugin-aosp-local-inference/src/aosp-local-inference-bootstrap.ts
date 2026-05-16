@@ -54,8 +54,8 @@ import {
   type TranscriptionParams,
 } from "@elizaos/core";
 import {
-  type KokoroEngineDiscoveryResult,
   findKokoroVoice,
+  type KokoroEngineDiscoveryResult,
   KokoroOnnxRuntime,
   type KokoroRuntime,
   KokoroTtsBackend,
@@ -136,7 +136,7 @@ function writeAospActiveModelState(
     mkdirSync(path.dirname(activeStatePath), { recursive: true });
     writeFileSync(
       activeStatePath,
-      JSON.stringify({ version: 1, ...state }, null, 2) + "\n",
+      `${JSON.stringify({ version: 1, ...state }, null, 2)}\n`,
       "utf8",
     );
   } catch (err) {
@@ -755,7 +755,7 @@ function findModelUnderDirectory(
     }
     for (const name of names) {
       const abs = path.join(dir, name);
-      let stats;
+      let stats: ReturnType<typeof statSync>;
       try {
         stats = statSync(abs);
       } catch {
@@ -1273,12 +1273,17 @@ type AospKokoroOrtLoader = NonNullable<
 
 const DEFAULT_AOSP_KOKORO_ORT_MODULE = "onnxruntime-web/wasm";
 
-function wrapKokoroWebOrtModule(module: unknown): Awaited<ReturnType<AospKokoroOrtLoader>> {
+function wrapKokoroWebOrtModule(
+  module: unknown,
+): Awaited<ReturnType<AospKokoroOrtLoader>> {
   const candidate = module as {
     default?: unknown;
     env?: { wasm?: { numThreads?: number } };
     InferenceSession?: {
-      create: (model: unknown, opts?: Record<string, unknown>) => Promise<unknown>;
+      create: (
+        model: unknown,
+        opts?: Record<string, unknown>,
+      ) => Promise<unknown>;
     };
     Tensor?: unknown;
   };
@@ -1292,15 +1297,13 @@ function wrapKokoroWebOrtModule(module: unknown): Awaited<ReturnType<AospKokoroO
       "[aosp-local-inference] Android Kokoro ORT module is missing InferenceSession/Tensor exports",
     );
   }
+  const baseInferenceSession = ort.InferenceSession;
   if (ort.env?.wasm) {
     // Pixel stock-APK Bun currently crashes ONNX Runtime Web's worker path
     // when numThreads > 1 ("Error in worker"). Keep the production default
     // single-threaded, while preserving an explicit env knob for future AOSP
     // / runtime experiments.
-    const wasmThreads = readPositiveIntEnv(
-      "ELIZA_KOKORO_WASM_THREADS",
-      1,
-    );
+    const wasmThreads = readPositiveIntEnv("ELIZA_KOKORO_WASM_THREADS", 1);
     ort.env.wasm.numThreads = wasmThreads;
     logger.info(
       `[aosp-local-inference] Kokoro ORT wasm numThreads=${wasmThreads}`,
@@ -1309,10 +1312,12 @@ function wrapKokoroWebOrtModule(module: unknown): Awaited<ReturnType<AospKokoroO
   return {
     ...ort,
     InferenceSession: {
-      ...ort.InferenceSession,
+      ...baseInferenceSession,
       create: async (modelPath: string, opts?: Record<string, unknown>) => {
-        const model = existsSync(modelPath) ? readFileSync(modelPath) : modelPath;
-        return ort.InferenceSession!.create(model, {
+        const model = existsSync(modelPath)
+          ? readFileSync(modelPath)
+          : modelPath;
+        return baseInferenceSession.create(model, {
           ...opts,
           executionProviders: ["wasm"],
         });
@@ -1597,7 +1602,9 @@ function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
     buffer.toString("ascii", 0, 4) !== "RIFF" ||
     buffer.toString("ascii", 8, 12) !== "WAVE"
   ) {
-    throw new Error("[aosp-local-inference] TRANSCRIPTION expected PCM WAV bytes");
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION expected PCM WAV bytes",
+    );
   }
 
   let offset = 12;
@@ -1622,7 +1629,9 @@ function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
   }
 
   if (channels <= 0 || sampleRate <= 0 || dataOffset < 0) {
-    throw new Error("[aosp-local-inference] TRANSCRIPTION WAV missing fmt/data");
+    throw new Error(
+      "[aosp-local-inference] TRANSCRIPTION WAV missing fmt/data",
+    );
   }
   if (bitsPerSample !== 16) {
     throw new Error(
@@ -1724,7 +1733,9 @@ async function transcribeWithAospElizaInference(
   assertNotAborted(signal);
   const libPath = resolveElizaInferenceLibPath();
   if (!existsSync(libPath)) {
-    throw new Error(`[aosp-local-inference] libelizainference.so missing at ${libPath}`);
+    throw new Error(
+      `[aosp-local-inference] libelizainference.so missing at ${libPath}`,
+    );
   }
   const bundleRoot = resolveAssignedVoiceBundleRoot();
   const ffi = await loadAospVoiceFfi();
@@ -1733,7 +1744,10 @@ async function transcribeWithAospElizaInference(
   const lib = ffi.dlopen(libPath, {
     eliza_inference_create: { args: [T.cstring, T.ptr], returns: T.ptr },
     eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-    eliza_inference_mmap_acquire: { args: [T.ptr, T.cstring, T.ptr], returns: T.i32 },
+    eliza_inference_mmap_acquire: {
+      args: [T.ptr, T.cstring, T.ptr],
+      returns: T.i32,
+    },
     eliza_inference_asr_transcribe: {
       args: [T.ptr, T.ptr, usize, T.i32, T.ptr, usize, T.ptr],
       returns: T.i32,
@@ -1899,7 +1913,7 @@ export async function ensureAospLocalInferenceHandlers(
           ? makeKokoroTextToSpeechHandler()
           : modelType === ModelType.TRANSCRIPTION
             ? makeAospTranscriptionHandler()
-          : makeGenerateHandler(loader, lifecycle);
+            : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
       handler,

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-
+import { resolveAospGenerateTokenBudget } from "../src/aosp-llama-adapter";
 import {
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
@@ -11,7 +11,6 @@ import {
   isAospLocalEmbeddingEnabled,
   readAssignedBundledModels,
 } from "../src/aosp-local-inference-bootstrap";
-import { resolveAospGenerateTokenBudget } from "../src/aosp-llama-adapter";
 
 function withEnv<T>(
   overrides: Record<string, string | undefined>,
@@ -232,7 +231,10 @@ describe("readAssignedBundledModels", () => {
     mkdirSync(embeddingDir, { recursive: true });
     const smallModel = path.join(smallBundle, "eliza-1-0_8b-32k.gguf");
     const defaultModel = path.join(defaultBundle, "eliza-1-2b-32k.gguf");
-    const embeddingModel = path.join(embeddingDir, "bge-small-en-v1.5-q4_k_m.gguf");
+    const embeddingModel = path.join(
+      embeddingDir,
+      "bge-small-en-v1.5-q4_k_m.gguf",
+    );
     writeFileSync(smallModel, "small");
     writeFileSync(defaultModel, "default");
     writeFileSync(embeddingModel, "embed");
@@ -297,8 +299,7 @@ describe("readAssignedBundledModels", () => {
         models: [
           {
             id: "eliza-1-2b",
-            path:
-              "/home/nubs/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
+            path: "/home/nubs/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
             source: "eliza-download",
           },
         ],

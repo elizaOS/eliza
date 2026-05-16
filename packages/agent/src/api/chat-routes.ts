@@ -194,9 +194,7 @@ function hasAndroidLocalDirectChatBlockingContent(
       ? (content.metadata as Record<string, unknown>)
       : {};
   return Boolean(
-    metadata.benchmark ||
-      metadata.localInference ||
-      metadata.contextRouting,
+    metadata.benchmark || metadata.localInference || metadata.contextRouting,
   );
 }
 
@@ -339,8 +337,9 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     truncated.lastIndexOf("!"),
     truncated.lastIndexOf("?"),
   );
-  return (sentenceEnd >= 80 ? truncated.slice(0, sentenceEnd + 1) : truncated)
-    .trim();
+  return (
+    sentenceEnd >= 80 ? truncated.slice(0, sentenceEnd + 1) : truncated
+  ).trim();
 }
 
 async function maybeGenerateAndroidLocalDirectChatResponse(args: {
@@ -2143,7 +2142,9 @@ export async function generateChatResponse(
         () => createChatGenerationTimeoutError(generationTimeoutMs),
         () => {
           generationTimedOut = true;
-          abortGeneration(createChatGenerationTimeoutError(generationTimeoutMs));
+          abortGeneration(
+            createChatGenerationTimeoutError(generationTimeoutMs),
+          );
         },
       ),
     );
@@ -2381,7 +2382,9 @@ Title:`;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (isAbortLikeError(err)) {
-      logger.info(`[eliza] Conversation title generation cancelled: ${message}`);
+      logger.info(
+        `[eliza] Conversation title generation cancelled: ${message}`,
+      );
     } else {
       logger.warn(`[eliza] Failed to generate conversation title: ${message}`);
     }

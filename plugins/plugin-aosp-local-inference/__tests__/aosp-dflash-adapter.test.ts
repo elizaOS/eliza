@@ -53,9 +53,9 @@ describe("legacy DFlash server-spawn gate", () => {
         ELIZA_DFLASH_SERVER_SPAWN: undefined,
       },
       () => {
-        expect(shouldRouteViaDflash({ draftModelPath: "/tmp/draft.gguf" })).toBe(
-          false,
-        );
+        expect(
+          shouldRouteViaDflash({ draftModelPath: "/tmp/draft.gguf" }),
+        ).toBe(false);
         expect(buildDflashAdapter("arm64", mkExecutableServerDir())).toBeNull();
       },
     );
@@ -68,10 +68,12 @@ describe("legacy DFlash server-spawn gate", () => {
         ELIZA_DFLASH_SERVER_SPAWN: "1",
       },
       () => {
-        expect(shouldRouteViaDflash({ draftModelPath: "/tmp/draft.gguf" })).toBe(
-          true,
-        );
-        expect(buildDflashAdapter("arm64", mkExecutableServerDir())).not.toBeNull();
+        expect(
+          shouldRouteViaDflash({ draftModelPath: "/tmp/draft.gguf" }),
+        ).toBe(true);
+        expect(
+          buildDflashAdapter("arm64", mkExecutableServerDir()),
+        ).not.toBeNull();
       },
     );
   });
