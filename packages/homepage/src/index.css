@@ -4,7 +4,6 @@
 @import "@fontsource/poppins/600.css";
 @import "@fontsource/poppins/700.css";
 @import "@fontsource/poppins/800.css";
-@import "@fontsource-variable/open-sans";
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
@@ -12,9 +11,13 @@
 @source "../../ui/src";
 
 :root {
-  --font-open-sans: "Poppins", "Open Sans", Arial, system-ui, sans-serif;
-  --font-sans: var(--font-open-sans);
-  --font-mono: var(--font-open-sans);
+  --font-sans: "Poppins";
+  --font-mono: "Poppins";
+  --brand-blue: #0b35f1;
+  --brand-orange: #ff5800;
+  --brand-white: #ffffff;
+  --brand-black: #000000;
+  --brand-gray: #d1d0d4;
 }
 
 body {

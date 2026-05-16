@@ -18,8 +18,6 @@ export default function LandingHeader() {
   const { pathname } = useLocation();
   const [scrolled, setScrolled] = useState(false);
 
-  // Only the landing route has a light hero. Everything else uses the
-  // black brand background, so default to a solid black bar with white text.
   const isLanding = pathname === "/";
 
   useEffect(() => {
@@ -34,15 +32,9 @@ export default function LandingHeader() {
   };
 
   const transparent = isLanding && !scrolled;
-  const logoSrc = isLanding
-    ? "/brand/logos/elizacloud_logotext_black.svg"
-    : "/brand/logos/elizacloud_logotext_white.svg";
-  const ghostLink = isLanding
-    ? "text-black hover:bg-black/10"
-    : "text-white hover:bg-white/10";
-  const ctaCls = isLanding
-    ? "bg-black text-white hover:bg-black/85"
-    : "bg-white text-black hover:bg-white/85";
+  const logoSrc = "/brand/logos/elizacloud_logotext.svg";
+  const ghostLink = "text-white hover:bg-white/10";
+  const ctaCls = "bg-white text-black hover:bg-white/85";
 
   return (
     <motion.header
@@ -55,7 +47,7 @@ export default function LandingHeader() {
           <img
             src={logoSrc}
             alt="eliza cloud"
-            className="h-7 w-auto"
+            className="h-7 w-auto sm:h-8"
             draggable={false}
           />
         </Link>
@@ -76,7 +68,7 @@ export default function LandingHeader() {
                 disabled={!ready}
                 className={`rounded-none text-base ${ghostLink}`}
               >
-                <Link to="/login">Log in</Link>
+                <Link to="/login">Sign in</Link>
               </Button>
               <Button
                 size="sm"
@@ -84,7 +76,7 @@ export default function LandingHeader() {
                 disabled={!ready}
                 className={`rounded-none ${ctaCls}`}
               >
-                Open Cloud
+                Run in Cloud
               </Button>
             </>
           )}

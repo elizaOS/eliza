@@ -1,4 +1,3 @@
-import { CloudSkyBackground } from "@elizaos/ui";
 import {
   ArrowRight,
   Box,
@@ -172,11 +171,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <CloudSkyBackground
-      className="min-h-screen bg-[#f7f5ef]"
-      contentClassName="min-h-screen"
-      intensity="soft"
-    >
+    <div className="theme-cloud min-h-screen bg-black font-poppins text-white">
       <Helmet>
         <title>ElizaOS Hardware Checkout | Eliza Cloud</title>
         <meta
@@ -185,15 +180,15 @@ export default function CheckoutPage() {
         />
       </Helmet>
       <LandingHeader />
-      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-6xl gap-6 px-5 pb-16 pt-28 text-[#111] md:grid-cols-[0.95fr_1.05fr] md:px-8">
+      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-6xl gap-6 px-5 pb-16 pt-28 text-white md:grid-cols-[0.95fr_1.05fr] md:px-8">
         <section className="self-start">
           <p className="text-xs font-bold uppercase text-[#FF5800]">
             ElizaOS hardware
           </p>
-          <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-[0.98] tracking-normal text-[#111] md:text-6xl">
+          <h1 className="mt-3 max-w-xl text-4xl font-semibold leading-[0.98] tracking-normal text-white md:text-6xl">
             Buy with your Eliza Cloud account.
           </h1>
-          <p className="mt-5 max-w-lg text-base leading-7 text-[#5f5a53] md:text-lg">
+          <p className="mt-5 max-w-lg text-base leading-7 text-white/70 md:text-lg">
             Checkout, order status, device linking, and installer downloads all
             stay in one account.
           </p>
@@ -205,7 +200,7 @@ export default function CheckoutPage() {
               "Beta self-install remains available today",
             ].map((item) => (
               <div
-                className="flex items-center gap-2 rounded-lg border border-black/10 bg-white/70 px-4 py-3 text-sm font-medium"
+                className="flex items-center gap-2 border border-white/14 bg-black px-4 py-3 text-sm font-medium text-white"
                 key={item}
               >
                 <Check aria-hidden="true" className="size-4 text-[#FF5800]" />
@@ -215,7 +210,7 @@ export default function CheckoutPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-black/10 bg-white/86 p-4 shadow-[0_24px_80px_rgba(3,28,58,0.16)] backdrop-blur-xl md:p-5">
+        <section className="border border-white/14 bg-black p-4 text-white md:p-5">
           <div className="grid gap-4 md:grid-cols-[0.9fr_1fr]">
             <HardwareVisual product={product} />
             <div className="flex flex-col justify-between gap-5">
@@ -319,6 +314,6 @@ export default function CheckoutPage() {
           </section>
         ) : null}
       </main>
-    </CloudSkyBackground>
+    </div>
   );
 }

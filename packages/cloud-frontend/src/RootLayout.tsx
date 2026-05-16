@@ -22,7 +22,7 @@ const baseUrl =
  *  - sonner Toaster
  *  - nprogress-driven navigation bar
  *
- * The layout sets the Open Sans CSS variables on the body via the className.
+ * The layout sets the Poppins font class on the body.
  * The vendored font import lives in `globals.css`.
  */
 export default function RootLayout() {
@@ -49,7 +49,10 @@ export default function RootLayout() {
         <meta property="og:site_name" content="Eliza Cloud" />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="en_US" />
-        <meta property="og:image" content="/cloudlogo.png" />
+        <meta
+          property="og:image"
+          content="/brand/logos/logo_white_blackbg.svg"
+        />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content="Eliza Cloud" />
@@ -59,10 +62,11 @@ export default function RootLayout() {
           name="twitter:description"
           content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
         />
-        <meta name="twitter:image" content="/cloudlogo.png" />
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="shortcut icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" href="/favicon.ico" />
+        <meta name="twitter:image" content="/brand/logos/logo_white_blackbg.svg" />
+        <link rel="icon" type="image/svg+xml" href="/brand/favicons/favicon.svg" />
+        <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
+        <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
+        <link rel="apple-touch-icon" href="/brand/favicons/apple-touch-icon.png" />
         <link rel="manifest" href="/site.webmanifest" />
       </Helmet>
       {/*
