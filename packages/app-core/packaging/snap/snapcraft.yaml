@@ -128,6 +128,7 @@ parts:
           "plugin-agent-skills",
           "plugin-anthropic",
           "plugin-browser",
+          "plugin-capacitor-bridge",
           "plugin-elizacloud",
           "plugin-elizamaker",
           "plugin-imessage",

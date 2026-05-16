@@ -277,7 +277,11 @@ else
 fi
 
 log "Building shared/cloud package artifacts"
-for package_dir in packages/shared packages/cloud-sdk packages/cloud-routing; do
+# @elizaos/cloud-routing was made a no-op stub in the cloud-migration squash
+# (no src/, just package.json + gitignored dist/, build script just asserts
+# `test -f dist/index.js`). No runtime code imports it any more — see
+# bedbaf2226 in turbo.json — so skip it here too.
+for package_dir in packages/shared packages/cloud-sdk; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
     pushd "$package_dir" >/dev/null
@@ -286,10 +290,9 @@ for package_dir in packages/shared packages/cloud-sdk packages/cloud-routing; do
   fi
 done
 mkdir -p node_modules/@elizaos
-rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk
 ln -s ../../packages/shared node_modules/@elizaos/shared
 ln -s ../../packages/cloud-sdk node_modules/@elizaos/cloud-sdk
-ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
 
 log "Building Capacitor plugins"
 "$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs
