@@ -167,7 +167,8 @@ function getRuntimeModeFallbackSnapshot(): {
     deploymentRuntime,
     isRemoteController: deploymentRuntime === "remote",
     remoteApiBaseConfigured: Boolean(
-      deploymentRuntime === "remote" && deploymentTarget.remoteApiBase?.trim(),
+      deploymentRuntime === "remote" &&
+        deploymentTarget?.remoteApiBase?.trim(),
     ),
   };
 }

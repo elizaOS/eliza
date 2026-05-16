@@ -6531,6 +6531,19 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "PROXY_STATUS",
+			description:
+				"Report current Anthropic proxy status: mode (inline/shared/off), bound URL, ",
+			parameters: [],
+			descriptionCompressed:
+				"anthropic-proxy-status: mode, url, listening, requests, token expiry, upstream check",
+			similes: [
+				"ANTHROPIC_PROXY_STATUS",
+				"CLAUDE_MAX_PROXY_STATUS",
+				"CHECK_PROXY",
+			],
+		},
+		{
 			name: "REMOTE_DESKTOP",
 			description:
 				"Remote-desktop sessions; owner connects to this machine from another device. ",
