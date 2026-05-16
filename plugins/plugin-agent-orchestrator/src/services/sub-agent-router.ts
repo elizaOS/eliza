@@ -538,6 +538,9 @@ export class SubAgentRouter extends Service {
             ...(origin.parentMessageId
               ? { originMessageId: origin.parentMessageId }
               : {}),
+            ...(origin.parentConnectorMessageId
+              ? { originConnectorMessageId: origin.parentConnectorMessageId }
+              : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
           },
         },
@@ -611,12 +614,20 @@ export class SubAgentRouter extends Service {
       const text =
         typeof response?.text === "string" ? response.text.trim() : "";
       if (!text) return [];
+      const originReplyTarget =
+        origin.parentConnectorMessageId ?? origin.parentMessageId;
+      const threadedResponse = originReplyTarget
+        ? {
+            ...response,
+            inReplyTo: originReplyTarget,
+          }
+        : response;
       const delivered = await sendToTarget(
         {
           source,
           roomId: target.roomId,
         },
-        response,
+        threadedResponse,
       ).catch((err) => {
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
@@ -780,7 +791,6 @@ function shouldInject(event: SessionEventName): boolean {
 }
 
 function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
-  if (!text.includes("[tool output:")) return text;
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const retained: string[] = [];
   let insideToolOutput = false;
@@ -800,8 +810,22 @@ function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
     .filter((line) => !line.trim().startsWith("[sub-agent:"))
     .join("\n")
     .trim();
-  if (meaningful.length > 0) return text;
   const header = retained.find((line) => line.trim().startsWith("[sub-agent:"));
+  if (meaningful.length > 0) {
+    const meaningfulLines = meaningful
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (
+      verifiedUrls.length > 0 &&
+      meaningfulLines.length > 0 &&
+      meaningfulLines.every((line) => /^https?:\/\/\S+$/.test(line)) &&
+      meaningfulLines.join("\n") !== verifiedUrls.join("\n")
+    ) {
+      return [header, ...verifiedUrls].filter(Boolean).join("\n");
+    }
+    return text;
+  }
   return [header, ...verifiedUrls].filter(Boolean).join("\n");
 }
 
@@ -813,6 +837,7 @@ interface OriginInfo {
   worldId?: UUID;
   userId?: UUID;
   parentMessageId?: UUID;
+  parentConnectorMessageId?: string;
   label: string;
   source?: string;
 }
@@ -823,12 +848,16 @@ interface SwarmRoomTarget {
 }
 
 function swarmRoomsMetadata(
-  rooms: SwarmRoomTarget[],
+  rooms: readonly SwarmRoomTarget[],
 ): Array<Record<string, string | string[]>> {
   return rooms.map((room) => ({
     roomId: room.roomId,
-    roles: room.roles,
+    roles: [...room.roles],
   }));
+}
+
+function pickPlainString(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
 function readOrigin(session: SessionInfo): OriginInfo | null {
@@ -851,6 +880,7 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
     worldId: pickUuid(meta.worldId),
     userId: pickUuid(meta.userId),
     parentMessageId: pickUuid(meta.messageId),
+    parentConnectorMessageId: pickPlainString(meta.originConnectorMessageId),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
@@ -1061,6 +1091,13 @@ function routeRelativePathForUrl(
   url: string,
   mappings: readonly RouteUrlMapping[],
 ): string | undefined {
+  return routeMatchForUrl(url, mappings)?.relativePath;
+}
+
+function routeMatchForUrl(
+  url: string,
+  mappings: readonly RouteUrlMapping[],
+): { mapping: RouteUrlMapping; relativePath: string } | undefined {
   for (const mapping of mappings) {
     let parsed: URL;
     let prefix: URL;
@@ -1076,7 +1113,7 @@ function routeRelativePathForUrl(
       : `${prefix.pathname}/`;
     if (!parsed.pathname.startsWith(prefixPath)) continue;
     const relativePath = parsed.pathname.slice(prefixPath.length);
-    if (relativePath) return relativePath;
+    if (relativePath) return { mapping, relativePath };
   }
   return undefined;
 }
@@ -1320,7 +1357,13 @@ async function annotateUnverifiedUrls(
   log?.(
     `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
   );
-  if (dead.length === 0) return { text, dead, verifiedUrls: urls };
+  if (dead.length === 0) {
+    return {
+      text,
+      dead,
+      verifiedUrls: canonicalUserFacingVerifiedUrls(urls, routeVerification),
+    };
+  }
   const lines = dead
     .map((d) =>
       d.via
@@ -1331,10 +1374,64 @@ async function annotateUnverifiedUrls(
   return {
     text: `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`,
     dead,
-    verifiedUrls: urls.filter(
-      (url) => !dead.some((entry) => entry.url === url || entry.via === url),
+    verifiedUrls: canonicalUserFacingVerifiedUrls(
+      urls.filter(
+        (url) => !dead.some((entry) => entry.url === url || entry.via === url),
+      ),
+      routeVerification,
     ),
   };
+}
+
+function canonicalUserFacingVerifiedUrls(
+  urls: string[],
+  routeVerification: RouteUrlVerification | undefined,
+): string[] {
+  if (!routeVerification) return urls;
+  const canonical = new Set<string>();
+  for (const url of urls) {
+    const pageAliases = routePageAliasesForUrl(url, routeVerification);
+    if (pageAliases.length > 0) {
+      for (const alias of pageAliases) canonical.add(alias);
+    } else {
+      canonical.add(url);
+    }
+  }
+  return [...canonical];
+}
+
+function routePageAliasesForUrl(
+  url: string,
+  routeVerification: RouteUrlVerification,
+): string[] {
+  const match = routeMatchForUrl(url, routeVerification.mappings);
+  if (!match) return [];
+  const relativePath = decodeURIComponent(match.relativePath);
+  const directory = pageDirectoryForRelativePath(relativePath);
+  if (!directory) return [];
+  const representative = urlForRouteMapping(match.mapping, directory);
+  if (!representative) return [];
+  if (verifyMappedLocalUrl(representative, routeVerification)) return [];
+  return routeVerification.mappings
+    .map((mapping) => urlForRouteMapping(mapping, directory))
+    .filter((alias): alias is string => Boolean(alias));
+}
+
+function pageDirectoryForRelativePath(
+  relativePath: string,
+): string | undefined {
+  const normalized = relativePath.replace(/^\/+/, "");
+  if (!normalized) return undefined;
+  if (normalized.endsWith("/")) return normalized;
+  const base = path.posix.basename(normalized);
+  if (!base) return undefined;
+  if (!base.includes(".")) return `${normalized}/`;
+  const dir = path.posix.dirname(normalized);
+  if (!dir || dir === ".") return undefined;
+  if (base.toLowerCase() === "index.html") return `${dir}/`;
+  const ext = path.posix.extname(base).toLowerCase();
+  if (!ext || ext === ".html") return undefined;
+  return `${dir}/`;
 }
 
 function verifyMappedLocalUrl(

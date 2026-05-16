@@ -216,7 +216,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
+    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
   descriptionCompressed: "Run shell commands; clear/view shell history.",
   parameters: [
     {
@@ -231,7 +231,7 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
+        "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
       required: false,
       schema: { type: "string" },
     },
@@ -269,11 +269,11 @@ export const shellAction: Action = {
     _state?: State,
     options?: unknown,
     callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const explicitSubaction = readStringParam(options, "action");
-		const inferredSubaction = inferShellSubactionFromText(
-			message.content?.text ?? "",
-		);
+  ): Promise<ActionResult> => {
+    const explicitSubaction = readStringParam(options, "action");
+    const inferredSubaction = inferShellSubactionFromText(
+      message.content?.text ?? "",
+    );
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)
       : (inferredSubaction ?? "run");

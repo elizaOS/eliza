@@ -3,7 +3,6 @@ import type {
 	Memory,
 	ModelTypeName,
 	Provider,
-	State,
 } from "../../../types/index.ts";
 import { getModelFallbackChain, ModelType } from "../../../types/model.ts";
 
@@ -122,6 +121,29 @@ function optionalLine(label: string, value: string | undefined): string | null {
 	return value ? `- ${label}: ${value}` : null;
 }
 
+function endpointHost(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	try {
+		return new URL(value).host;
+	} catch {
+		return undefined;
+	}
+}
+
+function providerEndpointHost(
+	runtime: IAgentRuntime,
+	provider: string | undefined,
+): string | undefined {
+	if (!provider) return undefined;
+	const prefix = provider
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "");
+	if (!prefix) return undefined;
+	return endpointHost(readSetting(runtime, `${prefix}_BASE_URL`));
+}
+
 function tokenize(text: string): Set<string> {
 	return new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
 }
@@ -184,7 +206,7 @@ export const runtimeModelContextProvider: Provider = {
 		"opencode",
 	],
 
-	get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+	get: async (runtime: IAgentRuntime, message: Memory) => {
 		if (!shouldRenderRuntimeModelContext(message)) {
 			return { text: "", values: {}, data: {} };
 		}
@@ -210,6 +232,9 @@ export const runtimeModelContextProvider: Provider = {
 		const opencodeModel =
 			readSetting(runtime, "ELIZA_OPENCODE_MODEL_POWERFUL") ??
 			readSetting(runtime, "ELIZA_OPENCODE_MODEL_FAST");
+		const opencodeEndpointHost = endpointHost(
+			readSetting(runtime, "ELIZA_OPENCODE_BASE_URL"),
+		);
 
 		const responseHandlerProvider = registeredProviderFor(
 			runtimeWithModels,
@@ -219,18 +244,35 @@ export const runtimeModelContextProvider: Provider = {
 			runtimeWithModels,
 			ModelType.ACTION_PLANNER,
 		);
+		const responseHandlerEndpointHost = providerEndpointHost(
+			runtime,
+			responseHandlerProvider,
+		);
+		const actionPlannerEndpointHost = providerEndpointHost(
+			runtime,
+			actionPlannerProvider,
+		);
 
 		const lines = [
 			"# Runtime Model Context",
-			"Use these runtime facts when asked what model, provider, or coding agent is currently in use. Do not infer a different model from training data or old chat history.",
+			"Use these runtime facts when asked what model, provider, or coding agent is currently in use. Provider adapter names may identify compatibility layers; endpoint hosts identify the configured backend when present. Do not infer a different model or provider from training data or old chat history.",
 			`- Response handler model: ${responseHandlerModel}`,
 			`- Action planner model: ${actionPlannerModel}`,
 			`- Large text model: ${textLargeModel}`,
 			`- Small text model: ${textSmallModel}`,
-			optionalLine("Response handler provider", responseHandlerProvider),
-			optionalLine("Action planner provider", actionPlannerProvider),
+			optionalLine(
+				"Response handler provider adapter",
+				responseHandlerProvider,
+			),
+			optionalLine(
+				"Response handler endpoint host",
+				responseHandlerEndpointHost,
+			),
+			optionalLine("Action planner provider adapter", actionPlannerProvider),
+			optionalLine("Action planner endpoint host", actionPlannerEndpointHost),
 			optionalLine("Default coding sub-agent", defaultAgentType),
 			optionalLine("OpenCode model", opencodeModel),
+			optionalLine("OpenCode endpoint host", opencodeEndpointHost),
 		].filter((line): line is string => line !== null);
 
 		return {
@@ -242,6 +284,7 @@ export const runtimeModelContextProvider: Provider = {
 				textSmallModel,
 				defaultAgentType,
 				opencodeModel,
+				opencodeEndpointHost,
 			},
 			data: {
 				responseHandlerModel,
@@ -249,9 +292,12 @@ export const runtimeModelContextProvider: Provider = {
 				textLargeModel,
 				textSmallModel,
 				responseHandlerProvider,
+				responseHandlerEndpointHost,
 				actionPlannerProvider,
+				actionPlannerEndpointHost,
 				defaultAgentType,
 				opencodeModel,
+				opencodeEndpointHost,
 			},
 		};
 	},
