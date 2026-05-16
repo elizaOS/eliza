@@ -27,7 +27,6 @@ import {
   saveVoicePrefixDone,
 } from "../../state/persistence";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
-import { resolveAppAssetUrl } from "../../utils";
 import { BootstrapStep } from "../onboarding/BootstrapStep";
 import { OnboardingRoot } from "../onboarding/states";
 import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
@@ -310,12 +309,6 @@ export function StartupShell() {
       data-startup-phase={phase}
       className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
     >
-      <img
-        src={resolveAppAssetUrl("splash-bg.png")}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-      />
       <div
         className="relative z-10 flex flex-col items-center gap-5 px-6 text-center w-full"
         style={{ maxWidth: 360 }}
