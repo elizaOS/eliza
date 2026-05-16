@@ -1536,6 +1536,9 @@ export async function generateChatResponse(
               await maybeAugmentChatMessageWithDocuments(
                 runtime,
                 walletAugmentedMessage,
+                {
+                  signal: generationAbortController.signal,
+                },
               );
             result = await runtime.messageService?.handleMessage(
               runtime,

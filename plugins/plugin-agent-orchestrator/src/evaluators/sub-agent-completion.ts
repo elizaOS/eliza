@@ -195,7 +195,7 @@ function verifiedUrlsFromMetadata(message: Memory): string[] {
   return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
 }
 
-function isSuccessfulSubAgentCompletion(message: Memory): boolean {
+function isSubAgentTaskComplete(message: Memory): boolean {
   const content = contentRecord(message);
   const metadata = metadataRecord(message);
   if (!content || !metadata) return false;
@@ -203,7 +203,33 @@ function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   if (source !== SUB_AGENT_SOURCE && metadata.subAgent !== true) return false;
   if (textOf(metadata.subAgentEvent) !== "task_complete") return false;
   if (metadata.subAgentCapExceeded === true) return false;
-  return !completionHasVerificationFailure(textOf(content.text));
+  return true;
+}
+
+function isSuccessfulSubAgentCompletion(message: Memory): boolean {
+  if (!isSubAgentTaskComplete(message)) return false;
+  return !completionHasVerificationFailure(
+    textOf(contentRecord(message)?.text),
+  );
+}
+
+function verificationFailureReply(text: string): string {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const verificationIndex = lines.findIndex((line) =>
+    line.startsWith("[verification:"),
+  );
+  const detailLines =
+    verificationIndex >= 0
+      ? lines
+          .slice(verificationIndex + 1)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .slice(0, 8)
+      : [];
+  return [
+    "The sub-agent reported completion, but verification failed, so I am not treating the app as live yet.",
+    ...(detailLines.length > 0 ? ["Unreachable URL(s):", ...detailLines] : []),
+  ].join("\n");
 }
 
 function replyPatchFromCompletion(
@@ -257,10 +283,12 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     "Routes verified sub-agent task_complete messages to direct replies unless Stage 1 requested a concrete follow-up action.",
   priority: 10,
   shouldRun: ({ message, messageHandler }) => {
-    if (!isSuccessfulSubAgentCompletion(message)) return false;
+    if (!isSubAgentTaskComplete(message)) return false;
     if (messageHandler.processMessage === "STOP") return false;
-    const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
+    if (completionHasVerificationFailure(completionText)) return true;
+    if (!isSuccessfulSubAgentCompletion(message)) return false;
+    const currentReply = textOf(messageHandler.plan.reply);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
@@ -277,6 +305,19 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
+    if (completionHasVerificationFailure(completionText)) {
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: verificationFailureReply(completionText),
+        debug: [
+          "sub-agent completion failed verification; surfacing failure without re-dispatch",
+        ],
+      };
+    }
     const reply = replyPatchFromCompletion(
       currentReply,
       completionText,

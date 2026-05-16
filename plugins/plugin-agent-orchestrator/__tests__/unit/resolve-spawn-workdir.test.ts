@@ -1,4 +1,5 @@
 import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveSpawnWorkdir } from "../../src/services/task-agent-routing.js";
 
@@ -16,13 +17,15 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
   });
 
   it("ignores a typo'd explicit workdir that does not exist, falling back to cwd", () => {
-    // gpt-oss routinely emits paths like `/home/milody/...` — non-existent and
-    // un-creatable (mkdir under `/home` needs root). The guess must be dropped.
+    const missing = path.join(
+      os.tmpdir(),
+      "planner-workdir-typo-does-not-exist",
+    );
     const result = resolveSpawnWorkdir(
       undefined,
       NO_ROUTE_TASK,
       NO_ROUTE_TASK,
-      "/home/milody/projects/agent-home",
+      missing,
     );
     expect(result).toEqual({ workdir: process.cwd() });
   });
@@ -33,15 +36,18 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
     ).toEqual({ workdir: process.cwd() });
   });
 
-  it("honours lockWorkdir even when the locked path does not exist", () => {
-    // `lockWorkdir` is the scaffold-aware opt-out (e.g. APP_CREATE dispatching
-    // into a freshly-scaffolded dir the caller is about to create) — it must
-    // bypass the existence check.
-    const locked = "/home/milody/projects/agent-home";
+  it("ignores a locked workdir that does not exist", () => {
+    // `lockWorkdir` is only trusted after a scaffold-aware caller has created
+    // the exact target directory. Planner-guessed typo paths must still fall
+    // through to route/default resolution.
+    const locked = path.join(
+      os.tmpdir(),
+      "planner-workdir-typo-does-not-exist",
+    );
     expect(
       resolveSpawnWorkdir(undefined, NO_ROUTE_TASK, NO_ROUTE_TASK, locked, {
         lockWorkdir: true,
       }),
-    ).toEqual({ workdir: locked });
+    ).toEqual({ workdir: process.cwd() });
   });
 });

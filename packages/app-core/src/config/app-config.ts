@@ -6,5 +6,6 @@ export {
   type AppDesktopConfig,
   type AppPackagingConfig,
   type AppWebConfig,
+  DEFAULT_APP_CONFIG,
   resolveAppBranding,
 } from "@elizaos/shared";

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="ai.elizaos.system.bridge">
+
+    <!--
+      Signature/system-level permissions referenced by SystemBridge.kt.
+      Declaring them here does NOT grant them. The AOSP fork must list
+      `ai.elizaos.system.bridge` in
+      `vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml`
+      and ship the bridge APK in `/system/priv-app/` signed with the
+      platform key for the privileged ones to actually take effect.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_BASIC_PHONE_STATE" />
+    <uses-permission android:name="android.permission.REBOOT" />
+    <uses-permission android:name="android.permission.DEVICE_POWER" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+
+    <application android:label="elizaOS System Bridge">
+        <!--
+          IMPL: registered service that owns the JS bridge object and is
+          started by the SystemUI replacement APK. Real implementation will
+          extend android.app.Service and host the BridgeTransport object
+          bound to the WebView via addJavascriptInterface.
+        -->
+        <service
+            android:name=".SystemBridgeService"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -1,3 +1,5 @@
+import type { OnboardingHardwareAdvice } from "../services/local-inference/hardware";
+
 export type OnboardingStateId =
   | "hello"
   | "setup"
@@ -31,6 +33,8 @@ export interface OnboardingFlowState {
   cloudConversationPushed?: boolean;
   localDownloadStarted?: boolean;
   localDownloadReady?: boolean;
+  hardwareAdvice?: OnboardingHardwareAdvice | null;
+  blocker?: string;
   language: string;
   name?: string;
   location?: string;
@@ -52,6 +56,10 @@ export type OnboardingEvent =
   | { type: "PAIR_REMOTE" }
   | { type: "START_LOCAL_DOWNLOAD" }
   | { type: "LOCAL_DOWNLOAD_READY" }
+  | { type: "LOCAL_DOWNLOAD_INTERRUPTED" }
+  | { type: "LOCAL_HARDWARE_ADVICE"; advice: OnboardingHardwareAdvice }
+  | { type: "CLOUD_FALLBACK_REQUESTED" }
+  | { type: "ONBOARDING_END_BLOCKED"; reason: string }
   | { type: "JUMP"; to: OnboardingStateId }
   | { type: "SET_LANGUAGE"; language: string }
   | { type: "SET_NAME"; name: string }
@@ -227,6 +235,33 @@ export function reduce(
           ? "tutorial-subscriptions"
           : "tutorial-views",
       );
+    case "LOCAL_HARDWARE_ADVICE":
+      return { ...state, hardwareAdvice: event.advice };
+    case "LOCAL_DOWNLOAD_INTERRUPTED":
+      return {
+        ...state,
+        localDownloadReady: false,
+        localDownloadStarted: false,
+      };
+    case "CLOUD_FALLBACK_REQUESTED": {
+      if (
+        state.current.startsWith("device-") ||
+        state.current === "local-download"
+      ) {
+        return pushHistory(
+          {
+            ...state,
+            runtime: "cloud",
+            cloudProvisioningStarted: true,
+          },
+          "cloud-login",
+        );
+      }
+      return state;
+    }
+    case "ONBOARDING_END_BLOCKED":
+      if (state.current !== "tutorial-permissions") return state;
+      return { ...state, blocker: event.reason };
     default:
       return state;
   }

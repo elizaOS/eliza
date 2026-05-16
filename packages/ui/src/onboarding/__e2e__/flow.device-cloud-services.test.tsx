@@ -55,11 +55,11 @@ describe("onboarding flow — on-device + cloud services", () => {
     clickButton(/tap to begin/i);
 
     await expectState("setup");
-    clickButton(/^on-device$/i);
+    clickButton(/^on-device/i);
     clickButton(/^continue$/i);
 
     await expectState("device-security");
-    clickButton(/^sandbox$/i);
+    clickButton(/^sandbox/i);
     clickButton(/^continue$/i);
 
     await expectState("device-mode");

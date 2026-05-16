@@ -67,8 +67,10 @@ export class ResponseHandlerFieldRegistry {
 		return removed;
 	}
 
-	list(): ReadonlyArray<ResponseHandlerFieldEvaluator> {
-		return this.sortedEvaluators();
+	list(
+		options: ResponseHandlerFieldSelectionOptions = {},
+	): ReadonlyArray<ResponseHandlerFieldEvaluator> {
+		return this.sortedEvaluators(options);
 	}
 
 	size(): number {
@@ -96,9 +98,12 @@ export class ResponseHandlerFieldRegistry {
 	 * `../actions/to-tool.ts` mirrors the builtin shape for older callers that
 	 * build the tool without passing an explicit registry-composed schema.
 	 */
-	composeSchema(): JSONSchema {
-		if (this.cachedSchema) return this.cachedSchema;
-		const sorted = this.sortedEvaluators();
+	composeSchema(
+		options: ResponseHandlerFieldSelectionOptions = {},
+	): JSONSchema {
+		const selectionKey = fieldSelectionKey(options);
+		if (!selectionKey && this.cachedSchema) return this.cachedSchema;
+		const sorted = this.sortedEvaluators(options);
 		const properties: Record<string, JSONSchema> = {};
 		const required: string[] = [];
 		for (const evaluator of sorted) {
@@ -111,6 +116,7 @@ export class ResponseHandlerFieldRegistry {
 			properties,
 			required,
 		};
+		if (selectionKey) return schema;
 		this.cachedSchema = schema;
 		this.cachedSchemaSignature = JSON.stringify(schema);
 		return schema;
@@ -121,7 +127,11 @@ export class ResponseHandlerFieldRegistry {
 	 * detect "schema changed → invalidate prompt cache" situations. Stable
 	 * across boots as long as the registered set is the same.
 	 */
-	composeSchemaSignature(): string {
+	composeSchemaSignature(
+		options: ResponseHandlerFieldSelectionOptions = {},
+	): string {
+		const selectionKey = fieldSelectionKey(options);
+		if (selectionKey) return JSON.stringify(this.composeSchema(options));
 		if (!this.cachedSchemaSignature) this.composeSchema();
 		return this.cachedSchemaSignature ?? "";
 	}
@@ -140,12 +150,15 @@ export class ResponseHandlerFieldRegistry {
 	 * Returns both the rendered string and the list of active field names
 	 * (for the trace).
 	 */
-	async composePromptSlices(ctx: ResponseHandlerFieldContext): Promise<{
+	async composePromptSlices(
+		ctx: ResponseHandlerFieldContext,
+		options: ResponseHandlerFieldSelectionOptions = {},
+	): Promise<{
 		rendered: string;
 		activeFieldNames: string[];
 		skippedFieldNames: string[];
 	}> {
-		const sorted = this.sortedEvaluators();
+		const sorted = this.sortedEvaluators(options);
 		const sections: string[] = [];
 		const active: string[] = [];
 		const skipped: string[] = [];
@@ -336,14 +349,39 @@ export class ResponseHandlerFieldRegistry {
 	// Internal helpers
 	// -------------------------------------------------------------------------
 
-	private sortedEvaluators(): ReadonlyArray<ResponseHandlerFieldEvaluator> {
-		return [...this.evaluators.values()].sort((a, b) => {
-			const pa = a.priority ?? 100;
-			const pb = b.priority ?? 100;
-			if (pa !== pb) return pa - pb;
-			return a.name.localeCompare(b.name);
-		});
+	private sortedEvaluators(
+		options: ResponseHandlerFieldSelectionOptions = {},
+	): ReadonlyArray<ResponseHandlerFieldEvaluator> {
+		const includeNames = normalizeFieldSelection(options);
+		return [...this.evaluators.values()]
+			.filter((evaluator) => !includeNames || includeNames.has(evaluator.name))
+			.sort((a, b) => {
+				const pa = a.priority ?? 100;
+				const pb = b.priority ?? 100;
+				if (pa !== pb) return pa - pb;
+				return a.name.localeCompare(b.name);
+			});
 	}
+}
+
+export interface ResponseHandlerFieldSelectionOptions {
+	includeFieldNames?: ReadonlySet<string> | readonly string[];
+}
+
+function normalizeFieldSelection(
+	options: ResponseHandlerFieldSelectionOptions,
+): ReadonlySet<string> | null {
+	const include = options.includeFieldNames;
+	if (!include) return null;
+	const names = include instanceof Set ? [...include] : [...include];
+	return new Set(names.map((name) => String(name)).filter(Boolean));
+}
+
+function fieldSelectionKey(
+	options: ResponseHandlerFieldSelectionOptions,
+): string {
+	const include = normalizeFieldSelection(options);
+	return include ? [...include].sort().join("\0") : "";
 }
 
 /**

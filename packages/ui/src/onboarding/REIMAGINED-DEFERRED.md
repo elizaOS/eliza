@@ -94,3 +94,78 @@ The new `packages/os/linux/desktop-shell/` and `packages/os/android/system-ui/` 
 - Vendor-partition placement and SELinux policy.
 
 Both are multi-engineer-month efforts. Treat the scaffolds as the JS surface a future OS integrator will mount.
+
+## OS native bridges progress (this session)
+
+Scaffolded the JS↔native IPC contracts that sit between the React
+surfaces and the (still-to-be-written) privileged native hosts:
+
+- `packages/os/linux/desktop-shell/src/bridge/` — typed
+  `BridgeTransport`, `LINUX_BRIDGE_CHANNELS`, `LinuxBridgeClient`.
+  `LinuxSystemProvider` now consults `getBridgeTransport()` and
+  subscribes to wifi/audio/battery/time channels when the host has
+  installed `window.__elizaLinuxBridge`; otherwise it still falls back
+  to `MockSystemProvider`.
+- `packages/os/linux/desktop-shell/native/` — Rust crate skeleton
+  (`eliza-linux-desktop-bridge`) with `lib.rs` modules per channel
+  group. Every native function is `unimplemented!()` with an `// IMPL:`
+  marker pointing at the upstream crate (`zbus`, `pipewire-rs`, etc.).
+  `main.rs` exits with `not implemented`.
+- `packages/os/android/system-ui/src/bridge/` — typed
+  `BridgeTransport`, `ANDROID_BRIDGE_CHANNELS`, `AndroidBridgeClient`
+  covering wifi / cell / audio / battery / time / connectivity /
+  lockscreen / power / settings.
+  `AndroidSystemProvider` mirrors the Linux wiring.
+- `packages/os/android/system-ui/native/` — Android library skeleton
+  (`ai.elizaos.system.bridge`) with `SystemBridge.kt` stubs and a
+  manifest that declares (but cannot grant) the signature permissions.
+
+Still needs native engineering:
+- Real D-Bus / PipeWire / login1 wiring on Linux + a Polkit policy.
+- Real AudioManager / ConnectivityManager / TelephonyManager /
+  PowerManager wiring on Android + AOSP fork APK build slot, vendor
+  privapp allowlist, SELinux policy, signing under the platform key.
+- Lock-screen / keyguard replacement on Android; replaceable
+  compositor / layer-shell surface on Linux.
+
+## Workstreams I + J — scaffolded (2026-05-15)
+
+The TypeScript-only surfaces for I and J have landed under `packages/app-core/src/services/ambient-audio/` and `packages/app-core/src/services/voice-profiles/`. What is implemented is real (types, consent state machine, ring-buffer data structure, pure response-gate, in-memory voice profile store with cosine search, owner-confidence scoring, SHA-256 challenge service, naive nickname evaluator) and tested. What is **still missing** for either workstream to be shipping:
+
+### I — Ambient audio, replay buffer, response gating
+
+- Native audio capture per platform (CoreAudio / WASAPI / PipeWire / AVAudioSession / AudioRecord) and 16 kHz mono Int16 normalization. The `AmbientAudioService` interface is the seam; only `MockAmbientAudioService` exists today.
+- Real VAD (Silero v5 or webrtcvad) driving `ResponseGateSignals.vadActive`.
+- Real wake-intent classifier (openWakeWord or a distilled model) driving `wakeIntent`.
+- Streaming ASR (Whisper-small int8 desktop, llama.cpp GGUF mobile) populating `TranscribedSegment` with real confidences.
+- Retention policy enforcement and a heard-but-did-not-respond debug surface wired into the desktop bar.
+- ANT-style consent UI integration with Workstream F so the service refuses to `start()` without an explicit `ConsentRecord`.
+- See `packages/app-core/src/services/ambient-audio/IMPL_NOTES.md`.
+
+### J — Owner facts, nicknames, diarization, voice profiles
+
+- pyannote-audio v3 diarization replacing `MOCK_DIARIZATION_PIPELINE`.
+- SpeechBrain ECAPA-TDNN (`spkrec-ecapa-voxceleb`) embeddings, L2-normalized, full vector in durable storage (not just `vectorPreview`).
+- Durable `VoiceProfileStore` backed by PGlite (desktop) / SQLite (mobile) with an append-only audit log for upsert/delete.
+- Argon2id-salted challenge answers in `InMemoryChallengeService`'s production replacement, plus per-id rate-limiting on `verify`.
+- Real nickname evaluator (LLM- or classifier-driven) replacing `NAIVE_NICKNAME_EVALUATOR`, with dedupe against the owner-facts memory store.
+- Owner-facts memory schema and evaluator (the Workstream-J extension in `packages/app-core/src/evaluators/` and `packages/app-core/src/memory/`) — those directories do not yet exist and are the next thing to land for this stream.
+- Threat model write-up covering voice cloning, replay, embedding leakage, household-vs-owner escalation, drift, and cross-device sync key handling.
+- See `packages/app-core/src/services/voice-profiles/IMPL_NOTES.md`.
+
+Both directories explicitly avoid the active swarm workspaces (kokoro, emotion, turn-intl, diarizer-*, voice-classifier, wakeword, vad). They wire in once those interfaces stabilize.
+
+### C — Cloud setup-agent session and container handoff
+
+Scaffolds landed in this pass:
+- `packages/cloud-sdk/src/cloud-setup-session/` — `types.ts`, `policy.ts` (`DEFAULT_SETUP_POLICY`, `isActionAllowed`), `service-interface.ts` (`CloudSetupSessionService`), `mock-service.ts` (`MockCloudSetupSessionService`), `index.ts`.
+- `packages/ui/src/api/cloud-setup.ts` — `useCloudSetupSession` hook with mock-by-default service injection, `getStatus` polling, and one-shot `onHandoff` emission.
+- `StateCloudChat` now opts into the live hook when a `service` prop is supplied; falls back to the static string otherwise.
+
+Still missing:
+- Real tenant-isolated agent runtime in cloud — not a mock. Per-tenant sandbox, model routing, action allow-listing on the server side.
+- Real OAuth → tenant resolution flow that turns an Eliza Cloud login into a `TenantId` for `startSession`.
+- Real container provisioner under `cloud/services/operator` (or equivalent) that drives the `provisioning → ready → failed` lifecycle the hook polls today against the mock.
+- Real memory + transcript transfer: the container side of `finalizeHandoff` — receiving the `ContainerHandoffEnvelope`, materializing memories with the supplied `memoryIds`, and rehydrating the chat surface without a visible cut.
+- Server-side enforcement of `SetupActionPolicy.allowList` and `budgets` (token-per-turn, tool-calls-per-turn, max-turns). The policy ships as a contract only; nothing enforces it until the cloud runtime exists.
+- HTTP client implementation of `CloudSetupSessionService` for `useCloudSetupSession({ service })`. Today only the in-memory mock satisfies the contract.
