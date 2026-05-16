@@ -255,6 +255,7 @@ function Header({ solid = false }: { solid?: boolean }) {
       </a>
       <nav className="site-nav" aria-label="Product switcher">
         <a href="/#download">Download</a>
+        <a href="/#downloads">All downloads</a>
         <a href="/#hardware">Hardware</a>
       </nav>
     </header>
