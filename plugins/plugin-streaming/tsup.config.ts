@@ -4,7 +4,7 @@ export default {
   ...sharedConfig,
   external: [
     "@elizaos/cloud-shared",
-    "@elizaos/cloud-shared/routing",
+    "@elizaos/cloud-routing",
     "@elizaos/core",
     "@elizaos/shared",
     "@napi-rs/keyring",
