@@ -169,13 +169,47 @@ function readFirstEnv(...keys) {
 function validateRuntimeEnv(env) {
   const required = ["DATABASE_URL", "NEON_API_KEY", "CONTAINERS_SSH_KEY"];
   const missing = required.filter((key) => !env[key]?.trim());
-  if (missing.length === 0 || values["allow-incomplete-env"]) return;
+  if (missing.length === 0 || values["allow-incomplete-env"]) {
+    warnMissingUpstash(env);
+    return;
+  }
 
   fail(
     [
       `Runtime env file is missing required key(s): ${missing.join(", ")}`,
       "The worker may start without these, but agent provisioning will fail.",
       "Pass --allow-incomplete-env only if you are intentionally bootstrapping in stages.",
+    ].join("\n"),
+  );
+}
+
+/**
+ * Sandbox containers boot a `SandboxRegistry` (packages/app-core) that
+ * publishes `agent:<id>:server` / `server:<name>:url` keys to the shared
+ * Upstash so gateway-discord and gateway-webhook can route inbound
+ * platform messages to them. The orchestrator reads `KV_REST_API_URL` and
+ * `KV_REST_API_TOKEN` from its own env and injects them into every new
+ * sandbox via docker-sandbox-provider. Without these on the orchestrator
+ * host the registration step silently no-ops, so Discord / WhatsApp /
+ * Telegram / SMS traffic to those sandboxes is black-holed. Warn loud —
+ * we deploy either way (some hosts intentionally skip platform routing)
+ * but the operator must opt-in to that silent path.
+ */
+function warnMissingUpstash(env) {
+  const missing = ["KV_REST_API_URL", "KV_REST_API_TOKEN"].filter(
+    (key) => !env[key]?.trim(),
+  );
+  if (missing.length === 0) return;
+  process.stderr.write(
+    [
+      "",
+      "[bootstrap-provisioning-worker-host] WARNING:",
+      `  Runtime env is missing ${missing.join(" + ")}.`,
+      "  Sandboxes provisioned by this worker will not self-register in Upstash,",
+      "  so the shared gateways cannot route inbound Discord / WhatsApp /",
+      "  Telegram / SMS messages to them.",
+      "  Add both keys to the env file and re-run if platform routing is needed.",
+      "",
     ].join("\n"),
   );
 }
