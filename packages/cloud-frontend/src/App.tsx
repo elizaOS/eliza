@@ -52,7 +52,6 @@ function preloadAll(...preloads: PreloadFn[]): PreloadFn {
 }
 
 const Home = lazyWithPreload(() => import("./pages/page"));
-const CheckoutPage = lazyWithPreload(() => import("./pages/checkout/page"));
 const TermsOfService = lazyWithPreload(
   () => import("./pages/terms-of-service/page"),
 );
@@ -194,7 +193,6 @@ const AdminRedemptionsPage = lazyWithPreload(
  * because `/dashboard/apps/:id` also matches `/dashboard/apps/create`.
  */
 const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
-  { path: "/checkout", preload: CheckoutPage.preload },
   {
     path: "/dashboard/admin/infrastructure",
     preload: preloadAll(
@@ -534,6 +532,20 @@ function DashboardRedirect({ to }: { to: string }) {
   return <Navigate to={`${to}${location.search}`} replace />;
 }
 
+function ElizaOsCheckoutRedirect() {
+  const location = useLocation();
+
+  useEffect(() => {
+    window.location.replace(`https://elizaos.ai/checkout${location.search}`);
+  }, [location.search]);
+
+  return (
+    <main className="min-h-screen bg-black p-8 font-poppins text-white">
+      Redirecting to elizaOS checkout.
+    </main>
+  );
+}
+
 function App() {
   useRenderGuard("CloudFrontendApp");
   useLinkChunkPreload();
@@ -541,10 +553,7 @@ function App() {
     <Routes>
       <Route element={<RootLayout />}>
         <Route index element={<SuspenseRoute component={Home} />} />
-        <Route
-          path="checkout"
-          element={<SuspenseRoute component={CheckoutPage} />}
-        />
+        <Route path="checkout" element={<ElizaOsCheckoutRedirect />} />
         <Route
           path="terms-of-service"
           element={<SuspenseRoute component={TermsOfService} />}

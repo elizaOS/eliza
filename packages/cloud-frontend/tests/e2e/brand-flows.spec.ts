@@ -27,10 +27,19 @@ test.describe("brand flows", () => {
     await expect(page.locator("h1")).toContainText(/sign in/i);
   });
 
-  test("checkout route renders preorder UI", async ({ page }) => {
+  test("checkout route redirects preorder UI to elizaOS", async ({ page }) => {
+    await page.route("https://elizaos.ai/**", (route) =>
+      route.fulfill({
+        body: "<html><body>elizaOS checkout</body></html>",
+        contentType: "text/html",
+      }),
+    );
+
     await page.goto("/checkout?collection=elizaos-hardware");
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.getByText(/preorder/i).first()).toBeVisible();
+    await expect(page).toHaveURL(
+      "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    );
+    await expect(page.getByText("elizaOS checkout")).toBeVisible();
   });
 
   test("dashboard agents route renders without redirecting to login", async ({

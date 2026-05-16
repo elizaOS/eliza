@@ -100,7 +100,6 @@ const publicRoutes = [
   "/terms-of-service",
   "/privacy-policy",
   "/docs",
-  "/checkout?collection=elizaos-hardware",
   "/payment/pay_req_1",
   "/payment/app-charge/app_1/charge_1",
   "/payment/success?payment_request_id=pay_req_1",

@@ -101,7 +101,11 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
   const isAvailable = artifact.downloadUrl !== null;
 
   return (
-    <div className="artifact-card" data-kind={artifact.kind} data-available={isAvailable}>
+    <div
+      className="artifact-card"
+      data-kind={artifact.kind}
+      data-available={isAvailable}
+    >
       <div className="artifact-card-head">
         <div className="artifact-badges">
           <span className="artifact-badge artifact-badge-kind">
@@ -128,9 +132,7 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
       )}
 
       <div className="artifact-card-foot">
-        {sizeLabel && (
-          <span className="artifact-size">{sizeLabel}</span>
-        )}
+        {sizeLabel && <span className="artifact-size">{sizeLabel}</span>}
 
         <div className="artifact-actions">
           {artifact.checksumUrl && (
