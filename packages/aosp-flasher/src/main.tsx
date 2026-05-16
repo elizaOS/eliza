@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { AdbFlasherBackend } from "./backend/adb-backend";
+import { HttpAospFlasherBackend } from "./backend/http-backend";
 import { FlasherApp } from "./components/FlasherApp";
 import "./styles.css";
 
@@ -10,7 +10,9 @@ if (!root) {
   throw new Error("Missing #root element");
 }
 
-const backend = new AdbFlasherBackend();
+// In Electrobun the renderer can't spawn processes directly.
+// We always use the HTTP backend which proxies through the Bun server.
+const backend = new HttpAospFlasherBackend("/api");
 
 createRoot(root).render(
   <StrictMode>

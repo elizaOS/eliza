@@ -97,11 +97,11 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-vi.mock("../build-variant", () => ({
+vi.mock("@elizaos/ui/build-variant", () => ({
   isStoreBuild: () => buildVariantState.isStore,
 }));
 
-vi.mock("./ios-local-agent-kernel", () => kernelMock);
+vi.mock("@elizaos/ui/api/ios-local-agent-kernel", () => kernelMock);
 
 describe("iOS local agent transport bridge", () => {
   beforeEach(() => {

@@ -96,6 +96,15 @@ function makeMockBackend(): AospFlasherBackend {
         ],
       };
     }),
+    getDeviceSpecs: vi.fn().mockResolvedValue({
+      storageAvailableBytes: 23 * 1024 ** 3,
+      storageTotalBytes: 115 * 1024 ** 3,
+      androidVersion: "16",
+      abi: "arm64-v8a",
+      bootloaderLocked: true,
+      supportedByElizaOs: true,
+      supportedBuildCodename: "caiman",
+    }),
     executeFlashPlan: vi.fn().mockResolvedValue(undefined),
   };
 }

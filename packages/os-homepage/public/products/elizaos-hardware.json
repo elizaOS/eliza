@@ -43,7 +43,7 @@
     {
       "sku": "elizaos-box",
       "name": "ElizaOS Box",
-      "image": "/assets/billboard_concept.jpg",
+      "image": "/assets/elizaos-box-concept.avif",
       "checkoutUrl": "https://elizaos.ai/checkout?sku=elizaos-box"
     },
     {

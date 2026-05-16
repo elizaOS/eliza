@@ -5,12 +5,24 @@ import type {
   AospBuild,
   AospFlasherBackend,
   ConnectedDevice,
+  DeviceSpecs,
   FlashPlan,
   FlashRequest,
   FlashStep,
   FlashStepId,
   FlashStepStatus,
 } from "./types";
+
+// ---------------------------------------------------------------------------
+// Supported elizaOS device codenames
+// ---------------------------------------------------------------------------
+
+const ELIZAOS_SUPPORTED_CODENAMES = new Set([
+  "caiman", // Pixel 9 Pro XL
+  "komodo", // Pixel 9 Pro
+  "tokay",  // Pixel 9
+  "bluejay", // Pixel 6a
+]);
 
 // ---------------------------------------------------------------------------
 // ADB/fastboot tool discovery
@@ -134,6 +146,18 @@ export const MOCK_BUILDS: AospBuild[] = [
       "https://downloads.elizaos.ai/android/beta/2026.05.16/manifest.json",
     sizeBytes: 8 * 1024 ** 3,
   },
+  {
+    id: "elizaos-android-beta-bluejay-2026.05.16",
+    label: "elizaOS Android Beta — Pixel 6a",
+    version: "2.0.0-beta.2-os.20260516",
+    channel: "beta",
+    targetDevice: "bluejay",
+    architecture: "arm64-v8a",
+    publishedAt: "2026-05-16T00:00:00.000Z",
+    manifestUrl:
+      "https://downloads.elizaos.ai/android/beta/2026.05.16/bluejay/manifest.json",
+    sizeBytes: 8 * 1024 ** 3,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -231,6 +255,56 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       default:
         return "offline";
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // getDeviceSpecs
+  // -------------------------------------------------------------------------
+
+  async getDeviceSpecs(serial: string): Promise<DeviceSpecs> {
+    const getprop = (prop: string): string => {
+      const r = run(this.adb, ["-s", serial, "shell", "getprop", prop]);
+      return r.status === 0 ? r.stdout.trim() : "";
+    };
+
+    const androidVersion = getprop("ro.build.version.release");
+    const abi = getprop("ro.product.cpu.abi");
+    const codename = getprop("ro.product.device");
+
+    // ro.boot.flash.locked: "1" = locked, "0" = unlocked, "" = unknown
+    const flashLocked = getprop("ro.boot.flash.locked");
+    let bootloaderLocked: boolean | null = null;
+    if (flashLocked === "1") bootloaderLocked = true;
+    else if (flashLocked === "0") bootloaderLocked = false;
+
+    // Storage: df /data — parse "Filesystem  1K-blocks  Used  Available  Use%  Mounted on"
+    let storageAvailableBytes = 0;
+    let storageTotalBytes = 0;
+    const dfResult = run(this.adb, ["-s", serial, "shell", "df", "/data"]);
+    if (dfResult.status === 0) {
+      const lines = dfResult.stdout.trim().split("\n");
+      const dataLine = lines.find((l) => l.includes("/data"));
+      if (dataLine) {
+        const cols = dataLine.trim().split(/\s+/);
+        // cols: [filesystem, 1K-blocks, used, available, use%, mount]
+        const blocks1k = parseInt(cols[1] ?? "0", 10);
+        const available1k = parseInt(cols[3] ?? "0", 10);
+        if (!Number.isNaN(blocks1k)) storageTotalBytes = blocks1k * 1024;
+        if (!Number.isNaN(available1k)) storageAvailableBytes = available1k * 1024;
+      }
+    }
+
+    const supportedByElizaOs = codename !== "" && ELIZAOS_SUPPORTED_CODENAMES.has(codename);
+
+    return {
+      storageAvailableBytes,
+      storageTotalBytes,
+      androidVersion,
+      abi,
+      bootloaderLocked,
+      supportedByElizaOs,
+      supportedBuildCodename: supportedByElizaOs ? codename : null,
+    };
   }
 
   // -------------------------------------------------------------------------

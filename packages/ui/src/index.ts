@@ -35,8 +35,7 @@ export type {
 } from "./api";
 export * from "./api";
 export * from "./api/android-native-agent-transport";
-// === Phase 3A: barrel-promoted from api/ios-local-agent-transport ===
-export * from "./api/ios-local-agent-transport";
+// === Phase 5C: ./api/ios-local-agent-transport moved to @elizaos/app-core/api/ios-local-agent-transport ===
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
@@ -182,6 +181,12 @@ export {
 } from "./components/pages/vector-browser-utils";
 export * from "./components/primitives/index";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
+export { VoicePill } from "./components/voice-pill";
+export type {
+  VoicePillMessage,
+  VoicePillProps,
+  VoicePillVoiceState,
+} from "./components/voice-pill";
 export { Switch } from "./components/ui/switch";
 export {
   Tabs,

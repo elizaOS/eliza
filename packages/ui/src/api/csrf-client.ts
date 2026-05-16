@@ -18,7 +18,7 @@ import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-t
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
+import { iosInProcessAgentTransportForUrl } from "@elizaos/app-core/api/ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { fetchAgentTransport } from "./transport";

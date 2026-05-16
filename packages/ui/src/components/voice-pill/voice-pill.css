@@ -1,68 +1,67 @@
 /*
  * VoicePill — glassmorphic mic/chat pill ported from the onboarding
  * prototype at packages/docs/prototypes/onboarding-reimagined/index.html.
- * Classes were renamed from `.scene-*` / `.pill-hit` to `.voice-pill-*`.
+ * Classes are prefixed `eliza-voice-pill-*` to avoid collisions with any
+ * other CSS the host page may load.
  */
 
-.voice-pill-anchor {
+/* Outer wrapper — generous invisible hit zone around the tiny pill */
+.eliza-voice-pill-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 24px;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  line-height: 0;
+  font-family: inherit;
+}
+
+.eliza-voice-pill-hit:focus {
+  outline: none;
+}
+
+.eliza-voice-pill-hit:focus-visible .eliza-voice-pill {
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    0 4px 18px rgba(0, 0, 0, 0.26);
+}
+
+/* Anchor: positions the floating chat panel above the pill */
+.eliza-voice-pill-anchor {
   position: relative;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   gap: 9px;
-  font-family: var(
-    --font-brand,
-    "Poppins",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Arial,
-    sans-serif
-  );
 }
 
-.voice-pill-greeting {
-  font-family: var(
-    --font-brand,
-    "Poppins",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Arial,
-    sans-serif
-  );
-  font-weight: 500;
-  font-size: 22px;
-  color: #ffffff;
-  opacity: 0.86;
-  text-shadow: 0 2px 14px rgba(4, 49, 93, 0.45);
-  letter-spacing: 0.2px;
-}
-
-/* Transparent container — bubbles carry the glass */
-.voice-pill-chat {
+/* Expanded chat panel — transparent shell; bubbles carry the glass */
+.eliza-voice-pill-chat {
   width: 280px;
   background: transparent;
   overflow: visible;
   transition:
-    opacity 0.26s ease,
-    transform 0.26s ease;
+    opacity 0.26s cubic-bezier(0.34, 1.4, 0.64, 1),
+    transform 0.26s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
-.voice-pill-chat.voice-pill-chat-hidden {
+.eliza-voice-pill-chat.is-collapsed {
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
 }
 
-.voice-pill-messages {
+.eliza-voice-pill-messages {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 0 0 8px;
 }
 
-.voice-pill-msg {
+.eliza-voice-pill-msg {
   max-width: 88%;
   padding: 5px 9px;
   border-radius: 12px;
@@ -72,7 +71,7 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
-.voice-pill-msg.agent {
+.eliza-voice-pill-msg.is-agent {
   align-self: flex-start;
   background: rgba(255, 255, 255, 0.13);
   color: rgba(255, 255, 255, 0.78);
@@ -81,7 +80,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
-.voice-pill-msg.user {
+.eliza-voice-pill-msg.is-user {
   align-self: flex-end;
   background: rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.96);
@@ -90,7 +89,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-.voice-pill-composer {
+.eliza-voice-pill-composer {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -98,7 +97,7 @@
   border-top: none;
 }
 
-.voice-pill-input {
+.eliza-voice-pill-input {
   flex: 1;
   min-width: 0;
   height: 28px;
@@ -117,11 +116,11 @@
   font-family: inherit;
 }
 
-.voice-pill-input::placeholder {
+.eliza-voice-pill-input::placeholder {
   color: rgba(255, 255, 255, 0.36);
 }
 
-.voice-pill-ctrl-btn {
+.eliza-voice-pill-ctrl-btn {
   display: grid;
   place-items: center;
   width: 28px;
@@ -138,9 +137,10 @@
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.18s ease;
+  font-family: inherit;
 }
 
-.voice-pill-ctrl-btn svg {
+.eliza-voice-pill-ctrl-btn svg {
   display: block;
   width: 12px;
   height: 12px;
@@ -151,7 +151,15 @@
   stroke-linejoin: round;
 }
 
-.voice-pill-send-btn {
+.eliza-voice-pill-ctrl-btn.is-recording {
+  background: rgba(255, 50, 38, 0.72);
+  box-shadow:
+    0 0 12px rgba(255, 50, 38, 0.48),
+    inset 0 0 0 0.5px rgba(255, 100, 80, 0.5);
+  color: #fff;
+}
+
+.eliza-voice-pill-send-btn {
   display: grid;
   place-items: center;
   width: 28px;
@@ -167,9 +175,10 @@
   border: 0;
   cursor: pointer;
   flex-shrink: 0;
+  font-family: inherit;
 }
 
-.voice-pill-send-btn svg {
+.eliza-voice-pill-send-btn svg {
   display: block;
   width: 12px;
   height: 12px;
@@ -180,39 +189,8 @@
   stroke-linejoin: round;
 }
 
-.voice-pill-ctrl-btn.recording-on {
-  background: rgba(255, 50, 38, 0.72);
-  box-shadow:
-    0 0 12px rgba(255, 50, 38, 0.48),
-    inset 0 0 0 0.5px rgba(255, 100, 80, 0.5);
-  color: #fff;
-}
-
-/* Invisible click target around the pill — generous hit zone */
-.voice-pill-hit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px 24px;
-  margin: 0;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  line-height: 0;
-}
-
-.voice-pill-hit:focus {
-  outline: none;
-}
-
-.voice-pill-hit:focus-visible > .voice-pill {
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.85),
-    0 4px 18px rgba(0, 0, 0, 0.26);
-}
-
-/* The collapsed pill — tiny glass sliver */
-.voice-pill {
+/* The pill itself — tiny glass sliver, always visible */
+.eliza-voice-pill {
   width: 56px;
   height: 8px;
   border-radius: 999px;
@@ -224,18 +202,19 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.62),
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.42);
   border: 0;
-  cursor: pointer;
   padding: 0;
   display: inline-block;
   transition:
     box-shadow 0.32s ease,
     background 0.22s ease,
-    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
+    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+    filter 0.22s ease;
 }
 
-.voice-pill-hit:hover > .voice-pill {
+.eliza-voice-pill-hit:hover .eliza-voice-pill {
   transform: scale(1.18);
   background: rgba(255, 255, 255, 0.52);
+  filter: brightness(1.08);
   box-shadow:
     0 6px 22px rgba(0, 0, 0, 0.3),
     0 0 16px rgba(255, 255, 255, 0.26),
@@ -243,17 +222,31 @@
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.58);
 }
 
-.voice-pill.recording {
+.eliza-voice-pill.is-recording {
   background: rgba(255, 70, 50, 0.55);
   box-shadow:
     0 0 0 1.5px rgba(255, 50, 38, 0.78),
     0 0 24px rgba(255, 50, 38, 0.54),
     0 3px 14px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  animation: voice-pill-rec-pulse 1.8s ease-in-out infinite;
+  animation: eliza-voice-pill-rec-pulse 1.8s ease-in-out infinite;
 }
 
-@keyframes voice-pill-rec-pulse {
+/* Subtle voice-state animation hints (not load-bearing — drives a soft glow). */
+.eliza-voice-pill.is-listening {
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow:
+    0 3px 14px rgba(0, 0, 0, 0.22),
+    0 0 14px rgba(255, 255, 255, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.5);
+}
+
+.eliza-voice-pill.is-speaking {
+  animation: eliza-voice-pill-speak-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes eliza-voice-pill-rec-pulse {
   0%,
   100% {
     box-shadow:
@@ -271,14 +264,25 @@
   }
 }
 
+@keyframes eliza-voice-pill-speak-pulse {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(1.08);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .voice-pill.recording {
+  .eliza-voice-pill.is-recording,
+  .eliza-voice-pill.is-speaking {
     animation: none;
   }
-  .voice-pill,
-  .voice-pill-chat,
-  .voice-pill-ctrl-btn,
-  .voice-pill-send-btn {
+  .eliza-voice-pill,
+  .eliza-voice-pill-chat,
+  .eliza-voice-pill-ctrl-btn,
+  .eliza-voice-pill-send-btn {
     transition: none;
   }
 }

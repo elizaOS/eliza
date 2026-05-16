@@ -1,16 +1,16 @@
 import { Capacitor } from "@capacitor/core";
-import { isStoreBuild } from "../build-variant";
+import { isStoreBuild } from "@elizaos/ui/build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
-} from "../onboarding/mobile-runtime-mode";
+} from "@elizaos/ui/onboarding/mobile-runtime-mode";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
-} from "./ios-local-agent-kernel";
-import { createIttpAgentTransport } from "./ittp-agent-transport";
-import type { AgentRequestTransport } from "./transport";
+} from "@elizaos/ui/api/ios-local-agent-kernel";
+import { createIttpAgentTransport } from "@elizaos/ui/api/ittp-agent-transport";
+import type { AgentRequestTransport } from "@elizaos/ui/api/transport";
 
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;

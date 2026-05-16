@@ -1,6 +1,6 @@
 /* Pull in the full @elizaos/ui stylesheet bundle so theme tokens, Tailwind
  * utilities, and brand fonts are all available. */
-@import "@elizaos/ui/styles";
+@import "@elizaos/ui/styles/styles.css";
 
 /* Local layout for the gallery shell. */
 html,

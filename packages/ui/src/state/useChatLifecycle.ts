@@ -14,7 +14,7 @@ import type {
   OnboardingOptions,
 } from "../api";
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
-import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
+import { isIosInProcessLocalAgentBase } from "@elizaos/app-core/api/ios-local-agent-transport";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
