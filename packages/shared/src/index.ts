@@ -9,6 +9,7 @@ export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
+export * from "./onboarding-presets.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 export * from "./cli/parse-duration.js";
@@ -239,8 +240,6 @@ export {
 export * from "./spoken-text.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
-export * from "./test-support/process-helpers.js";
-export * from "./test-support/test-helpers.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";
 export * from "./utils/asset-url.js";

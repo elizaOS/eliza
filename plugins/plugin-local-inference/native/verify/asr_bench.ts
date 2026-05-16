@@ -24,7 +24,9 @@
  * path from a fixed phrase list. Pass `--prompt` / `--prompt-file` to accept
  * explicit text labels, or `--generate-prompts N` to ask the local text model
  * for short labels before TTS. Pass `--wav-dir <dir>` to bench against
- * external WAV+`.txt` pairs instead; only that mode is real recorded WER.
+ * external WAV+`.txt` pairs instead. A WAV directory is publish-gate ASR WER
+ * only when it is explicitly marked `--real-recorded`; generated TTS audio
+ * remains loopback evidence even when it is loaded from disk.
  *
  * Usage:
  *   bun packages/inference/verify/asr_bench.ts \
@@ -36,7 +38,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 
 import { loadElizaInferenceFfi } from "../../src/services/voice/ffi-bindings";
 
@@ -91,12 +94,15 @@ const outPath = arg(
 );
 const evalOut = arg("--eval-out", "");
 const wavDir = arg("--wav-dir", "");
+const wavDirProvenance = arg("--wav-dir-provenance", "");
+const realRecordedWavDir = flag("--real-recorded");
 const promptFile = arg("--prompt-file", "");
 const generatedPromptCount = Number(arg("--generate-prompts", "0"));
 const binDir = arg("--bin-dir", path.dirname(dylib));
 const saveAudioDir = arg("--save-audio-dir", "");
 const gateThreshold = Number(arg("--gate", "0.1"));
 const verbose = flag("--verbose");
+type PromptServerProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 /* ------------------------- text normalization --------------------------- */
 
@@ -133,6 +139,114 @@ function wordEditDistance(ref: string[], hyp: string[]): number {
     [prev, cur] = [cur, prev];
   }
   return prev[m];
+}
+
+type LabelledSetSource = "tts_loopback_self_labelled" | "external_wav_txt";
+type AudioProvenance = "generated_tts" | "external_unknown" | "real_recorded";
+
+export interface LabelledSetEvidence {
+  source: LabelledSetSource;
+  measurementClass:
+    | "self_labelled_tts_asr_loopback"
+    | "external_generated_tts_loopback"
+    | "external_labelled_unknown_provenance"
+    | "real_recorded_labelled_speech";
+  provenance: AudioProvenance;
+  realRecordedWer: boolean;
+  publishGateEligible: boolean;
+  caveat: string | null;
+}
+
+export function normalizeWavDirProvenance(input: string): AudioProvenance {
+  const normalized = input.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  if (
+    !normalized ||
+    normalized === "external" ||
+    normalized === "unknown" ||
+    normalized === "external_unknown"
+  ) {
+    return "external_unknown";
+  }
+  if (
+    normalized === "real" ||
+    normalized === "recorded" ||
+    normalized === "real_recorded" ||
+    normalized === "microphone"
+  ) {
+    return "real_recorded";
+  }
+  if (
+    normalized === "generated" ||
+    normalized === "generated_tts" ||
+    normalized === "tts" ||
+    normalized === "synthetic" ||
+    normalized === "loopback"
+  ) {
+    return "generated_tts";
+  }
+  throw new Error(
+    `[asr-bench] unknown --wav-dir-provenance "${input}" (expected generated-tts, external-unknown, or real-recorded)`,
+  );
+}
+
+export function labelledSetEvidenceFor(args: {
+  source: LabelledSetSource;
+  wavDirProvenance?: string;
+  realRecorded?: boolean;
+}): LabelledSetEvidence {
+  if (args.source === "tts_loopback_self_labelled") {
+    return {
+      source: args.source,
+      measurementClass: "self_labelled_tts_asr_loopback",
+      provenance: "generated_tts",
+      realRecordedWer: false,
+      publishGateEligible: false,
+      caveat:
+        "Audio is synthesized from the same local bundle and labelled with the text that created it. " +
+        "This self-labelled TTS→ASR loopback WER measures text preservation through the local TTS " +
+        "and ASR stack, not ASR accuracy on real recorded speech.",
+    };
+  }
+
+  const explicit = normalizeWavDirProvenance(args.wavDirProvenance ?? "");
+  if (args.realRecorded && explicit === "generated_tts") {
+    throw new Error(
+      "[asr-bench] --real-recorded conflicts with --wav-dir-provenance generated-tts",
+    );
+  }
+  const provenance = args.realRecorded ? "real_recorded" : explicit;
+  if (provenance === "real_recorded") {
+    return {
+      source: args.source,
+      measurementClass: "real_recorded_labelled_speech",
+      provenance,
+      realRecordedWer: true,
+      publishGateEligible: true,
+      caveat: null,
+    };
+  }
+  if (provenance === "generated_tts") {
+    return {
+      source: args.source,
+      measurementClass: "external_generated_tts_loopback",
+      provenance,
+      realRecordedWer: false,
+      publishGateEligible: false,
+      caveat:
+        "WAV+txt inputs are generated TTS audio loaded from disk. This is generated-audio re-ASR " +
+        "loopback evidence, not real recorded-speech ASR WER.",
+    };
+  }
+  return {
+    source: args.source,
+    measurementClass: "external_labelled_unknown_provenance",
+    provenance,
+    realRecordedWer: false,
+    publishGateEligible: false,
+    caveat:
+      "WAV+txt inputs did not declare real recorded provenance. Pass --real-recorded only for " +
+      "microphone or field-recorded speech before using this as publish-gate ASR WER.",
+  };
 }
 
 /* ------------------------------ WAV codec ------------------------------- */
@@ -294,7 +408,7 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-async function waitHealthy(port: number, child: ChildProcessWithoutNullStreams): Promise<void> {
+async function waitHealthy(port: number, child: PromptServerProcess): Promise<void> {
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
@@ -311,7 +425,7 @@ async function waitHealthy(port: number, child: ChildProcessWithoutNullStreams):
   throw new Error("[asr-bench] llama-server did not become healthy within 180s");
 }
 
-async function startPromptServer(): Promise<{ port: number; child: ChildProcessWithoutNullStreams; textModel: string }> {
+async function startPromptServer(): Promise<{ port: number; child: PromptServerProcess; textModel: string }> {
   const server = path.join(binDir, "llama-server");
   if (!existsSync(server)) throw new Error(`[asr-bench] --generate-prompts needs ${server}`);
   const textModel = firstBundleTextModel(bundle);
@@ -432,7 +546,7 @@ async function main(): Promise<void> {
   const promptLabels = [...acceptedPrompts, ...generated.prompts];
   const ffi = loadElizaInferenceFfi(dylib);
   const ctx = ffi.create(bundle);
-  let labelledSetSource: "tts_loopback_self_labelled" | "external_wav_txt" = "external_wav_txt";
+  let labelledSetSource: LabelledSetSource = "external_wav_txt";
   try {
     // 1) build the labelled set
     let utterances: Utterance[];
@@ -537,6 +651,12 @@ async function main(): Promise<void> {
     const aggregateRtf = totalWallSec === 0 ? 0 : totalAudioSec / totalWallSec;
     const passed = aggregateWer <= gateThreshold;
 
+    const labelledSetEvidence = labelledSetEvidenceFor({
+      source: labelledSetSource,
+      wavDirProvenance,
+      realRecorded: realRecordedWavDir,
+    });
+
     const result = {
       schemaVersion: 1,
       tool: "asr_bench.ts",
@@ -550,9 +670,11 @@ async function main(): Promise<void> {
         capabilitiesPath: existsSync(path.join(binDir, "CAPABILITIES.json")) ? path.join(binDir, "CAPABILITIES.json") : null,
       },
       labelledSet: {
-        source: labelledSetSource,
-        measurementClass: labelledSetSource === "external_wav_txt" ? "real_recorded_or_external_labelled" : "self_labelled_tts_asr_loopback",
-        realRecordedWer: labelledSetSource === "external_wav_txt",
+        source: labelledSetEvidence.source,
+        measurementClass: labelledSetEvidence.measurementClass,
+        provenance: labelledSetEvidence.provenance,
+        realRecordedWer: labelledSetEvidence.realRecordedWer,
+        publishGateEligible: labelledSetEvidence.publishGateEligible,
         wavDir: wavDir || null,
         count: rows.length,
         normalization: "lowercase + strip-punctuation + collapse-ws (Whisper-style)",
@@ -561,14 +683,8 @@ async function main(): Promise<void> {
         generatedPromptModel: generated.model,
         generatedPromptLatencyMs: generated.latencyMs,
         saveAudioDir: saveAudioDir || null,
-        ...(labelledSetSource === "tts_loopback_self_labelled"
-          ? {
-              caveat:
-                "Audio is synthesized from the same local bundle and labelled with the text that " +
-                "created it. This self-labelled TTS→ASR loopback WER measures text preservation " +
-                "through the local TTS and ASR stack, not ASR accuracy on real recorded speech. " +
-                "Use --wav-dir with recorded WAV+.txt pairs for real WER.",
-            }
+        ...(labelledSetEvidence.caveat
+          ? { caveat: labelledSetEvidence.caveat }
           : {}),
       },
       aggregate: {
@@ -587,7 +703,13 @@ async function main(): Promise<void> {
         audioSeconds: totalAudioSec,
         wallSeconds: totalWallSec,
       },
-      gate: { metric: "asr_wer", op: "<=", threshold: gateThreshold, passed },
+      gate: {
+        metric: "asr_wer",
+        op: "<=",
+        threshold: gateThreshold,
+        passed,
+        publishGateEligible: labelledSetEvidence.publishGateEligible,
+      },
       rows,
     };
 
@@ -595,10 +717,10 @@ async function main(): Promise<void> {
     writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
 
     if (evalOut) {
-      // A TTS-synthesized labelled set is loopback, not a real recorded WER
-      // measurement. Report it as `not-run` for the publish gate. Only an
-      // external real-speech --wav-dir set produces a `measured` row.
-      const validMeasurement = labelledSetSource === "external_wav_txt";
+      // Generated TTS and unknown-provenance WAV directories are loopback or
+      // diagnostics, not real recorded WER measurements. Only explicit
+      // --real-recorded WAV+txt corpora can satisfy the publish gate.
+      const validMeasurement = labelledSetEvidence.publishGateEligible;
       const evalBlob = validMeasurement
         ? {
             schemaVersion: 1,
@@ -610,6 +732,7 @@ async function main(): Promise<void> {
             gateThreshold,
             backend,
             labelledSetSource,
+            labelledSetProvenance: labelledSetEvidence.provenance,
             utterances: rows.length,
             benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
             ...(passed ? {} : { gateReason: `asr_wer ${aggregateWer.toFixed(4)} > ${gateThreshold}` }),
@@ -624,11 +747,11 @@ async function main(): Promise<void> {
             gateThreshold,
             backend,
             labelledSetSource,
+            labelledSetProvenance: labelledSetEvidence.provenance,
             utterances: rows.length,
             reason:
-              "labelled set was TTS-synthesized from the bundle itself, so WER is self-labelled " +
-              "TTS→ASR loopback rather than real recorded-speech ASR WER; needs a real recorded " +
-              "WAV+.txt corpus via --wav-dir for a publish-gate WER.",
+              labelledSetEvidence.caveat ??
+              "labelled set is not explicitly marked as real recorded speech; needs a real recorded WAV+.txt corpus via --wav-dir --real-recorded for publish-gate WER.",
             rtf: aggregateRtf,
             benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
           };
@@ -658,4 +781,6 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+if (import.meta.main) {
+  main();
+}

@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../test/helpers/real-runtime";
+} from "../../../packages/test/helpers/real-runtime.ts";
 import { screenTimeAction } from "../src/actions/screen-time.js";
 import { insertActivityEvent } from "../src/activity-profile/activity-tracker-repo.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";

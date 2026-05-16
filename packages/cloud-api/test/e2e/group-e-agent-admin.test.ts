@@ -185,6 +185,38 @@ describe("Group E: admin / ai-pricing", () => {
   });
 });
 
+describe("Group E: admin / cloud-observability", () => {
+  test("GET /api/v1/admin/cloud-observability rejects unauthenticated", async () => {
+    if (!serverReachable) return;
+    const res = await api.get("/api/v1/admin/cloud-observability");
+    expectAuthGate(res.status, "GET /api/v1/admin/cloud-observability");
+  });
+
+  test("GET /api/v1/admin/cloud-observability returns request telemetry for admin", async () => {
+    if (!shouldRun()) return;
+    const res = await api.get("/api/v1/admin/cloud-observability?limit=25", {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: {
+        requests?: unknown[];
+        slowRequests?: unknown[];
+        slowDb?: unknown[];
+        duplicateReadRequests?: unknown[];
+        burstyRequests?: unknown[];
+      };
+    };
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.data?.requests)).toBe(true);
+    expect(Array.isArray(body.data?.slowRequests)).toBe(true);
+    expect(Array.isArray(body.data?.slowDb)).toBe(true);
+    expect(Array.isArray(body.data?.duplicateReadRequests)).toBe(true);
+    expect(Array.isArray(body.data?.burstyRequests)).toBe(true);
+  });
+});
+
 describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
   test("GET /api/v1/admin/docker-containers rejects unauthenticated", async () => {
     if (!serverReachable) return;

@@ -111,6 +111,59 @@ except ImportError:
     )
 
 
+_MINT_CATEGORY_TO_SUBTASKS: dict[str, tuple[str, ...]] = {
+    "reasoning": ("gsm8k",),
+    "code_generation": ("humaneval",),
+    "coding": ("humaneval",),
+    "decision_making": (),
+}
+
+
+def _validate_osworld_dry_run_label(extra: Mapping[str, JSONValue]) -> None:
+    agent_label = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+    mode_label = (
+        str(extra.get("run_mode") or extra.get("mode") or extra.get("suite") or "")
+        .strip()
+        .lower()
+    )
+    marked_smoke = extra.get("smoke") is True or mode_label in {
+        "smoke",
+        "dry_run",
+        "dry-run",
+        "smoke_dry_run",
+    }
+    if agent_label in {"eliza", "hermes", "openclaw"} and not marked_smoke:
+        raise ValueError(
+            "osworld dry_run is smoke-only. Set smoke=true or run_mode=smoke "
+            "for smoke rows; omit dry_run for real VM benchmark rows."
+        )
+
+
+def _mint_subtasks_from_extra(extra: Mapping[str, JSONValue]) -> list[str]:
+    subtasks = extra.get("subtasks")
+    if isinstance(subtasks, list) and all(isinstance(x, str) for x in subtasks):
+        return [str(item) for item in subtasks if str(item).strip()]
+
+    categories = extra.get("categories")
+    if not isinstance(categories, list) or not all(isinstance(x, str) for x in categories):
+        return []
+
+    selected: list[str] = []
+    for category in categories:
+        mapped = _MINT_CATEGORY_TO_SUBTASKS.get(category.strip().lower())
+        if mapped is None:
+            selected.append(category)
+            continue
+        selected.extend(mapped)
+
+    deduped: list[str] = []
+    for item in selected:
+        normalized = item.strip()
+        if normalized and normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 
@@ -222,9 +275,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
-        categories = extra.get("categories")
-        if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
-            args.extend(["--categories", *cast(list[str], categories)])
+        subtasks = _mint_subtasks_from_extra(extra)
+        if subtasks:
+            args.extend(["--subtasks", *subtasks])
         # Route LLM calls through the elizaOS TS benchmark server when the caller
         # asks for the eliza agent; otherwise forward real provider/model labels
         # to the direct OpenAI-compatible runtime instead of silently using mock.
@@ -628,7 +681,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if extra.get("mock") is True or provider_name == "mock":
             args.extend(["--provider", "heuristic"])
-        elif agent in {"eliza", "hermes", "openclaw"} or provider_name == "cerebras":
+        elif agent in {"hermes", "openclaw"}:
+            raise ValueError(
+                "vending_bench has no native hermes/openclaw harness adapter yet"
+            )
+        elif agent == "eliza" or provider_name == "cerebras":
             args.extend(["--provider", "eliza"])
         elif model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
             args.extend(["--provider", model.provider])
@@ -1028,6 +1085,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_steps = extra.get("max_steps")
         if isinstance(max_steps, int) and max_steps > 0:
             args.extend(["--max_steps", str(max_steps)])
+        else:
+            args.extend(["--max_steps", "3"])
         a11y_tree_max_tokens = extra.get("a11y_tree_max_tokens")
         if isinstance(a11y_tree_max_tokens, int) and a11y_tree_max_tokens > 0:
             args.extend(["--a11y_tree_max_tokens", str(a11y_tree_max_tokens)])
@@ -1045,6 +1104,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--headless")
         dry_run = extra.get("dry_run")
         if dry_run is True:
+            _validate_osworld_dry_run_label(extra)
             args.append("--dry_run")
         _ = model
         return args
@@ -1597,10 +1657,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--model", model.model])
 
         agent_raw = extra.get("agent")
+        agent = str(agent_raw or extra.get("harness") or "").strip().lower()
         provider_lower = (model.provider or "").strip().lower()
         payment_mode = extra.get("payment") is True or extra.get("payments") is True
         if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
             args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
+        elif agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--agent", agent])
         else:
             args.extend(["--agent", "eliza"])
 

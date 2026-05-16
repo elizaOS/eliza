@@ -1,7 +1,7 @@
-import { requestTwitterOAuth2Token } from "../twitter-automation/oauth2-client";
 import type { SocialCredentials, SocialPlatform } from "../../types/social-media";
 import { safeJsonParse } from "../../utils/json-parsing";
 import { logger } from "../../utils/logger";
+import { requestTwitterOAuth2Token } from "../twitter-automation/oauth2-client";
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 

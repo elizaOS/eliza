@@ -171,7 +171,7 @@ export function chunkDiscordText(
 	);
 	const maxLines = Math.max(1, Math.floor(opts.maxLines ?? DEFAULT_MAX_LINES));
 
-	const body = text;
+	const body = text ?? "";
 	if (!body) {
 		return [];
 	}

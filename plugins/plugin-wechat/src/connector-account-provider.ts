@@ -24,7 +24,7 @@ const WECHAT_PROVIDER_ID = "wechat";
 const WECHAT_DEFAULT_ACCOUNT_ID = "default";
 
 function getWechatConfig(runtime: IAgentRuntime): WechatConfig | undefined {
-  const character = runtime.character.settings as
+  const character = runtime.character?.settings as
     | { connectors?: { wechat?: WechatConfig }; wechat?: WechatConfig }
     | undefined;
   return character?.connectors?.wechat ?? character?.wechat;
@@ -46,10 +46,10 @@ function listWechatAccounts(runtime: IAgentRuntime): WechatResolvedAccount[] {
 
   if (!config) {
     // Single-account env-only fallback
-    const envApiKey = runtime.getSetting("WECHAT_API_KEY") as
+    const envApiKey = runtime.getSetting?.("WECHAT_API_KEY") as
       | string
       | undefined;
-    const envProxy = runtime.getSetting("WECHAT_PROXY_URL") as
+    const envProxy = runtime.getSetting?.("WECHAT_PROXY_URL") as
       | string
       | undefined;
     if (envApiKey?.trim() || envProxy?.trim()) {
@@ -91,7 +91,7 @@ function listWechatAccounts(runtime: IAgentRuntime): WechatResolvedAccount[] {
       result.push({
         id: id.trim().toLowerCase(),
         enabled: account.enabled !== false,
-        apiKeyConfigured: Boolean(account.apiKey.trim()),
+        apiKeyConfigured: Boolean(account.apiKey?.trim()),
         proxyUrl: account.proxyUrl,
         wcId: account.wcId,
         nickName: account.nickName,

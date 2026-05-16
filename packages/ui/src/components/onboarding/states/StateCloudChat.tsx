@@ -1,12 +1,26 @@
 import { AvatarHost } from "../../../avatar-runtime";
 
+export interface CloudProvisioningProgress {
+  status: "chat" | "provisioning" | "running" | "error";
+  meta: string;
+  ready: boolean;
+}
+
 export interface StateCloudChatProps {
   transcript?: string;
+  progress?: CloudProvisioningProgress;
   onEnterChat: () => void;
 }
 
-export function StateCloudChat(props: StateCloudChatProps): JSX.Element {
-  const { transcript, onEnterChat } = props;
+export function StateCloudChat(props: StateCloudChatProps): React.JSX.Element {
+  const { transcript, progress, onEnterChat } = props;
+  const status = progress?.status ?? "provisioning";
+  const statusLabel =
+    status === "running"
+      ? "real agent ready"
+      : status === "error"
+        ? "needs attention"
+        : "provisioning";
   return (
     <section
       className="eliza-ob-screen centered"
@@ -20,23 +34,31 @@ export function StateCloudChat(props: StateCloudChatProps): JSX.Element {
           <AvatarHost />
         </div>
         <div className="eliza-ob-transcript">
-          {transcript ?? "You're connected. I'll show you around from chat."}
+          {transcript ??
+            "I'm online now. I'll ask a few questions and show you around while your real server provisions."}
         </div>
       </div>
       <div className="eliza-ob-tutorial-card">
-        <strong>Cloud handoff</strong>
+        <strong>Cloud onboarding chat</strong>
         <p>
-          Eliza Cloud users jump straight into chat; the agent carries
-          onboarding as a conversation.
+          The instant cloud agent can chat, collect your preferences, and call
+          safe onboarding actions. When the Hetzner server is ready, the same
+          conversation is pushed into it.
         </p>
         <div className="eliza-ob-mini-screen">
           <div className="eliza-ob-mini-row">
             Chat agent <span className="eliza-ob-mini-pill">online</span>
           </div>
           <div className="eliza-ob-mini-row">
-            Onboarding tour <span>agent-led</span>
+            Hetzner server <span>{statusLabel}</span>
+          </div>
+          <div className="eliza-ob-mini-row">
+            Conversation <span>{progress?.ready ? "pushed" : "staged"}</span>
           </div>
         </div>
+        {progress?.meta ? (
+          <p className="eliza-ob-download-meta">{progress.meta}</p>
+        ) : null}
       </div>
       <div className="eliza-ob-footer">
         <button

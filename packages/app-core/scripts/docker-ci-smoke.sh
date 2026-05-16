@@ -140,7 +140,7 @@ load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
 load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
-APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/packages/agent/src/bin.js}"
+APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
 APP_CMD_START="${APP_CMD_START:-node --import tsx ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"

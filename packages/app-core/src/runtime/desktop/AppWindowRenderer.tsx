@@ -51,7 +51,7 @@ import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
 import { TrajectoriesView } from "@elizaos/ui/components/pages/TrajectoriesView";
 import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
-import type { Tab } from "@elizaos/ui/navigation";
+import type { Tab } from "../../../../ui/src/navigation";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {

@@ -1,16 +1,16 @@
 import { and, eq } from "drizzle-orm";
 import { dbRead } from "../../db/client";
 import { platformCredentials } from "../../db/schemas/platform-credentials";
-import { oauthService } from "./oauth";
-import { getPreferredActiveConnection } from "./oauth/oauth-service";
-import { getProvider, isProviderConfigured } from "./oauth/provider-registry";
-import type { OAuthConnectionRole } from "./oauth/types";
 import {
   applyTimeZone,
   extractBody,
   googleFetchWithToken,
   sanitizeHeaderValue,
 } from "../utils/google-mcp-shared";
+import { oauthService } from "./oauth";
+import { getPreferredActiveConnection } from "./oauth/oauth-service";
+import { getProvider, isProviderConfigured } from "./oauth/provider-registry";
+import type { OAuthConnectionRole } from "./oauth/types";
 
 const GOOGLE_CALENDAR_EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars";
 const GOOGLE_CALENDAR_LIST_ENDPOINT =

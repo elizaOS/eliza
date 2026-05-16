@@ -34,7 +34,7 @@ export interface BackgroundHostProps {
   className?: string;
 }
 
-export function BackgroundHost(props: BackgroundHostProps): JSX.Element {
+export function BackgroundHost(props: BackgroundHostProps): React.JSX.Element {
   const { moduleId, className } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<BackgroundHandle | null>(null);
@@ -56,8 +56,9 @@ export function BackgroundHost(props: BackgroundHostProps): JSX.Element {
       handle.update({ reducedMotion: prefersReducedMotion() });
     } catch (error) {
       logger.warn(
-        "[BackgroundHost] Failed to mount background module; falling back to solid sky",
-        { error: error instanceof Error ? error.message : String(error) },
+        `[BackgroundHost] Failed to mount background module; falling back to solid sky: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       setFailed(true);
       handleRef.current = null;
@@ -78,9 +79,11 @@ export function BackgroundHost(props: BackgroundHostProps): JSX.Element {
         try {
           current.unmount();
         } catch (error) {
-          logger.warn("[BackgroundHost] Unmount threw", {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logger.warn(
+            `[BackgroundHost] Unmount threw: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         }
       }
     };

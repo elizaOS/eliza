@@ -32,7 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -44,12 +44,8 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "27b-256k",
 )
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
-    ("2b", "4b", "9b", "27b", "27b-256k")
-)
-ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(
-    ("4b", "9b", "27b", "27b-256k")
-)
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
     "turboquant_q3",
@@ -153,7 +149,13 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "0_8b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
     "4b": (
         "turboquant_q4",
@@ -202,12 +204,8 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
-    ("2b", "4b", "9b", "27b", "27b-256k")
-)
-ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(
-    ("4b", "9b", "27b", "27b-256k")
-)
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
@@ -222,22 +220,21 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Kokoro-only tiers
-# publish no OmniVoice ladder.
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3).
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (),
-    "2b": (),
-    "4b": (),
+    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
-    "9b": ("kokoro", "omnivoice"),
+    "0_8b": ("omnivoice", "kokoro"),
+    "2b": ("omnivoice", "kokoro"),
+    "4b": ("omnivoice", "kokoro"),
+    "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
 }
@@ -253,8 +250,9 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses Kokoro for 0_8b/2b/4b, keeps Kokoro first with
-    OmniVoice bundled at 9B, and ships OmniVoice only for 27B-class tiers.
+    release line mirrors the runtime catalog: OmniVoice is the default backend
+    for 0_8b/2b/4b/9b with Kokoro bundled as the fallback, and 27B-class tiers
+    ship OmniVoice only.
     """
 
     out: list[str] = []
@@ -1131,7 +1129,7 @@ def validate_manifest(
         if not files.get("vision"):
             errors.append(f"files.vision: required for vision-enabled tier {tier}")
     elif files.get("vision"):
-        errors.append(f"files.vision: unsupported for text/voice-only tier {tier}")
+        errors.append(f"files.vision: unsupported for non-vision tier {tier}")
 
     # ── §4 contract: frozen voice cache artifacts ───────────────────────
     cache_paths = {

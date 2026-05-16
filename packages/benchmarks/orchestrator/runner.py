@@ -307,12 +307,10 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env.setdefault("ELIZA_CONVERSATION_COMPACTOR", "structured-state")
     env.setdefault("MAX_CONVERSATION_TOKENS", "120000")
     env.setdefault("BENCHMARK_CAPTURE_TRAJECTORIES", "1")
-    if harness == "eliza":
-        # The low-level server manager keeps stub embeddings opt-in. The
-        # orchestrator is that explicit caller for smoke/benchmark harness
-        # runs, where several adapters do not exercise embedding quality but
-        # still need the local TypeScript runtime to boot without a downloaded
-        # plugin-local-inference model.
+    if harness == "eliza" and request.extra_config.get("allow_stub_embedding") is True:
+        # Diagnostic-only opt-in. Release-evidence runs use the real embedding
+        # handler from plugin-local-inference and must not silently publish
+        # zero-vector memory behavior.
         env.setdefault("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "1")
     if provider in PROVIDER_DUMMY_KEY:
         provider_key = PROVIDER_KEY_ENV.get(provider)
@@ -465,10 +463,11 @@ def _ensure_viewer_snapshot(
     conn,
     *,
     workspace_root: Path,
+    benchmark_ids: set[str] | None = None,
 ) -> Path:
     from .viewer_data import build_viewer_dataset
 
-    data = build_viewer_dataset(conn)
+    data = build_viewer_dataset(conn, benchmark_ids=benchmark_ids)
     out = workspace_root / "benchmarks" / "benchmark_results" / "viewer_data.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
@@ -611,9 +610,23 @@ def _publication_warnings(
     total_instances = metrics.get("total_instances")
     if isinstance(total_instances, (int, float)) and total_instances <= 1:
         warnings.append(f"insufficient_total_instances:{total_instances!r}")
+    total_samples = metrics.get("total_samples")
+    if isinstance(total_samples, (int, float)) and total_samples <= 2:
+        warnings.append(f"insufficient_total_samples:{total_samples!r}")
+    total_tasks = metrics.get("total_tasks")
+    if isinstance(total_tasks, (int, float)) and total_tasks <= 1:
+        warnings.append(f"insufficient_total_tasks:{total_tasks!r}")
+    total_questions = metrics.get("total_questions")
+    if isinstance(total_questions, (int, float)) and total_questions <= 2:
+        warnings.append(f"insufficient_total_questions:{total_questions!r}")
+    scenario_count = metrics.get("scenario_count")
+    if isinstance(scenario_count, (int, float)) and scenario_count <= 1:
+        warnings.append(f"insufficient_scenario_count:{scenario_count!r}")
     n_value = metrics.get("n")
-    if isinstance(n_value, (int, float)) and n_value <= 1:
+    if isinstance(n_value, (int, float)) and n_value <= 2:
         warnings.append(f"insufficient_n:{n_value!r}")
+    if metrics.get("sample") is True:
+        warnings.append("sample_task_set")
     if metrics.get("interrupted") is True:
         warnings.append("interrupted_run")
     return warnings
@@ -652,6 +665,20 @@ def _annotate_latest_index_comparability(index: dict[str, Any]) -> None:
         }
         for benchmark_id, signatures in sorted(groups.items())
     }
+
+
+def _stable_latest_index_updated_at(entries: list[dict[str, Any]]) -> str:
+    timestamps = [
+        str(value)
+        for entry in entries
+        for value in (
+            entry.get("updated_at"),
+            entry.get("ended_at"),
+            entry.get("started_at"),
+        )
+        if value
+    ]
+    return max(timestamps) if timestamps else _utc_now()
 
 
 def _write_latest_result_snapshot(
@@ -771,7 +798,7 @@ def _write_latest_result_snapshot(
     latest_dir = output_root / "latest"
     latest_dir.mkdir(parents=True, exist_ok=True)
     index: dict[str, Any] = {
-        "updated_at": _utc_now(),
+        "updated_at": "",
         "latest": {},
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},
@@ -833,6 +860,9 @@ def _write_latest_result_snapshot(
             previous = {}
         if isinstance(previous, dict) and isinstance(previous.get("matrix_contract"), dict):
             index["matrix_contract"] = previous["matrix_contract"]
+    index["updated_at"] = _stable_latest_index_updated_at(
+        list(latest_payloads_by_key.values())
+    )
     _annotate_latest_index_comparability(index)
     index_path = latest_dir / "index.json"
     index_tmp = index_path.with_suffix(index_path.suffix + ".tmp")
@@ -1063,7 +1093,7 @@ def _rebuild_latest_result_snapshots(
         adapters=adapters,
     )
     index: dict[str, Any] = {
-        "updated_at": _utc_now(),
+        "updated_at": "",
         "latest": {},
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},
@@ -1280,6 +1310,13 @@ def _rebuild_latest_result_snapshots(
         }
 
     _annotate_latest_index_comparability(index)
+    index["updated_at"] = _stable_latest_index_updated_at(
+        [
+            *latest_by_key.values(),
+            *quarantine_by_key.values(),
+            *(payload for payload, _path in preserved_latest.values()),
+        ]
+    )
 
     # Prune stale files from each managed dir (only files we own).
     for d, expected in expected_by_dir.items():
@@ -2206,7 +2243,11 @@ def run_benchmarks(
     repair_nonzero_returncode_statuses(conn)
     _repair_current_compatibility_statuses(conn, discovery.adapters)
     _rebuild_latest_result_snapshots(conn, output_root, discovery.adapters)
-    viewer_snapshot = _ensure_viewer_snapshot(conn, workspace_root=workspace_root)
+    viewer_snapshot = _ensure_viewer_snapshot(
+        conn,
+        workspace_root=workspace_root,
+        benchmark_ids=set(discovery.adapters),
+    )
     conn.close()
 
     # End-of-run quarantine summary. The publication gate diverts real-agent

@@ -44,7 +44,7 @@ export function createStatusReactionController(
 	let currentEmoji: string | null = null;
 	let finished = false;
 	let chain: Promise<void> = Promise.resolve();
-	const botId = message.client.user.id;
+	const botId = message.client?.user?.id;
 
 	const clearCurrentReaction = async () => {
 		if (!currentEmoji || !botId) {

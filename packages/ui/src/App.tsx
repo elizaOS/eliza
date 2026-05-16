@@ -40,6 +40,7 @@ import { ConversationsSidebar } from "./components/conversations/ConversationsSi
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { ChatView } from "./components/pages/ChatView";
+import { AppsPageView } from "./components/pages/AppsPageView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -581,6 +582,13 @@ function ViewRouter({
         // The "views" and "apps" tabs both surface the ViewManagerPage — a
         // searchable grid of all plugin-contributed views fetched from /api/views.
         // AppsPageView (game launcher) is accessible via app slug navigation.
+        if (APPS_ENABLED && getAppSlugFromPath(navigationPath)) {
+          return (
+            <TabContentView chatScope="page-apps">
+              <AppsPageView />
+            </TabContentView>
+          );
+        }
         return APPS_ENABLED ? (
           <TabContentView chatScope="page-apps">
             <ViewManagerPage />

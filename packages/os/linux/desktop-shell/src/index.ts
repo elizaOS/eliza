@@ -13,6 +13,26 @@ export type { MockSystemProviderProps } from "./providers/MockSystemProvider";
 export { LinuxSystemProvider } from "./providers/LinuxSystemProvider";
 export type { LinuxSystemProviderProps } from "./providers/LinuxSystemProvider";
 export { useSystemProvider, SystemProviderContext } from "./providers/context";
+export {
+  LINUX_BRIDGE_CHANNELS,
+  getBridgeTransport,
+  createLinuxBridgeClient,
+} from "./bridge";
+export type {
+  BridgeTransport,
+  LinuxBridgeClient,
+  LinuxBridgeChannelMap,
+  LinuxBridgeStateChannel,
+  LinuxBridgeCommandChannel,
+  LinuxBridgeCommandPayloadMap,
+  LinuxBridgeCommandResponseMap,
+  LinuxBridgeStatePayloadMap,
+  WifiRequestPayload,
+  AudioSetLevelPayload,
+  AudioSetMutedPayload,
+  EmptyPayload,
+  CommandAck,
+} from "./bridge";
 export type {
   AudioState,
   BatteryState,

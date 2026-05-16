@@ -9,7 +9,7 @@
     "lint:fix": "biome check --write .",
     "dev": "PORT=3001 bun run --env-file ../../.env.local --watch src/index.ts",
     "dev:local": "PORT=3001 bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node",
+    "build": "bun build src/index.ts --outdir dist --target node --external zlib-sync",
     "start": "PORT=3001 bun run --env-file ../../.env.local src/index.ts",
     "start:local": "PORT=3001 bun run src/index.ts",
     "typecheck": "tsc --noEmit",

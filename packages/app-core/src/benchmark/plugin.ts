@@ -744,6 +744,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     benchmark === "loca_bench" || benchmark === "loca-bench";
   const isWebShopBenchmark =
     benchmark === "webshop" || benchmark === "web-shop";
+  const isTauBenchmark =
+    benchmark === "tau_bench" || benchmark === "tau-bench";
   const isConversationalBenchmark = new Set([
     "woobench",
     "woo-bench",
@@ -910,10 +912,22 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `This is LifeOpsBench. Use the LifeOps Clock for all relative dates; do not use wall-clock time.`,
     );
     sections.push(
+      `You have access to the benchmark's fake LifeOps calendar and inbox through the available LifeOps tools. Do not say you lack calendar, email, inbox, or app access when a matching LifeOps tool is available.`,
+    );
+    sections.push(
       `For calendar changes, prefer updating the existing event id from Calendar Events or a prior search result. Do not create a duplicate and delete another event unless the user explicitly asked for that.`,
     );
     sections.push(
+      `For availability questions, call CALENDAR_CHECK_AVAILABILITY or CALENDAR with subaction=check_availability and top-level startAt/endAt.`,
+    );
+    sections.push(
       `If the requested mutation has not succeeded yet, call BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name set to the LifeOps tool name and params.BENCHMARK_ACTION.arguments set to the tool arguments.`,
+    );
+    sections.push(
+      `For inbox, email, chat, or thread requests, use the LifeOps MESSAGE tool, not MEMORY. MEMORY is not a LifeOpsBench executor tool.`,
+    );
+    sections.push(
+      `For email thread archive requests, call MESSAGE with source=gmail, operation=manage, manageOperation=archive, and threadId, or call ARCHIVE_THREAD with threadId.`,
     );
     sections.push(
       `If Previous LifeOps Tool Results already show ok=true for the requested mutation, do not call another tool. Reply with a concise confirmation that includes the relevant title/date/time/details.`,
@@ -947,6 +961,22 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
     sections.push(
       `Do not answer with progress prose. The WebShop runner executes only the captured command, for example {"actions":["BENCHMARK_ACTION"],"text":"","params":{"BENCHMARK_ACTION":{"command":"click[buy now]"}}}.`,
+    );
+  } else if (isTauBenchmark && ctx.tools && ctx.tools.length > 0) {
+    sections.push(
+      `This is TauBench. Use BENCHMARK_ACTION tool calls to gather missing customer, order, policy, and product facts.`,
+    );
+    sections.push(
+      `Do not repeat a tool call when the same result is already available in the prompt. Move to the next missing fact or the required next customer-service step.`,
+    );
+    sections.push(
+      `Do not describe a tool call in prose. If the task needs a tool, your response MUST include actions: BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name set to the TauBench tool name and params.BENCHMARK_ACTION.arguments set to the JSON arguments.`,
+    );
+    sections.push(
+      `Example tool-call JSON: {"actions":["BENCHMARK_ACTION"],"text":"","params":{"BENCHMARK_ACTION":{"tool_name":"get_order_details","arguments":{"order_id":"W2378156"}}}}`,
+    );
+    sections.push(
+      `Use REPLY only when asking the customer for required confirmation or when the task is complete. After the customer confirms, call the final mutation tool with BENCHMARK_ACTION; do not say you are calling it.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench-style harnesses: emphasise tool calling
@@ -1039,7 +1069,177 @@ const LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES = [
   "CALENDAR_PROPOSE_TIMES",
   "CALENDAR_NEXT_EVENT",
   "CALENDAR_UPDATE_PREFERENCES",
+  "MESSAGE",
+  "MESSAGE_SEND",
+  "MESSAGE_DRAFT_REPLY",
+  "MESSAGE_MANAGE",
+  "MESSAGE_TRIAGE",
+  "MESSAGE_SEARCH_INBOX",
+  "MESSAGE_LIST_CHANNELS",
+  "MESSAGE_READ_CHANNEL",
+  "MESSAGE_READ_WITH_CONTACT",
+  "ARCHIVE_EMAIL_THREAD",
+  "ARCHIVE_THREAD",
 ] as const;
+
+const LIFEOPS_BENCHMARK_TOOL_PARAMETERS: ActionParameter[] = [
+  {
+    name: "subaction",
+    description: "Calendar/Entity subaction, such as check_availability.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "operation",
+    description: "Message/Money operation, such as manage or search_inbox.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "action",
+    description: "Alias for subaction or operation.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "source",
+    description: "LifeOps source, for example gmail, slack, imessage.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "manageOperation",
+    description: "Message manage operation, such as archive or mark_read.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "threadId",
+    description: "Email/chat thread id.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "thread_id",
+    description: "Email/chat thread id alias.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "messageId",
+    description: "Email/chat message id.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "message_id",
+    description: "Email/chat message id alias.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "eventId",
+    description: "Calendar event id.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "calendarId",
+    description: "Calendar id.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "title",
+    description: "Calendar event title or message title.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "query",
+    description: "Search query.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "folder",
+    description: "Mail folder, such as inbox.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "startAt",
+    description: "ISO-8601 calendar availability start time.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "endAt",
+    description: "ISO-8601 calendar availability end time.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "start",
+    description: "ISO-8601 calendar start time alias.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "end",
+    description: "ISO-8601 calendar end time alias.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "body",
+    description: "Email/message body.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "text",
+    description: "Chat/message text.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "details",
+    description: "Nested LifeOps action details. Prefer top-level fields when the tool manifest asks for them.",
+    required: false,
+    schema: {
+      type: "object",
+      additionalProperties: true,
+    },
+  },
+  {
+    name: "intent",
+    description: "Short natural-language intent for the LifeOps action.",
+    required: false,
+    schema: { type: "string" },
+  },
+];
+
+function lifeOpsBenchmarkToolDescription(name: string): string {
+  if (name === "ARCHIVE_EMAIL_THREAD" || name === "ARCHIVE_THREAD") {
+    return "LifeOpsBench email archive alias. Use for Gmail/email thread archive requests with threadId.";
+  }
+  if (name.startsWith("MESSAGE")) {
+    return (
+      "LifeOpsBench MESSAGE tool for email, inbox, Gmail, chat, and thread " +
+      "requests. Use for archive, mark_read, triage, search_inbox, " +
+      "draft_reply, send, list_channels, read_channel, and read_with_contact."
+    );
+  }
+  if (name.startsWith("CALENDAR")) {
+    return (
+      "LifeOpsBench CALENDAR tool for calendar events and availability. Use " +
+      "for create_event, update_event, delete_event, search_events, " +
+      "check_availability, propose_times, next_event, and update_preferences."
+    );
+  }
+  return "LifeOpsBench compatibility action. Captures a planner-emitted LifeOps tool call for the benchmark fake backend.";
+}
 
 function extractActionParameters(options: unknown): Record<string, unknown> {
   let params: Record<string, unknown> = {};
@@ -1327,11 +1527,17 @@ export function createBenchmarkPlugin(): Plugin {
         roleGate: { minRole: "NONE" as const },
         suppressPostActionContinuation: true,
         similes: [],
-        description:
-          "LifeOpsBench compatibility action. Captures a planner-emitted LifeOps tool call for the benchmark fake backend.",
+        description: lifeOpsBenchmarkToolDescription(name),
+        routingHint:
+          name.startsWith("MESSAGE") || name.startsWith("ARCHIVE_")
+            ? "PERSONAL_ASSISTANT: inbox/email/Gmail/chat/thread/archive/read/draft/send -> MESSAGE or ARCHIVE_THREAD; do not use MEMORY."
+            : "PERSONAL_ASSISTANT: calendar/event/availability/schedule -> CALENDAR.",
+        allowAdditionalParameters: true,
         validate: async () => true,
         handler: async (_runtime, _message, _state, options) => {
-          const params = extractActionParameters(options);
+          const params = stripRuntimeActionContext(
+            extractActionParameters(options),
+          );
           logger.debug(`[${name}] params:`, JSON.stringify(params));
           const capturedAction = recordCapturedAction(
             captureLifeOpsBenchmarkToolAction(name, params),
@@ -1339,11 +1545,12 @@ export function createBenchmarkPlugin(): Plugin {
           return {
             text: `Benchmark LifeOps action captured: ${name}`,
             success: true,
+            continueChain: false,
             values: { captured: true },
             data: { action: capturedAction },
           };
         },
-        parameters: [],
+        parameters: LIFEOPS_BENCHMARK_TOOL_PARAMETERS,
       })),
       ...LOCA_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
         name,

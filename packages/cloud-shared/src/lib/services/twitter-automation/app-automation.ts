@@ -4,15 +4,12 @@ import { type App, appsRepository } from "../../../db/repositories";
 import { TWITTER_POST_COST } from "../../promotion-pricing";
 import { mergeAnthropicCotProviderOptions } from "../../providers/anthropic-thinking";
 import { getLanguageModel } from "../../providers/language-model";
+import { logger } from "../../utils/logger";
 // Note: When ANTHROPIC_COT_BUDGET is set and model is Anthropic, temperature is silently dropped
 // per @ai-sdk/anthropic behavior. This service uses temperature for creative tweet generation.
-import {
-  buildCharacterSystemPrompt,
-  getCharacterPromptContext,
-} from "../character-prompt-helper";
+import { buildCharacterSystemPrompt, getCharacterPromptContext } from "../character-prompt-helper";
 import { creditsService } from "../credits";
 import { secretsService } from "../secrets";
-import { logger } from "../../utils/logger";
 
 const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
 const TWITTER_API_SECRET_KEY = process.env.TWITTER_API_SECRET_KEY;

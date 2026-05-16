@@ -295,6 +295,7 @@
     "tsup@8.5.1": "patches/tsup@8.5.1.patch",
     "vitest@4.1.5": "patches/vitest@4.1.5.patch",
     "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch",
+    "llama-cpp-capacitor@0.1.5": "patches/llama-cpp-capacitor@0.1.5.patch",
     "@farcaster/quick-auth@0.0.8": "patches/@farcaster%2Fquick-auth@0.0.8.patch",
     "@farcaster/quick-auth@0.0.6": "patches/@farcaster%2Fquick-auth@0.0.6.patch",
     "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",

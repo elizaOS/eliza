@@ -49,10 +49,9 @@ ELIZA_TIER_WHITELIST: frozenset[str] = frozenset({
     "scam-defense-corpus",    # Tier A — augmented v2 trajectories
 })
 
-# Action-name extractor for native JSON-encoded `actions:` blocks. Matches the
-# first `name: <ACTION>` line under an `actions[N]{...}` header. We do
-# not parse the full native JSON here — we just lift the first action name,
-# which is all the cap logic needs and what the runtime executes first.
+# Action-name extractor for legacy text-encoded `actions:` blocks. Prefer
+# native JSON/function-call records upstream; this fallback only lifts the first
+# action name for cap accounting when older intermediate rows are encountered.
 _NATIVE_JSON_ACTION_NAME_RE = re.compile(
     r"actions(?:\[\d+\])?\s*\{[^}]*?\bname\s*:\s*([A-Z_][A-Z0-9_]*)",
     re.DOTALL,

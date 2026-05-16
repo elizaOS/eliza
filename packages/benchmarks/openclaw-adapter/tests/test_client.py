@@ -17,6 +17,7 @@ from openclaw_adapter.client import (
     MessageResponse,
     OpenClawClient,
     _extract_json_blob,
+    _extract_usage_tokens,
     _parse_version_line,
     _response_from_payload,
 )
@@ -55,6 +56,27 @@ def test_message_response_dataclass_shape() -> None:
     assert r.thought is None
     assert r.actions == []
     assert r.params == {}
+
+
+def test_extract_usage_tokens_preserves_zero_and_nested_cache_details() -> None:
+    tokens = _extract_usage_tokens(
+        {
+            "prompt_tokens": 0,
+            "completion_tokens": 2,
+            "total_tokens": 2,
+            "prompt_tokens_details": {
+                "cached_tokens": 0,
+                "cache_write_tokens": 7,
+            },
+        }
+    )
+    assert tokens == {
+        "prompt_tokens": 0,
+        "completion_tokens": 2,
+        "total_tokens": 2,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 7,
+    }
 
 
 def test_client_init_uses_provided_binary(fake_binary: Path) -> None:
@@ -250,6 +272,17 @@ def test_build_openai_body_includes_generation_options(fake_binary: Path) -> Non
     assert body["max_completion_tokens"] == 256
     assert body["tool_choice"] == "none"
     assert body["tools"] == [{"type": "function", "function": {"name": "LOOKUP"}}]
+
+
+def test_build_openai_body_drops_non_openai_tool_inventory(fake_binary: Path) -> None:
+    c = OpenClawClient(binary_path=fake_binary, direct_openai_compatible=True)
+    body = c.build_openai_compatible_body(
+        "triage inbox",
+        {"tools": ["exec", "slack", "read"], "tool_choice": "auto"},
+    )
+
+    assert "tools" not in body
+    assert "tool_choice" not in body
 
 
 def test_build_openai_body_embeds_benchmark_context(fake_binary: Path) -> None:
@@ -530,31 +563,19 @@ def test_response_from_payload_normalizes_tool_calls() -> None:
 
 def test_response_from_payload_does_not_count_text_embedded_tool_call_by_default() -> None:
     payload = {
-        "reply": (
-            'Need lookup.<tool_call>{"tool": "SEARCH", '
-            '"args": {"query": "approvals"}}</tool_call>'
-        )
+        "reply": 'Need lookup. {"tool": "SEARCH", "args": {"query": "approvals"}}'
     }
     r = _response_from_payload(payload)
     assert r.text == payload["reply"]
     assert r.actions == []
     assert "tool_calls" not in r.params
-    assert r.params["_meta"]["openclaw_adapter"]["counts_text_embedded_tool_calls"] is False
-
-
-def test_response_from_payload_can_mark_explicit_legacy_text_tool_call_mode() -> None:
-    payload = {
-        "reply": (
-            'Need lookup.<tool_call>{"tool": "SEARCH", '
-            '"args": {"query": "approvals"}}</tool_call>'
-        )
+    assert set(r.params["_meta"]["openclaw_adapter"]) == {
+        "transport",
+        "path_label",
+        "native_openai_tool_calls",
+        "preserves_full_messages",
+        "passes_benchmark_tools",
     }
-    r = _response_from_payload(payload, allow_text_tool_calls=True)
-    assert r.text == "Need lookup."
-    assert r.actions == ["SEARCH"]
-    assert r.params["SEARCH"] == {"query": "approvals"}
-    assert r.params["tool_calls"][0]["name"] == "SEARCH"
-    assert r.params["_meta"]["openclaw_adapter"]["counts_text_embedded_tool_calls"] is True
 
 
 def test_response_from_payload_preserves_scalar_arguments() -> None:
@@ -578,3 +599,25 @@ def test_response_from_payload_stashes_usage_under_meta() -> None:
     assert isinstance(meta, dict)
     assert meta["usage"]["prompt_tokens"] == 10
     assert meta["sessionId"] == "sess-1"
+
+
+def test_response_from_payload_preserves_zero_usage_cache_metadata() -> None:
+    payload = {
+        "reply": "ok",
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "cache_read_input_tokens": 0,
+            "prompt_tokens_details": {"cached_tokens": 25, "cache_write_tokens": 7},
+        },
+    }
+    r = _response_from_payload(payload)
+    meta = r.params.get("_meta")
+    assert isinstance(meta, dict)
+    usage = meta["usage"]
+    assert usage["prompt_tokens"] == 10
+    assert usage["completion_tokens"] == 5
+    assert usage["total_tokens"] == 15
+    assert usage["prompt_tokens_details"]["cached_tokens"] == 0
+    assert usage["prompt_tokens_details"]["cache_write_tokens"] == 7

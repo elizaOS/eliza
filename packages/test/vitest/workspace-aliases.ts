@@ -357,10 +357,19 @@ export function getUiSourceAliases(
     return [];
   }
 
-  return getPackageSourceAliases("ui", sourceRoot, {
-    includeElizaAlias: true,
-    rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
-  });
+  const packageRoot = path.dirname(sourceRoot);
+
+  return [
+    ...getWorkspacePackageExportAliases("ui", packageRoot),
+    {
+      find: /^@elizaos\/ui\/(.+)$/,
+      replacement: path.join(sourceRoot, "$1"),
+    },
+    ...getPackageSourceAliases("ui", sourceRoot, {
+      includeElizaAlias: true,
+      rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
+    }),
+  ];
 }
 
 export function getWorkspaceAppAliases(

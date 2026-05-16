@@ -1,7 +1,7 @@
 import { getAddress, verifyMessage } from "viem";
 import type { ApprovalChallengePayload } from "../../db/repositories/approval-requests";
-import type { ApprovalRequestsService } from "./approval-requests";
 import { logger } from "../utils/logger";
+import type { ApprovalRequestsService } from "./approval-requests";
 
 /**
  * IdentityVerificationGatekeeper (Wave D).

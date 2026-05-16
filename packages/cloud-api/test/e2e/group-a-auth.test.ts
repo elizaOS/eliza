@@ -416,7 +416,12 @@ describe("Group A: auth + sessions", () => {
         { identifier: process.env.TEST_USER_EMAIL },
         { headers: internalHeaders() },
       );
-      expect(res.status).toBe(200);
+      if (res.status !== 200) {
+        const body = await res.text();
+        throw new Error(
+          `Expected 200 from /api/internal/identity/resolve, got ${res.status}: ${body.slice(0, 500)}`,
+        );
+      }
       const body = (await res.json()) as {
         success?: boolean;
         data?: {

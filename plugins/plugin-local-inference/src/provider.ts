@@ -16,7 +16,7 @@ import {
 import { generateMediaAction } from "./actions/generate-media.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
-export const LOCAL_INFERENCE_PRIORITY = 0;
+export const LOCAL_INFERENCE_PRIORITY = -100;
 
 export const LOCAL_INFERENCE_TEXT_MODEL_TYPES = [
 	ModelType.TEXT_SMALL,
@@ -481,21 +481,11 @@ function createEmbeddingHandler() {
 	): Promise<number[]> => {
 		const service = serviceFromRuntime(runtime);
 		if (!service) {
-			// Fail-soft: when no local backend is loaded (no Eliza-1 bundle yet,
-			// running cloud-only, etc.), return a zero-vector so the agent
-			// bootstrap and memory pipeline can complete. Semantic search /
-			// RAG will return matches based on this all-zero vector (i.e.
-			// effectively degraded ordering), but the runtime stays online
-			// instead of crashing on every memory write. Surface a one-time
-			// warning so operators know to install a backend or wire a cloud
-			// embedding provider.
-			if (!emitZeroVectorWarning.warned) {
-				emitZeroVectorWarning.warned = true;
-				logger.warn(
-					"[local-inference] TEXT_EMBEDDING requested with no active Eliza-1 backend — returning zero-vectors so the runtime can boot. To restore semantic search install/activate an Eliza-1 bundle, set ELIZAOS_CLOUD_USE_EMBEDDINGS=1 with a Cloud login, or set ELIZA_DISABLE_LOCAL_EMBEDDINGS=true to stop auto-loading this plugin.",
-				);
-			}
-			return new Array(LOCAL_EMBEDDING_FALLBACK_DIMS).fill(0);
+			throw unavailable(
+				ModelType.TEXT_EMBEDDING,
+				"backend_unavailable",
+				"[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.",
+			);
 		}
 		if (typeof service.embed !== "function") {
 			throw unavailable(
@@ -511,15 +501,6 @@ function createEmbeddingHandler() {
 		return normalizeEmbeddingResult(await service.embed({ input }));
 	};
 }
-
-// Dimensions match `bundles/0_8b/text/eliza-1-0_8b-32k.gguf` (and most current
-// embedding models we ship). When operators wire a different-dimension model
-// later, the agent re-indexes anyway, so this constant is for the boot path
-// only — never persisted as real data.
-const LOCAL_EMBEDDING_FALLBACK_DIMS = 1024;
-
-// Module-level flag to ensure the warning fires once per process, not per call.
-const emitZeroVectorWarning: { warned: boolean } = { warned: false };
 
 function createTextToSpeechHandler() {
 	return async (

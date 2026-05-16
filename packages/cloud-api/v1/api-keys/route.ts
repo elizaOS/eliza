@@ -23,6 +23,10 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
+function isAgentSandboxKeyName(name: string): boolean {
+  return name.startsWith("agent-sandbox:");
+}
+
 function toClientApiKey(
   apiKey: Awaited<ReturnType<typeof apiKeysService.listByOrganization>>[number],
 ) {
@@ -59,7 +63,7 @@ app.post("/", async (c) => {
     const { name, description, permissions, rate_limit, expires_at } =
       createApiKeySchema.parse(body);
 
-    if (ApiKeysService.isAgentSandboxKey({ name })) {
+    if (isAgentSandboxKeyName(name)) {
       return c.json(
         {
           error:

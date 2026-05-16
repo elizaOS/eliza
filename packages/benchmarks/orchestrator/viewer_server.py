@@ -6,6 +6,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .adapters import discover_adapters
 from .db import connect_database, initialize_database
 from .viewer_data import build_viewer_dataset
 
@@ -33,7 +34,11 @@ def _load_dataset(workspace_root: Path) -> dict[str, object]:
     if db_path.exists():
         conn = connect_database(db_path)
         initialize_database(conn)
-        data = build_viewer_dataset(conn)
+        try:
+            benchmark_ids = set(discover_adapters(workspace_root).adapters)
+        except Exception:
+            benchmark_ids = None
+        data = build_viewer_dataset(conn, benchmark_ids=benchmark_ids)
         conn.close()
         return data
 

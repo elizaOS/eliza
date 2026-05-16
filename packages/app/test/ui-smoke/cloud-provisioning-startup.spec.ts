@@ -312,5 +312,284 @@ for (const viewport of VIEWPORTS) {
         page.evaluate(() => localStorage.getItem("eliza:mobile-runtime-mode")),
       )
       .toBe("cloud");
+
+    const cloudChatPrompt = `cloud provisioning smoke ${viewport.name}`;
+    await page.getByTestId("chat-composer-textarea").fill(cloudChatPrompt);
+    await page.getByTestId("chat-composer-action").click();
+
+    await expect(page.getByText(cloudChatPrompt)).toBeVisible();
+    await expect(page.getByText(/stubbed QA response/i).last()).toBeVisible();
   });
 }
+
+test.skip("new cloud agent shows provisioning chat immediately, accepts a setup turn, then hands off seamlessly", async ({
+  page,
+  baseURL,
+}) => {
+  const apiBase = apiBaseFromTest(baseURL);
+  let createRequests = 0;
+  let jobPollRequests = 0;
+  let provisioningChatRequests = 0;
+  let launchRequests = 0;
+  let allowHandoff = false;
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addInitScript((voicePrefixDoneKey) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem(voicePrefixDoneKey, "1");
+  }, VOICE_PREFIX_DONE_STORAGE_KEY);
+
+  await installDefaultAppRoutes(page);
+
+  await page.route("**/api/auth/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      required: false,
+      authenticated: true,
+      loginRequired: false,
+      localAccess: true,
+      passwordConfigured: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+  });
+
+  await page.route("**/api/onboarding/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      complete: false,
+      cloudProvisioned: false,
+    });
+  });
+
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      connected: true,
+      enabled: true,
+      cloudVoiceProxyAvailable: true,
+      hasApiKey: true,
+      userId: "cloud-provisioning-chat-user",
+    });
+  });
+
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+
+  await page.route("**/api/cloud/compat/agents", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await fulfillJson(route, 200, {
+        success: true,
+        data: [],
+      });
+      return;
+    }
+    if (request.method() === "POST") {
+      createRequests += 1;
+      await fulfillJson(route, 200, {
+        success: true,
+        data: {
+          agentId: "agent-new",
+          agentName: "My Agent",
+          jobId: "job-new",
+          status: "pending",
+          nodeId: null,
+          message: "Agent created",
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/cloud/compat/jobs/job-new", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    jobPollRequests += 1;
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        id: "job-new",
+        jobId: "job-new",
+        type: "agent_provision",
+        status: allowHandoff ? "completed" : "in_progress",
+        data: {},
+        result: allowHandoff
+          ? {
+              agentId: "agent-new",
+              status: "running",
+              bridgeUrl: apiBase,
+            }
+          : null,
+        error: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        startedAt: "2026-01-01T00:00:01.000Z",
+        completedAt: allowHandoff ? "2026-01-01T00:00:02.000Z" : null,
+        retryCount: 0,
+        name: "agent_provision",
+        state: allowHandoff ? "completed" : "in_progress",
+      },
+    });
+  });
+
+  await page.route("**/api/v1/provisioning-agent", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        status: allowHandoff ? "running" : "provisioning",
+        agentId: "agent-new",
+        ...(allowHandoff ? { bridgeUrl: apiBase } : {}),
+      },
+    });
+  });
+
+  await page.route("**/api/v1/provisioning-agent/chat", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    provisioningChatRequests += 1;
+    const body = await route.request().postDataJSON();
+    expect(body).toMatchObject({
+      message: "my name is Shaw and I want Discord",
+      agentId: "agent-new",
+    });
+    allowHandoff = true;
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        reply:
+          "Got it. I will remember your name and that Discord is a priority.",
+        containerStatus: "running",
+        bridgeUrl: apiBase,
+        history: [
+          { role: "user", content: body.message },
+          {
+            role: "assistant",
+            content:
+              "Got it. I will remember your name and that Discord is a priority.",
+          },
+        ],
+      },
+    });
+  });
+
+  await page.route("**/api/cloud/compat/agents/agent-new", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        agent_id: "agent-new",
+        agent_name: "My Agent",
+        status: "running",
+        bridge_url: apiBase,
+        web_ui_url: null,
+        containerUrl: "",
+        webUiUrl: null,
+        database_status: "ready",
+        error_message: null,
+        agent_config: {},
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:02.000Z",
+        last_heartbeat_at: "2026-01-01T00:00:02.000Z",
+      },
+    });
+  });
+
+  const fulfillLaunch = async (route: Route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    launchRequests += 1;
+    await fulfillJson(route, 200, {
+      success: true,
+      data: {
+        agentId: "agent-new",
+        agentName: "My Agent",
+        appUrl: apiBase,
+        launchSessionId: "launch-new",
+        issuedAt: "2026-01-01T00:00:02.000Z",
+        connection: {
+          apiBase,
+          token: "agent-token",
+        },
+      },
+    });
+  };
+
+  await page.route(
+    "**/api/cloud/compat/agents/agent-new/launch",
+    fulfillLaunch,
+  );
+  await page.route("**/api/compat/agents/agent-new/launch", fulfillLaunch);
+  await page.route(
+    "**/api/cloud/v1/app/agents/agent-new/launch",
+    fulfillLaunch,
+  );
+
+  await openAppPath(page, "/chat");
+  await page.getByRole("button", { name: "Get started" }).click();
+  await clickIfVisible(
+    page.getByRole("button", { name: /sign in with eliza cloud/i }),
+  );
+
+  await expect.poll(() => createRequests).toBeGreaterThanOrEqual(1);
+  await expect(page.getByText(/setting up your agent/i).first()).toBeVisible();
+  await expect(page.getByText(/your personal ai container is warming up/i)).toBeVisible();
+  await expect(page.getByPlaceholder(/ask me anything/i)).toBeVisible();
+  await expect.poll(() => jobPollRequests).toBeGreaterThan(0);
+
+  await page
+    .getByPlaceholder(/ask me anything/i)
+    .fill("my name is Shaw and I want Discord");
+  await page.getByRole("button", { name: /^send$/i }).click();
+
+  await expect.poll(() => provisioningChatRequests).toBe(1);
+
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+  await expect.poll(() => launchRequests).toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("elizaos:active-server");
+        return raw ? JSON.parse(raw) : null;
+      }),
+    )
+    .toMatchObject({
+      id: "cloud:agent-new",
+      kind: "cloud",
+      label: "My Agent",
+      apiBase,
+    });
+});

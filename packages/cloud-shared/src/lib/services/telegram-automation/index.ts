@@ -6,8 +6,8 @@
  */
 
 import { Telegraf } from "telegraf";
-import { secretsService } from "../secrets";
 import { logger } from "../../utils/logger";
+import { secretsService } from "../secrets";
 
 // Use ELIZA_API_URL (ngrok) for local dev webhooks, otherwise NEXT_PUBLIC_APP_URL
 const WEBHOOK_BASE_URL =

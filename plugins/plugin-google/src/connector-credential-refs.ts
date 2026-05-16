@@ -395,7 +395,7 @@ function getFirstService(runtime: IAgentRuntime, serviceTypes: readonly string[]
 
 function getService(runtime: IAgentRuntime, serviceType: string): unknown {
   try {
-    return runtime.getService(serviceType) ?? null;
+    return runtime.getService?.(serviceType) ?? null;
   } catch {
     return null;
   }

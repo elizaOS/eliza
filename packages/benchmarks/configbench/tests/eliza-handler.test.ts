@@ -5,6 +5,7 @@ import {
   isTextEmbeddingSetupFailure,
   loadModelProviderPlugin,
   normalizeConfigBenchProviderName,
+  sendMessageAndWaitForResponseForTest,
 } from "../src/handlers/eliza.js";
 
 describe("Eliza handler setup helpers", () => {
@@ -66,5 +67,33 @@ describe("Eliza handler setup helpers", () => {
     expect(plugin?.name).toBe("openai");
     expect(plugin?.models).toHaveProperty("TEXT_EMBEDDING");
     expect(process.env.OPENAI_API_KEY).toBe("csk-test");
+  });
+
+  it("uses handleMessage responseContent when no callback response is emitted", async () => {
+    const response = await sendMessageAndWaitForResponseForTest(
+      {
+        agentId: "00000000-0000-0000-0000-000000000001",
+        messageService: {
+          handleMessage: vi.fn(async () => ({
+            responseContent: {
+              text: "I've securely stored your OPENAI_API_KEY.",
+              actions: ["SECRETS"],
+            },
+          })),
+        },
+      } as never,
+      {
+        id: "00000000-0000-0000-0000-000000000002",
+        type: "dm",
+      } as never,
+      {
+        id: "00000000-0000-0000-0000-000000000003",
+      } as never,
+      "Set my OPENAI_API_KEY to sk-test-abc123",
+      100,
+    );
+
+    expect(response.text).toContain("OPENAI_API_KEY");
+    expect(response.actions).toEqual(["SECRETS"]);
   });
 });

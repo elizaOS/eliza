@@ -9,12 +9,12 @@ export type {
   RequestCodingAgentContainerResponse,
   SyncCloudCodingContainerRequest,
   SyncCloudCodingContainerResponse,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/cloud-coding-containers";
 export {
   PromoteVfsToCloudContainerRequestSchema,
   RequestCodingAgentContainerRequestSchema,
   SyncCloudCodingContainerRequestSchema,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/cloud-coding-containers";
 
 import type {
   CloudCodingContainerSession,
@@ -25,7 +25,7 @@ import type {
   PromoteVfsToCloudContainerRequest,
   RequestCodingAgentContainerRequest,
   SyncCloudCodingContainerRequest,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/cloud-coding-containers";
 import { containersEnv } from "../config/containers-env";
 
 export interface CodingContainerCreatePayload {

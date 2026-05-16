@@ -34,6 +34,8 @@ export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
 
 export const ELIZA_1_VISION_TIER_IDS = [
+  "eliza-1-0_8b",
+  "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
@@ -80,13 +82,10 @@ export function isDefaultEligibleId(id: string): boolean {
  * override at runtime without changing the static map (useful for QA
  * and for installs that depend on a private HF mirror).
  *
- * W3-12 audit (2026-05-14): the following tiers require publish attention:
- *   - `eliza-1-0_8b`: published but vision mmproj missing from bundle.
- *     `hasVision: true` in catalog but `vision/mmproj-0_8b.gguf` absent.
- *     Next step: quantize mmproj from Qwen3.5-0.8B VL variant, push to
- *     bundles/0_8b/vision/, update manifest.
- *   - `eliza-1-2b`: published but vision mmproj missing from bundle.
- *     Same fix path as 0_8b.
+ * W3-12 audit (2026-05-14): the following areas require publish attention:
+ *   - 0.8B/2B vision: enabled in the catalog and canonical vision tier set;
+ *     publish staging must include `vision/mmproj-0_8b.gguf` and
+ *     `vision/mmproj-2b.gguf` or manifest validation fails loudly.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
  *     published under the unified elizaos/eliza-1 `voice/<model-id>/...`
  *     layout. Per-tier manifests still need to consume these paths directly
@@ -329,6 +328,29 @@ function tierSlug(id: Eliza1TierId): string {
   return id.slice("eliza-1-".length);
 }
 
+function tierDisplaySlug(id: Eliza1TierId): string {
+  switch (id) {
+    case "eliza-1-0_8b":
+      return "0_8B";
+    case "eliza-1-2b":
+      return "2B";
+    case "eliza-1-4b":
+      return "4B";
+    case "eliza-1-9b":
+      return "9B";
+    case "eliza-1-27b":
+      return "27B";
+    case "eliza-1-27b-256k":
+      return "27B-256k";
+  }
+  const exhaustive: never = id;
+  return exhaustive;
+}
+
+function tierDisplayName(id: Eliza1TierId): string {
+  return `eliza-1-${tierDisplaySlug(id)}`;
+}
+
 function bundleRemotePrefix(id: Eliza1TierId): string {
   return `bundles/${tierSlug(id)}`;
 }
@@ -547,19 +569,20 @@ function textQuantizationMatrix(args: {
 }
 
 function blurbForTier(id: Eliza1TierId): string {
+  const displayName = tierDisplayName(id);
   switch (id) {
     case "eliza-1-0_8b":
-      return "eliza-1-0_8b - smallest local tier for low-memory phones and CPU fallback.";
+      return `${displayName} - smallest local tier for low-memory phones and CPU fallback.`;
     case "eliza-1-2b":
-      return "eliza-1-2b - recommended first-run local tier for responsive text and voice.";
+      return `${displayName} - recommended first-run local tier for responsive text and voice.`;
     case "eliza-1-4b":
-      return "eliza-1-4b - balanced local tier for modern laptops and desktops.";
+      return `${displayName} - balanced local tier for modern laptops and desktops.`;
     case "eliza-1-9b":
-      return "eliza-1-9b - workstation local tier for stronger reasoning.";
+      return `${displayName} - workstation local tier for stronger reasoning.`;
     case "eliza-1-27b":
-      return "eliza-1-27b - high-quality local tier for GPU workstations.";
+      return `${displayName} - high-quality local tier for GPU workstations.`;
     case "eliza-1-27b-256k":
-      return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
+      return `${displayName} - high-quality local tier with a 256k context window.`;
   }
   const exhaustive: never = id;
   return exhaustive;
@@ -569,7 +592,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
   const spec = TIER_SPECS[id];
   return {
     id,
-    displayName: id,
+    displayName: tierDisplayName(id),
     hfRepo: ELIZA_1_HF_REPO,
     hfPathPrefix: bundleRemotePrefix(id),
     ggufFile: bundlePath(id, spec.textFile),
@@ -602,7 +625,7 @@ function drafterCompanion(id: Eliza1TierId): CatalogModel {
   const spec = TIER_SPECS[id];
   return {
     id: drafterId(id),
-    displayName: `${id} drafter`,
+    displayName: `${tierDisplayName(id)} drafter`,
     hfRepo: ELIZA_1_HF_REPO,
     hfPathPrefix: bundleRemotePrefix(id),
     ggufFile: bundlePath(id, `dflash/drafter-${tierSlug(id)}.gguf`),

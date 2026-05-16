@@ -51,7 +51,7 @@ def build_action_calling_agent_fn(
             "model_name": <when provided>,
         }
     """
-    bridge = client or OpenClawClient()
+    bridge = client or OpenClawClient(direct_openai_compatible=True)
     effective_system_prompt = system_prompt or _DEFAULT_SYSTEM_PROMPT
 
     async def _agent_fn(

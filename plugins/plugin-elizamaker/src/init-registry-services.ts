@@ -48,7 +48,7 @@ function readRuntimeSetting(
   runtime: IAgentRuntime,
   key: string,
 ): string | undefined {
-  const value = runtime.getSetting(key);
+  const value = runtime.getSetting?.(key);
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 

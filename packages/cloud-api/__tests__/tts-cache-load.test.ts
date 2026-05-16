@@ -23,7 +23,7 @@ import {
   type CloudFirstLineCachePutInput,
   fingerprintCloudVoiceSettings,
   hashCloudCacheKey,
-} from "../../../packages/lib/services/tts-first-line-cache";
+} from "../../cloud-shared/src/lib/services/tts-first-line-cache";
 
 // ---------------------------------------------------------------------------
 // In-memory R2 stub
@@ -31,7 +31,7 @@ import {
 
 const r2Store = new Map<string, Uint8Array>();
 
-mock.module("../../../packages/lib/storage/r2-runtime-binding", () => ({
+mock.module("../../cloud-shared/src/lib/storage/r2-runtime-binding", () => ({
   getRuntimeR2Bucket: () => ({
     get: async (key: string) => {
       const data = r2Store.get(key);

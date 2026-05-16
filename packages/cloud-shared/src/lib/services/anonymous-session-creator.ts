@@ -7,8 +7,8 @@
 
 import { dbWrite } from "../../db/client";
 import { users } from "../../db/schemas";
-import { anonymousSessionsService } from "./anonymous-sessions";
 import { logger } from "../utils/logger";
+import { anonymousSessionsService } from "./anonymous-sessions";
 
 export interface CreateAnonymousUserAndSessionParams {
   sessionToken: string;

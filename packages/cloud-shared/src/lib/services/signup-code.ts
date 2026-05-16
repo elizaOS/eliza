@@ -9,9 +9,9 @@
  */
 
 import { creditTransactionsRepository } from "../../db/repositories/credit-transactions";
-import { creditsService } from "./credits";
 import { isUniqueConstraintError } from "../utils/db-errors";
 import { logger } from "../utils/logger";
+import { creditsService } from "./credits";
 
 export const ERRORS = {
   INVALID_CODE: "Invalid signup code",

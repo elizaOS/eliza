@@ -18,7 +18,7 @@ import {
   isLiveTestEnabled,
   selectLiveProvider,
 } from "../../../test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 
 const envPath = path.resolve(
   import.meta.dirname,

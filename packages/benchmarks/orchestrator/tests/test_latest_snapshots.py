@@ -218,6 +218,40 @@ def test_rebuild_latest_preserves_valid_snapshots_missing_from_partial_db(
     assert index["latest"]["webshop::eliza"]["run_id"] == "run_webshop_old"
 
 
+def test_rebuild_latest_is_byte_stable_when_inputs_do_not_change(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
+    first_index = (tmp_path / "latest" / "index.json").read_text(encoding="utf-8")
+    first_snapshot = (tmp_path / "latest" / "bfcl__eliza.json").read_text(encoding="utf-8")
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
+
+    assert (tmp_path / "latest" / "index.json").read_text(encoding="utf-8") == first_index
+    assert (
+        (tmp_path / "latest" / "bfcl__eliza.json").read_text(encoding="utf-8")
+        == first_snapshot
+    )
+
+
 def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     tmp_path: Path,
 ) -> None:
@@ -313,6 +347,54 @@ def test_rebuild_latest_publishes_estimated_token_rows_with_warning(
     assert "estimated_token_metrics:prompt_chars_div_4" in payload["publication_warnings"]
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert set(index["latest"]) == {"action-calling::eliza"}
+
+
+def test_rebuild_latest_warns_for_sample_task_sets(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["webshop"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="webshop",
+        agent="eliza",
+        run_id="run_sample",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "total_instances": 1,
+            "total_samples": 2,
+            "total_tasks": 1,
+            "total_trials": 1,
+            "total_questions": 2,
+            "scenario_count": 1,
+            "n": 2,
+            "sample": True,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 3},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"webshop": _adapter("webshop")},
+    )
+
+    payload = json.loads(
+        (tmp_path / "latest" / "webshop__eliza.json").read_text(encoding="utf-8")
+    )
+    assert "sample_task_set" in payload["publication_warnings"]
+    assert "insufficient_total_instances:1" in payload["publication_warnings"]
+    assert "insufficient_total_samples:2" in payload["publication_warnings"]
+    assert "insufficient_total_tasks:1" in payload["publication_warnings"]
+    assert "insufficient_total_questions:2" in payload["publication_warnings"]
+    assert "insufficient_scenario_count:1" in payload["publication_warnings"]
+    assert "insufficient_n:2" in payload["publication_warnings"]
 
 
 def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(

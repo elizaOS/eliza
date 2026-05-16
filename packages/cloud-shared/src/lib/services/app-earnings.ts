@@ -2,7 +2,10 @@
  * Service for managing app earnings and revenue tracking.
  */
 
-import { type AppEarningsTransaction, appEarningsRepository } from "../../db/repositories/app-earnings";
+import {
+  type AppEarningsTransaction,
+  appEarningsRepository,
+} from "../../db/repositories/app-earnings";
 import { appsRepository } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
 

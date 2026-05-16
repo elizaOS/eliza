@@ -36,7 +36,7 @@ function resolveAvatar(id: string | undefined): AvatarModule | undefined {
   return getActiveAvatar();
 }
 
-export function AvatarHost(props: AvatarHostProps): JSX.Element {
+export function AvatarHost(props: AvatarHostProps): React.JSX.Element {
   const { moduleId, audioLevel, speakingState, ownerName, className } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [failed, setFailed] = useState(false);
@@ -60,8 +60,9 @@ export function AvatarHost(props: AvatarHostProps): JSX.Element {
       handle = mod.mount(target, ctx);
     } catch (error) {
       logger.warn(
-        "[AvatarHost] Failed to mount avatar module; falling back to solid sky",
-        { error: error instanceof Error ? error.message : String(error) },
+        `[AvatarHost] Failed to mount avatar module; falling back to solid sky: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       setFailed(true);
       return;
@@ -70,9 +71,11 @@ export function AvatarHost(props: AvatarHostProps): JSX.Element {
       try {
         handle?.unmount();
       } catch (error) {
-        logger.warn("[AvatarHost] Unmount threw", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          `[AvatarHost] Unmount threw: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     };
   }, [moduleId, audioLevel, speakingState, ownerName]);

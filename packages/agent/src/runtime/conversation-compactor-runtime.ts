@@ -1163,13 +1163,13 @@ function readRecentMessageMemories(state: State): Memory[] {
   const recentMessages = provider?.data?.recentMessages;
   if (!Array.isArray(recentMessages)) return [];
   return recentMessages.filter(
-    (memory): memory is Memory =>
-      Boolean(memory) &&
+    (memory) =>
+      memory !== null &&
       typeof memory === "object" &&
       !Array.isArray(memory) &&
       "content" in memory &&
       "roomId" in memory,
-  );
+  ) as unknown as Memory[];
 }
 
 function rewriteStateRecentMessages(args: {

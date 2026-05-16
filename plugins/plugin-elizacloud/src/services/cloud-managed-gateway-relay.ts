@@ -67,7 +67,7 @@ function isCloudProvisionedRuntime(): boolean {
 }
 
 function isNodeHost(): boolean {
-  return typeof process !== "undefined" && typeof process.versions.node === "string";
+  return typeof process !== "undefined" && typeof process.versions?.node === "string";
 }
 
 function normalizeAttachments(value: unknown): Content["attachments"] | undefined {
@@ -372,7 +372,7 @@ export class CloudManagedGatewayRelayService extends Service {
   }
 
   private getAgentName(): string {
-    return this.runtime.character.name?.trim() || "Eliza";
+    return this.runtime.character?.name?.trim() || "Eliza";
   }
 
   private getClient() {
@@ -424,7 +424,7 @@ export class CloudManagedGatewayRelayService extends Service {
       }
     );
 
-    if (status >= 400 || !body.success || !body.data.session.id) {
+    if (status >= 400 || !body?.success || !body.data?.session?.id) {
       throw new Error(`Failed to register gateway relay session (status=${status})`);
     }
 
@@ -466,11 +466,11 @@ export class CloudManagedGatewayRelayService extends Service {
       throw new SessionMissingError();
     }
 
-    if (status >= 400 || !body.success) {
+    if (status >= 400 || !body?.success) {
       throw new Error(`Failed to poll gateway relay session ${sessionId} (status=${status})`);
     }
 
-    return body.data.request ?? null;
+    return body.data?.request ?? null;
   }
 
   private async submitResponse(
@@ -490,7 +490,7 @@ export class CloudManagedGatewayRelayService extends Service {
       throw new SessionMissingError();
     }
 
-    if (status >= 400 || body.success === false) {
+    if (status >= 400 || body?.success === false) {
       throw new Error(`Failed to submit gateway relay response (status=${status})`);
     }
   }

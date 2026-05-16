@@ -65,7 +65,7 @@ export function createChannelDebouncer(
 			text: message.content,
 			userId: botId,
 			hasMessageReference: Boolean(message.reference?.messageId),
-			repliedUserId: message.mentions.repliedUser?.id,
+			repliedUserId: message.mentions?.repliedUser?.id,
 		});
 	};
 
@@ -181,7 +181,7 @@ export function createMessageDebouncer(
 	};
 
 	const hasMedia = (message: DiscordMessage) =>
-		message.attachments.size > 0 || message.stickers.size > 0;
+		(message.attachments?.size ?? 0) > 0 || (message.stickers?.size ?? 0) > 0;
 
 	const enqueue = (message: DiscordMessage) => {
 		if (debounceMs <= 0) {

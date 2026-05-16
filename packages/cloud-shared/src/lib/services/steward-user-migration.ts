@@ -1,10 +1,10 @@
 import { type User } from "../../db/repositories";
+import { logger } from "../utils/logger";
 import {
   isStewardPlatformConfigured,
   provisionStewardPlatformUser,
 } from "./steward-platform-users";
 import { usersService } from "./users";
-import { logger } from "../utils/logger";
 
 type StewardMappingUser = Pick<
   User,

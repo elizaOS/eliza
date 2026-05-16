@@ -19,7 +19,13 @@
 import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@elizaos/ui/components/ui/tabs";
 import {
   ArrowLeft,
   Delete,

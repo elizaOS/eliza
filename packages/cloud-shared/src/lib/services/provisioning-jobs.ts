@@ -26,9 +26,9 @@ import {
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { logger } from "../utils/logger";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { elizaSandboxService } from "./eliza-sandbox";
-import { logger } from "../utils/logger";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 
 // ---------------------------------------------------------------------------

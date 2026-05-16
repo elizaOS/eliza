@@ -66,6 +66,18 @@ class TestBFCLRunner:
         assert runner.config == config
         assert runner.dataset is not None
 
+    def test_generic_agent_requires_real_provider_config(
+        self,
+        config: BFCLConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Missing provider config must not silently become a mock row."""
+        monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="use_mock_agent=True"):
+            BFCLRunner(config, provider="cerebras", model="gpt-oss-120b")
+
     def test_runner_initializes_hermes_provider(self, config: BFCLConfig) -> None:
         """Hermes provider should use the Hermes BFCL adapter, not the generic fallback."""
         runner = BFCLRunner(config, provider="hermes", model="gpt-oss-120b")

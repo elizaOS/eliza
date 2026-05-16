@@ -48,9 +48,9 @@ function toConnectorAccount(settings: TwitchSettings): ConnectorAccount {
     createdAt: now,
     updatedAt: now,
     metadata: {
-      channel: settings.channel,
-      additionalChannels: settings.additionalChannels,
-      requireMention: settings.requireMention,
+      channel: settings.channel ?? "",
+      additionalChannels: settings.additionalChannels ?? [],
+      requireMention: settings.requireMention ?? false,
       hasRefreshToken: Boolean(settings.refreshToken),
     },
   };

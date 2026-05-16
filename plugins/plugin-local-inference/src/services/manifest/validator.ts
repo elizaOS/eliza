@@ -176,6 +176,7 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 ]);
 
 const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -184,6 +185,8 @@ const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 ]);
 
 const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"0_8b",
+	"2b",
 	"4b",
 	"9b",
 	"27b",
@@ -274,7 +277,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
 		}
 	} else if (m.files.vision.length > 0) {
-		errors.push(`files.vision: unsupported for text/voice-only tier ${m.tier}`);
+		errors.push(`files.vision: unsupported for non-vision tier ${m.tier}`);
 	}
 
 	// Backend kernel-verify coverage. A production release must verify every

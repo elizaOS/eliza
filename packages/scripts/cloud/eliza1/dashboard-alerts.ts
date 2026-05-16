@@ -6,7 +6,7 @@ import { Pool } from "pg";
 import {
   generateProjectionAlerts,
   generateProjections,
-} from "../../packages/lib/analytics/projections";
+} from "../../../cloud-shared/src/lib/analytics/projections";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");

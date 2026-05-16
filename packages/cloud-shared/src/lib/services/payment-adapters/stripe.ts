@@ -12,14 +12,11 @@
 
 import type Stripe from "stripe";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
-import { paymentMethodsService } from "../payment-methods";
-import {
-  type PaymentProviderAdapter,
-  type PaymentRequestRow,
-} from "../payment-requests";
-import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 import { requireStripe } from "../../stripe";
 import { logger } from "../../utils/logger";
+import { paymentMethodsService } from "../payment-methods";
+import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
+import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 
 interface RequestMetadata {
   successUrl?: string;

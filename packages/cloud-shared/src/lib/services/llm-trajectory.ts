@@ -16,12 +16,12 @@ import {
   llmTrajectories,
   type NewLlmTrajectory,
 } from "../../db/schemas/llm-trajectories";
+import { logger } from "../utils/logger";
 import {
   getTrajectoryPayload,
   putTrajectoryPayload,
   shouldUseR2ForTrajectoryPayloads,
 } from "./trajectory-object-storage";
-import { logger } from "../utils/logger";
 
 export interface LogCallParams {
   organizationId: string;

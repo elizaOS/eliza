@@ -383,7 +383,7 @@ export class RLMClient {
       /* ignore */
     }
     this.reader?.close();
-    this.process.kill();
+    this.process?.kill();
     this.process = null;
     this.isReady = false;
     this.isAvailable = false;

@@ -78,11 +78,12 @@ class MockBFCLAgent:
 
 
 class BFCLAgent:
-    """Lightweight LLM-backed BFCL agent with a mock fallback.
+    """Lightweight LLM-backed BFCL agent.
 
     OpenAI-compatible providers are called through their chat completions API.
-    If no provider configuration is available, the agent falls back to the
-    deterministic mock path so local smoke tests still exercise the runner.
+    Offline smoke tests must opt into ``MockBFCLAgent`` explicitly via the
+    runner's ``use_mock_agent`` path; missing provider configuration is a
+    harness error, not a benchmark result.
     """
 
     def __init__(
@@ -95,8 +96,13 @@ class BFCLAgent:
         self.config = config
         self.parser = FunctionCallParser()
         self._model_config = self._resolve_model_config(model_plugin, provider, model)
-        self._mock = self._model_config is None
-        self._model_name = self._model_config.full_model_name if self._model_config else "mock"
+        if self._model_config is None:
+            requested = provider or model or "default provider"
+            raise RuntimeError(
+                f"BFCL provider configuration unavailable for {requested!r}; "
+                "pass use_mock_agent=True only for explicit smoke tests."
+            )
+        self._model_name = self._model_config.full_model_name
 
     @property
     def model_name(self) -> str:
@@ -164,9 +170,6 @@ class BFCLAgent:
         test_case: BFCLTestCase,
         timeout_ms: Optional[int] = None,
     ) -> tuple[list[FunctionCall], str, float]:
-        if self._mock:
-            return await MockBFCLAgent(self.config).query(test_case, timeout_ms)
-
         start = time.time()
         raw_response = self._call_chat_completion(test_case, timeout_ms)
         latency_ms = (time.time() - start) * 1000

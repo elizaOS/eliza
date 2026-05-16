@@ -15,7 +15,7 @@ export const visionPlugin: Plugin = {
   // when media.vision.provider is configured.
   autoEnable: {
     shouldEnable: (_env, config) => {
-      const f = (config.features as Record<string, unknown> | undefined)
+      const f = (config?.features as Record<string, unknown> | undefined)
         ?.vision;
       const featureOn =
         f === true ||
@@ -23,7 +23,7 @@ export const visionPlugin: Plugin = {
           f !== null &&
           (f as { enabled?: unknown }).enabled !== false);
       if (featureOn) return true;
-      const media = config.media as Record<string, unknown> | undefined;
+      const media = config?.media as Record<string, unknown> | undefined;
       const visionMedia = media?.vision as
         | { enabled?: unknown; provider?: unknown }
         | undefined;

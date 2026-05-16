@@ -180,7 +180,7 @@ function filterMemoriesByQuery(
 	return memories
 		.filter((memory) => {
 			const text =
-				typeof memory.content.text === "string" ? memory.content.text : "";
+				typeof memory.content?.text === "string" ? memory.content.text : "";
 			return text.toLowerCase().includes(normalized);
 		})
 		.slice(0, limit);
@@ -619,7 +619,7 @@ export class FeishuService extends Service {
 		runtime: IAgentRuntime,
 		serviceInstance: FeishuService,
 	): void {
-		if (serviceInstance.client && serviceInstance.messageManager) {
+		if (serviceInstance?.client && serviceInstance?.messageManager) {
 			const sendHandler = async (
 				handlerRuntime: IAgentRuntime,
 				target: TargetInfo,
@@ -703,8 +703,8 @@ export class FeishuService extends Service {
 						);
 					},
 					searchMessages: async (context, params) => {
-						const limit = normalizeConnectorLimit(params.limit);
-						const target = params.target ?? context.target;
+						const limit = normalizeConnectorLimit(params?.limit);
+						const target = params?.target ?? context.target;
 						const messages = target?.roomId
 							? await readStoredMessageMemories(
 									context.runtime,
@@ -770,7 +770,7 @@ export class FeishuService extends Service {
 						}
 						return {
 							entityId,
-							label: entity.names[0],
+							label: entity.names?.[0],
 							aliases: entity.names,
 							handles: {},
 							metadata: entity.metadata,

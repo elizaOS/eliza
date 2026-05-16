@@ -60,7 +60,7 @@ def build_clawbench_agent_fn(
         model_name: Optional label propagated into the returned dict for
             attribution.
     """
-    bridge = client or OpenClawClient()
+    bridge = client or OpenClawClient(direct_openai_compatible=True)
     scenario_prompt = scenario_yaml.get("prompt") if isinstance(scenario_yaml, dict) else None
     if not isinstance(scenario_prompt, str):
         scenario_prompt = ""

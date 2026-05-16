@@ -23369,15 +23369,7 @@
     "public.redemption_status": {
       "name": "redemption_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "approved",
-        "processing",
-        "completed",
-        "failed",
-        "rejected",
-        "expired"
-      ]
+      "values": ["pending", "approved", "processing", "completed", "failed", "rejected", "expired"]
     },
     "public.mcp_pricing_type": {
       "name": "mcp_pricing_type",

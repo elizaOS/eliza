@@ -25,7 +25,7 @@ interface DiscordSendDmDeps {
 
 const defaultDeps: DiscordSendDmDeps = {
 	getDiscordService(runtime) {
-		const svc = runtime.getService(DISCORD_SERVICE_NAME) as
+		const svc = runtime.getService?.(DISCORD_SERVICE_NAME) as
 			| DiscordService
 			| null
 			| undefined;
@@ -34,7 +34,7 @@ const defaultDeps: DiscordSendDmDeps = {
 };
 
 function isCloudPaired(runtime: IAgentRuntime): boolean {
-	const apiKey = runtime.getSetting("ELIZA_CLOUD_API_KEY");
+	const apiKey = runtime.getSetting?.("ELIZA_CLOUD_API_KEY");
 	return typeof apiKey === "string" && apiKey.trim().length > 0;
 }
 
@@ -163,7 +163,7 @@ export function registerDiscordDmSensitiveRequestAdapter(
 	runtime: IAgentRuntime,
 ): void {
 	const tryRegister = (): boolean => {
-		const registry = runtime.getService(
+		const registry = runtime.getService?.(
 			SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE_NAME,
 		) as unknown as DispatchRegistryLike | null | undefined;
 		if (!registry || typeof registry.register !== "function") return false;

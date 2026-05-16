@@ -32,7 +32,7 @@ function toConnectorAccount(runtime: IAgentRuntime, accountId: string): Connecto
   let username = "";
   try {
     const config = resolveInstagramAccountConfig(runtime, accountId);
-    username = config.username;
+    username = config.username ?? "";
     connected = Boolean(config.username && config.password);
   } catch {
     connected = false;

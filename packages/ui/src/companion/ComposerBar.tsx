@@ -22,7 +22,7 @@ export function describeRightButton(args: {
   return "voice";
 }
 
-export function ComposerBar(props: ComposerBarProps): JSX.Element {
+export function ComposerBar(props: ComposerBarProps): React.JSX.Element {
   const {
     onSend,
     onDictateStart,

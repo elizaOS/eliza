@@ -353,14 +353,15 @@ function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
 			drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
+			vision: { base: "eliza-1-vision", license: "apache-2.0" },
 		},
 		files: {
 			text: [
-				{ path: `text/eliza-1-${tier}-32k.gguf`, ctx: 32768, sha256: SHA },
+					{ path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072, sha256: SHA },
 			],
 			voice: [{ path: "tts/omnivoice-0.6b.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
-			vision: [],
+			vision: [{ path: "vision/mmproj.gguf", sha256: SHA }],
 			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
@@ -402,7 +403,7 @@ function installedFixture(
 	return {
 		id: "eliza-1-2b",
 		displayName: "eliza-1-2b",
-		path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
+		path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf",
 		sizeBytes: 1_000_000_000,
 		bundleRoot: "/models/eliza-1-2b.bundle",
 		manifestPath: "/models/eliza-1-2b.bundle/eliza-1.manifest.json",

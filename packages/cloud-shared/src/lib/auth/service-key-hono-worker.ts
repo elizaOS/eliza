@@ -7,8 +7,8 @@
  *   WAIFU_SERVICE_USER_ID  — user id attributed as creator
  */
 
-import { ApiError, AuthenticationError } from "../api/cloud-worker-errors";
 import type { AppContext, Bindings } from "../../types/cloud-worker-env";
+import { ApiError, AuthenticationError } from "../api/cloud-worker-errors";
 
 export interface ServiceKeyIdentity {
   organizationId: string;

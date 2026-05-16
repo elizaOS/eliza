@@ -4,17 +4,22 @@ import type { OnboardingServerTarget } from "./server-target";
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
 /**
- * Constants describing the bundled mobile on-device agent endpoint. Android
- * serves this over loopback. iOS keeps the same URL shape only as a stable
- * legacy client identity; full-Bun builds resolve it through Capacitor/native
- * IPC, and compatibility builds resolve it through the in-process ITTP kernel.
+ * Constants describing the bundled mobile on-device agent endpoint.
+ *
+ * `MOBILE_LOCAL_AGENT_IPC_BASE` is the UI-facing identity for the bundled
+ * local agent. Native transports resolve it through Capacitor instead of
+ * letting WebView fetch open a socket. The loopback URL remains as the
+ * Android service implementation detail used by the current native bridge
+ * and simulator harness until the route kernel moves behind Binder/stdio IPC.
  */
 export const MOBILE_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
-export const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+export const MOBILE_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+export const IOS_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const MOBILE_LOCAL_AGENT_SERVER_ID = "local:mobile";
 export const MOBILE_LOCAL_AGENT_LABEL = "On-device agent";
 
 export const ANDROID_LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
+export const ANDROID_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const ANDROID_LOCAL_AGENT_SERVER_ID = "local:android";
 export const ANDROID_LOCAL_AGENT_LABEL = MOBILE_LOCAL_AGENT_LABEL;
 

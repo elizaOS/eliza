@@ -106,13 +106,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent",
-        choices=["dummy", "dummy-charge", "eliza"],
+        choices=["dummy", "dummy-charge", "eliza", "hermes", "openclaw"],
         default="eliza",
         help=(
             "Agent under test. 'dummy' returns a fixed string (smoke test only). "
             "'dummy-charge' calls the WooBench charge action for a configurable payment. "
             "'eliza' (default) routes through the elizaOS TS benchmark server "
-            "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset)."
+            "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset). "
+            "'hermes' and 'openclaw' route through their source-backed adapters."
         ),
     )
     parser.add_argument(
@@ -312,6 +313,20 @@ async def _run(args: argparse.Namespace) -> None:
         from eliza_adapter.woobench import build_eliza_bridge_agent_fn
 
         agent_fn = build_eliza_bridge_agent_fn(client=client, model_name=args.model)
+    elif args.agent == "hermes":
+        _configure_bridge_model_env(args.model)
+        os.environ["BENCHMARK_HARNESS"] = "hermes"
+        os.environ["ELIZA_BENCH_HARNESS"] = "hermes"
+        from hermes_adapter.woobench import build_hermes_woobench_agent_fn
+
+        agent_fn = build_hermes_woobench_agent_fn(model_name=args.model)
+    elif args.agent == "openclaw":
+        _configure_bridge_model_env(args.model)
+        os.environ["BENCHMARK_HARNESS"] = "openclaw"
+        os.environ["ELIZA_BENCH_HARNESS"] = "openclaw"
+        from openclaw_adapter.woobench import build_openclaw_woobench_agent_fn
+
+        agent_fn = build_openclaw_woobench_agent_fn(model_name=args.model)
     elif args.agent == "dummy-charge":
         agent_fn = _create_dummy_charge_agent(
             amount_usd=args.dummy_charge_amount,

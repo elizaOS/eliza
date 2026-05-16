@@ -8,7 +8,10 @@ import {
 } from "../../../onboarding/state-machine";
 import { useOnboardingPersisted } from "../../../onboarding/state-persistence";
 import type { DeviceProfile } from "./device-profiles";
-import { StateCloudChat } from "./StateCloudChat";
+import {
+  type CloudProvisioningProgress,
+  StateCloudChat,
+} from "./StateCloudChat";
 import { StateCloudLogin } from "./StateCloudLogin";
 import { StateDeviceMode } from "./StateDeviceMode";
 import { StateDeviceSecurity } from "./StateDeviceSecurity";
@@ -33,15 +36,23 @@ import "./onboarding.css";
 export interface OnboardingRootProps {
   deviceProfile?: DeviceProfile;
   localDownloadProgress?: LocalDownloadProgress;
+  cloudProvisioningProgress?: CloudProvisioningProgress;
+  onStartCloudProvisioning?: () => void;
+  onStartLocalModelDownload?: () => void;
+  onCloudConversationPush?: () => void;
   onComplete?: (state: OnboardingFlowState) => void;
   onStateChange?: (state: OnboardingFlowState) => void;
   initialStateId?: OnboardingStateId;
 }
 
-export function OnboardingRoot(props: OnboardingRootProps): JSX.Element {
+export function OnboardingRoot(props: OnboardingRootProps): React.JSX.Element {
   const {
     deviceProfile = "ios",
     localDownloadProgress,
+    cloudProvisioningProgress,
+    onStartCloudProvisioning,
+    onStartLocalModelDownload,
+    onCloudConversationPush,
     onComplete,
     onStateChange,
     initialStateId,
@@ -61,6 +72,22 @@ export function OnboardingRoot(props: OnboardingRootProps): JSX.Element {
     [state, setState, onStateChange, onComplete],
   );
 
+  const dispatchSequence = useCallback(
+    (events: OnboardingEvent[]): OnboardingFlowState => {
+      const next = events.reduce<OnboardingFlowState>(
+        (current, event) => reduce(current, event),
+        state,
+      );
+      setState(next);
+      onStateChange?.(next);
+      if (next.current === "home" && state.current !== "home") {
+        onComplete?.(next);
+      }
+      return next;
+    },
+    [state, setState, onStateChange, onComplete],
+  );
+
   const current = useMemo<OnboardingStateId>(
     () => initialStateId ?? state.current,
     [initialStateId, state.current],
@@ -68,11 +95,26 @@ export function OnboardingRoot(props: OnboardingRootProps): JSX.Element {
 
   const node = useMemo(
     () =>
-      renderState(current, state, dispatch, {
+      renderState(current, state, dispatch, dispatchSequence, {
         deviceProfile,
         localDownloadProgress,
+        cloudProvisioningProgress,
+        onStartCloudProvisioning,
+        onStartLocalModelDownload,
+        onCloudConversationPush,
       }),
-    [current, state, dispatch, deviceProfile, localDownloadProgress],
+    [
+      current,
+      state,
+      dispatch,
+      dispatchSequence,
+      deviceProfile,
+      localDownloadProgress,
+      cloudProvisioningProgress,
+      onStartCloudProvisioning,
+      onStartLocalModelDownload,
+      onCloudConversationPush,
+    ],
   );
 
   return (
@@ -86,14 +128,19 @@ export function OnboardingRoot(props: OnboardingRootProps): JSX.Element {
 interface RenderOpts {
   deviceProfile: DeviceProfile;
   localDownloadProgress?: LocalDownloadProgress;
+  cloudProvisioningProgress?: CloudProvisioningProgress;
+  onStartCloudProvisioning?: () => void;
+  onStartLocalModelDownload?: () => void;
+  onCloudConversationPush?: () => void;
 }
 
 function renderState(
   current: OnboardingStateId,
   state: OnboardingFlowState,
   dispatch: (event: OnboardingEvent) => OnboardingFlowState,
+  dispatchSequence: (events: OnboardingEvent[]) => OnboardingFlowState,
   opts: RenderOpts,
-): JSX.Element {
+): React.JSX.Element {
   switch (current) {
     case "hello":
       return <StateHello onBegin={() => dispatch({ type: "BEGIN" })} />;
@@ -106,13 +153,29 @@ function renderState(
           onLanguageChange={(language) =>
             dispatch({ type: "SET_LANGUAGE", language })
           }
-          onChooseRuntime={(runtime) =>
-            dispatch({ type: "CHOOSE_RUNTIME", runtime })
-          }
-          onContinue={() => dispatch({ type: "CONTINUE" })}
+          onChooseRuntime={(runtime) => {
+            dispatch({ type: "CHOOSE_RUNTIME", runtime });
+            if (runtime === "cloud" && !state.cloudProvisioningStarted) {
+              opts.onStartCloudProvisioning?.();
+            }
+          }}
+          onContinue={(selectedRuntime) => {
+            if (
+              selectedRuntime === "cloud" &&
+              !state.cloudProvisioningStarted
+            ) {
+              opts.onStartCloudProvisioning?.();
+            }
+            dispatchSequence([
+              { type: "CHOOSE_RUNTIME", runtime: selectedRuntime },
+              { type: "CONTINUE" },
+            ]);
+          }}
           onChooseRemote={() => {
-            dispatch({ type: "CHOOSE_RUNTIME", runtime: "remote" });
-            dispatch({ type: "CONTINUE" });
+            dispatchSequence([
+              { type: "CHOOSE_RUNTIME", runtime: "remote" },
+              { type: "CONTINUE" },
+            ]);
           }}
         />
       );
@@ -125,7 +188,20 @@ function renderState(
       );
     case "cloud-chat":
       return (
-        <StateCloudChat onEnterChat={() => dispatch({ type: "CONTINUE" })} />
+        <StateCloudChat
+          progress={opts.cloudProvisioningProgress}
+          onEnterChat={() => {
+            if (opts.cloudProvisioningProgress?.ready) {
+              opts.onCloudConversationPush?.();
+              dispatchSequence([
+                { type: "CLOUD_CONVERSATION_PUSHED" },
+                { type: "CONTINUE" },
+              ]);
+              return;
+            }
+            dispatch({ type: "CONTINUE" });
+          }}
+        />
       );
     case "remote-pair":
       return (
@@ -148,6 +224,15 @@ function renderState(
         <StateDeviceMode
           devicePath={state.devicePath}
           onChoose={(path) => dispatch({ type: "CHOOSE_DEVICE_PATH", path })}
+          onStartLocalModelDownload={() => {
+            if (!state.localDownloadStarted) {
+              opts.onStartLocalModelDownload?.();
+            }
+            dispatchSequence([
+              { type: "CHOOSE_DEVICE_PATH", path: "local-only" },
+              { type: "START_LOCAL_DOWNLOAD" },
+            ]);
+          }}
           onContinue={() => dispatch({ type: "CONTINUE" })}
           onBack={() => dispatch({ type: "BACK" })}
         />
@@ -157,10 +242,17 @@ function renderState(
         <StateLocalDownload
           progress={opts.localDownloadProgress}
           onUseCloudInstead={() => {
-            dispatch({ type: "CHOOSE_RUNTIME", runtime: "cloud" });
-            dispatch({ type: "JUMP", to: "cloud-login" });
+            dispatchSequence([
+              { type: "CHOOSE_RUNTIME", runtime: "cloud" },
+              { type: "JUMP", to: "cloud-login" },
+            ]);
           }}
-          onContinue={() => dispatch({ type: "CONTINUE" })}
+          onContinue={() => {
+            dispatchSequence([
+              { type: "LOCAL_DOWNLOAD_READY" },
+              { type: "CONTINUE" },
+            ]);
+          }}
           onReady={() => dispatch({ type: "LOCAL_DOWNLOAD_READY" })}
         />
       );
@@ -176,8 +268,10 @@ function renderState(
         <StateProfileName
           initialName={state.name}
           onContinue={(name) => {
-            dispatch({ type: "SET_NAME", name });
-            dispatch({ type: "CONTINUE" });
+            dispatchSequence([
+              { type: "SET_NAME", name },
+              { type: "CONTINUE" },
+            ]);
           }}
         />
       );
@@ -186,8 +280,10 @@ function renderState(
         <StateProfileLocation
           initialLocation={state.location}
           onContinue={(location) => {
-            dispatch({ type: "SET_LOCATION", location });
-            dispatch({ type: "CONTINUE" });
+            dispatchSequence([
+              { type: "SET_LOCATION", location },
+              { type: "CONTINUE" },
+            ]);
           }}
         />
       );

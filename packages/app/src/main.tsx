@@ -13,7 +13,7 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
-import { ELIZA_DEFAULT_THEME, getStylePresets } from "@elizaos/shared";
+import { getStylePresets } from "@elizaos/shared";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -36,6 +36,7 @@ import {
   type AppBootConfig,
   AppProvider,
   AppWindowRenderer,
+  ELIZA_DEFAULT_THEME,
   applyForceFreshOnboardingReset,
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -56,6 +57,7 @@ import {
   type IosLocalAgentNativeRequestResult,
   initializeCapacitorBridge,
   initializeStorageBridge,
+  installAndroidNativeAgentFetchBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
   installIosLocalAgentFetchBridge,
@@ -2095,6 +2097,20 @@ function applyStoredDetachedShellTheme(): void {
 
 async function main(): Promise<void> {
   registerViewServiceWorker();
+
+  const appWindowSlug =
+    window.location.pathname.startsWith("/apps/")
+      ? window.location.pathname.slice("/apps/".length).split("/")[0]
+      : resolveAppWindowSlug();
+  if (appWindowSlug === "model-tester") {
+    await importSideEffectAppModule("@elizaos/app-model-tester", () =>
+      import("@elizaos/app-model-tester"),
+    );
+    setupPlatformStyles();
+    mountReactApp();
+    return;
+  }
+
   await initializeAppModules();
   setupPlatformStyles();
   applyBuildTimeIosConnection();
@@ -2132,6 +2148,9 @@ async function main(): Promise<void> {
     if (await runIosFullBunSmokeIfRequested()) {
       return;
     }
+  } else if (isAndroid) {
+    initializeCapacitorBridge();
+    installAndroidNativeAgentFetchBridge();
   }
   mountReactApp();
   await initializePlatform();

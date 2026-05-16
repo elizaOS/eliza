@@ -19,18 +19,12 @@ export interface RuntimeSettings {
  * Narrow elizaOS `IAgentRuntime#getSetting` (or any wider return type) to
  * {@link RuntimeSettings} without depending on `@elizaos/core`.
  */
-export function toRuntimeSettings(runtime: {
-  getSetting(key: string): unknown;
-}): RuntimeSettings {
+export function toRuntimeSettings(runtime: { getSetting(key: string): unknown }): RuntimeSettings {
   return {
     getSetting(key: string): string | boolean | number | null | undefined {
       const v = runtime.getSetting(key);
       if (v === null || v === undefined) return v;
-      if (
-        typeof v === "string" ||
-        typeof v === "boolean" ||
-        typeof v === "number"
-      ) {
+      if (typeof v === "string" || typeof v === "boolean" || typeof v === "number") {
         return v;
       }
       if (typeof v === "bigint") return v.toString();
@@ -50,10 +44,7 @@ function stripTrailingSlashes(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
-function getSettingAsString(
-  runtime: RuntimeSettings,
-  key: string,
-): string | null {
+function getSettingAsString(runtime: RuntimeSettings, key: string): string | null {
   const raw = runtime.getSetting(key);
   if (raw === null || raw === undefined) return null;
   const str = String(raw).trim();
@@ -66,9 +57,7 @@ function buildCloudProxyRoute(
 ): { baseUrl: string; headers: Record<string, string> } | null {
   const cloudApiKey = getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY");
   if (cloudApiKey === null || !isCloudRoutingEnabled(runtime)) return null;
-  const cloudBaseRaw =
-    getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
-    CLOUD_BASE_FALLBACK;
+  const cloudBaseRaw = getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ?? CLOUD_BASE_FALLBACK;
   const cloudBase = stripTrailingSlashes(cloudBaseRaw);
   const svc = service.replace(/^\/+|\/+$/g, "");
   return {
@@ -79,8 +68,7 @@ function buildCloudProxyRoute(
 
 export function isCloudConnected(runtime: RuntimeSettings): boolean {
   return (
-    getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY") !== null &&
-    isCloudRoutingEnabled(runtime)
+    getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY") !== null && isCloudRoutingEnabled(runtime)
   );
 }
 
@@ -94,10 +82,7 @@ function isCloudRoutingEnabled(runtime: RuntimeSettings): boolean {
   return false;
 }
 
-export function resolveCloudRoute(
-  runtime: RuntimeSettings,
-  spec: RouteSpec,
-): CloudRoute {
+export function resolveCloudRoute(runtime: RuntimeSettings, spec: RouteSpec): CloudRoute {
   const localKey = getSettingAsString(runtime, spec.localKeySetting);
 
   if (localKey !== null) {
@@ -126,10 +111,7 @@ export function resolveCloudRoute(
   };
 }
 
-function buildLocalKeyHeaders(
-  spec: RouteSpec,
-  key: string,
-): Record<string, string> {
+function buildLocalKeyHeaders(spec: RouteSpec, key: string): Record<string, string> {
   switch (spec.localKeyAuth.kind) {
     case "header":
       return { [spec.localKeyAuth.headerName]: key };
@@ -140,10 +122,7 @@ function buildLocalKeyHeaders(
   }
 }
 
-export function getFeaturePolicy(
-  runtime: RuntimeSettings,
-  feature: string,
-): FeaturePolicy {
+export function getFeaturePolicy(runtime: RuntimeSettings, feature: string): FeaturePolicy {
   const def = getFeature(feature);
   if (def === null) return DEFAULT_FEATURE_POLICY;
   const raw = runtime.getSetting(def.settingKey);
@@ -154,9 +133,7 @@ export function getFeaturePolicy(
   return DEFAULT_FEATURE_POLICY;
 }
 
-export function getFeaturePolicyMap(
-  runtime: RuntimeSettings,
-): FeaturePolicyMap {
+export function getFeaturePolicyMap(runtime: RuntimeSettings): FeaturePolicyMap {
   const entries: Array<[Feature, FeaturePolicy]> = FEATURE_IDS.map((id) => [
     id,
     getFeaturePolicy(runtime, id),

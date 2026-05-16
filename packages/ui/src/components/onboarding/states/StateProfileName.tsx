@@ -7,7 +7,7 @@ export interface StateProfileNameProps {
   onContinue: (name: string) => void;
 }
 
-export function StateProfileName(props: StateProfileNameProps): JSX.Element {
+export function StateProfileName(props: StateProfileNameProps): React.JSX.Element {
   const { transcript, initialName, onContinue } = props;
   const [name, setName] = useState(initialName ?? "");
   return (

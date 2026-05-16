@@ -244,6 +244,8 @@ app.post("/", async (c) => {
     };
     const createdJob = await userVoicesRepository.createCloningJob(newJob);
     jobId = createdJob.id;
+    const userId = user.id;
+    const organizationId = user.organization_id;
 
     // 1) Upload samples to R2 in parallel. Persisted alongside the DB row so
     //    we have a backup independent of ElevenLabs. Failure here aborts the
@@ -253,15 +255,15 @@ app.post("/", async (c) => {
       files.map(async (file) => {
         const safeName =
           file.name.replace(/[^A-Za-z0-9._-]+/g, "_") || "sample";
-        const key = `voice-samples/${user?.organization_id}/${createdJob.id}/${crypto.randomUUID()}-${safeName}`;
+        const key = `voice-samples/${organizationId}/${createdJob.id}/${crypto.randomUUID()}-${safeName}`;
         const body = await file.arrayBuffer();
         await c.env.BLOB.put(key, body, {
           httpMetadata: {
             contentType: file.type || "application/octet-stream",
           },
           customMetadata: {
-            userId: user?.id,
-            organizationId: user?.organization_id,
+            userId,
+            organizationId,
             jobId: createdJob.id,
             originalName: file.name,
           },
@@ -272,8 +274,8 @@ app.post("/", async (c) => {
           file,
           record: {
             jobId: createdJob.id,
-            organizationId: user?.organization_id,
-            userId: user?.id,
+            organizationId,
+            userId,
             fileName: file.name,
             fileSize: file.size,
             fileType: file.type || "application/octet-stream",

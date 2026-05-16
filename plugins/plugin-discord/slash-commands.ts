@@ -97,7 +97,8 @@ function parseStringList(value: unknown): string[] {
 
 function getKnownModels(runtime: IAgentRuntime): string[] {
 	const configured =
-		parseStringList(runtime.getSetting("DISCORD_KNOWN_MODELS"));
+		parseStringList(runtime.getSetting("DISCORD_KNOWN_MODELS")) ??
+		parseStringList(runtime.getSetting("KNOWN_MODELS"));
 	return configured.length > 0 ? configured : [...FALLBACK_KNOWN_MODELS];
 }
 
@@ -140,7 +141,7 @@ const statusCommand: SlashCommand = {
 		await interaction.reply({
 			content: [
 				"**Bot Status**",
-				`- Agent: **${runtime.character.name ?? "Unknown"}**`,
+				`- Agent: **${runtime.character?.name ?? "Unknown"}**`,
 				`- Uptime: **${hours}h ${minutes}m ${seconds}s**`,
 				`- Memory: **${heapMb} MB** heap / **${rssMb} MB** RSS`,
 				`- Guilds: **${interaction.client.guilds.cache.size}**`,
@@ -185,7 +186,7 @@ const searchCommand: SlashCommand = {
 			});
 			const normalizedQuery = query.trim().toLowerCase();
 			const filteredMemories = memories.filter((memory) =>
-				(memory.content.text ?? "").toLowerCase().includes(normalizedQuery),
+				(memory.content?.text ?? "").toLowerCase().includes(normalizedQuery),
 			);
 
 			if (filteredMemories.length === 0) {
@@ -196,7 +197,7 @@ const searchCommand: SlashCommand = {
 			}
 
 			const results = filteredMemories.slice(0, limit).map((memory, index) => {
-				const text = memory.content.text || "(no text)";
+				const text = memory.content?.text || "(no text)";
 				const truncated = text.length > 120 ? `${text.slice(0, 120)}...` : text;
 				const date = memory.createdAt
 					? new Date(memory.createdAt).toLocaleDateString()
@@ -256,7 +257,7 @@ const settingsCommand: SlashCommand = {
 					`- Respond only to mentions: **${runtime.getSetting("DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS") ?? "false"}**`,
 					`- Ignore bot messages: **${runtime.getSetting("DISCORD_SHOULD_IGNORE_BOT_MESSAGES") ?? "true"}**`,
 					`- Allowed channels: **${runtime.getSetting("CHANNEL_IDS") ?? "(all channels)"}**`,
-					`- Agent name: **${runtime.character.name ?? "Unknown"}**`,
+					`- Agent name: **${runtime.character?.name ?? "Unknown"}**`,
 				].join("\n"),
 				ephemeral: true,
 			});
@@ -496,7 +497,7 @@ export async function handleSlashCommand(
 
 		commandCooldowns.set(userId, now);
 		setTimeout(() => {
-			if (commandCooldowns.get(userId) === now) {
+			if (commandCooldowns?.get(userId) === now) {
 				commandCooldowns.delete(userId);
 			}
 		}, command.cooldown * 1000);

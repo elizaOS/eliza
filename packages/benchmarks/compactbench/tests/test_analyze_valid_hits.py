@@ -5,6 +5,28 @@ from __future__ import annotations
 import json
 
 from analyze_valid_hits import _rescore_analysis, _rescore_case_event
+from eliza_compactbench.safe_generators import (
+    SAFE_ACTION_PHRASES,
+    install_safe_action_phrase_generator,
+)
+
+
+def test_safe_action_phrase_generator_replaces_refusal_prone_phrases() -> None:
+    assert install_safe_action_phrase_generator() is True
+
+    from compactbench.dsl.generators import get_generator
+
+    generator = get_generator("action_phrase")
+    generated = {generator.generate(seed) for seed in range(200)}
+    assert generated
+    assert generated <= set(SAFE_ACTION_PHRASES)
+    refusal_prone = {
+        "hardcode API keys in source",
+        "disable CSRF tokens",
+        "commit credentials to git history",
+        "store passwords in plaintext",
+    }
+    assert generated.isdisjoint(refusal_prone)
 
 
 def test_rescore_repairs_impossible_conflicts_before_scoring() -> None:

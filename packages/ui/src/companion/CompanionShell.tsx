@@ -17,7 +17,7 @@ export interface CompanionShellProps extends ComposerBarProps {
   footerSlot?: ReactNode;
 }
 
-export function CompanionShell(props: CompanionShellProps): JSX.Element {
+export function CompanionShell(props: CompanionShellProps): React.JSX.Element {
   const {
     messages,
     avatarModuleId,

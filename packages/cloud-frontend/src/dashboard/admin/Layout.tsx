@@ -10,6 +10,13 @@ import { useUserProfile } from "../../lib/data/user";
 export default function AdminLayout() {
   const { isReady, isAuthenticated } = useUserProfile();
   const { data, isLoading, isError } = useAdminModerationStatus();
+  const localDevAdmin =
+    import.meta.env.DEV &&
+    import.meta.env.VITE_ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
+
+  if (localDevAdmin) {
+    return <Outlet />;
+  }
 
   if (!isReady || (isAuthenticated && isLoading)) {
     return (

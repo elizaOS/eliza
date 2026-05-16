@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
-import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { logger } from "../utils/logger";
 import { assertPersistentCloudStateConfigured } from "../utils/persistence-guard";
+import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
 const SESSION_TTL_SECONDS = 90;

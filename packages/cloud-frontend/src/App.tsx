@@ -105,6 +105,12 @@ const AppChargePaymentPage = lazyWithPreload(
 const SensitiveRequestPage = lazyWithPreload(
   () => import("./pages/sensitive-requests/[requestId]/page"),
 );
+const ApprovalPage = lazyWithPreload(
+  () => import("./pages/approve/[approvalId]/page"),
+);
+const BallotPage = lazyWithPreload(
+  () => import("./pages/ballot/[ballotId]/page"),
+);
 
 const BlogIndex = lazyWithPreload(() => import("./pages/blog/page"));
 const BlogPost = lazyWithPreload(() => import("./pages/blog/[slug]/page"));
@@ -381,6 +387,8 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     path: "/sensitive-requests/:requestId",
     preload: SensitiveRequestPage.preload,
   },
+  { path: "/approve/:approvalId", preload: ApprovalPage.preload },
+  { path: "/ballot/:ballotId", preload: BallotPage.preload },
   { path: "/auth/success", preload: AuthSuccess.preload },
   { path: "/auth/cli-login", preload: AuthCliLogin.preload },
   { path: "/auth/error", preload: AuthError.preload },
@@ -641,6 +649,14 @@ function App() {
         <Route
           path="sensitive-requests/:requestId"
           element={<SuspenseRoute component={SensitiveRequestPage} />}
+        />
+        <Route
+          path="approve/:approvalId"
+          element={<SuspenseRoute component={ApprovalPage} />}
+        />
+        <Route
+          path="ballot/:ballotId"
+          element={<SuspenseRoute component={BallotPage} />}
         />
 
         <Route path="blog">

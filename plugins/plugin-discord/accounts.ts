@@ -158,7 +158,7 @@ export function normalizeDiscordToken(raw?: string | null): string | undefined {
 export function getMultiAccountConfig(
 	runtime: IAgentRuntime,
 ): DiscordMultiAccountConfig {
-	const characterDiscord = runtime.character.settings?.discord as
+	const characterDiscord = runtime.character?.settings?.discord as
 		| DiscordMultiAccountConfig
 		| undefined;
 

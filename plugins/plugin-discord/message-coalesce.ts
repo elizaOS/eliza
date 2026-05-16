@@ -71,13 +71,14 @@ export function getDiscordMessageMeta(
 ): CoalescedDiscordMessageMeta {
 	return {
 		id: message.id,
-		channelId: message.channel.id,
-		authorId: message.author.id,
-		username: message.author.username,
+		channelId: message.channel?.id,
+		authorId: message.author?.id,
+		username: message.author?.username,
 		displayName:
 			message.member?.displayName ??
-			message.author.globalName ??
-			message.author.displayName,
+			message.author?.globalName ??
+			message.author?.displayName ??
+			message.author?.username,
 		createdTimestamp: message.createdTimestamp,
 		contentPreview: String(message.content || "").slice(0, 300),
 	};

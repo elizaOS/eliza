@@ -16,7 +16,6 @@
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "exactOptionalPropertyTypes": true,
 
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -24,7 +23,13 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
 
-    "types": ["bun"]
+    "types": ["bun"],
+
+    "paths": {
+      "@elizaos/core": ["../../../core/src/index.node.ts"],
+      "@elizaos/agent": ["../../../agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../../agent/src/*"]
+    }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

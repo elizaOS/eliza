@@ -9,8 +9,8 @@
 import { generateText } from "ai";
 import { cache } from "../../cache/client";
 import { getLanguageModel } from "../../providers/language-model";
-import { oauthService } from "../oauth";
 import { logger } from "../../utils/logger";
+import { oauthService } from "../oauth";
 
 const REQUIRED_PLATFORMS = ["google", "microsoft", "twitter"] as const;
 type RequiredPlatform = (typeof REQUIRED_PLATFORMS)[number];

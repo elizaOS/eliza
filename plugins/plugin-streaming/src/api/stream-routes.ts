@@ -790,7 +790,7 @@ export async function handleStreamRoute(
       const parsed = typeof body === "string" ? JSON.parse(body) : body;
       const result = validateStreamSettings(parsed?.settings);
       if (result.error || !result.settings) {
-        error(res, result.error, 400);
+        error(res, result.error ?? "Invalid settings", 400);
         return true;
       }
       // Merge with existing settings so partial updates (e.g. just avatarIndex)

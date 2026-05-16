@@ -1,6 +1,6 @@
 import { NotFoundError } from "../api/cloud-worker-errors";
-import { organizationsService } from "./organizations";
 import type { CreditBalanceResponse } from "../types/cloud-api";
+import { organizationsService } from "./organizations";
 
 export async function getCreditBalanceResponse(
   organizationId: string,

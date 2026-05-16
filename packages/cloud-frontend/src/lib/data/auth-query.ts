@@ -16,9 +16,13 @@ export function useAuthenticatedQueryGate(
   enabled = true,
 ): AuthenticatedQueryGate {
   const session = useSessionAuth();
+  const localDevAdmin =
+    import.meta.env.DEV &&
+    import.meta.env.VITE_ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
   return {
-    enabled: enabled && session.ready && session.authenticated,
-    userId: getSessionUserId(session.user),
+    enabled:
+      enabled && (localDevAdmin || (session.ready && session.authenticated)),
+    userId: localDevAdmin ? "local-dev-admin" : getSessionUserId(session.user),
   };
 }
 

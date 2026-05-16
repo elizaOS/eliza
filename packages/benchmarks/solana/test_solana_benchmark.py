@@ -769,9 +769,11 @@ class TestRegistryIntegration:
         from benchmarks.registry import _score_from_solana_json
         data = {"final_reward": 235, "final_programs": 8, "model": "test", "run_id": "r1"}
         score = _score_from_solana_json(data)
-        assert score.score == 235.0
-        assert score.unit == "unique_instructions"
+        assert score.score == pytest.approx(235.0 / 236.0)
+        assert score.unit == "ratio"
         assert score.higher_is_better is True
+        assert score.metrics["max_reward"] == 236.0
+        assert score.metrics["raw_unit"] == "unique_instructions"
         assert score.metrics["final_programs"] == 8
 
     def test_score_extractor_missing_field(self):

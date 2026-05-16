@@ -554,7 +554,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   getAccountId(runtime?: IAgentRuntime): string {
     const legacy = this as { settings?: GoogleChatSettings | null };
-    const states = this.states;
+    const states = this.states ?? new Map<string, GoogleChatAccountState>();
     if (states.size === 0 && legacy.settings?.accountId) {
       return normalizeGoogleChatAccountId(legacy.settings.accountId);
     }
@@ -1022,7 +1022,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private getState(accountId = this.defaultAccountId): GoogleChatAccountState {
     const normalized = normalizeGoogleChatAccountId(accountId);
-    const states = this.states;
+    const states = this.states ?? new Map<string, GoogleChatAccountState>();
     const state = states.get(normalized);
     if (state) {
       return state;

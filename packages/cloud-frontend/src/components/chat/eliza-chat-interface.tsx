@@ -198,6 +198,8 @@ export function ElizaChatInterface({
   const justCreatedRoomIdRef = useRef<string | null>(null);
   // Track if we're in the middle of sending to prevent loading state flicker
   const isSendingRef = useRef(false);
+  const loadMessagesRequestIdRef = useRef(0);
+  const loadMessagesAbortRef = useRef<AbortController | null>(null);
 
   // Get character name from prop (preferred), store, or agentInfo (memoized)
   const selectedCharacter = useMemo(
@@ -238,9 +240,10 @@ export function ElizaChatInterface({
 
         if (data.success && data.data) {
           const charData = data.data;
-          // Add to available characters in store
+          const currentCharacters = useChatStore.getState().availableCharacters;
+          if (currentCharacters.some((c) => c.id === charData.id)) return;
           setAvailableCharacters([
-            ...availableCharacters,
+            ...currentCharacters,
             {
               id: charData.id,
               name: charData.name,
@@ -378,14 +381,14 @@ export function ElizaChatInterface({
 
   // Cleanup refs on unmount to prevent memory leaks
   useEffect(() => {
-    // Capture ref value inside effect for cleanup
     const renderedMessages = renderedMessagesRef.current;
-    const thinkingTimeout = thinkingTimeoutRef.current;
     const audioUrls = messageAudioUrls.current;
 
     return () => {
+      const thinkingTimeout = thinkingTimeoutRef.current;
       if (thinkingTimeout) {
         clearTimeout(thinkingTimeout);
+        thinkingTimeoutRef.current = null;
       }
       clearAllStreaming();
       renderedMessages.clear();
@@ -438,6 +441,10 @@ export function ElizaChatInterface({
 
   const loadMessages = useCallback(
     async (targetRoomId: string, skipLoadingState = false) => {
+      const requestId = ++loadMessagesRequestIdRef.current;
+      const controller = new AbortController();
+      loadMessagesAbortRef.current?.abort();
+      loadMessagesAbortRef.current = controller;
       // Don't show loading state if we're sending (prevents flicker) or explicitly skipped
       if (!skipLoadingState && !isSendingRef.current) {
         setLoadingState((prev) => ({ ...prev, isLoadingMessages: true }));
@@ -445,9 +452,12 @@ export function ElizaChatInterface({
       try {
         const response = await fetch(`/api/eliza/rooms/${targetRoomId}`, {
           credentials: "include",
+          signal: controller.signal,
         });
+        if (loadMessagesRequestIdRef.current !== requestId) return;
         if (response.ok) {
           const data = await response.json();
+          if (loadMessagesRequestIdRef.current !== requestId) return;
           // Only update messages if we're not in the middle of sending
           // This prevents overwriting optimistic messages with stale data
           if (!isSendingRef.current) {
@@ -458,9 +468,14 @@ export function ElizaChatInterface({
           }
         }
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
         console.error("Error loading messages:", err);
       } finally {
-        if (!skipLoadingState && !isSendingRef.current) {
+        if (
+          loadMessagesRequestIdRef.current === requestId &&
+          !skipLoadingState &&
+          !isSendingRef.current
+        ) {
           setLoadingState((prev) => ({ ...prev, isLoadingMessages: false }));
         }
       }
@@ -927,11 +942,12 @@ export function ElizaChatInterface({
 
   // Handle pending message from landing page
   useEffect(() => {
-    // Guard: Only process if we have a pending message and not already processing
+    // Guard: allow either a fresh pending message or the message stored while
+    // room creation was in flight.
     if (
-      !pendingMessage ||
+      (!pendingMessage && !pendingMessageToSendRef.current) ||
       isPendingMessageProcessingRef.current ||
-      loadingState.isSending
+      (loadingState.isSending && !pendingMessageToSendRef.current)
     ) {
       return;
     }

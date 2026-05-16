@@ -258,8 +258,12 @@ describe("VadDetector", () => {
 });
 
 describe("GgmlSileroVad", () => {
-	it("documents the auto provider order: Qwen toolkit → native GGML Silero", () => {
-		expect(vadProviderOrder()).toEqual(["qwen-toolkit", "silero-ggml"]);
+	it("documents the auto provider order: Qwen toolkit → standalone Silero → fused native Silero", () => {
+		expect(vadProviderOrder()).toEqual([
+			"qwen-toolkit",
+			"silero-cpp",
+			"silero-ggml",
+		]);
 		expect(vadProviderOrder("silero-ggml")).toEqual(["silero-ggml"]);
 	});
 

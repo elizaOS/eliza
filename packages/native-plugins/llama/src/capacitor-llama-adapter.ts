@@ -273,11 +273,7 @@ function fallbackHardwareInfo(
   ).navigator;
   const totalRamGb = numberFromUnknown(nav?.deviceMemory) ?? 0;
   const gpu =
-    platform === "ios"
-      ? ({ backend: "metal", available: true } as const)
-      : platform === "android"
-        ? ({ backend: "vulkan", available: true } as const)
-        : null;
+    platform === "ios" ? ({ backend: "metal", available: true } as const) : null;
   return {
     platform,
     deviceModel: platform,
@@ -285,13 +281,24 @@ function fallbackHardwareInfo(
     availableRamGb: null,
     cpuCores: nav?.hardwareConcurrency ?? 0,
     gpu,
-    gpuSupported: platform !== "web",
+    gpuSupported: platform === "ios",
     dflashSupported: false,
     dflashReason: reason,
     source: "adapter-fallback",
     nativeKernels: [],
     forkVariant: null,
   };
+}
+
+function defaultNativeGpuEnabled(platform = detectPlatform()): boolean {
+  // iOS builds use the Metal-capable native path by default. Android's current
+  // Capacitor wrapper is CPU-only unless a forked Vulkan bridge explicitly opts
+  // in, so the safe production default is CPU.
+  return platform === "ios";
+}
+
+function resolveNativeGpuEnabled(useGpu?: boolean): boolean {
+  return typeof useGpu === "boolean" ? useGpu : defaultNativeGpuEnabled();
 }
 
 function normalizeForkVariant(
@@ -579,13 +586,15 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     const speculativeSamples = options.mobileSpeculative
       ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
       : (options.speculativeSamples ?? 3);
+    const nativeGpuEnabled = resolveNativeGpuEnabled(options.useGpu);
     const params: NativeContextParams & Record<string, unknown> = {
       model: options.modelPath,
       n_ctx: options.contextSize ?? 4096,
-      n_gpu_layers: options.useGpu === false ? 0 : 99,
+      n_gpu_layers: nativeGpuEnabled ? 99 : 0,
       n_threads: options.maxThreads ?? 0,
       use_mmap: true,
-      flash_attn: options.useGpu !== false,
+      flash_attn: nativeGpuEnabled,
+      embedding: looksLikeEmbeddingModelPath(options.modelPath),
       n_batch: options.mobileSpeculative ? 128 : 512,
       n_ubatch: options.mobileSpeculative ? 64 : 512,
       ...(options.draftModelPath

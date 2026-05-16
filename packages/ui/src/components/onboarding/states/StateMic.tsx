@@ -20,7 +20,7 @@ function isMediaDevicesAvailable(): boolean {
   return Boolean(md?.enumerateDevices);
 }
 
-export function StateMic(props: StateMicProps): JSX.Element {
+export function StateMic(props: StateMicProps): React.JSX.Element {
   const { transcript, onContinue, onSkip, onRequestPermission } = props;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [devices, setDevices] = useState<AudioInputDevice[]>([]);

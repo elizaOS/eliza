@@ -5,8 +5,8 @@
  */
 
 import type { ExecutionContext as HonoExecutionContext } from "hono";
-import { logger } from "../utils/logger";
 import type { Bindings } from "../../types/cloud-worker-env";
+import { logger } from "../utils/logger";
 
 /**
  * Legacy map: cron schedule → single URL path (prefer `CRON_FANOUT` for multiple paths).
@@ -37,11 +37,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/pool-drain-idle",
   ],
   "*/2 * * * *": ["/api/v1/cron/pool-health-check"],
-  "*/10 * * * *": [
-    "/api/cron/cleanup-expired-crypto-payments",
-    "/api/cron/cleanup-expired-app-auth-codes",
-    "/api/v1/cron/pool-image-rollout",
-  ],
+  "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments", "/api/v1/cron/pool-image-rollout"],
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",

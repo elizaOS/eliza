@@ -10,7 +10,7 @@ import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import { clearStaleStewardSession } from "@/lib/providers/StewardProvider";
+import { clearStaleStewardSession } from "@/providers/StewardProvider";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { getErrorMessage } from "../../../lib/error-message";
 

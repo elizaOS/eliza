@@ -173,7 +173,7 @@ export async function handleBatchTextEmbedding(
           data: Array<{ embedding: number[]; index: number }>;
         };
 
-        if (retryData.data) {
+        if (retryData?.data) {
           for (const item of retryData.data) {
             const originalIndex = batch[item.index].originalIndex;
             results[originalIndex] = item.embedding;
@@ -196,7 +196,7 @@ export async function handleBatchTextEmbedding(
         usage?: { prompt_tokens: number; total_tokens: number };
       };
 
-      if (!data.data || !Array.isArray(data.data)) {
+      if (!data?.data || !Array.isArray(data.data)) {
         logger.error("[BatchEmbeddings] API returned invalid structure");
         for (const item of batch) {
           results[item.originalIndex] = createErrorVector(embeddingDimension, 0.5);

@@ -1,4 +1,5 @@
 import { and, asc, eq, sql } from "drizzle-orm";
+import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type DockerNode,
@@ -6,7 +7,6 @@ import {
   dockerNodes,
   type NewDockerNode,
 } from "../schemas/docker-nodes";
-import { logger } from "../../lib/utils/logger";
 
 export type { DockerNode, DockerNodeStatus, NewDockerNode };
 

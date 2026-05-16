@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { getBootConfig } from "../config/boot-config";
 import { isAndroidLocalAgentUrl } from "../onboarding/local-agent-token";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
@@ -28,8 +29,22 @@ type NativeAgentPlugin = {
 
 const agentPluginId = "@elizaos/capacitor-agent";
 const agentPluginName = "Agent";
+const androidLocalAgentIpcBase = "eliza-local-agent://ipc";
 
 let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
+let globalFetchBridgeInstalled = false;
+let originalFetch: typeof fetch | null = null;
+
+type FetchWithOptionalPreconnect = typeof fetch & {
+  preconnect?: (...args: unknown[]) => unknown;
+};
+
+declare global {
+  interface Window {
+    __ELIZA_API_BASE__?: string;
+    __ELIZAOS_API_BASE__?: string;
+  }
+}
 
 function toNativeAgentPlugin(
   plugin: NativeAgentPlugin | null | undefined,
@@ -51,6 +66,39 @@ function isNativeAndroid(): boolean {
   } catch {
     return false;
   }
+}
+
+function readRuntimeMode(): string | null {
+  try {
+    const persisted = globalThis.localStorage?.getItem(
+      "eliza:mobile-runtime-mode",
+    );
+    if (persisted?.trim()) return persisted.trim();
+  } catch {
+    // localStorage can be unavailable in tests and early native startup.
+  }
+  const env = (import.meta as ImportMeta & {
+    env?: Record<string, string | boolean | undefined>;
+  }).env;
+  const androidRuntimeMode =
+    typeof env?.VITE_ELIZA_ANDROID_RUNTIME_MODE === "string"
+      ? env.VITE_ELIZA_ANDROID_RUNTIME_MODE.trim()
+      : "";
+  const mobileRuntimeMode =
+    typeof env?.VITE_ELIZA_MOBILE_RUNTIME_MODE === "string"
+      ? env.VITE_ELIZA_MOBILE_RUNTIME_MODE.trim()
+      : "";
+  return androidRuntimeMode || mobileRuntimeMode || null;
+}
+
+function configuredApiBaseIsAndroidLocal(): boolean {
+  const bootBase = getBootConfig().apiBase?.trim();
+  if (bootBase && isAndroidLocalAgentUrl(bootBase)) return true;
+  if (typeof window === "undefined") return false;
+  const primary = window.__ELIZA_API_BASE__?.trim();
+  if (primary && isAndroidLocalAgentUrl(primary)) return true;
+  const branded = window.__ELIZAOS_API_BASE__?.trim();
+  return !!branded && isAndroidLocalAgentUrl(branded);
 }
 
 async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
@@ -101,6 +149,62 @@ function bodyToString(
   if (typeof body === "string") return body;
   if (body instanceof URLSearchParams) return body.toString();
   return undefined;
+}
+
+function shouldBridgeFetchUrl(url: URL): boolean {
+  if (!isNativeAndroid()) return false;
+  if (isAndroidLocalAgentUrl(url.toString())) return true;
+  if (!url.pathname.startsWith("/api/")) return false;
+  return readRuntimeMode() === "local" || configuredApiBaseIsAndroidLocal();
+}
+
+function localAgentUrlForFetch(url: URL): string {
+  if (isAndroidLocalAgentUrl(url.toString())) return url.toString();
+  return `${androidLocalAgentIpcBase}${url.pathname}${url.search}`;
+}
+
+async function normalizeFetchBridgeInit(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<RequestInit | null> {
+  const request = input instanceof Request ? input.clone() : null;
+  const method = (init?.method ?? request?.method ?? "GET").trim().toUpperCase();
+  const headers = init?.headers ?? request?.headers;
+  if (!methodAllowsBody(method)) {
+    return {
+      ...init,
+      method,
+      headers,
+      body: undefined,
+    };
+  }
+
+  if (init && "body" in init) {
+    const body = bodyToString(init.body);
+    if (body === undefined && init.body != null) return null;
+    return {
+      ...init,
+      method,
+      headers,
+      body: body ?? undefined,
+    };
+  }
+
+  if (!request) {
+    return {
+      ...init,
+      method,
+      headers,
+    };
+  }
+
+  const body = await request.text();
+  return {
+    ...init,
+    method,
+    headers,
+    body: body || undefined,
+  };
 }
 
 export function createAndroidNativeAgentTransport(
@@ -162,4 +266,59 @@ export async function androidNativeAgentTransportForUrl(
     .catch(() => null);
 
   return nativeTransportPromise;
+}
+
+export function installAndroidNativeAgentFetchBridge(): void {
+  if (globalFetchBridgeInstalled) return;
+  if (typeof globalThis.fetch !== "function") return;
+  const nativeFetch = globalThis.fetch;
+  originalFetch = nativeFetch.bind(globalThis);
+
+  const bridgedFetch = (async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    const original = originalFetch;
+    if (!original) return fetch(input, init);
+
+    const rawUrl = input instanceof Request ? input.url : String(input);
+    let url: URL;
+    try {
+      url = new URL(
+        rawUrl,
+        typeof window !== "undefined"
+          ? (window.location?.href ?? "http://localhost")
+          : "http://localhost",
+      );
+    } catch {
+      return original(input, init);
+    }
+
+    if (!shouldBridgeFetchUrl(url)) return original(input, init);
+
+    const bridgedUrl = localAgentUrlForFetch(url);
+    const bridgedInit = await normalizeFetchBridgeInit(input, init);
+    if (!bridgedInit) return original(input, init);
+
+    const transport = await androidNativeAgentTransportForUrl(bridgedUrl);
+    if (!transport) return original(input, init);
+    return transport.request(bridgedUrl, bridgedInit);
+  }) as typeof fetch;
+
+  const nativeFetchWithPreconnect = nativeFetch as FetchWithOptionalPreconnect;
+  if (typeof nativeFetchWithPreconnect.preconnect === "function") {
+    (bridgedFetch as FetchWithOptionalPreconnect).preconnect =
+      nativeFetchWithPreconnect.preconnect.bind(nativeFetch);
+  }
+  globalThis.fetch = bridgedFetch;
+  globalFetchBridgeInstalled = true;
+}
+
+export function __resetAndroidNativeAgentTransportForTests(): void {
+  nativeTransportPromise = null;
+  if (originalFetch) {
+    globalThis.fetch = originalFetch;
+  }
+  originalFetch = null;
+  globalFetchBridgeInstalled = false;
 }

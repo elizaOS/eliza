@@ -24,7 +24,7 @@
 import {
   VOICE_MODEL_VERSIONS,
   type VoiceModelVersion,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference/voice-models";
 
 /**
  * Wire shape returned by the catalog endpoint. The runtime updater reads

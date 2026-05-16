@@ -62,7 +62,6 @@ export * from "./app-earnings";
 // ============================================
 // App Domain
 // ============================================
-export * from "./app-auth-codes";
 export * from "./apps";
 // ============================================
 // Character Domain (User-created definitions)

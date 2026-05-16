@@ -494,7 +494,8 @@ describe("CompactBench deterministic state fragments", () => {
     const out = await hybridLedgerCompactor.compact(
       compactBenchTranscript(
         "Starting the onboarding runbook with Priya Shah.\n" +
-          "Only one: never skip identity verification. Hard line.",
+          "Only one: never skip identity verification. Hard line.\n" +
+          "With that rule in mind, what should our first step be?",
       ),
       buildOptions({
         callModel: fakeHybrid({}),
@@ -503,6 +504,9 @@ describe("CompactBench deterministic state fragments", () => {
     );
     const content = out.replacementMessages[0].content;
     expect(content).toContain("skip identity verification");
+    expect(content).toContain(
+      "referenced rule: never skip identity verification",
+    );
     expect(content).toContain("primary_subject: Priya Shah");
     expect(content).toContain("Priya Shah: primary_subject");
   });

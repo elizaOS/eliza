@@ -25,12 +25,12 @@ tagged `purpose: "evaluation"` in trajectory logging (see
 
 Only `reflection` was previously a real corpus file; the legacy ones
 (`data/synthesized/evaluators/_backup/*.jsonl`) used the flat `ElizaRecord`
-envelope with a TOON `expectedResponse`. This module:
+envelope. This module:
 
   1. Re-renders the legacy `reflection`, `reflection_evaluator`,
      `fact_extractor`→`fact_extraction`, `summarization`, and
      `long_term_extraction` rows against the *current* runtime templates,
-     converting the TOON target to JSON, and writes `eliza_native_v1` rows.
+     preserving JSON expected responses, and writes `eliza_native_v1` rows.
   2. Generates new deterministic `relationship_extraction`, `skill_extraction`,
      and `skill_refinement` rows (~1k each).
 
@@ -54,7 +54,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.native_record import native_text_record, native_tool_call_record, stable_id, write_jsonl  # noqa: E402
-from lib.toon import ToonDecoder  # noqa: E402
 
 EVAL_DIR = ROOT / "data" / "synthesized" / "evaluators"
 BACKUP_DIR = EVAL_DIR / "_backup"
@@ -301,8 +300,6 @@ def _render(template: str, **subs: str) -> str:
 
 # ─── legacy-row conversion helpers ───────────────────────────────────────
 
-_decoder = ToonDecoder()
-
 
 def _conversation_lines(legacy: dict[str, Any]) -> tuple[str, str, str]:
     raw = legacy.get("agentId", "agent")
@@ -324,14 +321,11 @@ def _decode_target(expected: str) -> Any:
     expected = (expected or "").strip()
     if not expected:
         return {}
-    if expected[0] in "[{":
-        try:
-            return json.loads(expected)
-        except json.JSONDecodeError:
-            pass
+    if expected[0] not in "[{":
+        return None
     try:
-        return _decoder.decode(expected)
-    except Exception:  # noqa: BLE001
+        return json.loads(expected)
+    except json.JSONDecodeError:
         return None
 
 

@@ -288,9 +288,9 @@ class AospDflashAdapter implements DflashAdapter {
     });
     this.child = child;
 
-    child.stderr.setEncoding("utf8");
-    child.stdout.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
       const lines = chunk.split(/\r?\n/);
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -299,7 +299,7 @@ class AospDflashAdapter implements DflashAdapter {
         logger.debug(`[aosp-dflash] llama-server stderr: ${line}`);
       }
     });
-    child.stdout.on("data", (chunk: string) => {
+    child.stdout?.on("data", (chunk: string) => {
       const lines = chunk.split(/\r?\n/);
       for (const line of lines) {
         if (!line.trim()) continue;

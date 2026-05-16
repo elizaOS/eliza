@@ -3,7 +3,14 @@ import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const VAST_PYWORKER_DIR = join(__dirname, "..", "..", "services", "vast-pyworker");
+export const VAST_PYWORKER_DIR = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "cloud-services",
+  "vast-pyworker",
+);
 export const VAST_MANIFEST_DIR = join(VAST_PYWORKER_DIR, "manifests");
 
 export interface VastManifestSearchParams {

@@ -114,11 +114,9 @@ export async function handleImageDescription(
     let response: Response | null = null;
     let attemptedRetry = false;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const nextResponse = await client.routes.postApiV1ChatCompletionsRaw({
+      response = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
       });
-      if (!nextResponse) break;
-      response = nextResponse;
       if (response.status !== 429 || attemptedRetry) break;
 
       // `Number(null) === 0`, so guard against a missing header before
@@ -135,7 +133,7 @@ export async function handleImageDescription(
           retryAfter?: unknown;
         };
         bodyRetryAfter =
-          typeof peek.retryAfter === "number" && Number.isFinite(peek.retryAfter)
+          typeof peek?.retryAfter === "number" && Number.isFinite(peek.retryAfter)
             ? peek.retryAfter
             : undefined;
       } catch {

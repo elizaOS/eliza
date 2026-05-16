@@ -9,6 +9,15 @@ import {
 import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
+const EXPECTED_ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
+  "eliza-1-0_8b": "eliza-1-0_8B",
+  "eliza-1-2b": "eliza-1-2B",
+  "eliza-1-4b": "eliza-1-4B",
+  "eliza-1-9b": "eliza-1-9B",
+  "eliza-1-27b": "eliza-1-27B",
+  "eliza-1-27b-256k": "eliza-1-27B-256k",
+};
+
 describe("local inference catalog", () => {
   it("ships exactly the Eliza-1 size tiers", () => {
     expect(
@@ -36,8 +45,10 @@ describe("local inference catalog", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model, `${id} missing`).toBeTruthy();
-      expect(model?.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
-      expect(model?.blurb).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+      expect(model?.displayName).toBe(EXPECTED_ELIZA_1_DISPLAY_NAMES[id]);
+      expect(model?.blurb).toMatch(
+        new RegExp(`^${EXPECTED_ELIZA_1_DISPLAY_NAMES[id]}\\b`),
+      );
       expect(`${model?.displayName} ${model?.blurb}`).not.toMatch(
         /\b(?:Qwen|Llama)\b/i,
       );
@@ -79,13 +90,13 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Compact mobile tiers ship with a 32k context window; larger tiers
-    // expose longer windows through their bundle manifests.
+    // Every active Eliza-1 default tier ships a 128k floor; the long-context
+    // 27B variant keeps its native 256k window.
     const expected: Record<string, number> = {
-      "eliza-1-0_8b": 32768,
-      "eliza-1-2b": 32768,
-      "eliza-1-4b": 65536,
-      "eliza-1-9b": 65536,
+      "eliza-1-0_8b": 131072,
+      "eliza-1-2b": 131072,
+      "eliza-1-4b": 131072,
+      "eliza-1-9b": 131072,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
     };
@@ -157,6 +168,8 @@ describe("local inference catalog", () => {
     if (!picked) throw new Error("missing first-run recommendation");
     expect(picked.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked.id)).toBe(true);
-    expect(picked.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+    expect(picked.displayName).toBe(
+      EXPECTED_ELIZA_1_DISPLAY_NAMES[FIRST_RUN_DEFAULT_MODEL_ID],
+    );
   });
 });

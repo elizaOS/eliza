@@ -87,7 +87,10 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.voice",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
-        *(("licenses/LICENSE.dflash",) if tier in DFLASH_TIERS else ()),
+        # Even tiers without a drafter ship DFlash release-policy metadata.
+        # Keep the component license in every bundle so the orchestrator and
+        # evidence finalizer validate the same layout.
+        "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
         *(("licenses/LICENSE.vision",) if tier in VISION_TIERS else ()),
     )
@@ -197,9 +200,8 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
     dflash_files = (
-        (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
-        if tier in DFLASH_TIERS
-        else ()
+        *((f"dflash/drafter-{tier}.gguf",) if tier in DFLASH_TIERS else ()),
+        "dflash/target-meta.json",
     )
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)

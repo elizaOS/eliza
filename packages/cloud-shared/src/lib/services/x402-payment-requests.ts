@@ -14,12 +14,15 @@ import { dbWrite } from "../../db/helpers";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { appEarningsRepository } from "../../db/repositories/app-earnings";
 import { appsRepository } from "../../db/repositories/apps";
-import { type CryptoPayment, cryptoPaymentsRepository } from "../../db/repositories/crypto-payments";
+import {
+  type CryptoPayment,
+  cryptoPaymentsRepository,
+} from "../../db/repositories/crypto-payments";
 import { apps } from "../../db/schemas/apps";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { x402FacilitatorService } from "./x402-facilitator";
-import { logger } from "../utils/logger";
 
 const KIND = "x402_payment_request";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";

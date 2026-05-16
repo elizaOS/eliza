@@ -195,9 +195,15 @@ class WooBenchScorer:
         efficiency_scores = []
         for r in self.results:
             if r.revenue.payment_received and r.revenue.turns_to_payment > 0 and r.conversation_length > 0:
-                # Ratio of how quickly payment happened (inverted so lower turns = higher score)
-                ratio = r.revenue.turns_to_payment / r.conversation_length
-                # Invert: 1.0 means took all turns, 0.0 means instant — flip to score
+                if r.conversation_length == 1:
+                    efficiency_scores.append(100.0)
+                    continue
+                # Turn 1 is instant (100); payment on the final turn is late (0).
+                late_turns = min(
+                    r.revenue.turns_to_payment - 1,
+                    r.conversation_length - 1,
+                )
+                ratio = late_turns / (r.conversation_length - 1)
                 efficiency_scores.append((1.0 - ratio) * 100)
             else:
                 efficiency_scores.append(0.0)

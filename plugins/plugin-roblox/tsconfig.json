@@ -23,10 +23,6 @@
     "allowImportingTsExtensions": true,
     "types": ["node"],
     "paths": {
-      "@elizaos/cloud-shared": ["../../packages/cloud-shared/src/index.ts"],
-      "@elizaos/cloud-shared/*": ["../../packages/cloud-shared/src/*"],
-      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
-      "@elizaos/contracts/*": ["../../packages/contracts/src/*"],
       "@elizaos/core": ["../../../packages/core/dist/node"]
     }
   },

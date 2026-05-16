@@ -1,1 +1,1 @@
-export * from "../app-core/test/helpers/real-runtime.ts";
+export * from "../../app-core/test/helpers/real-runtime.ts";

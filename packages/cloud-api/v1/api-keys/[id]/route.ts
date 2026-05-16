@@ -21,6 +21,10 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
+function isAgentSandboxKeyName(name: string): boolean {
+  return name.startsWith("agent-sandbox:");
+}
+
 app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -63,7 +67,7 @@ app.patch("/", async (c) => {
       expires_at,
     } = updateApiKeySchema.parse(body);
 
-    if (name !== undefined && ApiKeysService.isAgentSandboxKey({ name })) {
+    if (name !== undefined && isAgentSandboxKeyName(name)) {
       return c.json(
         {
           error:

@@ -212,6 +212,11 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         or __import__("os").environ.get("BENCHMARK_HARNESS")
         or "eliza"
     ).strip().lower()
+    if args.provider == "eliza" and harness in {"hermes", "openclaw"}:
+        raise ValueError(
+            "vending_bench has no native hermes/openclaw harness adapter yet; "
+            "refusing to route that harness through the Eliza provider"
+        )
     if args.provider == "eliza" and harness == "eliza" and not __import__("os").environ.get("ELIZA_BENCH_URL"):
         from eliza_adapter.server_manager import ElizaServerManager
         import os as _os
