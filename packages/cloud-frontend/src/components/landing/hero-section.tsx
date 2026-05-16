@@ -10,39 +10,41 @@ export default function HeroSection() {
   const navigate = useNavigate();
 
   return (
-    <div className="z-40 mx-auto grid w-full max-w-7xl items-center gap-10 px-6 sm:px-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(26rem,0.72fr)] lg:gap-8">
+    <div className="z-40 mx-auto grid w-full max-w-7xl items-center gap-7 px-5 py-6 sm:gap-10 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(26rem,0.72fr)] lg:gap-8 lg:py-0">
       <div className="max-w-3xl text-left max-lg:mx-auto max-lg:text-center">
         <h1
-          className="text-5xl font-bold leading-[0.95] text-white drop-shadow-[0_12px_40px_rgba(0,24,122,0.42)] sm:text-7xl md:text-8xl"
+          className="text-[clamp(3.25rem,17vw,5.8rem)] font-bold leading-[0.92] text-white drop-shadow-[0_12px_40px_rgba(0,24,122,0.42)] sm:text-7xl md:text-8xl"
           style={{ fontFamily: "var(--font-display)" }}
         >
           Your Eliza in the cloud.
         </h1>
-        <p className="mt-6 max-w-md text-xl font-light leading-relaxed text-white/86 drop-shadow-[0_2px_14px_rgba(0,24,122,0.24)] max-lg:mx-auto sm:text-2xl">
-          Chat, manage, and keep your agent online.
+        <p className="mt-5 max-w-sm text-lg font-light leading-relaxed text-white/88 drop-shadow-[0_2px_14px_rgba(0,24,122,0.24)] max-lg:mx-auto sm:mt-6 sm:max-w-md sm:text-2xl">
+          Your agent, always online.
         </p>
 
-        <div className="mt-10 flex flex-wrap items-center gap-3 max-lg:justify-center">
+        <div className="mt-8 flex flex-col items-stretch gap-3 max-lg:mx-auto max-lg:max-w-sm sm:mt-10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center lg:justify-start">
           <button
             type="button"
             onClick={() => navigate("/login?intent=signup")}
-            className="inline-flex items-center gap-2 rounded-full bg-white px-9 py-4 font-[family-name:var(--font-body)] text-base font-semibold text-[#0647ff] shadow-[0_24px_64px_rgba(0,24,122,0.34)] transition-all hover:scale-105 hover:bg-white/92 sm:text-lg"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-full bg-white px-9 py-4 font-[family-name:var(--font-body)] text-base font-semibold text-[#0647ff] shadow-[0_24px_64px_rgba(0,24,122,0.34)] transition-all hover:scale-105 hover:bg-white/92 sm:text-lg"
           >
-            Open Cloud
+            Open Eliza Cloud
             <ArrowRight className="h-5 w-5" />
           </button>
-          <a
-            href={appUrl}
-            className="inline-flex items-center gap-2 rounded-full border border-white/36 bg-white/12 px-6 py-4 font-[family-name:var(--font-body)] text-base font-semibold text-white shadow-[0_18px_46px_rgba(0,24,122,0.18)] backdrop-blur-xl transition-all hover:bg-white/22 sm:text-lg"
-          >
-            Get App
-          </a>
-          <a
-            href={osUrl}
-            className="inline-flex items-center gap-2 rounded-full border border-white/36 bg-white/12 px-6 py-4 font-[family-name:var(--font-body)] text-base font-semibold text-white shadow-[0_18px_46px_rgba(0,24,122,0.18)] backdrop-blur-xl transition-all hover:bg-white/22 sm:text-lg"
-          >
-            Install OS
-          </a>
+          <div className="flex items-center justify-center gap-2 sm:gap-3">
+            <a
+              href={appUrl}
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/36 bg-white/12 px-5 py-3 font-[family-name:var(--font-body)] text-sm font-semibold text-white shadow-[0_18px_46px_rgba(0,24,122,0.18)] backdrop-blur-xl transition-all hover:bg-white/22 sm:px-6 sm:text-base"
+            >
+              Get App
+            </a>
+            <a
+              href={osUrl}
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/36 bg-white/12 px-5 py-3 font-[family-name:var(--font-body)] text-sm font-semibold text-white shadow-[0_18px_46px_rgba(0,24,122,0.18)] backdrop-blur-xl transition-all hover:bg-white/22 sm:px-6 sm:text-base"
+            >
+              Install OS
+            </a>
+          </div>
         </div>
       </div>
 

@@ -1,10 +1,25 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
 
 const APP_CORE_ROOT = path.resolve(import.meta.dirname, "..");
-const REPO_ROOT = resolveRepoRoot(APP_CORE_ROOT);
+function resolveGitRepoRoot(startDir) {
+  try {
+    return execFileSync(
+      "git",
+      ["-C", startDir, "rev-parse", "--show-toplevel"],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+  } catch {
+    return resolveRepoRoot(startDir);
+  }
+}
+
+const REPO_ROOT = resolveGitRepoRoot(APP_CORE_ROOT);
 
 const releaseContractTests = [
   "eliza/packages/app-core/scripts/asset-cdn.test.ts",

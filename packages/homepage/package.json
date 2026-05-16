@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "predev": "node ../app-core/scripts/write-homepage-release-data.mjs",
-    "dev": "bun --bun vite --port 4444",
+    "dev": "bun --bun vite",
     "prebuild": "node ../app-core/scripts/write-homepage-release-data.mjs",
     "build": "bun --bun vite build",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",

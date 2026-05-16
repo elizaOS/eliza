@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Knowledge-distill a small DFlash drafter from an Eliza-1 text checkpoint.
 
-Eliza-1 ships DFlash drafters for 2B+ target tiers (see inference/AGENTS.md
-§2). A drafter is a small autoregressive model that proposes N tokens per step;
-the target text model verifies them. Acceptance rate — and therefore the
-speed-up — depends entirely on how closely the drafter's next-token
-distribution tracks the target's. We do NOT train the drafter from scratch on
-raw text; we knowledge-distill it from the *exact* text checkpoint it will ship
-with, so its logits match the target's on the distributions that matter.
+Eliza-1 ships DFlash drafters for every target tier (see inference/AGENTS.md
+§2), including a tiny companion for the 0.8B tier. A drafter is a small
+autoregressive model that proposes N tokens per step; the target text model
+verifies them. Acceptance rate — and therefore the speed-up — depends entirely
+on how closely the drafter's next-token distribution tracks the target's. We
+do NOT train the drafter from scratch on raw text; we knowledge-distill it from
+the *exact* text checkpoint it will ship with, so its logits match the target's
+on the distributions that matter.
 
 Hard contract (training/AGENTS.md §2 + §9):
 
@@ -21,8 +22,8 @@ Hard contract (training/AGENTS.md §2 + §9):
   - The recipe is the same across drafter-enabled tiers. Eliza-1 uses Qwen3.5
     students only; every drafter-enabled tier must distill from a base with
     byte-identical tokenizer metadata.
-  - `eliza-1-0_8b` is target-only by design. It has no DFlash drafter,
-    no acceptance gate, and no drafter training job.
+  - `eliza-1-0_8b` has its own tiny drafter artifact. It still shares the
+    same tokenizer/parity and target-hash gates as the larger tiers.
 
 Distillation objective: forward KL on the top-k target logits plus a small
 cross-entropy floor on the ground-truth token (label smoothing keeps the
@@ -81,10 +82,9 @@ GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
 ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b")
 
-# Target tiers that are allowed to ship a DFlash drafter. 0_8b is target-only:
-# bundle manifests must keep DFlash disabled there, and this script must not
-# produce a drafter artifact for it.
-DFLASH_DRAFTER_TIERS = ("2b", "4b", "9b", "27b")
+# Target tiers that are allowed to ship a DFlash drafter. Keep this in lockstep
+# with packages/shared/src/local-inference/catalog.ts::ELIZA_1_DFLASH_TIER_IDS.
+DFLASH_DRAFTER_TIERS = ACTIVE_TIERS
 TRAINING_SUPPORTED_TIERS = DFLASH_DRAFTER_TIERS
 
 # Use this only for synthetic smoke fixtures that cannot inspect a tokenizer.
@@ -94,6 +94,7 @@ QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE = 248320
 # Recommended student base per active tier. Every active Eliza-1 tier is on the
 # Qwen3.5 tokenizer family; keep this base aligned with model_registry.py.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
+    "0_8b": "Qwen/Qwen3.5-0.8B-Base",
     "2b": "Qwen/Qwen3.5-0.8B-Base",
     "4b": "Qwen/Qwen3.5-0.8B-Base",
     "9b": "Qwen/Qwen3.5-0.8B-Base",
@@ -106,6 +107,7 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 # can distinguish "trained against a small-tier-ish directory" from "trained
 # against the exact Eliza-1 target".
 DEFAULT_TARGET_MODEL: dict[str, str] = {
+    "0_8b": "elizalabs/eliza-1/bundles/0_8b",
     "2b": "elizalabs/eliza-1/bundles/2b",
     "4b": "elizalabs/eliza-1/bundles/4b",
     "9b": "elizalabs/eliza-1/bundles/9b",
@@ -117,6 +119,7 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
 # acceptance window into `dflash/target-meta.json`. Tighten only with a
 # rebaseline (see training/AGENTS.md §8).
 ACCEPTANCE_GATE: dict[str, float] = {
+    "0_8b": 0.40,
     "2b": 0.48,
     "4b": 0.52,
     "9b": 0.52,

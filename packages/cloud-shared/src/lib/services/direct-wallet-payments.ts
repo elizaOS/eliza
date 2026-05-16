@@ -12,7 +12,7 @@ import {
 } from "@solana/web3.js";
 import bs58 from "bs58";
 import Decimal from "decimal.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   createPublicClient,
   createWalletClient,
@@ -28,10 +28,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { base, bsc } from "viem/chains";
 import { dbWrite } from "../../db/client";
-import {
-  type CryptoPayment,
-  cryptoPaymentsRepository,
-} from "../../db/repositories/crypto-payments";
+import type { CryptoPayment } from "../../db/repositories/crypto-payments";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import type { Bindings } from "../../types/cloud-worker-env";
 import { PAYMENT_EXPIRATION_MS, validatePaymentAmount } from "../config/crypto";
@@ -55,6 +52,11 @@ export interface DirectWalletNetworkConfig {
   rpcUrl: string;
   enabled: boolean;
 }
+
+export type PublicDirectWalletNetworkConfig = Omit<
+  DirectWalletNetworkConfig,
+  "rpcUrl" | "secureAddress"
+>;
 
 interface CreateDirectPaymentParams {
   organizationId: string;
@@ -144,6 +146,60 @@ function directPaymentConfig(
       "https://api.mainnet-beta.solana.com",
     enabled: Boolean(receiveAddress),
   };
+}
+
+function disabledDirectPaymentConfig(
+  network: DirectWalletNetwork,
+  error: unknown,
+): DirectWalletNetworkConfig {
+  logger.warn("[Direct Crypto Payments] Invalid network config", {
+    network,
+    error: error instanceof Error ? error.message : String(error),
+  });
+  if (network === "solana") {
+    return {
+      network,
+      displayName: "Solana",
+      tokenSymbol: "USDC",
+      tokenMint: SOLANA_USDC_MINT,
+      tokenDecimals: 6,
+      receiveAddress: null,
+      secureAddress: null,
+      rpcUrl: "https://api.mainnet-beta.solana.com",
+      enabled: false,
+    };
+  }
+  const isBase = network === "base";
+  return {
+    network,
+    displayName: isBase ? "Base" : "BNB Smart Chain",
+    chainId: isBase ? base.id : bsc.id,
+    tokenSymbol: isBase ? "USDC" : "USDT",
+    tokenAddress: getAddress(isBase ? BASE_USDC_ADDRESS : BSC_USDT_ADDRESS),
+    tokenDecimals: isBase ? 6 : 18,
+    receiveAddress: null,
+    secureAddress: null,
+    rpcUrl: isBase ? "https://mainnet.base.org" : "https://bsc-dataseed.binance.org",
+    enabled: false,
+  };
+}
+
+function publicDirectPaymentConfig(
+  env: Bindings,
+  network: DirectWalletNetwork,
+): DirectWalletNetworkConfig {
+  try {
+    return directPaymentConfig(env, network);
+  } catch (error) {
+    return disabledDirectPaymentConfig(network, error);
+  }
+}
+
+function sanitizeDirectPaymentConfig(
+  cfg: DirectWalletNetworkConfig,
+): PublicDirectWalletNetworkConfig {
+  const { rpcUrl: _rpcUrl, secureAddress: _secureAddress, ...publicConfig } = cfg;
+  return publicConfig;
 }
 
 function requireConfigured(cfg: DirectWalletNetworkConfig): void {
@@ -282,10 +338,17 @@ async function verifySolanaTokenPayment(params: {
   }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
-  const tx = await connection.getParsedTransaction(params.txHash, {
+  let tx = await connection.getParsedTransaction(params.txHash, {
     commitment: "confirmed",
     maxSupportedTransactionVersion: 0,
   });
+  for (let attempt = 0; !tx && attempt < 12; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    tx = await connection.getParsedTransaction(params.txHash, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+  }
   if (!tx?.meta || tx.meta.err) throw new Error("Transaction was not confirmed successfully");
 
   const mint = params.cfg.tokenMint;
@@ -335,6 +398,12 @@ async function sweepEvmIfConfigured(params: {
   if (!privateKey) return null;
 
   const account = privateKeyToAccount(privateKey);
+  if (
+    !params.cfg.receiveAddress ||
+    normalizeEvmAddress(account.address) !== normalizeEvmAddress(params.cfg.receiveAddress)
+  ) {
+    throw new Error("Configured EVM sweep key does not match the receive wallet");
+  }
   const wallet = createWalletClient({
     account,
     chain: params.cfg.network === "base" ? base : bsc,
@@ -368,6 +437,12 @@ async function sweepSolanaIfConfigured(params: {
   if (!params.cfg.tokenMint || !params.cfg.secureAddress) return null;
   const payer = solanaKeypairFromEnv(params.env);
   if (!payer) return null;
+  if (
+    !params.cfg.receiveAddress ||
+    payer.publicKey.toBase58() !== normalizeSolanaAddress(params.cfg.receiveAddress)
+  ) {
+    throw new Error("Configured Solana sweep key does not match the receive wallet");
+  }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
   const mint = new PublicKey(params.cfg.tokenMint);
@@ -398,11 +473,11 @@ async function sweepSolanaIfConfigured(params: {
 export class DirectWalletPaymentsService {
   getConfig(env: Bindings) {
     const networks = (["base", "bsc", "solana"] as const).map((network) =>
-      directPaymentConfig(env, network),
+      publicDirectPaymentConfig(env, network),
     );
     return {
       enabled: networks.some((network) => network.enabled),
-      networks,
+      networks: networks.map(sanitizeDirectPaymentConfig),
       promotion: {
         code: "bsc",
         network: "bsc",
@@ -425,42 +500,71 @@ export class DirectWalletPaymentsService {
     const validation = validatePaymentAmount(amount);
     if (!validation.valid) throw new Error(validation.error ?? "Invalid amount");
 
-    const promoApplies =
+    const promoRequested =
       params.promoCode === "bsc" && params.network === "bsc" && amount.greaterThanOrEqualTo(10);
+    const promoApplies = promoRequested;
     const bonusCredits = promoApplies ? 5 : 0;
     const creditsToAdd = amount.plus(bonusCredits);
     const expectedTokenUnits = unitsForUsd(amount, cfg.tokenDecimals);
     const now = new Date();
 
-    const payment = await cryptoPaymentsRepository.create({
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      payment_address: cfg.receiveAddress ?? "",
-      token_address: cfg.tokenAddress ?? cfg.tokenMint ?? null,
-      token: cfg.tokenSymbol,
-      network: cfg.displayName,
-      expected_amount: amount.toFixed(2),
-      credits_to_add: creditsToAdd.toFixed(2),
-      status: "pending",
-      expires_at: new Date(now.getTime() + PAYMENT_EXPIRATION_MS),
-      metadata: {
-        kind: "direct_wallet_credit_purchase",
-        provider: "wallet_native",
-        direct_network: params.network,
-        chain_id: cfg.chainId,
-        payer_wallet_address: normalizePayer(params.network, params.payerAddress),
-        receive_address: cfg.receiveAddress,
-        secure_address_configured: Boolean(cfg.secureAddress),
-        token_symbol: cfg.tokenSymbol,
-        token_address: cfg.tokenAddress,
-        token_mint: cfg.tokenMint,
-        token_decimals: cfg.tokenDecimals,
-        expected_token_units: expectedTokenUnits.toString(),
-        expected_token_amount: formatUnitsAsTokenAmount(expectedTokenUnits, cfg.tokenDecimals),
-        paid_amount_usd: amount.toFixed(2),
-        bonus_credits: bonusCredits,
-        promo_code: promoApplies ? "bsc" : null,
-      },
+    const payment = await dbWrite.transaction(async (tx) => {
+      if (promoRequested) {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtext(${"crypto_direct_bsc_promo:" + params.organizationId}))
+        `);
+        const existingPromo = await tx
+          .select({ id: cryptoPayments.id })
+          .from(cryptoPayments)
+          .where(sql`
+            ${cryptoPayments.organization_id} = ${params.organizationId}
+            AND ${cryptoPayments.status} IN ('pending', 'confirmed')
+            AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'
+            AND ${cryptoPayments.metadata}->>'promo_code' = 'bsc'
+          `)
+          .limit(1);
+        if (existingPromo.length > 0) {
+          throw new Error("BSC promotion has already been redeemed for this organization");
+        }
+      }
+
+      const [created] = await tx
+        .insert(cryptoPayments)
+        .values({
+          organization_id: params.organizationId,
+          user_id: params.userId,
+          payment_address: cfg.receiveAddress ?? "",
+          token_address: cfg.tokenAddress ?? cfg.tokenMint ?? null,
+          token: cfg.tokenSymbol,
+          network: cfg.displayName,
+          expected_amount: amount.toFixed(2),
+          credits_to_add: creditsToAdd.toFixed(2),
+          status: "pending",
+          created_at: now,
+          updated_at: now,
+          expires_at: new Date(now.getTime() + PAYMENT_EXPIRATION_MS),
+          metadata: {
+            kind: "direct_wallet_credit_purchase",
+            provider: "wallet_native",
+            direct_network: params.network,
+            chain_id: cfg.chainId,
+            payer_wallet_address: normalizePayer(params.network, params.payerAddress),
+            receive_address: cfg.receiveAddress,
+            secure_address_configured: Boolean(cfg.secureAddress),
+            token_symbol: cfg.tokenSymbol,
+            token_address: cfg.tokenAddress,
+            token_mint: cfg.tokenMint,
+            token_decimals: cfg.tokenDecimals,
+            expected_token_units: expectedTokenUnits.toString(),
+            expected_token_amount: formatUnitsAsTokenAmount(expectedTokenUnits, cfg.tokenDecimals),
+            paid_amount_usd: amount.toFixed(2),
+            bonus_credits: bonusCredits,
+            promo_code: promoApplies ? "bsc" : null,
+          },
+        })
+        .returning();
+      if (!created) throw new Error("Failed to create direct crypto payment");
+      return created;
     });
 
     return {

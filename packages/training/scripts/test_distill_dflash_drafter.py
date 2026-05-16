@@ -151,7 +151,7 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
     assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b")
-    assert DFLASH_DRAFTER_TIERS == ("2b", "4b", "9b", "27b")
+    assert DFLASH_DRAFTER_TIERS == ACTIVE_TIERS
     assert TRAINING_SUPPORTED_TIERS == DFLASH_DRAFTER_TIERS
     assert "0_6b" not in DEFAULT_STUDENT_BASE
     assert "1_7b" not in DEFAULT_STUDENT_BASE
@@ -159,12 +159,12 @@ def test_active_tier_matrix_has_no_retired_defaults() -> None:
     assert "1_7b" not in DEFAULT_TARGET_MODEL
 
 
-def test_0_8b_is_target_only_and_not_drafter_supported() -> None:
+def test_0_8b_has_a_tiny_drafter_recipe() -> None:
     assert "0_8b" in ACTIVE_TIERS
-    assert "0_8b" not in TRAINING_SUPPORTED_TIERS
-    assert "0_8b" not in DEFAULT_STUDENT_BASE
-    assert "0_8b" not in DEFAULT_TARGET_MODEL
-    assert "0_8b" not in ACCEPTANCE_GATE
+    assert "0_8b" in TRAINING_SUPPORTED_TIERS
+    assert DEFAULT_STUDENT_BASE["0_8b"] == "Qwen/Qwen3.5-0.8B-Base"
+    assert DEFAULT_TARGET_MODEL["0_8b"] == "elizalabs/eliza-1/bundles/0_8b"
+    assert ACCEPTANCE_GATE["0_8b"] == 0.40
 
 
 @pytest.mark.parametrize("tier", DFLASH_DRAFTER_TIERS)

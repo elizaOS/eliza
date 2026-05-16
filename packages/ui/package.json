@@ -65,6 +65,11 @@
       "import": "./dist/cloud-ui/components/button.js",
       "default": "./dist/cloud-ui/components/button.js"
     },
+    "./card": {
+      "types": "./dist/components/ui/card.d.ts",
+      "import": "./dist/components/ui/card.js",
+      "default": "./dist/components/ui/card.js"
+    },
     "./dropdown-menu": {
       "types": "./dist/cloud-ui/components/dropdown-menu.d.ts",
       "import": "./dist/cloud-ui/components/dropdown-menu.js",
@@ -99,6 +104,11 @@
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js",
       "default": "./dist/components/index.js"
+    },
+    "./components/*": {
+      "types": "./dist/components/*.d.ts",
+      "import": "./dist/components/*.js",
+      "default": "./dist/components/*.js"
     },
     "./config": {
       "types": "./dist/config/index.d.ts",
@@ -145,6 +155,11 @@
       "import": "./dist/platform/index.js",
       "default": "./dist/platform/index.js"
     },
+    "./platform/*": {
+      "types": "./dist/platform/*.d.ts",
+      "import": "./dist/platform/*.js",
+      "default": "./dist/platform/*.js"
+    },
     "./providers": {
       "types": "./dist/providers/index.d.ts",
       "import": "./dist/providers/index.js",
@@ -154,6 +169,16 @@
       "types": "./dist/state/index.d.ts",
       "import": "./dist/state/index.js",
       "default": "./dist/state/index.js"
+    },
+    "./state/*": {
+      "types": "./dist/state/*.d.ts",
+      "import": "./dist/state/*.js",
+      "default": "./dist/state/*.js"
+    },
+    "./slots/*": {
+      "types": "./dist/slots/*.d.ts",
+      "import": "./dist/slots/*.js",
+      "default": "./dist/slots/*.js"
     },
     "./types": {
       "types": "./dist/types/index.d.ts",

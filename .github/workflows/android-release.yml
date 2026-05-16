@@ -159,7 +159,7 @@ jobs:
 
       - name: Prepare Android platform
         working-directory: packages/app
-        run: bun run build:android
+        run: bun run build:android:cloud
 
       - name: Decode keystore
         run: |

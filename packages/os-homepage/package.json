@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --bun vite --port 4455",
+    "dev": "bun --bun vite",
     "build": "bun --bun vite build",
     "deploy": "bunx wrangler pages deploy dist --project-name elizaos-homepage --branch main",
     "preview": "bun --bun vite preview --port 4455",

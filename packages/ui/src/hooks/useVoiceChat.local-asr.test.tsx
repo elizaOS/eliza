@@ -76,9 +76,16 @@ describe("useVoiceChat local ASR", () => {
           "Content-Type": "audio/wav",
           Accept: "application/json",
         }),
-        body: new Uint8Array([1, 2, 3, 4]),
+        body: expect.any(ArrayBuffer),
       }),
     );
+    expect(
+      Array.from(
+        new Uint8Array(
+          fetchWithCsrfMock.mock.calls[0]?.[1]?.body as ArrayBuffer,
+        ),
+      ),
+    ).toEqual([1, 2, 3, 4]);
     expect(onTranscriptPreview).toHaveBeenCalledWith(
       "hello local voice",
       expect.objectContaining({ isFinal: true }),

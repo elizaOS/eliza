@@ -44,9 +44,7 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "27b",
 )
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
-    tier for tier in ELIZA_1_TIERS if tier != "0_8b"
-)
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -153,6 +151,7 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "turboquant_q4",
         "qjl",
         "polarquant",
+        "dflash",
         "turbo3_tcq",
     ),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
@@ -195,9 +194,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
-    tier for tier in ELIZA_1_TIERS if tier != "0_8b"
-)
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {

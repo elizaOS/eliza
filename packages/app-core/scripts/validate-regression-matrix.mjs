@@ -7,6 +7,19 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 function findRepoRoot(startDir) {
+  try {
+    return execFileSync(
+      "git",
+      ["-C", startDir, "rev-parse", "--show-toplevel"],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+  } catch {
+    // Fall back to the legacy package/workflow sentinel walk for non-git exports.
+  }
+
   let currentDir = startDir;
   while (true) {
     if (

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import net from "node:net";
 import process from "node:process";
 
 const args = new Set(process.argv.slice(2));
@@ -105,7 +107,7 @@ const agentEnv = {
     `${urls.cloudApi}/api/v1`,
   ),
   ELIZA_CLOUD_URL: urls.cloudWeb,
-  ELIZA_WALLET_OS_STORE: envDefault("ELIZA_WALLET_OS_STORE", "1"),
+  ELIZA_WALLET_OS_STORE: envDefault("ELIZA_WALLET_OS_STORE", "0"),
   ELIZA_ALLOW_NO_PROVIDER: envDefault("ELIZA_ALLOW_NO_PROVIDER", "1"),
   ELIZA_DISABLE_LOCAL_EMBEDDINGS: envDefault(
     "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
@@ -250,7 +252,16 @@ const services = [
   {
     name: "os-homepage",
     cwd: "packages/os-homepage",
-    command: [bunBin, "run", "dev", "--", "--host", "0.0.0.0"],
+    command: [
+      bunBin,
+      "run",
+      "dev",
+      "--",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      ports.osHomepage,
+    ],
     env: osHomepageEnv,
   },
 ].filter(Boolean);
@@ -306,6 +317,65 @@ function printPlan() {
   console.log("");
 }
 
+function canConnect(host, port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port: Number(port) });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.setTimeout(750, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function describePortOwner(port) {
+  try {
+    return execFileSync(
+      "lsof",
+      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
+      { encoding: "utf8" },
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+async function assertPortsAvailable() {
+  const checks = [
+    !skipCloudDb && ["cloud DB", "127.0.0.1", ports.cloudDb],
+    ["cloud API", "127.0.0.1", ports.cloudApi],
+    ["cloud web", "127.0.0.1", ports.cloudWeb],
+    ["agent API", "127.0.0.1", ports.agentApi],
+    ["frontend", "127.0.0.1", ports.frontend],
+    ["app home", "127.0.0.1", ports.homepage],
+    ["OS home", "127.0.0.1", ports.osHomepage],
+  ].filter(Boolean);
+
+  const occupied = [];
+  for (const [label, host, port] of checks) {
+    if (await canConnect(host, port)) {
+      occupied.push({ label, port, owner: describePortOwner(port) });
+    }
+  }
+
+  if (occupied.length > 0) {
+    const details = occupied
+      .map(
+        ({ label, port, owner }) =>
+          `  ${label} port ${port} is already in use${owner ? `\n${owner}` : ""}`,
+      )
+      .join("\n\n");
+    throw new Error(`[dev:all] cannot start; ports are occupied:\n${details}`);
+  }
+}
+
 function runOnce(label, cwd, command, env) {
   return new Promise((resolve, reject) => {
     console.log(`[dev:all] ${label}: ${command.join(" ")}`);
@@ -347,6 +417,7 @@ function startService(service) {
     env: service.env,
     stdio: ["inherit", "pipe", "pipe"],
   });
+  child.serviceName = service.name;
   prefixStream(child.stdout, service.name, process.stdout);
   prefixStream(child.stderr, service.name, process.stderr);
   child.on("error", (error) => {
@@ -383,8 +454,9 @@ async function main() {
     console.log("[dev:all] skipping prepare steps");
   }
 
-  const children = services.map(startService).filter(Boolean);
   if (dryRun) return;
+  await assertPortsAvailable();
+  const children = services.map(startService).filter(Boolean);
 
   let shuttingDown = false;
   const shutdown = (signal) => {
@@ -401,7 +473,7 @@ async function main() {
     child.on("exit", (code, signal) => {
       if (shuttingDown) return;
       console.error(
-        `[dev:all] service exited; stopping stack (${signal ?? code})`,
+        `[dev:all] service ${child.serviceName ?? "unknown"} exited; stopping stack (${signal ?? code})`,
       );
       shuttingDown = true;
       stopChildrenAndExit(children, typeof code === "number" ? code : 1);

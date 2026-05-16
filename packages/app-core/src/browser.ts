@@ -64,7 +64,6 @@ export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
   label: string;
 }> = [];
 export const DesktopOnboardingRuntime = (): null => null;
-export const AppWindowRenderer = (_props: { slug?: string }): null => null;
 export const DesktopSurfaceNavigationRuntime = (): null => null;
 export const DesktopTrayRuntime = (): null => null;
 export const DetachedShellRoot = (): null => null;

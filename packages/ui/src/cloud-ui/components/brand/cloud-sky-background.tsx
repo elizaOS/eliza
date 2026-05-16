@@ -33,6 +33,12 @@ const cloudStyles = `
     radial-gradient(ellipse at 18% 18%, rgba(255,255,255,.34), transparent 22%),
     linear-gradient(180deg, #043cff 0%, #075cff 42%, #1aa7ff 100%);
 }
+.eliza-sky-bg.is-hero {
+  background:
+    radial-gradient(ellipse at 72% 30%, rgba(116, 184, 255, .86), transparent 38%),
+    radial-gradient(ellipse at 16% 16%, rgba(255,255,255,.42), transparent 24%),
+    linear-gradient(180deg, #0230f5 0%, #055dff 44%, #17adff 100%);
+}
 .eliza-sky-bg::before {
   content: "";
   position: absolute;
@@ -44,6 +50,13 @@ const cloudStyles = `
     radial-gradient(ellipse at 84% 18%, rgba(255,255,255,.5), rgba(255,255,255,.18) 14%, transparent 30%),
     radial-gradient(ellipse at 52% 2%, rgba(255,255,255,.38), transparent 24%);
   animation: eliza-cloud-breathe 16s ease-in-out infinite;
+}
+.eliza-sky-bg.is-hero::before {
+  opacity: .96;
+  background:
+    radial-gradient(ellipse at 4% 24%, rgba(255,255,255,.82), rgba(255,255,255,.32) 14%, transparent 29%),
+    radial-gradient(ellipse at 78% 14%, rgba(255,255,255,.62), rgba(255,255,255,.2) 15%, transparent 31%),
+    radial-gradient(ellipse at 52% 0%, rgba(255,255,255,.46), transparent 26%);
 }
 .eliza-sky-bg::after {
   content: "";
@@ -105,6 +118,21 @@ const cloudStyles = `
     radial-gradient(ellipse at 82% 60%, rgba(255,255,255,.9) 0 10%, rgba(245,251,255,.58) 18%, transparent 37%),
     radial-gradient(ellipse at 96% 76%, rgba(255,255,255,.88) 0 8%, rgba(242,250,255,.52) 16%, transparent 34%);
 }
+.eliza-sky-bg.is-hero .eliza-sky-cloud-field.near {
+  bottom: -4%;
+  height: 56%;
+  opacity: .96;
+  filter: blur(3px) saturate(1.12);
+  background:
+    radial-gradient(ellipse at 2% 82%, rgba(255,255,255,.98) 0 8%, rgba(243,250,255,.66) 15%, transparent 31%),
+    radial-gradient(ellipse at 14% 62%, rgba(255,255,255,.96) 0 11%, rgba(244,251,255,.62) 19%, transparent 37%),
+    radial-gradient(ellipse at 29% 76%, rgba(255,255,255,.92) 0 10%, rgba(235,247,255,.56) 18%, transparent 37%),
+    radial-gradient(ellipse at 46% 56%, rgba(255,255,255,.96) 0 12%, rgba(243,251,255,.62) 20%, transparent 40%),
+    radial-gradient(ellipse at 62% 74%, rgba(255,255,255,.9) 0 11%, rgba(232,245,255,.56) 19%, transparent 39%),
+    radial-gradient(ellipse at 79% 58%, rgba(255,255,255,.96) 0 11%, rgba(244,251,255,.62) 18%, transparent 38%),
+    radial-gradient(ellipse at 96% 78%, rgba(255,255,255,.92) 0 9%, rgba(238,248,255,.56) 16%, transparent 35%),
+    linear-gradient(180deg, transparent 12%, rgba(195,229,255,.2) 42%, rgba(255,255,255,.32) 100%);
+}
 .eliza-sky-cloud-field.detail {
   top: 30%;
   height: 40%;
@@ -118,6 +146,21 @@ const cloudStyles = `
     radial-gradient(ellipse at 74% 48%, rgba(255,255,255,.68) 0 3%, transparent 13%),
     radial-gradient(ellipse at 88% 62%, rgba(255,255,255,.64) 0 4%, transparent 14%);
 }
+.eliza-sky-bg.is-hero .eliza-sky-cloud-field.detail {
+  top: 24%;
+  height: 50%;
+  opacity: .52;
+  filter: blur(1px);
+  background:
+    radial-gradient(ellipse at 10% 44%, rgba(255,255,255,.78) 0 3%, transparent 11%),
+    radial-gradient(ellipse at 20% 58%, rgba(220,240,255,.5) 0 4%, transparent 13%),
+    radial-gradient(ellipse at 33% 38%, rgba(255,255,255,.72) 0 3%, transparent 12%),
+    radial-gradient(ellipse at 43% 66%, rgba(214,238,255,.48) 0 4%, transparent 14%),
+    radial-gradient(ellipse at 56% 44%, rgba(255,255,255,.7) 0 3%, transparent 12%),
+    radial-gradient(ellipse at 69% 62%, rgba(213,238,255,.48) 0 4%, transparent 15%),
+    radial-gradient(ellipse at 82% 42%, rgba(255,255,255,.74) 0 3%, transparent 13%),
+    radial-gradient(ellipse at 92% 62%, rgba(218,240,255,.5) 0 4%, transparent 14%);
+}
 .eliza-sky-vignette {
   position: absolute;
   inset: 0;
@@ -126,6 +169,12 @@ const cloudStyles = `
   background:
     linear-gradient(180deg, rgba(0, 19, 126, .16), transparent 34%),
     radial-gradient(ellipse at 50% 58%, transparent 0 54%, rgba(0, 26, 118, .3) 100%);
+}
+.eliza-sky-bg.is-hero .eliza-sky-vignette {
+  background:
+    linear-gradient(180deg, rgba(0, 18, 120, .2), transparent 32%),
+    radial-gradient(ellipse at 50% 58%, transparent 0 48%, rgba(0, 24, 112, .34) 100%),
+    radial-gradient(ellipse at 48% 82%, rgba(255,255,255,.16), transparent 42%);
 }
 .eliza-sky-vignette::before {
   content: "";
@@ -235,6 +284,25 @@ const cloudStyles = `
     animation: none;
   }
 }
+@media (max-width: 640px) {
+  .eliza-sky-bg.is-hero::after {
+    height: 42%;
+  }
+  .eliza-sky-bg.is-hero .eliza-sky-cloud-field.far {
+    top: 2%;
+    height: 26%;
+    opacity: .54;
+  }
+  .eliza-sky-bg.is-hero .eliza-sky-cloud-field.near {
+    bottom: -7%;
+    height: 44%;
+  }
+  .eliza-sky-bg.is-hero .eliza-sky-cloud-field.detail {
+    top: 34%;
+    height: 32%;
+    opacity: .38;
+  }
+}
 `;
 
 const clouds = [
@@ -254,7 +322,9 @@ export function CloudSkyBackground({
   const density = intensity === "hero" ? clouds : clouds.slice(0, 4);
 
   return (
-    <div className={`eliza-sky-bg ${className}`}>
+    <div
+      className={`eliza-sky-bg ${intensity === "hero" ? "is-hero" : ""} ${className}`}
+    >
       <style>{cloudStyles}</style>
       <svg aria-hidden="true" className="absolute h-0 w-0" focusable="false">
         <filter

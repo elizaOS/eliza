@@ -13,8 +13,6 @@ export interface CryptoStatusResponse {
       tokenMint?: string;
       tokenDecimals: number;
       receiveAddress: string | null;
-      secureAddress: string | null;
-      rpcUrl: string;
       enabled: boolean;
     }>;
     promotion: {

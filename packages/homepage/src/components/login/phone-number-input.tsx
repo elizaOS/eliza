@@ -1,8 +1,8 @@
+import { Input } from "@elizaos/ui/input";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import { CountryFlag } from "@/components/login/country-flag";
-import { Input } from "@/components/ui/input";
 
 const COUNTRY_LIST = getCountries();
 const DISPLAY_NAMES =

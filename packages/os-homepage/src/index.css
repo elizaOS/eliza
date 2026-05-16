@@ -1,53 +1,26 @@
 @import "@fontsource-variable/open-sans";
+@import "../../ui/src/styles/base.css";
+@import "../../ui/src/styles/tailwind-theme.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "../../ui/src";
 
 :root {
   --font-sans: "Open Sans", Arial, system-ui, sans-serif;
-  --ink: #111111;
-  --muted: #6a6660;
-  --line: #ded8cf;
-  --paper: #f7f5ef;
-  --panel: #ffffff;
-  --orange: #ff8a24;
-  --blue: #1d91e8;
-  --bg: var(--paper);
-  --bg-accent: #eef8ff;
-  --bg-elevated: rgba(255, 255, 255, 0.88);
-  --bg-hover: rgba(255, 255, 255, 0.96);
-  --bg-muted: #e4f3ff;
-  --card: rgba(255, 255, 255, 0.88);
-  --card-foreground: var(--ink);
-  --surface: rgba(255, 255, 255, 0.82);
-  --text: var(--ink);
-  --text-strong: #070707;
-  --chat-text: var(--ink);
-  --txt: var(--ink);
-  --muted-strong: rgba(17, 17, 17, 0.72);
-  --border: rgba(17, 17, 17, 0.12);
-  --border-strong: rgba(17, 17, 17, 0.2);
-  --border-hover: var(--orange);
-  --input: rgba(255, 255, 255, 0.9);
-  --ring: var(--orange);
-  --accent: var(--orange);
-  --accent-rgb: 255, 138, 36;
-  --accent-hover: #ff9a3d;
-  --accent-muted: #d95f16;
-  --accent-subtle: rgba(255, 138, 36, 0.16);
-  --accent-foreground: #fff7ee;
-  --primary: var(--orange);
-  --primary-foreground: #fff7ee;
-  --ok: hsl(142 76% 36%);
-  --ok-muted: hsla(142 76% 36% / 0.7);
-  --ok-subtle: hsla(142 76% 36% / 0.1);
-  --warn: var(--orange);
-  --warn-muted: rgba(255, 138, 36, 0.72);
-  --warn-subtle: rgba(255, 138, 36, 0.16);
-  --danger: hsl(0 84.2% 60.2%);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --destructive-subtle: hsla(0 84% 60% / 0.1);
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-chat: var(--font-sans);
+  --mono: var(--font-sans);
+
+  --ink: var(--text);
+  --line: var(--border);
+  --paper: var(--bg);
+  --panel: var(--card);
+  --orange: var(--accent);
+  --blue: var(--info);
+  --os-product-white: #f8f8f5;
+  --os-product-black: #111111;
+
   --background: var(--bg);
   --foreground: var(--text);
   --popover: var(--card);
@@ -55,11 +28,14 @@
   --secondary: var(--bg-accent);
   --secondary-foreground: var(--text);
   --muted-foreground: var(--muted);
-  --radius: 0.5rem;
-  --font-body: var(--font-sans);
-  --font-display: var(--font-sans);
-  --font-chat: var(--font-sans);
-  --mono: var(--font-sans);
+  --sidebar: var(--bg-elevated);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--bg-accent);
+  --sidebar-accent-foreground: var(--text-strong);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 * {
@@ -186,6 +162,21 @@ a {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 24px;
+}
+
+.sub-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.sub-ctas a {
+  color: #554d45;
+  font-size: 14px;
+  font-weight: 720;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .cta {
@@ -332,7 +323,7 @@ a {
 }
 
 .hardware-section,
-.install-strip,
+.download-section,
 .purchase-flow,
 .setup-section {
   margin: 0 auto;
@@ -341,11 +332,8 @@ a {
 }
 
 .section-heading.compact {
-  align-items: end;
-  display: grid;
-  gap: 24px;
-  grid-template-columns: minmax(0, 0.75fr) minmax(280px, 0.25fr);
   margin-bottom: 22px;
+  max-width: 760px;
 }
 
 .section-heading h2,
@@ -452,16 +440,32 @@ a {
   align-items: center;
   border-top: 1px solid var(--line);
   display: flex;
+  gap: 12px;
   justify-content: space-between;
   padding-top: 14px;
 }
 
-.buy-row a {
+.buy-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.buy-actions a:not(.details-link) {
   background: var(--ink);
   border-radius: 8px;
   color: #fff;
   font-weight: 720;
   padding: 10px 12px;
+}
+
+.details-link {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 720;
+  padding: 9px 11px;
 }
 
 .install-strip {
@@ -500,6 +504,75 @@ a {
   grid-template-columns: minmax(0, 0.85fr) minmax(260px, 0.55fr) auto;
   margin-top: 44px;
   padding: 26px;
+}
+
+.product-page {
+  align-items: center;
+  display: grid;
+  gap: clamp(24px, 5vw, 68px);
+  grid-template-columns: minmax(0, 0.78fr) minmax(320px, 0.62fr);
+  margin: 0 auto;
+  max-width: 1280px;
+  min-height: calc(86vh - 64px);
+  padding: clamp(32px, 5vw, 72px) clamp(18px, 5vw, 72px);
+}
+
+.product-page-copy {
+  max-width: 680px;
+}
+
+.product-page-copy > p:not(.platform-label) {
+  color: #47423c;
+  font-size: 20px;
+  line-height: 1.45;
+  margin: 18px 0;
+}
+
+.product-page h1 {
+  font-size: clamp(42px, 6vw, 76px);
+  letter-spacing: 0;
+  line-height: 0.95;
+  margin: 0;
+}
+
+.product-page > .visual {
+  aspect-ratio: 1 / 1;
+  border-radius: 26px;
+  min-height: 360px;
+  width: 100%;
+}
+
+.product-page > .phone-render {
+  border-radius: 44px;
+}
+
+.product-page > .usb-render {
+  aspect-ratio: 1.7 / 1;
+  min-height: 240px;
+}
+
+.product-page > .box-render {
+  background: #111;
+}
+
+.product-page > .box-render > img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.back-link {
+  color: var(--muted);
+  display: inline-block;
+  font-weight: 720;
+  margin-top: 20px;
+}
+
+.product-flow {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr) auto;
+  margin-bottom: 54px;
+  margin-top: 0;
 }
 
 .purchase-flow p {
@@ -552,8 +625,8 @@ a {
 
 @media (max-width: 1060px) {
   .hero,
-  .purchase-flow,
-  .section-heading.compact {
+  .product-page,
+  .purchase-flow {
     grid-template-columns: 1fr;
   }
 
@@ -582,6 +655,11 @@ a {
     min-height: auto;
   }
 
+  .hero h1,
+  .product-page h1 {
+    font-size: 40px;
+  }
+
   .hero-showcase {
     min-height: 430px;
   }
@@ -605,5 +683,21 @@ a {
   .hero-usb {
     left: 20%;
     width: 54%;
+  }
+
+  .buy-row,
+  .buy-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .details-link,
+  .buy-actions a:not(.details-link) {
+    text-align: center;
+    width: 100%;
+  }
+
+  .product-page > .visual {
+    min-height: 280px;
   }
 }

@@ -171,11 +171,46 @@ export * from "./shell/ShortcutsOverlay";
 export * from "./shell/StartupFailureView";
 export * from "./shell/StartupShell";
 export * from "./shell/SystemWarningBanner";
+export * from "./ui/accordion";
+export * from "./ui/alert";
+export * from "./ui/alert-dialog";
+export * from "./ui/avatar";
+export * from "./ui/badge";
+export * from "./ui/button";
+export * from "./ui/calendar";
+export * from "./ui/card";
+export * from "./ui/carousel";
+export * from "./ui/chart";
+export * from "./ui/checkbox";
+export * from "./ui/collapsible";
 export {
   ConfirmDialog as ConfirmModal,
   type ConfirmDialogProps as ConfirmModalProps,
   PromptDialog as PromptModal,
   type PromptDialogProps as PromptModalProps,
 } from "./ui/confirm-dialog";
+export * from "./ui/dialog";
+export * from "./ui/dropdown-menu";
+export * from "./ui/empty-state";
+export * from "./ui/form";
+export * from "./ui/hover-card";
+export * from "./ui/input";
+export * from "./ui/input-group";
+export * from "./ui/label";
+export * from "./ui/pagination";
+export * from "./ui/progress";
 export { SaveFooter as ConfigSaveFooter } from "./ui/save-footer";
+export * from "./ui/scroll-area";
+export * from "./ui/select";
+export * from "./ui/separator";
+export * from "./ui/sheet";
+export * from "./ui/skeleton";
+export * from "./ui/slider";
+export * from "./ui/status-badge";
+export * from "./ui/switch";
+export * from "./ui/table";
+export * from "./ui/tabs";
+export * from "./ui/textarea";
+export * from "./ui/toggle";
+export * from "./ui/tooltip";
 export * from "./workspace/AppWorkspaceChrome";

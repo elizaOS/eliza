@@ -31,6 +31,10 @@ export default defineConfig({
         packageDir,
         "../ui/src/cloud-ui/components/button.tsx",
       ),
+      "@elizaos/ui/card": path.resolve(
+        packageDir,
+        "../ui/src/components/ui/card.tsx",
+      ),
       "@elizaos/ui/product-switcher": path.resolve(
         packageDir,
         "../ui/src/cloud-ui/components/product-switcher.tsx",

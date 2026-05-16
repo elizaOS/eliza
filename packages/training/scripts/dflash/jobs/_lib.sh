@@ -2,12 +2,11 @@
 # Target catalog tier: DFlash drafter-enabled tiers.
 # This library is sourced by each per-tier distill_dflash_<tier>.sh wrapper.
 # Tier → catalog mapping:
+#   0_8b.sh    → eliza-1-0_8b
 #   2b.sh      → eliza-1-2b
 #   4b.sh      → eliza-1-4b
 #   9b.sh      → eliza-1-9b
 #   27b.sh     → eliza-1-27b
-# The 0_8b wrapper is deliberately disabled: eliza-1-0_8b is target-only and
-# ships with DFlash disabled.
 # Shared helpers for DFlash drafter distillation job scripts.
 #
 # Per-tier scripts source this file, set TIER + hyperparam env vars, and call

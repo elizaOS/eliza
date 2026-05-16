@@ -1344,7 +1344,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument(
         "--drafter-gguf",
         type=Path,
-        help="DFlash drafter GGUF (required for DFlash-enabled tiers; omitted for 0_8b disabled-policy bundles).",
+        help="DFlash drafter GGUF (required for every DFlash-enabled tier).",
     )
     ap.add_argument(
         "--recipes-dir",

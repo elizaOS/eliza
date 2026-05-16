@@ -76,6 +76,7 @@ QWEN35_SYNTHETIC_VOCAB_SIZE: int = QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE
 
 # Approximate drafter size-B per tier (used for --drafter-size-b default).
 DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
+    "0_8b": 0.5,
     "2b": 0.5,
     "4b": 1.5,
     "9b": 1.5,
@@ -502,7 +503,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--target-tier",
         required=True,
         choices=sorted(ACCEPTANCE_GATE.keys()),
-        help="Eliza-1 target tier (e.g. 2b, 9b, 27b).",
+        help="Eliza-1 target tier (e.g. 0_8b, 2b, 9b, 27b).",
     )
     p.add_argument(
         "--drafter-size-b",

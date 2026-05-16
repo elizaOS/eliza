@@ -153,6 +153,7 @@ export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel";
 export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region";
 export * from "./components/index";
 export {
+  FormField,
   LanguageDropdown,
   ThemeToggle,
 } from "./components/index";

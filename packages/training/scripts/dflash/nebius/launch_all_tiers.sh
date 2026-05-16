@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Launch DFlash drafter distillation for all 5 drafter-enabled Eliza-1 tiers
-# on Nebius H200. eliza-1-0_8b is target-only and intentionally excluded.
+# on Nebius H200.
 #
 # By default, jobs run sequentially. Use --tiers to run a subset.
 #
@@ -36,10 +36,10 @@
 #   EXTRA_TRAIN_ARGS         Extra args passed to distill_drafter_h200.py.
 #
 # Tier-to-hardware mapping (1 GPU unless noted):
-#   2b  4b  9b  → 1× H200 each
-#   27b          → 2× H200 (target + student don't fit on 1)
+#   0_8b 2b 4b 9b → 1× H200 each
+#   27b            → 2× H200 (target + student don't fit on 1)
 #
-# All 4 drafter-enabled tiers are listed in canonical order matching
+# All drafter-enabled tiers are listed in canonical order matching
 # ELIZA_1_GGUF_READINESS.md and packages/shared/src/local-inference/catalog.ts.
 set -euo pipefail
 
@@ -50,6 +50,7 @@ TRAINING_SCRIPT="${SCRIPT_DIR}/distill_drafter_h200.py"
 # Canonical tier list + drafter sizes (matches ELIZA_1_GGUF_READINESS.md).
 # Format: TIER:DRAFTER_SIZE_B:EPOCHS:BATCH_SIZE:GRAD_ACCUM:LR
 ALL_TIERS=(
+  "0_8b:0.5:2:16:2:2e-4"
   "2b:0.5:3:16:2:2e-4"
   "4b:1.5:3:8:4:2e-4"
   "9b:1.5:5:8:4:1.5e-4"
@@ -149,7 +150,7 @@ validate_selected_tiers() {
     fi
   done
   if (( ${#invalid[@]} )); then
-    die "unsupported DFlash drafter tier(s): ${invalid[*]}. Allowed: 2b,4b,9b,27b. eliza-1-0_8b is target-only."
+    die "unsupported DFlash drafter tier(s): ${invalid[*]}. Allowed: 0_8b,2b,4b,9b,27b."
   fi
 }
 

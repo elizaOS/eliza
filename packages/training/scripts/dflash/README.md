@@ -19,14 +19,15 @@ Today this is:
 These IDs name the **target** text models — the bundles a user downloads from
 `elizalabs/eliza-1` under `bundles/<tier>/` on Hugging Face.
 
-DFlash drafter training is intentionally narrower:
+DFlash drafter training covers the same tier set:
 
 ```
-2b, 4b, 9b, 27b
+0_8b, 2b, 4b, 9b, 27b
 ```
 
-`0_8b` is target-only by design. Its bundle metadata must keep DFlash disabled,
-must not require a drafter, and must not carry a DFlash acceptance gate.
+`0_8b` uses the smallest/tiny drafter recipe. Its runtime DFlash launch remains
+gated until acceptance/tg is validated on real hardware, but the artifact is no
+longer optional or undefined.
 
 ## Drafter vs target
 
@@ -60,8 +61,8 @@ Each `jobs/distill_dflash_<tier>.sh` script:
    empirically per release.
 4. Calls `dflash_run_distill "$@"`.
 
-The `distill_dflash_0_8b.sh` wrapper is deliberately disabled and exits
-non-zero: 0.8B is the target-only no-drafter tier.
+The `distill_dflash_0_8b.sh` wrapper trains the tiny drafter for the smallest
+target tier.
 
 To run a script:
 
@@ -91,13 +92,13 @@ When the catalog adds a new canonical tier:
    `SUPPORTED_BACKENDS_BY_TIER`, `VOICE_QUANT_BY_TIER`,
    `REQUIRED_PLATFORM_EVIDENCE_BY_TIER` in `eliza1_platform_plan.py` /
    `eliza1_manifest.py`.
-3. If the new tier is drafter-enabled, add the student base + acceptance gate
+3. Add the student base + acceptance gate
    to `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` /
    `ACCEPTANCE_GATE` / `DEFAULT_TARGET_MODEL`.
-4. If the new tier is drafter-enabled, add `KNOWN_TIERS` entry in
+4. Add `KNOWN_TIERS` entry in
    `prepare_distill_dataset.py` (and the validator will read the gate from
    `distill_dflash_drafter.py`).
-5. If the new tier is drafter-enabled, copy one of the existing
+5. Copy one of the existing
    `jobs/distill_dflash_<tier>.sh` scripts and change the `TIER=` line + the
    hyperparameters.
 6. Regenerate `ELIZA_1_GGUF_READINESS.md` with

@@ -1,5 +1,5 @@
 import { Button } from "@elizaos/ui/button";
-import { Card } from "@elizaos/ui/components";
+import { Card } from "@elizaos/ui/card";
 import { ProductSwitcher as SharedProductSwitcher } from "@elizaos/ui/product-switcher";
 import {
   ArrowRight,
@@ -24,10 +24,9 @@ const OS_URL = import.meta.env.VITE_ELIZA_OS_URL || "https://elizaos.ai";
 
 const productLinks = [
   { label: "ElizaOS", href: OS_URL, active: true },
-  { label: "Eliza App", href: APP_URL },
-  { label: "Eliza Cloud", href: CLOUD_URL },
+  { label: "Downloads", href: "#downloads" },
+  { label: "Hardware", href: "#hardware" },
   { label: "Docs", href: "https://eliza.how", external: true },
-  { label: "GitHub", href: "https://github.com/elizaOS/eliza", external: true },
 ];
 
 const colors = [
@@ -40,9 +39,12 @@ const colors = [
 const products = [
   {
     id: "phone",
+    slug: "phone",
     name: "ElizaOS Phone",
     price: "$499 deposit",
     status: "Reserve hardware",
+    summary:
+      "A first-party ElizaOS phone concept for users who want the OS as the everyday mobile device.",
     colors: ["Orange", "Blue", "White", "Blue"],
     href: `${CLOUD_URL}/checkout?sku=elizaos-phone`,
     className: "phone-render",
@@ -50,9 +52,12 @@ const products = [
   },
   {
     id: "box",
+    slug: "box",
     name: "ElizaOS Box",
     price: "$299 deposit",
     status: "Reserve dev kit",
+    summary:
+      "A compact ElizaOS runtime box for home, office, and local agent deployments.",
     colors: ["Orange", "Blue", "White", "Black"],
     href: `${CLOUD_URL}/checkout?sku=elizaos-box`,
     className: "box-render",
@@ -60,9 +65,12 @@ const products = [
   },
   {
     id: "usb-chibi",
+    slug: "usb-chibi",
     name: "Chibi USB key",
     price: "$49",
     status: "Ships October 2026",
+    summary:
+      "The character USB installer key for preloaded ElizaOS setup media.",
     colors: ["Orange"],
     href: `${CLOUD_URL}/checkout?sku=elizaos-usb-chibi`,
     className: "chibi-render",
@@ -70,9 +78,12 @@ const products = [
   },
   {
     id: "usb-plastic",
+    slug: "usb",
     name: "Branded USB key",
     price: "$49",
     status: "Ships October 2026",
+    summary:
+      "A simple branded plastic ElizaOS USB installer key in four colors.",
     colors: ["Orange", "Blue", "White", "Black"],
     href: `${CLOUD_URL}/checkout?sku=elizaos-usb-plastic`,
     className: "usb-render",
@@ -97,7 +108,9 @@ function ProductSwitcher() {
         ...link,
         external:
           link.external ||
-          (!link.href.startsWith("/") && !link.href.includes("localhost")),
+          (!link.href.startsWith("/") &&
+            !link.href.startsWith("#") &&
+            !link.href.includes("localhost")),
       }))}
       linkClassName="switcher-link"
     />
@@ -189,11 +202,7 @@ function ProductVisual({ className }: { className: string }) {
   );
 }
 
-function ProductCard({
-  product,
-}: {
-  product: (typeof products)[number];
-}) {
+function ProductCard({ product }: { product: (typeof products)[number] }) {
   const { Icon } = product;
 
   return (
@@ -209,19 +218,20 @@ function ProductCard({
       <Swatches names={product.colors} />
       <div className="buy-row">
         <strong>{product.price}</strong>
-        <Button asChild size="sm">
-          <a href={product.href}>Buy in Cloud</a>
-        </Button>
+        <div className="buy-actions">
+          <a className="details-link" href={`/hardware/${product.slug}`}>
+            Details
+          </a>
+          <Button asChild size="sm">
+            <a href={product.href}>Pre-order</a>
+          </Button>
+        </div>
       </div>
     </Card>
   );
 }
 
-function InstallTile({
-  tile,
-}: {
-  tile: (typeof installTiles)[number];
-}) {
+function InstallTile({ tile }: { tile: (typeof installTiles)[number] }) {
   const [Icon, title, body] = tile;
 
   return (
@@ -235,11 +245,7 @@ function InstallTile({
   );
 }
 
-function SetupCard({
-  children,
-}: {
-  children: ReactNode;
-}) {
+function SetupCard({ children }: { children: ReactNode }) {
   return (
     <Card className="setup-card" variant="flat">
       {children}
@@ -247,7 +253,116 @@ function SetupCard({
   );
 }
 
+function DownloadOptions() {
+  return (
+    <section className="download-section" id="downloads">
+      <div className="section-heading compact">
+        <p>Download ElizaOS</p>
+        <h2>Choose the installer for your device.</h2>
+      </div>
+      <div className="install-strip">
+        {installTiles.map((tile) => (
+          <InstallTile key={tile[1]} tile={tile} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HardwarePreorder() {
+  return (
+    <section className="hardware-section" id="hardware">
+      <div className="section-heading compact">
+        <p>Pre-order hardware</p>
+        <h2>USB key, phone, and Box. Ordered through Eliza Cloud.</h2>
+      </div>
+      <div className="product-grid">
+        {products.map((product) => (
+          <ProductCard key={product.id} product={product} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProductPage({ product }: { product: (typeof products)[number] }) {
+  const { Icon } = product;
+
+  return (
+    <main className="site-shell">
+      <header className="topbar">
+        <a className="brand" href="/">
+          <FaceLogo />
+          <span>ElizaOS</span>
+        </a>
+        <ProductSwitcher />
+      </header>
+      <section className="product-page">
+        <div className="product-page-copy">
+          <p className="platform-label">ElizaOS hardware</p>
+          <h1>{product.name}</h1>
+          <p>{product.summary}</p>
+          <Swatches names={product.colors} />
+          <div className="hero-actions">
+            <CtaLink href={product.href}>
+              <Icon aria-hidden="true" size={18} />
+              Pre-order in Eliza Cloud
+            </CtaLink>
+            <CtaLink
+              href="/downloads/elizaos-beta-manifest.json"
+              variant="secondary"
+            >
+              <Download aria-hidden="true" size={18} />
+              Download beta
+            </CtaLink>
+          </div>
+          <a className="back-link" href="/#hardware">
+            Back to hardware
+          </a>
+        </div>
+        <ProductVisual className={product.className} />
+      </section>
+      <Card className="purchase-flow product-flow" variant="flat">
+        <div>
+          <Cloud aria-hidden="true" />
+          <h2>Checkout continues in Eliza Cloud.</h2>
+          <p>
+            Cloud owns identity, preorder status, payment handoff, and device
+            linking after delivery.
+          </p>
+        </div>
+        <div className="flow-steps">
+          {["Sign in", "Choose color", "Pay deposit", "Track order"].map(
+            (step) => (
+              <span key={step}>
+                <Check aria-hidden="true" size={16} />
+                {step}
+              </span>
+            ),
+          )}
+        </div>
+        <CtaLink href={product.href}>Open preorder</CtaLink>
+      </Card>
+    </main>
+  );
+}
+
 export function App() {
+  const path =
+    typeof window === "undefined"
+      ? "/"
+      : window.location.pathname.replace(/\/$/, "");
+  const productSlug = path.startsWith("/hardware/")
+    ? path.replace("/hardware/", "")
+    : null;
+  const productPage = productSlug
+    ? products.find((product) => product.slug === productSlug)
+    : null;
+
+  if (productPage) {
+    return <ProductPage product={productPage} />;
+  }
+
   return (
     <main className="site-shell">
       <header className="topbar">
@@ -263,22 +378,23 @@ export function App() {
           <p className="platform-label">ElizaOS hardware + operating system</p>
           <h1>The agentic operating system for devices that run themselves.</h1>
           <p className="hero-subtitle">
-            Buy first-party ElizaOS hardware through Eliza Cloud, or download
-            the beta installer and make your own USB today.
+            Download the beta installer today. Run ElizaOS on a PC, in a VM, on
+            Android, or from raw image media.
           </p>
           <div className="hero-actions">
-            <CtaLink href="#hardware">
-              <Palette aria-hidden="true" size={18} />
-              Shop hardware
-            </CtaLink>
-            <CtaLink
-              href="/downloads/elizaos-beta-manifest.json"
-              variant="secondary"
-            >
+            <CtaLink href="#downloads">
               <Download aria-hidden="true" size={18} />
-              Download beta
+              Download ElizaOS
+            </CtaLink>
+            <CtaLink href="#hardware" variant="secondary">
+              <Palette aria-hidden="true" size={18} />
+              Pre-order hardware
             </CtaLink>
           </div>
+          <nav className="sub-ctas" aria-label="Related Eliza products">
+            <a href={APP_URL}>Download Eliza App</a>
+            <a href={CLOUD_URL}>Run in Eliza Cloud</a>
+          </nav>
           <p className="hardware-warning">
             Supported Mac hardware is limited. Apple Silicon support currently
             targets selected M1/M2 devices. Newer Macs may not be supported.
@@ -311,23 +427,9 @@ export function App() {
         </div>
       </section>
 
-      <section className="hardware-section" id="hardware">
-        <div className="section-heading compact">
-          <p>Eliza Cloud checkout</p>
-          <h2>Pick the device. Pick the color. Buy with your Eliza account.</h2>
-        </div>
-        <div className="product-grid">
-          {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      </section>
+      <DownloadOptions />
 
-      <section className="install-strip" id="downloads">
-        {installTiles.map((tile) => (
-          <InstallTile key={tile[1]} tile={tile} />
-        ))}
-      </section>
+      <HardwarePreorder />
 
       <Card className="purchase-flow" variant="flat">
         <div>

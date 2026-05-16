@@ -67,7 +67,7 @@ export function LandingPage({ accessError }: LandingPageProps) {
     return (
       <div className="flex min-h-screen items-center justify-center flex-col gap-2">
         <Loader2 className="h-6 w-6 animate-spin" />
-        <span>Redirecting to instances...</span>
+        <span>Opening Eliza Cloud...</span>
       </div>
     );
   }

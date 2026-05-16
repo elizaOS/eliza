@@ -1,6 +1,6 @@
 /**
- * Footer component for the landing page.
- * Displays navigation links, social links, and branding with decorative background image.
+ * Footer component for the cloud landing page.
+ * Keeps cross-product CTAs available without turning them into primary nav.
  */
 
 "use client";
@@ -16,7 +16,6 @@ export default function Footer() {
     >
       <div className="container mx-auto px-6 py-8 relative z-10">
         <div className="grid grid-cols-2 items-start gap-8">
-          {/* 1. Left section (Text/Copyright) */}
           <div className="flex flex-col gap-8">
             <div className="relative mr-auto flex flex-col gap-3">
               <ElizaCloudLockup />
@@ -25,14 +24,12 @@ export default function Footer() {
               </p>
             </div>
             <p className="text-sm text-white/80 whitespace-nowrap">
-              © 2026 ELIZA CLOUD · USA
+              © 2026 eliza cloud · USA
             </p>
           </div>
 
-          {/* 3. Right section (Navigation/Social Icons) */}
           <div className="flex flex-col gap-1 md:gap-2 items-end">
-            {/* Navigation */}
-            <nav className="flex flex-col gap-1.5 md:gap-2.5 text-right relative">
+            <div className="flex flex-col gap-1.5 text-right relative">
               <a
                 href="https://eliza.app"
                 className="text-base text-white transition-colors hover:text-[#FF8A24]"
@@ -45,6 +42,12 @@ export default function Footer() {
               >
                 Install OS
               </a>
+            </div>
+
+            <nav
+              aria-label="Footer"
+              className="mt-4 flex flex-col gap-1.5 md:gap-2.5 text-right relative"
+            >
               <Link
                 to="/docs"
                 className="text-base text-white transition-colors hover:text-[#FF8A24]"
@@ -65,7 +68,6 @@ export default function Footer() {
               </a>
             </nav>
 
-            {/* Social icons */}
             <div className="mt-8 flex items-center gap-2.5 md:gap-5">
               <a
                 href="https://github.com/elizaos"

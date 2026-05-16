@@ -149,6 +149,7 @@ def test_eliza1_tier_ids_are_canonical():
         "turboquant_q4",
         "qjl",
         "polarquant",
+        "dflash",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (

@@ -1,6 +1,6 @@
 /**
- * Landing header component for the landing page.
- * Displays different UI for authenticated vs unauthenticated users with navigation links.
+ * Landing header component for the cloud landing page.
+ * Keeps the nav quiet so the primary cloud CTA stays focused.
  */
 
 "use client";
