@@ -16,19 +16,19 @@ turn-by-turn directions.
 
 ---
 
-## Current status (2026-05-15)
+## Current status (2026-05-16)
 
 | | |
 |---|---|
 | **Phase 0 — Scaffold** | ✅ Done |
-| **Phase 1 — Base ISO builds + boots** | ✅ Done — built ISO boots in QEMU via `-cdrom` to the Tails greeter |
-| **Phase 2 — elizaOS system branding** | 🔨 In progress — overlay implemented, needs ISO rebuild + visual QEMU pass |
-| **Phase 3 — Privacy mode** | 🔨 Overlay implemented, needs ISO rebuild + network/Tor validation |
-| **Phase 4 — Bake Milady app** | 🔨 App payload staged + install hook/package list implemented, needs ISO rebuild + runtime validation |
-| **Phase 5 — Autolaunch** | 🔨 Desktop/autostart wrapper implemented, needs boot validation |
-| **Phase 6 — Agent/broker** | 🔨 OS broker/env path implemented; broader app-side capability actions still needed |
-| **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented, needs persistence validation |
-| **Phases 8–9** | 📋 Fully spec'd ([`docs/specs/`](./docs/specs/)), not implemented |
+| **Phase 1 — Base ISO builds + boots** | ✅ Done — base image builds and boots through QEMU via `-cdrom` |
+| **Phase 2 — elizaOS system branding** | 🔨 Source implemented; final rebuilt-ISO visual pass in progress |
+| **Phase 3 — Privacy mode** | 🔨 Source implemented; needs rebuilt-ISO network/Tor validation |
+| **Phase 4 — Bake elizaOS app** | 🔨 App payload staged + install hook/package list implemented; needs rebuilt-ISO runtime validation |
+| **Phase 5 — Autolaunch** | 🔨 Desktop/autostart/systemd wrapper implemented; needs boot validation |
+| **Phase 6 — Agent/broker** | 🔨 OS broker/env path implemented; approval-gated privileged actions still need hardening |
+| **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented; needs persistence validation |
+| **Phases 8–9** | 📋 Spec/backlog ([`docs/specs/`](./docs/specs/)), not release-complete |
 | **Phases 10–11** | ⏳ Not started |
 
 What exists right now:
@@ -40,19 +40,23 @@ What exists right now:
   run (5 builder-box fixes + 1 package-list fix — `gdisk`/`mtools` for the
   partitioning initramfs hook). All upstream-worthy.
 - **Complete file-level specs** for every implementation phase (2–9) plus a
-  full **agent-tree portability audit** for Phase 6.
+  product hardening plan for distribution, updates, and production readiness.
 - **elizaOS OS-branding overlays** for boot menus, Plymouth, greeter,
   dark GNOME defaults, wallpaper, identity strings, and Tails credits.
-- The **Milady Electrobun Linux app** builds and is staged into the Tails
+- The **elizaOS desktop app** builds and is staged into the Tails
   overlay. The ISO install hook copies it to `/opt/milady`, fixes
-  permissions, and removes the staging copy.
+  permissions, and removes the staging copy. `/opt/milady` is an internal
+  runtime path until the app package itself is renamed.
 - A narrow **elizaOS capability broker** exists at
   `/usr/local/lib/elizaos/capability-runner`. For the first rebuild it is
   intentionally conservative: status/privacy/persistence helpers plus exact
   sudo only for `root-status`; package/network mutation is deferred until an
   approval-gated policy layer exists.
 - Privacy-mode, autolaunch, and `~/.eliza` Persistent Storage overlays are
-  implemented locally but not yet proven in a rebuilt ISO.
+  implemented locally. A low-CPU full rebuild/test pass is the current gate
+  for calling the demo complete.
+- The old root-level usbeliza Linux prototype was removed from this branch;
+  this variant is the active Linux distro path.
 
 See [`ROADMAP.md`](./ROADMAP.md) for the honest road from here to a real,
 fully-working demo.
@@ -155,8 +159,7 @@ go through Milady chat (matches the v36 onboarding pattern).
 - **Tails credit** in:
   - `/usr/share/doc/elizaos-tails/CREDITS`
   - About elizaOS page (system)
-  - Bottom of the rebranded greeter ("powered by Tails")
-  - `LICENSES/` directory + `NOTICE.md`
+  - License/credits docs shipped with the image
 - License posture: **GPL-3.0-or-later** (inherited from Tails). Our
   Apache-2 contributions dual-licensed where possible.
 
@@ -326,20 +329,17 @@ current implementation adds a root-owned systemd path/service supervisor.
 
 Goal: the same Milady that runs on macOS desktop runs on this live USB.
 
-**Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md)
-+ **the full porting checklist** in
-[`docs/specs/agent-portability-audit.md`](./docs/specs/agent-portability-audit.md).
+**Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md).
 
-This is **not "one code delta" — it is a real refactor of the shared
-agent tree.** The portability audit found 6 categories of usbeliza-specific
-assumptions: sway IPC / `swaymsg` in ~11 files, a `USBELIZA_*`→`MILADY_*`
-env-var rename across ~25 files, `~/.eliza` / `/home/eliza` hardcoding,
-the persistence-script swap, and the "agent runs detached under systemd"
-premise (false on elizaOS Live — the agent is an in-session Electrobun
-child, which is what makes most of the sway code *simplify* rather than
-need GNOME reimplementation).
+This is **not "one code delta" — it is real product integration work.**
+The live image has to align the Electrobun/CEF runtime, embedded Bun
+agent, plugin package graph, `~/.eliza` state, model/provider defaults,
+and Tails' live-user session. The demo branch includes explicit runtime
+guards/fallbacks; production needs cleaner package boundaries and a
+security review of every privileged capability.
 
-- [ ] Apply the portability audit's must-fix categories (A–E)
+- [ ] Replace demo-only package/runtime fallbacks with first-class
+  production package boundaries where needed
 - [x] Decide the canonical state dir (`~/.eliza`) + env prefix for the
   OS-side launch path: `/usr/local/bin/milady` exports `ELIZA_STATE_DIR`,
   `MILADY_STATE_DIR`, `ELIZAOS_*`, and `ELIZAOS_CAPABILITY_RUNNER`
@@ -375,8 +375,8 @@ stack, not the legacy `tails-persistence-setup`. Footprint is tiny.
 Goal: all 4 combos work the same. Anything that doesn't = documented gap.
 
 **Spec:** [`docs/specs/phase-8-mode-parity-harness.md`](./docs/specs/phase-8-mode-parity-harness.md)
-— a `mode-parity.sh` orchestrator that reuses usbeliza's existing QEMU
-harnesses (`v9-smoke.sh`, `v11-e2e.sh`, `v18-usb-block-test.sh`).
+— a `mode-parity.sh` orchestrator for this variant's QEMU and USB-image
+paths.
 
 - [ ] `scripts/mode-parity.sh` + `scripts/mode-parity-checklist.sh`
 - [ ] Boots all 4 `{amnesia,persistent}×{normal,privacy}` combos through
@@ -417,7 +417,7 @@ flow, `OPEN_TERMINAL`, `SET_WALLPAPER`).
 
 ## Phase 11 — Release v1.0 ⏳ NOT STARTED
 
-- [ ] Doc polish, CREDITS, NOTICE, `LICENSES/`
+- [ ] Doc polish, CREDITS, license bundle
 - [ ] License audit (every file: authored vs. Tails-derived)
 - [ ] Build reproducibility check
 - [ ] Cut release tag, attach ISO to a GitHub Release
@@ -488,10 +488,10 @@ the product.
    profile; re-measure and budget. See Phase 4 spec.
 3. **`chrome-sandbox` under AppArmor + squashfs** — the likely "boots but
    Milady won't render" failure. `--no-sandbox` is the documented fallback.
-4. **Phase 6 is a real refactor** — not a quick edit. ~11 sway files + a
-   ~25-file env rename + path hardcoding. Tractable (mostly mechanical, and
-   the in-session model *simplifies* the sway code) but it is hours, not
-   minutes.
+4. **Phase 6 is real product integration** — not a quick edit. CEF,
+   embedded Bun, bundled plugins, model/provider defaults, state dirs, and
+   supervised OS capabilities all have to agree inside the live-user
+   session. The in-session model helps, but it still needs proof.
 5. **Milady build fragility** — the desktop build needs a specific
    `eliza`-first + `setup-upstreams.mjs` + `MILADY_ELIZA_SOURCE=local`
    sequence; a naive `bun run build:desktop` fails. Encoded in `just milady-app`.
@@ -516,9 +516,9 @@ the product.
   convert to a submodule of an elizaOS Tails fork. Decide before v1.0.
 - **Default browser in Normal Mode** — Tor Browser doesn't fit direct
   internet. Or: no browser, Milady opens links in app-mode windows.
-- **Canonical state dir + env prefix** — the agent tree uses `USBELIZA_*`
-  / `~/.eliza`; milady uses `MILADY_*` / `~/.milady`. Phase 6 reconciles
-  this; the spec recommends standardizing on `~/.eliza`.
+- **Canonical state dir + env prefix** — elizaOS Live should standardize
+  on `~/.eliza` for product state while supporting existing app/runtime
+  paths (`MILADY_*`, `~/.milady`) until the app package is renamed.
 
 ---
 

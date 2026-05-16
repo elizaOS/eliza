@@ -4,9 +4,9 @@ User opts into LUKS persistence via the greeter; Milady's data survives
 reboots; **no Tails persistence code is modified, only added
 configuration**. Paths: `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-15: the `MiladyData` backend feature, frontend row,
-and on-activated cleanup hook exist locally. They remain unbuilt and
-unverified in a live ISO.
+Status as of 2026-05-16: the `MiladyData` backend feature, frontend row,
+and on-activated cleanup hook exist in source and are part of the current
+rebuild/test pass. They still need QEMU/USB validation in a live ISO.
 
 ## Key finding: this Tails release uses modern Persistent Storage (`tps`)
 
@@ -122,18 +122,18 @@ Two new elizaOS Actions in the Milady agent, NOT Tails code:
 - **"save my work to encrypted USB"** — query the `tps` D-Bus service
   `org.boum.tails.PersistentStorage` `IsCreated`; if false, `exec
   /usr/local/bin/tails-persistent-storage` (Tails' GUI). Do **not**
-  reimplement LUKS — that was usbeliza's mistake. usbeliza's
-  `persistence-flow.ts` is reusable as the chat surface, but its runner
-  must point at `tpscli` / the D-Bus service.
+  reimplement LUKS — that was the older prototype's mistake. The chat
+  surface can be simple, but its runner must point at `tpscli` / the
+  D-Bus service.
 - **"what's on my persistent storage?"** — enumerate enabled features via
   `tpscli`/D-Bus, `du -sh` each binding dest.
 
 The Tails-side contract Phase 7 owns: `/etc/elizaos/...` is irrelevant
 here — `tps`'s D-Bus service + `persistence.conf` are the source of truth.
 
-## 6. Lessons from usbeliza's persistence bugs to avoid
+## 6. Lessons from older prototype persistence bugs to avoid
 
-usbeliza hand-rolled a shell+`cryptsetup` script and hit: a hardcoded
+The older prototype hand-rolled a shell+`cryptsetup` script and hit: a hardcoded
 partition slot (bricked the EFI partition), a LUKS in-use kernel lock, and
 mount-path drift. `tps` already solved every one — **that is the whole
 point of "Tails-native".** So: do not write partition-selection logic, do

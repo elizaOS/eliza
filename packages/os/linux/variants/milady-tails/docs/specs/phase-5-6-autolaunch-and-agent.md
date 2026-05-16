@@ -1,16 +1,16 @@
 # Phases 5 & 6 — Auto-launch Milady + wire the agent
 
-Phase 5 makes the Milady app launch as the desktop. Phase 6 wires its
-agent / onboarding / local LLM. The **full Phase 6 porting checklist** is
-in [`agent-portability-audit.md`](./agent-portability-audit.md) — this doc
-is the integration design; that doc is the file-by-file change list.
+Phase 5 makes the elizaOS app launch as the desktop. Phase 6 wires its
+agent / onboarding / local LLM. This doc is the integration design for
+the Tails-based elizaOS Live variant.
 
 Paths: `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-15: Phase 5's OS-side launcher/supervisor overlay
-exists locally and remains unbuilt/unverified. Phase 6 has the OS-side
-capability runner and launch env in place, but the broader shared-agent
-portability work and approval-gated package/network actions are not done.
+Status as of 2026-05-16: Phase 5's OS-side launcher/supervisor overlay
+exists in source and is part of the current rebuild/test pass. Phase 6
+has the OS-side capability runner and launch env in place, but
+approval-gated package/network actions and production package boundaries
+are not release-complete.
 
 ## Context established by research
 
@@ -26,8 +26,10 @@ portability work and approval-gated package/network actions are not done.
 - **Tails already ships** `no-overview@fthx`, `disable-log-out`,
   `disable-user-switching` in its dconf — much of "GNOME shell defaults"
   is done; elizaOS Live only rebrands and confirms.
-- **usbeliza's session layer is NOT reusable** (sway + `elizad` Tauri
-  shell, different user). What IS reusable: the entire `agent/` tree.
+- The removed root-level Linux prototype's session layer was not reusable
+  here (sway + a custom shell, different user). elizaOS Live uses the
+  GNOME session Tails already boots and starts the bundled app inside that
+  session.
 
 ## PHASE 5 — Auto-launch Milady on greeter exit
 
@@ -71,28 +73,29 @@ persistence USB is the *boot* device, already trusted). Don't touch
 
 ## PHASE 6 — Wire Milady's onboarding + agent
 
-### Reusable verbatim from usbeliza's `agent/` tree
-- **Onboarding** — `agent/src/onboarding/{state,questions,dispatcher}.ts`:
-  the v36 **3-question** flow (`name` → `claudeOfferAccepted` → `buildIntent`).
-  State → `~/.eliza/onboarding.toml`; completion writes `calibration.toml`.
-- **Chat entry** — `agent/src/chat.ts`: `handleOnboarding()` runs first;
-  empty first message = "first window open" trigger.
-- **Actions** — `runtime/actions/build-app.ts` (`BUILD_APP`), `open-app.ts`
-  (`OPEN_APP`), `runtime/local-llama-plugin.ts` (GGUF inference + GPU),
-  `runtime/flows/claude-flow.ts` (the v36 paste-code OAuth flow).
-- **Runtime** — `runtime/eliza.ts` (direct `AgentRuntime` construction).
+### App/runtime responsibilities
+- **Onboarding** — the bundled app should run the v36-style first-run
+  flow and persist state under `~/.eliza` when Persistent Storage is
+  unlocked.
+- **Chat entry** — first window open should be enough to start onboarding
+  or the signed-in home surface; it must not require a private model
+  download before the UI appears.
+- **Actions** — BUILD_APP, OPEN_APP, persistence/status, provider sign-in,
+  and local-model setup should be routed through app/runtime packages that
+  are actually bundled in the image.
+- **Runtime** — embedded Bun/agent startup must be self-contained in the
+  live image, not dependent on workspace dev dependencies outside the ISO.
 
 ### What's elizaOS Live-specific
-This is **a real refactor, not a quick edit** — see the portability
-audit. The headline:
+This is **real integration work, not a quick edit**. The headline:
 
 1. **Agent host model** — *recommended (A): the Electrobun Milady app
    hosts the agent in-process.* It runs inside the GNOME session and
    inherits `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS`.
    This matches "the desktop IS the Milady app" and **invalidates the
    "agent is detached under systemd, must rediscover the compositor"
-   premise** behind all of usbeliza's sway socket-globbing — so most of
-   it *simplifies* rather than needing GNOME reimplementation.
+   premise** behind older sway socket-globbing approaches — so most of it
+   *simplifies* rather than needing GNOME reimplementation.
 2. **`OPEN_APP` GNOME delta** — `agent/src/runtime/actions/open-app.ts`
    hardcodes `swaymsg exec`. The one real *code* change: spawn the
    Chromium app-mode window directly (`chromium --app=… --ozone-platform=wayland`)

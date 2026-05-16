@@ -6,10 +6,10 @@ like stock Tails. Same features either way, only speed differs.
 
 Paths are relative to `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-15: this overlay is implemented locally and still
-unbuilt/unverified. The implementation uses `elizaos_privacy=1` in the
-bootloader entries, while the live-config hook also accepts
-`elizaos.privacy=on` for compatibility.
+Status as of 2026-05-16: this overlay is implemented in source and is part
+of the current rebuild/test pass. The implementation uses
+`elizaos_privacy=1` in the bootloader entries, while the live-config hook
+also accepts `elizaos.privacy=on` for compatibility.
 
 ## Key facts the spec relies on
 

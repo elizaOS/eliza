@@ -5,37 +5,34 @@ Boot all 4 combos `{amnesia, persistent} × {normal, privacy}`, drive the
 behavior across combos, record any divergence in `docs/mode-parity.md`.
 No silent feature loss.
 
-## Reuse, don't reinvent
+## Build from the active variant
 
-usbeliza already has the harness machinery at `packages/os/linux/scripts/`:
-- **`v9-smoke.sh`** — the canonical headless QEMU boot + `/api/chat` probe
-  harness (`boot QEMU → wait for SSH → wait for /api/status → seed
-  calibration → run_probe loop → QMP screendump per probe → journals →
-  summary`). **The template.**
-- **`v11-e2e.sh`** — the full ~47-probe feature checklist, already phased
-  (onboarding, status, wallpaper, app lifecycle, network, auth, multi-turn
-  flows, chat fallthrough, llm-rephrase). **This is the checklist Phase 8
-  drives.**
-- **`v18-usb-block-test.sh`** — the persistent-mode pattern: synthesize an
-  8 GB `usb.img`, `dd` ISO bytes, append a persistence partition, boot via
-  `-device usb-storage …removable=on`, drive the persistence flow, reboot
-  the same image, assert survival.
-- **`iso-qmp.sh`** — `screendump` + `send-key` QMP helper.
+The old root-level Linux prototype harnesses were removed from this
+branch. Phase 8 should implement the QEMU/parity harness directly under
+`variants/milady-tails/scripts/`, using the existing local helpers as the
+only stable base:
+
+- **`scripts/boot-qemu.sh`** — canonical local QEMU launch shape for this
+  Tails-derived ISO.
+- **QEMU monitor/QMP helpers** — use `screendump`, `sendkey`, and clean
+  `quit` through a monitor socket for evidence and cleanup.
+- **`scripts/usb-write.sh` semantics** — mirror its removable-disk guard
+  rails when synthesizing persistent USB images for tests.
 
 ## What's new
 
 ### `scripts/mode-parity.sh` — the orchestrator
-New file in the variant's `scripts/` dir. Structure lifted from
-`v9-smoke.sh` + `v18-usb-block-test.sh`:
+New file in the variant's `scripts/` dir:
 - **Combo loop** over 4 `(storage, privacy)` tuples, each driving 2 QEMU knobs:
   - **privacy axis → boot-menu pick.** Boot with `-display none` + a QMP
     socket; wait ~3 s for the boot menu; `privacy` combos `send-key` one
     `down`+`ret` to select "elizaOS — Privacy Mode", `normal` combos `ret`
     immediately. Screendump the menu as evidence.
   - **storage axis → disk topology.** `amnesia` combos boot `-cdrom`-style,
-    no writable partition. `persistent` combos use `v18`'s `usb.img`
-    machinery + run the persistence flow *before* the feature checklist.
-- **Per-combo isolation** — unique SSH port (2231–2234, avoiding v9/v11/v18),
+    no writable partition. `persistent` combos synthesize a `usb.img`,
+    append a persistence partition, and run the persistence flow *before*
+    the feature checklist.
+- **Per-combo isolation** — unique SSH port (2231–2234),
   unique QMP/serial sockets, unique `-name`, per-combo artifact dir.
 - **Per-combo run** — boot → wait SSH → wait agent → (persistent: run
   persistence flow) → seed calibration → run the shared checklist →
@@ -43,9 +40,9 @@ New file in the variant's `scripts/` dir. Structure lifted from
 - **Cleanup trap** — QMP `quit` + per-combo `pkill`.
 
 ### `scripts/mode-parity-checklist.sh` — the shared checklist
-Sourced so all 4 combos run *byte-identical* probes. `run_feature_checklist()`
-= `v11-e2e.sh`'s phases A–H verbatim (minus onboarding, run once per combo
-as setup), **plus** these elizaOS Live probes mapped 1:1 to
+Sourced so all 4 combos run *byte-identical* probes. The checklist should
+cover onboarding, status, app lifecycle, network, auth, and model/provider
+readiness, **plus** these elizaOS Live probes mapped 1:1 to
 `docs/mode-parity.md` rows: `app-launches`, `local-llm-chat`,
 `build-app-stub`, `set-wallpaper`, `network-status`, `network-mode`
 (asserts the privacy-mode chat action reports Tor on/off correctly per
@@ -75,8 +72,8 @@ only pre-authorized v1.0 caveat is the Chromium proxy leak.
 
 ## Ordered implementation checklist
 1. Create `variants/milady-tails/scripts/`.
-2. Write `mode-parity-checklist.sh` — extract `v11-e2e.sh` phases A–H + the 8 elizaOS Live probes; mark expected-difference probes observed-only.
-3. Write `mode-parity.sh` — combo loop; copy helpers from `v9-smoke.sh`, the `usb.img` machinery from `v18-usb-block-test.sh`, the boot-menu `send-key` from `iso-qmp.sh`.
+2. Write `mode-parity-checklist.sh` — the shared app/network/persistence probes; mark expected-difference probes observed-only.
+3. Write `mode-parity.sh` — combo loop, `usb.img` machinery, boot-menu `send-key`, monitor screenshot capture, and clean shutdown.
 4. Per-combo ports/sockets/`-name`/artifact dirs + cleanup trap.
 5. The cross-combo diff → `parity-report.md` with the gap-detection rule.
 6. Add the `mode-parity` Justfile recipe.

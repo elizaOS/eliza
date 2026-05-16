@@ -57,16 +57,16 @@ boot-time walkthrough and the feature-parity matrix.
 - **Closing the Chromium WebView Tor-leak gap** — known v1.0 gap,
   fixed in v1.1.
 
-## How it relates to usbeliza
+## Repo Shape
 
-`packages/os/linux/` (usbeliza) is the **minimal kiosk variant**: chat
-IS the entire UI, no normal Linux desktop visible. This variant
-(currently stored at `variants/milady-tails/`) is the **full desktop
-elizaOS variant**: real Linux with a normal GUI, elizaOS as the home app.
+This is the active Linux distro path. The old root-level usbeliza
+prototype under `packages/os/linux/{agent,crates,live-build,vm,...}` was
+removed from this branch so the Linux tree has one source of truth:
+`packages/os/linux/variants/milady-tails/`.
 
-Both share the same agent code (`@elizaos/*` framework, BUILD_APP /
-OPEN_APP actions, plugin pattern). They differ at the live-build +
-session layer. See [`docs/relationship-to-usbeliza.md`](./docs/relationship-to-usbeliza.md).
+The directory name is historical. The user-facing product is **elizaOS
+Live**. Internal paths that still say `milady` are app/runtime paths and
+should only be renamed when the app package itself moves.
 
 ## Architecture
 
@@ -86,24 +86,25 @@ Apache-2.0 where possible, dual-licensed under both where required.
 
 ## Status
 
-**Phase 1 — done.** The containerized build pipeline produced a 1.9 GB
-elizaOS ISO, and that ISO boots in QEMU to the elizaOS greeter via
-`-cdrom`.
+**Current branch status, 2026-05-16:** the elizaOS Live source tree is
+ready for a full build/test pass. `scripts/static-smoke.sh` passes in the
+build worktree, the old usbeliza prototype has been removed from the PR
+branch, and a low-CPU full ISO build is running separately from this docs
+worktree. Do not call the image demo-complete until that build finishes
+and the resulting ISO passes QEMU greeter + desktop + app checks.
 
-**Phase 2 — overlay implemented, rebuild pending.** The OS branding
-overlays now target elizaOS: boot menu, Plymouth, greeter, wallpaper,
-dark GNOME defaults, `/etc/os-release`, `/etc/issue`, and the visible app
-surfaces.
-The remaining Phase 2 gate is rebuilding the ISO and doing the visual
-QEMU pass.
+**Phase 1 — done.** The containerized build pipeline produced a bootable
+base ISO, and Tails' normal live-OS boot path was verified through QEMU
+using `-cdrom`.
 
-**Phases 3–7 — overlay implemented, rebuild pending.** Privacy mode,
-elizaOS app install/autostart, the conservative elizaOS capability broker,
-and elizaOS Persistent Storage rows/hooks are in the tree. They still need
-the rebuilt ISO + QEMU/USB validation before they can be marked done.
+**Phases 2–7 — implemented in source, final proof pending.** Branding,
+Privacy Mode plumbing, bundled elizaOS app install/autostart, the
+conservative elizaOS capability broker, and elizaOS Persistent Storage
+rows/hooks are in the tree. The current gate is the rebuilt ISO plus QEMU
+and USB validation.
 
-Phases 8–9 are **fully spec'd** ([`docs/specs/`](./docs/specs/)) but not
-implemented. See [`PLAN.md`](./PLAN.md) for the phase map and
+**Phases 8–9 — spec/backlog.** Mode-parity harness and customization
+actions are planned but not production-complete. See [`PLAN.md`](./PLAN.md) for the phase map and
 [`ROADMAP.md`](./ROADMAP.md) for the honest road to a real,
 fully-working demo.
 
@@ -136,14 +137,16 @@ offline docs in a cool build.
 - [`docs/build-infrastructure.md`](./docs/build-infrastructure.md) — the
   containerized build, why it exists, how it works
 - [`docs/specs/`](./docs/specs/) — file-level implementation specs for
-  every phase (2–9) + the agent-tree portability audit
+  every phase (2–9)
 - [`docs/user-experience.md`](./docs/user-experience.md) — what users
   actually see at boot, plain language
 - [`docs/mode-parity.md`](./docs/mode-parity.md) — feature behavior
   across storage/privacy combinations
 - [`docs/privacy-mode-v1-gap.md`](./docs/privacy-mode-v1-gap.md) —
   known Chromium WebView privacy-mode caveat
-- [`docs/relationship-to-usbeliza.md`](./docs/relationship-to-usbeliza.md) —
-  architecture split between this variant and usbeliza
+- [`docs/production-readiness.md`](./docs/production-readiness.md) —
+  what is clean, what is demo glue, and what must harden before release
+- [`docs/distribution-and-updates.md`](./docs/distribution-and-updates.md) —
+  release, update, model, USB writer, and enterprise distribution plan
 - [`tails/README.md`](./tails/README.md) — upstream Tails README,
   unchanged

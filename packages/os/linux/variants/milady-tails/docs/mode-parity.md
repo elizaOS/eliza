@@ -9,10 +9,10 @@ The product requirement is that the same capabilities are available in all
 four combinations. Mode changes can affect speed, persistence, and trace
 footprint, but they must not silently remove features.
 
-Status as of 2026-05-15: the Phase 3-7 overlays are present locally, but
-the elizaOS ISO has not been rebuilt or run through this matrix.
-Treat the table below as the target acceptance matrix until Phase 8
-produces evidence.
+Status as of 2026-05-16: the Phase 3-7 overlays are present in source and
+a full rebuild/test pass is in progress. Treat the table below as the
+target acceptance matrix until Phase 8 produces evidence from the rebuilt
+ISO.
 
 ## Matrix
 

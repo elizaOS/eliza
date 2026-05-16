@@ -149,12 +149,12 @@ usb-write device:
 usb-write-iso device iso:
     scripts/usb-write.sh "{{device}}" "{{iso}}"
 
-# Lint / typecheck — runs against the agent, shared with usbeliza.
+# CPU-light validation for the active elizaOS Live variant.
 lint:
-    cd ../../agent && bun run typecheck
+    ./scripts/static-smoke.sh
 
 test:
-    cd ../../agent && bun test
+    ./scripts/static-smoke.sh
 
 # --- Clean ------------------------------------------------------------------
 

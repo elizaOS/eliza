@@ -3,9 +3,9 @@
 Goal: `/opt/milady/` exists in the chroot and contains a runnable binary.
 Paths are relative to `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-15: the host build recipe, staged payload,
+Status as of 2026-05-16: the host build recipe, staged payload,
 `9100-install-milady` hook, runtime package list, and desktop file exist
-locally. They still need an ISO rebuild and live runtime validation before
+in source. They still need rebuilt-ISO live runtime validation before
 Phase 4 is done.
 
 ## 1. The Milady Linux build — the real (fragile) sequence
