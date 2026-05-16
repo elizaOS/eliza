@@ -2237,7 +2237,13 @@ static BackendPair codec_backend_pair(BackendPair bp) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
-  patchOmnivoiceCodecCpuFallback(cacheDir, { dryRun });
+  if (backend === "metal") {
+    patchOmnivoiceCodecCpuFallback(cacheDir, { dryRun });
+  } else if (dryRun) {
+    console.log(
+      `[dflash-build] (dry-run) OmniVoice Metal DAC decode CPU fallback skipped for backend=${backend}`,
+    );
+  }
   patchOmnivoiceCmakeConflictArtifact(cacheDir, { dryRun });
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
