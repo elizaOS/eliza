@@ -1262,6 +1262,51 @@ describe("DFlash streaming callbacks", () => {
 		}
 	});
 
+	it("cancels the streaming response body when SSE parsing fails", async () => {
+		let cancelled = false;
+		installDflashFetchMock((url) => {
+			if (url.pathname === "/metrics") return metricsResponse();
+			if (url.pathname === "/v1/chat/completions") {
+				const encoder = new TextEncoder();
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(encoder.encode("data: {not-json}\n\n"));
+						},
+						cancel() {
+							cancelled = true;
+						},
+					}),
+					{ status: 200, headers: { "content-type": "text/event-stream" } },
+				);
+			}
+			return notFoundResponse();
+		});
+		const target = dflashLlamaServer as unknown as {
+			baseUrl: string | null;
+			cacheParallel: number;
+		};
+		const previous = {
+			baseUrl: target.baseUrl,
+			cacheParallel: target.cacheParallel,
+		};
+		target.baseUrl = "http://dflash.test";
+		target.cacheParallel = 4;
+		try {
+			await expect(
+				dflashLlamaServer.generateWithUsage({
+					prompt: "say hello",
+					onTextChunk: () => {},
+				}),
+			).rejects.toThrow();
+
+			expect(cancelled).toBe(true);
+		} finally {
+			target.baseUrl = previous.baseUrl;
+			target.cacheParallel = previous.cacheParallel;
+		}
+	});
+
 	it("uses final streaming timings as DFlash evidence when metrics counters lag", async () => {
 		installDflashFetchMock((url) => {
 			if (url.pathname === "/metrics") {

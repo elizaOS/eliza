@@ -379,9 +379,64 @@ const NO_PROVIDER_CHAT_MESSAGE =
   "or pick Eliza Cloud from the runtime picker.";
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
+type SyntheticChatFailureKind =
+  | ChatFailureKind
+  | "no_response"
+  | "transient_failure";
 
 function isExecutableFallbackAction(action: { name: string }): boolean {
   return !NON_EXECUTABLE_FALLBACK_ACTIONS.has(action.name);
+}
+
+function classifySyntheticChatFailureText(
+  text: string,
+): SyntheticChatFailureKind | null {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[’]/g, "'")
+    .replace(/\s+/g, " ");
+  if (!normalized) return null;
+  if (normalized === PROVIDER_ISSUE_CHAT_REPLY.toLowerCase()) {
+    return "provider_issue";
+  }
+  if (/\bprovider issue\b/.test(normalized)) {
+    return "provider_issue";
+  }
+  if (normalized === NO_RESPONSE_FALLBACK_REPLY.toLowerCase()) {
+    return "no_response";
+  }
+  if (normalized === INSUFFICIENT_CREDITS_CHAT_REPLY.toLowerCase()) {
+    return "insufficient_credits";
+  }
+  if (normalized === NO_PROVIDER_CHAT_MESSAGE.toLowerCase()) {
+    return "no_provider";
+  }
+  if (normalized === "something went wrong on my end. please try again.") {
+    return "transient_failure";
+  }
+  return null;
+}
+
+export function markSyntheticChatFailureContent<T extends Content>(
+  content: T,
+): T {
+  const text = extractCompatTextContent(content);
+  const failureKind =
+    typeof content.failureKind === "string"
+      ? (content.failureKind as SyntheticChatFailureKind)
+      : classifySyntheticChatFailureText(text);
+  if (!failureKind) return content;
+
+  const metadata = asRecord(content.metadata) ?? {};
+  return {
+    ...content,
+    metadata: {
+      ...metadata,
+      elizaSyntheticFailure: true,
+      chatFailureKind: failureKind,
+    },
+  } as T;
 }
 
 function normalizeActionName(value: unknown): string {
@@ -674,6 +729,18 @@ export function detectLocalInferenceCommandIntent(
   }
 
   if (
+    /\b(?:status|progress|state|ready|loaded|loading|how far|what model)\b/.test(
+      normalized,
+    ) &&
+    (options.localInferenceContext === true ||
+      /\b(?:download|model|local|inference|gguf|eliza-1|provider|runtime)\b/.test(
+        normalized,
+      ))
+  ) {
+    return "status";
+  }
+
+  if (
     /\b(?:use|switch|prefer|route|go|move)\s+(?:to\s+)?(?:the\s+)?(?:local|on device|on device model)\b/.test(
       normalized,
     ) ||
@@ -715,18 +782,6 @@ export function detectLocalInferenceCommandIntent(
     return normalized.includes("resume") || normalized.includes("continue")
       ? "resume"
       : "retry";
-  }
-
-  if (
-    /\b(?:status|progress|state|ready|loaded|loading|how far|what model)\b/.test(
-      normalized,
-    ) &&
-    (options.localInferenceContext === true ||
-      /\b(?:download|model|local|inference|gguf|eliza-1|provider|runtime)\b/.test(
-        normalized,
-      ))
-  ) {
-    return "status";
   }
 
   if (
@@ -929,6 +984,16 @@ export async function hasRecentVisibleAssistantMemorySince(
   roomId: UUID,
   sinceMs: number,
 ): Promise<boolean> {
+  return Boolean(
+    await getRecentVisibleAssistantMemoryTextSince(runtime, roomId, sinceMs),
+  );
+}
+
+export async function getRecentVisibleAssistantMemoryTextSince(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  sinceMs: number,
+): Promise<string | null> {
   try {
     const recent = await runtime.getMemories({
       roomId,
@@ -936,17 +1001,24 @@ export async function hasRecentVisibleAssistantMemorySince(
       limit: 12,
     });
 
-    return recent.some((memory) => {
-      const contentText = (memory.content as { text?: string })?.text?.trim();
-      const createdAt = memory.createdAt ?? 0;
-      return (
-        memory.entityId === runtime.agentId &&
-        Boolean(contentText) &&
-        createdAt >= sinceMs - 2000
-      );
-    });
+    const persistedAssistantTurn = recent
+      .filter((memory) => {
+        const contentText = (memory.content as { text?: string })?.text?.trim();
+        const createdAt = memory.createdAt ?? 0;
+        return (
+          memory.entityId === runtime.agentId &&
+          Boolean(contentText) &&
+          createdAt >= sinceMs - 2000
+        );
+      })
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+
+    return (
+      (persistedAssistantTurn?.content as { text?: string } | undefined)?.text?.trim() ??
+      null
+    );
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -957,7 +1029,7 @@ export async function persistAssistantConversationMemory(
   channelType: ChannelType,
   dedupeSinceMs?: number,
 ): Promise<void> {
-  const persistedContent =
+  const persistedContent = markSyntheticChatFailureContent(
     typeof content === "string"
       ? ({
           text: content,
@@ -973,7 +1045,8 @@ export async function persistAssistantConversationMemory(
             typeof content.channelType === "string"
               ? content.channelType
               : channelType,
-        } satisfies Content);
+        } satisfies Content),
+  );
   const trimmed = persistedContent.text.trim();
   if (!trimmed) return;
 
@@ -1614,8 +1687,10 @@ export async function generateChatResponse(
                       (crypto.randomUUID() as UUID),
                     roomId: message.roomId,
                     entityId: runtime.agentId,
-                    content: ensureMessageMemoryContent(
-                      responseMessage.content ?? { text: "" },
+                    content: markSyntheticChatFailureContent(
+                      ensureMessageMemoryContent(
+                        responseMessage.content ?? { text: "" },
+                      ),
                     ),
                   });
                   memoryLike.metadata = message.metadata;

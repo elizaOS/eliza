@@ -192,6 +192,14 @@ describe("local inference chat command intent detection", () => {
     expect(
       detectLocalInferenceCommandIntent("how far is the model download?"),
     ).toBe("status");
+    expect(
+      detectLocalInferenceCommandIntent("local inference status please"),
+    ).toBe("status");
+    expect(
+      detectLocalInferenceCommandIntent(
+        "what model are you running locally right now?",
+      ),
+    ).toBe("status");
   });
 
   it("does not hijack ordinary chat without local inference context", () => {

@@ -115,7 +115,7 @@ function CtaLink({
 }
 
 function FaceLogo() {
-  return <img alt="ElizaOS face logo" src="/assets/elizaos-face.avif" />;
+  return <img alt="ElizaOS face logo" src="/assets/elizaos-face.svg" />;
 }
 
 function Swatches({ names }: { names: string[] }) {
@@ -145,6 +145,15 @@ function ProductVisual({ className }: { className: string }) {
           alt="Chibi ElizaOS USB key concept"
           src="/assets/elizaos-usb-key-concept.png"
         />
+      </div>
+    );
+  }
+
+  if (className === "box-render") {
+    return (
+      <div className="visual box-render">
+        <img alt="Orange ElizaOS Box concept" src="/assets/elizaos-box-concept.avif" />
+        <span className="brand-mark">Box</span>
       </div>
     );
   }

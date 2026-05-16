@@ -29,8 +29,9 @@ const cloudStyles = `
   isolation: isolate;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, .2), transparent 36%),
-    linear-gradient(180deg, var(--sky-0, #1d91e8) 0%, var(--sky-1, #47b8ff) 58%, var(--sky-2, #9bdcff) 100%);
+    radial-gradient(ellipse at 74% 36%, rgba(92, 163, 255, .72), transparent 40%),
+    radial-gradient(ellipse at 18% 18%, rgba(255,255,255,.34), transparent 22%),
+    linear-gradient(180deg, #043cff 0%, #075cff 42%, #1aa7ff 100%);
 }
 .eliza-sky-bg::before {
   content: "";
@@ -39,9 +40,9 @@ const cloudStyles = `
   z-index: -3;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 17% 16%, rgba(255,255,255,.38), transparent 18%),
-    radial-gradient(ellipse at 74% 24%, rgba(255,255,255,.22), transparent 23%),
-    radial-gradient(ellipse at 52% 4%, rgba(255,255,255,.28), transparent 24%);
+    radial-gradient(ellipse at 8% 20%, rgba(255,255,255,.72), rgba(255,255,255,.28) 13%, transparent 28%),
+    radial-gradient(ellipse at 84% 18%, rgba(255,255,255,.5), rgba(255,255,255,.18) 14%, transparent 30%),
+    radial-gradient(ellipse at 52% 2%, rgba(255,255,255,.38), transparent 24%);
   animation: eliza-cloud-breathe 16s ease-in-out infinite;
 }
 .eliza-sky-bg::after {
@@ -51,8 +52,8 @@ const cloudStyles = `
   z-index: -2;
   height: 48%;
   pointer-events: none;
-  opacity: .92;
-  filter: blur(2px) saturate(1.04);
+  opacity: .96;
+  filter: blur(1.5px) saturate(1.08);
   background:
     radial-gradient(ellipse at 6% 72%, rgba(255,255,255,.96) 0 11%, rgba(244,250,255,.84) 16%, transparent 30%),
     radial-gradient(ellipse at 19% 58%, rgba(255,255,255,.98) 0 13%, rgba(239,249,255,.86) 18%, transparent 34%),
@@ -80,8 +81,8 @@ const cloudStyles = `
 .eliza-sky-cloud-field.far {
   top: 8%;
   height: 34%;
-  opacity: .52;
-  filter: blur(8px);
+  opacity: .7;
+  filter: blur(7px);
   background:
     radial-gradient(ellipse at 8% 58%, rgba(255,255,255,.82) 0 7%, rgba(255,255,255,.34) 14%, transparent 30%),
     radial-gradient(ellipse at 18% 44%, rgba(255,255,255,.68) 0 6%, rgba(255,255,255,.26) 13%, transparent 29%),
@@ -91,10 +92,10 @@ const cloudStyles = `
     radial-gradient(ellipse at 92% 44%, rgba(255,255,255,.64) 0 6%, rgba(255,255,255,.24) 14%, transparent 30%);
 }
 .eliza-sky-cloud-field.near {
-  bottom: 0;
-  height: 48%;
-  opacity: .78;
-  filter: blur(5px);
+  bottom: -2%;
+  height: 52%;
+  opacity: .9;
+  filter: blur(4px);
   background:
     radial-gradient(ellipse at 5% 78%, rgba(255,255,255,.95) 0 8%, rgba(246,252,255,.62) 15%, transparent 31%),
     radial-gradient(ellipse at 18% 62%, rgba(255,255,255,.9) 0 10%, rgba(245,251,255,.58) 18%, transparent 36%),
@@ -107,8 +108,8 @@ const cloudStyles = `
 .eliza-sky-cloud-field.detail {
   top: 30%;
   height: 40%;
-  opacity: .3;
-  filter: blur(2px);
+  opacity: .42;
+  filter: blur(1.5px);
   background:
     radial-gradient(ellipse at 14% 46%, rgba(255,255,255,.74) 0 3%, transparent 12%),
     radial-gradient(ellipse at 26% 62%, rgba(255,255,255,.66) 0 4%, transparent 14%),
@@ -123,8 +124,8 @@ const cloudStyles = `
   z-index: -1;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(4, 91, 160, .06), transparent 30%),
-    radial-gradient(ellipse at 50% 58%, transparent 0 58%, rgba(5, 57, 98, .18) 100%);
+    linear-gradient(180deg, rgba(0, 19, 126, .16), transparent 34%),
+    radial-gradient(ellipse at 50% 58%, transparent 0 54%, rgba(0, 26, 118, .3) 100%);
 }
 .eliza-sky-vignette::before {
   content: "";
@@ -155,8 +156,8 @@ const cloudStyles = `
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: .1;
-  mix-blend-mode: soft-light;
+  opacity: .16;
+  mix-blend-mode: overlay;
   background-image:
     url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='5' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.72'/%3E%3C/svg%3E"),
     linear-gradient(115deg, rgba(255,255,255,.14), transparent 44%, rgba(255,255,255,.1));

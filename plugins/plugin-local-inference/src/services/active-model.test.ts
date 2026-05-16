@@ -12,7 +12,11 @@ import {
 	VoiceBundleDoesNotFitError,
 	validateLocalInferenceLoadArgs,
 } from "./active-model";
-import { localInferenceEngine, resolveIdleUnloadMs } from "./engine";
+import {
+	getDflashTargetMetaBlockReason,
+	localInferenceEngine,
+	resolveIdleUnloadMs,
+} from "./engine";
 import type { Eliza1Manifest } from "./manifest";
 import type { HardwareProbe, InstalledModel } from "./types";
 
@@ -63,6 +67,36 @@ describe("resolveLocalInferenceLoadArgs", () => {
 			kvOffload: { gpuLayers: 10 },
 		});
 		expect(args.kvOffload).toEqual({ gpuLayers: 10 });
+	});
+});
+
+describe("getDflashTargetMetaBlockReason", () => {
+	it("blocks staged stamp-only DFlash drafters", () => {
+		expect(
+			getDflashTargetMetaBlockReason({
+				publishEligible: false,
+				drafter: {
+					matchesTargetCheckpoint: false,
+					provenance: "dflash-drafter:stamp-only",
+					sha256: "abc",
+				},
+				targetText: { sha256: "abc" },
+			}),
+		).toBe("target-meta is not publishable");
+	});
+
+	it("blocks drafters with the same bytes as the target model", () => {
+		expect(
+			getDflashTargetMetaBlockReason({
+				publishEligible: true,
+				drafter: { sha256: "abc" },
+				targetText: { sha256: "abc" },
+			}),
+		).toBe("drafter bytes match the target model");
+	});
+
+	it("allows missing target metadata for older published bundles", () => {
+		expect(getDflashTargetMetaBlockReason(null)).toBeNull();
 	});
 });
 

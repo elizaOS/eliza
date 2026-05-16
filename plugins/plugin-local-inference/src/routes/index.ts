@@ -23,6 +23,7 @@ export {
 	setFamilyMemberProfileStore,
 } from "./family-member-route.js";
 export * from "./local-inference-compat-routes.js";
+export * from "./local-inference-asr-route.js";
 export * from "./local-inference-tts-route.js";
 export {
 	handleVoiceModelsRoutes,

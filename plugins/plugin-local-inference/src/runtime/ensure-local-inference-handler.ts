@@ -675,6 +675,8 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
+		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		throwIfAborted(signal);
 		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
 		throwIfAborted(signal);
 		return transcript;

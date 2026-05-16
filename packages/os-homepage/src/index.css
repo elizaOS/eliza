@@ -263,12 +263,16 @@ a {
   position: absolute;
 }
 
-.device-face img {
+.device-face img,
+.brand img {
   aspect-ratio: 1 / 1;
-  border-radius: 18px;
   display: block;
-  max-width: 48%;
   object-fit: cover;
+}
+
+.device-face img {
+  border-radius: 18px;
+  max-width: 48%;
 }
 
 .brand-mark {
@@ -330,6 +334,14 @@ a {
 
 .product-card .box-render {
   --product: #111;
+  background: #111;
+}
+
+.product-card .box-render > img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
 }
 
 .product-card .usb-render {
