@@ -42,6 +42,12 @@ export interface AgentProvisionJobData {
   agentName: string;
 }
 
+export interface AgentDeleteJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Job result shapes (stored in jobs.result JSONB)
 // ---------------------------------------------------------------------------
@@ -54,11 +60,26 @@ export interface AgentProvisionJobResult {
   error?: string;
 }
 
+export interface AgentDeleteJobResult {
+  cloudAgentId: string;
+  containerStopped: boolean;
+  rowDeleted: boolean;
+  error?: string;
+}
+
 function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
   return { ...data };
 }
 
 function agentProvisionJobResultToRecord(result: AgentProvisionJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentDeleteJobDataToRecord(data: AgentDeleteJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentDeleteJobResultToRecord(result: AgentDeleteJobResult): Record<string, unknown> {
   return { ...result };
 }
 
@@ -73,6 +94,16 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
   );
 }
 
+function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string"
+  );
+}
+
 function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
   if (!isAgentProvisionJobData(job.data)) {
     throw new Error(`Invalid agent provision job data for job ${job.id}`);
@@ -80,7 +111,19 @@ function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
   return job.data;
 }
 
+function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
+  if (!isAgentDeleteJobData(job.data)) {
+    throw new Error(`Invalid agent delete job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
 export interface EnqueueAgentProvisionResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentDeleteResult {
   job: Job;
   created: boolean;
 }
@@ -199,6 +242,112 @@ export class ProvisioningJobService {
         .returning();
 
       logger.info("[provisioning-jobs] Enqueued agent_provision job", {
+        jobId: job.id,
+        agentId: params.agentId,
+        orgId: params.organizationId,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
+  /**
+   * Mark a sandbox for async deletion. The HTTP DELETE handler calls this
+   * synchronously; the heavy work (SSH stop on the core, DB row delete, API
+   * key revoke) happens later when the provisioning worker daemon picks up
+   * the resulting `agent_delete` job. The sandbox row stays in the table
+   * with status `deletion_pending` so the row is auditable and re-enqueue
+   * stays idempotent.
+   *
+   * Returns the queued job (existing if one was already in flight, new
+   * otherwise) so the caller can return its id for client-side polling.
+   */
+  async enqueueAgentDeleteOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentDeleteResult> {
+    if (params.webhookUrl) {
+      await assertSafeOutboundUrl(params.webhookUrl);
+    }
+
+    const jobData: AgentDeleteJobData = {
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    };
+
+    const newJob: NewJob = {
+      type: JOB_TYPES.AGENT_DELETE,
+      status: "pending",
+      data: agentDeleteJobDataToRecord(jobData),
+      data_storage: "inline",
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      webhook_url: params.webhookUrl,
+      max_attempts: 3,
+      // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
+      // sub-second. 30s is generous and matches the timeout enforced inside
+      // docker-sandbox-provider.stop().
+      estimated_completion_at: new Date(Date.now() + 30_000),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
+
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.agentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_DELETE),
+            eq(jobs.organization_id, params.organizationId),
+            eq(jobs.agent_id, params.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      if (existing) {
+        logger.info("[provisioning-jobs] Reusing active agent_delete job", {
+          jobId: existing.id,
+          agentId: params.agentId,
+          orgId: params.organizationId,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      // Flip the sandbox status so the UI shows "deleting" and concurrent
+      // mutations bail early. The actual row removal happens in
+      // executeAgentDelete (daemon side) once stop() succeeds.
+      await tx
+        .update(agentSandboxes)
+        .set({ status: "deletion_pending" as const, updated_at: new Date() })
+        .where(eq(agentSandboxes.id, params.agentId));
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info("[provisioning-jobs] Enqueued agent_delete job", {
         jobId: job.id,
         agentId: params.agentId,
         orgId: params.organizationId,
@@ -400,6 +549,30 @@ export class ProvisioningJobService {
             });
           }
         }
+
+        // Symmetric handling for agent_delete: when the daemon gives up,
+        // flip the row to `deletion_failed` so ops can see the stuck
+        // sandboxes (and the container that probably survived on the core)
+        // instead of leaving the row stuck in `deletion_pending` forever.
+        if (updated?.status === "failed" && job.type === JOB_TYPES.AGENT_DELETE) {
+          const data = readAgentDeleteJobData(job);
+          try {
+            await agentSandboxesRepository.update(data.agentId, {
+              status: "deletion_failed",
+              error_message: `Deletion permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+            } as Parameters<typeof agentSandboxesRepository.update>[1]);
+            logger.warn(
+              "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
+              { jobId: job.id, agentId: data.agentId },
+            );
+          } catch (sandboxErr) {
+            logger.error("[provisioning-jobs] Failed to mark sandbox as deletion_failed", {
+              jobId: job.id,
+              agentId: data.agentId,
+              error: sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr),
+            });
+          }
+        }
       }
     }
   }
@@ -409,9 +582,64 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
         break;
+      case JOB_TYPES.AGENT_DELETE:
+        await this.executeAgentDelete(job);
+        break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
+  }
+
+  private async executeAgentDelete(job: Job): Promise<void> {
+    const data = readAgentDeleteJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_delete", {
+      jobId: job.id,
+      agentId: data.agentId,
+    });
+
+    const delResult = await elizaSandboxService.executeDeletion(data.agentId, data.organizationId);
+
+    if (!delResult.success) {
+      // Persist a partial result and rethrow so the jobs runner counts an
+      // attempt and retries (or marks failed on exhaustion).
+      await jobsRepository.update(job.id, {
+        result: agentDeleteJobResultToRecord({
+          cloudAgentId: data.agentId,
+          containerStopped: delResult.containerStopped,
+          rowDeleted: false,
+          error: delResult.error,
+        }),
+      });
+      throw new Error(delResult.error ?? "Unknown agent_delete failure");
+    }
+
+    const jobResult: AgentDeleteJobResult = {
+      cloudAgentId: data.agentId,
+      containerStopped: delResult.containerStopped,
+      rowDeleted: true,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentDeleteJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_delete completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      containerStopped: delResult.containerStopped,
+    });
   }
 
   private async executeAgentProvision(job: Job): Promise<void> {
@@ -523,7 +751,10 @@ export class ProvisioningJobService {
     return totalRecovered;
   }
 
-  private async fireWebhook(job: Job, result: AgentProvisionJobResult): Promise<void> {
+  private async fireWebhook(
+    job: Job,
+    result: AgentProvisionJobResult | AgentDeleteJobResult,
+  ): Promise<void> {
     if (!job.webhook_url) return;
 
     try {
