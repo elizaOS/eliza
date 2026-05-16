@@ -71,7 +71,9 @@ export function DashboardStatCard({
           </div>
         ) : null}
       </div>
-      {helper ? <p className="text-xs text-muted-foreground">{helper}</p> : null}
+      {helper ? (
+        <p className="text-xs text-muted-foreground">{helper}</p>
+      ) : null}
     </BrandCard>
   );
 }

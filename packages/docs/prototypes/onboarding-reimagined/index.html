@@ -32,7 +32,6 @@
         /* elizaOS brand tokens (shared-brand) */
         --brand-blue: #0b35f1;
         --brand-orange: #ff5800;
-        --brand-yellow: #ffe600;
         --brand-sky: #1d91e8;
         --brand-warm: #ff8a24;
         --brand-cream: #fff7ee;
@@ -1229,40 +1228,48 @@
 
       /* The collapsed pill — tiny, nothing inside, just a glass sliver */
       .tray-pill {
-        width: 52px;
+        width: 56px;
         height: 8px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.32);
         backdrop-filter: blur(24px) saturate(200%);
         box-shadow:
           0 4px 18px rgba(0, 0, 0, 0.26),
-          inset 0 1px 0 rgba(255, 255, 255, 0.58),
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.36);
+          inset 0 1px 0 rgba(255, 255, 255, 0.62),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.4);
         border: 0;
         cursor: pointer;
         padding: 0;
         transition:
-          box-shadow 0.3s ease,
-          background 0.2s ease,
-          transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+          box-shadow 0.32s ease,
+          background 0.22s ease,
+          transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+          width 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
       }
 
       .pill-hit:hover > .tray-pill {
-        transform: scale(1.12);
-        background: rgba(255, 255, 255, 0.42);
+        transform: scale(1.18);
+        background: rgba(255, 255, 255, 0.5);
         box-shadow:
-          0 6px 22px rgba(0, 0, 0, 0.32),
-          inset 0 1px 0 rgba(255, 255, 255, 0.7),
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.5);
+          0 8px 26px rgba(0, 0, 0, 0.34),
+          0 0 18px rgba(255, 255, 255, 0.28),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.6);
       }
 
       .tray-pill.recording {
         box-shadow:
-          0 0 0 1.5px rgba(255, 50, 38, 0.7),
-          0 0 22px rgba(255, 50, 38, 0.44),
+          0 0 0 1.5px rgba(255, 50, 38, 0.78),
+          0 0 28px rgba(255, 50, 38, 0.56),
           0 4px 18px rgba(0, 0, 0, 0.26),
           inset 0 1px 0 rgba(255, 255, 255, 0.5);
-        background: rgba(255, 80, 60, 0.38);
+        background: rgba(255, 70, 50, 0.55);
+        animation: pill-rec-pulse 1.8s ease-in-out infinite;
+      }
+
+      @keyframes pill-rec-pulse {
+        0%, 100% { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.78), 0 0 28px rgba(255, 50, 38, 0.56), 0 4px 18px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+        50%      { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.92), 0 0 38px rgba(255, 50, 38, 0.72), 0 4px 18px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
       }
 
       /* Expanded panel — transparent container, bubbles carry the glass */
@@ -1464,7 +1471,7 @@
 
       .linux-pill-anchor {
         position: absolute;
-        bottom: 22px;
+        bottom: 28px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -1677,12 +1684,13 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
+        padding-bottom: 96px; /* daylight above the pill anchor */
         pointer-events: none;
         z-index: 5;
       }
 
       .scene-avatar-canvas {
-        width: min(70%, 520px);
+        width: min(64%, 460px);
         height: auto;
         aspect-ratio: 520 / 320;
         filter: drop-shadow(0 6px 26px rgba(0, 0, 0, 0.28));
@@ -1723,9 +1731,10 @@
         font-family: var(--font-brand);
         font-weight: 700;
         font-size: 56px;
-        letter-spacing: -0.5px;
+        letter-spacing: -1px;
         color: #ffffff;
         line-height: 1;
+        text-shadow: 0 4px 24px rgba(4, 20, 56, 0.35);
       }
 
       .brand-wordmark .os { font-weight: 800; }
@@ -1733,7 +1742,9 @@
       .boot-screen.aosp-splash .brand-wordmark {
         font-weight: 800;
         color: #ffffff;
-        font-size: 48px;
+        font-size: 46px;
+        letter-spacing: -0.6px;
+        text-shadow: 0 3px 16px rgba(0, 8, 32, 0.4);
       }
 
       /* Linux loading: thin minimalist progress bar */
@@ -1869,7 +1880,7 @@
 
       .aosp-pill-anchor {
         position: absolute;
-        bottom: 26px;
+        bottom: 32px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
@@ -1877,6 +1888,20 @@
         align-items: center;
         gap: 9px;
         z-index: 20;
+      }
+
+      /* Android 12+ gesture-bar at the very bottom of the AOSP screen */
+      .aosp-gesture-bar {
+        position: absolute;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 96px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.62);
+        z-index: 14;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
       }
 
       .aosp-greeting {
@@ -1896,6 +1921,7 @@
         align-items: center;
         justify-content: center;
         gap: 12px;
+        padding-bottom: 110px; /* clearance for pill + gesture bar */
         pointer-events: none;
         z-index: 5;
       }
@@ -2048,40 +2074,47 @@
 
       /* ── Shared scene pill (Linux + macOS + Windows + AOSP) — same thin glass sliver ── */
       .scene-pill {
-        width: 46px;
-        height: 7px;
+        width: 56px;
+        height: 8px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.34);
         backdrop-filter: blur(24px) saturate(200%);
         box-shadow:
           0 3px 14px rgba(0, 0, 0, 0.22),
-          inset 0 1px 0 rgba(255, 255, 255, 0.6),
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.38);
+          inset 0 1px 0 rgba(255, 255, 255, 0.62),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.42);
         border: 0;
         cursor: pointer;
         padding: 0;
         transition:
-          box-shadow 0.3s ease,
-          background 0.2s ease,
-          transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+          box-shadow 0.32s ease,
+          background 0.22s ease,
+          transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
       }
 
       .pill-hit:hover > .scene-pill {
-        transform: scale(1.12);
-        background: rgba(255, 255, 255, 0.44);
+        transform: scale(1.18);
+        background: rgba(255, 255, 255, 0.52);
         box-shadow:
-          0 5px 18px rgba(0, 0, 0, 0.28),
-          inset 0 1px 0 rgba(255, 255, 255, 0.72),
-          inset 0 0 0 0.5px rgba(255, 255, 255, 0.5);
+          0 6px 22px rgba(0, 0, 0, 0.3),
+          0 0 16px rgba(255, 255, 255, 0.26),
+          inset 0 1px 0 rgba(255, 255, 255, 0.78),
+          inset 0 0 0 0.5px rgba(255, 255, 255, 0.58);
       }
 
       .scene-pill.recording {
-        background: rgba(255, 80, 60, 0.4);
+        background: rgba(255, 70, 50, 0.55);
         box-shadow:
-          0 0 0 1.5px rgba(255, 50, 38, 0.7),
-          0 0 18px rgba(255, 50, 38, 0.42),
+          0 0 0 1.5px rgba(255, 50, 38, 0.78),
+          0 0 24px rgba(255, 50, 38, 0.54),
           0 3px 14px rgba(0, 0, 0, 0.22),
           inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        animation: pill-rec-pulse-sm 1.8s ease-in-out infinite;
+      }
+
+      @keyframes pill-rec-pulse-sm {
+        0%, 100% { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.78), 0 0 24px rgba(255, 50, 38, 0.54), 0 3px 14px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+        50%      { box-shadow: 0 0 0 1.5px rgba(255, 50, 38, 0.92), 0 0 36px rgba(255, 50, 38, 0.72), 0 3px 14px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
       }
 
       /* Transparent container — bubbles carry the glass */
@@ -2199,6 +2232,12 @@
         flex-shrink: 0;
       }
 
+      .scene-ctrl-btn.recording-on {
+        background: rgba(255, 50, 38, 0.72);
+        box-shadow: 0 0 12px rgba(255, 50, 38, 0.48), inset 0 0 0 0.5px rgba(255, 100, 80, 0.5);
+        color: #fff;
+      }
+
       [data-macos-scene][hidden],
       [data-linux-scene][hidden],
       [data-aosp-scene][hidden] { display: none; }
@@ -2238,7 +2277,9 @@
         .screen-cloud-shader::before,
         .voice-line i,
         .loading-bar-thin > i,
-        .loading-bar-retro > i {
+        .loading-bar-retro > i,
+        .tray-pill.recording,
+        .scene-pill.recording {
           animation: none;
         }
         .loading-bar-retro > i { width: 60%; }
@@ -3036,6 +3077,8 @@
                       <span class="scene-pill" id="aosp-pill" aria-expanded="false"></span>
                     </button>
                   </div>
+                  <!-- Android 12+ gesture-bar -->
+                  <div class="aosp-gesture-bar" aria-hidden="true"></div>
                 </div>
               </div>
             </div>
@@ -4482,6 +4525,14 @@
 
         setOpen(startOpen);
         hit.addEventListener("click", () => setOpen(pill.getAttribute("aria-expanded") !== "true"));
+
+        // Wire the chat's audio button to toggle a red "always-on recording" state on the pill
+        const audioBtn = chat.querySelector('button[aria-label="Audio"]');
+        audioBtn?.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const on = audioBtn.classList.toggle("recording-on");
+          pill.classList.toggle("recording", on);
+        });
       }
 
       setupScenePill("linux-pill", "linux-chat", false);

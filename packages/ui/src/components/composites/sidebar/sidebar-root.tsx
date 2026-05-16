@@ -18,8 +18,7 @@ const sidebarRootVariants = cva(
       variant: {
         default:
           "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-sm border border-border bg-card",
-        mobile:
-          "h-full w-full min-w-0 border-0 bg-card shadow-none ring-0",
+        mobile: "h-full w-full min-w-0 border-0 bg-card shadow-none ring-0",
         "game-modal":
           "h-full rounded-sm border border-border bg-card shadow-sm",
       },

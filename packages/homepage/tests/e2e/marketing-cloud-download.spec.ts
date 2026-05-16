@@ -14,7 +14,10 @@ async function expectCloudPath(locator: Locator) {
   expect(url.searchParams.get("intent")).toBe("launch");
 }
 
-async function expectExternalOrLocal(locator: Locator, productionHost: string) {
+async function _expectExternalOrLocal(
+  locator: Locator,
+  productionHost: string,
+) {
   const href = await locator.getAttribute("href");
   expect(href).toBeTruthy();
   const host = new URL(href ?? "", `https://${productionHost}`).hostname;
@@ -37,7 +40,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     )
     .toBe(0);
 
-  await expect(page).toHaveTitle("Eliza App - Download the app");
+  await expect(page).toHaveTitle("Eliza — your agent, everywhere");
   await expect(
     page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
   ).toBeVisible();

@@ -389,7 +389,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-3 font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />} Magic Link
           </button>
@@ -411,7 +411,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />} Google
             </button>
@@ -421,7 +421,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -436,7 +436,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50 sm:col-span-2"
+              className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
