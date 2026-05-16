@@ -1208,14 +1208,14 @@ class AospLlamaAdapter implements AospLoader {
     const draftBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_BATCH", args.nBatch);
     const draftUBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_UBATCH", args.nUBatch);
     const draftMax =
-      args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 16);
+      args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 8);
     // Mobile chat turns are short. The fork's DFlash draft-simple path clears
     // any draft shorter than n_min before target verification, so a default of
     // 4 often degenerates into target-only decode on Pixel. Keep the default
     // permissive and let the target model verify every drafted token.
     const draftMin =
       args.loadArgs.draftMin ?? readEnvInt("ELIZA_DFLASH_DRAFT_MIN", 1);
-    const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.75);
+    const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.25);
     const draftModel = this.loadModelPointer(
       draftPath,
       args.useGpu,
@@ -1250,7 +1250,20 @@ class AospLlamaAdapter implements AospLoader {
     } catch (err) {
       if (draftCtx) this.sym.llama_free(draftCtx);
       this.sym.llama_model_free(draftModel);
-      throw err;
+      const message =
+        err instanceof Error ? err.message : String(err ?? "unknown error");
+      if (required) {
+        throw err;
+      }
+      logger.warn(
+        `[aosp-llama] DFlash drafter failed to initialize; using target-only decode: ${message}`,
+      );
+      writeAospLlamaDebugLog("loadModel:dflash:fallback", {
+        target: path.basename(args.loadArgs.modelPath),
+        draft: path.basename(draftPath),
+        error: message,
+      });
+      return;
     }
     this.draftModel = draftModel;
     this.draftCtx = draftCtx;
@@ -1768,7 +1781,23 @@ class AospLlamaAdapter implements AospLoader {
       throw makeAbortError(args.signal);
     }
 
-    if (this.speculativeHandle !== null && !envFlagDisabled("ELIZA_DFLASH")) {
+    const requestedMaxTokens =
+      Number.isFinite(args.maxTokens) && args.maxTokens != null
+        ? Math.max(1, Math.floor(args.maxTokens))
+        : readEnvInt("ELIZA_LLAMA_DEFAULT_MAX_TOKENS", 512);
+    const dflashMinTokens = Math.max(
+      1,
+      readEnvInt("ELIZA_DFLASH_MIN_TOKENS", 64),
+    );
+    const dflashForced = envFlagEnabled("ELIZA_DFLASH_FORCE");
+    const dflashShortTurn =
+      args.stopOnFirstSentence === true || requestedMaxTokens < dflashMinTokens;
+    const useDflash =
+      this.speculativeHandle !== null &&
+      !envFlagDisabled("ELIZA_DFLASH") &&
+      (dflashForced || !dflashShortTurn);
+
+    if (useDflash) {
       try {
         return await this.generateWithSpeculativeShim(args);
       } catch (err) {
@@ -1784,6 +1813,18 @@ class AospLlamaAdapter implements AospLoader {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    } else if (
+      this.speculativeHandle !== null &&
+      !envFlagDisabled("ELIZA_DFLASH")
+    ) {
+      writeAospLlamaDebugLog("generate:dflash:skip", {
+        reason: args.stopOnFirstSentence
+          ? "first_sentence_short_turn"
+          : "below_min_tokens",
+        requestedMaxTokens,
+        minTokens: dflashMinTokens,
+        force: dflashForced,
+      });
     }
 
     // 0. Reset KV cache for this turn. The b8198 cuttlefish build

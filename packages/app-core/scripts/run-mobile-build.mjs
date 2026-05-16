@@ -158,6 +158,8 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "pglite.wasm",
   "initdb.wasm",
   "pglite.data",
+  "ort-wasm-simd-threaded.mjs",
+  "ort-wasm-simd-threaded.wasm",
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
   "plugins-manifest.json",
@@ -220,9 +222,14 @@ function run(command, args, { cwd, env = process.env } = {}) {
   });
 }
 
+function resolveNodeExecutable() {
+  if (!process.versions?.bun) return process.execPath;
+  return process.env.NODE?.trim() || "node";
+}
+
 function runCapacitor(args) {
   return run(
-    process.execPath,
+    resolveNodeExecutable(),
     [
       path.join(
         appDir,
@@ -4839,6 +4846,7 @@ async function buildAndroid() {
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
+    bunChannel: "stable",
   });
 
   const env = {
@@ -5106,7 +5114,9 @@ async function buildAndroidSystem() {
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
+    bunChannel: "canary",
   });
+  auditAndroidSystemSource("pre-gradle");
 
   const env = {
     ...process.env,

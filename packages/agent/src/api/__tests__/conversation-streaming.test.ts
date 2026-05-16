@@ -220,12 +220,16 @@ describe("generateChatResponse token streaming", () => {
       expect.objectContaining({
         stream: true,
         maxTokens: 20,
-        providerOptions: {
-          androidLocal: {
+        prompt: expect.stringContaining("<think>\n\n</think>\n"),
+        providerOptions: expect.objectContaining({
+          androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,
             stopOnFirstSentence: true,
-          },
-        },
+          }),
+          eliza: expect.objectContaining({
+            thinking: "off",
+          }),
+        }),
         onStreamChunk: expect.any(Function),
       }),
     );
