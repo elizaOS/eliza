@@ -11,12 +11,7 @@ const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
-const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
 const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-lifeops/src");
-const pluginAppManagerSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-app-manager/src",
-);
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-task-coordinator/src",
@@ -28,18 +23,9 @@ const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-skills/src",
 );
-const pluginAnthropicRoot = path.join(monorepoRoot, "plugins/plugin-anthropic");
 const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-browser/src",
-);
-const pluginAospLocalInferenceSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-aosp-local-inference/src",
-);
-const pluginBackgroundRunnerSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-background-runner/src",
 );
 const pluginCapacitorBridgeSrc = path.join(
   monorepoRoot,
@@ -53,10 +39,6 @@ const pluginCodingToolsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-coding-tools/src",
 );
-const pluginCommandsSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-commands/src",
-);
 const pluginDiscordRoot = path.join(monorepoRoot, "plugins/plugin-discord");
 const pluginElizaCloudSrc = path.join(
   monorepoRoot,
@@ -64,11 +46,6 @@ const pluginElizaCloudSrc = path.join(
   "src",
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
-const pluginGoogleGenAiRoot = path.join(
-  monorepoRoot,
-  "plugins/plugin-google-genai",
-);
-const pluginGroqRoot = path.join(monorepoRoot, "plugins/plugin-groq");
 const pluginIMessageSrc = path.join(
   monorepoRoot,
   "plugins/plugin-imessage/src",
@@ -77,16 +54,9 @@ const pluginLocalInferenceSrc = path.join(
   monorepoRoot,
   "plugins/plugin-local-inference/src",
 );
-const pluginMlxRoot = path.join(monorepoRoot, "plugins/plugin-mlx");
 const pluginMcpSrc = path.join(monorepoRoot, "plugins/plugin-mcp/src");
-const pluginOllamaRoot = path.join(monorepoRoot, "plugins/plugin-ollama");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
-const pluginRegistrySrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-registry/src",
-);
-const pluginShellRoot = path.join(monorepoRoot, "plugins/plugin-shell");
 const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
 const pluginStreamingSrc = path.join(
   monorepoRoot,
@@ -96,9 +66,7 @@ const pluginLocalEmbeddingSrc = path.join(
   monorepoRoot,
   "plugins/plugin-local-embedding/src",
 );
-const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
-const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
 const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
@@ -210,15 +178,11 @@ export default defineConfig({
         replacement: path.join(cloudSdkSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/vault$/,
-        replacement: path.join(vaultSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/vault\/(.+)$/,
-        replacement: path.join(vaultSrc, "$1"),
-      },
-      {
         find: /^@elizaos\/app-lifeops$/,
+        replacement: path.join(appLifeopsSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-lifeops$/,
         replacement: path.join(appLifeopsSrc, "index.ts"),
       },
       {
@@ -230,14 +194,6 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/app-lifeops\/(.+)$/,
-        replacement: path.join(appLifeopsSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-lifeops$/,
-        replacement: path.join(appLifeopsSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-lifeops\/(.+)$/,
         replacement: path.join(appLifeopsSrc, "$1"),
       },
       {
@@ -281,26 +237,6 @@ export default defineConfig({
         replacement: path.join(pluginAgentSkillsSrc, "$1"),
       },
       {
-        find: /^@elizaos\/plugin-anthropic$/,
-        replacement: path.join(pluginAnthropicRoot, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-manager$/,
-        replacement: path.join(pluginAppManagerSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-app-manager\/(.+)$/,
-        replacement: path.join(pluginAppManagerSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-aosp-local-inference$/,
-        replacement: path.join(pluginAospLocalInferenceSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-background-runner$/,
-        replacement: path.join(pluginBackgroundRunnerSrc, "index.ts"),
-      },
-      {
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrc, "index.ts"),
       },
@@ -325,10 +261,6 @@ export default defineConfig({
         replacement: path.join(pluginCodingToolsSrc, "$1"),
       },
       {
-        find: /^@elizaos\/plugin-commands$/,
-        replacement: path.join(pluginCommandsSrc, "index.ts"),
-      },
-      {
         find: /^@elizaos\/plugin-discord$/,
         replacement: path.join(pluginDiscordRoot, "index.ts"),
       },
@@ -339,14 +271,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
         replacement: path.join(pluginElizaCloudSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-google-genai$/,
-        replacement: path.join(pluginGoogleGenAiRoot, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-groq$/,
-        replacement: path.join(pluginGroqRoot, "index.node.ts"),
       },
       {
         find: /^@elizaos\/plugin-openai$/,
@@ -389,32 +313,12 @@ export default defineConfig({
         replacement: path.join(pluginMcpSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-mlx$/,
-        replacement: path.join(pluginMlxRoot, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-ollama$/,
-        replacement: path.join(pluginOllamaRoot, "index.node.ts"),
-      },
-      {
         find: /^@elizaos\/plugin-pdf$/,
         replacement: path.join(pluginPdfSrc, "index.node.ts"),
       },
       {
         find: /^@elizaos\/plugin-pdf\/(.+)$/,
         replacement: path.join(pluginPdfSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-registry$/,
-        replacement: path.join(pluginRegistrySrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-registry\/(.+)$/,
-        replacement: path.join(pluginRegistrySrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-shell$/,
-        replacement: path.join(pluginShellRoot, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-signal$/,
@@ -427,18 +331,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-whatsapp$/,
         replacement: path.join(pluginWhatsappRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-wallet$/,
-        replacement: path.join(pluginWalletSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-wallet\/(.+)$/,
-        replacement: path.join(pluginWalletSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-video$/,
-        replacement: path.join(pluginVideoSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-agent-orchestrator$/,

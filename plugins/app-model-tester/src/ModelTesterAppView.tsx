@@ -1,5 +1,6 @@
-import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, Spinner } from "@elizaos/app-core";
+import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
   ArrowLeft,
   FileAudio,

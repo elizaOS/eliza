@@ -7,6 +7,7 @@
  * for credit balance across all components that need it.
  */
 
+import { usePathname } from "@elizaos/ui/cloud-ui/runtime/navigation";
 import {
   createContext,
   type ReactNode,
@@ -19,7 +20,6 @@ import {
 } from "react";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { logger } from "@/lib/utils/logger";
-import { usePathname } from "../../../ui/src/cloud-ui/runtime/navigation";
 
 interface CreditsContextValue {
   creditBalance: number | null;
@@ -74,6 +74,7 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
+  const pollGenerationRef = useRef(0);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const authErrorCountRef = useRef(0);
   const isPollingPausedRef = useRef(false);
@@ -100,6 +101,10 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchBalance = useCallback(async () => {
+    const generation = pollGenerationRef.current;
+    const canWriteState = () =>
+      isMountedRef.current && pollGenerationRef.current === generation;
+
     if (!isMountedRef.current) return;
 
     // Don't fetch if logout is in progress - prevents race conditions
@@ -107,7 +112,7 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
 
     // Don't fetch if not authenticated, polling is paused, or tab is hidden
     if (!authenticated || isPollingPausedRef.current || !isVisibleRef.current) {
-      if (isMountedRef.current) {
+      if (canWriteState()) {
         setIsLoading(false);
         if (!authenticated) {
           setCreditBalance(null);
@@ -118,7 +123,7 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
     }
 
     if (shouldDeferAuthenticatedFetches) {
-      if (isMountedRef.current) {
+      if (canWriteState()) {
         setIsLoading(false);
       }
       return;
@@ -155,7 +160,7 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
             isLoggingOutRef.current = true;
             stopPolling();
             // Early return after pausing to prevent further processing
-            if (isMountedRef.current) {
+            if (canWriteState()) {
               setError("Unauthorized");
               setIsConnected(false);
               setCreditBalance(null);
@@ -173,7 +178,7 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
 
       const balance = await readBalance(response);
 
-      if (isMountedRef.current) {
+      if (canWriteState()) {
         setCreditBalance(balance);
         setLastUpdate(new Date());
         setIsConnected(true);
@@ -190,13 +195,21 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
       const message =
         error instanceof Error ? error.message : "Failed to fetch balance";
       logger.error("[CreditsProvider] Failed to fetch balance", { error });
-      if (isMountedRef.current) {
+      if (canWriteState()) {
         setError(message);
         setIsConnected(false);
         setIsLoading(false);
       }
     }
   }, [authenticated, shouldDeferAuthenticatedFetches, stopPolling]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      pollGenerationRef.current += 1;
+    };
+  }, []);
 
   // Setup BroadcastChannel for cross-tab sync
   useEffect(() => {
@@ -242,7 +255,8 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
 
   // Main polling effect
   useEffect(() => {
-    isMountedRef.current = true;
+    pollGenerationRef.current += 1;
+    const generation = pollGenerationRef.current;
 
     if (
       ready &&
@@ -252,7 +266,9 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
     ) {
       // Defer initial fetch to avoid cascading renders
       queueMicrotask(() => {
-        fetchBalance();
+        if (pollGenerationRef.current === generation) {
+          fetchBalance();
+        }
       });
 
       pollIntervalRef.current = setInterval(() => {
@@ -263,13 +279,15 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
     } else if (ready && !authenticated) {
       // Use queueMicrotask to defer execution and avoid synchronous setState
       queueMicrotask(() => {
-        setIsLoading(false);
-        setCreditBalance(null);
+        if (isMountedRef.current && pollGenerationRef.current === generation) {
+          setIsLoading(false);
+          setCreditBalance(null);
+        }
       });
     }
 
     return () => {
-      isMountedRef.current = false;
+      pollGenerationRef.current += 1;
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;

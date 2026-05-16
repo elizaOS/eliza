@@ -45,13 +45,13 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("uses the single elizalabs HuggingFace repo for every visible Eliza-1 tier", () => {
+	it("uses the single elizaos HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			const tier = model.id.slice("eliza-1-".length);
-			expect(model.hfRepo).toBe("elizalabs/eliza-1");
+			expect(model.hfRepo).toBe("elizaos/eliza-1");
 			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
-				`/elizalabs/eliza-1/resolve/main/bundles/${tier}/`,
+				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
 			);
 		}
 	});
@@ -91,17 +91,14 @@ describe("local inference catalog", () => {
 	});
 
 	it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-		// Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
-		// 27B-256k = 256k. The catalog records the largest
-		// ctx the bundle's manifest will advertise for each tier.
-		const expected: Record<string, number> = {
-			"eliza-1-0_8b": 32768,
-			"eliza-1-2b": 32768,
-			"eliza-1-4b": 65536,
-			"eliza-1-9b": 65536,
-			"eliza-1-27b": 131072,
-			"eliza-1-27b-256k": 262144,
-		};
+			const expected: Record<string, number> = {
+				"eliza-1-0_8b": 131072,
+				"eliza-1-2b": 131072,
+				"eliza-1-4b": 131072,
+				"eliza-1-9b": 131072,
+				"eliza-1-27b": 131072,
+				"eliza-1-27b-256k": 262144,
+			};
 		for (const [id, expectedLength] of Object.entries(expected)) {
 			const model = findCatalogModel(id);
 			expect(model, `${id} missing from catalog`).toBeTruthy();
@@ -228,8 +225,8 @@ describe("local inference catalog", () => {
 			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
-			"kokoro",
 			"omnivoice",
+			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
 			"omnivoice",

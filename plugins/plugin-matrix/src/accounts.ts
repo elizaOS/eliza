@@ -19,7 +19,7 @@ function stringSetting(runtime: IAgentRuntime, key: string): string | undefined 
 }
 
 function characterConfig(runtime: IAgentRuntime): MatrixMultiAccountConfig {
-  const settings = runtime.character.settings as Record<string, unknown> | undefined;
+  const settings = runtime.character?.settings as Record<string, unknown> | undefined;
   const raw = settings?.matrix;
   return raw && typeof raw === "object" ? (raw as MatrixMultiAccountConfig) : {};
 }

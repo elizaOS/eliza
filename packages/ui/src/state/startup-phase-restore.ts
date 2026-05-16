@@ -18,7 +18,7 @@ import {
 } from "../bridge";
 import type { UiLanguage } from "../i18n";
 import {
-  ANDROID_LOCAL_AGENT_API_BASE,
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
@@ -111,6 +111,9 @@ function isMobileLocalAgentApiBase(value: string | undefined): boolean {
   if (!value) return false;
   try {
     const parsed = new URL(value);
+    if (parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc") {
+      return true;
+    }
     return (
       parsed.protocol === "http:" &&
       parsed.port === "31337" &&
@@ -154,7 +157,7 @@ function reconcilePersistedApiBaseWithLive(
   }
 }
 
-function mobileLoopbackActiveServer(): PersistedActiveServer {
+function mobileLocalActiveServer(): PersistedActiveServer {
   return {
     id: isAndroid
       ? ANDROID_LOCAL_AGENT_SERVER_ID
@@ -162,7 +165,7 @@ function mobileLoopbackActiveServer(): PersistedActiveServer {
     kind: "remote",
     label: isAndroid ? ANDROID_LOCAL_AGENT_LABEL : MOBILE_LOCAL_AGENT_LABEL,
     apiBase: isAndroid
-      ? ANDROID_LOCAL_AGENT_API_BASE
+      ? ANDROID_LOCAL_AGENT_IPC_BASE
       : IOS_LOCAL_AGENT_IPC_BASE,
   };
 }
@@ -330,8 +333,13 @@ export async function runRestoringSession(
       restoredActiveServer = null;
       hadPrior = false;
       deps.onboardingCompletionCommittedRef.current = false;
-    } else if (restoredActiveServer.kind === "local") {
-      restoredActiveServer = mobileLoopbackActiveServer();
+    } else if (
+      restoredActiveServer.kind === "local" ||
+      (isAndroid &&
+        isMobileLocalActiveServer(restoredActiveServer) &&
+        restoredActiveServer.apiBase !== ANDROID_LOCAL_AGENT_IPC_BASE)
+    ) {
+      restoredActiveServer = mobileLocalActiveServer();
       persistedActiveServer = restoredActiveServer;
       savePersistedActiveServer(restoredActiveServer);
     } else if (!restoredActiveServer.apiBase) {

@@ -101,18 +101,8 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
     assert body["private"] is True  # default per the same license decision
     assert body["hfRepo"] == "elizaos/eliza-1"
     remotes = {entry["remote"] for entry in body["files"]}
-    # Push script prefixes every artifact with `voice/kokoro/voices/<voice_name>/`
-    # (so the consolidated repo stays organized) — README is rendered + included
-    # alongside the five required artifacts.
-    prefix = "voice/kokoro/voices/af_same"
-    assert remotes == {
-        f"{prefix}/README.md",
-        f"{prefix}/voice.bin",
-        f"{prefix}/kokoro.onnx",
-        f"{prefix}/voice-preset.json",
-        f"{prefix}/manifest-fragment.json",
-        f"{prefix}/eval.json",
-    }
+    # README is rendered + included alongside the five required artifacts.
+    assert remotes == {"README.md", "voice.bin", "kokoro.onnx", "voice-preset.json", "manifest-fragment.json", "eval.json"}
 
 
 def test_failed_gate_blocks_publish(tmp_path: Path) -> None:

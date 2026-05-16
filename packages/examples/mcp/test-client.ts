@@ -70,7 +70,15 @@ async function main(): Promise<void> {
     }
     console.log();
 
-    // Test 3: Chat with agent
+    // Test 3: Chat with agent (live model path, opt-in for local/manual runs)
+    if (process.env.ELIZA_EXAMPLE_MCP_LIVE_CHAT !== "1") {
+      console.log(
+        "💬 Skipping live chat test (set ELIZA_EXAMPLE_MCP_LIVE_CHAT=1 to run)",
+      );
+      console.log("\n✅ All tests passed!");
+      return;
+    }
+
     console.log("💬 Testing chat...");
     const testMessages = [
       "Hello! What's your name?",

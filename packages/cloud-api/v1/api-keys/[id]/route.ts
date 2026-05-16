@@ -11,7 +11,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { ApiKeysService, apiKeysService } from "@/lib/services/api-keys";
+import { apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,6 +20,10 @@ import { updateApiKeySchema } from "../schemas";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
+
+function isAgentSandboxKeyName(name: string): boolean {
+  return name.startsWith("agent-sandbox:");
+}
 
 app.delete("/", async (c) => {
   try {
@@ -63,7 +67,7 @@ app.patch("/", async (c) => {
       expires_at,
     } = updateApiKeySchema.parse(body);
 
-    if (name !== undefined && ApiKeysService.isAgentSandboxKey({ name })) {
+    if (name !== undefined && isAgentSandboxKeyName(name)) {
       return c.json(
         {
           error:

@@ -1,3 +1,4 @@
+import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
@@ -10,7 +11,6 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
-import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
 import { getErrorMessage } from "../../lib/error-message";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { resolveLoginReturnTo } from "./login-return-to";
@@ -84,6 +84,23 @@ function hasAnyWalletProvider(providers: StewardProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
 }
 
+let cachedStewardProviders: StewardProviders | null = null;
+let stewardProvidersPromise: Promise<StewardProviders> | null = null;
+
+function loadStewardProviders(auth: {
+  getProviders: () => Promise<StewardProviders>;
+}): Promise<StewardProviders> {
+  if (cachedStewardProviders) return Promise.resolve(cachedStewardProviders);
+
+  stewardProvidersPromise ??= auth.getProviders().then((loadedProviders) => {
+    cachedStewardProviders = loadedProviders;
+    stewardProvidersPromise = null;
+    return loadedProviders;
+  });
+
+  return stewardProvidersPromise;
+}
+
 export default function StewardLoginSection() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -104,8 +121,13 @@ export default function StewardLoginSection() {
   const [error, setError] = useState<string | null>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  const [providersLoaded, setProvidersLoaded] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED || cachedStewardProviders !== null,
+  );
   const [providers, setProviders] = useState<StewardProviders>(() =>
-    PLAYWRIGHT_TEST_AUTH_ENABLED ? TEST_PROVIDERS : DEFAULT_PROVIDERS,
+    PLAYWRIGHT_TEST_AUTH_ENABLED
+      ? TEST_PROVIDERS
+      : (cachedStewardProviders ?? DEFAULT_PROVIDERS),
   );
 
   const showWallets = hasAnyWalletProvider(providers);
@@ -114,15 +136,21 @@ export default function StewardLoginSection() {
   );
 
   useEffect(() => {
-    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
+      setProvidersLoaded(true);
+      return;
+    }
 
-    auth
-      .getProviders()
+    loadStewardProviders(auth)
       .then(setProviders)
-      .catch((providerError) => {
+      .catch((providerError: unknown) => {
+        stewardProvidersPromise = null;
         setError(
           getErrorMessage(providerError, "Steward provider discovery failed"),
         );
+      })
+      .finally(() => {
+        setProvidersLoaded(true);
       });
   }, [auth]);
 
@@ -307,6 +335,20 @@ export default function StewardLoginSection() {
     );
   }
 
+  if (!providersLoaded) {
+    return (
+      <div
+        className="flex flex-col items-center gap-4 py-8"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading sign-in options"
+      >
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF5800] border-t-transparent" />
+        <p className="text-sm text-neutral-400">Loading sign-in options...</p>
+      </div>
+    );
+  }
+
   const isLoading = loading !== null;
 
   return (
@@ -452,7 +494,7 @@ function Spinner() {
 
 function GoogleIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24">
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -477,6 +519,7 @@ function PasskeyIcon() {
   return (
     <svg
       className="h-4 w-4"
+      aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -494,6 +537,7 @@ function EmailIcon() {
   return (
     <svg
       className="h-4 w-4"
+      aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

@@ -489,7 +489,7 @@ export class TwitchService extends Service implements ITwitchService {
    * Stop the service.
    */
   async stop(): Promise<void> {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       await Promise.all(
         Array.from(this.accountServices.values()).map((service) =>
           service.stop(),
@@ -509,7 +509,7 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   private getAccountServiceList(): TwitchService[] {
-    return this.accountServices.size > 0
+    return this.accountServices?.size > 0
       ? Array.from(this.accountServices.values())
       : [this];
   }
@@ -552,7 +552,7 @@ export class TwitchService extends Service implements ITwitchService {
   // ============================================================================
 
   isConnected(): boolean {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       return Array.from(this.accountServices.values()).some((service) =>
         service.isConnected(),
       );
@@ -561,31 +561,31 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   getBotUsername(): string {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       return this.getDefaultAccountService().getBotUsername();
     }
     return this.settings.username;
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       return this.getDefaultAccountService().getAccountId(runtime);
     }
     return normalizeTwitchAccountId(
-      this.settings.accountId ??
+      this.settings?.accountId ??
         (runtime ? resolveDefaultTwitchAccountId(runtime) : undefined),
     );
   }
 
   getPrimaryChannel(): string {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       return this.getDefaultAccountService().getPrimaryChannel();
     }
     return this.settings.channel;
   }
 
   getJoinedChannels(): string[] {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       return this.getDefaultAccountService().getJoinedChannels();
     }
     return Array.from(this.joinedChannels);
@@ -601,7 +601,7 @@ export class TwitchService extends Service implements ITwitchService {
         readTwitchAccountId(content, target) ??
         this.getAccountId(),
     );
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       await this.getAccountService(requestedAccountId).handleSendMessage(
         runtime,
         target,
@@ -756,10 +756,10 @@ export class TwitchService extends Service implements ITwitchService {
 
   private getConnectorChannels(): string[] {
     const channels = new Set<string>();
-    if (this.settings.channel) {
+    if (this.settings?.channel) {
       channels.add(normalizeChannel(this.settings.channel));
     }
-    for (const channel of this.settings.additionalChannels) {
+    for (const channel of this.settings?.additionalChannels ?? []) {
       channels.add(normalizeChannel(channel));
     }
     for (const channel of this.joinedChannels) {
@@ -848,7 +848,7 @@ export class TwitchService extends Service implements ITwitchService {
     text: string,
     options?: TwitchMessageSendOptions,
   ): Promise<TwitchSendResult> {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       const accountId = normalizeTwitchAccountId(
         (options as TwitchMessageSendOptions & { accountId?: string })
           ?.accountId ?? this.getAccountId(),
@@ -909,7 +909,7 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   async joinChannel(channel: string): Promise<void> {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       await this.getDefaultAccountService().joinChannel(channel);
       return;
     }
@@ -922,7 +922,7 @@ export class TwitchService extends Service implements ITwitchService {
   }
 
   async leaveChannel(channel: string): Promise<void> {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       await this.getDefaultAccountService().leaveChannel(channel);
       return;
     }

@@ -14,6 +14,16 @@ from lib_results_logger import log_task_completion
 logger = logging.getLogger("desktopenv.experiment")
 
 
+def _write_step_screenshot(obs, example_result_dir, filename):
+    screenshot = obs.get("screenshot") if isinstance(obs, dict) else None
+    if not isinstance(screenshot, (bytes, bytearray)) or not screenshot:
+        logger.warning("Skipping step screenshot write; controller returned no image bytes.")
+        return None
+    with open(os.path.join(example_result_dir, filename), "wb") as _f:
+        _f.write(screenshot)
+    return filename
+
+
 def run_single_example(agent, env, example, max_steps, instruction, args, example_result_dir, scores):
     runtime_logger = setup_logger(example, example_result_dir)
 
@@ -45,9 +55,11 @@ def run_single_example(agent, env, example, max_steps, instruction, args, exampl
             logger.info("Reward: %.2f", reward)
             logger.info("Done: %s", done)
             # Save screenshot and trajectory information
-            with open(os.path.join(example_result_dir, f"step_{step_idx + 1}_{action_timestamp}.png"),
-                      "wb") as _f:
-                _f.write(obs['screenshot'])
+            screenshot_file = _write_step_screenshot(
+                obs,
+                example_result_dir,
+                f"step_{step_idx + 1}_{action_timestamp}.png",
+            )
             with open(os.path.join(example_result_dir, "traj.jsonl"), "a") as f:
                 f.write(json.dumps({
                     "step_num": step_idx + 1,
@@ -57,7 +69,7 @@ def run_single_example(agent, env, example, max_steps, instruction, args, exampl
                     "reward": reward,
                     "done": done,
                     "info": info,
-                    "screenshot_file": f"step_{step_idx + 1}_{action_timestamp}.png"
+                    "screenshot_file": screenshot_file,
                 }))
                 f.write("\n")
             if done:

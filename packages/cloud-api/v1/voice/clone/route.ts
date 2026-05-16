@@ -107,8 +107,6 @@ app.post("/", async (c) => {
   try {
     const auth = await requireUserOrApiKeyWithOrg(c);
     user = { id: auth.id, organization_id: auth.organization_id };
-    const userId = user.id;
-    const organizationId = user.organization_id;
     apiKeyId = await getRequestApiKeyId(c);
 
     const apiKey = c.env.ELEVENLABS_API_KEY;
@@ -203,8 +201,8 @@ app.post("/", async (c) => {
     logger.info(
       `[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`,
       {
-        userId,
-        organizationId,
+        userId: user.id,
+        organizationId: user.organization_id,
         fileCount,
         totalSize,
       },
@@ -214,9 +212,9 @@ app.post("/", async (c) => {
 
     try {
       reservation = await creditsService.reserve({
-        organizationId,
+        organizationId: user.organization_id,
         amount: cloneCost.totalCost,
-        userId,
+        userId: user.id,
         description: `Voice cloning (${cloneType}): ${voiceName}`,
       });
     } catch (error) {
@@ -235,8 +233,8 @@ app.post("/", async (c) => {
     }
 
     const newJob: NewVoiceCloningJob = {
-      organizationId,
-      userId,
+      organizationId: user.organization_id,
+      userId: user.id,
       jobType: cloneType,
       voiceName,
       voiceDescription: description,
@@ -246,6 +244,8 @@ app.post("/", async (c) => {
     };
     const createdJob = await userVoicesRepository.createCloningJob(newJob);
     jobId = createdJob.id;
+    const userId = user.id;
+    const organizationId = user.organization_id;
 
     // 1) Upload samples to R2 in parallel. Persisted alongside the DB row so
     //    we have a backup independent of ElevenLabs. Failure here aborts the

@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { appsRepository } from "@/db/repositories/apps";
 import {
+  ApiError,
   failureResponse,
   NotFoundError,
   ValidationError,
@@ -75,7 +76,16 @@ app.post("/", async (c) => {
       });
     }
 
-    const authCode = await issueAppAuthCode({ appId, userId: user.id });
+    let authCode: Awaited<ReturnType<typeof issueAppAuthCode>>;
+    try {
+      authCode = await issueAppAuthCode({ appId, userId: user.id });
+    } catch {
+      throw new ApiError(
+        503,
+        "session_not_ready",
+        "Authorization code store is unavailable. Please try again.",
+      );
+    }
 
     return c.json({
       success: true,

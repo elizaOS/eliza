@@ -80,6 +80,17 @@ function isElizaCloudControlPlaneBase(
   }
 }
 
+function isLocalAgentIpcBase(value: string | null | undefined): boolean {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return false;
+  try {
+    const parsed = new URL(normalized);
+    return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -527,7 +538,10 @@ export class ElizaClient {
   // --- WebSocket ---
 
   connectWs(): void {
-    if (isIosInProcessLocalAgentBase(this.baseUrl)) {
+    if (
+      isIosInProcessLocalAgentBase(this.baseUrl) ||
+      isLocalAgentIpcBase(this.baseUrl)
+    ) {
       this.backoffMs = 500;
       this.reconnectAttempt = 0;
       this.disconnectedAt = null;

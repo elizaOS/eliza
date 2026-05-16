@@ -3,38 +3,31 @@ import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
-const localLibPrefix = `${r("./src/lib")}/`;
 
 // Mirrors the local-first / cloud-shared-fallback semantics from vite.config.ts.
-function resolveExistingFile(base: string, sub: string): string | null {
-  const basePath = r(`${base}/${sub}`);
+function resolveLocalFirst(
+  id: string,
+  localBase: string,
+  sharedBase: string,
+): string {
+  const sub = id.replace(/^@\/(?:lib|db|types|components)\/?/, "");
+  const localPath = r(`${localBase}/${sub}`);
   const candidates = [
-    basePath,
-    `${basePath}.ts`,
-    `${basePath}.tsx`,
-    `${basePath}/index.ts`,
-    `${basePath}/index.tsx`,
+    localPath,
+    `${localPath}.ts`,
+    `${localPath}.tsx`,
+    `${localPath}/index.ts`,
+    `${localPath}/index.tsx`,
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate) && statSync(candidate).isFile()) {
       return candidate;
     }
   }
-  return null;
-}
-
-function resolveLocalFirst(
-  id: string,
-  localBase: string,
-  sharedBase: string,
-  importPrefix: RegExp = /^@\/(?:lib|db|types|components)\/?/,
-): string {
-  const sub = id.replace(importPrefix, "");
-  return (
-    resolveExistingFile(localBase, sub) ??
-    resolveExistingFile(sharedBase, sub) ??
-    r(`${sharedBase}/${sub}`)
-  );
+  if (existsSync(localPath) && statSync(localPath).isDirectory()) {
+    return localPath;
+  }
+  return r(`${sharedBase}/${sub}`);
 }
 
 export default defineConfig({
@@ -49,37 +42,6 @@ export default defineConfig({
       name: "eliza-cloud-frontend-alias-fallback",
       enforce: "pre",
       resolveId(source) {
-        if (source.startsWith(localLibPrefix)) {
-          const sub = source.slice(localLibPrefix.length);
-          if (sub.startsWith("hooks/")) {
-            return resolveLocalFirst(
-              `@/lib/${sub}`,
-              "./src/hooks",
-              "../cloud-shared/src/lib/hooks",
-              /^@\/lib\/hooks\//,
-            );
-          }
-          if (sub.startsWith("providers/")) {
-            return resolveLocalFirst(
-              `@/lib/${sub}`,
-              "./src/providers",
-              "../cloud-shared/src/lib/providers",
-              /^@\/lib\/providers\//,
-            );
-          }
-          if (sub.startsWith("stores/")) {
-            return resolveLocalFirst(
-              `@/lib/${sub}`,
-              "./src/lib/stores",
-              "../cloud-shared/src/lib/stores",
-              /^@\/lib\/stores\//,
-            );
-          }
-          return (
-            resolveExistingFile("./src/lib", sub) ??
-            resolveExistingFile("../cloud-shared/src/lib", sub)
-          );
-        }
         if (source === "@/lib/utils") {
           return r("./src/lib/utils.ts");
         }
@@ -88,7 +50,6 @@ export default defineConfig({
             source,
             "./src/hooks",
             "../cloud-shared/src/lib/hooks",
-            /^@\/lib\/hooks\//,
           );
         }
         if (source.startsWith("@/lib/providers/")) {
@@ -96,7 +57,6 @@ export default defineConfig({
             source,
             "./src/providers",
             "../cloud-shared/src/lib/providers",
-            /^@\/lib\/providers\//,
           );
         }
         if (source.startsWith("@/lib/stores/")) {
@@ -104,7 +64,6 @@ export default defineConfig({
             source,
             "./src/lib/stores",
             "../cloud-shared/src/lib/stores",
-            /^@\/lib\/stores\//,
           );
         }
         if (source.startsWith("@/lib/")) {
@@ -141,6 +100,19 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
+      { find: /^react$/, replacement: r("./node_modules/react/index.js") },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: r("./node_modules/react/jsx-runtime.js"),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: r("./node_modules/react-dom/index.js"),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: r("./node_modules/react-dom/client.js"),
+      },
       { find: /^@elizaos\/ui$/, replacement: r("../ui/src/cloud-ui/index.ts") },
       {
         find: /^@elizaos\/ui\/primitives$/,
@@ -166,6 +138,24 @@ export default defineConfig({
       {
         find: /^@\/packages(\/.*)?$/,
         replacement: `${r("../cloud-shared/src")}$1`,
+      },
+      { find: /^@\/lib\/hooks\/(.*)$/, replacement: `${r("./src/hooks")}/$1` },
+      { find: /^@\/hooks\/(.*)$/, replacement: `${r("./src/hooks")}/$1` },
+      {
+        find: /^@\/lib\/providers\/(.*)$/,
+        replacement: `${r("./src/providers")}/$1`,
+      },
+      {
+        find: /^@\/providers\/(.*)$/,
+        replacement: `${r("./src/providers")}/$1`,
+      },
+      {
+        find: /^@\/lib\/stores\/(.*)$/,
+        replacement: `${r("./src/lib/stores")}/$1`,
+      },
+      {
+        find: /^@\/stores\/(.*)$/,
+        replacement: `${r("./src/stores")}/$1`,
       },
       { find: /^@\/(.*)$/, replacement: `${r("./src")}/$1` },
     ],

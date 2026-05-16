@@ -233,7 +233,7 @@ export function DefenseAgentsOperatorSurface({
           {
             id: localEventId("defense-game"),
             label: response.disposition === "queued" ? "Queued" : "Defense",
-            message: response.message,
+            message: response.message ?? "Command accepted.",
             tone:
               response.disposition === "accepted"
                 ? "success"

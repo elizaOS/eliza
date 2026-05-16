@@ -281,9 +281,7 @@ async function buildAutomationNodeCatalog(
       availability: "enabled",
     }));
 
-  const runtimeProviderNodes: AutomationNodeDescriptor[] = (
-    runtime.providers ?? []
-  )
+  const runtimeProviderNodes: AutomationNodeDescriptor[] = (runtime.providers ?? [])
     .slice()
     .filter((provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name))
     .sort((left, right) => left.name.localeCompare(right.name))

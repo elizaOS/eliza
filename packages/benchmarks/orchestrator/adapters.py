@@ -102,7 +102,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # deterministic Python smoke path. Hermes/OpenClaw labels do not yet select
     # distinct harness implementations.
     "hyperliquid_bench": ("eliza",),
-    "hyperliquidbench": ("eliza",),
     # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
@@ -152,7 +151,12 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    if benchmark_id in {"hermes_tblite", "hermes_terminalbench_2", "hermes_swe_env"}:
+    if benchmark_id in {
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    }:
         return ("hermes",) if _has_hermes_sandbox_backend() else ()
     if benchmark_id in {"voicebench", "voicebench_quality"} and not os.environ.get("GROQ_API_KEY"):
         return ()
@@ -275,7 +279,7 @@ def _make_registry_adapter(
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
-        if benchmark_id in {"bfcl", "terminal_bench", "tau_bench"} and harness == "openclaw":
+        if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
         if benchmark_id == "hyperliquid_bench":
@@ -727,6 +731,11 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     if ctx.request.extra_config.get("mock") is True or provider_lower == "mock" or agent_lower == "dummy":
         args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
         args.extend(["--evaluator", "heuristic"])
+    elif agent_lower in {"eliza", "hermes", "openclaw"}:
+        args.extend(["--agent", agent_lower])
+        evaluator = ctx.request.extra_config.get("evaluator")
+        if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
+            args.extend(["--evaluator", evaluator])
     else:
         args.extend(["--agent", "eliza"])
         evaluator = ctx.request.extra_config.get("evaluator")
@@ -783,9 +792,13 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
 
 def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     existing = ctx.env.get("PYTHONPATH", "")
-    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    adapter_paths = [
+        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+        str((ctx.benchmarks_root / "hermes-adapter").resolve()),
+        str((ctx.benchmarks_root / "openclaw-adapter").resolve()),
+    ]
     env = {
-        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+        "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
     }
     model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().upper()
@@ -887,13 +900,33 @@ def _score_from_evm(path: Path) -> ScoreSummary:
     raw = data.get("final_reward")
     if not isinstance(raw, (int, float)):
         raise ValueError("evm result is incomplete: missing numeric final_reward")
-    score = float(raw) if isinstance(raw, (int, float)) else None
+    max_reward_raw = data.get("max_reward")
+    if isinstance(max_reward_raw, (int, float)):
+        max_reward = float(max_reward_raw)
+    else:
+        try:
+            from benchmarks.evm.skill_templates import (
+                get_total_expected_deterministic_reward,
+            )
+
+            max_reward = float(get_total_expected_deterministic_reward())
+        except Exception:
+            max_reward = float(raw) if float(raw) > 0 else 1.0
+    normalized_raw = data.get("normalized_score")
+    if isinstance(normalized_raw, (int, float)):
+        score = float(normalized_raw)
+    else:
+        score = float(raw) / max_reward if max_reward > 0 else 0.0
+    score = max(0.0, min(1.0, score))
     return ScoreSummary(
         score=score,
-        unit="unique_selectors",
+        unit="ratio",
         higher_is_better=True,
         metrics={
+            "normalized_score": score,
             "final_reward": raw,
+            "max_reward": max_reward,
+            "raw_unit": "unique_selectors",
             "final_contracts": data.get("final_contracts", 0),
             "model": data.get("model", ""),
             "run_id": data.get("run_id", ""),
@@ -973,7 +1006,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     if isinstance(max_steps, int) and max_steps > 0:
         args.extend(["--max_steps", str(max_steps)])
     else:
-        args.extend(["--max_steps", "15"])
+        args.extend(["--max_steps", "3"])
 
     max_tasks = ctx.request.extra_config.get("max_tasks")
     if isinstance(max_tasks, int) and max_tasks > 0:
@@ -1002,8 +1035,29 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         args.append("--headless")
     dry_run = ctx.request.extra_config.get("dry_run")
     if dry_run is True:
+        _validate_osworld_dry_run_label(ctx.request.extra_config)
         args.append("--dry_run")
     return args
+
+
+def _validate_osworld_dry_run_label(extra: dict[str, Any]) -> None:
+    agent_label = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+    mode_label = (
+        str(extra.get("run_mode") or extra.get("mode") or extra.get("suite") or "")
+        .strip()
+        .lower()
+    )
+    marked_smoke = extra.get("smoke") is True or mode_label in {
+        "smoke",
+        "dry_run",
+        "dry-run",
+        "smoke_dry_run",
+    }
+    if agent_label in {"eliza", "hermes", "openclaw"} and not marked_smoke:
+        raise ValueError(
+            "osworld dry_run is smoke-only. Set smoke=true or run_mode=smoke "
+            "for smoke rows; omit dry_run for real VM benchmark rows."
+        )
 
 
 def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -1422,6 +1476,20 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     import json
 
     data = json.loads(path.read_text(encoding="utf-8"))
+    overall_score = data.get("overall_score") if isinstance(data, dict) else None
+    if isinstance(overall_score, (int, float)):
+        return ScoreSummary(
+            score=float(overall_score),
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "runtime": data.get("runtime"),
+                "scenario_count": len(data.get("scenarios", {}))
+                if isinstance(data.get("scenarios"), dict)
+                else 0,
+                "primary_score_note": "Normalized correctness/SLO score; throughput metrics are secondary diagnostics.",
+            },
+        )
     scenarios = data.get("scenarios", {}) if isinstance(data, dict) else {}
     if not isinstance(scenarios, dict) or not scenarios:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
@@ -1446,14 +1514,20 @@ def _score_from_framework(path: Path) -> ScoreSummary:
 
     has_throughput_observation = total_messages >= 0 and total_time_ms > 0 and bool(scenarios)
     if has_throughput_observation:
-        score = (total_messages / total_time_ms) * 1000.0
-        unit = "messages_per_second"
+        raw_throughput = (total_messages / total_time_ms) * 1000.0
+        # Treat 50 messages/sec as the smoke SLO. The raw throughput remains
+        # in metrics; the primary score must stay a bounded 0..1 ratio so
+        # calibration and cross-benchmark comparisons are meaningful.
+        score = max(0.0, min(1.0, raw_throughput / 50.0))
+        unit = "ratio"
     elif latency_values:
         mean_latency = sum(latency_values) / len(latency_values)
-        score = 1000.0 / mean_latency if mean_latency > 0 else None
-        unit = "operations_per_second"
+        raw_throughput = 1000.0 / mean_latency if mean_latency > 0 else 0.0
+        score = max(0.0, min(1.0, raw_throughput / 50.0))
+        unit = "ratio"
     else:
         score = None
+        raw_throughput = None
         unit = None
 
     return ScoreSummary(
@@ -1463,11 +1537,13 @@ def _score_from_framework(path: Path) -> ScoreSummary:
         metrics={
             "runtime": data.get("runtime"),
             "scenario_count": len(scenarios),
+            "raw_throughput_per_second": raw_throughput,
             "total_messages": total_messages,
             "total_time_ms": total_time_ms,
             "mean_latency_ms": sum(latency_values) / len(latency_values)
             if latency_values
             else None,
+            "primary_score_note": "Normalized smoke SLO score capped at 1.0; raw throughput is tracked separately.",
         },
     )
 
@@ -1985,12 +2061,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "eliza_bench_http_timeout_s": 90,
             "hl_bench_command_timeout_s": 60,
         },
-        "hyperliquidbench": {
-            "max_steps": 1,
-            "max_iterations": 2,
-            "eliza_bench_http_timeout_s": 90,
-            "hl_bench_command_timeout_s": 60,
-        },
         "gsm8k": {
             "limit": 2,
             "max_tokens": 256,
@@ -2198,22 +2268,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         )
 
     extras: list[BenchmarkAdapter] = [
-        _make_extra_adapter(
-            adapter_id="hyperliquidbench",
-            directory="HyperliquidBench",
-            description="HyperliquidBench Eliza coverage benchmark",
-            cwd=str(workspace_root.resolve()),
-            command_builder=_command_hyperliquid,
-            result_patterns=["hyperliquid_bench-*.json", "runs/hyperliquid_bench-*.json"],
-            env_builder=_command_hyperliquid_env,
-            score_extractor=score_extractor_factory.for_benchmark("hyperliquid_bench"),
-            default_extra_config={
-                "max_steps": 1,
-                "max_iterations": 2,
-                "eliza_bench_http_timeout_s": 90,
-                "hl_bench_command_timeout_s": 60,
-            },
-        ),
         _make_extra_adapter(
             adapter_id="adhdbench",
             directory="adhdbench",
@@ -2473,6 +2527,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "docker_cpu_cores": 2,
                 "headless": True,
+                "max_steps": 3,
                 "max_tasks": 1,
                 "vm_ready_timeout_seconds": 21600,
             },

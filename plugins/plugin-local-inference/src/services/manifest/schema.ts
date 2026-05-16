@@ -138,7 +138,7 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
 // - All tiers require turboquant + qjl + polarquant.
-// - 2B and larger tiers require DFlash.
+// - Every active tier requires DFlash.
 // - All current text GGUFs ship at the 128k half-context floor or the 262k
 //   native tier, so every tier requires `turbo3_tcq`. The validator also
 //   enforces the same requirement dynamically for any bundle that declares
@@ -150,7 +150,7 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],

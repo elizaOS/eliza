@@ -3,12 +3,19 @@ import type { DevicePath } from "../../../onboarding/state-machine";
 export interface StateDeviceModeProps {
   devicePath: DevicePath | undefined;
   onChoose: (path: DevicePath) => void;
+  onStartLocalModelDownload: () => void;
   onBack: () => void;
   onContinue: () => void;
 }
 
-export function StateDeviceMode(props: StateDeviceModeProps): JSX.Element {
-  const { devicePath, onChoose, onBack, onContinue } = props;
+export function StateDeviceMode(props: StateDeviceModeProps): React.JSX.Element {
+  const {
+    devicePath,
+    onChoose,
+    onStartLocalModelDownload,
+    onBack,
+    onContinue,
+  } = props;
   const selected = devicePath ?? "local-cloud";
   return (
     <section
@@ -32,7 +39,10 @@ export function StateDeviceMode(props: StateDeviceModeProps): JSX.Element {
         <button
           type="button"
           className={`eliza-ob-choice${selected === "local-only" ? " selected" : ""}`}
-          onClick={() => onChoose("local-only")}
+          onClick={() => {
+            onChoose("local-only");
+            onStartLocalModelDownload();
+          }}
         >
           <strong>All local</strong>
           <span>Download models and keep the next phase on this device.</span>

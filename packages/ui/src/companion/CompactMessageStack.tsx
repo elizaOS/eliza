@@ -18,7 +18,7 @@ const DEFAULT_COLLAPSED = 3;
 
 export function CompactMessageStack(
   props: CompactMessageStackProps,
-): JSX.Element {
+): React.JSX.Element {
   const { messages, collapsedCount = DEFAULT_COLLAPSED, className } = props;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showAll, setShowAll] = useState(false);

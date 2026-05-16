@@ -1,10 +1,13 @@
 export type {
-  AndroidUserAgentMarker,
   AospVariantConfig,
+  AndroidUserAgentMarker,
   AppAndroidConfig,
   AppConfig,
   AppDesktopConfig,
   AppPackagingConfig,
   AppWebConfig,
 } from "@elizaos/shared";
-export { resolveAppBranding } from "@elizaos/shared";
+export {
+  DEFAULT_APP_CONFIG,
+  resolveAppBranding,
+} from "@elizaos/shared";

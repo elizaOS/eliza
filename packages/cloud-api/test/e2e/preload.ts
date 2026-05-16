@@ -1,19 +1,29 @@
 /**
  * Worker-targeted e2e preload.
  *
- * The Worker e2e files skip cleanly when no Worker is listening. CI uses this
- * as a syntax/import smoke for the route tests before deploying the Worker;
- * local and staging runs can opt into hard failures with REQUIRE_E2E_SERVER=1.
+ * Mirrors `cloud/packages/tests/e2e/preload.ts` but does NOT boot the legacy
+ * Next.js dev server — the Worker-targeted suite expects an already-running
+ * Worker (typically `wrangler dev` on :8787) and just needs:
+ *
+ *   1. Env loaded from .env / .env.local / .env.test.
+ *   2. Local Postgres seeded with the test org/user/api-key, which exports
+ *      TEST_API_KEY into process.env.
+ *
+ * Run with: bun test --preload <this-file> apps/api/test/e2e
  */
 
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { config } from "dotenv";
+import { eq } from "drizzle-orm";
+import { dbWrite } from "../../../cloud-shared/src/db/helpers";
+import { apiKeysService } from "../../../cloud-shared/src/lib/services/api-keys";
+import { agentSandboxesRepository } from "../../../cloud-shared/src/db/repositories/agent-sandboxes";
+import { organizations } from "../../../cloud-shared/src/db/schemas/organizations";
+import { users } from "../../../cloud-shared/src/db/schemas/users";
+import { usersRepository } from "../../../cloud-shared/src/db/repositories/users";
 
-for (const envPath of [
-  resolve(".env"),
-  resolve(".env.local"),
-  resolve(".env.test"),
-]) {
+for (const envPath of [resolve("../../.env"), resolve("../../.env.local"), resolve("../../.env.test")]) {
   config({ path: envPath });
 }
 
@@ -37,16 +47,122 @@ if (process.env.SKIP_DB_DEPENDENT === "1") {
   );
 }
 
-if (!process.env.TEST_API_KEY?.trim()) {
-  console.warn(
-    "[worker-e2e] TEST_API_KEY is not set; auth-gated Worker e2e tests will skip.",
-  );
+async function ensureTestUser({
+  slug,
+  email,
+  stewardUserId,
+  role = "admin",
+}: {
+  slug: string;
+  email: string;
+  stewardUserId: string;
+  role?: string;
+}) {
+  const existingOrg = await dbWrite.query.organizations.findFirst({
+    where: eq(organizations.slug, slug),
+  });
+  const organization =
+    existingOrg ??
+    (
+      await dbWrite
+        .insert(organizations)
+        .values({
+          name: slug,
+          slug,
+          billing_email: email,
+          credit_balance: "1000.000000",
+        })
+        .returning()
+    )[0];
+
+  const existingUser = await dbWrite.query.users.findFirst({
+    where: eq(users.steward_user_id, stewardUserId),
+  });
+  const user =
+    existingUser ??
+    (
+      await dbWrite
+        .insert(users)
+        .values({
+          email,
+          email_verified: true,
+          name: slug,
+          organization_id: organization.id,
+          role,
+          steward_user_id: stewardUserId,
+          wallet_address: `0x${randomUUID().replaceAll("-", "").slice(0, 40)}`,
+          wallet_chain_type: "evm",
+          wallet_verified: true,
+        })
+        .returning()
+    )[0];
+
+  await dbWrite
+    .update(organizations)
+    .set({ credit_balance: "1000.000000", is_active: true, updated_at: new Date() })
+    .where(eq(organizations.id, organization.id));
+  await dbWrite
+    .update(users)
+    .set({
+      email,
+      organization_id: organization.id,
+      role,
+      is_active: true,
+      updated_at: new Date(),
+    })
+    .where(eq(users.id, user.id));
+  await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
+
+  const sandboxes = await agentSandboxesRepository.listByOrganization(organization.id);
+  if (sandboxes.length === 0) {
+    await agentSandboxesRepository.create({
+      organization_id: organization.id,
+      user_id: user.id,
+      sandbox_id: `${slug}-sandbox`,
+      status: "running",
+      agent_name: `${slug} test agent`,
+      bridge_url: "http://127.0.0.1:65535",
+      health_url: "http://127.0.0.1:65535/health",
+      database_status: "ready",
+      environment_vars: {},
+    });
+  }
+
+  await apiKeysService.deactivateUserKeysByName(user.id, "playwright-e2e");
+  const { plainKey } = await apiKeysService.create({
+    name: "playwright-e2e",
+    description: "Local cloud API e2e test key",
+    organization_id: organization.id,
+    user_id: user.id,
+    permissions: ["read", "write", "admin"],
+    rate_limit: 10_000,
+    is_active: true,
+  });
+
+  return { organization, user, plainKey };
 }
 
-if (
-  process.env.REQUIRE_E2E_SERVER === "1" ||
-  process.env.REQUIRE_E2E_SERVER === "true"
-) {
+const owner = await ensureTestUser({
+  slug: "playwright-e2e-org",
+  email: "playwright-owner@elizalabs.ai",
+  stewardUserId: "playwright-e2e-owner",
+  role: "admin",
+});
+const member = await ensureTestUser({
+  slug: "playwright-e2e-member-org",
+  email: "playwright-member@example.test",
+  stewardUserId: "playwright-e2e-member",
+  role: "member",
+});
+
+process.env.TEST_API_KEY = owner.plainKey;
+process.env.TEST_MEMBER_API_KEY = member.plainKey;
+process.env.TEST_AFFILIATE_API_KEY = owner.plainKey;
+process.env.TEST_USER_ID = owner.user.id;
+process.env.TEST_USER_EMAIL = owner.user.email ?? "playwright-owner@example.test";
+process.env.TEST_ORGANIZATION_ID = owner.organization.id;
+
+if (process.env.REQUIRE_E2E_SERVER !== "0") {
   const baseUrl =
     process.env.TEST_API_BASE_URL?.trim() ||
     process.env.TEST_BASE_URL?.trim() ||

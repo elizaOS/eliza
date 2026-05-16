@@ -12,27 +12,14 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"],
-      "@elizaos/agent": ["../../../packages/agent/dist/index.d.ts"],
-      "@elizaos/agent/*": ["../../../packages/agent/dist/*"],
-      "@elizaos/shared": ["../../../packages/shared/src/index.ts"],
-      "@elizaos/shared/local-inference": [
-        "../../../packages/shared/src/local-inference/index.ts"
-      ],
-      "@elizaos/shared/*": ["../../../packages/shared/src/*"],
-      "@elizaos/app-core": ["../../../packages/app-core/dist/index.d.ts"],
-      "@elizaos/app-core/*": ["../../../packages/app-core/dist/*"],
       "@elizaos/plugin-capacitor-bridge": [
-        "../../../plugins/plugin-capacitor-bridge/dist/index.d.ts"
+        "../../../plugins/plugin-capacitor-bridge/src/index.ts"
       ],
       "@elizaos/plugin-inmemorydb": [
-        "../../../plugins/plugin-inmemorydb/dist/index.d.ts"
+        "../../../plugins/plugin-inmemorydb/index.ts"
       ],
       "@elizaos/plugin-local-inference": [
         "../../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "../../../plugins/plugin-local-inference/src/*"
       ],
       "@elizaos/plugin-shell": ["../../../plugins/plugin-shell/dist/index.d.ts"]
     }

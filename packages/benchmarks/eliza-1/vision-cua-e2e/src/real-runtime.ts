@@ -108,7 +108,7 @@ export async function discoverRuntimeAdapter(
 async function tryBuildAnthropicAdapter(
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<RealRuntimeAdapter | null> {
-  let handleImageDescription: typeof import("@elizaos/plugin-anthropic/models/image").handleImageDescription;
+  let handleImageDescription: typeof import("../../../../../plugins/plugin-anthropic/models/image.ts").handleImageDescription;
   try {
     // The bundled @elizaos/plugin-anthropic only ships `dist/index.js`. The
     // image-description handler lives at `models/image.ts` and is reachable
@@ -116,7 +116,7 @@ async function tryBuildAnthropicAdapter(
     // because the public bundle doesn't re-export it.
     const mod: { handleImageDescription: typeof handleImageDescription } =
       await import(
-        "../../../../plugins/plugin-anthropic/models/image.ts" as string
+        "../../../../../plugins/plugin-anthropic/models/image.ts" as string
       );
     handleImageDescription = mod.handleImageDescription;
   } catch (err) {

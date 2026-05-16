@@ -37,7 +37,7 @@ def _latest_by_benchmark_agent(conn) -> dict[tuple[str, str], dict[str, Any]]:
     for row in list_runs(conn, limit=None):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
-        if row.get("status") == "skipped":
+        if row.get("status") in {"queued", "running", "skipped"}:
             continue
         if not benchmark_id or not agent:
             continue

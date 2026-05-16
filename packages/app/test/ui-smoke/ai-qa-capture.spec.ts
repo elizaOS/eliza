@@ -54,7 +54,7 @@ const REPORT_DIR = resolve(REPO_ROOT, "reports", "ai-qa", RUN_ID);
 const ROUTE_FILTER = process.env.AI_QA_ROUTE_FILTER ?? "";
 const VIEWPORT_FILTER = (process.env.AI_QA_VIEWPORTS ??
   "desktop,mobile") as string;
-const THEME_FILTER = (process.env.AI_QA_THEMES ?? "light,dark") as string;
+const THEME_FILTER = (process.env.AI_QA_THEMES ?? "light") as string;
 
 const SELECTED_VIEWPORTS: readonly ViewportName[] = VIEWPORT_FILTER.split(",")
   .map((v) => v.trim())

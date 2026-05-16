@@ -181,7 +181,7 @@ class StreamManager {
         new Promise((resolve) => this.ffmpeg?.on("exit", resolve)),
         new Promise((resolve) => setTimeout(resolve, 2000)),
       ]);
-      if (this.ffmpeg.exitCode === null) {
+      if (this.ffmpeg?.exitCode === null) {
         this.ffmpeg.kill("SIGKILL");
       }
     }

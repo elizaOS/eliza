@@ -16,7 +16,7 @@ const PROVIDERS: ReadonlyArray<{
   { id: "email", label: "Continue with Email", mark: "@" },
 ];
 
-export function StateCloudLogin(props: StateCloudLoginProps): JSX.Element {
+export function StateCloudLogin(props: StateCloudLoginProps): React.JSX.Element {
   const { onConnect, onBack } = props;
   return (
     <section

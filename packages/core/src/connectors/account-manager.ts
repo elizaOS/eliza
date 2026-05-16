@@ -1324,8 +1324,12 @@ export class ConnectorAccountManager extends Service {
 		input: ConnectorAccountPatch,
 	): Promise<ConnectorAccount> {
 		const providerId = normalizeProvider(provider);
-		const accountId = randomId(`acct_${providerId}`);
 		const registered = this.providers.get(providerId);
+		const accountId =
+			typeof (input as Partial<ConnectorAccount>).id === "string" &&
+			(input as Partial<ConnectorAccount>).id?.trim()
+				? (input as Partial<ConnectorAccount>).id
+				: randomId(`acct_${providerId}`);
 		if (registered?.createAccount) {
 			const created = await registered.createAccount(input, this);
 			return this.upsertAccount(providerId, created, accountId);

@@ -114,7 +114,6 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          (cd packages/contracts && bun run build)
           (cd packages/core && bun run build.ts --node-only)
           for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/ui; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then

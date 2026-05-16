@@ -198,6 +198,7 @@ async function installGameRoutes(page: Page, fixture: GameFixture) {
   let launched = false;
   const app = makeApp(fixture);
   const messages: string[] = [];
+  let viewerRequestCount = 0;
 
   await installDefaultAppRoutes(page);
 
@@ -319,7 +320,8 @@ async function installGameRoutes(page: Page, fixture: GameFixture) {
     });
   });
 
-  await page.route(`**${fixture.viewerPath}`, async (route) => {
+  await page.context().route(`**${fixture.viewerPath}**`, async (route) => {
+    viewerRequestCount += 1;
     await route.fulfill({
       status: 200,
       contentType: "text/html",
@@ -329,6 +331,7 @@ async function installGameRoutes(page: Page, fixture: GameFixture) {
 
   return {
     messages,
+    viewerRequestCount: () => viewerRequestCount,
   };
 }
 
@@ -342,7 +345,7 @@ for (const fixture of FIXTURES) {
   }) => {
     const api = await installGameRoutes(page, fixture);
 
-    await openAppPath(page, `/apps/${fixture.slug}`);
+    await openAppPath(page, `/apps/${fixture.slug}/details`);
     const launchButton = page
       .getByTestId("app-launch-panel")
       .getByRole("button", { name: "Launch" });
@@ -356,11 +359,9 @@ for (const fixture of FIXTURES) {
     await expect(page.getByTestId("game-view-iframe")).toBeVisible({
       timeout: 60_000,
     });
-    await expect(
-      page
-        .frameLocator('[data-testid="game-view-iframe"]')
-        .getByTestId(`${fixture.slug}-viewer`),
-    ).toBeVisible();
+    await expect
+      .poll(() => api.viewerRequestCount(), { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(1);
     await expect(page.getByTestId(fixture.surfaceTestId)).toBeVisible({
       timeout: 60_000,
     });

@@ -52,7 +52,7 @@ const getStatusBadge = (status: ToolUIPart["state"]) => {
     "output-denied": "Denied",
   };
 
-  const icons: Record<ToolUIPart["state"], JSX.Element> = {
+  const icons: Record<ToolUIPart["state"], React.JSX.Element> = {
     "input-streaming": <CircleIcon className="size-4" />,
     "input-available": <ClockIcon className="size-4 animate-pulse" />,
     "approval-requested": <CircleIcon className="size-4" />,

@@ -98,83 +98,37 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
     payloads = {
         f"text/eliza-1-{tier}-128k.gguf": b"\x00gguf\x00",
+        "tts/omnivoice-base-Q4_K_M.gguf": b"omnivoice-model",
+        "tts/omnivoice-tokenizer-Q4_K_M.gguf": b"omnivoice-tokenizer",
         "tts/kokoro/model_q4.onnx": b"kokoro-model",
         "tts/kokoro/tokenizer.json": b"kokoro-tokenizer",
         "tts/kokoro/voices/af_bella.bin": b"kokoro-voice",
         "asr/eliza-1-asr.gguf": b"asr",
+        f"vision/mmproj-{tier}.gguf": b"vision",
+        f"dflash/drafter-{tier}.gguf": b"drafter",
         "vad/silero-vad-v5.1.2.ggml.bin": b"vad",
         "cache/voice-preset-default.bin": b"cache",
     }
-    if tier != "0_8b":
-        payloads[f"dflash/drafter-{tier}.gguf"] = b"drafter"
     for rel, payload in payloads.items():
         path = bundle / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payload)
     sha = {rel: hashlib.sha256(payload).hexdigest() for rel, payload in payloads.items()}
-    if tier == "0_8b":
-        policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
-        policy_payload = json.dumps(
-            {
-                "schemaVersion": 1,
-                "kind": "dflash-release-policy",
-                "tier": tier,
-                "status": "disabled",
-                "releaseMode": "fail-open-no-drafter",
-                "requiresDrafter": False,
-                "releaseEligibleWithoutDrafter": True,
-            }
-        ).encode("utf-8")
-        policy_path = bundle / policy_rel
-        policy_path.parent.mkdir(parents=True, exist_ok=True)
-        policy_path.write_bytes(policy_payload)
-        policy_sha = hashlib.sha256(policy_payload).hexdigest()
-        target_rel = f"text/eliza-1-{tier}-128k.gguf"
-        (bundle / "dflash" / "target-meta.json").write_text(
-            json.dumps(
-                {
-                    "schemaVersion": 2,
-                    "tier": tier,
-                    "status": "disabled",
-                    "dflashEnabled": False,
-                    "publishEligible": False,
-                    "releaseMode": "fail-open-no-drafter",
-                    "acceptanceRate": None,
-                    "acceptanceWindow": None,
-                    "drafter": None,
-                    "disabledPolicy": {
-                        "path": policy_rel,
-                        "sha256": policy_sha,
-                        "releaseMode": "fail-open-no-drafter",
-                        "requiresDrafter": False,
-                    },
-                    "targetText": {
-                        "path": target_rel,
-                        "sha256": sha[target_rel],
-                        "finalElizaWeights": True,
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-    dflash_entries = []
     lineage = {
         "text": {"base": "local-text", "license": "apache-2.0"},
-        "voice": {"base": "local-kokoro", "license": "apache-2.0"},
+        "voice": {"base": "local-voice", "license": "apache-2.0"},
         "asr": {"base": "local-asr", "license": "apache-2.0"},
+        "vision": {"base": "local-vision", "license": "apache-2.0"},
+        "drafter": {"base": "local-drafter", "license": "apache-2.0"},
         "vad": {"base": "local-vad", "license": "mit"},
     }
-    if tier != "0_8b":
-        dflash_entries = [
-            {
-                "path": f"dflash/drafter-{tier}.gguf",
-                "sha256": sha[f"dflash/drafter-{tier}.gguf"],
-            }
-        ]
-        lineage["drafter"] = {"base": "local-drafter", "license": "apache-2.0"}
-    required_kernels = ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"]
-    if tier != "0_8b":
-        required_kernels.append("dflash")
+    dflash_entries = [
+        {
+            "path": f"dflash/drafter-{tier}.gguf",
+            "sha256": sha[f"dflash/drafter-{tier}.gguf"],
+        }
+    ]
+    required_kernels = ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"]
     (bundle / "eliza-1.manifest.json").write_text(json.dumps({
         "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
         "id": f"eliza-1-{tier}",
@@ -185,12 +139,14 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
         "files": {
             "text": [{"path": f"text/eliza-1-{tier}-128k.gguf", "sha256": sha[f"text/eliza-1-{tier}-128k.gguf"], "ctx": 131072}],
             "voice": [
+                {"path": "tts/omnivoice-base-Q4_K_M.gguf", "sha256": sha["tts/omnivoice-base-Q4_K_M.gguf"]},
+                {"path": "tts/omnivoice-tokenizer-Q4_K_M.gguf", "sha256": sha["tts/omnivoice-tokenizer-Q4_K_M.gguf"]},
                 {"path": "tts/kokoro/model_q4.onnx", "sha256": sha["tts/kokoro/model_q4.onnx"]},
                 {"path": "tts/kokoro/tokenizer.json", "sha256": sha["tts/kokoro/tokenizer.json"]},
                 {"path": "tts/kokoro/voices/af_bella.bin", "sha256": sha["tts/kokoro/voices/af_bella.bin"]},
             ],
             "asr": [{"path": "asr/eliza-1-asr.gguf", "sha256": sha["asr/eliza-1-asr.gguf"]}],
-            "vision": [],
+            "vision": [{"path": f"vision/mmproj-{tier}.gguf", "sha256": sha[f"vision/mmproj-{tier}.gguf"]}],
             "dflash": dflash_entries,
             "cache": [{"path": "cache/voice-preset-default.bin", "sha256": sha["cache/voice-preset-default.bin"]}],
             "vad": [{"path": "vad/silero-vad-v5.1.2.ggml.bin", "sha256": sha["vad/silero-vad-v5.1.2.ggml.bin"]}],
@@ -288,7 +244,10 @@ def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -
     assert evidence["final"]["licenses"] is True
     # Real upstream license text + sidecar were written.
     assert (bundle / "licenses" / "license-manifest.json").is_file()
-    assert verify_bundle_licenses(bundle / "licenses", ["text", "voice", "asr", "vad", "dflash"]) == []
+    assert verify_bundle_licenses(
+        bundle / "licenses",
+        ["text", "voice", "asr", "vad", "dflash", "vision"],
+    ) == []
     # Everything that needs GPU/operator work stays false.
     assert evidence["final"]["evals"] is False
     assert evidence["final"]["kernelDispatchReports"] is False

@@ -381,7 +381,7 @@ class TtsStreamBridge implements ITtsStreamBridge {
       );
 
       const chunks: Buffer[] = [];
-      proc.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+      proc.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
       proc.on("close", (code) => {
         if (code === 0) {
           resolve(Buffer.concat(chunks));
@@ -390,8 +390,8 @@ class TtsStreamBridge implements ITtsStreamBridge {
         }
       });
       proc.on("error", reject);
-      proc.stdin.write(audio);
-      proc.stdin.end();
+      proc.stdin?.write(audio);
+      proc.stdin?.end();
     });
   }
 }

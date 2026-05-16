@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { Service, type IAgentRuntime } from "@elizaos/core";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -98,7 +98,7 @@ export class AcpService extends Service {
   readonly defaultApprovalPreset: ApprovalPreset;
   readonly agentSelectionStrategy: string;
 
-  protected override readonly runtime: RuntimeLike;
+  protected readonly runtime: RuntimeLike;
   private readonly logger: RuntimeLogger;
   private readonly store: SessionStore;
   private readonly cliPath: string;

@@ -71,7 +71,7 @@ describe("EngineVoiceBridge — kokoroOnly mode", () => {
 			kokoroOnly: makeKokoroConfig(),
 			lifecycleLoaders: lifecycleLoadersOk(),
 		});
-		expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
+		expect(bridge.backend?.id).toBe("kokoro");
 		expect(bridge.asrAvailable).toBe(false); // ASR is not served from this path
 		expect(bridge.ffi).toBeNull();
 		bridge.dispose();
@@ -84,7 +84,7 @@ describe("EngineVoiceBridge — kokoroOnly mode", () => {
 			kokoroOnly: makeKokoroConfig(),
 			lifecycleLoaders: lifecycleLoadersOk(),
 		});
-		expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
+		expect(bridge.backend?.id).toBe("kokoro");
 		bridge.dispose();
 	});
 

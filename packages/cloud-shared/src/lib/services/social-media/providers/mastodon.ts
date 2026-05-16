@@ -80,7 +80,7 @@ async function mastodonApiRequest<T>(
         const error = await response.text();
         throw new Error(`Mastodon API error: ${response.status} - ${error}`);
       }
-      return (await response.json()) as T;
+      return response.json();
     },
     { platform: "mastodon", maxRetries: 3 },
   );
@@ -124,7 +124,7 @@ async function uploadMedia(
     throw new Error(`Media upload failed: ${response.status} - ${error}`);
   }
 
-  return (await response.json()) as MastodonMedia;
+  return response.json();
 }
 
 export const mastodonProvider: SocialMediaProvider = {

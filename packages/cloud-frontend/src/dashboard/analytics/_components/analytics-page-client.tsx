@@ -62,7 +62,7 @@ export function AnalyticsPageClient({
     },
   ];
 
-  const rangeLabel = `${format(data.filters.startDate, "MMM d, yyyy")} → ${format(data.filters.endDate, "MMM d, yyyy")}`;
+  const rangeLabel = `${format(new Date(data.filters.startDate), "MMM d, yyyy")} → ${format(new Date(data.filters.endDate), "MMM d, yyyy")}`;
   const granularityLabel =
     {
       hour: "Hourly",

@@ -15,7 +15,7 @@ FROM base AS builder
 COPY package.json tsconfig.json ./
 COPY src ./src
 COPY --from=deps /app/node_modules ./node_modules
-RUN bun build src/index.ts --outdir dist --target node
+RUN bun build src/index.ts --outdir dist --target node --external zlib-sync
 
 # Production stage
 FROM base AS runner

@@ -86,7 +86,7 @@ defaults:
     working-directory: packages/cloud-shared
 
 env:
-  BUN_VERSION: "1.3.13"
+  BUN_VERSION: "1.3.5"
   TF_VERSION: "1.7.0"
   IMAGE_REPO: ghcr.io/elizaos/cloud/gateway-discord
   REGISTRY: ghcr.io

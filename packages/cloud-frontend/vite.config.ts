@@ -13,7 +13,22 @@ import { defineConfig, loadEnv } from "vite";
 // package at `packages/cloud-shared/src/{lib,db,types}` and to the local
 // `content/` directory in this package.
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
-const localLibPrefix = `${r("./src/lib")}/`;
+
+function resolveFile(path: string): string {
+  const candidates = [
+    path,
+    `${path}.ts`,
+    `${path}.tsx`,
+    `${path}/index.ts`,
+    `${path}/index.tsx`,
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return path;
+}
 
 // Some subtrees under `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` were
 // moved into this package (browser-only files: utils.ts, hooks, providers,
@@ -21,35 +36,19 @@ const localLibPrefix = `${r("./src/lib")}/`;
 // and prefers the local `src/<subpath>` when the file exists, falling back to
 // cloud-shared otherwise. This avoids touching hundreds of imports in source
 // files.
-function resolveExistingFile(base: string, sub: string): string | null {
-  const basePath = r(`${base}/${sub}`);
-  const candidates = [
-    basePath,
-    `${basePath}.ts`,
-    `${basePath}.tsx`,
-    `${basePath}/index.ts`,
-    `${basePath}/index.tsx`,
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate) && statSync(candidate).isFile()) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
 function resolveLocalFirst(
   id: string,
   localBase: string,
   sharedBase: string,
-  importPrefix: RegExp = /^@\/(?:lib|db|types|components)\/?/,
 ): string {
-  const sub = id.replace(importPrefix, "");
-  return (
-    resolveExistingFile(localBase, sub) ??
-    resolveExistingFile(sharedBase, sub) ??
-    r(`${sharedBase}/${sub}`)
-  );
+  const sub = id.replace(/^@\/(?:lib|db|types|components)\/?/, "");
+  for (const base of [localBase, sharedBase]) {
+    const resolved = resolveFile(r(`${base}/${sub}`));
+    if (resolved !== r(`${base}/${sub}`)) {
+      return resolved;
+    }
+  }
+  return r(`${sharedBase}/${sub}`);
 }
 
 // Whitelist of env vars that get baked into the client bundle. Anything not
@@ -120,8 +119,11 @@ export default defineConfig(({ mode }) => {
         name: "eliza-blog-raw-mdx",
         enforce: "pre",
         transform(source, id) {
-          const [filePath, query] = id.split("?");
-          if (query?.split("&").includes("raw")) {
+          const queryIndex = id.indexOf("?");
+          const filePath =
+            queryIndex === -1 ? id : id.slice(0, queryIndex);
+          const query = queryIndex === -1 ? "" : id.slice(queryIndex + 1);
+          if (query === "raw" || query.includes("&raw")) {
             return null;
           }
           if (
@@ -155,37 +157,6 @@ export default defineConfig(({ mode }) => {
         name: "eliza-cloud-frontend-alias-fallback",
         enforce: "pre",
         resolveId(source) {
-          if (source.startsWith(localLibPrefix)) {
-            const sub = source.slice(localLibPrefix.length);
-            if (sub.startsWith("hooks/")) {
-              return resolveLocalFirst(
-                `@/lib/${sub}`,
-                "./src/hooks",
-                "../cloud-shared/src/lib/hooks",
-                /^@\/lib\/hooks\//,
-              );
-            }
-            if (sub.startsWith("providers/")) {
-              return resolveLocalFirst(
-                `@/lib/${sub}`,
-                "./src/providers",
-                "../cloud-shared/src/lib/providers",
-                /^@\/lib\/providers\//,
-              );
-            }
-            if (sub.startsWith("stores/")) {
-              return resolveLocalFirst(
-                `@/lib/${sub}`,
-                "./src/lib/stores",
-                "../cloud-shared/src/lib/stores",
-                /^@\/lib\/stores\//,
-              );
-            }
-            return (
-              resolveExistingFile("./src/lib", sub) ??
-              resolveExistingFile("../cloud-shared/src/lib", sub)
-            );
-          }
           if (source === "@/lib/utils") {
             return r("./src/lib/utils.ts");
           }
@@ -194,7 +165,6 @@ export default defineConfig(({ mode }) => {
               source,
               "./src/hooks",
               "../cloud-shared/src/lib/hooks",
-              /^@\/lib\/hooks\//,
             );
           }
           if (source.startsWith("@/lib/providers/")) {
@@ -202,7 +172,6 @@ export default defineConfig(({ mode }) => {
               source,
               "./src/providers",
               "../cloud-shared/src/lib/providers",
-              /^@\/lib\/providers\//,
             );
           }
           if (source.startsWith("@/lib/stores/")) {
@@ -210,7 +179,6 @@ export default defineConfig(({ mode }) => {
               source,
               "./src/lib/stores",
               "../cloud-shared/src/lib/stores",
-              /^@\/lib\/stores\//,
             );
           }
           if (source.startsWith("@/lib/")) {
@@ -240,6 +208,9 @@ export default defineConfig(({ mode }) => {
               "./src/components",
               "../../packages/ui/src/cloud-ui/components",
             );
+          }
+          if (source.startsWith("@/")) {
+            return resolveFile(r(`./src/${source.slice(2)}`));
           }
           return null;
         },
@@ -345,6 +316,48 @@ export default defineConfig(({ mode }) => {
           find: /^@elizaos\/cloud-shared\/(.*)$/,
           replacement: `${r("../cloud-shared/src")}/$1`,
         },
+        {
+          find: /^@\/lib\/hooks\/(.*)$/,
+          replacement: `${r("./src/hooks")}/$1`,
+        },
+        {
+          find: /^@\/lib\/providers\/(.*)$/,
+          replacement: `${r("./src/providers")}/$1`,
+        },
+        {
+          find: /^@\/lib\/stores\/(.*)$/,
+          replacement: `${r("./src/lib/stores")}/$1`,
+        },
+        {
+          find: /^@\/lib\/utils\/logger$/,
+          replacement: r("../cloud-shared/src/lib/utils/logger.ts"),
+        },
+        {
+          find: /^@\/lib\/config\/feature-flags$/,
+          replacement: r("../cloud-shared/src/lib/config/feature-flags.ts"),
+        },
+        {
+          find: /^@\/lib\/onboarding\/tours$/,
+          replacement: r("../cloud-shared/src/lib/onboarding/tours.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/copy-to-clipboard$/,
+          replacement: r("../cloud-shared/src/lib/utils/copy-to-clipboard.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/default-avatar$/,
+          replacement: r("../cloud-shared/src/lib/utils/default-avatar.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/referral-invite-url$/,
+          replacement: r(
+            "../cloud-shared/src/lib/utils/referral-invite-url.ts",
+          ),
+        },
+        {
+          find: /^@\/lib\/utils\/referral-me-fetch$/,
+          replacement: r("../cloud-shared/src/lib/utils/referral-me-fetch.ts"),
+        },
         // `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` are handled by
         // the `eliza-cloud-frontend-alias-fallback` plugin above (local-first,
         // cloud-shared fallback).
@@ -352,7 +365,6 @@ export default defineConfig(({ mode }) => {
           find: /^@\/packages(\/.*)?$/,
           replacement: `${r("../cloud-shared/src")}$1`,
         },
-        { find: /^@\/(.*)$/, replacement: `${r("./src")}/$1` },
       ],
     },
     server: {

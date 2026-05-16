@@ -126,7 +126,7 @@ function withPathParams(path: string, params?: Record<string, string | number>):
 }
 
 function getCryptoRandomUuid(): string {
-  if (globalThis.crypto.randomUUID) {
+  if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
   }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;

@@ -29,6 +29,9 @@ def _seed_assets(bundle: Path) -> None:
     --skip-assets path has a valid starting point (no HF network)."""
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"omnivoice-base")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"omnivoice-tok")
+    _write(bundle / "tts" / "kokoro" / "model_q4.onnx", b"kokoro-model")
+    _write(bundle / "tts" / "kokoro" / "tokenizer.json", b"kokoro-tokenizer")
+    _write(bundle / "tts" / "kokoro" / "voices" / "af_bella.bin", b"kokoro-voice")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
     _write(bundle / "asr" / "eliza-1-asr-mmproj.gguf", b"asr-mmproj")
     _write(bundle / "vad" / "silero-vad-v5.1.2.ggml.bin", b"vad")
@@ -74,10 +77,11 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     recipes = _seed_recipes(tmp_path / "recipes")
     text_gguf = _write(tmp_path / "src" / "text.gguf", b"text-weights")
     drafter_gguf = _write(tmp_path / "src" / "drafter.gguf", b"drafter-weights")
+    vision_gguf = _write(tmp_path / "src" / "mmproj.gguf", b"vision-weights")
 
     args = argparse.Namespace(
         tier="0_8b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
-        recipes_dir=recipes, vision_gguf=None,
+        recipes_dir=recipes, vision_gguf=vision_gguf,
         text_lineage_repo="Qwen/Qwen3.5-0.8B", text_lineage_rev="deadbeef",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
@@ -97,8 +101,11 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.8B@deadbeef"
     # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
+    assert manifest["lineage"]["drafter"]["base"].startswith("dflash-0_8b-drafter")
     assert manifest["files"]["text"][0]["ctx"] == 131072
     assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
+    assert manifest["files"]["dflash"][0]["path"] == "dflash/drafter-0_8b.gguf"
+    assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-0_8b.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
@@ -112,8 +119,10 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     target_meta = json.loads((bundle / "dflash" / "target-meta.json").read_text())
     assert target_meta["status"] == "weights-staged"
     assert target_meta["targetText"]["finalElizaWeights"] is True
-    # Stamp-only stand-in drafter has no recorded target sha here.
-    assert target_meta["drafter"]["matchesTargetCheckpoint"] is False
+    assert target_meta["drafter"]["path"] == "dflash/drafter-0_8b.gguf"
+    assert target_meta["kernelCaps"]["required"]
+    assert not (bundle / "dflash" / "dflash-disabled-0_8b.release-policy.json").exists()
+    assert (bundle / "dflash" / "drafter-0_8b.gguf").is_file()
 
     # wakeword lineage entry must have been dropped (no wakeword files staged).
     lineage = json.loads((bundle / "lineage.json").read_text())
@@ -138,9 +147,10 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     recipes = _seed_recipes(tmp_path / "recipes")
     text_gguf = _write(tmp_path / "src" / "text.gguf", b"text-weights")
     drafter_gguf = _write(tmp_path / "src" / "drafter.gguf", b"drafter-weights")
+    vision_gguf = _write(tmp_path / "src" / "vision.gguf", b"vision-weights")
     args = argparse.Namespace(
         tier="4b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
-        recipes_dir=recipes, vision_gguf=None,
+        recipes_dir=recipes, vision_gguf=vision_gguf,
         text_lineage_repo="Qwen/Qwen3.5-4B", text_lineage_rev="cafebabe",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",

@@ -35,7 +35,10 @@
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/dist/index.d.ts"
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
       ],
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../../packages/ui/dist/*"],

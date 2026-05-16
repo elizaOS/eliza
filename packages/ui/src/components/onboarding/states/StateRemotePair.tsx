@@ -5,7 +5,7 @@ export interface StateRemotePairProps {
   onBack: () => void;
 }
 
-export function StateRemotePair(props: StateRemotePairProps): JSX.Element {
+export function StateRemotePair(props: StateRemotePairProps): React.JSX.Element {
   const { onPair, onBack } = props;
   const [url, setUrl] = useState("");
   const [code, setCode] = useState("");

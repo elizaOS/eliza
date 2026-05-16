@@ -43,7 +43,7 @@ export const journalProvider: Provider = {
         "scape_game",
       ) as ScapeGameService | null;
       if (!service) return { text: "" };
-      const journal = service.getJournalService();
+      const journal = service.getJournalService?.();
       if (!journal) return { text: "" };
 
       const memories = journal.getMemories(RECENT_MEMORY_COUNT);

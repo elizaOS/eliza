@@ -201,7 +201,7 @@ function filterMemoriesByQuery(memories: Memory[], query: string, limit: number)
   }
   return memories
     .filter((memory) => {
-      const text = typeof memory.content.text === "string" ? memory.content.text : "";
+      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -319,8 +319,8 @@ export class MatrixService extends Service implements IMatrixService {
           return readStoredMessagesForTargets(context.runtime, targets, limit);
         },
         searchMessages: async (context, params) => {
-          const limit = normalizeConnectorLimit(params.limit);
-          const target = params.target ?? context.target;
+          const limit = normalizeConnectorLimit(params?.limit);
+          const target = params?.target ?? context.target;
           const messages = target?.roomId
             ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
             : await readStoredMessagesForTargets(
@@ -366,7 +366,7 @@ export class MatrixService extends Service implements IMatrixService {
           const target = params.target ?? ({ source: MATRIX_SERVICE_NAME } as TargetInfo);
           const room = target.roomId ? await handlerRuntime.getRoom(target.roomId) : null;
           const roomId = String(
-            params.roomId ?? params.channelId ?? target.channelId ?? room?.channelId ?? ""
+            params?.roomId ?? params?.channelId ?? target.channelId ?? room?.channelId ?? ""
           );
           if (!roomId) {
             throw new Error("Matrix leaveHandler requires a room ID");
@@ -412,7 +412,7 @@ export class MatrixService extends Service implements IMatrixService {
           }
           return {
             entityId,
-            label: entity.names[0],
+            label: entity.names?.[0],
             aliases: entity.names,
             handles: {},
             metadata: entity.metadata,

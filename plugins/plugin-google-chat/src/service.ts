@@ -458,7 +458,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   async stop(): Promise<void> {
     logger.info("Stopping Google Chat service...");
-    for (const state of (this.states ?? new Map<string, GoogleChatAccountState>()).values()) {
+    for (const state of this.states.values()) {
       state.connected = false;
     }
     logger.info("Google Chat service stopped");
@@ -545,7 +545,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   isConnected(): boolean {
     const legacy = this as { connected?: boolean };
-    const states = this.states ?? new Map<string, GoogleChatAccountState>();
+    const states = this.states;
     if (states.size === 0 && typeof legacy.connected === "boolean") {
       return legacy.connected;
     }

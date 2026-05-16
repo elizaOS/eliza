@@ -19,13 +19,13 @@
 import { Buffer } from "node:buffer";
 import { deflateSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
-import type { OCRService } from "./ocr-service";
 import {
   computeSemanticPosition,
-  type OcrWithCoordsBlock,
   RapidOcrCoordAdapter,
   readPngDimensions,
+  type OcrWithCoordsBlock,
 } from "./ocr-with-coords";
+import type { OCRService } from "./ocr-service";
 import type { OCRResult } from "./types";
 
 // ── PNG synth helper ────────────────────────────────────────────────────────

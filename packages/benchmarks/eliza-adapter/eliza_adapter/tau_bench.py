@@ -146,6 +146,31 @@ def _recent_tool_observations(messages: list[dict[str, Any]]) -> str:
     return "\n".join(observations[-6:])
 
 
+def _recent_tool_calls(messages: list[dict[str, Any]]) -> str:
+    calls: list[str] = []
+    for m in messages:
+        if m.get("role") != "assistant":
+            continue
+        for tc in m.get("tool_calls") or []:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function")
+            if not isinstance(fn, dict):
+                continue
+            name = fn.get("name")
+            if not name:
+                continue
+            args = fn.get("arguments")
+            if isinstance(args, str):
+                args_text = args
+            else:
+                args_text = json.dumps(args or {}, sort_keys=True)
+            calls.append(f"- {name}: {_clip_text(args_text, 260)}")
+    if not calls:
+        return ""
+    return "\n".join(calls[-8:])
+
+
 def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
     """Build the prompt text for Eliza's stateful benchmark endpoint.
 
@@ -174,6 +199,14 @@ def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
         f"{_initial_user_content(messages)}\n\n"
         "Known tool observations:\n"
         f"{_recent_tool_observations(messages)}\n\n"
+        "Recent tool calls already made:\n"
+        f"{_recent_tool_calls(messages)}\n\n"
+        "Task progress rule:\n"
+        "Do not repeat an identical tool call when its result is already in "
+        "Known tool observations. Use the accumulated order, user, and product "
+        "facts to fetch the next missing fact, ask the customer for required "
+        "confirmation with REPLY when policy requires it, then call the final "
+        "mutation tool after confirmation.\n\n"
         "Latest customer/tool observation:\n"
         f"{latest}"
     ).strip()

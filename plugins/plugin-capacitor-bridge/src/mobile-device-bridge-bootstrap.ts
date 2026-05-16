@@ -253,9 +253,22 @@ interface AssignmentsFile {
 }
 
 interface BundledModelManifestEntry {
+	id?: string;
 	ggufFile?: string;
 	filename?: string;
 	role?: "chat" | "embedding";
+	contextSize?: number | string;
+	useGpu?: boolean;
+	maxThreads?: number | string;
+	draftModelPath?: string;
+	draftContextSize?: number | string;
+	draftMin?: number | string;
+	draftMax?: number | string;
+	speculativeSamples?: number | string;
+	mobileSpeculative?: boolean;
+	cacheTypeK?: string;
+	cacheTypeV?: string;
+	disableThinking?: boolean;
 }
 
 interface BundledModelManifest {
@@ -691,6 +704,12 @@ function positiveInteger(value: unknown): number | null {
 	return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
 }
 
+function nonEmptyString(value: unknown): string | null {
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: null;
+}
+
 function resolveFromEnv(slot: string): string | null {
 	const key =
 		slot === "TEXT_EMBEDDING"
@@ -748,7 +767,10 @@ function resolveAssignedRegistryModel(slot: string): {
 	};
 }
 
-function resolveFromManifest(slot: string): string | null {
+function resolveManifestModel(slot: string): {
+	path: string;
+	entry: BundledModelManifestEntry;
+} | null {
 	const manifest = readJsonFile<BundledModelManifest>(
 		path.join(modelsDir(), "manifest.json"),
 	);
@@ -758,9 +780,13 @@ function resolveFromManifest(slot: string): string | null {
 		const fileName = entry.ggufFile ?? entry.filename;
 		if (!fileName) continue;
 		const absolute = path.join(modelsDir(), fileName);
-		if (existsSync(absolute)) return absolute;
+		if (existsSync(absolute)) return { path: absolute, entry };
 	}
 	return null;
+}
+
+function resolveFromManifest(slot: string): string | null {
+	return resolveManifestModel(slot)?.path ?? null;
 }
 
 function resolveFirstGguf(): string | null {
@@ -793,13 +819,58 @@ function buildLoadArgsFromRegistryModel(model: {
 	return args;
 }
 
+function applyManifestLoadHints(
+	args: LocalInferenceLoadArgs,
+	entry: BundledModelManifestEntry,
+): LocalInferenceLoadArgs {
+	const contextSize = positiveInteger(entry.contextSize);
+	if (contextSize !== null) args.contextSize = contextSize;
+	if (typeof entry.useGpu === "boolean") args.useGpu = entry.useGpu;
+	const maxThreads = positiveInteger(entry.maxThreads);
+	if (maxThreads !== null) args.maxThreads = maxThreads;
+	const draftContextSize = positiveInteger(entry.draftContextSize);
+	if (draftContextSize !== null) args.draftContextSize = draftContextSize;
+	const draftMin = positiveInteger(entry.draftMin);
+	if (draftMin !== null) args.draftMin = draftMin;
+	const draftMax = positiveInteger(entry.draftMax);
+	if (draftMax !== null) args.draftMax = draftMax;
+	const speculativeSamples = positiveInteger(entry.speculativeSamples);
+	if (speculativeSamples !== null) {
+		args.speculativeSamples = speculativeSamples;
+	}
+	const draftModelPath = nonEmptyString(entry.draftModelPath);
+	if (draftModelPath) args.draftModelPath = draftModelPath;
+	const cacheTypeK = nonEmptyString(entry.cacheTypeK);
+	if (cacheTypeK) args.cacheTypeK = cacheTypeK;
+	const cacheTypeV = nonEmptyString(entry.cacheTypeV);
+	if (cacheTypeV) args.cacheTypeV = cacheTypeV;
+	if (typeof entry.mobileSpeculative === "boolean") {
+		args.mobileSpeculative = entry.mobileSpeculative;
+	}
+	if (typeof entry.disableThinking === "boolean") {
+		args.disableThinking = entry.disableThinking;
+	}
+	return args;
+}
+
+function buildLoadArgsFromManifestModel(model: {
+	path: string;
+	entry: BundledModelManifestEntry;
+}): LocalInferenceLoadArgs {
+	const id = nonEmptyString(model.entry.id);
+	const args = id
+		? buildLoadArgsFromRegistryModel({ id, path: model.path })
+		: { modelPath: model.path };
+	return applyManifestLoadHints(args, model.entry);
+}
+
 function resolveLocalLoadArgs(slot: string): LocalInferenceLoadArgs | null {
 	const envPath = resolveFromEnv(slot);
 	if (envPath) return { modelPath: envPath };
 	const registryModel = resolveAssignedRegistryModel(slot);
 	if (registryModel) return buildLoadArgsFromRegistryModel(registryModel);
-	const manifestPath = resolveFromManifest(slot);
-	if (manifestPath) return { modelPath: manifestPath };
+	const manifestModel = resolveManifestModel(slot);
+	if (manifestModel) return buildLoadArgsFromManifestModel(manifestModel);
 	const firstGguf = resolveFirstGguf();
 	return firstGguf ? { modelPath: firstGguf } : null;
 }
@@ -1048,6 +1119,9 @@ function collectMessagesForNativeTemplate(
 	params: GenerateTextParams,
 ): { role: string; content: string }[] | null {
 	const messages = params.messages ?? [];
+	if (messages.length === 0 && typeof params.prompt === "string") {
+		return collectRoleLabeledPromptMessages(params.prompt, params.system);
+	}
 	const result: { role: string; content: string }[] = [];
 	const hasSystemMessage = messages.some(
 		(m: { role?: string }) => m.role === "system",
@@ -1071,6 +1145,40 @@ function collectMessagesForNativeTemplate(
 	return result.length > 0 ? result : null;
 }
 
+function collectRoleLabeledPromptMessages(
+	prompt: string,
+	system?: string,
+): { role: string; content: string }[] | null {
+	if (!/^(system|user|assistant):\n/.test(prompt)) return null;
+
+	const headerPattern = /(^|\n{2,})(system|user|assistant):\n/g;
+	const headers: Array<{ index: number; role: string; bodyStart: number }> = [];
+	let match: RegExpExecArray | null;
+	while ((match = headerPattern.exec(prompt)) !== null) {
+		headers.push({
+			index: match.index,
+			role: match[2],
+			bodyStart: match.index + match[0].length,
+		});
+	}
+	if (headers.length === 0) return null;
+
+	const result: { role: string; content: string }[] = [];
+	if (system?.trim() && headers[0]?.role !== "system") {
+		result.push({ role: "system", content: system.trim() });
+	}
+	for (let i = 0; i < headers.length; i += 1) {
+		const current = headers[i];
+		const next = headers[i + 1];
+		const rawContent = prompt
+			.slice(current.bodyStart, next ? next.index : prompt.length)
+			.trim();
+		if (!rawContent) continue;
+		result.push({ role: current.role, content: rawContent });
+	}
+	return result.length > 0 ? result : null;
+}
+
 function extractEmbeddingText(
 	params: TextEmbeddingParams | string | null,
 ): string {
@@ -1088,10 +1196,9 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 			// so this startup probe must not try to load the native model.
 			return new Array(resolveEmbeddingDimension()).fill(0);
 		}
-		let modelPath = resolveLocalModelPath("TEXT_EMBEDDING");
-		let loadArgs: LocalInferenceLoadArgs | null = modelPath
-			? { modelPath }
-			: null;
+			let loadArgs: LocalInferenceLoadArgs | null =
+				resolveLocalLoadArgs("TEXT_EMBEDDING");
+			let modelPath = loadArgs?.modelPath ?? null;
 		if (!modelPath) {
 			if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
 				throw new Error(

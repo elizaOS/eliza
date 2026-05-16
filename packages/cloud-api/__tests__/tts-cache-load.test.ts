@@ -31,7 +31,7 @@ import {
 
 const r2Store = new Map<string, Uint8Array>();
 
-mock.module("../../../packages/lib/storage/r2-runtime-binding", () => ({
+mock.module("../../cloud-shared/src/lib/storage/r2-runtime-binding", () => ({
   getRuntimeR2Bucket: () => ({
     get: async (key: string) => {
       const data = r2Store.get(key);
@@ -288,45 +288,24 @@ const VOICE_CONTEXTS_50: VoiceCtx[] = PROVIDERS_LIST.flatMap((provider) =>
   })),
 );
 
-// Zipf-like weighted sampling. CORPUS / VOICE_CONTEXTS_50 are constructed
-// above with statically-known non-empty content; pickOrThrow surfaces a
-// real failure if either is later mis-edited rather than silently masking
-// it with a fallback string.
-function pickOrThrow<T>(arr: readonly T[], idx: number, label: string): T {
-  const value = arr[idx];
-  if (value === undefined) {
-    throw new Error(
-      `${label}: index ${idx} out of bounds (length ${arr.length})`,
-    );
-  }
-  return value;
-}
-
+// Zipf-like weighted sampling.
 function samplePhrase(rng: () => number): string {
   const r = rng();
-  if (r < 0.12) return pickOrThrow(CORPUS, 0, "CORPUS");
-  if (r < 0.22) return pickOrThrow(CORPUS, 1, "CORPUS");
-  if (r < 0.31) return pickOrThrow(CORPUS, 2, "CORPUS");
-  if (r < 0.39) return pickOrThrow(CORPUS, 3, "CORPUS");
-  if (r < 0.46) return pickOrThrow(CORPUS, 4, "CORPUS");
+  if (r < 0.12) return CORPUS[0]!;
+  if (r < 0.22) return CORPUS[1]!;
+  if (r < 0.31) return CORPUS[2]!;
+  if (r < 0.39) return CORPUS[3]!;
+  if (r < 0.46) return CORPUS[4]!;
   const idx = 5 + Math.floor(rng() * (CORPUS.length - 5));
-  return pickOrThrow(CORPUS, Math.min(idx, CORPUS.length - 1), "CORPUS");
+  return CORPUS[Math.min(idx, CORPUS.length - 1)]!;
 }
 
 function sampleVoice(rng: () => number): VoiceCtx {
   // 80% of traffic → top 10 voices.
   if (rng() < 0.8) {
-    return pickOrThrow(
-      VOICE_CONTEXTS_50,
-      Math.floor(rng() * 10),
-      "VOICE_CONTEXTS_50",
-    );
+    return VOICE_CONTEXTS_50[Math.floor(rng() * 10)]!;
   }
-  return pickOrThrow(
-    VOICE_CONTEXTS_50,
-    Math.floor(rng() * VOICE_CONTEXTS_50.length),
-    "VOICE_CONTEXTS_50",
-  );
+  return VOICE_CONTEXTS_50[Math.floor(rng() * VOICE_CONTEXTS_50.length)]!;
 }
 
 // Seeded LCG for reproducibility.
@@ -488,7 +467,8 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
     const text = "got it";
 
     // Store one entry per voice context.
-    for (const [i, ctx] of VOICE_CONTEXTS_50.entries()) {
+    for (let i = 0; i < VOICE_CONTEXTS_50.length; i++) {
+      const ctx = VOICE_CONTEXTS_50[i]!;
       const b = new Uint8Array(4).fill(i);
       await cache.put({
         algoVersion: "1",
@@ -509,7 +489,8 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
     }
 
     // Each voice context retrieves its OWN entry.
-    for (const [i, ctx] of VOICE_CONTEXTS_50.entries()) {
+    for (let i = 0; i < VOICE_CONTEXTS_50.length; i++) {
+      const ctx = VOICE_CONTEXTS_50[i]!;
       const hit = await cache.get({
         algoVersion: "1",
         provider: ctx.provider,

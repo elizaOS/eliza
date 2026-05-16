@@ -14,16 +14,11 @@
 
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type {
-  HeartbeatResult,
-  ProcessingResult,
-} from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
+import type { HeartbeatResult, ProcessingResult } from "../../lib/services/provisioning-jobs";
 import { loadLocalEnv } from "./shared/load-env";
 
-type WorkerLogger =
-  typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
-type WorkerService =
-  typeof import("@elizaos/cloud-shared/lib/services/provisioning-jobs").provisioningJobService;
+type WorkerLogger = typeof import("../../lib/utils/logger").logger;
+type WorkerService = typeof import("../../lib/services/provisioning-jobs").provisioningJobService;
 
 interface WorkerDeps {
   logger: WorkerLogger;
@@ -54,10 +49,7 @@ export function readWorkerConfig(
   argv: readonly string[] = process.argv.slice(2),
 ): ProvisioningWorkerConfig {
   return {
-    pollIntervalMs: parsePositiveInt(
-      env.WORKER_POLL_INTERVAL,
-      DEFAULT_POLL_INTERVAL_MS,
-    ),
+    pollIntervalMs: parsePositiveInt(env.WORKER_POLL_INTERVAL, DEFAULT_POLL_INTERVAL_MS),
     batchSize: parsePositiveInt(env.WORKER_BATCH_SIZE, DEFAULT_BATCH_SIZE),
     runOnce: env.WORKER_RUN_ONCE === "1" || hasFlag(argv, "--once"),
   };
@@ -68,8 +60,8 @@ let depsPromise: Promise<WorkerDeps> | null = null;
 async function loadDeps(): Promise<WorkerDeps> {
   if (!depsPromise) {
     depsPromise = Promise.all([
-      import("@elizaos/cloud-shared/lib/services/provisioning-jobs"),
-      import("@elizaos/cloud-shared/lib/utils/logger"),
+      import("../../lib/services/provisioning-jobs"),
+      import("../../lib/utils/logger"),
     ]).then(([jobsModule, loggerModule]) => ({
       provisioningJobService: jobsModule.provisioningJobService,
       logger: loggerModule.logger,
@@ -94,9 +86,7 @@ export async function processProvisioningWorkerCycle(
   return provisioningJobService.processPendingJobs(batchSize);
 }
 
-export async function processHeartbeatCycle(
-  concurrency = 5,
-): Promise<HeartbeatResult> {
+export async function processHeartbeatCycle(concurrency = 5): Promise<HeartbeatResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processRunningHeartbeats(concurrency);
 }
@@ -107,17 +97,11 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function pollCycle(
-  logger: WorkerLogger,
-  config: ProvisioningWorkerConfig,
-): Promise<void> {
+async function pollCycle(logger: WorkerLogger, config: ProvisioningWorkerConfig): Promise<void> {
   try {
     const result = await processProvisioningWorkerCycle(config.batchSize);
     if (result.claimed > 0 || result.failed > 0) {
-      logger.info(
-        "[provisioning-worker] cycle complete",
-        resultContext(result),
-      );
+      logger.info("[provisioning-worker] cycle complete", resultContext(result));
     }
   } catch (error) {
     logger.error("[provisioning-worker] cycle failed", {

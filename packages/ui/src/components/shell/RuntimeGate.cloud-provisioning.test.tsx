@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   addAgentProfileMock,
   agentStartMock,
+  autoDownloadRecommendedLocalModelInBackgroundMock,
   clearPersistedActiveServerMock,
   clientMock,
   completeOnboardingMock,
@@ -36,6 +37,7 @@ const {
     startedAt: null,
     error: null,
   })),
+  autoDownloadRecommendedLocalModelInBackgroundMock: vi.fn(),
   clearPersistedActiveServerMock: vi.fn(),
   clientMock: {
     getCloudCompatAgents: vi.fn(),
@@ -47,6 +49,7 @@ const {
     launchCloudCompatAgent: vi.fn(),
     getRestAuthToken: vi.fn(() => null),
     switchProvider: vi.fn(),
+    getBaseUrl: vi.fn(() => "https://api.elizacloud.ai"),
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
   },
@@ -95,6 +98,7 @@ vi.mock("../../bridge/gateway-discovery", () => ({
 
 vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   ANDROID_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
+  ANDROID_LOCAL_AGENT_IPC_BASE: "eliza-local-agent://ipc",
   ANDROID_LOCAL_AGENT_LABEL: "On-device agent",
   ANDROID_LOCAL_AGENT_SERVER_ID: "local:android",
   IOS_LOCAL_AGENT_IPC_BASE: "eliza-local-agent://ipc",
@@ -126,6 +130,11 @@ vi.mock("@capacitor/core", () => ({
 
 vi.mock("../../onboarding/probe-local-agent", () => ({
   shouldShowLocalOption: shouldShowLocalOptionMock,
+}));
+
+vi.mock("../../onboarding/auto-download-recommended", () => ({
+  autoDownloadRecommendedLocalModelInBackground:
+    autoDownloadRecommendedLocalModelInBackgroundMock,
 }));
 
 vi.mock("../../platform/init", () => ({
@@ -406,7 +415,7 @@ describe("RuntimeGate onboarding choices", () => {
     await startLocalFromWelcome();
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
-      "http://127.0.0.1:31337",
+      "eliza-local-agent://ipc",
     );
     expect(clientMock.setToken).toHaveBeenCalledWith(null);
     expect(clearPersistedActiveServerMock).not.toHaveBeenCalled();
@@ -414,7 +423,7 @@ describe("RuntimeGate onboarding choices", () => {
       id: "local:android",
       kind: "remote",
       label: "On-device agent",
-      apiBase: "http://127.0.0.1:31337",
+      apiBase: "eliza-local-agent://ipc",
     });
     expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
       "local",
@@ -447,6 +456,27 @@ describe("RuntimeGate onboarding choices", () => {
     );
     expect(completeOnboardingMock).toHaveBeenCalled();
     await waitFor(() => expect(agentStartMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("starts desktop local mode and immediately kicks off model auto-download", async () => {
+    platformState.isDesktop = true;
+
+    render(<RuntimeGate />);
+    await startLocalFromWelcome();
+
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
+      "http://127.0.0.1:31337",
+    );
+    expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
+      id: "local:desktop",
+      kind: "remote",
+      label: "On-device agent",
+      apiBase: "http://127.0.0.1:31337",
+    });
+    expect(autoDownloadRecommendedLocalModelInBackgroundMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:31337",
+    );
+    expect(completeOnboardingMock).toHaveBeenCalled();
   });
 
   it.skip("connects the iOS Remote path to the user supplied agent URL", () => {

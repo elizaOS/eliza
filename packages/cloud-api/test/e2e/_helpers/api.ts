@@ -154,19 +154,12 @@ export async function isServerReachable(): Promise<boolean> {
     const res = await fetch(url("/api/health"), {
       signal: AbortSignal.timeout(5_000),
     });
-    if (
-      !res.ok &&
-      (process.env.REQUIRE_E2E_SERVER === "1" ||
-        process.env.REQUIRE_E2E_SERVER === "true")
-    ) {
+    if (!res.ok && process.env.REQUIRE_E2E_SERVER !== "0") {
       throw new Error(`GET ${url("/api/health")} returned ${res.status}`);
     }
     return res.ok;
   } catch (error) {
-    if (
-      process.env.REQUIRE_E2E_SERVER === "1" ||
-      process.env.REQUIRE_E2E_SERVER === "true"
-    ) {
+    if (process.env.REQUIRE_E2E_SERVER !== "0") {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
         `Worker e2e target is not reachable at ${getBaseUrl()}: ${message}`,

@@ -257,9 +257,6 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_vad_process",
   "eliza_inference_vad_reset",
   "eliza_inference_vad_close",
-  // ABI v4 — frozen OmniVoice reference preset encoder.
-  "eliza_inference_encode_reference",
-  "eliza_inference_free_tokens",
   "eliza_inference_free_string",
 ]);
 

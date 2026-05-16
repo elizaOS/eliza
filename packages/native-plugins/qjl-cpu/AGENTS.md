@@ -37,7 +37,6 @@ QJL is the **K-cache default for every shipping Eliza-1 tier** — see
 | eliza-1-9b        | shipped (default) |
 | eliza-1-27b       | shipped (default) |
 | eliza-1-27b-256k  | shipped (default; pairs with TBQ3_TCQ K extension at ≥64k ctx) |
-| eliza-1-27b-1m    | shipped (default; pairs with TBQ3_TCQ K extension at 1m ctx)  |
 
 The full tier × quant-type matrix (rows = tier, columns = QJL-K +
 PolarQuant-V + TurboQuant-W variants) lives at

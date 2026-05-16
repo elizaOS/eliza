@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from openclaw_adapter.bfcl import OpenClawBFCLAgent, _provider_safe_tools
+from openclaw_adapter.bfcl import (
+    OpenClawBFCLAgent,
+    _provider_safe_tools,
+    build_bfcl_agent_fn,
+)
 from openclaw_adapter.client import MessageResponse, OpenClawClient
 
 
@@ -133,6 +137,25 @@ def test_provider_safe_tools_preserves_schema_field_names_and_defaults() -> None
     assert list(properties) == ["customerId", "includeInactive"]
     assert properties["includeInactive"]["default"] is False
     assert tools[0]["function"]["name"] == "customer.lookup"
+
+
+def test_build_bfcl_agent_fn_default_client_uses_native_direct_transport() -> None:
+    agent_fn = build_bfcl_agent_fn()
+    captured: dict[str, Any] = {}
+
+    def _fake_send(
+        self: OpenClawClient,
+        text: str,
+        context: Any = None,
+    ) -> MessageResponse:
+        captured["direct_openai_compatible"] = self.direct_openai_compatible
+        return MessageResponse(text="", thought=None, actions=[], params={})
+
+    with patch.object(OpenClawClient, "send_message", _fake_send):
+        result = _run(agent_fn("hello", []))
+
+    assert captured["direct_openai_compatible"] is True
+    assert result["tool_calls"] == []
 
 
 def test_openclaw_bfcl_agent_parallel_case_requires_one_native_call_per_operation(

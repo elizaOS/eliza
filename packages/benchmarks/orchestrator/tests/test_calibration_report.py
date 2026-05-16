@@ -384,3 +384,47 @@ def test_calibration_report_prefers_published_latest_over_failed_db_attempt(
     assert cell["run_id"] == "run_published_success"
     assert report["matrix_summary"]["succeeded_required_real_cells"] == 1
     assert report["matrix_summary"]["failed_required_real_cells"] == 0
+
+
+def test_calibration_report_ignores_newer_nonterminal_db_attempt(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_running_newer",
+        started_at="2026-05-12T00:01:00+00:00",
+        status="running",
+        score=None,
+    )
+    conn.close()
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"bfcl"},
+        agent_compatibility={"bfcl": ("eliza",)},
+    )
+    cell = report["rows"][0]["real_cells"]["eliza"]
+
+    assert cell["state"] == "succeeded"
+    assert cell["run_id"] == "run_success"
+    assert report["matrix_summary"]["succeeded_required_real_cells"] == 1

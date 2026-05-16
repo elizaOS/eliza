@@ -4,7 +4,7 @@ export interface StateTutorialPermissionsProps {
 
 export function StateTutorialPermissions(
   props: StateTutorialPermissionsProps,
-): JSX.Element {
+): React.JSX.Element {
   const { onFinish } = props;
   return (
     <section

@@ -4,13 +4,13 @@ import { createHash } from "node:crypto";
 
 export {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
-  CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
-  getConnectorAccountManager,
-  resetConnectorAccountManagerForTests,
+	CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+	getConnectorAccountManager,
+	resetConnectorAccountManagerForTests,
 } from "../../../core/src/connectors/account-manager.ts";
 export type {
-  IAgentRuntime,
-  Plugin,
+	IAgentRuntime,
+	Plugin,
 } from "../../../core/src/types/index.ts";
 export { Service } from "../../../core/src/types/service.ts";
 

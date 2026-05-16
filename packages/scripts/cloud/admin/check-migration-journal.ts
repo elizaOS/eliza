@@ -20,7 +20,10 @@ interface Journal {
   entries: JournalEntry[];
 }
 
-const MIGRATIONS_DIR = path.join(process.cwd(), "packages/db/migrations");
+const MIGRATIONS_DIR = path.join(
+  process.cwd(),
+  "packages/cloud-shared/src/db/migrations",
+);
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 const ALLOWED_DUPLICATE_PREFIX_GROUPS = new Map<string, string[]>([
   ["0017", ["0017_add_organization_encryption_keys.sql", "0017_fix_earnings_precision.sql"]],

@@ -98,7 +98,7 @@ export function normalizeAccountId(accountId?: string | null): string {
 export function getMultiAccountConfig(
 	runtime: IAgentRuntime,
 ): BlueBubblesMultiAccountConfig {
-	const characterBlueBubbles = runtime.character.settings?.bluebubbles as
+	const characterBlueBubbles = runtime.character?.settings?.bluebubbles as
 		| BlueBubblesMultiAccountConfig
 		| undefined;
 

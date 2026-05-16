@@ -17,16 +17,12 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build:linked-workspaces": "bun run --cwd ../.. build:core",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "db:check-migrations": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "bun run ../../packages/scripts/cloud/admin/migrate-with-diagnostics.ts",
     "db:migrate:drizzle": "drizzle-kit migrate",
-    "pglite:server": "bun run ../../packages/scripts/cloud/admin/dev/pglite-server.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
@@ -46,8 +42,6 @@
     "@neondatabase/serverless": "^1.1.0",
     "@octokit/rest": "^22.0.1",
     "@sendgrid/mail": "^8.1.6",
-    "@solana/spl-token": "0.4.14",
-    "@solana/web3.js": "1.98.4",
     "@solana/kit": "^6.0.0",
     "@stwd/sdk": "^0.8.1",
     "@upstash/redis": "^1.37.0",
@@ -63,7 +57,6 @@
     "gray-matter": "^4.0.3",
     "hono": "4.12.18",
     "jose": "^6.0.0",
-    "json-schema": "^0.4.0",
     "json5": "^2.2.3",
     "libphonenumber-js": "^1.12.42",
     "nanoid": "^5.1.9",
@@ -86,7 +79,6 @@
     "@types/node": "^25.6.0",
     "@types/nodemailer": "^8.0.0",
     "@types/pg": "^8.20.0",
-    "@types/json-schema": "^7.0.15",
     "@types/ssh2": "^1.15.5",
     "@types/ws": "^8.18.1",
     "bun-types": "^1.3.13",

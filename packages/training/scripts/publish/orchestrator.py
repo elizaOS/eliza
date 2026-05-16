@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+``elizaos/eliza-1`` under ``bundles/<tier>/``. This is the single entry
 point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
+   to ``elizaos/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 

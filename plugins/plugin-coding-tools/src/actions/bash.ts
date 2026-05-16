@@ -269,11 +269,11 @@ export const shellAction: Action = {
     _state?: State,
     options?: unknown,
     callback?: HandlerCallback,
-  ): Promise<ActionResult> => {
-    const explicitSubaction = readStringParam(options, "action");
-    const inferredSubaction = inferShellSubactionFromText(
-      message.content.text ?? "",
-    );
+	): Promise<ActionResult> => {
+		const explicitSubaction = readStringParam(options, "action");
+		const inferredSubaction = inferShellSubactionFromText(
+			message.content?.text ?? "",
+		);
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)
       : (inferredSubaction ?? "run");

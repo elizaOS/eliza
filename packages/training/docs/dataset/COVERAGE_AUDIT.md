@@ -191,16 +191,16 @@ LLM call.
 | `LONG_TERM_EXTRACTION`   | `longTermExtractionTemplate`      | **MISSING** |
 | `SUMMARIZATION`          | `initialSummarizationTemplate`    | **MISSING** |
 
-Concrete next step: add `scripts/synthesize_evaluator_prompts.py` that
-emits one JSONL per evaluator template. For each:
+Concrete next step: keep `scripts/synthesize_evaluator_prompts.py` emitting
+one JSONL per evaluator template. For each:
 
 1. Read template body from `eliza/packages/core/src/prompts.ts`.
 2. Generate ~3k synthetic recent-message-window inputs (varying length,
    topic, named entities).
 3. Render the template with the input context.
 4. Run a teacher model (Opus 4.7) to produce the structured output.
-5. Wrap as canonical `ElizaRecord` with `task_type=<evaluator_name>` and
-   `expectedResponse` = JSON-or-native JSON output of the template.
+5. Wrap as canonical native records with `task_type=<evaluator_name>` and
+   JSON/function-call expected output matching the runtime template.
 
 Output target: ~3k × 7 = **~21k phase-4 records**, lifting evaluation
 coverage from <0.1% to ~3% of corpus, sufficient for the model to learn

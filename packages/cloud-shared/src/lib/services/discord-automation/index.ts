@@ -488,7 +488,7 @@ class DiscordAutomationService {
         return [];
       }
 
-      const channels = (await response.json()) as DiscordChannelInfo[];
+      const channels: DiscordChannelInfo[] = await response.json();
 
       // Filter to text channels only
       const textChannels = channels.filter((c) => isTextChannel(c.type));

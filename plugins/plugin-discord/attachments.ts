@@ -54,7 +54,7 @@ function normalizedMimeType(contentType: string | null | undefined): string {
 }
 
 function attachmentExtension(attachment: Attachment): string {
-	return path.extname(attachment.name).toLowerCase();
+	return path.extname(attachment.name ?? "").toLowerCase();
 }
 
 function isReadableTextAttachment(attachment: Attachment): boolean {
@@ -220,7 +220,7 @@ export class AttachmentManager {
 			);
 
 			// Assess transcription length before summarizing
-			const transcriptionLength = transcription.length || 0;
+			const transcriptionLength = transcription?.length || 0;
 			this.runtime.logger.debug(
 				{
 					src: "plugin:discord",
@@ -281,8 +281,10 @@ export class AttachmentManager {
 				id: attachment.id,
 				url: attachment.url,
 				title: title || "Audio/Video Attachment",
-				source: attachment.contentType.startsWith("audio/") ? "Audio" : "Video",
-				contentType: attachment.contentType.startsWith("audio/")
+				source: attachment.contentType?.startsWith("audio/")
+					? "Audio"
+					: "Video",
+				contentType: attachment.contentType?.startsWith("audio/")
 					? ContentType.AUDIO
 					: ContentType.VIDEO,
 				description:
@@ -455,7 +457,7 @@ export class AttachmentManager {
 					src: "plugin:discord",
 					agentId: this.runtime.agentId,
 					attachmentId: attachment.id,
-					textLength: text.length,
+					textLength: text?.length,
 				},
 				"Summarizing PDF content",
 			);
@@ -510,7 +512,7 @@ export class AttachmentManager {
 					src: "plugin:discord",
 					agentId: this.runtime.agentId,
 					attachmentId: attachment.id,
-					textLength: text.length,
+					textLength: text?.length,
 				},
 				"Summarizing plaintext content",
 			);

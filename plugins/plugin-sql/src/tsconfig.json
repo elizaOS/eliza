@@ -27,14 +27,5 @@
     "types": ["node", "bun"]
   },
   "include": ["**/*.ts"],
-  "exclude": [
-    "__tests__",
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "dist",
-    "dist/**",
-    "../dist",
-    "../dist/**"
-  ]
+  "exclude": ["__tests__", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

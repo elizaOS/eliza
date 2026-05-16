@@ -699,4 +699,3 @@ TRIAGE_NOTES.md
 .env.local.bak-*
 .wrangler
 .wrangler-dry-run
-swe-bench-workspace-opencode//

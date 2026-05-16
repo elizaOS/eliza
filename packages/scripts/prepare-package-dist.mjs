@@ -133,13 +133,6 @@ function walk(dirPath, visit) {
       ) {
         continue;
       }
-      // Skip any hidden directory (e.g. `.venv`, `.turbo`, `.next`) — these
-      // can contain third-party sample package.json files with non-JSON
-      // content (the schedula python package ships a sample with `\4`
-      // octal escapes) that would otherwise crash JSON.parse.
-      if (entry.name.startsWith(".")) {
-        continue;
-      }
       walk(entryPath, visit);
       continue;
     }

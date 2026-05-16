@@ -4,14 +4,12 @@
  */
 
 // Only apply polyfills on server-side (Node.js environment)
-const polyfillGlobal = globalThis as Record<string, unknown>;
-
-if (typeof polyfillGlobal.window === "undefined") {
+if (typeof (globalThis as { window?: unknown }).window === "undefined") {
   // Polyfill DOMMatrix if it doesn't exist
-  if (typeof polyfillGlobal.DOMMatrix === "undefined") {
+  if (typeof globalThis.DOMMatrix === "undefined") {
     // Minimal DOMMatrix polyfill - just enough to prevent import errors
     // pdfjs-dist checks for DOMMatrix existence but may not use it server-side
-    polyfillGlobal.DOMMatrix = class DOMMatrix {
+    (globalThis as Record<string, unknown>).DOMMatrix = class DOMMatrix {
       m11 = 1;
       m12 = 0;
       m13 = 0;
@@ -58,8 +56,8 @@ if (typeof polyfillGlobal.window === "undefined") {
   }
 
   // Polyfill Path2D if needed
-  if (typeof polyfillGlobal.Path2D === "undefined") {
-    polyfillGlobal.Path2D = class Path2D {
+  if (typeof globalThis.Path2D === "undefined") {
+    (globalThis as Record<string, unknown>).Path2D = class Path2D {
       constructor(_path?: string | Path2D) {}
       addPath(_path: Path2D) {}
       closePath() {}
@@ -90,8 +88,8 @@ if (typeof polyfillGlobal.window === "undefined") {
   }
 
   // Polyfill OffscreenCanvas if needed
-  if (typeof polyfillGlobal.OffscreenCanvas === "undefined") {
-    polyfillGlobal.OffscreenCanvas = class OffscreenCanvas {
+  if (typeof globalThis.OffscreenCanvas === "undefined") {
+    (globalThis as Record<string, unknown>).OffscreenCanvas = class OffscreenCanvas {
       width: number;
       height: number;
 

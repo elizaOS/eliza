@@ -793,6 +793,7 @@ export function extractPlannerProviderNames(
 }
 
 const CORE_RESPONSE_STATE_PROVIDERS = [
+	"RUNTIME_MODEL_CONTEXT",
 	"UI_CONTEXT",
 	"ENTITIES",
 	"RECENT_MESSAGES",
@@ -1579,17 +1580,34 @@ function appendPriorDialogueEvents(
 		return;
 	}
 	const dialogue = recentMessages
-		.filter((memory): memory is Memory => {
-			if (!memory || typeof memory !== "object") return false;
-			const m = memory as Memory;
-			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
-			const contentType =
+			.filter((memory): memory is Memory => {
+				if (!memory || typeof memory !== "object") return false;
+				const m = memory as Memory;
+				if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+				if (m.agentId === runtime.agentId || m.entityId === runtime.agentId) {
+					return false;
+				}
+				if (
+					typeof m.content?.source === "string" &&
+					m.content.source.includes("sub-agent")
+				) {
+					return false;
+				}
+				if (
+					m.content?.metadata &&
+					typeof m.content.metadata === "object" &&
+					(m.content.metadata as { subAgent?: unknown }).subAgent === true
+				) {
+					return false;
+				}
+				const contentType =
 				m.content && typeof m.content === "object"
 					? (m.content as { type?: string }).type
 					: undefined;
 			if (contentType === "action_result") return false;
 			const text =
 				typeof m.content?.text === "string" ? m.content.text.trim() : "";
+			if (looksLikePriorDialogueArtifact(text)) return false;
 			return text.length > 0;
 		})
 		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
@@ -1611,6 +1629,13 @@ function appendPriorDialogueEvents(
 			},
 		});
 	}
+}
+
+function looksLikePriorDialogueArtifact(text: string): boolean {
+	if (!text) return false;
+	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
+		text,
+	);
 }
 
 function hasStructuredRecentMessagesProvider(state: State): boolean {
@@ -1698,6 +1723,12 @@ function appendStateProviderEvents(
 		}
 		seen.add(providerName);
 		if (excluded?.has(providerName.toUpperCase())) {
+			continue;
+		}
+		if (
+			providerName.toUpperCase() === "RECENT_MESSAGES" &&
+			hasStructuredRecentMessagesProvider(state)
+		) {
 			continue;
 		}
 		const provider = asProviderRecord(
@@ -2122,6 +2153,15 @@ async function createV5MessageContextObject(args: {
 	appendStateProviderEvents(events, args.state, renderExclusions);
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
+	if (events.some((event) => event.id.startsWith("history:"))) {
+		events.push({
+			id: "prior-dialogue-policy",
+			type: "provider",
+			source: "message-runtime",
+			name: "PRIOR_DIALOGUE_POLICY",
+			text: "prior_dialogue_policy: prior assistant/tool outputs are historical context only; satisfy the current user request with current tool calls when tools are required.",
+		});
+	}
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -2715,8 +2755,20 @@ export function messageHandlerFromFieldResult(
 					currentMessageText,
 				)
 			: [];
+	const hasValidProvidedCandidate =
+		runtimeContext && candidateActions.length > 0
+			? candidateActions.some((name) => {
+					const normalized = normalizeActionIdentifier(name);
+					if (canonicalPlannerControlActionName(normalized) !== null) {
+						return true;
+					}
+					return runtimeContext.actions.some(
+						(action) => normalizeActionIdentifier(action.name) === normalized,
+					);
+				})
+			: candidateActions.length > 0;
 	const inferredDirectCandidateActions =
-		candidateActions.length === 0 &&
+		!hasValidProvidedCandidate &&
 		inferredAckCandidateActions.length === 0 &&
 		currentMessageText.trim().length > 0
 			? inferDirectCurrentRequestCandidateActions(
@@ -2904,6 +2956,7 @@ function inferAckIntentCandidateActions(
 	if (looksLikeCodingDelegationRequest(actionText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
+			"TASKS_SPAWN_AGENT",
 			"SPAWN_AGENT",
 			"START_CODING_TASK",
 			"CODE_TASK",
@@ -2937,6 +2990,7 @@ function inferDirectCurrentRequestCandidateActions(
 	if (looksLikeCodingDelegationRequest(messageText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
+			"TASKS_SPAWN_AGENT",
 			"SPAWN_AGENT",
 			"START_CODING_TASK",
 			"CODE_TASK",
@@ -3543,7 +3597,8 @@ async function executeV5PlannedToolCall(
 		(candidate) => candidate.name === toolCall.name,
 	);
 
-	if (action && actionHasSubActions(action)) {
+	const hasDispatcherActionParameter = plannerToolCallHasActionParameter(toolCall);
+	if (action && actionHasSubActions(action) && !hasDispatcherActionParameter) {
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
 			action,
@@ -3567,6 +3622,25 @@ async function executeV5PlannedToolCall(
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
 	return actionResultToPlannerToolResult(actionResult);
+}
+
+function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
+	const candidates = [
+		toolCall.params,
+		(toolCall as { args?: unknown }).args,
+		(toolCall as { arguments?: unknown }).arguments,
+	];
+	for (const candidate of candidates) {
+		if (
+			candidate &&
+			typeof candidate === "object" &&
+			!Array.isArray(candidate) &&
+			"action" in candidate
+		) {
+			return true;
+		}
+	}
+	return false;
 }
 
 export function subPlannerResultToPlannerToolResult(
@@ -4287,6 +4361,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							"Do not answer with REPLY/RESPOND prose — the harness scores tool calls, not conversation. " +
 							"Pick the single best non-terminal action (e.g. MESSAGE, CALENDAR, TODO) that can attempt the request and call it now."
 						: "The Stage 1 router marked this current turn as requiring a tool. " +
+							"prior_dialogue_policy: " +
 							"Do not answer directly from memory, chat history, prior attachments, or prior tool output. " +
 							"Call at least one exposed non-terminal tool that can attempt the current request.",
 				})
@@ -5542,8 +5617,6 @@ function looksLikeCodingDelegationRequest(text: string): boolean {
 		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		);
-	if (!asksDelegation) return false;
-
 	const asksCodingWork =
 		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
@@ -5551,7 +5624,7 @@ function looksLikeCodingDelegationRequest(text: string): boolean {
 		/\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		);
-	return asksCodingWork;
+	return asksDelegation || asksCodingWork;
 }
 
 function quoteShellArg(value: string): string {

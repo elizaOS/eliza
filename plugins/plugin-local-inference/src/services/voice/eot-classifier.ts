@@ -411,6 +411,7 @@ const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
  */
 export class LiveKitTurnDetector implements EotClassifier {
 	private readonly modelDir: string;
+	private readonly onnxPath: string;
 	private readonly maxHistoryTokens: number;
 	private readonly intraOpNumThreads: number;
 	private readonly model: string;
@@ -424,6 +425,10 @@ export class LiveKitTurnDetector implements EotClassifier {
 
 	constructor(opts: LiveKitTurnDetectorOptions = {}) {
 		this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+		this.onnxPath = path.join(
+			this.modelDir,
+			opts.onnxFilename ?? DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
+		);
 		this.maxHistoryTokens = opts.maxHistoryTokens ?? 128;
 		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
 		this.revision = opts.revision;
@@ -707,6 +712,7 @@ export interface TurnsenseEotClassifierOptions {
  */
 export class TurnsenseEotClassifier implements EotClassifier {
 	private readonly modelDir: string;
+	private readonly onnxPath: string;
 	private readonly maxHistoryTokens: number;
 	private readonly intraOpNumThreads: number;
 	private readonly model: string;
@@ -718,6 +724,10 @@ export class TurnsenseEotClassifier implements EotClassifier {
 
 	constructor(opts: TurnsenseEotClassifierOptions = {}) {
 		this.modelDir = opts.modelDir ?? DEFAULT_TURNSENSE_DIR;
+		this.onnxPath = path.join(
+			this.modelDir,
+			opts.onnxFilename ?? DEFAULT_TURNSENSE_ONNX,
+		);
 		this.maxHistoryTokens = opts.maxHistoryTokens ?? 256;
 		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
 		this.model = opts.model ?? TURNSENSE_HF_REPO;

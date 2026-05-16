@@ -47,6 +47,10 @@ export function retargetMixamoFbxToVrm(
 ): THREE.AnimationClip {
   sourceScene.updateMatrixWorld(true);
   vrm.scene.updateMatrixWorld(true);
+  const humanoid = vrm.humanoid;
+  if (!humanoid) {
+    throw new Error("VRM has no humanoid rig");
+  }
 
   // ── Diagnostic logging for greeting arm-rotation debugging ──
   const mapped: string[] = [];
@@ -65,7 +69,7 @@ export function retargetMixamoFbxToVrm(
   );
   const motionHipsHeight = Math.abs(motionHipsNode?.position.y ?? 0);
   const vrmHipsHeight = Math.abs(
-    vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 0,
+    humanoid.normalizedRestPose.hips?.position?.[1] ?? 0,
   );
   const hipsPositionScale =
     motionHipsHeight > 1e-6 && vrmHipsHeight > 1e-6
@@ -86,7 +90,7 @@ export function retargetMixamoFbxToVrm(
       continue;
     }
 
-    const vrmNode = vrm.humanoid.getNormalizedBoneNode(
+    const vrmNode = humanoid.getNormalizedBoneNode(
       vrmBoneName as VRMHumanBoneName,
     );
     if (!vrmNode) continue;
@@ -135,8 +139,7 @@ export function retargetMixamoFbxToVrm(
       track instanceof THREE.VectorKeyframeTrack
     ) {
       const isHips =
-        vrmNode ===
-        vrm.humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName);
+        vrmNode === humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName);
 
       if (!isHips) continue;
 
@@ -155,7 +158,7 @@ export function retargetMixamoFbxToVrm(
 
   const hasHipsTrack = tracks.some((track) =>
     track.name.startsWith(
-      `${vrm.humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName)?.name ?? "__missing__"}.`,
+      `${humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName)?.name ?? "__missing__"}.`,
     ),
   );
   if (!hasHipsTrack) {

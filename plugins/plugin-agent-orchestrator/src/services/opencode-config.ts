@@ -44,6 +44,7 @@ function setting(
   if (fromRuntime) return fromRuntime;
   const fromEnv = env?.[key];
   if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv.trim();
+  if (env && env !== process.env) return undefined;
   const fromConfig = readConfigEnvKey(key);
   return fromConfig?.trim() || undefined;
 }

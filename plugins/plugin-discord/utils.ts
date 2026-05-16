@@ -71,7 +71,7 @@ export function hasMessagingAPI(
 export function hasMessageService(runtime: IAgentRuntime): boolean {
 	return (
 		runtime.messageService !== null &&
-		typeof runtime.messageService.handleMessage === "function"
+		typeof runtime.messageService?.handleMessage === "function"
 	);
 }
 

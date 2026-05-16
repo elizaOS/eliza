@@ -30,7 +30,7 @@ async function twitterApiRequest<T>(
           ...options.headers,
         },
       }),
-    async (response) => (await response.json()) as T,
+    async (response) => response.json(),
     { platform: "twitter", maxRetries: 3 },
   );
   return data;

@@ -116,7 +116,7 @@ export function applyDiscordStalenessGuard(options: {
 
 	const currentSequence = getDiscordChannelMessageSequence(
 		owner,
-		message.channel.id,
+		message.channel?.id,
 	);
 	const messagesSinceTurnStart = Math.max(0, currentSequence - startSequence);
 	const stale = messagesSinceTurnStart > config.threshold;

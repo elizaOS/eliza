@@ -6,7 +6,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "react"],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
@@ -34,12 +34,15 @@
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
+      "@elizaos/plugin-app-manager/*": [
+        "../../plugins/plugin-app-manager/src/*"
+      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -69,6 +72,7 @@
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/ui": ["./src/index.ts"],
+      "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
       "@elizaos/ui/*": ["./src/*"],
       "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }

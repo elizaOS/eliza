@@ -18,9 +18,9 @@
  *
  * Missing source → that metric is recorded as `null` ("not measured") and
  * its gate as `status: "needs-data"` — never a fabricated number
- * (AGENTS.md §3 / §7). A `required: true` gate that has a real measurement
- * and fails its threshold makes the run exit non-zero (so CI catches it);
- * a provisional gate that fails only warns.
+ * (AGENTS.md §3 / §7). A `required: true` gate exits non-zero when it is
+ * missing or fails its threshold, except hardware-bound gates that are
+ * explicitly skipped until the device matrix supplies evidence.
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
@@ -323,6 +323,15 @@ function regenerateBundleChecksums(bundleDir) {
   return checksumPath;
 }
 
+function isBlockingGateResult(result) {
+  return Boolean(
+    result?.required &&
+      result?.status !== "pass" &&
+      result?.status !== "not-applicable" &&
+      !result?.needsHardware,
+  );
+}
+
 function syncBundleManifestEvals(
   bundleDir,
   manifestEvalsFragment,
@@ -438,7 +447,8 @@ function syncBundleManifestEvals(
   const gateRows = results.map((r) => ({
     name: r.name,
     passed: r.status === "pass",
-    skipped: r.status === "needs-data",
+    skipped: r.status === "needs-data" && !isBlockingGateResult(r),
+    blocking: isBlockingGateResult(r),
     required: Boolean(r.required),
     provisional: Boolean(r.provisional),
     metric: r.name,
@@ -448,7 +458,7 @@ function syncBundleManifestEvals(
     reason: r.reason,
   }));
   const failures = gateRows
-    .filter((g) => g.required && g.passed !== true)
+    .filter((g) => g.required && g.passed !== true && g.skipped !== true)
     .map((g) => `${g.name}: ${g.reason}`);
   aggregate.generatedAt = generatedAt;
   aggregate.tier = manifest.tier;
@@ -706,13 +716,29 @@ async function main() {
     [BENCH_RESULTS_ROOT, path.join(REPORTS_ROOT, "local-e2e")],
     ({ name, data }) => {
       if (!name.toLowerCase().includes("asr")) return false;
-      if (data?.aggregate?.wer === undefined || !matchesTier(data, args.tier)) return false;
+      if (data?.aggregate?.wer === undefined || !matchesTier(data, args.tier)) {
+        return false;
+      }
       const source = String(data?.labelledSet?.source ?? "");
       const measurementClass = String(data?.labelledSet?.measurementClass ?? "");
-      const count = firstFinite(data?.labelledSet?.count, data?.aggregate?.utterances);
+      const provenance = String(data?.labelledSet?.provenance ?? "");
+      const count = firstFinite(
+        data?.labelledSet?.count,
+        data?.aggregate?.utterances,
+      );
       if (count === null || count < asrExternalMinUtterances) return false;
-      if (source.includes("tts") || measurementClass.includes("self_labelled")) return false;
-      return source.includes("external") || measurementClass.includes("external");
+      if (source.includes("tts") || measurementClass.includes("self_labelled")) {
+        return false;
+      }
+      if (measurementClass.includes("generated") || provenance === "generated_tts") {
+        return false;
+      }
+      return (
+        data?.labelledSet?.publishGateEligible === true &&
+        data?.labelledSet?.realRecordedWer === true &&
+        provenance === "real_recorded" &&
+        measurementClass.includes("real_recorded")
+      );
     },
   );
   const asrBench = newestJsonReportWhere(
@@ -725,10 +751,16 @@ async function main() {
   );
   const asrTtsLoopbackSmoke = newestJsonReportWhere(
     [path.join(REPORTS_ROOT, "local-e2e")],
-    ({ name, data }) =>
-      name.startsWith("asr-tts-loopback") &&
-      data?.ok === true &&
-      matchesTier(data, args.tier),
+    ({ name, data }) => {
+      const lower = name.toLowerCase();
+      return (
+        (lower.startsWith("asr-tts-loopback") ||
+          lower.startsWith("asr-tts-kokoro-loopback") ||
+          lower.startsWith("asr-existing-tts-loopback")) &&
+        data?.ok === true &&
+        matchesTier(data, args.tier)
+      );
+    },
   );
   const voiceProfile = newestJsonReportWhere(
     [path.join(REPORTS_ROOT, "local-e2e")],
@@ -937,11 +969,10 @@ async function main() {
     results.push(r);
   }
 
-  const hardFailures = results.filter(
-    (r) => r.status === "fail" && r.required && !r.provisional,
-  );
+  const blockingGateFailures = results.filter(isBlockingGateResult);
+  const hardFailures = results.filter((r) => r.status === "fail" && r.required);
   const softFailures = results.filter(
-    (r) => r.status === "fail" && (!r.required || r.provisional),
+    (r) => r.status === "fail" && !isBlockingGateResult(r),
   );
   const needsData = results.filter((r) => r.status === "needs-data");
 
@@ -1213,7 +1244,7 @@ async function main() {
       "voice",
       sourcePath(asrExternal),
       asrWer === null
-        ? `no >=${asrExternalMinUtterances}-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately`
+        ? `no >=${asrExternalMinUtterances}-utterance explicit real-recorded ASR WER report found; local generated-voice loopback is tracked separately`
         : null,
     ),
     {
@@ -1487,7 +1518,9 @@ async function main() {
       needsData: needsData.length,
       hardFailures: hardFailures.map((r) => r.name),
       softFailures: softFailures.map((r) => r.name),
-      blocking: hardFailures.length > 0,
+      blockingFailures: blockingGateFailures.map((r) => r.name),
+      blockingReasons: blockingGateFailures.map((r) => `${r.name}: ${r.reason}`),
+      blocking: blockingGateFailures.length > 0 || releaseMatrixSummary.blocking,
     },
     manifestEvalsFragment,
     bundleManifestEvalSync,
@@ -1513,9 +1546,14 @@ async function main() {
         `needs-data=${report.releaseMatrixSummary.needsData} n/a=${report.releaseMatrixSummary.notApplicable} ` +
         `blocking=${report.releaseMatrixSummary.blocking}`,
     );
-    if (hardFailures.length > 0) {
+    if (blockingGateFailures.length > 0) {
       console.error(
-        `[eliza1-gates-collect] BLOCKING gate failures: ${hardFailures.map((r) => `${r.name}(${r.measured} vs ${r.op}${r.threshold})`).join(", ")}`,
+        `[eliza1-gates-collect] BLOCKING gate failures: ${blockingGateFailures.map((r) => `${r.name}(${r.reason})`).join(", ")}`,
+      );
+    }
+    if (releaseMatrixSummary.blockerReasons.length > 0) {
+      console.error(
+        `[eliza1-gates-collect] BLOCKING release matrix failures: ${releaseMatrixSummary.blockerReasons.join("; ")}`,
       );
     }
     if (softFailures.length > 0) {

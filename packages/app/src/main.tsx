@@ -6,13 +6,6 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  AppWindowRenderer,
-  DESKTOP_TRAY_MENU_ITEMS,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-} from "@elizaos/app-core";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -42,6 +35,8 @@ import {
   App,
   type AppBootConfig,
   AppProvider,
+  AppWindowRenderer,
+  ELIZA_DEFAULT_THEME,
   applyForceFreshOnboardingReset,
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -50,8 +45,11 @@ import {
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   client,
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
   dispatchAppEvent,
-  ELIZA_DEFAULT_THEME,
   getBootConfig,
   getWindowNavigationPath,
   IOS_LOCAL_AGENT_IPC_BASE,
@@ -59,6 +57,7 @@ import {
   type IosLocalAgentNativeRequestResult,
   initializeCapacitorBridge,
   initializeStorageBridge,
+  installAndroidNativeAgentFetchBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
   installIosLocalAgentFetchBridge,
@@ -2098,6 +2097,20 @@ function applyStoredDetachedShellTheme(): void {
 
 async function main(): Promise<void> {
   registerViewServiceWorker();
+
+  const appWindowSlug =
+    window.location.pathname.startsWith("/apps/")
+      ? window.location.pathname.slice("/apps/".length).split("/")[0]
+      : resolveAppWindowSlug();
+  if (appWindowSlug === "model-tester") {
+    await importSideEffectAppModule("@elizaos/app-model-tester", () =>
+      import("@elizaos/app-model-tester"),
+    );
+    setupPlatformStyles();
+    mountReactApp();
+    return;
+  }
+
   await initializeAppModules();
   setupPlatformStyles();
   applyBuildTimeIosConnection();
@@ -2135,6 +2148,9 @@ async function main(): Promise<void> {
     if (await runIosFullBunSmokeIfRequested()) {
       return;
     }
+  } else if (isAndroid) {
+    initializeCapacitorBridge();
+    installAndroidNativeAgentFetchBridge();
   }
   mountReactApp();
   await initializePlatform();

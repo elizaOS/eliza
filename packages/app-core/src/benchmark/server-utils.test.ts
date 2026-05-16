@@ -315,3 +315,209 @@ describe("benchmark plugin LOCA tool capture", () => {
     setBenchmarkContext(null);
   });
 });
+
+describe("benchmark plugin LifeOps tool capture", () => {
+  it("renders LifeOpsBench access and routing instructions", async () => {
+    setBenchmarkContext({
+      benchmark: "lifeops_bench",
+      taskId: "lifeops-task-prompt",
+      lifeops: {
+        nowIso: "2026-05-10T12:00:00Z",
+        today: "2026-05-10",
+        calendarEvents: [],
+        previousToolResults: [],
+      },
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "CALENDAR_CHECK_AVAILABILITY",
+            description: "calendar availability",
+            parameters: {},
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "MESSAGE",
+            description: "message manage",
+            parameters: {},
+          },
+        },
+      ],
+    });
+
+    const plugin = createBenchmarkPlugin();
+    const provider = plugin.providers?.find(
+      (candidate) => candidate.name === "ELIZA_BENCHMARK",
+    );
+    const rendered = await provider?.get?.({} as never, {} as never, {} as never);
+
+    expect(rendered?.text).toContain(
+      "You have access to the benchmark's fake LifeOps calendar and inbox",
+    );
+    expect(rendered?.text).toContain("CALENDAR_CHECK_AVAILABILITY");
+    expect(rendered?.text).toContain("MEMORY is not a LifeOpsBench executor tool");
+    expect(rendered?.text).toContain("ARCHIVE_THREAD with threadId");
+
+    setBenchmarkContext(null);
+  });
+
+  it("accepts planner-emitted fields and strips runtime action context", async () => {
+    clearCapturedAction();
+    setBenchmarkContext({
+      benchmark: "lifeops_bench",
+      taskId: "lifeops-task-a",
+    });
+
+    const plugin = createBenchmarkPlugin();
+    const action = plugin.actions?.find(
+      (candidate) => candidate.name === "CALENDAR_CHECK_AVAILABILITY",
+    );
+
+    expect(action).toBeDefined();
+    expect(action?.allowAdditionalParameters).toBe(true);
+    expect(action?.suppressPostActionContinuation).toBe(true);
+    expect(
+      action?.parameters?.some((parameter) => parameter.name === "startAt"),
+    ).toBe(true);
+
+    await action?.handler(
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        actionContext: { previousResults: [] },
+        action: "check_availability",
+        intent: "Check if I am free Thursday 9-10am UTC",
+        details: {
+          start: "2026-05-14T09:00:00Z",
+          end: "2026-05-14T10:00:00Z",
+        },
+      } as never,
+    );
+
+    expect(getCapturedActions()).toEqual([
+      {
+        params: {
+          action: "check_availability",
+          intent: "Check if I am free Thursday 9-10am UTC",
+          details: {
+            start: "2026-05-14T09:00:00Z",
+            end: "2026-05-14T10:00:00Z",
+          },
+        },
+        toolName: "CALENDAR_CHECK_AVAILABILITY",
+        arguments: {
+          action: "check_availability",
+          intent: "Check if I am free Thursday 9-10am UTC",
+          details: {
+            start: "2026-05-14T09:00:00Z",
+            end: "2026-05-14T10:00:00Z",
+          },
+        },
+      },
+    ]);
+
+    clearCapturedAction();
+    setBenchmarkContext(null);
+  });
+
+  it("exposes the LifeOps MESSAGE umbrella for mail scenarios", async () => {
+    clearCapturedAction();
+    setBenchmarkContext({
+      benchmark: "lifeops_bench",
+      taskId: "lifeops-task-b",
+    });
+
+    const plugin = createBenchmarkPlugin();
+    const action = plugin.actions?.find(
+      (candidate) => candidate.name === "MESSAGE",
+    );
+
+    expect(action).toBeDefined();
+    expect(action?.allowAdditionalParameters).toBe(true);
+    expect(
+      action?.parameters?.some((parameter) => parameter.name === "threadId"),
+    ).toBe(true);
+
+    await action?.handler(
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        actionContext: { previousResults: [] },
+        operation: "manage",
+        source: "gmail",
+        manageOperation: "archive",
+        threadId: "thread_01464",
+      } as never,
+    );
+
+    expect(getCapturedActions()).toEqual([
+      {
+        params: {
+          operation: "manage",
+          source: "gmail",
+          manageOperation: "archive",
+          threadId: "thread_01464",
+        },
+        toolName: "MESSAGE",
+        arguments: {
+          operation: "manage",
+          source: "gmail",
+          manageOperation: "archive",
+          threadId: "thread_01464",
+        },
+      },
+    ]);
+
+    clearCapturedAction();
+    setBenchmarkContext(null);
+  });
+
+  it("exposes archive thread aliases for mail scenarios", async () => {
+    clearCapturedAction();
+    setBenchmarkContext({
+      benchmark: "lifeops_bench",
+      taskId: "lifeops-task-c",
+    });
+
+    const plugin = createBenchmarkPlugin();
+    const action = plugin.actions?.find(
+      (candidate) => candidate.name === "ARCHIVE_THREAD",
+    );
+
+    expect(action).toBeDefined();
+    expect(action?.allowAdditionalParameters).toBe(true);
+    expect(action?.description).toContain("email archive alias");
+    expect(
+      action?.parameters?.some((parameter) => parameter.name === "threadId"),
+    ).toBe(true);
+
+    await action?.handler(
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        actionContext: { previousResults: [] },
+        threadId: "thread_01464",
+      } as never,
+    );
+
+    expect(getCapturedActions()).toEqual([
+      {
+        params: {
+          threadId: "thread_01464",
+        },
+        toolName: "ARCHIVE_THREAD",
+        arguments: {
+          threadId: "thread_01464",
+        },
+      },
+    ]);
+
+    clearCapturedAction();
+    setBenchmarkContext(null);
+  });
+});

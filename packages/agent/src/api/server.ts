@@ -2705,11 +2705,11 @@ async function handleRequest(
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
-        startStaleRunSweeper: (getRuntime) =>
-          appManager.startStaleRunSweeper(getRuntime),
-        getInfo: (pluginManager, name) =>
-          appManager.getInfo(pluginManager, name),
+	        recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
+	        startStaleRunSweeper: (getRuntime) =>
+	          appManager.startStaleRunSweeper(getRuntime),
+	        getInfo: (pluginManager, name) =>
+	          appManager.getInfo(pluginManager, name),
       } satisfies AppManagerLike,
       getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,

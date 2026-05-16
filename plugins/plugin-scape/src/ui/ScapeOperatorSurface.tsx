@@ -525,7 +525,7 @@ export function ScapeOperatorSurface({
           return false;
         }
         const response = await client.sendAppRunMessage(run.runId, content);
-        setStatusMessage(response.message);
+        setStatusMessage(response.message ?? "Operator message sent.");
         return response.success;
       } catch (error) {
         setStatusMessage(
@@ -563,7 +563,10 @@ export function ScapeOperatorSurface({
       try {
         const response = await client.controlAppRun(run.runId, action);
         setStatusMessage(
-          response.message,
+          response.message ??
+            (action === "pause"
+              ? "'scape session paused."
+              : "'scape session resumed."),
         );
       } catch (error) {
         setStatusMessage(

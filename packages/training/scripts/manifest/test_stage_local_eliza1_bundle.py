@@ -54,6 +54,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     bundle = _base_bundle(tmp_path)
     text_source = _write(tmp_path / "sources" / "text.gguf", b"text")
     drafter_source = _write(tmp_path / "sources" / "drafter.gguf", b"drafter")
+    vision_source = _write(tmp_path / "sources" / "mmproj.gguf", b"vision")
     smoke = _write(
         tmp_path / "smoke.json",
         json.dumps(
@@ -76,6 +77,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
             bundle_dir=bundle,
             text_source=text_source,
             drafter_source=drafter_source,
+            vision_source=vision_source,
             context="128k",
             all_contexts=False,
             version="0.0.0-local.test",
@@ -92,7 +94,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert (bundle / "text" / "eliza-1-2b-128k.gguf").is_file()
     assert (bundle / "dflash" / "drafter-2b.gguf").is_file()
     assert (bundle / "dflash" / "target-meta.json").is_file()
-    assert (bundle / "vision").is_dir()
+    assert (bundle / "vision" / "mmproj-2b.gguf").is_file()
     assert (bundle / "evals" / "aggregate.json").is_file()
     assert (bundle / "evals" / "text-eval.json").is_file()
     assert (bundle / "evals" / "voice-rtf.json").is_file()
@@ -106,13 +108,13 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert (bundle / "licenses" / "LICENSE.dflash").is_file()
     assert (bundle / "licenses" / "LICENSE.eliza-1").is_file()
     aggregate = json.loads((bundle / "evals" / "aggregate.json").read_text())
-    assert "vad_boundary_ms" in aggregate["results"]
-    assert "vad_endpoint_ms" in aggregate["results"]
-    assert "vad_false_barge_in_rate" in aggregate["results"]
+    assert "vad_boundary_mae_ms" in aggregate["results"]
+    assert "vad_endpoint_p95_ms" in aggregate["results"]
+    assert "vad_false_bargein_per_hour" in aggregate["results"]
 
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["defaultEligible"] is False
-    assert manifest["files"]["vision"] == []
+    assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-2b.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0

@@ -37,18 +37,6 @@ function makeRecordingTts(now: () => number, latencyMs = 0) {
   return { tts, calls };
 }
 
-async function waitForCallCount(
-  calls: TtsCall[],
-  expected: number,
-  timeoutMs = 1000,
-): Promise<void> {
-  const deadline = performance.now() + timeoutMs;
-  while (performance.now() < deadline) {
-    if (calls.length === expected) return;
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
-
 describe("PhraseChunkedTts", () => {
   it("emits the first phrase as soon as the first sentence-ending punctuation arrives", async () => {
     const { tts, calls } = makeRecordingTts(() => performance.now());
@@ -211,10 +199,8 @@ describe("PhraseChunkedTts", () => {
 
     // No punctuation, no max-token cap hit: only the time-budget can flush.
     pipe.push("stalled words without a terminator");
-    // Wait past the 40 ms budget — the watchdog should fire. CI can be busy
-    // enough that a fixed 80 ms sleep races the timer, so poll the observable
-    // dispatch count within a bounded window.
-    await waitForCallCount(calls, 1);
+    // Wait past the 40 ms budget — the watchdog should fire.
+    await new Promise((r) => setTimeout(r, 80));
     expect(calls).toHaveLength(1);
     expect(calls[0]?.text).toBe("stalled words without a terminator");
 

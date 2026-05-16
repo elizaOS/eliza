@@ -58,7 +58,7 @@ interface AppWorkspaceChatCollapseButtonProps {
 
 export function AppWorkspaceChatCollapseButton({
   testId = "app-workspace-chat-collapse",
-}: AppWorkspaceChatCollapseButtonProps): JSX.Element | null {
+}: AppWorkspaceChatCollapseButtonProps): React.JSX.Element | null {
   const chatChrome = useAppWorkspaceChatChrome();
 
   if (!chatChrome) return null;
@@ -84,7 +84,7 @@ interface AppWorkspaceChatDockToggleButtonProps {
 function AppWorkspaceChatDockToggleButton({
   collapsed,
   testId,
-}: AppWorkspaceChatDockToggleButtonProps): JSX.Element | null {
+}: AppWorkspaceChatDockToggleButtonProps): React.JSX.Element | null {
   const chatChrome = useAppWorkspaceChatChrome();
 
   if (!chatChrome) return null;
@@ -124,7 +124,7 @@ function MobileWorkspacePaneSwitcher({
   onSidebar: () => void;
   onCloseChat: () => void;
   onCloseSidebar: () => void;
-}): JSX.Element | null {
+}): React.JSX.Element | null {
   const sidebarOpen = sidebar?.open ?? false;
   const showLeft = Boolean(sidebar) && !chatOpen;
   const showRight = chatAvailable && !sidebarOpen;
@@ -266,7 +266,7 @@ export function AppWorkspaceChrome({
   hideCollapseButton = false,
   chatDisabled = false,
   testId = "app-workspace-chrome",
-}: AppWorkspaceChromeProps): JSX.Element {
+}: AppWorkspaceChromeProps): React.JSX.Element {
   const isControlled = chatCollapsedProp !== undefined;
   const isMobileViewport = useMediaQuery(WORKSPACE_MOBILE_MEDIA_QUERY);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);

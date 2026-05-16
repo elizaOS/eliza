@@ -123,7 +123,7 @@ export function normalizeAccountId(accountId?: string | null): string {
 export function getMultiAccountConfig(
 	runtime: IAgentRuntime,
 ): FeishuMultiAccountConfig {
-	const characterFeishu = runtime.character.settings?.feishu as
+	const characterFeishu = runtime.character?.settings?.feishu as
 		| FeishuMultiAccountConfig
 		| undefined;
 

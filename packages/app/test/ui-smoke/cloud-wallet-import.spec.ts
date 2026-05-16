@@ -7,14 +7,16 @@ import {
 } from "./helpers";
 
 async function openWalletRpcSettings(page: Page) {
-  await page.getByRole("button", { name: "Open RPC settings" }).click();
+  await openAppPath(page, "/settings#wallet-rpc");
   await expect(page.getByTestId("wallet-rpc-mode-cloud")).toBeVisible({
     timeout: 15_000,
   });
 }
 
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, {
+    "eliza:wallet:enabled": "true",
+  });
   await installDefaultAppRoutes(page);
 });
 
@@ -34,8 +36,6 @@ test("inventory cloud import uses the live wallet API", async ({ page }) => {
       refreshCloudCount += 1;
     }
   });
-
-  await openAppPath(page, "/wallet");
 
   const cloudStatusResponse = await page.request.get("/api/cloud/status");
   expect(cloudStatusResponse.ok()).toBe(true);
@@ -141,10 +141,7 @@ test("inventory cloud import uses the live wallet API", async ({ page }) => {
 test("inventory cloud import refreshes cloud wallets after save", async ({
   page,
 }) => {
-  await installDefaultAppRoutes(page);
   const api = await installCloudWalletImportApiOverrides(page);
-
-  await openAppPath(page, "/wallet");
 
   await openWalletRpcSettings(page);
 

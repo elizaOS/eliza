@@ -532,7 +532,7 @@ export class NostrService extends Service implements INostrService {
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
-    if (this.accountServices.size > 0) {
+    if (this.accountServices?.size > 0) {
       return this.getDefaultAccountService().getAccountId(runtime);
     }
     return normalizeNostrAccountId(

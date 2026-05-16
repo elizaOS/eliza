@@ -7,7 +7,7 @@ export interface StateSetupProps {
   language: string;
   onLanguageChange: (language: string) => void;
   onChooseRuntime: (runtime: RuntimeChoice) => void;
-  onContinue: () => void;
+  onContinue: (selectedRuntime: RuntimeChoice) => void;
   onChooseRemote: () => void;
 }
 
@@ -18,7 +18,7 @@ const LANGUAGES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "ko-KR", label: "🇰🇷 Korean" },
 ];
 
-export function StateSetup(props: StateSetupProps): JSX.Element {
+export function StateSetup(props: StateSetupProps): React.JSX.Element {
   const {
     deviceProfile,
     runtime,
@@ -83,7 +83,7 @@ export function StateSetup(props: StateSetupProps): JSX.Element {
         <button
           type="button"
           className="eliza-ob-btn orange"
-          onClick={onContinue}
+          onClick={() => onContinue(selected)}
         >
           Continue
         </button>

@@ -46,14 +46,7 @@ export async function* walk(dir) {
 }
 
 export function shouldSkipDirectory(name) {
-  if (
-    name === "src" ||
-    name === "node_modules" ||
-    name === "test" ||
-    name === "__tests__"
-  ) {
-    return true;
-  }
+  if (name === "src" || name === "node_modules") return true;
   return name.startsWith(".") && name !== ".well-known";
 }
 

@@ -71,10 +71,6 @@ export interface GeneratedApiKey {
  * Service for managing API keys including generation, validation, and CRUD operations.
  */
 export class ApiKeysService {
-  static isAgentSandboxKey(params: { name?: string | null }): boolean {
-    return typeof params.name === "string" && params.name.startsWith("agent-sandbox:");
-  }
-
   generateApiKey(): GeneratedApiKey {
     const randomBytes = crypto.randomBytes(32).toString("hex");
     const key = `eliza_${randomBytes}`;

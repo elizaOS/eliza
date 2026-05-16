@@ -137,7 +137,7 @@ async function _redditApiRequestLegacy<T>(
     throw new Error(error.message || `Reddit API error: ${response.status}`);
   }
 
-  return (await response.json()) as T;
+  return response.json();
 }
 
 export const redditProvider: SocialMediaProvider = {

@@ -81,6 +81,15 @@ def _effective_harness_label() -> str:
     return _selected_delegate_harness() or "eliza"
 
 
+def _run_mode_label(args: argparse.Namespace) -> str:
+    return "smoke_dry_run" if args.dry_run else "real_vm"
+
+
+def _summary_agent_label(args: argparse.Namespace) -> str:
+    harness = _effective_harness_label()
+    return f"{harness}-dry-run-smoke" if args.dry_run else harness
+
+
 def _configure_bridge_model_env(model: str) -> None:
     model_name = (model or "").strip()
     if not model_name:
@@ -429,7 +438,10 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
 
         summary = {
             "model": args.model,
-            "agent": _effective_harness_label(),
+            "agent": _summary_agent_label(args),
+            "harness": _effective_harness_label(),
+            "run_mode": _run_mode_label(args),
+            "smoke": bool(args.dry_run),
             "observation_type": args.observation_type,
             "action_space": args.action_space,
             "total_tasks": total,

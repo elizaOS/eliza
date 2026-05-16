@@ -34,7 +34,7 @@ function TabButton({
   active,
   onClick,
   onClose,
-}: TabButtonProps): JSX.Element {
+}: TabButtonProps): React.JSX.Element {
   return (
     <div
       className={`group relative flex min-w-0 max-w-[160px] shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -82,7 +82,7 @@ export function DesktopTabBar({
   onTabClick,
   onTabClose,
   onOpenViewManager,
-}: DesktopTabBarProps): JSX.Element | null {
+}: DesktopTabBarProps): React.JSX.Element | null {
   if (!isElectrobunRuntime()) return null;
   if (tabs.length === 0) return null;
 
