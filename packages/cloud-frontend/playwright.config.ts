@@ -19,8 +19,7 @@ export default defineConfig({
       "env -u FORCE_COLOR VITE_PLAYWRIGHT_TEST_AUTH=true VITE_ELIZA_RENDER_TELEMETRY=true bun --bun vite --host 127.0.0.1 --port 4173",
     url: "http://127.0.0.1:4173",
     reuseExistingServer:
-      process.env.CLOUD_FRONTEND_E2E_SERVER_STARTED === "1" ||
-      !process.env.CI,
+      process.env.CLOUD_FRONTEND_E2E_SERVER_STARTED === "1" || !process.env.CI,
     timeout: 120_000,
   },
   projects: [
