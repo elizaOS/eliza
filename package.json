@@ -179,7 +179,6 @@
     "packages/examples/*",
     "packages/examples/*/*",
     "packages/examples/*/*/*",
-    "packages/native-plugins/*",
     "packages/app-core/platforms/*",
     "packages/app-core/deploy/cloud-agent-template",
     "packages/os/linux/agent",
