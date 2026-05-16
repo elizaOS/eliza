@@ -432,8 +432,6 @@ function serverArgs(args, variant, port) {
     out.push(
       "-md",
       args.drafter,
-      "--ctx-size-draft",
-      String(args.draftContextSize),
       "--spec-draft-n-min",
       String(args.draftMin),
       "--spec-draft-n-max",

@@ -439,8 +439,6 @@ export class DflashLlamaServer {
       normalizeGpuLayers(plan.draftGpuLayers),
       "--ctx-size",
       String(plan.contextSize),
-      "--ctx-size-draft",
-      String(plan.draftContextSize),
       "--spec-draft-n-min",
       String(plan.draftMin),
       "--spec-draft-n-max",

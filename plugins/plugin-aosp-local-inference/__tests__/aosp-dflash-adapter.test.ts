@@ -23,6 +23,7 @@ describe("buildDflashServerArgv", () => {
     expect(argv).toContain("--spec-draft-n-max");
     expect(argv).not.toContain("--draft-min");
     expect(argv).not.toContain("--draft-max");
+    expect(argv).not.toContain("--ctx-size-draft");
     expect(argv).toContain("--reasoning");
     expect(argv).toContain("off");
     expect(argv).toContain("--cache-type-k");

@@ -23,7 +23,7 @@ const require = createRequire(import.meta.url);
 const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
 const { applyWhatsAppQrOverride } = (await import(
   "@elizaos/plugin-whatsapp"
-)) as {
+)) as unknown as {
   applyWhatsAppQrOverride: (
     entries: PluginEntry[],
     workspaceDir: string,
