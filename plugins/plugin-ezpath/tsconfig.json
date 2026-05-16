@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target":                "ES2022",
+    "module":                "ESNext",
+    "moduleResolution":      "bundler",
+    "lib":                   ["ES2022", "DOM"],
+    "strict":                false,
+    "declaration":           true,
+    "noEmit":                true,
+    "skipLibCheck":          true,
+    "allowImportingTsExtensions": true
+  },
+  "include":  ["./**/*.ts"],
+  "exclude":  ["node_modules", "dist", "**/*.test.ts", "**/__tests__/**"]
+}

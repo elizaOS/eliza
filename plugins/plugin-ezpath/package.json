@@ -1,0 +1,38 @@
+{
+  "name": "@elizaos/plugin-ezpath",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "description": "Pay-per-request DEX meta-router on Base mainnet with automatic X402 USDC payment negotiation",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "exports": {
+    "types": "./dist/index.d.ts",
+    "import": "./dist/index.js",
+    "require": "./dist/index.js"
+  },
+  "scripts": {
+    "build":     "tsup src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit",
+    "lint":      "biome check --apply .",
+    "test":      "vitest run"
+  },
+  "keywords": ["eliza", "plugin", "dex", "base", "x402", "swap", "usdc", "aggregator"],
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "dependencies": {
+    "viem": "^2.0.0",
+    "zod":  "^3.0.0"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/node":   "latest",
+    "typescript":    "6.0.0",
+    "tsup":          "^8.0.0",
+    "vitest":        "4.0.0"
+  },
+  "elizaos": {
+    "category":    "connector",
+    "displayName": "EZ-Path DEX Router"
+  }
+}
