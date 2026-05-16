@@ -17,7 +17,7 @@ declare module "react-syntax-highlighter" {
   export const Prism: ComponentType<SyntaxHighlighterProps>;
 }
 
-declare module "react-syntax-highlighter/dist/esm/styles/prism" {
+declare module "react-syntax-highlighter/dist/esm/styles/prism/index.js" {
   import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
 
   export const oneDark: SyntaxHighlighterStyle;
