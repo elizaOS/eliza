@@ -385,6 +385,14 @@ parts:
         cp -aL "$type_target" "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg"
       done
 
+      # Patch tsup@8.5.1's rollup-plugin-dts wrapper so DTS builds use
+      # @rollup/wasm-node (and don't crash with "await is only valid in async
+      # functions" at top level). The root postinstall normally handles this,
+      # but the snap build runs `bun install --ignore-scripts` to avoid the
+      # heavier postinstall steps (submodule init, native plugin link). The
+      # patch is idempotent — if tsup is already patched, it's a no-op.
+      node packages/scripts/patch-tsup-dts.mjs || true
+
       # Run only the safe postinstall steps (patch deps, link browser server)
       node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
       node "$APP_CORE_SCRIPTS_DIR/link-browser-server.mjs" || true
