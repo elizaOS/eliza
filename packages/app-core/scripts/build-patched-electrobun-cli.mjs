@@ -89,10 +89,19 @@ function insertAfterAnchor(source, anchor, insertion, label) {
 }
 
 export function patchCliSourceText(original) {
+  const oldDynamicImportPattern =
+    /const rcedit = \(await import\("rcedit"\)\)\.default;/g;
+  const currentPackageJsonResolvePattern =
+    /(?<![A-Za-z0-9_$])require\.resolve\("rcedit\/package\.json"\)/g;
+  const dynamicImportMatches = original.match(oldDynamicImportPattern) ?? [];
+  const packageJsonResolveMatches =
+    original.match(currentPackageJsonResolvePattern) ?? [];
+
   if (
-    original.includes(
-      'const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
-    )
+    original.includes("async function importRcedit()") &&
+    original.includes("function resolveRceditPackageJson()") &&
+    dynamicImportMatches.length === 0 &&
+    packageJsonResolveMatches.length === 0
   ) {
     return original;
   }
@@ -119,6 +128,8 @@ export function patchCliSourceText(original) {
       [
         "",
         "",
+        "const electrobunCliRequire = createRequire(import.meta.url);",
+        "",
         "async function importRcedit() {",
         '  const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
         "  if (overridePackageJson) {",
@@ -132,17 +143,49 @@ export function patchCliSourceText(original) {
         "  return rceditModule.default ?? rceditModule;",
         "}",
         "",
+        "function resolveRceditPackageJson() {",
+        '  const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
+        "  if (overridePackageJson) {",
+        "    const overrideRequire = createRequire(overridePackageJson);",
+        '    return overrideRequire.resolve("rcedit/package.json");',
+        "  }",
+        "",
+        '  return electrobunCliRequire.resolve("rcedit/package.json");',
+        "}",
+        "",
       ].join(eol),
       "_MAX_CHUNK_SIZE",
     );
+  } else if (!patched.includes("function resolveRceditPackageJson()")) {
+    patched = insertAfterAnchor(
+      patched,
+      ["  return rceditModule.default ?? rceditModule;", "}"].join(eol),
+      [
+        "",
+        "",
+        "function resolveRceditPackageJson() {",
+        '  const overridePackageJson = process.env["ELECTROBUN_RCEDIT_PACKAGE_JSON"];',
+        "  if (overridePackageJson) {",
+        "    const overrideRequire = createRequire(overridePackageJson);",
+        '    return overrideRequire.resolve("rcedit/package.json");',
+        "  }",
+        "",
+        '  return createRequire(import.meta.url).resolve("rcedit/package.json");',
+        "}",
+      ].join(eol),
+      "importRcedit helper",
+    );
   }
 
-  const replacements = patched.match(
-    /const rcedit = \(await import\("rcedit"\)\)\.default;/g,
-  );
-  if (!replacements || replacements.length !== 3) {
+  const dynamicImportReplacements = patched.match(oldDynamicImportPattern) ?? [];
+  const packageJsonResolveReplacements =
+    patched.match(currentPackageJsonResolvePattern) ?? [];
+  if (
+    dynamicImportReplacements.length !== 3 &&
+    packageJsonResolveReplacements.length !== 3
+  ) {
     throw new Error(
-      `Expected 3 rcedit dynamic import call sites, found ${replacements?.length ?? 0}`,
+      `Expected 3 rcedit dynamic import or package.json resolve call sites, found ${dynamicImportReplacements.length} dynamic imports and ${packageJsonResolveReplacements.length} package.json resolves`,
     );
   }
 
@@ -150,9 +193,16 @@ export function patchCliSourceText(original) {
     'const rcedit = (await import("rcedit")).default;',
     "const rcedit = await importRcedit();",
   );
+  patched = patched.replaceAll(
+    'require.resolve("rcedit/package.json")',
+    "resolveRceditPackageJson()",
+  );
 
   if (!patched.includes("async function importRcedit()")) {
     throw new Error("importRcedit helper was not inserted");
+  }
+  if (!patched.includes("function resolveRceditPackageJson()")) {
+    throw new Error("resolveRceditPackageJson helper was not inserted");
   }
 
   return patched;
