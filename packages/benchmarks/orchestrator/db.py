@@ -689,9 +689,8 @@ def repair_nonpublishable_success_statuses(conn: sqlite3.Connection) -> int:
     """Mark legacy "successful" rows that never executed as failed.
 
     This is intentionally narrow. Some deterministic/calibration benchmarks do
-    not emit LLM telemetry, but a Solana row with zero messages, zero reward
-    history, and zero discovered programs is an empty rollout artifact rather
-    than a scored agent attempt.
+    not emit LLM telemetry, but rows with zero evaluated samples in public
+    benchmark result shapes are empty artifacts rather than scored attempts.
     """
 
     rows = conn.execute(
@@ -703,8 +702,6 @@ def repair_nonpublishable_success_statuses(conn: sqlite3.Connection) -> int:
     ).fetchall()
     repaired = 0
     for row in rows:
-        if row["benchmark_id"] != "solana":
-            continue
         raw_metrics = row["metrics_json"]
         if not isinstance(raw_metrics, str):
             continue
@@ -714,21 +711,10 @@ def repair_nonpublishable_success_statuses(conn: sqlite3.Connection) -> int:
             continue
         if not isinstance(metrics, dict):
             continue
-        messages = metrics.get("messages")
-        cumulative_rewards = metrics.get("cumulative_rewards")
-        final_programs = metrics.get("final_programs")
-        if final_programs is None and isinstance(metrics.get("programs_discovered"), dict):
-            final_programs = len(metrics["programs_discovered"])
-        empty_rollout = (
-            isinstance(messages, list)
-            and len(messages) == 0
-            and isinstance(cumulative_rewards, list)
-            and len(cumulative_rewards) == 0
-            and (final_programs in (None, 0, 0.0))
-        )
-        if not empty_rollout:
+        reason = _nonpublishable_success_reason(str(row["benchmark_id"]), metrics)
+        if reason is None:
             continue
-        error = row["error"] or "Solana benchmark produced an empty rollout artifact"
+        error = row["error"] or reason
         conn.execute(
             """
             UPDATE benchmark_runs
@@ -741,6 +727,59 @@ def repair_nonpublishable_success_statuses(conn: sqlite3.Connection) -> int:
     if repaired:
         conn.commit()
     return repaired
+
+
+def _metric_number(metrics: dict[str, Any], key: str) -> float | None:
+    value = metrics.get(key)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _nonpublishable_success_reason(
+    benchmark_id: str,
+    metrics: dict[str, Any],
+) -> str | None:
+    if benchmark_id == "solana":
+        messages = metrics.get("messages")
+        cumulative_rewards = metrics.get("cumulative_rewards")
+        final_programs = metrics.get("final_programs")
+        if final_programs is None and isinstance(metrics.get("programs_discovered"), dict):
+            final_programs = len(metrics["programs_discovered"])
+        empty_rollout = (
+            isinstance(messages, list)
+            and len(messages) == 0
+            and isinstance(cumulative_rewards, list)
+            and len(cumulative_rewards) == 0
+            and (final_programs in (None, 0, 0.0))
+        )
+        return "Solana benchmark produced an empty rollout artifact" if empty_rollout else None
+
+    positive_sample_keys: dict[str, tuple[str, ...]] = {
+        "abliteration-robustness": ("n",),
+        "gaia": ("total_questions",),
+        "gaia_orchestrated": ("total_questions",),
+        "humaneval": ("n",),
+        "lifeops_bench": ("seeds",),
+        "mmlu": ("n",),
+    }
+    keys = positive_sample_keys.get(benchmark_id)
+    if keys is None:
+        return None
+    for key in keys:
+        value = _metric_number(metrics, key)
+        if value is None or value <= 0:
+            return f"{benchmark_id} benchmark produced a zero-sample success artifact ({key}={value!r})"
+    if benchmark_id == "lifeops_bench":
+        scenario_count = _metric_number(metrics, "scenario_count")
+        if scenario_count is not None and scenario_count <= 0:
+            return (
+                "lifeops_bench benchmark produced a zero-scenario success "
+                f"artifact (scenario_count={scenario_count!r})"
+            )
+    return None
 
 
 def list_run_groups(conn: sqlite3.Connection, *, limit: int = 2000) -> list[dict[str, Any]]:
@@ -779,6 +818,7 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                 MAX(started_at) AS max_started_at
             FROM benchmark_runs
             WHERE status = 'succeeded'
+              AND score IS NOT NULL
             GROUP BY benchmark_id, agent
         )
         SELECT
@@ -800,6 +840,7 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
          AND r.agent = l.agent
          AND r.started_at = l.max_started_at
         WHERE r.status = 'succeeded'
+          AND r.score IS NOT NULL
         ORDER BY r.benchmark_id ASC, r.agent ASC
         """
     ).fetchall()

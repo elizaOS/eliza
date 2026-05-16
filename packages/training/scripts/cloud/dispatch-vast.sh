@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK' (build|kernel-verify|bench|train)" ;; esac
-case "$TIER" in 0_8b|2b|4b|9b|27b|27b-256k) ;; *) die "unknown tier '$TIER' (0_8b|2b|4b|9b|27b|27b-256k)" ;; esac
+case "$TIER" in 0_8b|2b|4b|9b|27b) ;; *) die "unknown tier '$TIER' (0_8b|2b|4b|9b|27b)" ;; esac
 
 # --- tier → defaults from tier-routing.json -----------------------------------
 # Use the routing table to pick a default GPU + min VRAM when --gpu is not set.
@@ -113,7 +113,7 @@ tier_to_registry_key() {
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;
-    27b|27b-256k) echo qwen3.6-27b ;;
+    27b) echo qwen3.6-27b ;;
   esac
 }
 

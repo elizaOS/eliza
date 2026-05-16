@@ -45,7 +45,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 			vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
 			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
-			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
+			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},
 		kernels: {
 			required: [...REQUIRED_KERNELS_BY_TIER[tier]],

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import { expect, it } from "vitest";
-import { describeIf } from "../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
 import {
   createNativeAppleReminderLikeItem,
   deleteNativeAppleReminderLikeItem,

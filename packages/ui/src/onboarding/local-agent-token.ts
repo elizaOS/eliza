@@ -1,9 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { getElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
-
-const LOCAL_AGENT_PORT = "31337";
-const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+import { isMobileLocalAgentUrl } from "./mobile-runtime-mode";
 
 type AgentWithLocalToken = {
   getLocalAgentToken?: () => Promise<{
@@ -13,24 +11,6 @@ type AgentWithLocalToken = {
 };
 
 const agentPluginName = "Agent";
-const agentPluginId = "@elizaos/capacitor-agent";
-
-export function isMobileLocalAgentUrl(value: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return false;
-  }
-  if (parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc") {
-    return true;
-  }
-  return (
-    parsed.protocol === "http:" &&
-    parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(parsed.hostname)
-  );
-}
 
 export function isAndroidLocalAgentUrl(value: string): boolean {
   return isMobileLocalAgentUrl(value);
@@ -38,9 +18,7 @@ export function isAndroidLocalAgentUrl(value: string): boolean {
 
 function isNativeAndroid(): boolean {
   try {
-    return (
-      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
-    );
+    return Capacitor.getPlatform() === "android";
   } catch {
     return false;
   }
@@ -60,12 +38,6 @@ async function readNativeLocalAgentToken(): Promise<string | null> {
   }
 
   try {
-    if (!agent?.getLocalAgentToken) {
-      const mod = (await import(/* @vite-ignore */ agentPluginId)) as {
-        Agent?: AgentWithLocalToken;
-      };
-      agent = mod.Agent ?? null;
-    }
     const result = await agent?.getLocalAgentToken?.();
     const token = result?.token?.trim();
     return result?.available && token ? token : null;

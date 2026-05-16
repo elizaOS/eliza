@@ -8,7 +8,7 @@
  * in parallel.
  */
 
-export interface BBox {
+interface BBox {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -112,12 +112,12 @@ export interface PipelineTrace {
   readonly failures: ReadonlyArray<string>;
 }
 
-export interface OcrCoordWord {
+interface OcrCoordWord {
   readonly text: string;
   readonly bbox: BBox;
 }
 
-export interface OcrCoordBlock {
+interface OcrCoordBlock {
   readonly text: string;
   readonly bbox: BBox;
   readonly words: ReadonlyArray<OcrCoordWord>;

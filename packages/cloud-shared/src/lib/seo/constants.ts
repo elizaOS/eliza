@@ -4,9 +4,9 @@
 export const SEO_CONSTANTS = {
   siteName: "Eliza Cloud",
   twitterHandle: "@elizaos",
-  defaultTitle: "Eliza Cloud - Managed Hosting for AI Agents",
+  defaultTitle: "Eliza Cloud - Hosted Runtime and Dashboard for Eliza Agents",
   defaultDescription:
-    "Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud.",
+    "Run your agent instantly in the cloud. Chat, deploy and manage Eliza agents, connect app devices, manage API access and billing, and upgrade to ElizaOS for full device control.",
   defaultKeywords: [
     "AI",
     "agents",
@@ -32,9 +32,9 @@ export const SEO_CONSTANTS = {
  */
 export const ROUTE_METADATA = {
   home: {
-    title: "Eliza Cloud - Managed Hosting for AI Agents",
+    title: "Eliza Cloud - Hosted Runtime and Dashboard for Eliza Agents",
     description:
-      "Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud.",
+      "Run your agent instantly in the cloud. Chat, deploy and manage Eliza agents, connect app devices, manage API access and billing, and upgrade to ElizaOS for full device control.",
     keywords: ["AI platform", "agent development", "elizaOS", "AI hosting", "LLM deployment"],
   },
   dashboard: {

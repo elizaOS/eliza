@@ -1,7 +1,8 @@
 # eliza-1 — Training Pipeline
 
 Fine-tunes the **eliza-1** model series (`eliza-1-0_8b`, `eliza-1-2b`,
-`eliza-1-4b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
+`eliza-1-4b`, `eliza-1-9b`, `eliza-1-27b`) on Eliza-native Vercel AI SDK
+trajectory rows: the exact
 request sent to the model plus the exact normalized response returned by the
 model, including native tool calls.
 
@@ -25,9 +26,11 @@ arXiv:2412.05270), not LoRA.
 
 | registry key | eliza release | base               | tier        | default training target             | optimizer    |
 |--------------|---------------|--------------------|-------------|-------------------------------------|--------------|
-| qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B  | local       | 16 GB consumer GPU                  | apollo_mini  |
-| qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B    | local       | 16 GB consumer GPU                  | apollo_mini  |
-| qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B    | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
+| qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B-Base | local       | 16 GB consumer GPU                  | apollo_mini  |
+| qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B-Base   | local       | 16 GB consumer GPU                  | apollo_mini  |
+| qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B-Base   | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
+| qwen3.5-9b   | eliza-1-9b    | Qwen/Qwen3.5-9B        | workstation | 80 GB-class GPU                     | apollo       |
+| qwen3.6-27b  | eliza-1-27b   | Qwen/Qwen3.6-27B       | cloud       | 2x H200 / B200                      | apollo       |
 
 After training, two **post-training quantization** passes run:
 **PolarQuant** (4-bit weights via Hadamard rotation, arXiv:2603.29078) and
@@ -171,7 +174,7 @@ See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).
 
 ### Renting GPUs
 
-The active 0.8B, 2B, and 4B APOLLO tiers can train on **Vast.ai** via `scripts/train_vast.sh`
+The active 0.8B, 2B, 4B, 9B, and 27B APOLLO tiers can train on **Vast.ai** via `scripts/train_vast.sh`
 (subcommands: `search`, `provision`, `sync`, `run`,
 `quantize`, `bench`, `fetch`, `status`, `pull-checkpoints`,
 `kill-and-teardown`, `teardown`, `provision-and-train`). The script
@@ -180,6 +183,8 @@ auto-picks the GPU target from `REGISTRY_KEY`:
 - `qwen3.5-0.8b` / `eliza-1-0_8b` → smallest active smoke/default tier.
 - `qwen3.5-2b` / `eliza-1-2b` → local 16 GB training tier.
 - `qwen3.5-4b` / `eliza-1-4b` → 48 GB-class training tier, optimized for 24 GB inference after quantization.
+- `qwen3.5-9b` / `eliza-1-9b` → workstation tier.
+- `qwen3.6-27b` / `eliza-1-27b` → cloud tier.
 
 Lower-level helpers live in `scripts/lib/vast.py` (searchable via
 `python -m scripts.lib.vast pick blackwell6000-2x`). `scripts/day0_smoke.sh`

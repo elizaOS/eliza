@@ -36,6 +36,7 @@
   "exclude": [
     "dist",
     "node_modules",
+    "vendor",
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.e2e.test.ts",

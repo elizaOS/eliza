@@ -310,6 +310,19 @@ function elizaHarnessSchemaFromParams(
 	});
 }
 
+function extractThinkingControl(
+	providerOptions: unknown,
+): "auto" | "on" | "off" | undefined {
+	const elizaOpts =
+		providerOptions && typeof providerOptions === "object"
+			? (providerOptions as { eliza?: { thinking?: unknown } }).eliza
+			: undefined;
+	const thinking = elizaOpts?.thinking;
+	return thinking === "auto" || thinking === "on" || thinking === "off"
+		? thinking
+		: undefined;
+}
+
 /**
  * Project a `GenerateTextParams` onto the engine's `GenerateArgs`, threading
  * the structure-forcing extensions (`prefill`, `responseSkeleton`, `grammar`,
@@ -335,6 +348,7 @@ function engineGenerateArgsFromParams(
 	streamStructured?: boolean;
 	elizaSchema?: ElizaHarnessSchema;
 	spanSamplerPlan?: GenerateTextParams["spanSamplerPlan"];
+	thinking?: "auto" | "on" | "off";
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	voiceOutput?: "user-visible" | "internal";
 } {
@@ -397,6 +411,7 @@ function engineGenerateArgsFromParams(
 		streamStructured: streamStructured || undefined,
 		elizaSchema: elizaHarnessSchemaFromParams(params),
 		spanSamplerPlan: params.spanSamplerPlan,
+		thinking: extractThinkingControl(params.providerOptions),
 		onTextChunk,
 		voiceOutput:
 			params.voiceOutput ??
@@ -660,6 +675,8 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
+		await localInferenceEngine.ensureActiveBundleVoiceReady();
+		throwIfAborted(signal);
 		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
 		throwIfAborted(signal);
 		return transcript;

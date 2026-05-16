@@ -3,7 +3,7 @@
 Native host package for the local agent runtime. The iOS Swift implementation
 can run in two modes:
 
-- `engine: "auto"` / `engine: "bun"`: dynamically loads the full
+- `engine: "auto"` / `engine: "bun"`: uses the directly linked
   `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
   built with `ELIZA_IOS_FULL_BUN_ENGINE=1`. Store-distributed iOS local mode
   must use `engine: "bun"` and fail closed if the framework is missing.
@@ -84,9 +84,9 @@ The full-engine ABI lives in
 implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 
-In full Bun mode, the Swift host loads `ElizaBunEngine.framework` with
-`dlopen`, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
-requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
+In production full Bun mode, the Swift host calls the directly linked
+`ElizaBunEngine` ABI, starts `agent-bundle.js ios-bridge --stdio`, and forwards
+React requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
 `packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
 the native plugin is available. The foreground JSContext ITTP kernel is retained
 only for development/sideload compatibility builds; iOS store builds fail closed

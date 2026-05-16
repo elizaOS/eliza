@@ -58,13 +58,13 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 bash packages/training/scripts/cloud/run-on-cloud.sh \
   --provider vast --task train --gpu b200 --tier 27b --yes-i-will-pay
 
-# Train the 0.6B tier on a Nebius H200 (delegates to train_nebius.sh full):
+# Train the 0.8B tier on a Nebius H200 (delegates to train_nebius.sh full):
 NEBIUS_PROJECT_ID=project-… HUGGING_FACE_HUB_TOKEN=… \
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay
+  --provider nebius --task train --gpu h200 --tier 0_8b --yes-i-will-pay
 # Plan only (no spend):
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider nebius --task train --gpu h200 --tier 0_6b --dry-run
+  --provider nebius --task train --gpu h200 --tier 0_8b --dry-run
 
 # Plan only — prints what it WOULD provision, spends nothing:
 bash packages/training/scripts/cloud/run-on-cloud.sh \
@@ -78,7 +78,7 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 | `--provider` | `vast` \| `nebius` | (required) |
 | `--task` | `build` \| `kernel-verify` \| `bench` \| `train` | (required) |
 | `--gpu` | `h100` `h200` `a100` `a100-80` `rtx4090` `rtx5090` `l40s` `b200` `blackwell6000` | `h100` |
-| `--tier` | `0_8b` `2b` `9b` `27b` `27b-256k`  | `0_8b` |
+| `--tier` | `0_8b` `2b` `4b` `9b` `27b`  | `0_8b` |
 | `--ssh-pubkey` | path | `~/.ssh/id_ed25519.pub` |
 | `--smoke-model` | path to a GGUF | none (parity-only) |
 | `--yes-i-will-pay` | (gate) — required for any real provisioning | off |

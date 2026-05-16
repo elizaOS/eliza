@@ -294,12 +294,7 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 			"eliza-1-2b": { ctx_size: 131072, max_parallel: 24 },
 			"eliza-1-4b": { ctx_size: 131072, max_parallel: 12 },
 			"eliza-1-9b": { ctx_size: 131072, max_parallel: 12 },
-			"eliza-1-27b": { ctx_size: 65536, max_parallel: 4 },
-			"eliza-1-27b-256k": {
-				ctx_size: 262144,
-				max_parallel: 1,
-				no_kv_offload: true,
-			},
+			"eliza-1-27b": { ctx_size: 131072, max_parallel: 1 },
 		},
 		expected_metrics: {
 			ttfa_p50_ms: 160,
@@ -311,7 +306,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 		known_limits: [
 			"sm_120 kernel coverage in llama.cpp is early; QJL/Polar requires CAPABILITIES.json probe",
 			"flash-attn-3 supported but tuned for sm_90 (Hopper) first",
-			"27B-256k is single-slot only and requires kvSpillToCpu opt-in",
 		],
 	},
 	h200: {
@@ -356,7 +350,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
 			"eliza-1-4b": { ctx_size: 1048576, max_parallel: 32 },
 			"eliza-1-9b": { ctx_size: 1048576, max_parallel: 32 },
 			"eliza-1-27b": { ctx_size: 131072, max_parallel: 16 },
-			"eliza-1-27b-256k": { ctx_size: 262144, max_parallel: 6 },
 		},
 		expected_metrics: {
 			ttfa_p50_ms: 110,

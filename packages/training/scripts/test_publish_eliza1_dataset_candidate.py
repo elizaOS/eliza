@@ -269,7 +269,7 @@ def test_plan_accepts_public_eliza1_training_shape_with_source_split_labels(
 
     assert plan.dataset_schema == "eliza_record_v1"
     compatibility = plan.manifest["contract"]["publicDatasetCompatibility"]
-    assert compatibility["repoId"] == "elizaos/eliza-1-training"
+    assert compatibility["repoId"] == "elizalabs/eliza-1-training"
     assert compatibility["compatible"] is True
     assert compatibility["columns"] == [
         "roomName",

@@ -19,7 +19,7 @@ import {
 } from "@elizaos/plugin-google";
 import { OAuth2Client } from "google-auth-library";
 import { describe, expect, it } from "vitest";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
+import { itIf } from "../../../packages/test/helpers/conditional-tests.ts";
 
 const SKIP_REASON = process.env.SKIP_REASON?.trim();
 const ACCESS_TOKEN = process.env.GOOGLE_OAUTH_TEST_TOKEN?.trim() ?? "";

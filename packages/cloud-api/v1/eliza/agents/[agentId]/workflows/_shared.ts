@@ -4,7 +4,7 @@ import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import type { AppContext } from "@/types/cloud-worker-env";
 
-export const WORKFLOW_CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
+const WORKFLOW_CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 
 function envString(c: AppContext | undefined, key: string): string | null {
   const value = c?.env?.[key];

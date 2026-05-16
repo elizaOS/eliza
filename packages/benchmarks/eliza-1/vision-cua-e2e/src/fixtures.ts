@@ -93,7 +93,7 @@ export function listFixtures(): ReadonlyArray<FixtureId> {
   return FIXTURES.map((f) => f.id);
 }
 
-export function getFixtureSpec(id: FixtureId): FixtureSpec {
+function getFixtureSpec(id: FixtureId): FixtureSpec {
   const spec = FIXTURES.find((f) => f.id === id);
   if (!spec) {
     throw new Error(`getFixtureSpec: unknown fixture '${id}'`);
@@ -140,5 +140,3 @@ export function loadFixture(id: FixtureId): LoadedFixture {
     captures,
   };
 }
-
-export const FIXTURE_ROOT_PATH = FIXTURE_ROOT;

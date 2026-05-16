@@ -7,7 +7,7 @@
 
 import { CC_TOOL_STUBS } from "./constants.js";
 
-export function findMatchingBracket(str: string, start: number): number {
+function findMatchingBracket(str: string, start: number): number {
 	let d = 0;
 	let inStr = false;
 	for (let i = start; i < str.length; i++) {

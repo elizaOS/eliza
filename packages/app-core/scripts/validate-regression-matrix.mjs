@@ -7,21 +7,30 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 function findRepoRoot(startDir) {
+  try {
+    return execFileSync(
+      "git",
+      ["-C", startDir, "rev-parse", "--show-toplevel"],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
+  } catch {
+    // Fall back to the legacy package/workflow sentinel walk for non-git exports.
+  }
+
   let currentDir = startDir;
-  let matchedRoot = null;
   while (true) {
     if (
       fs.existsSync(path.join(currentDir, "package.json")) &&
       fs.existsSync(path.join(currentDir, ".github", "workflows"))
     ) {
-      matchedRoot = currentDir;
+      return currentDir;
     }
 
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
-      if (matchedRoot) {
-        return matchedRoot;
-      }
       throw new Error(`Unable to resolve repository root from ${startDir}.`);
     }
 

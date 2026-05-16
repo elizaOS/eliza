@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizaos/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
 point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizaos/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
+   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -87,8 +87,8 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     LineageEntry,
     build_manifest,
     canonical_qwen_source_repo_error,
-    parse_text_ctx_from_filename,
     required_voice_artifacts_for_tier,
+    text_context_for_manifest,
 )
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
@@ -111,7 +111,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizaos"
+ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -201,7 +201,6 @@ TIER_TAGLINES: Mapping[str, str] = {
     "4b": "flagship phones, small desktops",
     "9b": "workstations, tablets, and high-memory local hosts",
     "27b": "GPU workstations",
-    "27b-256k": "long-context GPU workstations",
 }
 
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
@@ -219,7 +218,6 @@ DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
     "4b": (10000, 12000),
     "9b": (12000, 16000),
     "27b": (32000, 48000),
-    "27b-256k": (96000, 128000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -281,9 +279,7 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
 
 def _read_sidecar(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        raise OrchestratorError(
-            f"missing sidecar: {path}", EXIT_MISSING_FILE
-        )
+        raise OrchestratorError(f"missing sidecar: {path}", EXIT_MISSING_FILE)
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
@@ -432,6 +428,26 @@ def _license_files_for_layout(layout: Mapping[str, Sequence[Path]]) -> tuple[str
     return tuple(names)
 
 
+def _license_components_for_layout(
+    layout: Mapping[str, Sequence[Path]],
+    bundle_dir: Path,
+) -> list[str]:
+    components = ["text", "voice", "asr", "vad", "dflash"]
+    tts_rels = {
+        path.relative_to(bundle_dir).as_posix()
+        for path in layout.get("tts", [])
+        if path.is_file()
+    }
+    if any(rel.startswith("tts/kokoro/") for rel in tts_rels):
+        components.append("kokoro")
+    if any(Path(rel).name.startswith("omnivoice-") for rel in tts_rels):
+        components.append("omnivoice")
+    for opt in ("vision", "embedding", "wakeword"):
+        if layout.get(opt):
+            components.append(opt)
+    return components
+
+
 def _validate_dflash_release_metadata(
     ctx: PublishContext,
     layout: Mapping[str, Sequence[Path]],
@@ -553,8 +569,7 @@ def _validate_dflash_release_metadata(
             )
         if mismatches not in (None, []):
             errors.append(
-                "tokenizerCompatibility.mismatches must be empty: "
-                f"{mismatches!r}"
+                "tokenizerCompatibility.mismatches must be empty: " f"{mismatches!r}"
             )
 
     acceptance_rate = meta.get("acceptanceRate")
@@ -661,7 +676,9 @@ def _validate_dflash_disabled_metadata(
                     )
                 policy = _read_sidecar(policy_file)
                 if policy.get("kind") != "dflash-release-policy":
-                    errors.append("disabledPolicy file kind must be 'dflash-release-policy'")
+                    errors.append(
+                        "disabledPolicy file kind must be 'dflash-release-policy'"
+                    )
                 if policy.get("tier") != ctx.tier:
                     errors.append(f"disabledPolicy file tier must be {ctx.tier!r}")
                 if policy.get("status") != "disabled":
@@ -795,13 +812,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     # mandatory. The orchestrator refuses to publish a bundle whose
     # licenses/ set is incomplete or whose embedded text is not the
     # verbatim canonical SPDX text. See eliza1_licenses.py.
-    license_components = ["text", "voice", "asr", "vad", "dflash"]
-    if out.get("vision"):
-        license_components.append("vision")
-    if out.get("embedding"):
-        license_components.append("embedding")
-    if out.get("wakeword"):
-        license_components.append("wakeword")
+    license_components = _license_components_for_layout(out, bundle)
     license_problems = verify_bundle_licenses(licenses_dir, license_components)
     if license_problems:
         raise OrchestratorError(
@@ -959,8 +970,7 @@ def _assert_checksum_coverage(
             mismatched.append(rel)
     if mismatched:
         raise OrchestratorError(
-            "release evidence: checksum mismatch for path(s): "
-            f"{mismatched}",
+            "release evidence: checksum mismatch for path(s): " f"{mismatched}",
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
@@ -981,6 +991,13 @@ def _write_checksum_manifest(
     return checksum_path
 
 
+def _text_model_sha256s(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+) -> set[str]:
+    return {_sha256_file(path) for path in layout.get("text", []) if path.is_file()}
+
+
 def _require_existing_json_report(
     ctx: PublishContext,
     *,
@@ -989,6 +1006,7 @@ def _require_existing_json_report(
     target: str | None = None,
     rel_path: str,
     require_runtime_ready: bool,
+    model_sha256s: set[str] | None = None,
 ) -> Mapping[str, Any]:
     if not rel_path.startswith(("evals/", "evidence/")):
         raise OrchestratorError(
@@ -1035,7 +1053,11 @@ def _require_existing_json_report(
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
     if require_runtime_ready:
-        _validate_runtime_dispatch_report(rel_path, data)
+        _validate_runtime_dispatch_report(
+            rel_path,
+            data,
+            model_sha256s=model_sha256s,
+        )
     else:
         _validate_platform_report(rel_path, data, target=target)
     return data
@@ -1082,7 +1104,9 @@ def _validate_base_v1_provenance(
 
     source_models = evidence.get("sourceModels")
     if not isinstance(source_models, dict) or not source_models:
-        errors.append("sourceModels must be a non-empty object for releaseState='base-v1'")
+        errors.append(
+            "sourceModels must be a non-empty object for releaseState='base-v1'"
+        )
         return
 
     for slot, source in source_models.items():
@@ -1103,12 +1127,15 @@ def _validate_base_v1_provenance(
 
     for slot in _required_provenance_slots(layout):
         if slot not in source_models:
-            errors.append(
-                f"sourceModels.{slot} required for releaseState='base-v1'"
-            )
+            errors.append(f"sourceModels.{slot} required for releaseState='base-v1'")
 
 
-def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) -> None:
+def _validate_runtime_dispatch_report(
+    rel_path: str,
+    data: Mapping[str, Any],
+    *,
+    model_sha256s: set[str] | None = None,
+) -> None:
     errors: list[str] = []
     if data.get("runtimeReady") is not True:
         errors.append("runtimeReady must be true")
@@ -1118,10 +1145,14 @@ def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) ->
     if not isinstance(data.get("report"), str) or not data.get("report"):
         errors.append("report required")
     model_sha = data.get("modelSha256")
-    if not isinstance(model_sha, str) or len(model_sha) != 64 or any(
-        c not in "0123456789abcdef" for c in model_sha
+    if (
+        not isinstance(model_sha, str)
+        or len(model_sha) != 64
+        or any(c not in "0123456789abcdef" for c in model_sha)
     ):
         errors.append("modelSha256 must be 64 lowercase hex chars")
+    elif model_sha256s and model_sha not in model_sha256s:
+        errors.append("modelSha256 must match a shipped text GGUF sha256")
     kernel_set = data.get("kernelSet")
     if not isinstance(kernel_set, list) or not all(
         isinstance(k, str) for k in kernel_set
@@ -1208,8 +1239,8 @@ def validate_release_evidence(
 
     errors: list[str] = []
     release_blockers = _release_blocking_reasons(evidence)
-    use_release_blockers = (
-        evidence.get("publishEligible") is not True and bool(release_blockers)
+    use_release_blockers = evidence.get("publishEligible") is not True and bool(
+        release_blockers
     )
     if evidence.get("schemaVersion") != 1:
         errors.append("schemaVersion must be 1")
@@ -1221,7 +1252,9 @@ def validate_release_evidence(
     release_state = evidence.get("releaseState")
     if release_state not in {"base-v1", "upload-candidate", "final"}:
         if not use_release_blockers:
-            errors.append("releaseState must be 'base-v1', 'upload-candidate', or 'final'")
+            errors.append(
+                "releaseState must be 'base-v1', 'upload-candidate', or 'final'"
+            )
     elif release_state == "base-v1":
         _validate_base_v1_provenance(
             evidence=evidence,
@@ -1245,8 +1278,7 @@ def validate_release_evidence(
 
     if use_release_blockers:
         errors.extend(
-            f"publishBlockingReasons: {reason}"
-            for reason in release_blockers
+            f"publishBlockingReasons: {reason}" for reason in release_blockers
         )
     elif evidence.get("publishEligible") is False:
         errors.append("publishEligible must be true")
@@ -1261,7 +1293,7 @@ def validate_release_evidence(
     else:
         shipped_weight_files = [
             p
-            for kind in ("text", "tts", "asr")
+            for kind in ("text", "tts", "asr", "vad", "embedding", "wakeword")
             for p in layout.get(kind, [])
         ]
         if ctx.tier in ELIZA_1_VISION_TIERS:
@@ -1344,6 +1376,7 @@ def validate_release_evidence(
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
+    text_model_sha256s = _text_model_sha256s(ctx, layout)
     for backend in supported:
         dispatch_path = kernel_reports.get(backend)
         if not isinstance(dispatch_path, str):
@@ -1357,6 +1390,7 @@ def validate_release_evidence(
             backend=backend,
             rel_path=dispatch_path,
             require_runtime_ready=True,
+            model_sha256s=text_model_sha256s,
         )
 
     for target in REQUIRED_PLATFORM_EVIDENCE_BY_TIER[ctx.tier]:
@@ -1424,9 +1458,7 @@ def validate_release_evidence(
             _bundle_repo_path(ctx, "README.md"),
             *(target for _, target in _build_upload_list(ctx, layout)),
         }
-        missing_uploaded_paths = sorted(
-            expected_uploaded_paths - set(uploaded_paths)
-        )
+        missing_uploaded_paths = sorted(expected_uploaded_paths - set(uploaded_paths))
         if missing_uploaded_paths:
             raise OrchestratorError(
                 "release evidence: hf.uploadEvidence.uploadedPaths missing "
@@ -1694,9 +1726,7 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
         )
 
     if not report.passed:
-        details = "\n".join(
-            f"  - {g.name}: {g.reason}" for g in report.failed_gates
-        )
+        details = "\n".join(f"  - {g.name}: {g.reason}" for g in report.failed_gates)
         raise OrchestratorError(
             f"eval gates failed for tier {ctx.tier}:\n{details}",
             EXIT_EVAL_GATE_FAIL,
@@ -1778,7 +1808,7 @@ def _collect_files_for_manifest(
             entry = FileEntry(
                 path=rel(p),
                 sha256=_sha256_file(p),
-                ctx=parse_text_ctx_from_filename(p) if kind_src == "text" else None,
+                ctx=text_context_for_manifest(p) if kind_src == "text" else None,
             )
             files[kind_dst].append(entry)
 
@@ -1801,9 +1831,7 @@ def _build_lineage(
             base=f"omnivoice-gguf-{VOICE_QUANT_BY_TIER[tier]}",
             license="apache-2.0",
         ),
-        "drafter": LineageEntry(
-            base=f"dflash-{tier}-drafter", license="apache-2.0"
-        ),
+        "drafter": LineageEntry(base=f"dflash-{tier}-drafter", license="apache-2.0"),
     }
     out = dict(defaults)
 
@@ -1814,9 +1842,7 @@ def _build_lineage(
             base="eliza-1-embedding-family", license="apache-2.0"
         ),
         "vad": LineageEntry(base="eliza-1-vad-family", license="apache-2.0"),
-        "wakeword": LineageEntry(
-            base="eliza-1-wakeword-family", license="apache-2.0"
-        ),
+        "wakeword": LineageEntry(base="eliza-1-wakeword-family", license="apache-2.0"),
     }
     for slot, default in optional_defaults.items():
         if files.get(slot):
@@ -1845,9 +1871,9 @@ def _build_lineage(
     return out
 
 
-def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tuple[
-    list[str], list[str]
-]:
+def _required_kernels_for(
+    tier: str, layout: Mapping[str, Sequence[Path]]
+) -> tuple[list[str], list[str]]:
     """Compute the ``kernels.required`` and ``kernels.optional`` lists.
 
     Required kernels come from REQUIRED_KERNELS_BY_TIER. ``turbo3_tcq``
@@ -1856,7 +1882,7 @@ def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tu
     req = list(REQUIRED_KERNELS_BY_TIER[tier])
     opt: list[str] = []
     for p in layout.get("text", []):
-        ctx = parse_text_ctx_from_filename(p)
+        ctx = text_context_for_manifest(p)
         if ctx is not None and ctx > 65536:
             if "turbo3_tcq" not in req:
                 req.append("turbo3_tcq")
@@ -1956,8 +1982,7 @@ def assemble_manifest(
     text_eval_passed = _gate_passed(gate_report, "text_eval")
     voice_rtf_passed = _gate_passed(gate_report, "voice_rtf")
     expressive_passed = all(
-        _gate_passed(gate_report, gate_name)
-        for gate_name in EXPRESSIVE_GATE_NAMES
+        _gate_passed(gate_report, gate_name) for gate_name in EXPRESSIVE_GATE_NAMES
     )
     # ``e2e_loop_ok`` and ``thirty_turn_ok`` are independent boolean
     # contract gates per AGENTS.md §6 (manifest fields ``evals.e2eLoopOk``
@@ -1988,9 +2013,7 @@ def assemble_manifest(
     required_kernels, optional_kernels = _required_kernels_for(ctx.tier, layout)
 
     supported = set(SUPPORTED_BACKENDS_BY_TIER[ctx.tier])
-    all_backends_pass = all(
-        backends[b].status == "pass" for b in supported
-    )
+    all_backends_pass = all(backends[b].status == "pass" for b in supported)
     default_eligible = bool(
         gate_report.passed
         and all_backends_pass
@@ -2357,8 +2380,11 @@ def push_to_hf(
     sidecar can be finalized and uploaded in a follow-up commit.
     """
     if ctx.dry_run:
-        log.info("[push] dry-run: would push %d files to %s",
-                 len(upload_pairs) + 2, ctx.repo_id)
+        log.info(
+            "[push] dry-run: would push %d files to %s",
+            len(upload_pairs) + 2,
+            ctx.repo_id,
+        )
         return None
 
     if not _hf_token():
@@ -2432,10 +2458,7 @@ def _upload_evidence_from_commit(
         or getattr(commit_info, "commit_id", None)
         or getattr(commit_info, "commit_hash", None)
     )
-    url = (
-        getattr(commit_info, "commit_url", None)
-        or getattr(commit_info, "url", None)
-    )
+    url = getattr(commit_info, "commit_url", None) or getattr(commit_info, "url", None)
     if not commit or not url:
         raise OrchestratorError(
             "HF upload completed but the client did not return commit/url "
@@ -2474,6 +2497,9 @@ def finalize_release_evidence(
 
     if evidence.get("releaseState") != "base-v1":
         evidence["releaseState"] = "final"
+    final = dict(evidence.get("final") or {})
+    final["sizeFirstRepoIds"] = True
+    evidence["final"] = final
     hf["repoId"] = ctx.repo_id
     hf["status"] = "uploaded"
     hf["uploadEvidence"] = dict(upload_evidence)
@@ -2527,9 +2553,7 @@ def push_final_release_evidence(
     )
 
 
-def tag_training_repo(
-    ctx: PublishContext, version: str, dry_run: bool
-) -> str | None:
+def tag_training_repo(ctx: PublishContext, version: str, dry_run: bool) -> str | None:
     """Apply ``eliza-1-<tier>-v<version>`` to HEAD of the training repo.
 
     Returns the tag name. In dry-run, prints the tag command and returns
@@ -2540,8 +2564,12 @@ def tag_training_repo(
     message = f"Publish {tag_name} (training-commit={sha})"
 
     if dry_run:
-        log.info("[tag] dry-run: would run `git tag -a %s -m %r` (HEAD=%s)",
-                 tag_name, message, sha)
+        log.info(
+            "[tag] dry-run: would run `git tag -a %s -m %r` (HEAD=%s)",
+            tag_name,
+            message,
+            sha,
+        )
         return tag_name
 
     if shutil.which("git") is None:
@@ -2551,8 +2579,16 @@ def tag_training_repo(
         )
 
     proc = subprocess.run(
-        ["git", "-C", str(ctx.training_repo_root),
-         "tag", "-a", tag_name, "-m", message],
+        [
+            "git",
+            "-C",
+            str(ctx.training_repo_root),
+            "tag",
+            "-a",
+            tag_name,
+            "-m",
+            message,
+        ],
         capture_output=True,
         text=True,
     )
@@ -2598,8 +2634,11 @@ def run(ctx: PublishContext) -> int:
 
         log.info("[stage 4/7] eval gates")
         gate_report, eval_blob = run_eval_gates(ctx)
-        log.info("  passed=%s, %d gates evaluated",
-                 gate_report.passed, len(gate_report.gates))
+        log.info(
+            "  passed=%s, %d gates evaluated",
+            gate_report.passed,
+            len(gate_report.gates),
+        )
 
         log.info("[stage 5/7] build + validate manifest")
         version = _read_version(ctx)
@@ -2613,11 +2652,10 @@ def run(ctx: PublishContext) -> int:
             release_evidence=release_evidence,
         )
         manifest_path = ctx.bundle_dir / "eliza-1.manifest.json"
-        manifest_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=False) + "\n"
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=False) + "\n")
+        log.info(
+            "  defaultEligible=%s, version=%s", manifest["defaultEligible"], version
         )
-        log.info("  defaultEligible=%s, version=%s",
-                 manifest["defaultEligible"], version)
 
         log.info("[stage 6/7] render README")
         readme_text = render_readme(ctx, manifest)
@@ -2625,11 +2663,11 @@ def run(ctx: PublishContext) -> int:
         readme_path.write_text(readme_text)
 
         if ctx.dry_run:
-            log.info("\n--- manifest preview ---\n%s",
-                     json.dumps(manifest, indent=2))
+            log.info("\n--- manifest preview ---\n%s", json.dumps(manifest, indent=2))
 
-        log.info("[stage 7/7] push to %s%s", ctx.repo_id,
-                 " (dry-run)" if ctx.dry_run else "")
+        log.info(
+            "[stage 7/7] push to %s%s", ctx.repo_id, " (dry-run)" if ctx.dry_run else ""
+        )
         upload_pairs = _build_upload_list(ctx, layout)
         upload_evidence = push_to_hf(ctx, manifest_path, readme_path, upload_pairs)
         if upload_evidence is not None:
@@ -2736,18 +2774,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     args = ap.parse_args(argv)
 
     repo_id = args.repo_id or ELIZA_1_HF_REPO
-    template_path = (
-        Path(__file__).resolve().parent / "templates" / "README.md.j2"
-    )
+    template_path = Path(__file__).resolve().parent / "templates" / "README.md.j2"
 
     return PublishContext(
         tier=args.tier,
         bundle_dir=args.bundle_dir.resolve(),
         dry_run=args.dry_run,
         metal_verification=(
-            args.metal_verification.resolve()
-            if args.metal_verification
-            else None
+            args.metal_verification.resolve() if args.metal_verification else None
         ),
         repo_id=repo_id,
         public=args.public,

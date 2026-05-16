@@ -31,7 +31,7 @@ function tmpBundle(): string {
 describe("resolveLocalEmbeddingSource", () => {
 	it("0_8b: uses the text backbone with --pooling last (no separate GGUF)", () => {
 		const bundleRoot = tmpBundle();
-		const textPath = path.join(bundleRoot, "text", "eliza-1-0_8b-32k.gguf");
+		const textPath = path.join(bundleRoot, "text", "eliza-1-0_8b-128k.gguf");
 		mkdirSync(path.dirname(textPath), { recursive: true });
 		writeFileSync(textPath, "gguf");
 		const src = resolveLocalEmbeddingSource({
@@ -48,7 +48,7 @@ describe("resolveLocalEmbeddingSource", () => {
 
 	it("2b: reuses the text backbone with --pooling last (no duplicate GGUF)", () => {
 		const bundleRoot = tmpBundle();
-		const textPath = path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf");
+		const textPath = path.join(bundleRoot, "text", "eliza-1-2b-128k.gguf");
 		mkdirSync(path.dirname(textPath), { recursive: true });
 		writeFileSync(textPath, "gguf");
 		const src = resolveLocalEmbeddingSource({

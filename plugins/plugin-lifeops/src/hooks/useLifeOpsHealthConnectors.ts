@@ -6,8 +6,8 @@ import type {
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
   LifeOpsHealthSummaryResponse,
-} from "../contracts/index.js";
-import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "../contracts/index.js";
+} from "@elizaos/shared";
+import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "@elizaos/shared";
 import { formatConnectorError } from "./connector-error.js";
 
 type ProviderMap<T> = Partial<Record<LifeOpsHealthConnectorProvider, T>>;

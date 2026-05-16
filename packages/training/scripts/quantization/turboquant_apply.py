@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Long-context path: record turbo3_tcq as the K-cache type in the "
-            "sidecar (use for the largest variant of a tier, e.g. 27b-256k)."
+            "sidecar (use for verified long-context variants)."
         ),
     )
     ap.add_argument(
@@ -98,9 +98,8 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help=(
-            "Trained/served context length for this variant (e.g. 262144 "
-            "for 27b-256k). Recorded in the sidecar. Implies --trellis when "
-            ">= 65536."
+            "Trained/served context length for this variant. Recorded in the "
+            "sidecar. Implies --trellis when >= 65536."
         ),
     )
     args = ap.parse_args(argv)

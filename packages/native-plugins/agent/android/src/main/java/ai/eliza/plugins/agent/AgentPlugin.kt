@@ -5,15 +5,11 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import android.content.pm.PackageManager
 import java.util.Locale
 import org.json.JSONObject
 
-private const val LOCAL_AGENT_BASE_URL = "http://127.0.0.1:31337"
 private const val MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
-private const val MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024
 private const val DEFAULT_REQUEST_TIMEOUT_MS = 10_000
 private const val MAX_REQUEST_TIMEOUT_MS = 600_000
 
@@ -21,8 +17,8 @@ private const val MAX_REQUEST_TIMEOUT_MS = 600_000
  * Eliza Agent Plugin — Android bridge.
  *
  * The app module owns ElizaAgentService, so this library uses reflection to
- * avoid a Gradle dependency cycle while still exposing the per-boot loopback
- * bearer token to the WebView.
+ * avoid a Gradle dependency cycle while still exposing the per-boot bearer
+ * token and request dispatch surface to the WebView.
  */
 @CapacitorPlugin(name = "Agent")
 class AgentPlugin : Plugin() {
@@ -82,7 +78,7 @@ class AgentPlugin : Plugin() {
     @PluginMethod
     fun request(call: PluginCall) {
         val path = call.getString("path")?.trim()
-        if (path == null || !path.startsWith("/") || path.startsWith("//")) {
+        if (path == null || !isSafeLocalPath(path)) {
             call.reject("Agent.request requires a local path that starts with /")
             return
         }
@@ -104,7 +100,7 @@ class AgentPlugin : Plugin() {
                 val result = forwardLocalRequest(path, method, headers, body, timeoutMs, token)
                 call.resolve(result)
             } catch (error: Exception) {
-                call.reject(error.message ?: "Local agent request failed")
+                call.resolve(localAgentUnavailableResponse(error.message ?: "Local agent request failed"))
             }
         }.start()
     }
@@ -120,14 +116,28 @@ class AgentPlugin : Plugin() {
     }
 
     private fun invokeAgentService(methodName: String) {
-        val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
+        val serviceClass = Class.forName(resolveAgentServiceClassName())
         val method = serviceClass.getMethod(methodName, android.content.Context::class.java)
         method.invoke(null, context)
     }
 
+    private fun localAgentUnavailableResponse(message: String): JSObject {
+        return JSObject().apply {
+            put("status", 503)
+            put("statusText", "Service Unavailable")
+            put("headers", JSObject().apply {
+                put("content-type", "application/json")
+            })
+            put("body", JSONObject().apply {
+                put("error", "local_agent_unavailable")
+                put("message", message)
+            }.toString())
+        }
+    }
+
     private fun readLocalAgentToken(): String? {
         return try {
-            val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
+            val serviceClass = Class.forName(resolveAgentServiceClassName())
             val method = serviceClass.getMethod("localAgentToken")
             (method.invoke(null) as? String)?.trim()?.takeIf { it.isNotEmpty() }
         } catch (_: Exception) {
@@ -148,67 +158,65 @@ class AgentPlugin : Plugin() {
             throw IllegalArgumentException("Request body is too large")
         }
 
-        val connection = (URL("$LOCAL_AGENT_BASE_URL$path").openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            instanceFollowRedirects = false
-            useCaches = false
-        }
-
-        for (key in headers.keys()) {
-            if (key.equals("host", ignoreCase = true) ||
-                key.equals("connection", ignoreCase = true) ||
-                key.equals("content-length", ignoreCase = true)
-            ) {
-                continue
-            }
-            val value = headers.opt(key) as? String
-            if (!value.isNullOrBlank()) {
-                connection.setRequestProperty(key, value)
+        val request = JSONObject().apply {
+            put("method", method)
+            put("path", path)
+            put("headers", headers)
+            put("body", body ?: JSONObject.NULL)
+            put("timeoutMs", timeoutMs)
+            if (!token.isNullOrBlank() && !hasHeader(headers, "authorization")) {
+                put("headers", JSONObject(headers.toString()).apply {
+                    put("Authorization", "Bearer $token")
+                })
             }
         }
+        val raw = invokeAgentServiceRequest(request.toString())
+        return jsObjectFromJson(JSONObject(raw))
+    }
 
-        if (token != null && connection.getRequestProperty("Authorization").isNullOrBlank()) {
-            connection.setRequestProperty("Authorization", "Bearer $token")
+    private fun invokeAgentServiceRequest(requestJson: String): String {
+        val serviceClass = Class.forName(resolveAgentServiceClassName())
+        val method = serviceClass.getMethod("requestLocalAgent", String::class.java)
+        return method.invoke(null, requestJson) as? String
+            ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
+    }
+
+    private fun isSafeLocalPath(path: String): Boolean {
+        return path.startsWith("/") && !path.startsWith("//") && !path.contains("://")
+    }
+
+    private fun resolveAgentServiceClassName(): String {
+        val ctx = context ?: throw IllegalStateException("Android context is unavailable")
+        val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            ctx.packageManager.getPackageInfo(
+                ctx.packageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.GET_SERVICES)
         }
-
-        if (requestBody != null && method != "GET" && method != "HEAD") {
-            connection.doOutput = true
-            connection.outputStream.use { output ->
-                output.write(requestBody)
+        return packageInfo.services
+            ?.firstOrNull {
+                it.packageName == ctx.packageName && it.name.endsWith(".ElizaAgentService")
             }
+            ?.name
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
+    }
+
+    private fun hasHeader(headers: JSObject, expected: String): Boolean {
+        val keys = headers.keys()
+        while (keys.hasNext()) {
+            if (expected.equals(keys.next(), ignoreCase = true)) return true
         }
+        return false
+    }
 
-        val status = connection.responseCode
-        val stream = if (status >= 400) connection.errorStream else connection.inputStream
-        val responseBody = stream?.use { input ->
-            val output = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count == -1) break
-                total += count
-                if (total > MAX_RESPONSE_BODY_BYTES) {
-                    throw IllegalStateException("Response body is too large")
-                }
-                output.write(buffer, 0, count)
-            }
-            output.toString(Charsets.UTF_8.name())
-        } ?: ""
-
-        val responseHeaders = JSObject()
-        for ((key, values) in connection.headerFields) {
-            if (key == null || values == null || values.isEmpty()) continue
-            responseHeaders.put(key.lowercase(Locale.US), values.joinToString(", "))
-        }
-
+    private fun jsObjectFromJson(json: JSONObject): JSObject {
         return JSObject().apply {
-            put("status", status)
-            put("statusText", connection.responseMessage ?: "")
-            put("headers", responseHeaders)
-            put("body", responseBody)
+            for (key in json.keys()) {
+                put(key, json.opt(key))
+            }
         }
     }
 }

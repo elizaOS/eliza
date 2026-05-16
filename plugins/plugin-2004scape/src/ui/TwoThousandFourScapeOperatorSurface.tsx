@@ -1,7 +1,6 @@
 import {
   type AppOperatorSurfaceProps,
   type AppSessionJsonValue,
-  client,
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
@@ -14,8 +13,62 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core";
-import { Button, Input } from "@elizaos/ui";
-import { useCallback, useMemo, useState } from "react";
+import {
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "outline" | "default";
+  size?: "sm" | "default";
+};
+
+function joinClasses(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function Button({
+  className,
+  variant,
+  size,
+  type = "button",
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type}
+      className={joinClasses(
+        "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+        variant === "outline"
+          ? "border border-border bg-transparent hover:bg-muted/50"
+          : "bg-primary text-primary-foreground hover:bg-primary/90",
+        size === "sm" ? "h-9" : "h-10",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={joinClasses(
+        "flex w-full rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted focus-visible:ring-2 focus-visible:ring-primary/35 disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+interface AppRunCommandResponse {
+  success: boolean;
+  message: string;
+}
 
 interface RecentActivityEntry {
   id: string;
@@ -130,6 +183,36 @@ function readBooleanValue(
 ): boolean | null {
   const value = record?.[key];
   return typeof value === "boolean" ? value : null;
+}
+
+async function postAppRunCommand(
+  runId: string,
+  path: "message" | "control",
+  body: Record<string, string>,
+): Promise<AppRunCommandResponse> {
+  const response = await fetch(
+    `/api/apps/runs/${encodeURIComponent(runId)}/${path}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  const data = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  return {
+    success: Boolean(data.success),
+    message:
+      typeof data.message === "string" && data.message.trim().length > 0
+        ? data.message.trim()
+        : response.status === 202
+          ? "Command queued."
+          : response.status >= 500
+            ? "Command unavailable."
+            : "Command rejected.",
+  };
 }
 
 function formatDistance(distance: number | null): string {
@@ -425,7 +508,9 @@ export function TwoThousandFourScapeOperatorSurface({
       setStatusMessage(null);
       try {
         if (run.runId) {
-          const response = await client.sendAppRunMessage(run.runId, content);
+          const response = await postAppRunCommand(run.runId, "message", {
+            content,
+          });
           setStatusMessage(response.message ?? "Operator message sent.");
           return response.success;
         }
@@ -466,7 +551,9 @@ export function TwoThousandFourScapeOperatorSurface({
       if (!run) return;
       setStatusMessage(null);
       try {
-        const response = await client.controlAppRun(run.runId, action);
+        const response = await postAppRunCommand(run.runId, "control", {
+          action,
+        });
         setStatusMessage(
           response.message ??
             (action === "pause"

@@ -14,14 +14,14 @@
 
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
+import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
-import { dbWrite } from "../../../cloud-shared/src/db/helpers";
-import { agentSandboxesRepository } from "../../../cloud-shared/src/db/repositories/agent-sandboxes";
-import { usersRepository } from "../../../cloud-shared/src/db/repositories/users";
-import { organizations } from "../../../cloud-shared/src/db/schemas/organizations";
-import { users } from "../../../cloud-shared/src/db/schemas/users";
-import { apiKeysService } from "../../../cloud-shared/src/lib/services/api-keys";
 
 for (const envPath of [
   resolve("../../.env"),

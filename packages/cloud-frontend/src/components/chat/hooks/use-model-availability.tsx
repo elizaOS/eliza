@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export interface ModelAvailability {
+interface ModelAvailability {
   modelId: string;
   available: boolean;
   reason?: string;

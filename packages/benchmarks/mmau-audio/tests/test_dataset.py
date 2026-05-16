@@ -59,6 +59,66 @@ def test_fixture_parses_metadata_fields() -> None:
     assert sample.difficulty in {"easy", "medium", "hard"}
 
 
+def test_hf_style_context_audio_is_parsed_as_audio_metadata(tmp_path: Path) -> None:
+    fixture = tmp_path / "hf_audio.jsonl"
+    fixture.write_text(
+        json.dumps(
+            {
+                "id": "audio-context",
+                "context": [{"src": "https://example.test/audio.wav", "type": "audio/wav"}],
+                "instruction": "What is heard?",
+                "choices": ["(A) speech", "(B) music"],
+                "answer": "(A) speech",
+                "other_attributes": {
+                    "id": "audio-context",
+                    "task": "speech",
+                    "sub-category": "Speaker Identification",
+                    "category": "Information Extraction",
+                    "difficulty": "easy",
+                    "dataset": "AudioSet",
+                },
+            }
+        )
+        + "\n"
+    )
+    ds = MMAUDataset(fixture_path=fixture)
+    asyncio.run(ds.load(use_fixture=True))
+
+    sample = ds.get_samples()[0]
+    assert sample.context == ""
+    assert sample.audio_path is None
+    assert sample.audio_bytes is None
+    assert sample.metadata["audio_url"] == "https://example.test/audio.wav"
+    assert sample.metadata["audio_mime_type"] == "audio/wav"
+
+
+def test_hf_style_context_audio_bytes_are_preserved() -> None:
+    ds = MMAUDataset()
+
+    sample = ds._parse_record(
+        {
+            "id": "audio-bytes",
+            "context": {"bytes": b"RIFFfake-wave", "path": "audio.wav"},
+            "instruction": "What is heard?",
+            "choices": ["(A) speech", "(B) music"],
+            "answer": "(A) speech",
+            "other_attributes": {
+                "id": "audio-bytes",
+                "task": "speech",
+                "sub-category": "Speaker Identification",
+                "category": "Information Extraction",
+                "difficulty": "easy",
+                "dataset": "AudioSet",
+            },
+        }
+    )
+
+    assert sample is not None
+    assert sample.context == ""
+    assert sample.audio_bytes == b"RIFFfake-wave"
+    assert sample.audio_path == Path("audio.wav")
+
+
 def test_record_with_unknown_task_is_skipped(tmp_path: Path) -> None:
     bad = tmp_path / "bad.jsonl"
     bad.write_text(

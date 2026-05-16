@@ -1,0 +1,7 @@
+dist/
+node_modules/
+.turbo/
+*.tsbuildinfo
+artifacts/
+test-results/
+playwright-report/

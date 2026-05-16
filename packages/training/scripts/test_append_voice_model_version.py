@@ -19,7 +19,9 @@ from textwrap import dedent
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = REPO_ROOT / "packages" / "training" / "scripts" / "append_voice_model_version.py"
+SCRIPT = (
+    REPO_ROOT / "packages" / "training" / "scripts" / "append_voice_model_version.py"
+)
 
 VOICE_MODELS_TS_TEMPLATE = dedent(
     """\
@@ -28,7 +30,7 @@ VOICE_MODELS_TS_TEMPLATE = dedent(
         id: "kokoro",
         version: "0.1.0",
         publishedToHfAt: "2026-05-14T00:00:00Z",
-        hfRepo: "elizaOS/eliza-1-voice-kokoro-same",
+        hfRepo: "elizalabs/eliza-1-voice-kokoro-same",
         hfRevision: "main",
         ggufAssets: [],
         evalDeltas: { netImprovement: true },
@@ -73,13 +75,20 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 def test_unknown_id_rejected(tmp_path: Path) -> None:
     ts_path, _ = _setup_workspace(tmp_path)
     res = _run(
-        "--id", "not-a-real-id",
-        "--version", "0.2.0",
-        "--hf-repo", "elizaOS/foo",
-        "--hf-revision", "main",
-        "--min-bundle", "0.0.0",
-        "--changelog-entry", "hi",
-        "--voice-models-ts", str(ts_path),
+        "--id",
+        "not-a-real-id",
+        "--version",
+        "0.2.0",
+        "--hf-repo",
+        "elizalabs/foo",
+        "--hf-revision",
+        "main",
+        "--min-bundle",
+        "0.0.0",
+        "--changelog-entry",
+        "hi",
+        "--voice-models-ts",
+        str(ts_path),
     )
     assert res.returncode != 0
     assert "invalid choice" in res.stderr or "not-a-real-id" in res.stderr
@@ -88,13 +97,20 @@ def test_unknown_id_rejected(tmp_path: Path) -> None:
 def test_invalid_semver_rejected(tmp_path: Path) -> None:
     ts_path, _ = _setup_workspace(tmp_path)
     res = _run(
-        "--id", "kokoro",
-        "--version", "bogus",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "main",
-        "--min-bundle", "0.0.0",
-        "--changelog-entry", "hi",
-        "--voice-models-ts", str(ts_path),
+        "--id",
+        "kokoro",
+        "--version",
+        "bogus",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "main",
+        "--min-bundle",
+        "0.0.0",
+        "--changelog-entry",
+        "hi",
+        "--voice-models-ts",
+        str(ts_path),
     )
     assert res.returncode == 2
 
@@ -102,14 +118,22 @@ def test_invalid_semver_rejected(tmp_path: Path) -> None:
 def test_bad_asset_rejected(tmp_path: Path) -> None:
     ts_path, _ = _setup_workspace(tmp_path)
     res = _run(
-        "--id", "kokoro",
-        "--version", "0.2.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "main",
-        "--asset", "kokoro.onnx:not-a-sha:1024:onnx-fp16",
-        "--min-bundle", "0.0.0",
-        "--changelog-entry", "hi",
-        "--voice-models-ts", str(ts_path),
+        "--id",
+        "kokoro",
+        "--version",
+        "0.2.0",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "main",
+        "--asset",
+        "kokoro.onnx:not-a-sha:1024:onnx-fp16",
+        "--min-bundle",
+        "0.0.0",
+        "--changelog-entry",
+        "hi",
+        "--voice-models-ts",
+        str(ts_path),
     )
     assert res.returncode != 0
 
@@ -117,21 +141,30 @@ def test_bad_asset_rejected(tmp_path: Path) -> None:
 def test_writes_new_version_block(tmp_path: Path) -> None:
     ts_path, _ = _setup_workspace(tmp_path)
     res = _run(
-        "--id", "kokoro",
-        "--version", "0.2.0",
-        "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "abc123def456abc123def456abc123def456abcd",
+        "--id",
+        "kokoro",
+        "--version",
+        "0.2.0",
+        "--parent-version",
+        "0.1.0",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "abc123def456abc123def456abc123def456abcd",
         "--asset",
-        "kokoro.onnx:"
-        + "a" * 64
-        + ":2048:onnx-fp16",
-        "--min-bundle", "0.1.0",
-        "--net-improvement", "true",
-        "--rtf-delta", "-0.05",
-        "--mos-delta", "0.12",
-        "--changelog-entry", "sam clone v2 (lower RTF, higher MOS).",
-        "--voice-models-ts", str(ts_path),
+        "kokoro.onnx:" + "a" * 64 + ":2048:onnx-fp16",
+        "--min-bundle",
+        "0.1.0",
+        "--net-improvement",
+        "true",
+        "--rtf-delta",
+        "-0.05",
+        "--mos-delta",
+        "0.12",
+        "--changelog-entry",
+        "sam clone v2 (lower RTF, higher MOS).",
+        "--voice-models-ts",
+        str(ts_path),
     )
     assert res.returncode == 0, res.stderr
     contents = ts_path.read_text(encoding="utf-8")
@@ -152,19 +185,26 @@ def test_writes_new_version_block(tmp_path: Path) -> None:
 def test_idempotent_rerun(tmp_path: Path) -> None:
     ts_path, _ = _setup_workspace(tmp_path)
     common = [
-        "--id", "kokoro",
-        "--version", "0.2.0",
-        "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "main",
+        "--id",
+        "kokoro",
+        "--version",
+        "0.2.0",
+        "--parent-version",
+        "0.1.0",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "main",
         "--asset",
-        "kokoro.onnx:"
-        + "a" * 64
-        + ":2048:onnx-fp16",
-        "--min-bundle", "0.1.0",
-        "--net-improvement", "true",
-        "--changelog-entry", "sam v2.",
-        "--voice-models-ts", str(ts_path),
+        "kokoro.onnx:" + "a" * 64 + ":2048:onnx-fp16",
+        "--min-bundle",
+        "0.1.0",
+        "--net-improvement",
+        "true",
+        "--changelog-entry",
+        "sam v2.",
+        "--voice-models-ts",
+        str(ts_path),
     ]
     res1 = _run(*common)
     assert res1.returncode == 0, res1.stderr
@@ -181,20 +221,28 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
 def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
     ts_path, md_path = _setup_workspace(tmp_path)
     res = _run(
-        "--id", "kokoro",
-        "--version", "0.2.0",
-        "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "abc",
+        "--id",
+        "kokoro",
+        "--version",
+        "0.2.0",
+        "--parent-version",
+        "0.1.0",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "abc",
         "--asset",
-        "kokoro.onnx:"
-        + "b" * 64
-        + ":1024:onnx-fp16",
-        "--min-bundle", "0.1.0",
-        "--net-improvement", "true",
-        "--changelog-entry", "sam v2 with lower RTF.",
-        "--voice-models-ts", str(ts_path),
-        "--changelog-md", str(md_path),
+        "kokoro.onnx:" + "b" * 64 + ":1024:onnx-fp16",
+        "--min-bundle",
+        "0.1.0",
+        "--net-improvement",
+        "true",
+        "--changelog-entry",
+        "sam v2 with lower RTF.",
+        "--voice-models-ts",
+        str(ts_path),
+        "--changelog-md",
+        str(md_path),
         "--append-changelog",
     )
     assert res.returncode == 0, res.stderr
@@ -212,20 +260,28 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
     ts_before = ts_path.read_text(encoding="utf-8")
     md_before = md_path.read_text(encoding="utf-8")
     res = _run(
-        "--id", "kokoro",
-        "--version", "0.2.0",
-        "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "main",
+        "--id",
+        "kokoro",
+        "--version",
+        "0.2.0",
+        "--parent-version",
+        "0.1.0",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "main",
         "--asset",
-        "kokoro.onnx:"
-        + "c" * 64
-        + ":1024:onnx-fp16",
-        "--min-bundle", "0.1.0",
-        "--net-improvement", "true",
-        "--changelog-entry", "sam v2.",
-        "--voice-models-ts", str(ts_path),
-        "--changelog-md", str(md_path),
+        "kokoro.onnx:" + "c" * 64 + ":1024:onnx-fp16",
+        "--min-bundle",
+        "0.1.0",
+        "--net-improvement",
+        "true",
+        "--changelog-entry",
+        "sam v2.",
+        "--voice-models-ts",
+        str(ts_path),
+        "--changelog-md",
+        str(md_path),
         "--append-changelog",
         "--dry-run",
     )
@@ -237,14 +293,22 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
 def test_successor_requires_net_improvement(tmp_path: Path) -> None:
     ts_path, _ = _setup_workspace(tmp_path)
     res = _run(
-        "--id", "kokoro",
-        "--version", "0.2.0",
-        "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
-        "--hf-revision", "main",
-        "--min-bundle", "0.1.0",
-        "--changelog-entry", "sam v2.",
-        "--voice-models-ts", str(ts_path),
+        "--id",
+        "kokoro",
+        "--version",
+        "0.2.0",
+        "--parent-version",
+        "0.1.0",
+        "--hf-repo",
+        "elizalabs/eliza-1-voice-kokoro-same",
+        "--hf-revision",
+        "main",
+        "--min-bundle",
+        "0.1.0",
+        "--changelog-entry",
+        "sam v2.",
+        "--voice-models-ts",
+        str(ts_path),
     )
     assert res.returncode == 2
     assert "--net-improvement is required" in res.stderr

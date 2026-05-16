@@ -4,7 +4,7 @@
  * speaker preset (embedding + seed-phrase PCM) that ships *inside* an
  * installed Eliza-1 bundle (it is NOT committed to the repo; the repo
  * commits no GGUF/ONNX/large binaries — same handling as
- * `vad/silero-vad-int8.onnx`, which the bundle downloader fetches per the
+ * `vad/silero-vad-v5.gguf`, which the bundle downloader fetches per the
  * `eliza-1.manifest.json` `files.vad` / `files.cache` lists).
  *
  * Two modes:

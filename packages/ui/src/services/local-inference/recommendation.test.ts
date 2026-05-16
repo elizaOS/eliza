@@ -43,7 +43,7 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
-  it("picks the 27B 256k tier on a >=96 GB-effective workstation", () => {
+  it("keeps the active 27B tier on a >=96 GB-effective workstation", () => {
     const probe = hardware({
       totalRamGb: 128,
       freeRamGb: 96,
@@ -57,7 +57,7 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
   it("uses the mobile platform ladder and prefers the small Eliza-1 tier when it fits", () => {

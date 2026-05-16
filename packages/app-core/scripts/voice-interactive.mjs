@@ -5,7 +5,7 @@
  * Send a voice message, get a voice response back — the full optimized
  * voice-assistant loop the W1–W13 swarm landed, run interactively:
  *
- *   mic → VAD (RMS + Silero v5 ONNX) → streaming ASR (fused Qwen3-ASR)
+ *   mic → VAD (RMS + Silero v5 GGUF) → streaming ASR (fused Qwen3-ASR)
  *      → turn controller (prewarm-on-speech-start, speculative-on-pause,
  *        abort-on-resume, promote-or-rerun on speech-end)
  *      → runtime message handler (Stage-1 forced-JSON grammar, streamed)
@@ -356,11 +356,11 @@ async function inspectActiveOptimizations(args) {
   // ── Silero VAD model ───────────────────────────────────────────────────
   let vadPath = null;
   try {
-    const { resolveSileroVadPath } = await import(
+    const { resolveSileroVadCppGgufPath } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
     );
-    vadPath = resolveSileroVadPath({
-      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+    vadPath = resolveSileroVadCppGgufPath({
+      modelPath: process.env.ELIZA_SILERO_VAD_GGUF,
       bundleRoot: bundleRoot ?? undefined,
     });
   } catch {
@@ -368,17 +368,17 @@ async function inspectActiveOptimizations(args) {
   }
   if (vadPath) {
     active.push({
-      name: "VAD (RMS gate + Silero v5 ONNX)",
+      name: "VAD (RMS gate + Silero v5 GGUF)",
       on: true,
-      detail: `Silero model at ${vadPath} (via onnxruntime-node); the cheap RMS energy gate runs in front of it`,
+      detail: `Silero model at ${vadPath} (via libsilero_vad); the cheap RMS energy gate runs in front of it`,
     });
   } else {
     missing.push({
-      what: "no Silero VAD model (vad/silero-vad-int8.onnx not in the bundle, ELIZA_VAD_MODEL_PATH unset)",
-      fix: "stage the MIT-licensed Silero v5 VAD (~2 MB, public) into <state-dir>/local-inference/vad/silero-vad-int8.onnx or set ELIZA_VAD_MODEL_PATH; the harness can auto-download it",
+      what: "no Silero VAD GGUF (vad/silero-vad-v5.gguf not in the bundle, ELIZA_SILERO_VAD_GGUF unset)",
+      fix: "stage the MIT-licensed Silero v5 VAD GGUF into <state-dir>/local-inference/vad/silero-vad-v5.gguf or set ELIZA_SILERO_VAD_GGUF; the harness can auto-download it",
     });
     active.push({
-      name: "VAD (RMS gate + Silero v5 ONNX)",
+      name: "VAD (RMS gate + Silero v5 GGUF)",
       on: false,
       detail: "Silero model not found",
     });
@@ -532,7 +532,7 @@ const PLATFORM_MATRIX = [
           "TurboQuant/QJL/Polar CPU SIMD TUs compiled in; turbo3_tcq decode CPU",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "CPU SIMD kernels reference-verified; build runs on this host",
@@ -543,7 +543,7 @@ const PLATFORM_MATRIX = [
         kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (CUDA build)",
         verified:
           "CUDA kernels hardware-verified on RTX 5080; build needs nvcc (not present here)",
@@ -555,7 +555,7 @@ const PLATFORM_MATRIX = [
           "HIP build; custom kernels not yet HIP-ported → reduced-optimization local mode (stock f16 KV; ELIZA_LOCAL_ALLOW_STOCK_KV=1)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (HIP build)",
         verified: "needs ROCm host (hipcc); not built here",
       },
@@ -566,7 +566,7 @@ const PLATFORM_MATRIX = [
           "dflash + turbo3/4/tcq + qjl + polar shaders staged + dispatch source-patched (runtime-verified Intel ANV; needs-hardware elsewhere)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (Vulkan build)",
         verified:
           "Vulkan shaders + fused-attn graph dispatch verified on Intel ARL ANV; build runs on this host",
@@ -583,7 +583,7 @@ const PLATFORM_MATRIX = [
           "TurboQuant/QJL/Polar CPU SIMD TUs (ARMv8.4 dotprod path) compiled in",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "onnxruntime-node (arm64)",
+        vad: "silero-vad-cpp GGUF (arm64)",
         ttsAsr: "fused libelizainference (CPU build)",
         verified: "needs an arm64 Linux host or cross-toolchain (not present)",
       },
@@ -593,7 +593,7 @@ const PLATFORM_MATRIX = [
         kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
-        vad: "onnxruntime-node (arm64)",
+        vad: "silero-vad-cpp GGUF (arm64)",
         ttsAsr: "fused libelizainference (CUDA build)",
         verified:
           "needs aarch64+CUDA host (GH200/Grace-Hopper); not built here",
@@ -610,7 +610,7 @@ const PLATFORM_MATRIX = [
         kernels: "TurboQuant/QJL/Polar CPU SIMD TUs compiled in",
         mic: "ffmpeg -f dshow (DirectShow) — or renderer getUserMedia → PushMicSource",
         player: "ffplay (ffmpeg) — or renderer AudioContext",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "build needs MSVC/mingw (cross from this Linux host: --dry-run only)",
@@ -621,7 +621,7 @@ const PLATFORM_MATRIX = [
         kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (CUDA build)",
         verified: "needs Windows + CUDA SDK; not built here",
       },
@@ -632,7 +632,7 @@ const PLATFORM_MATRIX = [
           "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
-        vad: "onnxruntime-node",
+        vad: "silero-vad-cpp GGUF",
         ttsAsr: "fused libelizainference (Vulkan build)",
         verified:
           "needs Windows + a Vulkan 1.3 GPU; build cross-config --dry-run only here",
@@ -648,7 +648,7 @@ const PLATFORM_MATRIX = [
         kernels: "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled in",
         mic: "ffmpeg -f dshow — or renderer getUserMedia → PushMicSource",
         player: "ffplay — or renderer AudioContext",
-        vad: "onnxruntime-node (arm64)",
+        vad: "silero-vad-cpp GGUF (arm64)",
         ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "needs an MSVC arm64 cross-toolchain or a native Windows arm64 host",
@@ -660,7 +660,7 @@ const PLATFORM_MATRIX = [
           "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
-        vad: "onnxruntime-node (arm64)",
+        vad: "silero-vad-cpp GGUF (arm64)",
         ttsAsr: "fused libelizainference (Vulkan build)",
         verified: "needs Windows arm64 + Adreno; not built here",
       },
@@ -678,7 +678,7 @@ const PLATFORM_MATRIX = [
         mic: "sox -d (rec) — or ffmpeg -f avfoundation — or renderer getUserMedia",
         player:
           "sox/play — or ffplay — (afplay needs a file, not used) — or renderer AudioContext",
-        vad: "onnxruntime-node (arm64)",
+        vad: "silero-vad-cpp GGUF (arm64)",
         ttsAsr:
           "fused libelizainference.dylib (real OmniVoice TTS + Qwen3-ASR, full graph)",
         verified:
@@ -698,7 +698,7 @@ const PLATFORM_MATRIX = [
         mic: "Capacitor Microphone plugin → PushMicSource (no CLI recorder on iOS)",
         player:
           "Capacitor audio sink → PcmRingBuffer → native AudioQueue/AVAudioEngine",
-        vad: "onnxruntime-mobile (iOS) / Capacitor ONNX bridge — NOT onnxruntime-node",
+        vad: "silero-vad-cpp GGUF (iOS native library)",
         ttsAsr:
           "fused libelizainference (ios-arm64-metal-fused — to add) carried inside the xcframework, or the Capacitor framework links omnivoice symbols",
         verified:
@@ -717,7 +717,7 @@ const PLATFORM_MATRIX = [
           "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled into the .so",
         mic: "Capacitor Microphone plugin → PushMicSource",
         player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
-        vad: "onnxruntime-mobile (Android) / Capacitor ONNX bridge",
+        vad: "silero-vad-cpp GGUF (Android native library)",
         ttsAsr:
           "fused libelizainference (android-arm64-cpu-fused — to add) inside the AAR",
         verified:
@@ -731,7 +731,7 @@ const PLATFORM_MATRIX = [
           "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware: needs a physical Android Vulkan device)",
         mic: "Capacitor Microphone plugin → PushMicSource",
         player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
-        vad: "onnxruntime-mobile (Android) / Capacitor ONNX bridge",
+        vad: "silero-vad-cpp GGUF (Android native library)",
         ttsAsr:
           "fused libelizainference (android-arm64-vulkan-fused — to add) inside the AAR",
         verified:
@@ -743,7 +743,7 @@ const PLATFORM_MATRIX = [
 
 /** Inspect what the *host* would actually use, for the local row callout. */
 async function inspectHostPeripherals() {
-  const out = { recorder: null, player: null, ort: null, ortError: null };
+  const out = { recorder: null, player: null, vadLib: null, vadLibError: null };
   try {
     const { resolveDesktopRecorder } = await import(
       "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
@@ -762,13 +762,15 @@ async function inspectHostPeripherals() {
     /* ignore */
   }
   try {
-    const { loadOnnxRuntime } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/onnx-runtime.ts"
+    const { resolveSileroVadGgmlLibrary } = await import(
+      "../../../plugins/plugin-local-inference/src/services/voice/vad-ggml.ts"
     );
-    await loadOnnxRuntime();
-    out.ort = "onnxruntime-node";
+    out.vadLib =
+      resolveSileroVadGgmlLibrary({
+        libraryPath: process.env.ELIZA_SILERO_VAD_LIB,
+      }) ?? null;
   } catch (err) {
-    out.ortError = err instanceof Error ? err.message : String(err);
+    out.vadLibError = err instanceof Error ? err.message : String(err);
   }
   return out;
 }
@@ -811,12 +813,12 @@ async function printPlatformReport() {
     `  audio player : ${host.player ?? c("yellow", "(none on PATH — falls back to WavFileAudioSink)")}`,
   );
   log(
-    `  ONNX runtime : ${
-      host.ort
-        ? host.ort
+    `  VAD library  : ${
+      host.vadLib
+        ? host.vadLib
         : c(
             "yellow",
-            `(unavailable — ${host.ortError ?? "onnxruntime-node not installed"}; VAD disabled)`,
+            `(unavailable — ${host.vadLibError ?? "libsilero_vad not found"}; VAD disabled)`,
           )
     }`,
   );
@@ -839,18 +841,17 @@ async function printPlatformReport() {
 // ---------------------------------------------------------------------------
 
 async function tryAutoDownloadVad(_bundleRoot) {
-  // Silero v5 VAD (MIT, ~2 MB, public).
+  // Silero v5 VAD GGUF (MIT, public).
   try {
     const { localInferenceRoot } = await import(
       "../../shared/src/local-inference/paths.ts"
     );
-    const dest = path.join(localInferenceRoot(), "vad", "silero-vad-int8.onnx");
+    const dest = path.join(localInferenceRoot(), "vad", "silero-vad-v5.gguf");
     if (existsSync(dest)) return dest;
-    // ONNX community mirror of the official silero-vad model.
     const url =
       process.env.ELIZA_SILERO_VAD_URL?.trim() ||
-      "https://huggingface.co/onnx-community/silero-vad/resolve/main/onnx/model.onnx?download=true";
-    tag("setup", "blue", `downloading Silero VAD (~2 MB) → ${dest}`);
+      "https://huggingface.co/elizalabs/eliza-1/resolve/main/voice/vad/silero-vad-v5.gguf?download=true";
+    tag("setup", "blue", `downloading Silero VAD GGUF → ${dest}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
@@ -1317,11 +1318,11 @@ async function main() {
     process.exit(0);
   }
 
-  // Auto-download cheap prereqs (VAD ~2 MB). These never fake — a failed
+  // Auto-download cheap prereqs (VAD GGUF). These never fake — a failed
   // download is a missing prereq, not silence.
   if (!report.vadPath) {
     const vp = await tryAutoDownloadVad(report.bundleRoot);
-    if (vp) process.env.ELIZA_VAD_MODEL_PATH = vp;
+    if (vp) process.env.ELIZA_SILERO_VAD_GGUF = vp;
   }
   // ASR is delivered exclusively through the fused libelizainference bundle.
   // The bundle is large — only auto-download if explicitly requested via env.
@@ -1632,6 +1633,7 @@ async function main() {
       const push = new PushMicSource({ sampleRate: decoded.sampleRate });
       micSource = push;
       const vad = await createSileroVadDetector({
+        sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
         modelPath: process.env.ELIZA_VAD_MODEL_PATH,
       });
       controller = await engine.startVoiceSession({
@@ -1694,6 +1696,7 @@ async function main() {
     );
     micSource = new DesktopMicSource();
     const vad = await createSileroVadDetector({
+      sileroCppGgufPath: process.env.ELIZA_SILERO_VAD_GGUF,
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
     });
     controller = await engine.startVoiceSession({

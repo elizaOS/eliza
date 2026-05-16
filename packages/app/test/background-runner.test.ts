@@ -119,6 +119,31 @@ describe("public/runners/eliza-tasks.js", () => {
     });
   });
 
+  it("records an explicit Android agent-service IPC skip instead of fetching a custom scheme", async () => {
+    const runner = loadRunner();
+    await runner.dispatch("configure", {
+      platform: "android",
+      mode: "local",
+      localApiBase: "eliza-local-agent://ipc",
+      localRouteKernel: "agent-service-ipc",
+    });
+
+    const result = await runner.dispatch("wake", {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      skipped: true,
+      platform: "android",
+      mode: "local",
+      reason: "android_agent_service_ipc_unavailable_in_background_jscontext",
+    });
+    expect(runner.fetchMock).not.toHaveBeenCalled();
+    expect(runner.readKv("eliza.background.lastResult")).toMatchObject({
+      skipped: true,
+      reason: "android_agent_service_ipc_unavailable_in_background_jscontext",
+    });
+  });
+
   it("still posts to a configured non-local background endpoint", async () => {
     const runner = loadRunner();
     const result = await runner.dispatch("wake", {

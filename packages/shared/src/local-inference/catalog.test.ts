@@ -2,21 +2,28 @@ import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
   ELIZA_1_TIER_IDS,
+  ELIZA_1_VISION_TIER_IDS,
   MODEL_CATALOG,
   type OmniVoiceQuantLevel,
   voiceQuantLadderForTier,
 } from "./catalog.js";
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
-const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
+const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b"] as const;
 const OMNIVOICE_TIERS = ELIZA_1_TIER_IDS;
 const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
-  "eliza-1-0_8b": "eliza-1-0_8B",
+  "eliza-1-0_8b": "eliza-1-0.8B",
   "eliza-1-2b": "eliza-1-2B",
   "eliza-1-4b": "eliza-1-4B",
   "eliza-1-9b": "eliza-1-9B",
   "eliza-1-27b": "eliza-1-27B",
-  "eliza-1-27b-256k": "eliza-1-27B-256k",
+};
+const EXPECTED_CHAT_PARAMS: Record<string, string> = {
+  "eliza-1-0_8b": "0.8B",
+  "eliza-1-2b": "2B",
+  "eliza-1-4b": "4B",
+  "eliza-1-9b": "9B",
+  "eliza-1-27b": "27B",
 };
 
 describe("voiceQuantLadderForTier", () => {
@@ -80,22 +87,18 @@ describe("Eliza-1 runtime quant metadata", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.displayName).toBe(EXPECTED_DISPLAY_NAMES[id]);
+      expect(entry?.params).toBe(EXPECTED_CHAT_PARAMS[id]);
       expect(entry?.ggufFile).toContain(id);
     }
   });
 
-  it("ships every text tier at the 128k floor or native 256k tier", () => {
+  it("ships every active text tier at the 128k floor", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.contextLength).toBeGreaterThanOrEqual(131072);
       expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
-      if (id === "eliza-1-27b-256k") {
-        expect(entry?.contextLength).toBe(262144);
-        expect(entry?.ggufFile).toBe("text/eliza-1-27b-256k.gguf");
-      } else {
-        expect(entry?.contextLength).toBe(131072);
-        expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
-      }
+      expect(entry?.contextLength).toBe(131072);
+      expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
     }
   });
 
@@ -110,6 +113,52 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
+      );
+    }
+  });
+
+  it("attaches a tiny DFlash companion to the 0.8B tier", () => {
+    const entry = MODEL_CATALOG.find((model) => model.id === "eliza-1-0_8b");
+
+    expect(entry?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
+    expect(entry?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
+    expect(entry?.runtime?.optimizations?.requiresKernel).toContain("dflash");
+    expect(
+      MODEL_CATALOG.some((model) => model.id === "eliza-1-0_8b-drafter"),
+    ).toBe(true);
+    expect(entry?.sourceModel?.components.drafter?.file).toBe(
+      "bundles/0_8b/dflash/drafter-0_8b.gguf",
+    );
+  });
+
+  it("gates M-RoPE DFlash tiers until the verifier path is hardware-validated", () => {
+    for (const id of [
+      "eliza-1-0_8b",
+      "eliza-1-2b",
+      "eliza-1-4b",
+      "eliza-1-9b",
+      "eliza-1-27b",
+    ]) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.runtime?.dflash?.disabledReason).toMatch(/7631/);
+    }
+  });
+
+  it("points every voice-enabled tier at the bundled Silero VAD GGUF", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.sourceModel?.components.vad?.file).toBe(
+        `bundles/${id.slice("eliza-1-".length)}/vad/silero-vad-v5.gguf`,
+      );
+    }
+  });
+
+  it("points every vision-enabled tier at its tier-matched mmproj GGUF", () => {
+    for (const id of ELIZA_1_VISION_TIER_IDS) {
+      const slug = id.slice("eliza-1-".length);
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.sourceModel?.components.vision?.file).toBe(
+        `bundles/${slug}/vision/mmproj-${slug}.gguf`,
       );
     }
   });

@@ -95,7 +95,13 @@ class MMAUDataset:
                 "Install elizaos-mmau[hf] or pass --fixture."
             ) from exc
 
-        stream = load_dataset(self.hf_repo, split=self.split.value, streaming=True)
+        stream = load_dataset(self.hf_repo, split=_hf_split_name(self.split), streaming=True)
+        try:
+            from datasets import Audio  # type: ignore[import-not-found]
+
+            stream = stream.cast_column("context", Audio(decode=False))
+        except (ImportError, ValueError, AttributeError):
+            logger.debug("Could not cast MMAU context audio column to decode=False")
         for item in stream:
             if max_samples is not None and len(self.samples) >= max_samples:
                 break
@@ -150,20 +156,25 @@ class MMAUDataset:
         if not question:
             return None
 
-        context = str(data.get("context") or "").strip()
-
+        context = ""
         audio_bytes: bytes | None = None
         audio_path: Path | None = None
-        audio_field = data.get("audio")
-        if isinstance(audio_field, dict):
-            raw_bytes = audio_field.get("bytes")
-            if isinstance(raw_bytes, (bytes, bytearray)):
-                audio_bytes = bytes(raw_bytes)
-            raw_path = audio_field.get("path")
-            if isinstance(raw_path, str) and raw_path:
-                audio_path = Path(raw_path)
-        elif isinstance(audio_field, str) and audio_field:
-            audio_path = Path(audio_field)
+        audio_metadata: dict[str, Any] = {}
+
+        raw_context = data.get("context")
+        if isinstance(raw_context, str):
+            context = raw_context.strip()
+        else:
+            audio_bytes, audio_path, audio_metadata = _parse_audio_field(raw_context)
+
+        fallback_bytes, fallback_path, fallback_metadata = _parse_audio_field(data.get("audio"))
+        if audio_bytes is None:
+            audio_bytes = fallback_bytes
+        if audio_path is None:
+            audio_path = fallback_path
+        audio_metadata.update(
+            {k: v for k, v in fallback_metadata.items() if k not in audio_metadata}
+        )
 
         return MMAUSample(
             id=sample_id,
@@ -179,7 +190,10 @@ class MMAUDataset:
             audio_path=audio_path,
             audio_bytes=audio_bytes,
             context=context,
-            metadata={k: v for k, v in attrs.items() if _json_safe(v)},
+            metadata={
+                **{k: v for k, v in attrs.items() if _json_safe(v)},
+                **audio_metadata,
+            },
         )
 
     def get_samples(self, limit: int | None = None) -> list[MMAUSample]:
@@ -194,3 +208,49 @@ def _json_safe(value: object) -> bool:
     except (TypeError, ValueError):
         return False
     return True
+
+
+def _hf_split_name(split: MMAUSplit) -> str:
+    """Map logical MMAU split names to the physical HF split name."""
+    return {
+        MMAUSplit.TEST_MINI: "test",
+        MMAUSplit.TEST: "test",
+    }[split]
+
+
+def _parse_audio_field(value: object) -> tuple[bytes | None, Path | None, dict[str, Any]]:
+    metadata: dict[str, Any] = {}
+    if isinstance(value, list):
+        for item in value:
+            audio_bytes, audio_path, item_metadata = _parse_audio_field(item)
+            if audio_bytes is not None or audio_path is not None or item_metadata:
+                return audio_bytes, audio_path, item_metadata
+        return None, None, metadata
+    if isinstance(value, dict):
+        raw_bytes = value.get("bytes")
+        audio_bytes = bytes(raw_bytes) if isinstance(raw_bytes, (bytes, bytearray)) else None
+        audio_path = _local_audio_path(value.get("path"))
+        raw_src = value.get("src")
+        if isinstance(raw_src, str) and raw_src.strip():
+            metadata["audio_url"] = raw_src.strip()
+        raw_type = value.get("type")
+        if isinstance(raw_type, str) and raw_type.strip():
+            metadata["audio_mime_type"] = raw_type.strip()
+        if audio_path is not None:
+            metadata["audio_path"] = str(audio_path)
+        return audio_bytes, audio_path, metadata
+    if isinstance(value, str) and value.strip():
+        audio_path = _local_audio_path(value)
+        if audio_path is not None:
+            return None, audio_path, {"audio_path": str(audio_path)}
+        return None, None, {"audio_url": value.strip()}
+    return None, None, metadata
+
+
+def _local_audio_path(value: object) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.startswith(("http://", "https://")):
+        return None
+    return Path(raw)

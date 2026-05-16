@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.ai/schemas/os-release-manifest.v1.json",
+  "title": "ElizaOS OS release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "release",
+    "commerce",
+    "artifacts",
+    "validation",
+    "checksumPolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "channel",
+        "version",
+        "availableDate",
+        "status",
+        "summary",
+        "knownLimitations"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^elizaos-os-[a-z0-9.-]+$" },
+        "channel": { "enum": ["alpha", "beta", "stable"] },
+        "version": { "type": "string" },
+        "availableDate": { "type": "string", "format": "date" },
+        "status": { "enum": ["planned", "candidate", "available", "withdrawn"] },
+        "tag": { "type": ["string", "null"] },
+        "commit": { "type": ["string", "null"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "knownLimitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "commerce": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usbKeyPresale"],
+      "properties": {
+        "usbKeyPresale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "priceUsd",
+            "saleStarts",
+            "estimatedShipWindow",
+            "sku"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "priceUsd": { "type": "number" },
+            "saleStarts": { "type": "string", "format": "date" },
+            "estimatedShipWindow": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["starts", "ends"],
+              "properties": {
+                "starts": { "type": "string", "format": "date" },
+                "ends": { "type": "string", "format": "date" }
+              }
+            },
+            "sku": { "type": "string", "minLength": 1 },
+            "notes": { "type": "string" }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "target",
+          "filename",
+          "downloadUrl",
+          "status",
+          "sizeBytes",
+          "sha256",
+          "validation"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$" },
+          "kind": {
+            "enum": [
+              "raw-image",
+              "vm-image",
+              "android-image",
+              "checksum-manifest",
+              "usb-installer"
+            ]
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["platform", "architecture"],
+            "properties": {
+              "platform": {
+                "enum": ["linux", "macos", "windows", "android", "cuttlefish"]
+              },
+              "architecture": {
+                "enum": ["x86_64", "arm64", "universal", "aarch64"]
+              },
+              "device": { "type": ["string", "null"] },
+              "hypervisor": { "type": ["string", "null"] },
+              "firmware": { "type": ["string", "null"] }
+            }
+          },
+          "filename": { "type": "string", "minLength": 1 },
+          "downloadUrl": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["planned", "candidate", "published", "withdrawn"] },
+          "sizeBytes": { "type": ["integer", "null"], "minimum": 1 },
+          "sha256": {
+            "type": ["string", "null"],
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "signature": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "enum": ["not-applicable", "pending", "signed", "notarized"]
+              },
+              "url": { "type": ["string", "null"] }
+            }
+          },
+          "validation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requiredEvidence", "evidence"],
+            "properties": {
+              "requiredEvidence": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "status"],
+                  "properties": {
+                    "id": { "type": "string", "minLength": 1 },
+                    "status": {
+                      "enum": ["missing", "collected", "waived", "not-required"]
+                    },
+                    "path": { "type": ["string", "null"] },
+                    "notes": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promotionGates", "evidenceDirectory"],
+      "properties": {
+        "evidenceDirectory": { "type": "string", "minLength": 1 },
+        "promotionGates": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "checksumPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "generatedFile", "verificationScript"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "generatedFile": { "type": "string", "minLength": 1 },
+        "verificationScript": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

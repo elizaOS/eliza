@@ -205,17 +205,28 @@ export function retrieveActions(
 ): ActionRetrievalResponse {
 	const candidateActions = dedupeNormalizedStrings(input.candidateActions);
 	const parentActionHints = dedupeNormalizedStrings(input.parentActionHints);
-	const queryText = [input.messageText ?? "", ...candidateActions].join("\n");
+	const recentConversationText = shouldUseRecentConversationForActionSearch(
+		input.messageText ?? "",
+	)
+		? normalizeTextList(input.recentConversationText)
+		: [];
+	const candidateActionsForSearch =
+		recentConversationText.length > 0 ? [] : candidateActions;
+	const queryText = [
+		input.messageText ?? "",
+		...recentConversationText,
+		...candidateActionsForSearch,
+	].join("\n");
 	const queryTokens = tokenizeActionSearchText(queryText);
 	const keywordQueryTexts = [
 		input.messageText ?? "",
-		...normalizeTextList(input.recentConversationText),
-		...candidateActions,
+		...recentConversationText,
+		...candidateActionsForSearch,
 	].filter((text) => text.trim().length > 0);
 	const exactScores = scoreExactHints(input.catalog.parents, parentActionHints);
 	const regexScores = scoreCandidateRegex(
 		input.catalog.parents,
-		candidateActions,
+		candidateActionsForSearch,
 	);
 	const keywordScores = scoreKeywordMatches(
 		input.catalog.parents,
@@ -691,6 +702,21 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 	}
 
 	return result;
+}
+
+function shouldUseRecentConversationForActionSearch(
+	messageText: string,
+): boolean {
+	const normalized = messageText.toLowerCase().replace(/\s+/g, " ").trim();
+	if (!normalized) return false;
+	return (
+		/\b(?:again|continue|redo|rerun|retry|same|another\s+one|one\s+more|also|too)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:do|run|make|build|check|try|send|show|open|fix|update|use|add|remove|delete|change|repeat)\b[\s\S]{0,80}\b(?:it|that|this|these|those|them|there|above|previous|last|same|one)\b/iu.test(
+			normalized,
+		)
+	);
 }
 
 function normalizeTextList(

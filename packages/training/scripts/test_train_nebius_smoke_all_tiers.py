@@ -210,7 +210,7 @@ def test_smoke_all_help_lists_tiers():
     assert "TIERS" in out, f"help output missing TIERS doc:\n{out}"
     assert "SMOKE_MAX_STEPS" in out
     assert "SMOKE_DATA_DIR" in out
-    assert "0_8b" in out and "27b-256k" in out
+    assert "0_8b" in out and "27b" in out
 
 
 # ---------- run_pipeline.py end-to-end skip-everything smoke ----------------

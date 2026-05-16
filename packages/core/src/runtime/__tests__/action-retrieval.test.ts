@@ -211,6 +211,105 @@ describe("action catalogue and retrieval", () => {
 		expect(response.results[0].stageScores.keyword).toBeGreaterThan(0);
 	});
 
+	it("does not let prior standalone requests dominate current-turn action search", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "SHELL",
+				description: "Run local shell commands and inspect runtime logs.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Can you tell me what elizaOS is?",
+			recentConversationText: [
+				"Code me an app showing how good gpt oss is",
+				"What is the price of bitcoin right now?",
+			],
+		});
+
+		expect(
+			response.results.find((result) => result.name === "TASKS"),
+		).toMatchObject({
+			score: 0,
+			matchedBy: [],
+		});
+	});
+
+	it("does not use recent conversation for short standalone turns", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+		]);
+
+		for (const messageText of ["what is elizaOS?", "thanks"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText,
+				recentConversationText: "Code me an app showing how good gpt oss is",
+			});
+
+			expect(
+				response.results.find((result) => result.name === "TASKS"),
+			).toMatchObject({
+				score: 0,
+				matchedBy: [],
+			});
+		}
+	});
+
+	it("uses recent conversation for continuation-shaped current turns", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "SHELL",
+				description: "Run local shell commands and inspect runtime logs.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Do that again",
+			recentConversationText: "Code me an app showing how good gpt oss is",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["bm25"]),
+		});
+	});
+
+	it("still uses recent conversation for continuation turns with candidate hints", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "MUSIC",
+				description: "Control music playback.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Do that again",
+			candidateActions: ["play_music"],
+			recentConversationText: "Build a small app with a button",
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["bm25"]),
+		});
+	});
+
 	it("does not retrieve actions from context match alone", () => {
 		const catalog = buildActionCatalog([
 			{

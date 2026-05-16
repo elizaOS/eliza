@@ -126,6 +126,30 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     return "";
   }
 
+  private isLocalAgentIpcBase(): boolean {
+    const base = this.apiBase().trim();
+    if (!base) return false;
+    const lower = base.toLowerCase();
+    if (
+      lower === "eliza-local-agent://ipc" ||
+      lower.startsWith("eliza-local-agent://ipc/") ||
+      lower.startsWith("eliza-local-agent://ipc?")
+    ) {
+      return true;
+    }
+    try {
+      const parsed = new URL(base);
+      return (
+        parsed.protocol === "eliza-local-agent:" &&
+        (parsed.hostname === "ipc" ||
+          parsed.pathname === "//ipc" ||
+          parsed.pathname.startsWith("//ipc/"))
+      );
+    } catch {
+      return false;
+    }
+  }
+
   private apiToken(): string | null {
     const global =
       typeof window !== "undefined"
@@ -144,6 +168,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
 
   /** True when we can reach the API via HTTP. */
   private canReachApi(): boolean {
+    if (this.isLocalAgentIpcBase()) return false;
     const global =
       typeof window !== "undefined"
         ? (window as ElizaWindow).__ELIZA_API_BASE__
@@ -218,6 +243,18 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   async request(options: AgentRequestOptions): Promise<AgentRequestResult> {
     if (!options.path?.startsWith("/")) {
       throw new Error("Agent.request path must start with /");
+    }
+    if (this.isLocalAgentIpcBase()) {
+      return {
+        status: 503,
+        statusText: "Service Unavailable",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          error: "native_agent_unavailable",
+          message:
+            "Agent web fallback cannot handle eliza-local-agent://ipc; use the native Capacitor Agent plugin",
+        }),
+      };
     }
     const res = await fetch(`${this.apiBase()}${options.path}`, {
       method: options.method ?? "GET",

@@ -68,6 +68,15 @@ describe("LocalInferenceService activation prewarm", () => {
 		const prewarm = vi
 			.spyOn(localInferenceEngine, "prewarmConversation")
 			.mockResolvedValue(true);
+		const voiceReady = vi
+			.spyOn(localInferenceEngine, "ensureActiveBundleVoiceReady")
+			.mockResolvedValue({} as never);
+		const transcribe = vi
+			.spyOn(localInferenceEngine, "transcribePcm")
+			.mockResolvedValue("");
+		const synthesize = vi
+			.spyOn(localInferenceEngine, "synthesizeSpeech")
+			.mockResolvedValue(new Uint8Array());
 
 		vi.spyOn(service, "getInstalled").mockResolvedValue([installed]);
 		vi.spyOn(ActiveModelCoordinator.prototype, "switchTo").mockResolvedValue(
@@ -88,6 +97,12 @@ describe("LocalInferenceService activation prewarm", () => {
 				"stable-stage1-prefix",
 			);
 		});
+		expect(voiceReady).toHaveBeenCalledOnce();
+		expect(transcribe).toHaveBeenCalledWith({
+			pcm: expect.any(Float32Array),
+			sampleRate: 16_000,
+		});
+		expect(synthesize).toHaveBeenCalledWith("Hello.");
 		expect(coreMocks.renderMessageHandlerStablePrefix).toHaveBeenCalledWith(
 			runtime,
 			"agent-test",

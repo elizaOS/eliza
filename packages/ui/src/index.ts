@@ -56,6 +56,63 @@ export {
   getInjectedCharacters,
 } from "./character-catalog";
 export * from "./chat/index";
+export { AuthorizeContent } from "./cloud-ui/components/auth/authorize-content";
+export * from "./cloud-ui/components/auth/authorize-return";
+export { DiscordIcon } from "./cloud-ui/components/icons";
+export {
+  type AspectRatio,
+  EnhancedLoading,
+  ImageEmptyState,
+  ImageLoadingState,
+  ImagePromptInput,
+  type StylePreset,
+} from "./cloud-ui/components/image-gen";
+export {
+  AnimatedCounter,
+  AnimatedCounterWithLabel,
+  EarningsSimulator,
+  MilestoneCard,
+  MilestoneProgress,
+  RevenueFlowDiagram,
+} from "./cloud-ui/components/monetization";
+export { NavigationProgress } from "./cloud-ui/components/navigation-progress";
+export {
+  ProductSwitcher,
+  type ProductSwitcherItem,
+  type ProductSwitcherProps,
+} from "./cloud-ui/components/product-switcher";
+export { PromoteAppDialog } from "./cloud-ui/components/promotion/promote-app-dialog";
+export { SocialConnectionHint } from "./cloud-ui/components/promotion/social-connection-hint";
+export {
+  ThemeProvider,
+  ThemeToggle as CloudThemeToggle,
+  useTheme,
+} from "./cloud-ui/components/theme";
+export {
+  getEstimatedReadyMessage,
+  type Voice,
+  VoiceAudioPlayer,
+  type VoiceCloneJob,
+  VoiceEmptyState,
+  type VoiceSettings,
+  VoiceStatusBadge,
+} from "./cloud-ui/components/voice";
+export { default as dynamic } from "./cloud-ui/runtime/dynamic";
+export { default as Image } from "./cloud-ui/runtime/image";
+export * from "./cloud-ui/runtime/navigation";
+export {
+  type AnyRenderTelemetryEvent,
+  type ProfilerRenderTelemetryEvent,
+  RENDER_TELEMETRY_EVENT,
+  type RenderTelemetryEvent,
+  RenderTelemetryProfiler,
+  type RenderTelemetrySeverity,
+  setRenderTelemetrySink,
+} from "./cloud-ui/runtime/render-telemetry";
+export {
+  type ChatMediaAttachment,
+  ContentType,
+} from "./cloud-ui/types/chat-media";
 export * from "./companion/index";
 export type {
   DocumentImageCompressionPlatform,
@@ -96,6 +153,7 @@ export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel";
 export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region";
 export * from "./components/index";
 export {
+  FormField,
   LanguageDropdown,
   ThemeToggle,
 } from "./components/index";

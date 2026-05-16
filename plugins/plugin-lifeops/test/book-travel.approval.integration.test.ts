@@ -5,7 +5,7 @@ import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent";
 import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { saveEnv } from "../../../test/helpers/test-utils";
+import { saveEnv } from "../../../packages/test/helpers/test-utils";
 import { runBookTravelHandler } from "../src/actions/book-travel.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";

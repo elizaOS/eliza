@@ -6,6 +6,11 @@ declare module "*.svg" {
 declare module "electrobun/view" {
   type WebviewEventHandler = (event: CustomEvent) => void;
 
+  export class Electroview {
+    constructor(options: { rpc?: unknown });
+    static defineRPC(config: unknown): unknown;
+  }
+
   export interface WebviewTagElement extends HTMLElement {
     src: string;
     html: string | null;
@@ -48,6 +53,33 @@ declare module "@elizaos/plugin-groq" {
 
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/signal-native";
+
+declare module "react-syntax-highlighter" {
+  import type { ComponentType, CSSProperties, ReactNode } from "react";
+
+  export type SyntaxHighlighterStyle = Record<string, CSSProperties>;
+
+  export type SyntaxHighlighterProps = {
+    children?: ReactNode;
+    className?: string;
+    codeTagProps?: Record<string, unknown>;
+    customStyle?: CSSProperties;
+    language?: string;
+    lineNumberStyle?: CSSProperties;
+    showLineNumbers?: boolean;
+    style?: SyntaxHighlighterStyle;
+  };
+
+  export const Prism: ComponentType<SyntaxHighlighterProps>;
+}
+
+declare module "react-syntax-highlighter/dist/esm/styles/prism" {
+  import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
+
+  export const oneDark: SyntaxHighlighterStyle;
+  export const oneLight: SyntaxHighlighterStyle;
+  export const vscDarkPlus: SyntaxHighlighterStyle;
+}
 
 declare module "qrcode-terminal" {
   export function generate(

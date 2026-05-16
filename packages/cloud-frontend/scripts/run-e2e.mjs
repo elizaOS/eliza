@@ -17,7 +17,9 @@ async function waitForServer(child) {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error(`Vite exited before becoming ready (code ${child.exitCode})`);
+      throw new Error(
+        `Vite exited before becoming ready (code ${child.exitCode})`,
+      );
     }
     try {
       const response = await fetch(baseUrl, {
@@ -37,14 +39,10 @@ function stop(child) {
   child.kill("SIGTERM");
 }
 
-const server = spawn(
-  "bun",
-  ["--bun", "vite", "--host", host, "--port", port],
-  {
-    stdio: "inherit",
-    env,
-  },
-);
+const server = spawn("bun", ["--bun", "vite", "--host", host, "--port", port], {
+  stdio: "inherit",
+  env,
+});
 
 try {
   await waitForServer(server);

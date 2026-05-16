@@ -1,1 +1,0 @@
-import "./model-tester-app";

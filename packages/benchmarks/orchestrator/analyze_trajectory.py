@@ -88,7 +88,7 @@ def _coerce_float(value: Any) -> float | None:
     return None
 
 
-def _token_detail_value(usage: dict[str, Any], keys: tuple[str, ...]) -> int:
+def _token_detail_value(usage: dict[str, Any], keys: tuple[str, ...]) -> int | None:
     for container_key in ("prompt_tokens_details", "input_token_details", "token_details"):
         details = usage.get(container_key)
         if not isinstance(details, dict):
@@ -96,7 +96,19 @@ def _token_detail_value(usage: dict[str, Any], keys: tuple[str, ...]) -> int:
         for key in keys:
             if key in details:
                 return _coerce_int(details.get(key))
-    return 0
+    return None
+
+
+def _first_present(obj: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in obj:
+            return obj.get(key)
+    return None
+
+
+def _first_present_int(obj: dict[str, Any], keys: tuple[str, ...]) -> int:
+    value = _first_present(obj, keys)
+    return _coerce_int(value)
 
 
 def _nested_dict(obj: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] | None:
@@ -114,26 +126,34 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
     # Shape 1: bench-server post-May-2026 — `usage: BenchmarkTurnUsage`.
     usage = obj.get("usage")
     if isinstance(usage, dict):
-        prompt = _coerce_int(usage.get("promptTokens") or usage.get("prompt_tokens"))
-        completion = _coerce_int(
-            usage.get("completionTokens")
-            or usage.get("completion_tokens")
-            or usage.get("output_tokens")
+        prompt = _first_present_int(
+            usage,
+            ("promptTokens", "prompt_tokens", "input_tokens"),
         )
-        total = _coerce_int(usage.get("totalTokens") or usage.get("total_tokens"))
-        if not prompt:
-            prompt = _coerce_int(usage.get("input_tokens"))
-        cached_raw = (
-            usage.get("cachedTokens")
-            or usage.get("cached_tokens")
-            or usage.get("cache_read_input_tokens")
-            or _token_detail_value(usage, ("cached_tokens", "cache_read_input_tokens"))
+        completion = _first_present_int(
+            usage,
+            ("completionTokens", "completion_tokens", "output_tokens"),
         )
-        cache_creation = _coerce_int(
-            usage.get("cacheCreationInputTokens")
-            or usage.get("cache_creation_input_tokens")
-            or _token_detail_value(usage, ("cache_creation_input_tokens", "cache_write_tokens"))
+        total = _first_present_int(usage, ("totalTokens", "total_tokens"))
+        cached_raw = _first_present(
+            usage,
+            ("cachedTokens", "cached_tokens", "cache_read_input_tokens"),
         )
+        if cached_raw is None:
+            cached_raw = _token_detail_value(
+                usage,
+                ("cached_tokens", "cache_read_input_tokens"),
+            )
+        cache_creation_raw = _first_present(
+            usage,
+            ("cacheCreationInputTokens", "cache_creation_input_tokens"),
+        )
+        if cache_creation_raw is None:
+            cache_creation_raw = _token_detail_value(
+                usage,
+                ("cache_creation_input_tokens", "cache_write_tokens"),
+            )
+        cache_creation = _coerce_int(cache_creation_raw)
         has_cached = cached_raw is not None
         cached = _coerce_int(cached_raw)
         if prompt or completion or cached or cache_creation:
@@ -180,28 +200,28 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         for item in current:
             if not isinstance(item, dict):
                 continue
-            prompt += _coerce_int(item.get("prompt_tokens") or item.get("promptTokens"))
+            prompt += _first_present_int(item, ("prompt_tokens", "promptTokens"))
             completion += _coerce_int(
-                item.get("completion_tokens")
-                or item.get("completionTokens")
-                or item.get("output_tokens")
+                _first_present(
+                    item,
+                    ("completion_tokens", "completionTokens", "output_tokens"),
+                )
             )
             total += _coerce_int(
-                item.get("total_tokens")
-                or item.get("totalTokens")
-                or item.get("tokens_used")
+                _first_present(item, ("total_tokens", "totalTokens", "tokens_used"))
             )
-            cached_raw = (
-                item.get("prompt_cache_hit_tokens")
-                or item.get("cache_read_input_tokens")
-                or item.get("cached_tokens")
+            cached_raw = _first_present(
+                item,
+                ("prompt_cache_hit_tokens", "cache_read_input_tokens", "cached_tokens"),
             )
             if cached_raw is not None:
                 has_cached = True
                 cached += _coerce_int(cached_raw)
             cache_creation += _coerce_int(
-                item.get("prompt_cache_miss_tokens")
-                or item.get("cache_creation_input_tokens")
+                _first_present(
+                    item,
+                    ("prompt_cache_miss_tokens", "cache_creation_input_tokens"),
+                )
             )
         if prompt or completion or cached or cache_creation:
             return TurnTokens(
@@ -285,30 +305,38 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         token_usage = obj.get("token_usage")
         if isinstance(token_usage, dict):
             prompt = _coerce_int(
-                token_usage.get("prompt_tokens")
-                or token_usage.get("promptTokens")
-                or token_usage.get("input_tokens")
+                _first_present(
+                    token_usage,
+                    ("prompt_tokens", "promptTokens", "input_tokens"),
+                )
             )
             completion = _coerce_int(
-                token_usage.get("completion_tokens")
-                or token_usage.get("completionTokens")
-                or token_usage.get("output_tokens")
+                _first_present(
+                    token_usage,
+                    ("completion_tokens", "completionTokens", "output_tokens"),
+                )
             )
             total = _coerce_int(
-                token_usage.get("total_tokens")
-                or token_usage.get("totalTokens")
-                or token_usage.get("tokens_used")
+                _first_present(
+                    token_usage,
+                    ("total_tokens", "totalTokens", "tokens_used"),
+                )
             )
-            cached_raw = (
-                token_usage.get("cached_prompt_tokens")
-                or token_usage.get("cachedTokens")
-                or token_usage.get("cached_tokens")
-                or token_usage.get("cache_read_input_tokens")
+            cached_raw = _first_present(
+                token_usage,
+                (
+                    "cached_prompt_tokens",
+                    "cachedTokens",
+                    "cached_tokens",
+                    "cache_read_input_tokens",
+                ),
             )
             cached = _coerce_int(cached_raw)
             cache_creation = _coerce_int(
-                token_usage.get("cache_creation_input_tokens")
-                or token_usage.get("cacheCreationInputTokens")
+                _first_present(
+                    token_usage,
+                    ("cache_creation_input_tokens", "cacheCreationInputTokens"),
+                )
             )
             if prompt or completion or cached or cache_creation:
                 return TurnTokens(

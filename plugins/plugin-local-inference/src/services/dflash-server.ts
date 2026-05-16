@@ -40,6 +40,7 @@ import {
 	DflashMetricsCollector,
 	dflashTurnHistory,
 } from "./dflash-metrics-collector";
+import { getDflashDrafterBlockReason } from "./dflash-target-meta";
 import {
 	type DflashVerifyEvent,
 	type DflashVerifyStats,
@@ -1073,6 +1074,17 @@ export function appendBackendSafeStartupFlags(
 		// model planner, so the server does not need llama.cpp to auto-fit them.
 		args.push("-fit", "off");
 	}
+	const cacheTypeK = findArgValue(args, "--cache-type-k");
+	const cacheTypeV = findArgValue(args, "--cache-type-v");
+	const usesCompressedKv =
+		isRuntimeCompressedKv(cacheTypeK) || isRuntimeCompressedKv(cacheTypeV);
+	if (!usesCompressedKv) return;
+	if (!hasAnyArg(args, ["-fa", "--flash-attn"])) {
+		args.push("-fa", "on");
+	}
+	if (!args.includes("--no-kv-offload")) {
+		args.push("--no-kv-offload");
+	}
 }
 
 const RUNTIME_COMPRESSED_KV_FALLBACK = "q8_0";
@@ -1084,6 +1096,29 @@ const runtimeCompressedKvWarnings = new Set<string>();
 
 function normalizedBackendName(backend: unknown): string | null {
 	return typeof backend === "string" ? backend.trim().toLowerCase() : null;
+}
+
+function isRuntimeCompressedKv(value: string | undefined): boolean {
+	return (
+		value !== undefined &&
+		RUNTIME_COMPRESSED_KV_UNSAFE.has(value.trim().toLowerCase())
+	);
+}
+
+function findArgValue(args: string[], flag: string): string | undefined {
+	for (let i = 0; i < args.length; i += 1) {
+		const value = args[i];
+		if (value === flag) return args[i + 1];
+		const prefix = `${flag}=`;
+		if (value?.startsWith(prefix)) return value.slice(prefix.length);
+	}
+	return undefined;
+}
+
+function hasAnyArg(args: string[], flags: readonly string[]): boolean {
+	return args.some((arg) =>
+		flags.some((flag) => arg === flag || arg.startsWith(`${flag}=`)),
+	);
 }
 
 function isCompressedKvGraphUnsafeBackend(backend: unknown): boolean {
@@ -2017,19 +2052,23 @@ async function fetchJson(
 		timeoutMs,
 	);
 	let res: Response | null = null;
+	let bodySettled = false;
 	try {
 		res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
 			const body = await res.text().catch(() => "");
+			bodySettled = true;
 			throw new Error(
 				`HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`,
 			);
 		}
-		return await res.json();
+		const json = await res.json();
+		bodySettled = true;
+		return json;
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
-		if (controller.signal.aborted) {
+		if (res?.body && (!bodySettled || controller.signal.aborted)) {
 			await res?.body?.cancel(controller.signal.reason).catch(() => undefined);
 		}
 	}
@@ -2179,6 +2218,7 @@ async function fetchStreamingChatCompletion(
 	const t0 = performance.now();
 	let firstTokenMs: number | null = null;
 	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+	let completed = false;
 	try {
 		const res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
@@ -2343,6 +2383,7 @@ async function fetchStreamingChatCompletion(
 			}
 			await callbacks.onTextChunk?.(finalRepair);
 		}
+		completed = true;
 		return {
 			text,
 			firstTokenMs,
@@ -2352,8 +2393,21 @@ async function fetchStreamingChatCompletion(
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
-		if (controller.signal.aborted) {
+		if (!completed) {
+			if (!controller.signal.aborted) {
+				controller.abort(
+					new DOMException(
+						"DFlash stream closed before completion",
+						"AbortError",
+					),
+				);
+			}
 			await reader?.cancel(controller.signal.reason).catch(() => undefined);
+		}
+		try {
+			reader?.releaseLock();
+		} catch {
+			// Ignore: the reader may already be released by the runtime.
 		}
 	}
 }
@@ -2850,7 +2904,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * Mirrors `loadedDrafterModelPath()` for the vision component.
 	 */
 	currentMmprojPath(): string | null {
-		return this.lastOptimizations?.mmproj ?? null;
+		return (
+			process.env.ELIZA_LOCAL_MMPROJ?.trim() ||
+			this.loadedPlan?.mmprojPath ||
+			this.lastOptimizations?.mmproj ||
+			null
+		);
 	}
 
 	/**
@@ -3088,6 +3147,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			);
 		}
 		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
+		const drafterBlockReason = drafter
+			? await getDflashDrafterBlockReason(drafter)
+			: null;
 		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
 		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
 		// — not a usable draft model — and some bundles ship no drafter at all.
@@ -3096,13 +3158,24 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `restartWithoutDrafter()` uses for memory eviction): the server runs
 		// target-only, no `-md`. Loud warning because this departs from the
 		// always-on DFlash contract.
-		const drafterUnavailable = !drafter;
+		const catalogDrafterDisabledReason = dflash.disabledReason?.trim();
+		const drafterUnavailable =
+			!!catalogDrafterDisabledReason || !drafter || drafterBlockReason !== null;
+		const disabledDrafterReason = catalogDrafterDisabledReason
+			? catalogDrafterDisabledReason
+			: !drafter
+				? `companion drafter '${dflash.drafterModelId}' is not installed`
+				: drafterBlockReason
+					? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
+					: undefined;
 		if (drafterUnavailable) {
 			console.warn(
-				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
-					`'${dflash.drafterModelId}' is not installed — loading target-only ` +
-					`(speculative decoding OFF). Install a valid drafter to restore the ` +
-					`always-on DFlash path.`,
+				catalogDrafterDisabledReason
+					? `[dflash] ⚠️  ${target.displayName}: ${catalogDrafterDisabledReason} — loading target-only (speculative decoding OFF).`
+					: `[dflash] ⚠️  ${target.displayName}: companion drafter ` +
+							`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +
+							`(speculative decoding OFF). Install a valid drafter to restore the ` +
+							`always-on DFlash path.`,
 			);
 		}
 
@@ -3169,9 +3242,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				// passed to llama-server (`-md`) while `disableDrafter` is true.
 				drafterModelPath: drafter?.path ?? target.path,
 				disableDrafter: drafterUnavailable,
-				disabledDrafterReason: drafterUnavailable
-					? `companion drafter '${dflash.drafterModelId}' is not installed`
-					: undefined,
+				disabledDrafterReason,
 				contextSize,
 				draftContextSize: dflash.draftContextSize,
 				draftMin: dflash.draftMin,
@@ -3926,7 +3997,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				}),
 			);
 		}
-		const before = await fetchMetricsSnapshot(baseUrl);
+		const before = await fetchMetricsSnapshot(baseUrl, args.signal);
 		let json: Record<string, unknown> | null = null;
 		let text: string;
 		let firstTokenMs: number | null = null;
@@ -4049,7 +4120,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				}).text;
 			}
 		}
-		const after = await fetchMetricsSnapshot(baseUrl);
+		const after = await fetchMetricsSnapshot(baseUrl, args.signal);
 		const responseUsage = json
 			? extractResponseUsage(json)
 			: streamingResponseUsage;
@@ -4268,6 +4339,11 @@ export function buildChatCompletionBody(
 		cache_prompt: true,
 		slot_id: slotId,
 	};
+	if (args.thinking === "off" || args.thinking === "on") {
+		payload.chat_template_kwargs = {
+			enable_thinking: args.thinking === "on",
+		};
+	}
 	if (effectivePrefill.length > 0) {
 		// Continue the partial assistant turn instead of opening a new one.
 		payload.continue_final_message = true;

@@ -23,17 +23,16 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "tsc --noCheck -p tsconfig.build.json",
-    "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src"
   },
   "files": [
-    "dist/**/*",
+    "dist",
     "skills/**/*",
-    "README.md",
-    "dist"
+    "README.md"
   ],
   "keywords": [
     "elizaos",
@@ -58,7 +57,8 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "tsx": "^4.19.2"
+    "@types/node": "^25.0.0",
+    "typescript": "^6.0.3"
   },
   "publishConfig": {
     "access": "public"

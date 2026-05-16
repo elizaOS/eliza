@@ -53,6 +53,7 @@ const integrationResolveAlias: ModuleAlias[] = [
     "plugin-lifeops",
     "app-task-coordinator",
     "app-vincent",
+    "plugin-workflow",
     "plugin-shopify",
     "plugin-steward-app",
   ]),

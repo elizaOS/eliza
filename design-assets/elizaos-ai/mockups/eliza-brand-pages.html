@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>elizaOS Cloud / OS / App Mockups</title>
+    <style>
+      :root {
+        --blue: #0b35f1;
+        --orange: #ff5800;
+        --black: #000000;
+        --white: #ffffff;
+        --line-dark: rgba(0, 0, 0, 0.12);
+        --line-light: rgba(255, 255, 255, 0.14);
+        --muted-dark: rgba(0, 0, 0, 0.62);
+        --muted-light: rgba(255, 255, 255, 0.68);
+        --font: "Open Sans", Arial, system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--white);
+        color: var(--black);
+        font-family: var(--font);
+        letter-spacing: 0;
+      }
+
+      img,
+      video {
+        display: block;
+        max-width: 100%;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .topbar {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.94);
+        border-bottom: 1px solid var(--line-dark);
+        display: flex;
+        gap: 24px;
+        justify-content: space-between;
+        left: 0;
+        padding: 16px 28px;
+        position: sticky;
+        right: 0;
+        top: 0;
+        z-index: 10;
+      }
+
+      .brand {
+        align-items: center;
+        display: inline-flex;
+        font-size: 15px;
+        font-weight: 800;
+        gap: 10px;
+        text-transform: lowercase;
+      }
+
+      .brand img {
+        height: 24px;
+        width: auto;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .nav a {
+        border: 1px solid var(--line-dark);
+        font-size: 12px;
+        font-weight: 700;
+        padding: 8px 10px;
+        text-transform: uppercase;
+      }
+
+      .nav a:hover {
+        border-color: var(--blue);
+        color: var(--blue);
+      }
+
+      .page {
+        min-height: 100vh;
+      }
+
+      .hero,
+      .section {
+        padding: clamp(36px, 6vw, 92px) clamp(20px, 5vw, 72px);
+      }
+
+      .hero {
+        display: grid;
+        gap: 34px;
+        grid-template-columns: minmax(0, 0.92fr) minmax(280px, 1.08fr);
+        min-height: calc(100vh - 58px);
+      }
+
+      .eyebrow {
+        color: var(--blue);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+        margin: 0 0 18px;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        font-size: clamp(58px, 10vw, 158px);
+        letter-spacing: 0;
+        line-height: 0.92;
+        margin-bottom: 24px;
+      }
+
+      h2 {
+        font-size: clamp(42px, 6vw, 92px);
+        line-height: 0.96;
+        margin-bottom: 22px;
+      }
+
+      h3 {
+        font-size: 18px;
+        margin-bottom: 10px;
+      }
+
+      .lead {
+        color: var(--muted-dark);
+        font-size: clamp(18px, 2vw, 26px);
+        line-height: 1.24;
+        max-width: 640px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 28px;
+      }
+
+      .button {
+        align-items: center;
+        border: 1px solid var(--black);
+        display: inline-flex;
+        font-size: 13px;
+        font-weight: 800;
+        height: 44px;
+        justify-content: center;
+        min-width: 144px;
+        padding: 0 16px;
+        text-transform: uppercase;
+      }
+
+      .button.primary {
+        background: var(--orange);
+        border-color: var(--orange);
+        color: var(--white);
+      }
+
+      .button.dark {
+        background: var(--black);
+        color: var(--white);
+      }
+
+      .button:hover {
+        border-color: var(--blue);
+        color: var(--blue);
+      }
+
+      .button.primary:hover {
+        background: var(--blue);
+        color: var(--white);
+      }
+
+      .media-frame {
+        align-self: end;
+        background: var(--blue);
+        border: 1px solid var(--black);
+        min-height: 420px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .media-frame img,
+      .media-frame video {
+        height: 100%;
+        object-fit: cover;
+        width: 100%;
+      }
+
+      .blue-sky {
+        background:
+          linear-gradient(180deg, rgba(11, 53, 241, 0.18), transparent 34%),
+          var(--white);
+      }
+
+      .black-band {
+        background: var(--black);
+        color: var(--white);
+      }
+
+      .black-band .lead,
+      .black-band .muted {
+        color: var(--muted-light);
+      }
+
+      .grid {
+        display: grid;
+        gap: 1px;
+      }
+
+      .grid.cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid.cols-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .module {
+        border: 1px solid var(--line-dark);
+        min-height: 150px;
+        padding: 22px;
+      }
+
+      .black-band .module {
+        border-color: var(--line-light);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .stat {
+        font-size: 42px;
+        font-weight: 850;
+        letter-spacing: 0;
+        line-height: 1;
+      }
+
+      .muted {
+        color: var(--muted-dark);
+      }
+
+      .cloud-shell {
+        background: var(--black);
+        color: var(--white);
+        min-height: 100vh;
+        padding: 22px;
+      }
+
+      .cloud-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 248px minmax(0, 1fr);
+      }
+
+      .sidebar,
+      .panel {
+        border: 1px solid var(--line-light);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .sidebar {
+        min-height: calc(100vh - 44px);
+        padding: 18px;
+      }
+
+      .sidebar a {
+        border: 1px solid transparent;
+        color: var(--muted-light);
+        display: block;
+        font-size: 13px;
+        font-weight: 750;
+        margin-top: 4px;
+        padding: 11px 10px;
+      }
+
+      .sidebar a.active {
+        border-color: var(--orange);
+        color: var(--white);
+      }
+
+      .workspace {
+        display: grid;
+        gap: 14px;
+      }
+
+      .workspace-header {
+        align-items: end;
+        display: flex;
+        gap: 18px;
+        justify-content: space-between;
+        padding: 12px 0 6px;
+      }
+
+      .workspace-header h1 {
+        font-size: clamp(42px, 6vw, 92px);
+        margin: 0;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .panel.blue {
+        background: var(--blue);
+        border-color: var(--blue);
+      }
+
+      .download-card {
+        border: 1px solid var(--line-dark);
+        display: grid;
+        gap: 18px;
+        padding: 24px;
+      }
+
+      .selector {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .selector button {
+        background: var(--white);
+        border: 1px solid var(--line-dark);
+        color: var(--black);
+        font: inherit;
+        font-weight: 800;
+        height: 44px;
+      }
+
+      .selector button.active {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: var(--white);
+      }
+
+      .rows {
+        border-top: 1px solid currentColor;
+      }
+
+      .row {
+        border-bottom: 1px solid currentColor;
+        display: flex;
+        justify-content: space-between;
+        padding: 11px 0;
+      }
+
+      @media (max-width: 900px) {
+        .hero,
+        .cloud-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .grid.cols-3,
+        .grid.cols-4 {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          min-height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#cloud">
+        <img src="../assets/header/eliza-header-logo.svg" alt="elizaOS" />
+      </a>
+      <nav class="nav" aria-label="Mockups">
+        <a href="#cloud">Cloud</a>
+        <a href="#os">OS</a>
+        <a href="#download">Download</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="cloud" class="page cloud-shell">
+        <div class="cloud-grid">
+          <aside class="sidebar">
+            <div class="brand">
+              <img src="../assets/footer/logo.svg" alt="" /> cloud
+            </div>
+            <a class="active" href="#">Overview</a>
+            <a href="#">Agents</a>
+            <a href="#">Deployments</a>
+            <a href="#">Billing</a>
+            <a href="#">Settings</a>
+          </aside>
+          <div class="workspace">
+            <div class="workspace-header">
+              <div>
+                <p class="eyebrow">Eliza Cloud</p>
+                <h1>Agent operations.</h1>
+              </div>
+              <a class="button primary" href="#">Create agent</a>
+            </div>
+            <div class="grid cols-4">
+              <article class="panel">
+                <p class="muted">Live agents</p>
+                <div class="stat">24</div>
+              </article>
+              <article class="panel blue">
+                <p>Requests</p>
+                <div class="stat">1.8M</div>
+              </article>
+              <article class="panel">
+                <p class="muted">Spend</p>
+                <div class="stat">$482</div>
+              </article>
+              <article class="panel">
+                <p class="muted">Uptime</p>
+                <div class="stat">99.9</div>
+              </article>
+            </div>
+            <div class="grid cols-3">
+              <article class="panel">
+                <h3>Runtime health</h3>
+                <p class="muted">Every deployment reports through the shared package UI status model.</p>
+              </article>
+              <article class="panel">
+                <h3>Model routes</h3>
+                <p class="muted">Blue marks infrastructure state. Orange marks action.</p>
+              </article>
+              <article class="panel">
+                <h3>Agent logs</h3>
+                <p class="muted">Square, dense, and built for repeated operational use.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="os" class="page blue-sky">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">elizaOS</p>
+            <h1>Your Agentic Operating System</h1>
+            <p class="lead">Build, orchestrate, and collaborate with AI agents across every interface you own.</p>
+            <div class="actions">
+              <a class="button dark" href="#">Start building</a>
+              <a class="button" href="#">Read docs</a>
+            </div>
+          </div>
+          <div class="media-frame">
+            <img src="../assets/hero/hero-eliza-2.png" alt="elizaOS desktop preview" />
+          </div>
+        </div>
+        <div class="section black-band">
+          <p class="eyebrow">Architecture</p>
+          <h2>Universally adaptable, completely yours.</h2>
+          <div class="grid cols-4">
+            <article class="module"><h3>Message bus</h3><p class="muted">One event pipeline for every interface.</p></article>
+            <article class="module"><h3>Swarms</h3><p class="muted">Agents can delegate, coordinate, and recover.</p></article>
+            <article class="module"><h3>Actions</h3><p class="muted">Real operations, approvals, and scheduled work.</p></article>
+            <article class="module"><h3>Plugins</h3><p class="muted">Swap capabilities without changing the core.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="download" class="page">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">Eliza App</p>
+            <h1>Download your agent workspace.</h1>
+            <p class="lead">Install the desktop app, connect cloud agents, and keep local runtimes under one square, shared UI system.</p>
+          </div>
+          <div class="download-card">
+            <h2>Get the app</h2>
+            <div class="selector" role="tablist" aria-label="Operating system">
+              <button class="active" type="button">macOS</button>
+              <button type="button">Windows</button>
+              <button type="button">Linux</button>
+            </div>
+            <a class="button primary" href="#">Download for macOS</a>
+            <div class="rows">
+              <div class="row"><span>Version</span><strong>2.0 beta</strong></div>
+              <div class="row"><span>Build</span><strong>universal</strong></div>
+              <div class="row"><span>Checksum</span><strong>SHA256</strong></div>
+            </div>
+          </div>
+        </div>
+        <footer class="section black-band">
+          <img src="../assets/footer/logo.svg" alt="elizaOS" style="height: 38px" />
+          <h2>Start building.</h2>
+        </footer>
+      </section>
+    </main>
+  </body>
+</html>

@@ -77,5 +77,3 @@ export const modelTesterPlugin: Plugin = {
     "UI applet routes for end-to-end Eliza-1 text, embedding, speech, transcription, VAD, and vision probes.",
   routes: modelTesterRoutes,
 };
-
-export default modelTesterPlugin;

@@ -37,7 +37,7 @@ concurrency:
 env:
   CI: "true"
   BUN_VERSION: "1.3.13"
-  NODE_VERSION: "23"
+  NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=4096 --experimental-sqlite"
   # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly

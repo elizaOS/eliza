@@ -138,9 +138,46 @@ import {
 import { VoiceManager } from "./voice";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
+const DISCORD_MESSAGE_URL_RE = /\/channels\/\d+\/\d+\/(\d{15,20})/;
 type MessageConnectorRegistration = Parameters<
 	IAgentRuntime["registerMessageConnector"]
 >[0];
+
+function discordMessageIdFromMemory(memory: Memory | null): string | undefined {
+	if (!memory) return undefined;
+	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	const metadataId = metadata?.discordMessageId;
+	if (
+		typeof metadataId === "string" &&
+		DISCORD_SNOWFLAKE_PATTERN.test(metadataId)
+	) {
+		return metadataId;
+	}
+	const url = (memory.content as Record<string, unknown> | undefined)?.url;
+	if (typeof url === "string") {
+		const match = url.match(DISCORD_MESSAGE_URL_RE);
+		if (match?.[1]) return match[1];
+	}
+	return undefined;
+}
+
+async function resolveDiscordReplyToMessageId(
+	runtime: IAgentRuntime,
+	content: Content,
+): Promise<string | undefined> {
+	const inReplyTo =
+		typeof content.inReplyTo === "string" ? content.inReplyTo.trim() : "";
+	if (!inReplyTo) return undefined;
+	if (DISCORD_SNOWFLAKE_PATTERN.test(inReplyTo)) return inReplyTo;
+	if (typeof runtime.getMemoryById !== "function") return undefined;
+	try {
+		return discordMessageIdFromMemory(
+			await runtime.getMemoryById(inReplyTo as UUID),
+		);
+	} catch {
+		return undefined;
+	}
+}
 
 type DiscordSettingsForEvents = DiscordSettings & {
 	shouldIgnoreBotMessages: boolean;
@@ -1410,6 +1447,16 @@ export class DiscordService extends Service implements IDiscordService {
 					const channelType = await this.getChannelType(
 						targetChannel as Channel,
 					);
+					const replyToMessageId = await resolveDiscordReplyToMessageId(
+						runtime,
+						content,
+					);
+					let shouldAttachReply = Boolean(replyToMessageId);
+					const takeReplyOptions = () => {
+						if (!replyToMessageId || !shouldAttachReply) return {};
+						shouldAttachReply = false;
+						return { reply: { messageReference: replyToMessageId } };
+					};
 
 					const textContent = normalizeDiscordMessageText(content.text);
 					if (textContent || files.length > 0) {
@@ -1417,24 +1464,30 @@ export class DiscordService extends Service implements IDiscordService {
 							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
 							if (chunks.length > 1) {
 								for (let i = 0; i < chunks.length - 1; i++) {
-									const sent = await targetChannel.send(chunks[i]);
+									const sent = await targetChannel.send({
+										content: chunks[i],
+										...takeReplyOptions(),
+									});
 									sentMessages.push(sent);
 								}
 								const sent = await targetChannel.send({
 									content: chunks[chunks.length - 1],
 									files: files.length > 0 ? files : undefined,
+									...takeReplyOptions(),
 								});
 								sentMessages.push(sent);
 							} else {
 								const sent = await targetChannel.send({
 									content: chunks[0],
 									files: files.length > 0 ? files : undefined,
+									...takeReplyOptions(),
 								});
 								sentMessages.push(sent);
 							}
 						} else {
 							const sent = await targetChannel.send({
 								files,
+								...takeReplyOptions(),
 							});
 							sentMessages.push(sent);
 						}

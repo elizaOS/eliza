@@ -8,7 +8,10 @@
 #
 # Local equivalent (run before pushing):
 #
-#     bun run check-actions-manifest
+#     tmp="$(mktemp)"
+#     cp packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
+#     (cd packages/benchmarks/lifeops-bench && python -m eliza_lifeops_bench.manifest_export "$tmp")
+#     diff -u packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
 #
 # Triggers on PRs that touch any of the input plugins, the export script,
 # the Python augment, or the manifest itself.
@@ -19,14 +22,12 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "plugins/app-lifeops/**"
-      - "plugins/app-contacts/**"
-      - "plugins/app-phone/**"
+      - "plugins/plugin-lifeops/**"
+      - "plugins/plugin-contacts/**"
+      - "plugins/plugin-phone/**"
       - "plugins/plugin-bluebubbles/**"
       - "plugins/plugin-imessage/**"
       - "plugins/plugin-todos/**"
-      - "scripts/lifeops-bench/export-action-manifest.ts"
-      - "scripts/lifeops-bench/check-action-manifest.mjs"
       - "packages/benchmarks/lifeops-bench/manifests/actions.manifest.json"
       - "packages/benchmarks/lifeops-bench/eliza_lifeops_bench/manifest_export.py"
       - ".github/workflows/lifeops-bench-manifest.yml"
@@ -41,7 +42,7 @@ permissions:
 
 env:
   BUN_VERSION: "1.3.13"
-  NODE_VERSION: "22.20.0"
+  NODE_VERSION: "24.15.0"
   PYTHON_VERSION: "3.12"
 
 jobs:
@@ -79,4 +80,13 @@ jobs:
           pip install -e .
 
       - name: Verify manifest is up to date
-        run: bun run check-actions-manifest
+        run: |
+          set -e
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          cp packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"
+          (
+            cd packages/benchmarks/lifeops-bench
+            python -m eliza_lifeops_bench.manifest_export "$tmp"
+          )
+          diff -u packages/benchmarks/lifeops-bench/manifests/actions.manifest.json "$tmp"

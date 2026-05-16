@@ -9,33 +9,19 @@ import type {
 } from "./polymarket-contracts";
 
 export interface PolymarketMarketsRequest {
-  limit?: number;
-  offset?: number;
+	limit?: number;
+	offset?: number;
   active?: boolean;
   closed?: boolean;
   order?: string;
   ascending?: boolean;
-  tagId?: string;
+	tagId?: string;
 }
 
-declare module "@elizaos/ui" {
-  interface ElizaClient {
-    polymarketStatus(): Promise<PolymarketStatusResponse>;
-    polymarketMarkets(
-      request?: PolymarketMarketsRequest,
-    ): Promise<PolymarketMarketsResponse>;
-    polymarketMarketById(id: string): Promise<PolymarketMarketResponse>;
-    polymarketMarketBySlug(slug: string): Promise<PolymarketMarketResponse>;
-    polymarketOrderbook(tokenId: string): Promise<PolymarketOrderbookResponse>;
-    polymarketOrders(): Promise<PolymarketDisabledResponse>;
-    polymarketPositions(user: string): Promise<PolymarketPositionsResponse>;
-  }
-}
-
-type PolymarketClientPrototype = ElizaClient & {
-  polymarketStatus(): Promise<PolymarketStatusResponse>;
-  polymarketMarkets(
-    request?: PolymarketMarketsRequest,
+export type PolymarketClient = ElizaClient & {
+	polymarketStatus(): Promise<PolymarketStatusResponse>;
+	polymarketMarkets(
+		request?: PolymarketMarketsRequest,
   ): Promise<PolymarketMarketsResponse>;
   polymarketMarketById(id: string): Promise<PolymarketMarketResponse>;
   polymarketMarketBySlug(slug: string): Promise<PolymarketMarketResponse>;
@@ -45,7 +31,7 @@ type PolymarketClientPrototype = ElizaClient & {
 };
 
 const elizaClientPrototype =
-  ElizaClient.prototype as unknown as PolymarketClientPrototype;
+	ElizaClient.prototype as unknown as PolymarketClient;
 
 elizaClientPrototype.polymarketStatus = async function () {
   return this.fetch("/api/polymarket/status");

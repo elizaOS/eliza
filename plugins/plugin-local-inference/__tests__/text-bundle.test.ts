@@ -6,14 +6,14 @@
  *   - the bundle's text GGUF path is declared (per-tier `textFile`),
  *   - the bundle's embedding GGUF path is declared on tiers that have a
  *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k),
- *   - the bundle's drafter GGUF path is declared (DFlash speculative
- *     decoding companion),
+ *   - the bundle's drafter GGUF path is declared only on tiers with a
+ *     distilled DFlash companion,
  *   - the HuggingFace resolve URL for the text and embedding components
- *     resolves to `elizaos/eliza-1` and includes the expected
+ *     resolves to `elizalabs/eliza-1` and includes the expected
  *     per-tier prefix.
  *
  * Why this matters: the publish pipeline stages a bundle per tier; if a
- * tier loses its embedding region (or its drafter is renamed), the
+ * tier loses its embedding region (or a DFlash tier's drafter is renamed), the
  * runtime's `useModel(TEXT_EMBEDDING, ...)` falls through to a non-local
  * provider on the desktop path and silently regresses to no DFlash on
  * every backend. This test pins the per-tier components catalogue as a
@@ -28,6 +28,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrlForPath,
 	ELIZA_1_HF_REPO,
+	ELIZA_1_DFLASH_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	findCatalogModel,
 } from "../src/services/catalog.ts";
@@ -46,6 +47,7 @@ const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-0_8b",
 	"eliza-1-2b",
 ]);
+const DFLASH_TIERS: ReadonlySet<string> = new Set(ELIZA_1_DFLASH_TIER_IDS);
 
 describe("per-tier text + embedding bundle resolution", () => {
 	for (const tierId of ELIZA_1_TIER_IDS) {
@@ -67,7 +69,13 @@ describe("per-tier text + embedding bundle resolution", () => {
 				);
 			});
 
-			it("declares a drafter GGUF component (the DFlash companion)", () => {
+			it("declares a drafter GGUF component only for tiers with a DFlash companion", () => {
+				if (!DFLASH_TIERS.has(tierId)) {
+					expect(model?.sourceModel?.components.drafter).toBeUndefined();
+					expect(model?.runtime?.dflash).toBeUndefined();
+					expect(model?.companionModelIds).toBeUndefined();
+					return;
+				}
 				expect(model?.sourceModel?.components.drafter).toBeTruthy();
 				expect(model?.sourceModel?.components.drafter?.file).toMatch(
 					/^bundles\/.+\/dflash\/drafter-.+\.gguf$/,
@@ -93,7 +101,7 @@ describe("per-tier text + embedding bundle resolution", () => {
 				}
 			});
 
-			it("resolves the text component to a HuggingFace URL on elizaos/eliza-1", () => {
+			it("resolves the text component to a HuggingFace URL on elizalabs/eliza-1", () => {
 				const file = model?.sourceModel?.components.text?.file;
 				expect(file).toBeTruthy();
 				if (!model || !file) return;
@@ -113,7 +121,8 @@ describe("per-tier text + embedding bundle resolution", () => {
 				expect(url).toContain("embedding/eliza-1-embedding.gguf");
 			});
 
-			it("resolves the drafter component to a HuggingFace URL on the same repo", () => {
+			it("resolves the drafter component to a HuggingFace URL on the same repo when present", () => {
+				if (!DFLASH_TIERS.has(tierId)) return;
 				const file = model?.sourceModel?.components.drafter?.file;
 				expect(file).toBeTruthy();
 				if (!model || !file) return;
@@ -126,7 +135,13 @@ describe("per-tier text + embedding bundle resolution", () => {
 				expect(model?.runtime?.preferredBackend).toBe("llama-server");
 			});
 
-			it("includes the dflash kernel in `requiresKernel`", () => {
+			it("includes the dflash kernel only on tiers with a DFlash companion", () => {
+				if (!DFLASH_TIERS.has(tierId)) {
+					expect(
+						model?.runtime?.optimizations?.requiresKernel,
+					).not.toContain("dflash");
+					return;
+				}
 				expect(
 					model?.runtime?.optimizations?.requiresKernel,
 				).toContain("dflash");

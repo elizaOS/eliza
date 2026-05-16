@@ -2,9 +2,9 @@
 
 The engine (`eliza1_gates.py`) turns a measured eval blob into a
 publish-blocking verdict; the publish orchestrator refuses to upload unless
-``GateReport.passed`` is True and ``defaultEligible`` requires every required
-gate to pass. These tests pin the v2-schema behaviour the orchestrator relies
-on.
+``GateReport.passed`` is True and ``defaultEligible`` requires every
+non-provisional required gate to pass. These tests pin the v2-schema behaviour
+the orchestrator relies on.
 """
 
 from __future__ import annotations
@@ -86,11 +86,13 @@ def test_missing_required_measurement_is_publish_blocking() -> None:
     assert any("text_eval" in f for f in rep.failures)
 
 
-def test_none_measurement_counts_as_missing() -> None:
+def test_provisional_none_measurement_is_recorded_but_not_blocking() -> None:
     results = _full_results(voice_rtf=None)
     rep = apply_gates({"tier": "0_8b", "mode": "full", "results": results})
-    assert rep.passed is False
-    assert any(g.name == "voice_rtf" and not g.passed for g in rep.gates)
+    assert rep.passed is True
+    row = next(g for g in rep.gates if g.name == "voice_rtf")
+    assert row.provisional is True
+    assert row.passed is False
 
 
 def test_failing_numeric_gate_blocks() -> None:
@@ -103,11 +105,15 @@ def test_failing_numeric_gate_blocks() -> None:
 
 
 def test_voice_rtf_uses_le_comparison() -> None:
-    # voice_rtf is "<=": 0.30 passes the 0.5 0_8b threshold, 0.80 fails.
+    # voice_rtf is "<=": 0.30 passes the 0.5 0_8b threshold, 0.80 fails
+    # visibly but does not block while the threshold remains provisional.
     ok = apply_gates({"tier": "0_8b", "mode": "full", "results": _full_results(voice_rtf=0.30)})
     bad = apply_gates({"tier": "0_8b", "mode": "full", "results": _full_results(voice_rtf=0.80)})
     assert ok.passed is True
-    assert bad.passed is False
+    assert bad.passed is True
+    row = next(g for g in bad.gates if g.name == "voice_rtf")
+    assert row.passed is False
+    assert row.provisional is True
 
 
 def test_bool_gate_requires_true() -> None:

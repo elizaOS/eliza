@@ -5,7 +5,6 @@
  */
 
 import { Hono } from "hono";
-import { fetchHonoRoot } from "@/lib/api/hono-root-request";
 import {
   getIpKey,
   rateLimit,
@@ -49,7 +48,5 @@ app.get("/", async (c) => {
     );
   }
 });
-
-export const GET = (request: Request) => fetchHonoRoot(app, request);
 
 export default app;

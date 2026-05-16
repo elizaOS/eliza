@@ -16,6 +16,8 @@
  * instead of crashing the process.
  */
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import { findCatalogModel } from "./catalog";
 import {
@@ -25,6 +27,7 @@ import {
   getDflashRuntimeStatus,
 } from "./dflash-server";
 import { listInstalledModels } from "./registry";
+import type { InstalledModel } from "./types";
 
 const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
 
@@ -62,6 +65,65 @@ function resolveDflashGpuLayersForLoad(
   if (mapped === "max") return "auto";
   if (mapped !== "auto") return mapped;
   return fallback;
+}
+
+interface DflashTargetMeta {
+  publishEligible?: unknown;
+  drafter?: {
+    matchesTargetCheckpoint?: unknown;
+    provenance?: unknown;
+    sha256?: unknown;
+  };
+  targetText?: {
+    sha256?: unknown;
+  };
+}
+
+export function getDflashTargetMetaBlockReason(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const meta = input as DflashTargetMeta;
+  if (meta.publishEligible === false) return "target-meta is not publishable";
+  if (meta.drafter?.matchesTargetCheckpoint === false) {
+    return "drafter does not match the target checkpoint";
+  }
+  const provenance =
+    typeof meta.drafter?.provenance === "string" ? meta.drafter.provenance : "";
+  if (provenance.includes("stamp-only")) return "drafter is stamp-only";
+  const drafterSha =
+    typeof meta.drafter?.sha256 === "string" ? meta.drafter.sha256 : null;
+  const targetSha =
+    typeof meta.targetText?.sha256 === "string" ? meta.targetText.sha256 : null;
+  if (drafterSha && targetSha && drafterSha === targetSha) {
+    return "drafter bytes match the target model";
+  }
+  return null;
+}
+
+async function readDflashTargetMeta(
+  drafter: InstalledModel,
+): Promise<unknown | null> {
+  try {
+    const metaPath = path.join(path.dirname(drafter.path), "target-meta.json");
+    const raw = await fs.readFile(metaPath, "utf8");
+    return JSON.parse(raw) as unknown;
+  } catch (err) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code?: unknown }).code === "ENOENT"
+    ) {
+      return null;
+    }
+    return { publishEligible: false };
+  }
+}
+
+async function getDflashDrafterBlockReason(
+  drafter: InstalledModel,
+): Promise<string | null> {
+  const meta = await readDflashTargetMeta(drafter);
+  return getDflashTargetMetaBlockReason(meta);
 }
 
 export interface GenerateArgs {
@@ -323,6 +385,12 @@ export class LocalInferenceEngine {
     const drafter = installed.find((m) => m.id === dflash.drafterModelId);
     if (!drafter) {
       const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
+      if (status.required) throw new Error(message);
+      return null;
+    }
+    const drafterBlockReason = await getDflashDrafterBlockReason(drafter);
+    if (drafterBlockReason) {
+      const message = `[dflash] ${catalog.displayName} companion drafter ${dflash.drafterModelId} is not eligible for DFlash: ${drafterBlockReason}.`;
       if (status.required) throw new Error(message);
       return null;
     }

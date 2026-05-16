@@ -92,7 +92,7 @@ Usage
         --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/omnivoice-baseline/eval.json \\
-        --hf-repo elizaos/eliza-1 \\
+        --hf-repo elizalabs/eliza-1 \\
         --operator-sign-off
 """
 
@@ -117,21 +117,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("omnivoice.finetune")
 
 # OmniVoice audio codec constants (from R6 research).
-OMNIVOICE_K = 8             # number of codebooks
-OMNIVOICE_VOCAB = 1025      # audio tokens per codebook (1024 codes + 1 mask)
-OMNIVOICE_MASK_ID = 1024    # mask token id
-OMNIVOICE_FRAME_RATE = 50   # frames per second (24000 Hz / hop 480)
+OMNIVOICE_K = 8  # number of codebooks
+OMNIVOICE_VOCAB = 1025  # audio tokens per codebook (1024 codes + 1 mask)
+OMNIVOICE_MASK_ID = 1024  # mask token id
+OMNIVOICE_FRAME_RATE = 50  # frames per second (24000 Hz / hop 480)
 
 # ---------------------------------------------------------------------------
 # Default config.
 # ---------------------------------------------------------------------------
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "base_model_gguf": None,             # path to omnivoice-base-Q4_K_M.gguf
-    "tokenizer_gguf": None,              # path to omnivoice-tokenizer-Q4_K_M.gguf
+    "base_model_gguf": None,  # path to omnivoice-base-Q4_K_M.gguf
+    "tokenizer_gguf": None,  # path to omnivoice-tokenizer-Q4_K_M.gguf
     "sample_rate": 24000,
     "optimizer": "apollo_mini",
-    "learning_rate": 5e-6,              # very low — 0.6B LM on 3.5 min corpus
+    "learning_rate": 5e-6,  # very low — 0.6B LM on 3.5 min corpus
     "weight_decay": 0.01,
     "warmup_steps": 30,
     "max_steps": 1000,
@@ -149,7 +149,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "gates": {
         "wer_max": 0.10,
         "speaker_similarity_min": 0.55,
-        "rtf_min": 3.0,                  # OmniVoice RTF target ≥ 3×
+        "rtf_min": 3.0,  # OmniVoice RTF target ≥ 3×
     },
 }
 
@@ -157,6 +157,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 # Config loader.
 # ---------------------------------------------------------------------------
+
 
 def _load_config(config_arg: str) -> dict[str, Any]:
     cfg = dict(DEFAULT_CONFIG)
@@ -192,6 +193,7 @@ def _load_config(config_arg: str) -> dict[str, Any]:
 # Train stats.
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TrainStats:
     step: int = 0
@@ -206,6 +208,7 @@ class TrainStats:
 # ---------------------------------------------------------------------------
 # Manifest + eval builders.
 # ---------------------------------------------------------------------------
+
 
 def _git_commit() -> str | None:
     try:
@@ -310,6 +313,7 @@ def _write_eval(
 # Synthetic-smoke (CI).
 # ---------------------------------------------------------------------------
 
+
 def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     log.info("synthetic-smoke: OmniVoice fine-tune pipeline shape (no GPU)")
     run_dir = Path(args.run_dir).resolve()
@@ -318,12 +322,18 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
     for step in (100, 200, 300):
         fake = ckpt_dir / f"step_{step}.json"
-        fake.write_text(json.dumps({
-            "kind": "omnivoice-finetune-synthetic",
-            "step": step,
-            "trainLoss": max(0.2, 2.5 - step * 0.006),
-            "speakerSimilarity": min(0.75, 0.4 + step * 0.001),
-        }, indent=2) + "\n")
+        fake.write_text(
+            json.dumps(
+                {
+                    "kind": "omnivoice-finetune-synthetic",
+                    "step": step,
+                    "trainLoss": max(0.2, 2.5 - step * 0.006),
+                    "speakerSimilarity": min(0.75, 0.4 + step * 0.001),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
 
     best_path = ckpt_dir / "best.json"
     best_path.write_text((ckpt_dir / "step_300.json").read_text())
@@ -350,7 +360,9 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     )
     (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
-    baseline_path = Path(args.baseline_eval) if getattr(args, "baseline_eval", None) else None
+    baseline_path = (
+        Path(args.baseline_eval) if getattr(args, "baseline_eval", None) else None
+    )
     eval_result = _write_eval(
         run_dir=run_dir,
         wer=0.06,
@@ -367,16 +379,22 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     artifact_dir = REPO_ROOT / "artifacts" / "voice-fine-tune" / artifact_id / run_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / "receipt.json").write_text(json.dumps({
-        "schemaVersion": 1,
-        "kind": "omnivoice-finetune-receipt",
-        "runId": run_id,
-        "voiceName": artifact_id,
-        "runDir": str(run_dir),
-        "synthetic": True,
-        "evalResult": eval_result,
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-    }, indent=2) + "\n")
+    (artifact_dir / "receipt.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "omnivoice-finetune-receipt",
+                "runId": run_id,
+                "voiceName": artifact_id,
+                "runDir": str(run_dir),
+                "synthetic": True,
+                "evalResult": eval_result,
+                "generatedAt": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
     log.info(
         "synthetic-smoke done: manifest=%s eval=%s artifact=%s",
@@ -390,6 +408,7 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 # ---------------------------------------------------------------------------
 # Corpus loading (shared by real train + eval).
 # ---------------------------------------------------------------------------
+
 
 def _load_corpus(
     data_dir: Path, cfg: dict[str, Any]
@@ -422,19 +441,27 @@ def _load_corpus(
             if not wav_path.exists():
                 log.warning("skipping %s: wav not found", rec["id"])
                 continue
-            records.append({
-                "id": rec["id"],
-                "wav": str(wav_path),
-                "transcript": rec.get("transcript", rec.get("text", "")),
-            })
+            records.append(
+                {
+                    "id": rec["id"],
+                    "wav": str(wav_path),
+                    "transcript": rec.get("transcript", rec.get("text", "")),
+                }
+            )
     else:
         audio_dir = data_dir / "audio"
         if not audio_dir.exists():
             audio_dir = data_dir
         for wav_path in sorted(audio_dir.glob("*.wav")):
             txt_path = wav_path.with_suffix(".txt")
-            transcript = txt_path.read_text(encoding="utf-8").strip() if txt_path.exists() else ""
-            records.append({"id": wav_path.stem, "wav": str(wav_path), "transcript": transcript})
+            transcript = (
+                txt_path.read_text(encoding="utf-8").strip()
+                if txt_path.exists()
+                else ""
+            )
+            records.append(
+                {"id": wav_path.stem, "wav": str(wav_path), "transcript": transcript}
+            )
 
     if not records:
         raise SystemExit(f"No audio/transcript pairs found in {data_dir}")
@@ -451,6 +478,7 @@ def _load_corpus(
 # Falls back to a dummy token sequence when the FFI is not available (so the
 # training loop shape is testable without the native build).
 # ---------------------------------------------------------------------------
+
 
 def _tokenize_wav(
     wav_path: str,
@@ -517,6 +545,7 @@ def _tokenize_wav(
 # out of scope for this wave (same rationale as ASR fine-tune).
 # ---------------------------------------------------------------------------
 
+
 def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     """OmniVoice LM fine-tune loop (Path B).
 
@@ -544,12 +573,15 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         from plugins.plugin_local_inference.src.services.voice.ffi_bindings import (  # type: ignore  # noqa: PLC0415
             loadElizaInferenceFfi,
         )
+
         ffi_ctx = loadElizaInferenceFfi({})
         if ffi_ctx.encodeReferenceSupported():
             ffi = ffi_ctx
             log.info("OmniVoice FFI available — using real codec tokenization")
         else:
-            log.warning("encodeReference not supported in the current build; using synthetic tokens")
+            log.warning(
+                "encodeReference not supported in the current build; using synthetic tokens"
+            )
     except Exception as exc:
         log.warning("FFI load failed: %s — using synthetic tokens", exc)
 
@@ -596,9 +628,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         "For Wave 3, the shipped OmniVoice same path is the Path A preset "
         "(packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs)."
     )
-    log.info(
-        "Running codec-tokenize + RTF eval only (no weight training this wave)."
-    )
+    log.info("Running codec-tokenize + RTF eval only (no weight training this wave).")
 
     # Run WER eval on val clips using the base OmniVoice model + same preset.
     # This gives us real Path A quality numbers to compare against.
@@ -609,7 +639,9 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
             val_records=val_records,
             cfg=cfg,
             ffi=ffi,
-            preset_path=Path(args.preset_path) if getattr(args, "preset_path", None) else None,
+            preset_path=(
+                Path(args.preset_path) if getattr(args, "preset_path", None) else None
+            ),
         )
     except Exception as exc:
         log.warning("eval failed: %s — using placeholder metrics", exc)
@@ -631,7 +663,9 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     )
     (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
-    baseline_path = Path(args.baseline_eval) if getattr(args, "baseline_eval", None) else None
+    baseline_path = (
+        Path(args.baseline_eval) if getattr(args, "baseline_eval", None) else None
+    )
     eval_result = _write_eval(
         run_dir=run_dir,
         wer=eval_metrics.get("wer", 0.999),
@@ -657,6 +691,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 # CLI.
 # ---------------------------------------------------------------------------
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Fine-tune pipeline for the OmniVoice TTS model.",
@@ -665,8 +700,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--config", default="")
     parser.add_argument("--data-dir", default=None)
-    parser.add_argument("--preset-path", default=None,
-                        help="Path to ELZ2 v2 same preset for eval.")
+    parser.add_argument(
+        "--preset-path", default=None, help="Path to ELZ2 v2 same preset for eval."
+    )
     parser.add_argument("--baseline-eval", default=None)
     parser.add_argument("--hf-repo", default=None)
     parser.add_argument("--operator-sign-off", action="store_true", default=False)

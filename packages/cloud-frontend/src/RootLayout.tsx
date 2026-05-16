@@ -2,6 +2,7 @@ import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
+import { StewardWalletProviders } from "@/pages/login/steward-wallet-providers";
 import { CreditsProvider } from "@/providers/CreditsProvider";
 import { StewardAuthProvider } from "@/providers/StewardProvider";
 
@@ -21,9 +22,8 @@ const baseUrl =
  *  - sonner Toaster
  *  - nprogress-driven navigation bar
  *
- * The layout sets the Open Sans / DM Mono / Inter CSS variables on the body via
- * the className. The Google Fonts imports live in
- * `globals.css` (CSS variables applied on `<body>`).
+ * The layout sets the Open Sans CSS variables on the body via the className.
+ * The vendored font import lives in `globals.css`.
  */
 export default function RootLayout() {
   return (
@@ -31,19 +31,19 @@ export default function RootLayout() {
       <Helmet>
         <html lang="en" />
         <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
-        <title>Eliza Cloud - Managed Hosting for AI Agents</title>
+        <title>eliza cloud - Your Eliza, always online</title>
         <meta
           name="description"
-          content="Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud."
+          content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
         <meta
           property="og:title"
-          content="Eliza Cloud - Managed Hosting for AI Agents"
+          content="eliza cloud - Your Eliza, always online"
         />
         <meta
           property="og:description"
-          content="Managed hosting, provisioning, billing, and deployment for AI agents"
+          content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
         />
         <meta property="og:url" content={`${baseUrl}/`} />
         <meta property="og:site_name" content="Eliza Cloud" />
@@ -57,7 +57,7 @@ export default function RootLayout() {
         <meta name="twitter:title" content="Eliza Cloud" />
         <meta
           name="twitter:description"
-          content="Managed hosting, provisioning, billing, and deployment for AI agents"
+          content="Chat with your Eliza agent in the cloud and manage everything for it in one place."
         />
         <meta name="twitter:image" content="/cloudlogo.png" />
         <link rel="icon" href="/favicon.ico" />
@@ -76,34 +76,36 @@ export default function RootLayout() {
        * ThemeProvider — client-only. Reads user preference from localStorage + OS
        * and sets the "dark" / "light" class on <html> for Tailwind dark-mode.
        */}
-      <StewardAuthProvider>
-        <CreditsProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <NavigationProgress />
-            <Outlet />
-            <Toaster
-              richColors
-              theme="dark"
-              position="top-right"
-              toastOptions={{
-                style: {
-                  background: "rgba(0, 0, 0, 0.8)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "white",
-                  backdropFilter: "blur(12px)",
-                  borderRadius: "0px",
-                },
-                className: "font-open-sans",
-              }}
-            />
-          </ThemeProvider>
-        </CreditsProvider>
-      </StewardAuthProvider>
+      <StewardWalletProviders>
+        <StewardAuthProvider>
+          <CreditsProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="light"
+              enableSystem={false}
+              disableTransitionOnChange
+            >
+              <NavigationProgress />
+              <Outlet />
+              <Toaster
+                richColors
+                theme="light"
+                position="top-right"
+                toastOptions={{
+                  style: {
+                    background: "rgba(255, 255, 255, 0.82)",
+                    border: "1px solid rgba(255, 255, 255, 0.34)",
+                    color: "#06131f",
+                    backdropFilter: "blur(12px)",
+                    borderRadius: "18px",
+                  },
+                  className: "font-open-sans",
+                }}
+              />
+            </ThemeProvider>
+          </CreditsProvider>
+        </StewardAuthProvider>
+      </StewardWalletProviders>
     </>
   );
 }

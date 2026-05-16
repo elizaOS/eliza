@@ -9,7 +9,7 @@
  * Behaviour matches `app-lifeops/src/lifeops/service-normalize.ts` exactly.
  */
 
-export class HealthNormalizationError extends Error {
+class HealthNormalizationError extends Error {
   public readonly status: number;
   public readonly code?: string;
   constructor(status: number, message: string, code?: string) {

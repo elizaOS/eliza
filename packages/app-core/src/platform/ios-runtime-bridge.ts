@@ -15,7 +15,10 @@ export const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
-  "In one short sentence, confirm the iOS full Bun local backend is running.";
+  "Reply with exactly these four words: ios smoke model works.";
+const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
+const IOS_FULL_BUN_SMOKE_FAILURE_RE =
+  /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
 
 declare global {
   interface Window {
@@ -171,6 +174,25 @@ async function fetchIosFullBunSmokeText(
     throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
   }
   return text;
+}
+
+function normalizeIosFullBunSmokeReply(value: unknown): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function assertIosFullBunSmokeModelReply(label: string, value: unknown): void {
+  const text = String(value ?? "");
+  if (
+    normalizeIosFullBunSmokeReply(text) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||
+    IOS_FULL_BUN_SMOKE_FAILURE_RE.test(text)
+  ) {
+    throw new Error(
+      `full Bun ${label} did not return the expected local model reply: ${text.slice(0, 500)}`,
+    );
+  }
 }
 
 function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
@@ -486,7 +508,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
 
     if (hubInstalled.length === 0) {
       throw new Error(
-        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
+        "local-inference hub had no installed Eliza-1 GGUF model; full-Bun smoke requires a staged local model",
       );
     }
 
@@ -615,6 +637,10 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       },
       IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
     );
+    assertIosFullBunSmokeModelReply(
+      "conversation message",
+      sendMessage.text ?? sendMessage.reply,
+    );
     const streamMessage = await fetchIosFullBunSmokeText(
       "WebView fetch bridge POST /api/conversations/:id/messages/stream",
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
@@ -635,8 +661,9 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     );
     if (
       !streamMessage.includes('"type":"done"') ||
-      /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
-        streamMessage,
+      IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage) ||
+      !normalizeIosFullBunSmokeReply(streamMessage).includes(
+        IOS_FULL_BUN_SMOKE_EXPECTED_REPLY,
       )
     ) {
       throw new Error(

@@ -16,10 +16,21 @@ import {
   getDefaultStylePreset,
 } from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
-import type { client as apiClient, StylePreset, VoiceConfig } from "../api";
+import type { StylePreset, VoiceConfig } from "../api";
 import { ElizaClient } from "../api/client-base";
 
-type OnboardingClient = typeof apiClient;
+type OnboardingClient = Pick<
+  ElizaClient,
+  | "getAuthStatus"
+  | "getBaseUrl"
+  | "getStatus"
+  | "provisionCloudSandbox"
+  | "setBaseUrl"
+  | "setToken"
+  | "startAgent"
+  | "submitOnboarding"
+  | "updateConfig"
+>;
 
 const ensureOnboardedAgentRunning = async (
   client: OnboardingClient,
@@ -215,7 +226,7 @@ async function persistOnboardingStyleVoice(args: {
   voiceProvider: string;
   voiceApiKey: string;
   cloudTtsSelected: boolean;
-  clientRef: OnboardingClient;
+  clientRef: Pick<OnboardingClient, "updateConfig">;
 }): Promise<void> {
   const voiceConfig = buildOnboardingStyleVoiceConfig(args);
   if (!voiceConfig) {
@@ -559,7 +570,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
               : {}),
             ...onboardingFeaturePayload,
             walletConfig: nextWalletConfig,
-          } as Parameters<typeof client.submitOnboarding>[0]);
+          } as Parameters<OnboardingClient["submitOnboarding"]>[0]);
           try {
             await persistOnboardingStyleVoice({
               style,
@@ -718,7 +729,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
             : {}),
           ...onboardingFeaturePayload,
           walletConfig: nextWalletConfig,
-        } as Parameters<typeof client.submitOnboarding>[0]);
+        } as Parameters<OnboardingClient["submitOnboarding"]>[0]);
         try {
           await persistOnboardingStyleVoice({
             style,

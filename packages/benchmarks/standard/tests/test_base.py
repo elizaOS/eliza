@@ -11,6 +11,8 @@ from benchmarks.standard._base import (
     BenchmarkResult,
     ChatMessage,
     GenerationConfig,
+    GenerationResult,
+    HarnessClient,
     MockClient,
     PROVIDER_BASE_URLS,
     make_client,
@@ -54,6 +56,48 @@ def test_mock_client_cycles_through_responses() -> None:
     assert client.generate(msg, cfg).text == "a"
     assert client.generate(msg, cfg).text == "b"
     assert client.generate(msg, cfg).text == "a"  # wraps around
+
+
+def test_harness_client_assigns_unique_standard_task_ids() -> None:
+    class FakeClient:
+        def __init__(self) -> None:
+            self.contexts: list[dict[str, object]] = []
+
+        def wait_until_ready(self, timeout: int = 120) -> bool:
+            del timeout
+            return True
+
+        def send_message(self, text: str, context: dict[str, object]):
+            del text
+            self.contexts.append(context)
+            return type(
+                "Response",
+                (),
+                {
+                    "text": "ok",
+                    "actions": ["REPLY"],
+                    "params": {"usage": {"prompt_tokens": 1, "completion_tokens": 1}},
+                },
+            )()
+
+    fake = FakeClient()
+    client = object.__new__(HarnessClient)
+    client._harness = "eliza"  # type: ignore[attr-defined]
+    client._turn_index = 0  # type: ignore[attr-defined]
+    client._server_manager = None  # type: ignore[attr-defined]
+    client._client = fake  # type: ignore[attr-defined]
+
+    cfg = GenerationConfig(model="m", max_tokens=16, temperature=0.0)
+    first = [ChatMessage(role="user", content="problem one")]
+    second = [ChatMessage(role="user", content="problem two")]
+
+    assert isinstance(client.generate(first, cfg), GenerationResult)
+    assert isinstance(client.generate(second, cfg), GenerationResult)
+
+    task_ids = [str(ctx["task_id"]) for ctx in fake.contexts]
+    assert task_ids[0].startswith("standard-eliza-1-")
+    assert task_ids[1].startswith("standard-eliza-2-")
+    assert task_ids[0] != task_ids[1]
 
 
 def test_make_client_with_mock_returns_mock_client() -> None:

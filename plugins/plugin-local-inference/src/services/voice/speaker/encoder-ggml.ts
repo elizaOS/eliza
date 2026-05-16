@@ -5,18 +5,15 @@
  * a `bun:ffi` binding to the `voice-classifier-cpp` SHARED library at
  * `packages/native-plugins/voice-classifier-cpp/`.
  *
- * Status today (J1.b infrastructure landed):
+ * Status today (K2 native forward landed):
  *   - The native library now ships as `libvoice_classifier.{so,dylib,dll}`.
  *   - `voice_speaker_open` is a REAL implementation: parses + validates
  *     the GGUF metadata block, returns a real handle.
- *   - `voice_speaker_embed` returns `-ENOSYS` until the ResNet34 +
- *     statistics-pool graph is ported to ggml (J1.b follow-up).
+ *   - `voice_speaker_embed` runs the WeSpeaker ResNet34-LM forward graph
+ *     over raw 16 kHz PCM and returns a normalized embedding.
  *
- * Output dim is pinned at 192 (matches the ECAPA-TDNN convention and
- * the C-side `VOICE_SPEAKER_EMBEDDING_DIM`). The legacy WeSpeaker
- * ResNet34-LM produces 256-dim embeddings; conversion scripts must
- * reproject to 192 before packing the GGUF (the C-side `_open` rejects
- * mismatched dims loudly per AGENTS.md §3 "no silent fallback").
+ * Output dim is pinned at 256, matching the C-side
+ * `VOICE_SPEAKER_EMBEDDING_DIM` and the WeSpeaker ResNet34-LM head.
  *
  * No silent fallback: every failure mode throws
  * `SpeakerEncoderGgmlUnavailableError`. There is no synthetic
@@ -28,7 +25,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 /** Output embedding dim. Matches `VOICE_SPEAKER_EMBEDDING_DIM`. */
-export const SPEAKER_GGML_EMBEDDING_DIM = 192;
+export const SPEAKER_GGML_EMBEDDING_DIM = 256;
 
 /** Required input sample rate. */
 export const SPEAKER_GGML_SAMPLE_RATE = 16_000;
@@ -97,13 +94,23 @@ function loadBunFfi(): BunFfiModule {
 	const req: ((id: string) => unknown) | undefined = (
 		globalThis as { Bun?: { __require?: (id: string) => unknown } }
 	).Bun?.__require;
-	if (typeof req !== "function") {
+	if (typeof req === "function") {
+		return req("bun:ffi") as BunFfiModule;
+	}
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		const mod = require("node:module") as {
+			createRequire: (filename: string) => (id: string) => unknown;
+		};
+		return mod.createRequire(import.meta.url)("bun:ffi") as BunFfiModule;
+	} catch (err) {
 		throw new SpeakerEncoderGgmlUnavailableError(
 			"native-missing",
-			"[speaker-ggml] bun:ffi is unavailable. The ggml-backed binding requires Bun.",
+			`[speaker-ggml] bun:ffi is unavailable. The ggml-backed binding requires Bun: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
 		);
 	}
-	return req("bun:ffi") as BunFfiModule;
 }
 
 function resolveVoiceClassifierLibrary(opts: {
@@ -150,9 +157,8 @@ function dlopenLibrary(libraryPath: string): {
 
 /**
  * ggml-backed speaker encoder. Wraps `voice_speaker_*` entry points
- * in `voice-classifier-cpp`. Today the `open` path is real (parses +
- * validates the GGUF); the `embed` forward pass returns -ENOSYS until
- * the J1.b-forward ResNet34 graph ports.
+ * in `voice-classifier-cpp`. The `open` path validates the GGUF and
+ * the `embed` path runs the native ResNet34-LM speaker graph.
  */
 export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 	readonly ggufPath: string;
@@ -281,7 +287,7 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 						: "model-load-failed";
 			throw new SpeakerEncoderGgmlUnavailableError(
 				code,
-				`[speaker-ggml] voice_speaker_embed returned ${rc}; J1.b-forward ResNet34 graph is the next port.`,
+				`[speaker-ggml] voice_speaker_embed returned ${rc}`,
 			);
 		}
 		return embView;
@@ -300,7 +306,7 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 }
 
 /**
- * Cosine distance between two 192-dim speaker embeddings. Defined as
+ * Cosine distance between two 256-dim speaker embeddings. Defined as
  * `1 - cos_similarity(a, b)`, range [0, 2]. Mirrors the C-side
  * `voice_speaker_distance` helper exactly.
  */

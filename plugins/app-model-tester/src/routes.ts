@@ -199,7 +199,7 @@ const MODEL_TESTER_HTML = String.raw`<!doctype html>
         try {
           const response = await fetch("/api/model-tester/run", {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: { "content-type": "text/plain;charset=utf-8" },
             body: JSON.stringify({
               test: id,
               prompt: el("prompt").value,
@@ -682,6 +682,7 @@ async function runText(
       maxTokens: 160,
       temperature: 0.2,
       stream,
+      providerOptions: { eliza: { thinking: "off" } },
       onStreamChunk: (chunk: string) => {
         chunks.push(chunk);
       },
@@ -694,10 +695,15 @@ async function runText(
       chunks.push(chunk);
     }
   }
-  return { text: coerceText(result), chunks, provider: provider ?? "default" };
+  const text = coerceText(result).trim();
+  if (!text) {
+    throw new Error(`${modelType} returned empty text`);
+  }
+  return { text, chunks, provider: provider ?? "default" };
 }
 
 async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
+  process.env.ELIZA_DFLASH_ALLOW_ZERO_DRAFT ??= "1";
   const prompt =
     typeof body.prompt === "string" && body.prompt.trim()
       ? body.prompt.trim()
@@ -706,7 +712,12 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
   switch (body.test) {
     case "text-small": {
       const attempts: string[] = [];
-      for (const provider of [undefined, "anthropic", "openai"]) {
+      for (const provider of [
+        undefined,
+        "eliza-local-inference",
+        "anthropic",
+        "openai",
+      ]) {
         try {
           return await runText(
             runtime,
@@ -723,8 +734,25 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
       }
       throw new Error(`All TEXT_SMALL providers failed:\n${attempts.join("\n")}`);
     }
-    case "text-large":
-      return runText(runtime, ModelType.TEXT_LARGE, prompt, true);
+    case "text-large": {
+      const attempts: string[] = [];
+      for (const provider of [undefined, "eliza-local-inference"]) {
+        try {
+          return await runText(
+            runtime,
+            ModelType.TEXT_LARGE,
+            prompt,
+            true,
+            provider,
+          );
+        } catch (error) {
+          attempts.push(
+            `${provider ?? "default"}: ${summarizeAttemptError(error)}`,
+          );
+        }
+      }
+      throw new Error(`All TEXT_LARGE providers failed:\n${attempts.join("\n")}`);
+    }
     case "embedding": {
       const vector = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
         text: prompt,

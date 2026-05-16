@@ -2,21 +2,22 @@
  * Sidebar navigation configuration defining sidebar sections and items.
  * Includes navigation structure with icons, labels, badges, and permission settings.
  */
-import { HomeIcon, ImageIcon, LayersIcon } from "@radix-ui/react-icons";
+import { HomeIcon } from "@radix-ui/react-icons";
 import {
   BarChart3,
+  BookOpen,
   Bot,
   Boxes,
   Code,
   Coins,
   Grid3x3,
-  MessageSquare,
-  Mic,
+  KeyRound,
   Puzzle,
   Server,
+  Settings,
   Shield,
+  UserCircle,
   UserCog,
-  Video,
   Wallet,
 } from "lucide-react";
 
@@ -52,11 +53,39 @@ export const sidebarSections: SidebarSection[] = [
         href: "/dashboard",
         icon: HomeIcon,
       },
+      {
+        id: "my-agent",
+        label: "My Agent",
+        href: "/dashboard/my-agents",
+        icon: Bot,
+        freeAllowed: false, // Requires signup
+      },
     ],
   },
   {
-    title: "Infrastructure",
+    title: "Runtime Dashboard",
     items: [
+      {
+        id: "api-explorer",
+        label: "API Explorer",
+        href: "/dashboard/api-explorer",
+        icon: Code,
+        freeAllowed: false, // Requires signup
+      },
+      {
+        id: "api-keys",
+        label: "API Keys",
+        href: "/dashboard/api-keys",
+        icon: KeyRound,
+        freeAllowed: false,
+      },
+      {
+        id: "docs",
+        label: "Docs",
+        href: "/docs",
+        icon: BookOpen,
+        freeAllowed: true,
+      },
       {
         id: "agent",
         label: "Instances",
@@ -82,63 +111,21 @@ export const sidebarSections: SidebarSection[] = [
     ],
   },
   {
-    title: "Agents",
+    title: "Account",
     items: [
       {
-        id: "my-agents",
-        label: "My Agents",
-        href: "/dashboard/my-agents",
-        icon: Bot,
-        freeAllowed: false, // Requires signup
-      },
-      {
-        id: "api-explorer",
-        label: "API Explorer",
-        href: "/dashboard/api-explorer",
-        icon: Code,
-        freeAllowed: false, // Requires signup
-      },
-    ],
-  },
-  {
-    title: "Generation Studio",
-    items: [
-      {
-        id: "chat",
-        label: "Chat",
-        href: "/dashboard/chat",
-        icon: MessageSquare,
-        freeAllowed: true,
-      },
-      {
-        id: "image-generation",
-        label: "Images",
-        href: "/dashboard/image",
-        icon: ImageIcon,
-        freeAllowed: false, // Requires signup
-      },
-      {
-        id: "video-generation",
-        label: "Videos",
-        href: "/dashboard/video",
-        icon: Video,
-        freeAllowed: false, // Requires signup
-      },
-      {
-        id: "voices",
-        label: "Voices",
-        href: "/dashboard/voices",
-        icon: Mic,
+        id: "settings",
+        label: "Settings",
+        href: "/dashboard/settings",
+        icon: Settings,
         freeAllowed: false,
-        featureFlag: "voiceCloning",
       },
       {
-        id: "gallery",
-        label: "Gallery",
-        href: "/dashboard/gallery",
-        icon: LayersIcon,
+        id: "account",
+        label: "Account",
+        href: "/dashboard/account",
+        icon: UserCircle,
         freeAllowed: false,
-        featureFlag: "gallery",
       },
     ],
   },

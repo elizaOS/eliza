@@ -1,6 +1,6 @@
 import { logger } from "@elizaos/core";
 
-export interface RetryConfig {
+interface RetryConfig {
   readonly maxRetries: number;
   readonly initialDelayMs: number;
   readonly maxDelayMs: number;
@@ -33,7 +33,7 @@ function getRetryableError(error: unknown): RetryableError | null {
   return error as RetryableError;
 }
 
-export function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
@@ -86,7 +86,7 @@ function hasOverloadMessage(error: unknown): boolean {
   );
 }
 
-export function isRetryableModelError(error: unknown): boolean {
+function isRetryableModelError(error: unknown): boolean {
   const retryableError = getRetryableError(error);
   const statusCode = getStatusCode(error);
 

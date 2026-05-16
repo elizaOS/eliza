@@ -32,7 +32,7 @@ import type {
   ModelTypeName,
 } from "@elizaos/core";
 
-export interface VisionProviderInfo {
+interface VisionProviderInfo {
   readonly providerName: string;
   /** Human-readable description of why this provider was selected. */
   readonly reason: string;
@@ -55,7 +55,7 @@ export interface DiscoverRuntimeOptions {
  * Carries a structured `missing` field that lists the env vars / artifacts
  * the operator would need to enable real mode.
  */
-export class NoVisionProviderError extends Error {
+class NoVisionProviderError extends Error {
   readonly code = "NO_VISION_PROVIDER" as const;
   readonly missing: ReadonlyArray<string>;
   constructor(missing: ReadonlyArray<string>) {

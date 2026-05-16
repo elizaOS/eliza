@@ -106,7 +106,7 @@ static int spk_bind_tensor(const voice_gguf_tensors_t *w,
                            const char *name,
                            uint64_t expected_n,
                            const float **dst) {
-    const voice_gguf_tensor_t *t = voice_gguf_tensors_find(w, name);
+    const voice_gguf_weight_tensor_t *t = voice_gguf_tensors_find(w, name);
     if (!t) {
         fprintf(stderr, "[voice_speaker] missing tensor: %s\n", name);
         return -EINVAL;

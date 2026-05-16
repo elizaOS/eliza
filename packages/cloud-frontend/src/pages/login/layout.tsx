@@ -8,7 +8,7 @@ export default function LoginLayout() {
         <title>Login | Eliza Cloud</title>
         <meta
           name="description"
-          content="Sign in to Eliza Cloud to create, provision, and manage Eliza agents."
+          content="Sign in to chat with your Eliza cloud agent and manage your account."
         />
         <meta name="robots" content="noindex" />
       </Helmet>

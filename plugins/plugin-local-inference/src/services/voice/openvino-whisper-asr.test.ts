@@ -104,15 +104,29 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
 		t.dispose();
 	});
 
-	it("auto chain throws AsrUnavailableError when allowOpenVinoWhisper is false (default) and no fused build", () => {
+	it("auto chain uses OpenVINO by default when artifacts are present and no fused build is available", () => {
 		mockState.runtimeFixture = {
 			pythonBin: "/fake/python",
 			workerScript: "/fake/worker.py",
 			modelDir: "/fake/model",
 			deviceChain: "NPU,CPU",
 		};
-		expect(() => createStreamingTranscriber({})).toThrow(AsrUnavailableError);
-		// The OpenVINO dispose hook should not have been invoked — the tier was skipped.
+		const t = createStreamingTranscriber({});
+		expect(t).toBeInstanceOf(OpenVinoStreamingTranscriber);
+		t.dispose();
+		expect(mockState.disposeCalls.count).toBe(1);
+	});
+
+	it("auto chain skips OpenVINO when allowOpenVinoWhisper is explicitly false", () => {
+		mockState.runtimeFixture = {
+			pythonBin: "/fake/python",
+			workerScript: "/fake/worker.py",
+			modelDir: "/fake/model",
+			deviceChain: "NPU,CPU",
+		};
+		expect(() =>
+			createStreamingTranscriber({ allowOpenVinoWhisper: false }),
+		).toThrow(AsrUnavailableError);
 		expect(mockState.disposeCalls.count).toBe(0);
 	});
 });

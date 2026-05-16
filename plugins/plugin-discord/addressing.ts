@@ -41,8 +41,12 @@ export function isDiscordUserAddressed({
 	hasMessageReference?: boolean;
 	repliedUserId?: string | null;
 }): boolean {
-	if (userId && hasMessageReference && repliedUserId === userId) {
-		return true;
+	if (!userId) {
+		return false;
 	}
-	return Boolean(userId && firstUserMentionId(text ?? "") === userId);
+	const firstMention = firstUserMentionId(text ?? "");
+	if (firstMention) {
+		return firstMention === userId;
+	}
+	return Boolean(hasMessageReference && repliedUserId === userId);
 }

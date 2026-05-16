@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { fetchHonoRoot } from "@/lib/api/hono-root-request";
 import { cache } from "@/lib/cache/client";
 import {
   getDefaultPlatformRedirectOrigins,
@@ -141,7 +140,9 @@ app.get("/", async (c) => {
 
     await cache.del(stateKey);
 
-    let tokens;
+    let tokens: Awaited<
+      ReturnType<typeof twitterAutomationService.exchangeOAuth2Token>
+    >;
     try {
       tokens = await twitterAutomationService.exchangeOAuth2Token(
         oauth2Code,
@@ -266,7 +267,9 @@ app.get("/", async (c) => {
 
   const redirectUrl = state.redirectUrl;
 
-  let tokens;
+  let tokens: Awaited<
+    ReturnType<typeof twitterAutomationService.exchangeToken>
+  >;
   try {
     tokens = await twitterAutomationService.exchangeToken(
       oauthToken,
@@ -324,5 +327,3 @@ app.get("/", async (c) => {
 });
 
 export default app;
-
-export const GET = (request: Request) => fetchHonoRoot(app, request);

@@ -139,6 +139,21 @@ describe("buildChatCompletionBody", () => {
 		expect(body.eliza_prefill_plan).toBeUndefined();
 	});
 
+	it("maps per-request thinking controls to chat template kwargs", () => {
+		expect(
+			buildChatCompletionBody(makeArgs({ thinking: "off" }), 0, false)
+				.chat_template_kwargs,
+		).toEqual({ enable_thinking: false });
+		expect(
+			buildChatCompletionBody(makeArgs({ thinking: "on" }), 0, false)
+				.chat_template_kwargs,
+		).toEqual({ enable_thinking: true });
+		expect(
+			buildChatCompletionBody(makeArgs({ thinking: "auto" }), 0, false)
+				.chat_template_kwargs,
+		).toBeUndefined();
+	});
+
 	it("does NOT emit a prefill plan for a bare responseSkeleton (guided decode off by default)", () => {
 		const body = buildChatCompletionBody(
 			makeArgs({
@@ -309,10 +324,12 @@ describe("elizaHarnessSchemaFromSkeleton + guided decode wiring", () => {
 			4,
 			false,
 		);
-		// Grammar present; the opening literal is stripped into assistant prefill,
-		// so the runtime no longer needs lazy grammar mode here.
+		// Grammar present. The leading literal is seeded as an assistant prefill,
+		// so the grammar starts after that prefilled prefix and runs eagerly.
 		expect(typeof body.grammar).toBe("string");
 		expect(body.grammar_lazy).toBeUndefined();
+		expect(body.grammar).toContain('root ::= enum0 ",\\"parameters\\":"');
+		expect(body.grammar).not.toContain('root ::= "{\\"action\\":"');
 		// Prefill plan present.
 		const plan = body.eliza_prefill_plan as
 			| {

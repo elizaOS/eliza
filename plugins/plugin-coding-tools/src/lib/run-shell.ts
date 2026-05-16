@@ -91,6 +91,26 @@ function toSandboxWorkdir(cwd: string): string | undefined {
 
 const STREAM_CAP_CHARS = 30_000;
 
+function shellArgsForCommand(shell: {
+  command: string;
+  args: string[];
+}): string[] {
+  const basename = importPath.basename(shell.command).toLowerCase();
+  if (basename === "bash" || basename === "zsh") {
+    const commandFlagIndex = shell.args.lastIndexOf("-c");
+    if (commandFlagIndex >= 0) {
+      return [
+        "-o",
+        "pipefail",
+        ...shell.args.slice(0, commandFlagIndex),
+        ...shell.args.slice(commandFlagIndex),
+      ];
+    }
+    return ["-o", "pipefail", ...shell.args];
+  }
+  return shell.args;
+}
+
 function runOnHost(opts: {
   command: string;
   cwd: string;
@@ -112,11 +132,15 @@ function runOnHost(opts: {
       });
       return;
     }
-    const proc = spawn(shell.command, [...shell.args, opts.command], {
-      cwd: opts.cwd,
-      env: opts.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const proc = spawn(
+      shell.command,
+      [...shellArgsForCommand(shell), opts.command],
+      {
+        cwd: opts.cwd,
+        env: opts.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
     let timedOut = false;

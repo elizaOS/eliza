@@ -45,7 +45,10 @@ def _latest_run_for(
         SELECT run_id, benchmark_id, agent, score, unit, higher_is_better,
                started_at, status, model, provider
         FROM benchmark_runs
-        WHERE benchmark_id = ? AND agent = ? AND status = 'succeeded'
+        WHERE benchmark_id = ?
+          AND agent = ?
+          AND status = 'succeeded'
+          AND score IS NOT NULL
         ORDER BY started_at DESC, run_id DESC
         LIMIT 1
         """,

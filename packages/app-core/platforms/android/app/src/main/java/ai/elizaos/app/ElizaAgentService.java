@@ -31,6 +31,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.json.JSONException;
@@ -92,6 +93,11 @@ public class ElizaAgentService extends Service {
 
     private static final int AGENT_PORT = 31337;
     private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
+    private static final String LOCAL_AGENT_BASE_URL = "http://127.0.0.1:" + AGENT_PORT;
+    private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
+    private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
+    private static final int LOCAL_REQUEST_MAX_BODY_BYTES = 10 * 1024 * 1024;
+    private static final int LOCAL_REQUEST_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
     // The on-device boot path is heavy: PGlite extension extraction +
     // plugin resolution + libllama dlopen + first-time model load can
@@ -158,6 +164,146 @@ public class ElizaAgentService extends Service {
     /** Called by trusted in-app code that needs to route shell requests. */
     public static String terminalRunToken() {
         return currentTerminalRunToken;
+    }
+
+    /**
+     * Shared in-process request surface for Android native plugins and workers.
+     *
+     * The current Android agent still serves routes from the Bun child process
+     * over loopback, but callers should route through this method instead of
+     * opening their own sockets. That keeps auth, header filtering, body caps,
+     * and future Binder/stdio replacement behind one app-owned boundary.
+     */
+    public static String requestLocalAgent(String requestJson) throws IOException, JSONException {
+        JSONObject request = requestJson == null || requestJson.trim().isEmpty()
+            ? new JSONObject()
+            : new JSONObject(requestJson);
+        String path = request.optString("path", "").trim();
+        if (!isSafeLocalAgentPath(path)) {
+            throw new IllegalArgumentException("Local agent request requires a path that starts with /");
+        }
+        String method = request.optString("method", "GET")
+            .trim()
+            .toUpperCase(Locale.US);
+        if (!method.matches("^[A-Z]{1,16}$")) {
+            throw new IllegalArgumentException("Unsupported HTTP method");
+        }
+        int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
+        timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
+        JSONObject headers = request.optJSONObject("headers");
+        Object rawBody = request.opt("body");
+        String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
+
+        return performLocalAgentRequest(
+            method,
+            path,
+            headers == null ? new JSONObject() : headers,
+            body,
+            timeoutMs,
+            currentLocalAgentToken
+        ).toString();
+    }
+
+    private static boolean isSafeLocalAgentPath(String path) {
+        return path != null
+            && path.startsWith("/")
+            && !path.startsWith("//")
+            && !path.contains("://");
+    }
+
+    private static JSONObject performLocalAgentRequest(
+        String method,
+        String path,
+        JSONObject headers,
+        String body,
+        int timeoutMs,
+        String token
+    ) throws IOException, JSONException {
+        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
+        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
+            throw new IOException("Request body is too large");
+        }
+
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(method);
+            conn.setConnectTimeout(timeoutMs);
+            conn.setReadTimeout(timeoutMs);
+            conn.setInstanceFollowRedirects(false);
+            conn.setUseCaches(false);
+            applyLocalAgentHeaders(conn, headers);
+            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            }
+            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
+                if (!hasHeader(headers, "content-type")) {
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                }
+                conn.setDoOutput(true);
+                try (OutputStream out = conn.getOutputStream()) {
+                    out.write(bodyBytes);
+                    out.flush();
+                }
+            }
+
+            int status = conn.getResponseCode();
+            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = readResponseBody(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
+            JSONObject responseHeaders = new JSONObject();
+            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
+                String key = entry.getKey();
+                List<String> values = entry.getValue();
+                if (key == null || values == null || values.isEmpty()) continue;
+                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
+            }
+            return new JSONObject()
+                .put("status", status)
+                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
+                .put("headers", responseHeaders)
+                .put("body", responseBody)
+                .put(
+                    "bodyBase64",
+                    android.util.Base64.encodeToString(
+                        responseBody.getBytes(StandardCharsets.UTF_8),
+                        android.util.Base64.NO_WRAP
+                    )
+                )
+                .put("bodyEncoding", "utf-8");
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static void applyLocalAgentHeaders(HttpURLConnection conn, JSONObject headers) {
+        if (headers == null) return;
+        java.util.Iterator<String> keys = headers.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (isBlockedForwardedHeader(key)) continue;
+            Object value = headers.opt(key);
+            if (value == null || value == JSONObject.NULL) continue;
+            String stringValue = value.toString();
+            if (!stringValue.trim().isEmpty()) {
+                conn.setRequestProperty(key, stringValue);
+            }
+        }
+    }
+
+    private static boolean hasHeader(JSONObject headers, String expected) {
+        if (headers == null) return false;
+        java.util.Iterator<String> keys = headers.keys();
+        while (keys.hasNext()) {
+            if (expected.equalsIgnoreCase(keys.next())) return true;
+        }
+        return false;
+    }
+
+    private static boolean isBlockedForwardedHeader(String key) {
+        return "host".equalsIgnoreCase(key)
+            || "connection".equalsIgnoreCase(key)
+            || "content-length".equalsIgnoreCase(key);
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -1512,6 +1658,24 @@ public class ElizaAgentService extends Service {
             byte[] buf = new byte[4096];
             int n;
             while ((n = in.read(buf)) >= 0) {
+                out.write(buf, 0, n);
+            }
+            return out.toString(StandardCharsets.UTF_8.name());
+        }
+    }
+
+    private static String readResponseBody(InputStream in, int maxBytes) throws IOException {
+        if (in == null) return "";
+        try (InputStream input = in) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int total = 0;
+            int n;
+            while ((n = input.read(buf)) >= 0) {
+                total += n;
+                if (total > maxBytes) {
+                    throw new IOException("Response body is too large");
+                }
                 out.write(buf, 0, n);
             }
             return out.toString(StandardCharsets.UTF_8.name());

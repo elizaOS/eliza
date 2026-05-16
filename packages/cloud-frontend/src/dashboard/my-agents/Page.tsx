@@ -10,10 +10,10 @@ export default function MyAgentsPage() {
   return (
     <>
       <Helmet>
-        <title>My Agents</title>
+        <title>My Agent</title>
         <meta
           name="description"
-          content="Manage the agents you have created or saved on Eliza Cloud."
+          content="Administer your running Eliza Cloud agent."
         />
         <meta name="robots" content="noindex,nofollow" />
       </Helmet>

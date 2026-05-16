@@ -43,8 +43,8 @@ export function SidebarNavigationItem({
     return (
       <div
         className={cn(
-          "relative flex items-center gap-3 border border-white/10 bg-white/[0.03] px-3 py-2.5",
-          "text-white/40 cursor-default select-none opacity-50",
+          "relative flex items-center gap-3 rounded-2xl border border-white/20 bg-white/12 px-3 py-2.5",
+          "cursor-default select-none text-white/50 opacity-60",
         )}
         style={{
           fontFamily: "var(--font-roboto-mono)",
@@ -79,9 +79,9 @@ export function SidebarNavigationItem({
       <Link
         to={loginHref}
         className={cn(
-          "relative flex w-full items-center border border-transparent transition-all duration-200",
-          "hover:border-white/10 hover:bg-white/[0.04] hover:text-white/80",
-          "text-white/40 cursor-pointer",
+          "relative flex w-full items-center rounded-2xl border border-transparent transition-all duration-200",
+          "hover:border-white/24 hover:bg-white/16 hover:text-white",
+          "cursor-pointer text-white/56",
           isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
         )}
         style={{
@@ -96,7 +96,7 @@ export function SidebarNavigationItem({
         {!isCollapsed && (
           <>
             <span className="flex-1 whitespace-nowrap">{item.label}</span>
-            <Lock className="h-3 w-3 text-white/40 shrink-0" />
+            <Lock className="h-3 w-3 shrink-0 text-white/54" />
           </>
         )}
       </Link>
@@ -120,11 +120,11 @@ export function SidebarNavigationItem({
   }
 
   const linkClasses = cn(
-    "relative flex items-center border transition-all duration-200",
-    "hover:border-white/10 hover:bg-white/[0.04] hover:text-white",
+    "relative flex items-center rounded-2xl border transition-all duration-200",
+    "hover:border-white/28 hover:bg-white/18 hover:text-white",
     isActive
-      ? "border-[#FF5800]/25 bg-[#FF5800]/10 text-white"
-      : "border-transparent text-white/60",
+      ? "border-white/40 bg-white/28 text-white shadow-sm"
+      : "border-transparent text-white/68",
     isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
   );
 
@@ -146,16 +146,16 @@ export function SidebarNavigationItem({
             <span
               className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
               style={{
-                backgroundColor: "#FF580020",
-                color: "#FF5800",
-                border: "1px solid #FF580040",
+                backgroundColor: "rgba(255, 138, 36, 0.2)",
+                color: "#fff7ee",
+                border: "1px solid rgba(255, 255, 255, 0.28)",
               }}
             >
               NEW
             </span>
           )}
           {item.badge && !item.isNew && (
-            <span className="bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/60">
+            <span className="rounded-full bg-white/18 px-2 py-0.5 text-[10px] font-semibold text-white/70">
               {item.badge}
             </span>
           )}

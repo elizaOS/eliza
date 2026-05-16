@@ -119,7 +119,7 @@ test("resolves tier-compatible bundle mmproj artifacts from the vision directory
   }
 });
 
-test("0_8B and 2B stay no-vision even when ASR has its own mmproj", () => {
+test("0_8B and 2B require image-analysis vision artifacts; ASR mmproj is not enough", () => {
   for (const tier of ["0_8b", "2b"]) {
     const dir = writeBundle(tier, {
       manifestVision: false,
@@ -129,8 +129,10 @@ test("0_8B and 2B stay no-vision even when ASR has its own mmproj", () => {
     });
     try {
       const report = buildReport(argsFor(dir));
-      assert.equal(report.status, "not-applicable");
-      assert.equal(report.evidence.result, "not-applicable");
+      assert.equal(report.expectedVisionTier, true);
+      assert.equal(report.status, "fail");
+      assert.equal(report.evidence.result, "fail");
+      assert.deepEqual(report.evidence.blockers, ["manifest-files-vision-empty"]);
       assert.equal(report.inventory.asrMmprojFiles.length, 1);
       assert.equal(report.inventory.visionMmprojCandidates.length, 0);
     } finally {
@@ -139,26 +141,28 @@ test("0_8B and 2B stay no-vision even when ASR has its own mmproj", () => {
   }
 });
 
-test("0_8B and 2B fail if image-analysis vision artifacts are bundled", () => {
+test("0_8B and 2B accept tier-compatible image-analysis vision artifacts", () => {
   for (const tier of ["0_8b", "2b"]) {
     const dir = writeBundle(tier, {
-      manifestVision: false,
-      lineageVision: false,
+      manifestVision: true,
+      lineageVision: true,
       bundleVision: true,
     });
     try {
       const report = buildReport(argsFor(dir));
       assert.equal(report.status, "fail");
       assert.equal(report.evidence.result, "fail");
-      assert.deepEqual(report.evidence.blockers, ["unexpected-vision-artifact"]);
+      assert.equal(report.mmproj.relPath, `vision/mmproj-${tier}.gguf`);
+      assert.equal(report.imageAnalysis.status, "not-run");
+      assert.deepEqual(report.evidence.blockers, ["vision-smoke-not-passed"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
 });
 
-test("4B, 9B, and 27B vision tiers write fail evidence until image smoke passes", () => {
-  for (const tier of ["4b", "9b", "27b", "27b-256k"]) {
+test("active vision tiers write fail evidence until image smoke passes", () => {
+  for (const tier of ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"]) {
     const dir = writeBundle(tier);
     try {
       const report = buildReport(argsFor(dir));

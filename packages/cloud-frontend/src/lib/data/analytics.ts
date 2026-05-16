@@ -3,31 +3,16 @@ import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 
 export type AnalyticsTimeRange = "daily" | "weekly" | "monthly";
-export type AnalyticsGranularity = "hour" | "day" | "week" | "month";
+type AnalyticsGranularity = "hour" | "day" | "week" | "month";
 
-export interface AnalyticsOverview {
-  totalRequests: number;
-  successfulRequests: number;
-  failedRequests: number;
-  successRate: number;
-  totalCost: number;
-  avgCostPerRequest: number;
-  avgTokensPerRequest: number;
-  totalTokens: number;
-  dailyBurn: number;
-  timeRange: AnalyticsTimeRange;
-  periodStart: string;
-  periodEnd: string;
-}
-
-export interface AnalyticsBreakdownFilters {
+interface AnalyticsBreakdownFilters {
   startDate: string;
   endDate: string;
   granularity: AnalyticsGranularity;
   timeRange: AnalyticsTimeRange;
 }
 
-export interface AnalyticsOverallStats {
+interface AnalyticsOverallStats {
   totalRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
@@ -35,7 +20,7 @@ export interface AnalyticsOverallStats {
   successRate: number;
 }
 
-export interface AnalyticsTimeSeriesPoint {
+interface AnalyticsTimeSeriesPoint {
   timestamp: string;
   totalRequests: number;
   totalCost: number;
@@ -44,7 +29,7 @@ export interface AnalyticsTimeSeriesPoint {
   successRate: number;
 }
 
-export interface AnalyticsCostTrending {
+interface AnalyticsCostTrending {
   currentDailyBurn: number;
   previousDailyBurn: number;
   burnChangePercent: number;
@@ -52,7 +37,7 @@ export interface AnalyticsCostTrending {
   daysUntilBalanceZero: number | null;
 }
 
-export interface AnalyticsProviderBreakdownItem {
+interface AnalyticsProviderBreakdownItem {
   provider: string;
   totalRequests: number;
   totalCost: number;
@@ -61,7 +46,7 @@ export interface AnalyticsProviderBreakdownItem {
   percentage: number;
 }
 
-export interface AnalyticsModelBreakdownItem {
+interface AnalyticsModelBreakdownItem {
   model: string;
   provider: string;
   totalRequests: number;
@@ -71,7 +56,7 @@ export interface AnalyticsModelBreakdownItem {
   successRate: number;
 }
 
-export interface AnalyticsTrends {
+interface AnalyticsTrends {
   requestsChange: number;
   costChange: number;
   tokensChange: number;
@@ -90,21 +75,6 @@ export interface AnalyticsBreakdown {
   organization: {
     creditBalance: string;
   };
-}
-
-/**
- * GET /api/analytics/overview — summary stats for the active organization.
- */
-export function useAnalyticsOverview(timeRange: AnalyticsTimeRange = "weekly") {
-  const gate = useAuthenticatedQueryGate();
-  return useQuery({
-    queryKey: authenticatedQueryKey(["analytics", "overview", timeRange], gate),
-    queryFn: () =>
-      api<{ success: boolean; data: AnalyticsOverview }>(
-        `/api/analytics/overview?timeRange=${timeRange}`,
-      ).then((r) => r.data),
-    enabled: gate.enabled,
-  });
 }
 
 /**
@@ -129,7 +99,7 @@ export function useAnalyticsBreakdown(
   });
 }
 
-export interface AnalyticsProjectionAlert {
+interface AnalyticsProjectionAlert {
   type: string;
   severity: "info" | "warning" | "critical";
   message: string;

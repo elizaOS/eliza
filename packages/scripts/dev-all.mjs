@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import net from "node:net";
 import process from "node:process";
 
 const args = new Set(process.argv.slice(2));
@@ -11,6 +13,9 @@ const skipPrepare =
   args.has("--no-prepare") || process.env.DEV_ALL_SKIP_PREPARE === "1";
 const skipCloudDb =
   args.has("--no-cloud-db") || process.env.DEV_ALL_SKIP_CLOUD_DB === "1";
+const enableTestAuth =
+  args.has("--test-auth") ||
+  process.env.DEV_ALL_ENABLE_TEST_AUTH !== "0";
 
 const repoRoot = process.cwd();
 const bunBin =
@@ -31,6 +36,7 @@ const ports = {
   agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "2138"),
   frontend: envDefault("DEV_ALL_FRONTEND_PORT", "5173"),
   homepage: envDefault("DEV_ALL_HOMEPAGE_PORT", "4444"),
+  osHomepage: envDefault("DEV_ALL_OS_HOMEPAGE_PORT", "4455"),
   cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
   cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
   cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
@@ -40,10 +46,15 @@ const urls = {
   agentApi: `http://127.0.0.1:${ports.agentApi}`,
   frontend: `http://localhost:${ports.frontend}`,
   homepage: `http://localhost:${ports.homepage}`,
+  osHomepage: `http://localhost:${ports.osHomepage}`,
   cloudWeb: `http://localhost:${ports.cloudWeb}`,
   cloudApi: `http://localhost:${ports.cloudApi}`,
   cloudDb: `postgresql://postgres@127.0.0.1:${ports.cloudDb}/postgres`,
 };
+const localTestAuthSecret = envDefault(
+  "PLAYWRIGHT_TEST_AUTH_SECRET",
+  "playwright-local-auth-secret",
+);
 
 const packagedCloudAvailable =
   existsSync(`${repoRoot}/packages/cloud-api/package.json`) &&
@@ -62,6 +73,17 @@ const cloudSharedEnv = {
   NEXT_PUBLIC_ELIZA_API_URL: urls.cloudApi,
   NEXT_PUBLIC_ELIZA_PROXY_URL: urls.cloudWeb,
   NEXT_PUBLIC_STEWARD_API_URL: `${urls.cloudApi}/steward`,
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth
+    ? {
+        AGENT_TEST_BOOTSTRAP_ADMIN: "true",
+        PLAYWRIGHT_TEST_AUTH: "true",
+        PLAYWRIGHT_TEST_AUTH_SECRET: localTestAuthSecret,
+        RATE_LIMIT_DISABLED: "true",
+      }
+    : {}),
   VITE_API_PROXY_TARGET: urls.cloudApi,
   VITE_ALLOWED_HOSTS: [
     "localhost",
@@ -85,7 +107,7 @@ const agentEnv = {
     `${urls.cloudApi}/api/v1`,
   ),
   ELIZA_CLOUD_URL: urls.cloudWeb,
-  ELIZA_WALLET_OS_STORE: envDefault("ELIZA_WALLET_OS_STORE", "1"),
+  ELIZA_WALLET_OS_STORE: envDefault("ELIZA_WALLET_OS_STORE", "0"),
   ELIZA_ALLOW_NO_PROVIDER: envDefault("ELIZA_ALLOW_NO_PROVIDER", "1"),
   ELIZA_DISABLE_LOCAL_EMBEDDINGS: envDefault(
     "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
@@ -119,11 +141,28 @@ const frontendEnv = {
     "VITE_ASSET_BASE_URL",
     "https://blob.elizacloud.ai",
   ),
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const homepageEnv = {
   ...commonEnv,
   PORT: ports.homepage,
   VITE_ELIZACLOUD_API_URL: urls.cloudApi,
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
+};
+const osHomepageEnv = {
+  ...commonEnv,
+  PORT: ports.osHomepage,
+  VITE_ELIZACLOUD_API_URL: urls.cloudApi,
+  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
+  VITE_ELIZA_OS_URL: urls.osHomepage,
+  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const cloudDbEnv = {
   ...cloudSharedEnv,
@@ -210,6 +249,21 @@ const services = [
     ],
     env: homepageEnv,
   },
+  {
+    name: "os-homepage",
+    cwd: "packages/os-homepage",
+    command: [
+      bunBin,
+      "run",
+      "dev",
+      "--",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      ports.osHomepage,
+    ],
+    env: osHomepageEnv,
+  },
 ].filter(Boolean);
 
 const cloudDevVarsCommand = packagedCloudAvailable
@@ -251,12 +305,75 @@ function printPlan() {
   console.log("[dev:all] local stack");
   console.log(`  agent API:  ${urls.agentApi}`);
   console.log(`  frontend:   ${urls.frontend}`);
-  console.log(`  homepage:   ${urls.homepage}`);
+  console.log(`  app home:   ${urls.homepage}`);
+  console.log(`  OS home:    ${urls.osHomepage}`);
   console.log(`  cloud web:  ${urls.cloudWeb}`);
   console.log(`  cloud API:  ${urls.cloudApi}`);
   console.log(`  cloud src:  ${cloudMode}`);
   if (!skipCloudDb) console.log(`  cloud DB:   ${urls.cloudDb}`);
+  console.log(
+    `  test auth:  ${enableTestAuth ? "enabled (local only)" : "disabled"}`,
+  );
   console.log("");
+}
+
+function canConnect(host, port) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port: Number(port) });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.setTimeout(750, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function describePortOwner(port) {
+  try {
+    return execFileSync(
+      "lsof",
+      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
+      { encoding: "utf8" },
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+async function assertPortsAvailable() {
+  const checks = [
+    !skipCloudDb && ["cloud DB", "127.0.0.1", ports.cloudDb],
+    ["cloud API", "127.0.0.1", ports.cloudApi],
+    ["cloud web", "127.0.0.1", ports.cloudWeb],
+    ["agent API", "127.0.0.1", ports.agentApi],
+    ["frontend", "127.0.0.1", ports.frontend],
+    ["app home", "127.0.0.1", ports.homepage],
+    ["OS home", "127.0.0.1", ports.osHomepage],
+  ].filter(Boolean);
+
+  const occupied = [];
+  for (const [label, host, port] of checks) {
+    if (await canConnect(host, port)) {
+      occupied.push({ label, port, owner: describePortOwner(port) });
+    }
+  }
+
+  if (occupied.length > 0) {
+    const details = occupied
+      .map(
+        ({ label, port, owner }) =>
+          `  ${label} port ${port} is already in use${owner ? `\n${owner}` : ""}`,
+      )
+      .join("\n\n");
+    throw new Error(`[dev:all] cannot start; ports are occupied:\n${details}`);
+  }
 }
 
 function runOnce(label, cwd, command, env) {
@@ -300,6 +417,7 @@ function startService(service) {
     env: service.env,
     stdio: ["inherit", "pipe", "pipe"],
   });
+  child.serviceName = service.name;
   prefixStream(child.stdout, service.name, process.stdout);
   prefixStream(child.stderr, service.name, process.stderr);
   child.on("error", (error) => {
@@ -336,8 +454,9 @@ async function main() {
     console.log("[dev:all] skipping prepare steps");
   }
 
-  const children = services.map(startService).filter(Boolean);
   if (dryRun) return;
+  await assertPortsAvailable();
+  const children = services.map(startService).filter(Boolean);
 
   let shuttingDown = false;
   const shutdown = (signal) => {
@@ -354,7 +473,7 @@ async function main() {
     child.on("exit", (code, signal) => {
       if (shuttingDown) return;
       console.error(
-        `[dev:all] service exited; stopping stack (${signal ?? code})`,
+        `[dev:all] service ${child.serviceName ?? "unknown"} exited; stopping stack (${signal ?? code})`,
       );
       shuttingDown = true;
       stopChildrenAndExit(children, typeof code === "number" ? code : 1);

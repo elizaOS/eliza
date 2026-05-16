@@ -18,6 +18,7 @@
 
 #include "voice_classifier/voice_classifier.h"
 
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,6 +78,10 @@ int main(int argc, char **argv) {
     voice_speaker_handle h = NULL;
     int rc = voice_speaker_open(gguf, &h);
     if (rc != 0) {
+        if (rc == -ENOENT) {
+            fprintf(stderr, "skip voice_speaker_open(%s): GGUF missing\n", gguf);
+            return 77;
+        }
         fprintf(stderr, "voice_speaker_open(%s) failed: %d\n", gguf, rc);
         return 1;
     }

@@ -15,7 +15,7 @@ import {
 } from "./lib/static-asset-manifest.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..");
+const repoRoot = path.resolve(here, "../../..");
 const CI_RETRYABLE_STATUSES = new Set([0, 429, 500, 502, 503, 504]);
 
 function delay(ms) {

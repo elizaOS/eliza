@@ -32,28 +32,6 @@ const whatsappAuthSchema = z.object({
     .regex(/^\d+$/, "WhatsApp ID must contain only digits"),
 });
 
-export interface AuthSuccessResponse {
-  success: true;
-  user: {
-    id: string;
-    whatsapp_id: string;
-    whatsapp_name: string | null;
-    phone_number: string | null;
-    name: string | null;
-    organization_id: string;
-  };
-  session: {
-    token: string;
-    expires_at: string;
-  };
-}
-
-export interface AuthErrorResponse {
-  success: false;
-  error: string;
-  code: string;
-}
-
 async function handleWhatsAppAuth(request: Request): Promise<Response> {
   let body: unknown;
   try {

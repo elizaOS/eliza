@@ -628,12 +628,15 @@ static int forward_window(
     const float *pcm,  /* 512 samples */
     float *speech_prob_out) {
     int rc = 0;
+    float *padded = NULL;
+    float *stft = NULL;
+    float *mag = NULL;
 
     /* 1. Build the 640-sample STFT input: context (64) + window (512) +
      *    reflect-right (64). The context carries the last 64 samples
      *    of the previous call (or zeros on a fresh session / post-reset). */
     const int padded_n = VAD_INPUT_PADDED_LEN;
-    float *padded = (float *)malloc(sizeof(float) * (size_t)padded_n);
+    padded = (float *)malloc(sizeof(float) * (size_t)padded_n);
     if (padded == NULL) { rc = -ENOMEM; goto done; }
     build_padded_input(s->context, pcm, padded);
     /* Promote: this call's last 64 samples become next call's context. */
@@ -645,7 +648,7 @@ static int forward_window(
      *    Output shape (258, 4). */
     const int stft_C_out = 2 * VAD_STFT_BINS;  /* 258 = 129 real + 129 imag */
     const int stft_T_out = VAD_STFT_FRAMES;    /* 4 */
-    float *stft = (float *)malloc(sizeof(float) * (size_t)stft_C_out * (size_t)stft_T_out);
+    stft = (float *)malloc(sizeof(float) * (size_t)stft_C_out * (size_t)stft_T_out);
     if (stft == NULL) { rc = -ENOMEM; goto done; }
     conv1d_ref(padded, /*cin*/ 1, padded_n,
                s->stft_basis, /*cout*/ stft_C_out, /*k*/ VAD_STFT_FILTER_LENGTH,
@@ -654,7 +657,7 @@ static int forward_window(
                stft);
 
     /* 3. Magnitude: (129, 4) = sqrt((real[0..129])^2 + (imag[129..258])^2). */
-    float *mag = (float *)malloc(sizeof(float) * VAD_STFT_BINS * (size_t)stft_T_out);
+    mag = (float *)malloc(sizeof(float) * VAD_STFT_BINS * (size_t)stft_T_out);
     if (mag == NULL) { rc = -ENOMEM; goto done; }
     for (int b = 0; b < VAD_STFT_BINS; ++b) {
         for (int t = 0; t < stft_T_out; ++t) {
@@ -736,6 +739,7 @@ static int forward_window(
 
 done:
     free(padded);
+    free(stft);
     free(mag);
     return rc;
 }

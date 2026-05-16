@@ -369,12 +369,12 @@ const AOSP_RECOMMENDED_MODELS: Record<
 > = {
   chat: {
     id: "eliza-1-2b",
-    hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/text/eliza-1-2b-32k.gguf",
+    hfRepo: "elizalabs/eliza-1",
+    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
   },
   embedding: {
     id: "eliza-1-embedding",
-    hfRepo: "elizaos/eliza-1",
+    hfRepo: "elizalabs/eliza-1",
     ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
   },
 };
@@ -623,7 +623,7 @@ function makeGenerateHandler(
  * Exported for unit tests; production callers go through
  * `ensureAospLocalInferenceHandlers`.
  */
-export function makeCloudFallbackHandler(
+function makeCloudFallbackHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
   modelType: (typeof ModelType)[keyof typeof ModelType],

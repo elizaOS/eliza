@@ -1,0 +1,20 @@
+{
+  "source": "https://elizaos.ai/",
+  "brand": {
+    "blue": "#0B35F1",
+    "orange": "#FF5800",
+    "black": "#000000",
+    "white": "#FFFFFF"
+  },
+  "observedSupportingColors": {
+    "bodyGray": "#666666",
+    "dividerWarmGray": "#D7D5CA",
+    "nearBlack": "#181818"
+  },
+  "usage": {
+    "blue": "sky, hover, focus, info/system state",
+    "orange": "primary action and conversion state",
+    "black": "primary text and dark shell",
+    "white": "page background and text on dark/color surfaces"
+  }
+}

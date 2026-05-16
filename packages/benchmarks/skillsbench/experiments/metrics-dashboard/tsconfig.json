@@ -11,6 +11,7 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "types": ["node", "react", "react-dom"],
     "strict": true,
     "ignoreDeprecations": "5.0",
     "noUnusedLocals": true,

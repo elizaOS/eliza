@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/test/voice_classifier_stub_smoke.c" "CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.o" "gcc" "CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.o.d"
+  "/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/voice-classifier-cpp/test/voice_classifier_stub_smoke.c" "CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.o" "gcc" "CMakeFiles/voice_classifier_stub_smoke.dir/test/voice_classifier_stub_smoke.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

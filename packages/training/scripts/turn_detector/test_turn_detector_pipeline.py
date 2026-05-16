@@ -40,7 +40,6 @@ from scripts.turn_detector import finetune_turn_detector as fld
         ("4b", "v0.4.1-intl"),
         ("9b", "v0.4.1-intl"),
         ("27b", "v0.4.1-intl"),
-        ("27b-256k", "v0.4.1-intl"),
         ("eliza-1-4b", "v0.4.1-intl"),
     ],
 )

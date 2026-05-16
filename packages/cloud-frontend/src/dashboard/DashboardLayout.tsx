@@ -3,11 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { DashboardShell } from "../components/layout/dashboard-shell";
 
-/**
- * Free Mode Paths (accessible without auth):
- * - /dashboard/chat - AI agent chat
- */
-const FREE_MODE_PATHS = ["/dashboard/chat"];
+const FREE_MODE_PATHS: string[] = [];
 const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE = "eliza-test-auth=1";
 const AUTH_LOSS_GRACE_MS = 5000;
 
@@ -100,13 +96,11 @@ export default function DashboardLayout() {
       ? `/login?returnTo=${encodeURIComponent(pathname + search)}`
       : undefined;
 
-  const minimalOutletChrome = pathname?.startsWith("/dashboard/chat");
-
   return (
     <DashboardShell
       authReady={authReady}
       loginRedirectTo={loginRedirectTo}
-      minimalOutletChrome={minimalOutletChrome}
+      minimalOutletChrome={false}
       headerAnonymous={!shouldAllowProtectedContent}
       headerAuthGraceActive={authGraceActive && !authenticated}
     />

@@ -1,29 +1,20 @@
 import { ElizaClient } from "@elizaos/ui";
 import type {
-  HyperliquidMarketsResponse,
-  HyperliquidOrdersResponse,
-  HyperliquidPositionsResponse,
-  HyperliquidStatusResponse,
+	HyperliquidMarketsResponse,
+	HyperliquidOrdersResponse,
+	HyperliquidPositionsResponse,
+	HyperliquidStatusResponse,
 } from "./hyperliquid-contracts";
 
-declare module "@elizaos/ui" {
-  interface ElizaClient {
-    hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
-    hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
-    hyperliquidPositions(): Promise<HyperliquidPositionsResponse>;
-    hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
-  }
-}
-
-type HyperliquidClientPrototype = ElizaClient & {
-  hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
-  hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
-  hyperliquidPositions(): Promise<HyperliquidPositionsResponse>;
-  hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
+export type HyperliquidClient = ElizaClient & {
+	hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
+	hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
+	hyperliquidPositions(): Promise<HyperliquidPositionsResponse>;
+	hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
 };
 
 const elizaClientPrototype =
-  ElizaClient.prototype as unknown as HyperliquidClientPrototype;
+	ElizaClient.prototype as unknown as HyperliquidClient;
 
 elizaClientPrototype.hyperliquidStatus = async function () {
   return this.fetch("/api/hyperliquid/status");

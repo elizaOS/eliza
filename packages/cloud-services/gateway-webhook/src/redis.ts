@@ -65,11 +65,14 @@ class NativeRedisAdapter implements GatewayRedis {
 }
 
 export function createRedis(): GatewayRedis {
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+  const kvRestApiUrl = process.env.KV_REST_API_URL;
+  const kvRestApiToken = process.env.KV_REST_API_TOKEN;
+
+  if (kvRestApiUrl && kvRestApiToken) {
     logger.info("Using Upstash Redis REST client");
     return new UpstashRedis({
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN,
+      url: kvRestApiUrl,
+      token: kvRestApiToken,
     }) as GatewayRedis;
   }
 
@@ -81,8 +84,5 @@ export function createRedis(): GatewayRedis {
   logger.warn(
     "Redis is not configured; set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN",
   );
-  return new UpstashRedis({
-    url: process.env.KV_REST_API_URL!,
-    token: process.env.KV_REST_API_TOKEN!,
-  }) as GatewayRedis;
+  throw new Error("Redis configuration is required");
 }

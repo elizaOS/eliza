@@ -30,7 +30,7 @@ Usage:
         --dataset-path /data/distill/eliza-1-2b/distill.jsonl \
         --output-dir /data/dflash-out/2b \
         --target-checkpoint /data/checkpoints/eliza-1-2b \
-        --target-gguf /data/out/eliza-1-2b/text/eliza-1-2b-32k.gguf \
+        --target-gguf /data/out/eliza-1-2b/text/eliza-1-2b-128k.gguf \
         --max-steps 10000
 
 All real training must run on an H200 instance. This script will exit with a
@@ -60,6 +60,7 @@ from scripts.distill_dflash_drafter import (  # noqa: E402
     ACCEPTANCE_GATE,
     DEFAULT_STUDENT_BASE,
     QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
+    _tokenizer_parity_report,
 )
 
 logging.basicConfig(
@@ -80,7 +81,6 @@ DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
     "4b": 1.5,
     "9b": 1.5,
     "27b": 3.0,
-    "27b-256k": 3.0,
 }
 
 CHECKPOINT_EVERY_STEPS: int = 500
@@ -114,6 +114,38 @@ def _git_commit() -> str | None:
 
 def _tokenizer_vocab_size(tokenizer: Any) -> int:
     return len(tokenizer.get_vocab())
+
+
+def _require_tokenizer_parity(
+    *,
+    target_tok: Any,
+    student_tok: Any,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    """Fail closed unless target and student tokenizer metadata are identical."""
+    parity = _tokenizer_parity_report(target_tok, student_tok)
+    args.tokenizer_parity = parity
+    args.target_tokenizer_sha256 = parity["target"]["sha256"]
+    args.student_tokenizer_sha256 = parity["student"]["sha256"]
+    if not parity["matches"]:
+        log.error(
+            "Tokenizer metadata mismatch for tier=%s: "
+            "targetTokenizerSha256=%s studentTokenizerSha256=%s "
+            "probeEncodingsMatch=%s. DFlash requires byte-equivalent "
+            "tokenizer metadata; aborting before training.",
+            args.target_tier,
+            args.target_tokenizer_sha256,
+            args.student_tokenizer_sha256,
+            parity.get("probeEncodingsMatch"),
+        )
+        sys.exit(3)
+    log.info(
+        "Tokenizer metadata parity verified: targetTokenizerSha256=%s "
+        "studentTokenizerSha256=%s",
+        args.target_tokenizer_sha256,
+        args.student_tokenizer_sha256,
+    )
+    return parity
 
 
 # --------------------------------------------------------------------------
@@ -471,7 +503,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--target-tier",
         required=True,
         choices=sorted(ACCEPTANCE_GATE.keys()),
-        help="Eliza-1 target tier (e.g. 2b, 9b, 27b).",
+        help="Eliza-1 target tier (e.g. 0_8b, 2b, 9b, 27b).",
     )
     p.add_argument(
         "--drafter-size-b",
@@ -609,15 +641,11 @@ def main(argv: list[str] | None = None) -> None:
 
     student_model, student_tok = load_drafter_model(args)
     target_model, target_tok = load_target_model(args)
-    if args.student_vocab_size != args.target_vocab_size:
-        log.error(
-            "Tokenizer vocab mismatch: student=%d target=%d. DFlash speculative "
-            "decode requires a vocab-aligned drafter and target.",
-            args.student_vocab_size,
-            args.target_vocab_size,
-        )
-        sys.exit(3)
-    log.info("Tokenizer vocab aligned: %d", args.student_vocab_size)
+    tokenizer_parity = _require_tokenizer_parity(
+        target_tok=target_tok,
+        student_tok=student_tok,
+        args=args,
+    )
 
     device = "cuda"
     student_model = student_model.to(device)
@@ -666,6 +694,9 @@ def main(argv: list[str] | None = None) -> None:
         "tier": args.target_tier,
         "drafterSizeB": args.drafter_size_b,
         "vocabSize": args.student_vocab_size,
+        "targetTokenizerSha256": args.target_tokenizer_sha256,
+        "studentTokenizerSha256": args.student_tokenizer_sha256,
+        "tokenizerParity": tokenizer_parity,
         "studentBase": args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier),
         "targetCheckpoint": args.target_checkpoint,
         "targetGguf": args.target_gguf,

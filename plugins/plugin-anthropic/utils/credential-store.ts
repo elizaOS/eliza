@@ -54,8 +54,6 @@ function getAccountPoolBridge(): AccountPoolBridge | undefined {
   return slot as AccountPoolBridge | undefined;
 }
 
-export const ANTHROPIC_ACCOUNT_POOL_SYMBOL = AccountPoolBridgeSymbol;
-
 const tokenCache = new Map<string, OAuthToken>();
 const ENV_CACHE_KEY = "__env__";
 const APP_CREDENTIAL_CACHE_KEY = "__app_anthropic_subscription__";

@@ -28,7 +28,7 @@ def _base_bundle(tmp_path: Path) -> Path:
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"voice")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"voice-tokenizer")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
-    _write(bundle / "vad" / "silero-vad-v5.1.2.ggml.bin", b"vad")
+    _write(bundle / "vad" / "silero-vad-v5.gguf", b"vad")
     _write(bundle / "cache" / "voice-preset-default.bin", b"cache")
     _write(bundle / "licenses" / "LICENSE.voice", "voice license\n")
     _write(bundle / "licenses" / "LICENSE.asr", "asr license\n")
@@ -115,7 +115,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["defaultEligible"] is False
     assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-2b.gguf"
-    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
+    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.gguf"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["falseBargeInRate"] == 1.0

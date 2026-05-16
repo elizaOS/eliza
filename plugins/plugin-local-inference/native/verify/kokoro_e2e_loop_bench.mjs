@@ -15,7 +15,7 @@
  * fabricated passes.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,6 +70,7 @@ function parseArgs(argv) {
     turnTimeoutS: intEnv("ELIZA_KOKORO_E2E_TURN_TIMEOUT", 240),
     voice: process.env.ELIZA_KOKORO_E2E_VOICE || "af_bella",
     report: process.env.ELIZA_KOKORO_E2E_REPORT || "",
+    audioDir: process.env.ELIZA_KOKORO_E2E_AUDIO_DIR || "",
     saveAudio: process.env.ELIZA_KOKORO_E2E_SAVE_AUDIO !== "0",
     skipEmbedding: process.env.ELIZA_KOKORO_E2E_SKIP_EMBEDDING === "1",
     preflightOnly: false,
@@ -95,8 +96,11 @@ function parseArgs(argv) {
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
+    else if (a === "--start-timeout") args.startTimeoutS = Number.parseInt(next(), 10);
+    else if (a === "--turn-timeout") args.turnTimeoutS = Number.parseInt(next(), 10);
     else if (a === "--voice") args.voice = next();
     else if (a === "--report") args.report = next();
+    else if (a === "--audio-dir") args.audioDir = next();
     else if (a === "--skip-embedding") args.skipEmbedding = true;
     else if (a === "--no-save-audio") args.saveAudio = false;
     else if (a === "--preflight-only") args.preflightOnly = true;
@@ -121,6 +125,7 @@ Options:
   --wav a.wav[,b.wav]     External mic WAV(s). Pair with --ref "text|text".
   --ref "text|text"       References for WER. Without --wav, used as Kokoro mic seed text.
   --skip-embedding        Do not run the optional embedding probe.
+  --audio-dir DIR         Directory for generated mic/response WAV evidence.
   --preflight-only        Resolve artifacts/builds and write a non-gating preflight report.
   --report out.json       Report path. Default: native/reports/local-e2e/<date>/e2e-loop-kokoro-*.json
 `);
@@ -291,6 +296,45 @@ function resolveBundleFiles(bundleDir, tier) {
       model: dedicatedEmbedding || text,
       mode: dedicatedEmbedding ? "dedicated" : text ? "pooled-text" : "missing",
     },
+    dflashPolicy: resolveDflashPolicy(bundleDir),
+  };
+}
+
+function resolveDflashPolicy(bundleDir) {
+  const dflashDir = path.join(bundleDir, "dflash");
+  const targetMetaPath = path.join(dflashDir, "target-meta.json");
+  const targetMeta = readJson(targetMetaPath);
+  let disabledPolicyPath = null;
+  if (targetMeta?.disabledPolicy?.path) {
+    disabledPolicyPath = path.join(bundleDir, targetMeta.disabledPolicy.path);
+  } else if (fs.existsSync(dflashDir)) {
+    const disabledName = fs
+      .readdirSync(dflashDir)
+      .find((name) => /^dflash-disabled-.*\.json$/i.test(name));
+    if (disabledName) disabledPolicyPath = path.join(dflashDir, disabledName);
+  }
+  const disabledPolicy = disabledPolicyPath ? readJson(disabledPolicyPath) : null;
+  return {
+    status: targetMeta?.status ?? disabledPolicy?.status ?? null,
+    dflashEnabled:
+      typeof targetMeta?.dflashEnabled === "boolean"
+        ? targetMeta.dflashEnabled
+        : disabledPolicy?.status === "disabled"
+          ? false
+          : null,
+    requiresDrafter:
+      typeof targetMeta?.disabledPolicy?.requiresDrafter === "boolean"
+        ? targetMeta.disabledPolicy.requiresDrafter
+        : typeof disabledPolicy?.requiresDrafter === "boolean"
+          ? disabledPolicy.requiresDrafter
+          : null,
+    releaseMode: targetMeta?.releaseMode ?? disabledPolicy?.releaseMode ?? null,
+    reason: targetMeta?.reason ?? disabledPolicy?.reason ?? null,
+    targetMetaPath: fs.existsSync(targetMetaPath) ? targetMetaPath : null,
+    disabledPolicyPath:
+      disabledPolicyPath && fs.existsSync(disabledPolicyPath)
+        ? disabledPolicyPath
+        : null,
   };
 }
 
@@ -662,6 +706,164 @@ async function synthesizeKokoro(backend, text, voiceId, audioPath = null) {
   };
 }
 
+async function measureKokoroBargeIn(port, kokoroBackend, voiceId, args) {
+  const tts = await measureKokoroTtsCancel(kokoroBackend, voiceId);
+  const llm = await measureLlmAbort(port, args);
+  const measured = [tts.ttsCancelMs, llm.llmCancelMs].filter((v) => v != null);
+  const bargeInCancelMs =
+    tts.ttsCancelled === true && llm.llmCancelMs != null && measured.length > 0
+      ? Math.max(...measured)
+      : null;
+  return {
+    kind: "kokoro-streaming-tts-cancel",
+    bargeInCancelMs: round2(bargeInCancelMs),
+    ttsCancelMs: round2(tts.ttsCancelMs),
+    kokoroTtsCancelMs: round2(tts.ttsCancelMs),
+    llmCancelMs: round2(llm.llmCancelMs),
+    audioDrainMs: null,
+    httpAbortMs: null,
+    ttsStreamSupported: true,
+    ttsCancelled: tts.ttsCancelled,
+    ttsChunksBeforeCancel: tts.ttsChunksBeforeCancel,
+    ttsSamplesBeforeCancel: tts.ttsSamplesBeforeCancel,
+    ttsStartedToCancelMs: round2(tts.ttsStartedToCancelMs),
+    ttsFinalChunkSeen: tts.ttsFinalChunkSeen,
+    ttsCancelError: tts.ttsCancelError,
+    llmFirstStreamByteMs: round2(llm.llmFirstStreamByteMs),
+    llmAbortBeforeFirstByte: llm.llmAbortBeforeFirstByte,
+    llmAbortError: llm.llmAbortError,
+    note:
+      bargeInCancelMs != null
+        ? "Kokoro streaming TTS chunk-boundary cancel and llama-server streaming completion abort were both measured; bargeInCancelMs is max(ttsCancelMs, llmCancelMs)"
+        : "Kokoro barge-in measurement was attempted, but the harness did not get both TTS cancel and LLM abort measurements",
+  };
+}
+
+async function measureKokoroTtsCancel(kokoroBackend, voiceId) {
+  const cancelSignal = { cancelled: false };
+  const text =
+    "Here is a longer local response for the Kokoro barge-in harness. It should produce enough audio chunks for the scheduler to request cancellation after playback starts.";
+  let ttsChunksBeforeCancel = 0;
+  let ttsSamplesBeforeCancel = 0;
+  let ttsFinalChunkSeen = false;
+  let cancelRequestedAtMs = null;
+  let ttsCancelError = null;
+  const started = performance.now();
+  let result = null;
+  try {
+    result = await kokoroBackend.synthesizeStream({
+      phrase: {
+        id: `kokoro-barge-in-${Date.now()}`,
+        text,
+        fromIndex: 0,
+        toIndex: text.length,
+      },
+      preset: { id: "kokoro-barge-in", voiceId },
+      cancelSignal,
+      onChunk: ({ pcm, isFinal }) => {
+        if (isFinal) {
+          ttsFinalChunkSeen = true;
+          return false;
+        }
+        if (pcm.length > 0) {
+          ttsChunksBeforeCancel += 1;
+          ttsSamplesBeforeCancel += pcm.length;
+          if (cancelRequestedAtMs === null) {
+            cancelRequestedAtMs = performance.now();
+            cancelSignal.cancelled = true;
+            return true;
+          }
+        }
+        return cancelSignal.cancelled;
+      },
+    });
+  } catch (err) {
+    ttsCancelError = err instanceof Error ? err.message : String(err);
+  }
+  const resolvedAtMs = performance.now();
+  const ttsCancelled = result?.cancelled === true || cancelSignal.cancelled === true;
+  if (!ttsCancelled && !ttsCancelError) {
+    ttsCancelError = "Kokoro synthesizeStream completed without reporting cancellation";
+  }
+  return {
+    ttsCancelMs:
+      cancelRequestedAtMs === null ? null : resolvedAtMs - cancelRequestedAtMs,
+    ttsStartedToCancelMs:
+      cancelRequestedAtMs === null ? null : cancelRequestedAtMs - started,
+    ttsCancelled,
+    ttsChunksBeforeCancel,
+    ttsSamplesBeforeCancel,
+    ttsFinalChunkSeen,
+    ttsCancelError,
+  };
+}
+
+async function measureLlmAbort(port, args) {
+  const ctrl = new AbortController();
+  const started = performance.now();
+  let cancelRequestedAtMs = null;
+  let llmFirstStreamByteMs = null;
+  let llmAbortBeforeFirstByte = false;
+  let llmAbortError = null;
+  const armTimeoutMs = Math.max(
+    100,
+    Math.min(args.turnTimeoutS * 1000, Number(process.env.ELIZA_KOKORO_BARGEIN_ARM_TIMEOUT_MS || "5000")),
+  );
+  const armTimer = setTimeout(() => {
+    if (cancelRequestedAtMs === null) {
+      llmAbortBeforeFirstByte = true;
+      cancelRequestedAtMs = performance.now();
+      ctrl.abort();
+    }
+  }, armTimeoutMs);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/completion`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: "Write a long paragraph about local voice cancellation.",
+        n_predict: Math.max(args.nPredict, 128),
+        temperature: 0,
+        stream: true,
+        cache_prompt: false,
+      }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok || !res.body) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`/completion HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const reader = res.body.getReader();
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      if (chunk.value?.byteLength > 0) {
+        llmFirstStreamByteMs = performance.now() - started;
+        cancelRequestedAtMs = performance.now();
+        ctrl.abort();
+        await reader.read().catch(() => null);
+        break;
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (cancelRequestedAtMs === null) {
+      llmAbortError = message;
+    } else if (!/abort/i.test(message)) {
+      llmAbortError = message;
+    }
+  } finally {
+    clearTimeout(armTimer);
+  }
+  return {
+    llmCancelMs:
+      cancelRequestedAtMs === null ? null : performance.now() - cancelRequestedAtMs,
+    llmFirstStreamByteMs,
+    llmAbortBeforeFirstByte,
+    llmAbortError,
+  };
+}
+
 async function fetchSpecCounters(port) {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/metrics`, {
@@ -930,14 +1132,24 @@ async function prepareMicInputs(args, kokoroBackend, audioDir, voiceId) {
   const out = [];
   for (let i = 0; i < refs.length; i += 1) {
     const ref = refs[i];
-    const audioPath = audioDir
+    const asrAudioPath = audioDir
       ? path.join(audioDir, `kokoro-mic-${String(i + 1).padStart(2, "0")}.wav`)
       : null;
-    const tts = await synthesizeKokoro(kokoroBackend, ref, voiceId, audioPath);
+    const nativeAudioPath = audioDir
+      ? path.join(audioDir, `kokoro-mic-${String(i + 1).padStart(2, "0")}.native24k.wav`)
+      : null;
+    const tts = await synthesizeKokoro(kokoroBackend, ref, voiceId, nativeAudioPath);
     const pcm16k = resampleLinear(tts.samples, tts.sampleRate, 16000);
-    if (audioPath) writeWav16(audioPath, pcm16k, 16000);
+    if (asrAudioPath) {
+      writeWav16(asrAudioPath, pcm16k, 16000);
+      fs.writeFileSync(asrAudioPath.replace(/\.wav$/i, ".txt"), `${ref}\n`);
+    }
+    if (nativeAudioPath) {
+      fs.writeFileSync(nativeAudioPath.replace(/\.wav$/i, ".txt"), `${ref}\n`);
+    }
     out.push({
-      file: audioPath,
+      file: asrAudioPath,
+      nativeFile: nativeAudioPath,
       sampleRate: 16000,
       samples: pcm16k,
       refText: ref,
@@ -996,6 +1208,7 @@ async function runTurn(opts, turnIndex) {
     turn: turnIndex,
     mic: {
       file: mic.file,
+      nativeFile: mic.nativeFile ?? null,
       source: mic.source,
       refText: mic.refText,
       audioSec: round2(mic.samples.length / mic.sampleRate),
@@ -1027,9 +1240,10 @@ async function runTurn(opts, turnIndex) {
   };
 }
 
-function summarize(turns, embedding, drafterReady) {
+function summarize(turns, embedding, drafterReady, dflashPolicy, rss, bargeIn) {
   const dflashDraftedTotal = turns.reduce((sum, turn) => sum + (turn.dflash.drafted || 0), 0);
   const dflashAcceptedTotal = turns.reduce((sum, turn) => sum + (turn.dflash.accepted || 0), 0);
+  const dflashRequired = dflashPolicy?.requiresDrafter === false ? false : true;
   const flowCompletedOk =
     turns.length > 0 &&
     turns.every(
@@ -1056,10 +1270,29 @@ function summarize(turns, embedding, drafterReady) {
     dflashAcceptedTotal,
     dflashAcceptanceRateOverall:
       dflashDraftedTotal > 0 ? round4(dflashAcceptedTotal / dflashDraftedTotal) : null,
+    bargeInCancelMs: bargeIn?.bargeInCancelMs ?? null,
+    serverPeakRssMb: rss?.serverPeakRssMb ?? null,
+    harnessPeakRssMb: rss?.harnessPeakRssMb ?? null,
+    combinedPeakRssMb: rss?.combinedPeakRssMb ?? null,
+    ramBudgetRecommendedMb: rss?.ramBudgetRecommendedMb ?? null,
+    ramWithinBudget: rss?.ramWithinBudget ?? null,
+    leakSuspected: rss?.leakSuspected ?? false,
     requiredOptimizations: {
-      dflashDraftingActive: drafterReady ? dflashDraftedTotal > 0 : null,
+      dflashDraftingActive: dflashRequired
+        ? drafterReady && dflashDraftedTotal > 0
+        : null,
+      dflashRequired,
       streamingTtsActive: true,
     },
+    dflashPolicy: dflashPolicy
+      ? {
+          status: dflashPolicy.status,
+          dflashEnabled: dflashPolicy.dflashEnabled,
+          requiresDrafter: dflashPolicy.requiresDrafter,
+          releaseMode: dflashPolicy.releaseMode,
+          reason: dflashPolicy.reason,
+        }
+      : null,
     embedding,
   };
 }
@@ -1078,6 +1311,60 @@ function median(values) {
 function mean(values) {
   const xs = values.filter((v) => v != null);
   return xs.length ? xs.reduce((sum, value) => sum + value, 0) / xs.length : null;
+}
+
+function maxFinite(values) {
+  const xs = values.filter((v) => v != null);
+  return xs.length ? Math.max(...xs) : null;
+}
+
+function processRssMb(pid) {
+  if (!pid) return null;
+  if (process.platform === "linux") {
+    try {
+      const status = fs.readFileSync(`/proc/${pid}/status`, "utf8");
+      const m = status.match(/VmHWM:\s+(\d+)\s+kB/);
+      if (m) return Number(m[1]) / 1024;
+    } catch {
+      return null;
+    }
+  }
+  const res = spawnSync("ps", ["-o", "rss=", "-p", String(pid)], {
+    encoding: "utf8",
+  });
+  if (res.status !== 0) return null;
+  const rssKb = Number(String(res.stdout || "").trim());
+  return Number.isFinite(rssKb) && rssKb > 0 ? rssKb / 1024 : null;
+}
+
+function currentProcessRssMb() {
+  return process.memoryUsage().rss / 1024 / 1024;
+}
+
+function summarizeRss(serverSamples, harnessSamples, combinedSamples, ramBudgetRecommendedMb) {
+  const serverPeakRssMb = maxFinite(serverSamples);
+  const harnessPeakRssMb = maxFinite(harnessSamples);
+  const combinedPeakRssMb = maxFinite(combinedSamples);
+  let leakSuspected = false;
+  if (combinedSamples.length >= 8) {
+    const q = Math.floor(combinedSamples.length / 4);
+    const firstQ = mean(combinedSamples.slice(0, q));
+    const lastQ = mean(combinedSamples.slice(-q));
+    if (firstQ != null && lastQ != null && lastQ > firstQ * 1.5) {
+      leakSuspected = true;
+    }
+  }
+  return {
+    serverPeakRssMb: round1(serverPeakRssMb),
+    harnessPeakRssMb: round1(harnessPeakRssMb),
+    combinedPeakRssMb: round1(combinedPeakRssMb),
+    ramBudgetRecommendedMb: ramBudgetRecommendedMb ?? null,
+    ramWithinBudget:
+      ramBudgetRecommendedMb == null || combinedPeakRssMb == null
+        ? null
+        : combinedPeakRssMb <= ramBudgetRecommendedMb,
+    leakSuspected,
+  };
 }
 
 function relative(file) {
@@ -1110,6 +1397,7 @@ function baseReport(args, bundleDir, files, engine) {
       wavs: args.wavs.length,
       refs: args.refs.length,
       skipEmbedding: args.skipEmbedding,
+      audioDir: args.audioDir || null,
     },
     bundle: {
       dir: bundleDir,
@@ -1125,6 +1413,15 @@ function baseReport(args, bundleDir, files, engine) {
       kokoroVoiceCount: files.kokoro.voices.length,
       embeddingModel: relative(files.embedding.model),
       embeddingMode: files.embedding.mode,
+      dflashPolicy: files.dflashPolicy
+        ? {
+            status: files.dflashPolicy.status,
+            requiresDrafter: files.dflashPolicy.requiresDrafter,
+            releaseMode: files.dflashPolicy.releaseMode,
+            targetMeta: relative(files.dflashPolicy.targetMetaPath),
+            disabledPolicy: relative(files.dflashPolicy.disabledPolicyPath),
+          }
+        : null,
     },
     engine: engine.ok
       ? {
@@ -1224,9 +1521,11 @@ async function run() {
     return report;
   }
 
-  const audioDir = args.saveAudio
-    ? path.join(REPORTS_ROOT, "local-e2e", nowDate(), "audio", `kokoro-${args.tier}-${timestamp()}`)
-    : null;
+  const audioDir = args.audioDir
+    ? path.resolve(args.audioDir)
+    : args.saveAudio
+      ? path.join(REPORTS_ROOT, "local-e2e", nowDate(), "audio", `kokoro-${args.tier}-${timestamp()}`)
+      : null;
   let textServer = null;
   let ffiState = null;
   let ffiCtx = null;
@@ -1243,6 +1542,20 @@ async function run() {
     textServer = await startTextServer(engine, files, args, log);
 
     const turns = [];
+    const serverRssSamples = [];
+    const harnessRssSamples = [];
+    const combinedRssSamples = [];
+    const sampleRss = () => {
+      const serverRss = processRssMb(textServer?.child?.pid);
+      const harnessRss = currentProcessRssMb();
+      if (serverRss != null) serverRssSamples.push(serverRss);
+      if (harnessRss != null) harnessRssSamples.push(harnessRss);
+      if (serverRss != null && harnessRss != null) {
+        combinedRssSamples.push(serverRss + harnessRss);
+      }
+      return { serverRss, harnessRss };
+    };
+    sampleRss();
     for (let i = 0; i < Math.max(1, args.turns); i += 1) {
       const mic = micInputs[i % micInputs.length];
       const turn = await runTurn(
@@ -1259,16 +1572,50 @@ async function run() {
         i + 1,
       );
       turns.push(turn);
+      const rss = sampleRss();
+      turn.serverRssMb = round1(rss.serverRss);
+      turn.harnessRssMb = round1(rss.harnessRss);
       log(
         `turn ${i + 1}: asr=${turn.asr.latencyMs}ms firstTok=${turn.gen.firstTokenMs}ms ttsRTF=${turn.tts.rtf} total=${turn.totalTurnMs}ms`,
       );
+    }
+    let bargeIn = null;
+    try {
+      bargeIn = await measureKokoroBargeIn(textServer.port, kokoro.backend, voiceId, args);
+      sampleRss();
+      log(
+        `barge-in: cancel=${bargeIn.bargeInCancelMs}ms tts=${bargeIn.ttsCancelMs}ms llm=${bargeIn.llmCancelMs}ms`,
+      );
+    } catch (err) {
+      bargeIn = {
+        kind: "kokoro-streaming-tts-cancel",
+        bargeInCancelMs: null,
+        ttsCancelMs: null,
+        llmCancelMs: null,
+        ttsStreamSupported: true,
+        reason: err instanceof Error ? err.message : String(err),
+        note: "Kokoro barge-in measurement failed closed; no gate metric is recordable",
+      };
     }
     await stopChild(textServer.child);
     textServer = null;
 
     const embeddingText = turns[0]?.gen?.content || turns[0]?.asr?.transcript || turns[0]?.mic?.refText || "hello there";
     const embedding = await runEmbeddingProbe(engine, files, args, embeddingText, log);
-    const summary = summarize(turns, embedding, textServer?.drafterReady ?? isRealGguf(files.drafter, 10_000_000));
+    const rss = summarizeRss(
+      serverRssSamples,
+      harnessRssSamples,
+      combinedRssSamples,
+      files.manifest?.ramBudgetMb?.recommended ?? null,
+    );
+    const summary = summarize(
+      turns,
+      embedding,
+      textServer?.drafterReady ?? isRealGguf(files.drafter, 10_000_000),
+      files.dflashPolicy,
+      rss,
+      bargeIn,
+    );
     const e2eLoopOk = summary.flowCompletedOk;
     const optimizationReadyOk =
       summary.requiredOptimizations.streamingTtsActive === true &&
@@ -1283,10 +1630,14 @@ async function run() {
             : "Kokoro loop completed, but DFlash drafting was not active where a drafter was present"
           : "Kokoro ASR/text/TTS loop did not complete",
         e2eLoopOk,
-        thirtyTurnOk: args.turns >= 30 ? e2eLoopOk : null,
+        thirtyTurnOk:
+          args.turns >= 30
+            ? e2eLoopOk && !summary.leakSuspected && summary.ramWithinBudget !== false
+            : null,
         flowCompletedOk: summary.flowCompletedOk,
         optimizationReadyOk,
         requiredOptimizations: summary.requiredOptimizations,
+        bargeIn,
         voiceLoop: {
           ...pre.voiceLoop,
           backend: "kokoro",
@@ -1344,10 +1695,20 @@ async function run() {
   }
 }
 
-run().then(
-  () => process.exit(0),
-  (err) => {
-    console.error("[kokoro-e2e] FATAL:", err?.stack || String(err));
-    process.exit(1);
-  },
-);
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  run().then(
+    () => process.exit(0),
+    (err) => {
+      console.error("[kokoro-e2e] FATAL:", err?.stack || String(err));
+      process.exit(1);
+    },
+  );
+}
+
+export {
+  measureKokoroBargeIn,
+  measureKokoroTtsCancel,
+  resolveBundleFiles,
+  summarize,
+  summarizeRss,
+};

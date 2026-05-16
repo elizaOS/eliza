@@ -14,6 +14,9 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
   const outDir = options.outDir ?? "dist/views";
   const externals = new Set([
     options.packageName,
+    "@elizaos/app-core",
+    "@elizaos/shared",
+    "@elizaos/ui",
     ...(options.additionalExternals ?? []),
   ]);
 

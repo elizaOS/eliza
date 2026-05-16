@@ -7,11 +7,21 @@ on:
     branches: [main, develop]
     paths:
       - "packages/cloud-services/gateway-webhook/**"
+      - "packages/cloud-shared/src/lib/services/**"
+      - "packages/cloud-shared/src/lib/onboarding/**"
+      - "packages/cloud-shared/src/lib/auth/**"
+      - "packages/cloud-shared/src/db/**"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
       - ".github/workflows/cloud-gateway-webhook.yml"
   pull_request:
     branches: [main, develop]
     paths:
       - "packages/cloud-services/gateway-webhook/**"
+      - "packages/cloud-shared/src/lib/services/**"
+      - "packages/cloud-shared/src/lib/onboarding/**"
+      - "packages/cloud-shared/src/lib/auth/**"
+      - "packages/cloud-shared/src/db/**"
+      - "packages/cloud-shared/scripts/messaging-gateway-preflight.mjs"
       - ".github/workflows/cloud-gateway-webhook.yml"
 
 concurrency:
@@ -39,6 +49,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --no-save && git diff --exit-code -- bun.lock
+
+      - name: Run messaging gateway preflight
+        run: bun run preflight:messaging-gateways
 
       - name: Run unit tests (isolated — mock.module is process-global in bun)
         working-directory: packages/cloud-services/gateway-webhook

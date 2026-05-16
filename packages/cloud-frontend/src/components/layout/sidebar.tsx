@@ -43,7 +43,9 @@ function SidebarComponent({
     <>
       {/* Mobile Backdrop */}
       {isOpen && (
-        <div
+        <button
+          type="button"
+          aria-label="Close navigation backdrop"
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
           onClick={handleBackdropClick}
         />
@@ -52,7 +54,7 @@ function SidebarComponent({
       {/* Sidebar Container — fixed drawer on mobile, persistent rail on desktop */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-white/10 bg-black/85 p-1.5 backdrop-blur-xl transition-transform duration-300 ease-in-out md:static md:z-auto md:h-full md:w-72 md:translate-x-0 md:bg-black/50",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-white/30 bg-white/28 p-1.5 shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl transition-transform duration-300 ease-in-out md:static md:z-auto md:h-full md:w-72 md:translate-x-0 md:bg-white/20",
           isOpen ? "translate-x-0" : "-translate-x-full",
           className,
         )}
@@ -71,6 +73,7 @@ function SidebarComponent({
           {/* Mobile Close Button */}
           {onToggle && (
             <button
+              type="button"
               onClick={handleCloseClick}
               className="relative z-10 border border-white/10 bg-white/5 p-2 transition-colors hover:border-white/20 hover:bg-white/10 focus:bg-white/10 focus:outline-none md:hidden"
               aria-label="Close navigation"
@@ -84,9 +87,12 @@ function SidebarComponent({
         <ScrollArea className="flex-1">
           <nav className="py-6 px-4">
             <div className="space-y-8">
-              {sidebarSections.map((section, index) => (
+              {sidebarSections.map((section) => (
                 <SidebarNavigationSection
-                  key={index}
+                  key={
+                    section.title ??
+                    section.items.map((item) => item.id).join("-")
+                  }
                   section={section}
                   isCollapsed={false}
                 />

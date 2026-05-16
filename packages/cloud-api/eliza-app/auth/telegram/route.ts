@@ -73,35 +73,6 @@ const telegramAuthSchema = z.object({
     .transform((s) => s?.trim() || undefined),
 });
 
-/**
- * Success response type
- */
-export interface AuthSuccessResponse {
-  success: true;
-  user: {
-    id: string;
-    telegram_id: string;
-    telegram_username: string | null;
-    phone_number: string;
-    name: string | null;
-    organization_id: string;
-  };
-  session: {
-    token: string;
-    expires_at: string;
-  };
-  is_new_user: boolean;
-}
-
-/**
- * Error response type
- */
-export interface AuthErrorResponse {
-  success: false;
-  error: string;
-  code: string;
-}
-
 async function handleTelegramAuth(request: Request): Promise<Response> {
   // Parse and validate request body
   let body: unknown;
@@ -239,7 +210,9 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
     // ---- STANDARD FLOW: Find or create user with both Telegram and phone number ----
     // Note: Conflict checks are handled in the service layer with database constraints
     // to avoid TOCTOU race conditions. The service returns proper error codes.
-    let result;
+    let result: Awaited<
+      ReturnType<typeof elizaAppUserService.findOrCreateByTelegramWithPhone>
+    >;
     try {
       result = await elizaAppUserService.findOrCreateByTelegramWithPhone(
         authData,

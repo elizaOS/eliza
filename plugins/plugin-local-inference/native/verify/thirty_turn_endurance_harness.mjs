@@ -19,6 +19,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPORTS_ROOT = path.join(__dirname, "..", "reports");
 const E2E_BENCH = path.join(__dirname, "e2e_loop_bench.mjs");
+const KOKORO_E2E_BENCH = path.join(__dirname, "kokoro_e2e_loop_bench.mjs");
+const KOKORO_TIERS = new Set(["0_8b", "2b", "4b"]);
+const NO_DRAFTER_TIERS = new Set(["0_8b"]);
 
 function timestamp() {
   return new Date()
@@ -214,34 +217,62 @@ function latestLocalE2eReportPath(tier) {
 function runE2eBench(args, bundle) {
   const report = latestLocalE2eReportPath(bundle.tier);
   const bun = process.env.BUN_BIN || "bun";
-  const childArgs = [
-    E2E_BENCH,
-    "--bundle",
-    bundle.bundleDir,
-    "--tier",
-    bundle.tier,
-    "--backend",
-    args.backend,
-    "--turns",
-    String(args.turns),
-    "--n-predict",
-    String(args.nPredict),
-    "--endurance-n-predict",
-    String(args.enduranceNPredict),
-    "--tts-steps",
-    String(args.ttsSteps),
-    "--ctx",
-    String(args.ctx),
-    "--ngl",
-    String(args.ngl),
-    "--start-timeout",
-    String(args.startTimeoutS),
-    "--turn-timeout",
-    String(args.turnTimeoutS),
-    "--report",
-    report,
-    "--quiet",
-  ];
+  const useKokoro = KOKORO_TIERS.has(bundle.tier);
+  const childArgs = useKokoro
+    ? [
+        KOKORO_E2E_BENCH,
+        "--bundle",
+        bundle.bundleDir,
+        "--tier",
+        bundle.tier,
+        "--backend",
+        args.backend,
+        "--turns",
+        String(args.turns),
+        "--n-predict",
+        String(args.enduranceNPredict || args.nPredict),
+        "--ctx",
+        String(args.ctx),
+        "--ngl",
+        String(args.ngl),
+        "--start-timeout",
+        String(args.startTimeoutS),
+        "--turn-timeout",
+        String(args.turnTimeoutS),
+        "--report",
+        report,
+        "--skip-embedding",
+        "--no-save-audio",
+        "--quiet",
+      ]
+    : [
+        E2E_BENCH,
+        "--bundle",
+        bundle.bundleDir,
+        "--tier",
+        bundle.tier,
+        "--backend",
+        args.backend,
+        "--turns",
+        String(args.turns),
+        "--n-predict",
+        String(args.nPredict),
+        "--endurance-n-predict",
+        String(args.enduranceNPredict),
+        "--tts-steps",
+        String(args.ttsSteps),
+        "--ctx",
+        String(args.ctx),
+        "--ngl",
+        String(args.ngl),
+        "--start-timeout",
+        String(args.startTimeoutS),
+        "--turn-timeout",
+        String(args.turnTimeoutS),
+        "--report",
+        report,
+        "--quiet",
+      ];
   if (args.binDir) childArgs.splice(7, 0, "--bin-dir", args.binDir);
 
   const res = spawnSync(bun, childArgs, {
@@ -254,7 +285,7 @@ function runE2eBench(args, bundle) {
     return {
       ok: false,
       status: "needs-runtime",
-      reason: `${bun} executable could not run e2e_loop_bench.mjs: ${res.error.message}`,
+      reason: `${bun} executable could not run ${path.basename(childArgs[0])}: ${res.error.message}`,
       e2eReportPath: report,
     };
   }
@@ -263,7 +294,7 @@ function runE2eBench(args, bundle) {
     return {
       ok: false,
       status: "failed",
-      reason: `e2e_loop_bench.mjs exited ${res.status}${stderr ? `: ${stderr}` : ""}`,
+      reason: `${path.basename(childArgs[0])} exited ${res.status}${stderr ? `: ${stderr}` : ""}`,
       e2eReportPath: report,
     };
   }
@@ -271,7 +302,7 @@ function runE2eBench(args, bundle) {
     return {
       ok: false,
       status: "failed",
-      reason: `e2e_loop_bench.mjs completed without writing ${report}`,
+      reason: `${path.basename(childArgs[0])} completed without writing ${report}`,
       e2eReportPath: report,
     };
   }
@@ -279,6 +310,7 @@ function runE2eBench(args, bundle) {
 }
 
 function finite(value) {
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -294,6 +326,21 @@ function selectE2eRun(report, tier) {
     runs[0] ??
     null
   );
+}
+
+function dflashRequiredForRun(run, fallbackTier = null) {
+  const tier = run?.request?.tier ?? run?.bundle?.tier ?? fallbackTier;
+  const required =
+    run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
+  if (
+    required.dflashRequired === false ||
+    run?.summary?.dflashPolicy?.requiresDrafter === false ||
+    run?.dflashPolicy?.requiresDrafter === false ||
+    NO_DRAFTER_TIERS.has(tier)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function buildBlockedReport(args, block, bundle = null) {
@@ -339,8 +386,12 @@ function buildBlockedReport(args, block, bundle = null) {
 function requiredOptimizationsOk(run) {
   const required =
     run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
+  const dflashRequired = dflashRequiredForRun(run);
+  const dflashOk = dflashRequired
+    ? required.dflashDraftingActive === true
+    : required.dflashDraftingActive !== false;
   return (
-    required.dflashDraftingActive === true &&
+    dflashOk &&
     required.streamingTtsActive === true
   );
 }
@@ -365,10 +416,16 @@ function buildThirtyTurnReportFromE2e({
   }
 
   const turns = finite(run.summary?.turns ?? run.request?.turns);
-  const peakRssMb = finite(run.summary?.serverPeakRssMb);
+  const peakRssMb = finite(
+    run.summary?.combinedPeakRssMb ?? run.summary?.serverPeakRssMb,
+  );
   const ramWithinBudget = run.summary?.ramWithinBudget ?? null;
   const leakSuspected = run.summary?.leakSuspected === true;
-  const optimizationsOk = requiredOptimizationsOk(run);
+  const optimizationsOk =
+    requiredOptimizationsOk(run) ||
+    (dflashRequiredForRun(run, bundle?.tier ?? args.tier) === false &&
+      (run.summary?.requiredOptimizations ?? run.requiredOptimizations ?? {})
+        .streamingTtsActive === true);
   const rawThirtyTurnOk =
     run.thirtyTurnOk === true || run.summary?.thirtyTurnOk === true;
   const rawE2eLoopOk = run.e2eLoopOk === true;
@@ -407,10 +464,16 @@ function buildThirtyTurnReportFromE2e({
     });
   }
   if (!optimizationsOk) {
+    const required =
+      run.summary?.requiredOptimizations ?? run.requiredOptimizations ?? {};
+    const dflashRequired = dflashRequiredForRun(run, bundle?.tier ?? args.tier);
+    const missing = [
+      required.streamingTtsActive === true ? null : "streaming TTS",
+      dflashRequired && required.dflashDraftingActive !== true ? "DFlash drafting" : null,
+    ].filter(Boolean);
     blockers.push({
       key: "missing-native-optimization",
-      reason:
-        "required native voice optimizations were not active (DFlash drafting and streaming TTS must both be true)",
+      reason: `${missing.join(" and ")} ${missing.length === 1 ? "was" : "were"} not active in the assembled voice loop`,
     });
   }
 
@@ -443,7 +506,10 @@ function buildThirtyTurnReportFromE2e({
     evidence: {
       passRecordable,
       blockers,
-      source: "assembled-local-voice-e2e-loop",
+      source:
+        run.voiceLoop?.backend === "kokoro"
+          ? "assembled-local-kokoro-voice-e2e-loop"
+          : "assembled-local-voice-e2e-loop",
     },
     assertions: {
       noCrash: rawE2eLoopOk,

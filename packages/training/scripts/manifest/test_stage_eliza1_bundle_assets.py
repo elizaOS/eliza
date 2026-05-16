@@ -33,8 +33,8 @@ class FakeHfApi:
                 "Qwen3-ASR-1.7B-bf16.gguf",
                 "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
             ]
-        if repo_id == "ggml-org/whisper-vad":
-            return ["ggml-silero-v5.1.2.bin"]
+        if repo_id == stage.ELIZA_1_HF_REPO:
+            return ["voice/vad/silero-vad-v5.gguf"]
         return []
 
 
@@ -85,16 +85,16 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         (tmp_path / "4b" / "asr" / "eliza-1-asr-mmproj.gguf").as_posix(),
     ) in staged
     assert (
-        "ggml-org/whisper-vad",
-        "ggml-silero-v5.1.2.bin",
-        (tmp_path / "4b" / "vad" / "silero-vad-v5.1.2.ggml.bin").as_posix(),
+        stage.VAD_NATIVE_REPO,
+        "voice/vad/silero-vad-v5.gguf",
+        (tmp_path / "4b" / "vad" / "silero-vad-v5.gguf").as_posix(),
     ) in staged
     assert report["asrMmprojRemotePath"] == "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
     assert report["vad"] == {
-        "nativeRepo": "ggml-org/whisper-vad",
-        "nativeRemotePath": "ggml-silero-v5.1.2.bin",
-        "nativeBundlePath": "vad/silero-vad-v5.1.2.ggml.bin",
-        "format": "ggml",
+        "nativeRepo": stage.VAD_NATIVE_REPO,
+        "nativeRemotePath": "voice/vad/silero-vad-v5.gguf",
+        "nativeBundlePath": "vad/silero-vad-v5.gguf",
+        "format": "gguf",
         "onnxFallbackIncluded": False,
         "onnxFallbackRepo": None,
         "onnxFallbackBundlePath": None,
@@ -166,8 +166,8 @@ def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(
     assert (tmp_path / "licenses" / "LICENSE.wakeword").is_file()
     assert "Qwen3-ASR" in (tmp_path / "licenses" / "LICENSE.asr").read_text()
     vad = (tmp_path / "licenses" / "LICENSE.vad").read_text()
-    assert "GGML" in vad
-    assert "vad/silero-vad-v5.1.2.ggml.bin" in vad
+    assert "GGUF" in vad
+    assert "vad/silero-vad-v5.gguf" in vad
     ww = (tmp_path / "licenses" / "LICENSE.wakeword").read_text()
     assert "openWakeWord" in ww
     assert "Apache-2.0" in ww
@@ -262,7 +262,7 @@ def test_real_stage_writes_evidence_report_without_downloading(
     assert "tts/omnivoice-tokenizer-Q4_K_M.gguf" in voice_paths
     assert manifest["files"]["cache"][0]["path"] == "cache/voice-preset-default.bin"
     release = json.loads((bundle / "evidence" / "release.json").read_text())
-    assert release["repoId"] == "elizaos/eliza-1"
+    assert release["repoId"] == stage.ELIZA_1_HF_REPO
     assert "tts/omnivoice-base-Q4_K_M.gguf" in release["weights"]
     assert stage.VOICE_REPO in report["sources"]
     assert (bundle / "checksums" / "SHA256SUMS").is_file()

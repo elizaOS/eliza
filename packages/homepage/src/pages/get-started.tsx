@@ -1,3 +1,4 @@
+import { Button } from "@elizaos/ui/button";
 import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,7 +16,6 @@ import {
   useCountryOptions,
 } from "@/components/login/phone-number-input";
 import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
-import { Button } from "@/components/ui/button";
 import {
   buildElizaSmsHref,
   ELIZA_PHONE_FORMATTED,
@@ -81,7 +81,7 @@ function getDiscordBotApplicationId(): string {
   return getDiscordClientId();
 }
 
-const MONO = "'Courier New', 'Courier', 'Monaco', monospace";
+const MONO = "'Open Sans', Arial, system-ui, sans-serif";
 
 function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
   const { messages, sendMessage, containerStatus, isLoading, isReady } =

@@ -5,6 +5,8 @@ export interface ChainingLoopConfig {
 	maxRepeatedFailures: number;
 	/** Maximum planner misses when Stage 1 requires a tool before failing fast. */
 	maxRequiredToolMisses: number;
+	/** Maximum planner retries after it calls only tools unavailable this turn. */
+	maxUnavailableToolCallRetries: number;
 	/** Maximum terminal-only planner turns that still evaluate to CONTINUE. */
 	maxTerminalOnlyContinuations: number;
 	/** Estimated model context window for compaction decisions. */
@@ -84,6 +86,7 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: 16,
 	maxRepeatedFailures: 2,
 	maxRequiredToolMisses: 3,
+	maxUnavailableToolCallRetries: 3,
 	maxTerminalOnlyContinuations: 2,
 	contextWindowTokens: 128_000,
 	compactionReserveTokens: 10_000,
@@ -96,6 +99,7 @@ export type TrajectoryLimitKind =
 	| "tool_calls"
 	| "repeated_failures"
 	| "required_tool_misses"
+	| "unavailable_tool_calls"
 	| "terminal_only_continuations"
 	| "trajectory_token_budget";
 
@@ -147,6 +151,7 @@ export interface FailureLike {
 	toolName?: string;
 	error?: unknown;
 	success?: boolean;
+	repeatKey?: string;
 }
 
 export function getFailureSignature(failure: FailureLike): string | null {
@@ -171,18 +176,25 @@ export function countRepeatedFailures(
 	failures: readonly FailureLike[],
 	latestFailure: FailureLike,
 ): number {
-	const latestSignature = getFailureSignature(latestFailure);
+	const latestSignature = getFailureComparisonKey(latestFailure);
 	if (!latestSignature) {
 		return 0;
 	}
 
 	let count = 0;
 	for (const failure of failures) {
-		if (getFailureSignature(failure) === latestSignature) {
+		if (getFailureComparisonKey(failure) === latestSignature) {
 			count += 1;
 		}
 	}
 	return count;
+}
+
+function getFailureComparisonKey(failure: FailureLike): string | null {
+	const signature = getFailureSignature(failure);
+	if (!signature) return null;
+	const repeatKey = failure.repeatKey?.trim();
+	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
 }
 
 export function assertRepeatedFailureLimit(params: {

@@ -12,7 +12,7 @@ import type {
   CurrentUserDto,
   CurrentUserResponse,
 } from "@/lib/types/cloud-api";
-import { ApiError, api } from "../api-client";
+import { api } from "../api-client";
 
 /**
  * Adapted `UserWithOrganization`-compatible record used by the
@@ -149,5 +149,3 @@ export function useUserProfile() {
     isReady: session.ready,
   };
 }
-
-export { ApiError };

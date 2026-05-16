@@ -23,8 +23,9 @@ private let fullBunHostCallCallback: @convention(c) (
 ///
 /// Full-engine/App Store builds link `ElizaBunEngine.xcframework` directly so
 /// the shipped app does not import dynamic loader APIs. Compatibility builds
-/// keep the optional loader path so the JSContext bridge can still run in DEBUG
-/// development builds without embedding the full engine framework.
+/// keep the optional loader path only in DEBUG development builds without
+/// embedding the full engine framework. Release builds without the direct-link
+/// flag fail closed.
 ///
 /// IPC security model (full-Bun path):
 /// - Transport: NDJSON over anonymous stdio pipes. No TCP port is opened by the
@@ -77,7 +78,7 @@ final class FullBunEngineHost {
     private typealias FreeFn = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
     private var loaded = false
-#if !ELIZA_IOS_FULL_BUN_ENGINE
+#if !ELIZA_IOS_FULL_BUN_ENGINE && DEBUG
     private var handle: UnsafeMutableRawPointer?
 #endif
     private var abiVersionFn: AbiVersionFn?
@@ -233,7 +234,7 @@ final class FullBunEngineHost {
             callFn: loadedCallFn,
             freeFn: loadedFreeFn
         )
-#else
+#elseif DEBUG
         let binaryPath = try locateFrameworkBinary()
         guard let openedHandle = dlopen(binaryPath, RTLD_NOW | RTLD_LOCAL) else {
             throw makeError(String(cString: dlerror()))
@@ -274,6 +275,10 @@ final class FullBunEngineHost {
             _ = dlclose(openedHandle)
             throw error
         }
+#else
+        throw makeError(
+            "ElizaBunEngine direct-link symbols are not compiled into this release build"
+        )
 #endif
     }
 
@@ -312,7 +317,7 @@ final class FullBunEngineHost {
         self.loaded = true
     }
 
-#if !ELIZA_IOS_FULL_BUN_ENGINE
+#if !ELIZA_IOS_FULL_BUN_ENGINE && DEBUG
     private func locateFrameworkBinary() throws -> String {
         let relative = "ElizaBunEngine.framework/ElizaBunEngine"
         let candidates = [

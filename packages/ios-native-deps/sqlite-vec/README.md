@@ -71,9 +71,9 @@ s.vendored_frameworks = [
 ]
 ```
 
-The Swift side (`SqliteVecLoader.swift`) discovers the extension at
-runtime via `dlsym(RTLD_DEFAULT, "sqlite3_vec_init")`, so no Swift
-changes are needed when toggling the link.
+The Swift side (`SqliteVecLoader.swift`) calls a small direct-link C shim. The
+shim weak-imports `sqlite3_vec_init`, so dev builds can run without sqlite-vec,
+while production builds avoid dynamic-loader APIs.
 
 ## Verifying the link
 

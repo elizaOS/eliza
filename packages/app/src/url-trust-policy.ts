@@ -4,7 +4,10 @@
 // strict iOS path (store builds, cloud-runtime modes) and the dev-friendly
 // loopback path live side by side so the boot orchestration stays in main.
 
-import { IOS_LOCAL_AGENT_IPC_BASE } from "@elizaos/ui";
+import {
+  IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentIpcUrl,
+} from "@elizaos/ui";
 
 export interface UrlTrustPolicyContext {
   isNative: boolean;
@@ -58,7 +61,7 @@ export function isLoopbackApiHost(host: string): boolean {
 }
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
-  return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+  return isMobileLocalAgentIpcUrl(parsed);
 }
 
 function isPrivateOrLoopbackApiHost(host: string): boolean {

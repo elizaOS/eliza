@@ -13,7 +13,7 @@ Qwen3 dense bases do not work with the eliza-1 dflash spec-decode path
 shape for the fused QJL/Polar paths). Historical per-tier repos remain public
 for existing downloads, but their model cards are marked DEPRECATED and no new
 SFT runs target them. New raw and fine-tuned bundles publish into the single
-``elizaos/eliza-1`` repo under ``bundles/<tier>/``.
+``elizalabs/eliza-1`` repo under ``bundles/<tier>/``.
 
 The active entries map onto the size-first ``eliza-1-*`` tier ids used
 by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
@@ -23,7 +23,7 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k`` alias)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
 cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
@@ -103,13 +103,13 @@ class ModelEntry:
 
     eliza_repo_id: str = ""
     """HuggingFace repo id under which the fine-tuned model is published,
-    e.g. ``elizaos/eliza-1``. Size tiers live under ``bundles/<tier>/`` and
+    e.g. ``elizalabs/eliza-1``. Size tiers live under ``bundles/<tier>/`` and
     quantized GGUF variants live alongside the tier's manifest."""
 
     abliteration_repo_id: str = ""
     """HuggingFace repo id for the post-abliteration ("uncensored") release,
     Empty means: do not publish an abliterated variant for this entry. The
-    active release policy uses one model repo (``elizaos/eliza-1``), so older
+    active release policy uses one model repo (``elizalabs/eliza-1``), so older
     per-size uncensored repos are intentionally not configured here."""
 
     # ─── inference budgets (PolarQuant weights + TurboQuant 4-bit KV) ───
@@ -188,8 +188,12 @@ class ModelEntry:
 
 
 def _compute_inference_mem(
-    *, params_billion: float, kv_layers: int, kv_heads: int,
-    kv_head_dim: int, total_ctx: int,
+    *,
+    params_billion: float,
+    kv_layers: int,
+    kv_heads: int,
+    kv_head_dim: int,
+    total_ctx: int,
 ) -> tuple[float, float]:
     """Compute (bf16_total_gb, full-quant-stack_total_gb) for an entry.
 
@@ -201,12 +205,12 @@ def _compute_inference_mem(
     weight_bytes_bf16 = params_billion * 1e9 * 2.0
     weight_bytes_q4 = params_billion * 1e9 * 0.5
     bf16_per_elem = 2.0
-    qjl_per_elem = 2.0 / 7.53        # measured K-side ratio, proj_dim=256
-    tq4_per_elem = 0.5               # TurboQuant 4-bit V
+    qjl_per_elem = 2.0 / 7.53  # measured K-side ratio, proj_dim=256
+    tq4_per_elem = 0.5  # TurboQuant 4-bit V
 
     elems_per_token = kv_heads * kv_head_dim * kv_layers
     kv_bytes_bf16 = elems_per_token * total_ctx * (bf16_per_elem + bf16_per_elem)
-    kv_bytes_q4   = elems_per_token * total_ctx * (qjl_per_elem + tq4_per_elem)
+    kv_bytes_q4 = elems_per_token * total_ctx * (qjl_per_elem + tq4_per_elem)
     return (
         (weight_bytes_bf16 + kv_bytes_bf16) / 1024**3,
         (weight_bytes_q4 + kv_bytes_q4) / 1024**3,
@@ -251,7 +255,6 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
     "eliza-1-4b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
-    "eliza-1-27b-256k": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 REGISTRY: dict[str, ModelEntry] = {
@@ -267,8 +270,8 @@ REGISTRY: dict[str, ModelEntry] = {
     # chunked CE is what keeps the listed seq_len inside the budget (the
     # 248k vocab makes this transient ~1.6× heavier than the older 152k
     # Qwen3 vocab; the seq_len defaults reflect that). Inference budgets
-    # here are modest local-tier windows; the runtime catalog ships
-    # 32k context for these tiers and applies its own KV quantization.
+    # here are modest local-tier windows; the runtime catalog ships a
+    # 128k release floor for these tiers and applies its own KV quantization.
     #
     # The legacy Qwen3 bases (Qwen/Qwen3-0.6B / Qwen/Qwen3-1.7B /
     # Qwen/Qwen3-4B) were dropped on 2026-05-12 — those models do not work
@@ -286,31 +289,43 @@ REGISTRY: dict[str, ModelEntry] = {
     # checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the instruct release —
     # same architecture/tokenizer, no chat-SFT pre-baked in.
     "qwen3.5-0.8b": _entry(
-        hf_id="Qwen/Qwen3.5-0.8B", short_name="qwen3.5-0.8b",
-        eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1",
+        hf_id="Qwen/Qwen3.5-0.8B-Base",
+        short_name="qwen3.5-0.8b",
+        eliza_short_name="eliza-1-0_8b",
+        eliza_repo_id="elizalabs/eliza-1",
         abliteration_repo_id="",
-        params_billion=0.8, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
-        micro_batch=1, grad_accum=8, train_mem_gb_budget=12.0,
+        params_billion=0.8,
+        tier=Tier.LOCAL,
+        seq_len=4096,
+        optimizer="apollo_mini",
+        optimizer_rank=1,
+        micro_batch=1,
+        grad_accum=8,
+        train_mem_gb_budget=12.0,
         train_dtype="bf16",
-        infer_max_in=28672, infer_max_out=4096,
-        infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
+        infer_max_in=28672,
+        infer_max_out=4096,
+        infer_kv_layers=6,
+        infer_kv_heads=2,
+        infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
-        notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B "
-              "backbone. "
-              "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
-              "whole train→quant→bench stack end-to-end in well under an "
-              "hour. Runtime catalog id: eliza-1-0_8b (32k context). Shares "
-              "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
-              "the DFlash drafter base for those tiers (the -Base pretrain "
-              "checkpoint, distilled to ~0.6B — see DFLASH_DRAFTER_BASE).",
+        notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B-Base "
+        "backbone. "
+        "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
+        "whole train→quant→bench stack end-to-end in well under an "
+        "hour. Runtime catalog id: eliza-1-0_8b (128k release floor). Shares "
+        "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
+        "the DFlash drafter base for those tiers (the -Base pretrain "
+        "checkpoint, distilled to ~0.6B — see DFLASH_DRAFTER_BASE).",
     ),
     # ──────────────────── LARGER-TIER BASE CHECKPOINTS ────────────────────
     # The eliza-1 line's mid/workstation/cloud tiers train against the
@@ -319,113 +334,138 @@ REGISTRY: dict[str, ModelEntry] = {
     # Referenced by scripts (train_vast.sh, train_nebius.sh, push_*), docs,
     # and tests.
     "qwen3.5-2b": _entry(
-        hf_id="Qwen/Qwen3.5-2B-Base", short_name="qwen3.5-2b",
-        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1",
+        hf_id="Qwen/Qwen3.5-2B-Base",
+        short_name="qwen3.5-2b",
+        eliza_short_name="eliza-1-2b",
+        eliza_repo_id="elizalabs/eliza-1",
         abliteration_repo_id="",
-        params_billion=2.27, tier=Tier.LOCAL,
-        seq_len=8192, optimizer="apollo_mini", optimizer_rank=1,
-        micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
+        params_billion=2.27,
+        tier=Tier.LOCAL,
+        seq_len=8192,
+        optimizer="apollo_mini",
+        optimizer_rank=1,
+        micro_batch=1,
+        grad_accum=16,
+        train_mem_gb_budget=15.5,
         train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
+        infer_max_in=131072,
+        infer_max_out=16384,
+        infer_kv_layers=6,
+        infer_kv_heads=2,
+        infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
         notes="Mid local tier (eliza-1-2b). Trains from Qwen/Qwen3.5-2B-Base "
-              "(pretrain checkpoint, not the instruct release).",
+        "(pretrain checkpoint, not the instruct release).",
     ),
     "qwen3.5-4b": _entry(
-        hf_id="Qwen/Qwen3.5-4B-Base", short_name="qwen3.5-4b",
-        eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1",
+        hf_id="Qwen/Qwen3.5-4B-Base",
+        short_name="qwen3.5-4b",
+        eliza_short_name="eliza-1-4b",
+        eliza_repo_id="elizalabs/eliza-1",
         abliteration_repo_id="",
-        params_billion=4.0, tier=Tier.LOCAL,
-        seq_len=8192, optimizer="apollo_mini", optimizer_rank=1,
-        micro_batch=1, grad_accum=16, train_mem_gb_budget=28.0,
+        params_billion=4.0,
+        tier=Tier.LOCAL,
+        seq_len=8192,
+        optimizer="apollo_mini",
+        optimizer_rank=1,
+        micro_batch=1,
+        grad_accum=16,
+        train_mem_gb_budget=28.0,
         train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=7, infer_kv_heads=2, infer_kv_head_dim=256,
+        infer_max_in=131072,
+        infer_max_out=16384,
+        infer_kv_layers=7,
+        infer_kv_heads=2,
+        infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
         notes="Local/workstation tier (eliza-1-4b) on the Qwen3.5-4B-Base "
-              "backbone. Full-param APOLLO SFT fits a single H200 easily. "
-              "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
-              "(shares the 248k tokenizer + dflash drafter base).",
+        "backbone. Full-param APOLLO SFT fits a single H200 easily. "
+        "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
+        "(shares the 248k tokenizer + dflash drafter base).",
     ),
     "qwen3.5-9b": _entry(
-        hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
-        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1",
+        hf_id="Qwen/Qwen3.5-9B",
+        short_name="qwen3.5-9b",
+        eliza_short_name="eliza-1-9b",
+        eliza_repo_id="elizalabs/eliza-1",
         abliteration_repo_id="",
-        params_billion=9.0, tier=Tier.WORKSTATION,
-        seq_len=16384, optimizer="apollo", optimizer_rank=512,
-        micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
+        params_billion=9.0,
+        tier=Tier.WORKSTATION,
+        seq_len=16384,
+        optimizer="apollo",
+        optimizer_rank=512,
+        micro_batch=2,
+        grad_accum=8,
+        train_mem_gb_budget=80.0,
         train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
+        infer_max_in=131072,
+        infer_max_out=16384,
+        infer_kv_layers=8,
+        infer_kv_heads=4,
+        infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
         notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
-              "and the 9B Qwen3.5 checkpoint.",
-    ),
-    "qwen3.5-27b": _entry(
-        hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
-        eliza_short_name="", eliza_repo_id="",
-        abliteration_repo_id="",
-        params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
-        micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
-        train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=(
-            "polarquant",
-            "fused_turboquant",
-            "qjl",
-            "gguf-q4_k_m",
-            "gguf-q6_k",
-            "gguf-q8_0",
-        ),
-        notes="Legacy 27B lookup retained for experiments only. The active "
-              "eliza-1 27B release family uses Qwen/Qwen3.6-27B.",
-        extra={"legacy": "true", "replaced_by": "qwen3.6-27b"},
+        "and the 9B Qwen3.5 checkpoint.",
     ),
     "qwen3.6-27b": _entry(
-        hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
-        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1",
+        hf_id="Qwen/Qwen3.6-27B",
+        short_name="qwen3.6-27b",
+        eliza_short_name="eliza-1-27b",
+        eliza_repo_id="elizalabs/eliza-1",
         abliteration_repo_id="",
-        params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
-        micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
+        params_billion=27.0,
+        tier=Tier.CLOUD,
+        seq_len=65536,
+        optimizer="apollo_mini",
+        optimizer_rank=512,
+        micro_batch=1,
+        grad_accum=8,
+        train_mem_gb_budget=190.0,
         train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
+        infer_max_in=131072,
+        infer_max_out=16384,
+        infer_kv_layers=16,
+        infer_kv_heads=4,
+        infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
             "fused_turboquant",
             "qjl",
+            "gguf-q3_k_m",
             "gguf-q4_k_m",
+            "gguf-q5_k_m",
             "gguf-q6_k",
             "gguf-q8_0",
         ),
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-              "27B backbone. Use this for the 27B and 27B-256k "
-              "release families.",
+        "27B backbone. Use this for the 27B release family.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
@@ -433,11 +473,6 @@ REGISTRY: dict[str, ModelEntry] = {
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
     "27b": "qwen3.6-27b",
-    "27b-256k": "qwen3.6-27b",
-    "qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen-qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen/qwen3.6-27b-256k": "qwen3.6-27b",
-    "eliza-1-27b-256k": "qwen3.6-27b",
 }
 
 QWEN36_LOWER_TIER_FALLBACK_ALIASES: dict[str, str] = {
@@ -476,6 +511,12 @@ def get(name: str) -> ModelEntry:
         "qwen3-4b": "qwen3.5-4b",
         "qwen-qwen3-4b": "qwen3.5-4b",
         "qwen/qwen3-4b": "qwen3.5-4b",
+        "qwen/qwen3.5-0.8b": "qwen3.5-0.8b",
+        "qwen-qwen3.5-0.8b": "qwen3.5-0.8b",
+        "qwen/qwen3.5-2b": "qwen3.5-2b",
+        "qwen-qwen3.5-2b": "qwen3.5-2b",
+        "qwen/qwen3.5-4b": "qwen3.5-4b",
+        "qwen-qwen3.5-4b": "qwen3.5-4b",
         **QWEN36_LOWER_TIER_FALLBACK_ALIASES,
         **ELIZA_1_27B_VARIANT_ALIASES,
     }
@@ -503,23 +544,34 @@ def by_tier(tier: Tier, include_legacy: bool = False) -> list[ModelEntry]:
 
 
 def summary_table() -> str:
-    cols = ("name", "params B", "tier", "train seq", "train mem",
-            "infer ctx (in+out)", "infer bf16", "infer Q4+TQ", "optimizer")
+    cols = (
+        "name",
+        "params B",
+        "tier",
+        "train seq",
+        "train mem",
+        "infer ctx (in+out)",
+        "infer bf16",
+        "infer Q4+TQ",
+        "optimizer",
+    )
     rows = [cols]
     for e in REGISTRY.values():
         if e.extra.get("legacy") == "true":
             continue
-        rows.append((
-            e.public_name,
-            f"{e.params_billion:.1f}",
-            e.tier.value,
-            f"{e.seq_len}",
-            f"{e.train_mem_gb_budget:.0f}GB",
-            f"{e.infer_max_in}+{e.infer_max_out}",
-            f"{e.infer_mem_gb_bf16_fullkv:.1f}GB",
-            f"{e.infer_mem_gb_quantized:.1f}GB",
-            f"{e.optimizer}@r{e.optimizer_rank}",
-        ))
+        rows.append(
+            (
+                e.public_name,
+                f"{e.params_billion:.1f}",
+                e.tier.value,
+                f"{e.seq_len}",
+                f"{e.train_mem_gb_budget:.0f}GB",
+                f"{e.infer_max_in}+{e.infer_max_out}",
+                f"{e.infer_mem_gb_bf16_fullkv:.1f}GB",
+                f"{e.infer_mem_gb_quantized:.1f}GB",
+                f"{e.optimizer}@r{e.optimizer_rank}",
+            )
+        )
     widths = [max(len(r[i]) for r in rows) for i in range(len(cols))]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
     return "\n".join(fmt.format(*r) for r in rows)

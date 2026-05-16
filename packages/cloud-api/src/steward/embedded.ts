@@ -12,7 +12,7 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-export const PUBLIC_STEWARD_TENANT_CONFIG = {
+const PUBLIC_STEWARD_TENANT_CONFIG = {
   features: {
     showFundingQR: true,
     showTransactionHistory: true,
@@ -26,7 +26,7 @@ export const PUBLIC_STEWARD_TENANT_CONFIG = {
   },
 };
 
-export function isPublicStewardTenantConfigPath(pathname: string): boolean {
+function isPublicStewardTenantConfigPath(pathname: string): boolean {
   return stripStewardPrefix(pathname).replace(/\/+$/, "") === "/tenants/config";
 }
 

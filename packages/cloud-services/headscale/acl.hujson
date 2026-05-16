@@ -11,7 +11,10 @@
     // isolation is enforced by default-deny ACLs and the proxy lookup layer.
     "tag:eliza-tunnel": ["tunnel@"],
     // The public reverse proxy is itself a tagged service node.
-    "tag:eliza-proxy": ["tunnel@"]
+    "tag:eliza-proxy": ["tunnel@"],
+    // User-owned Mac/iPhone iMessage bridges use a dedicated tag so they can
+    // reach only the tunnel proxy, never agent containers directly.
+    "tag:imessage-gateway": ["tunnel@"]
   },
 
   "groups": {},
@@ -37,8 +40,14 @@
       "action": "accept",
       "src": ["tag:eliza-tunnel"],
       "dst": ["tag:eliza-proxy:*"]
+    },
+    // iMessage gateway Macs publish through the tunnel proxy only.
+    {
+      "action": "accept",
+      "src": ["tag:imessage-gateway"],
+      "dst": ["tag:eliza-proxy:443"]
     }
-    // NO rule grants tag:eliza-tunnel access to tag:agent or vice versa.
+    // NO rule grants tag:eliza-tunnel or tag:imessage-gateway access to tag:agent.
     // This isolation is the entire point of tag-based ACLs here.
   ]
 }

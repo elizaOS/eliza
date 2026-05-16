@@ -10,7 +10,8 @@ publish orchestrator can hash and validate the final bundle.
 Default sources:
   - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
   - ASR: ggml-org/Qwen3-ASR-0.6B-GGUF / Qwen3-ASR-1.7B-GGUF, GGUF artifacts.
-  - VAD: ggml-org/whisper-vad, native GGML Silero VAD v5.1.2 model.
+  - VAD: the Eliza-1 release repo's voice/vad/silero-vad-v5.gguf, native
+    silero-vad-cpp Silero VAD v5 model.
     The legacy onnx-community/silero-vad int8 ONNX model can be staged as
     an explicit fallback with --include-vad-onnx-fallback.
   - Wake word (optional): github.com/dscripka/openWakeWord release ONNX
@@ -58,7 +59,7 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
-VAD_NATIVE_REPO: Final[str] = "ggml-org/whisper-vad"
+VAD_NATIVE_REPO: Final[str] = ELIZA_1_HF_REPO
 VAD_ONNX_REPO: Final[str] = "onnx-community/silero-vad"
 ASR_REPO_BY_TIER: Final[dict[str, str]] = {
     "0_8b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
@@ -66,7 +67,6 @@ ASR_REPO_BY_TIER: Final[dict[str, str]] = {
     "4b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "9b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
-    "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
 
 # Voice Wave 2 (2026-05-14): semantic end-of-turn detector — `livekit/turn-detector`
@@ -82,7 +82,6 @@ TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER: Final[dict[str, str]] = {
     "4b": "v0.4.1-intl",
     "9b": "v0.4.1-intl",
     "27b": "v0.4.1-intl",
-    "27b-256k": "v0.4.1-intl",
 }
 TURN_DETECTOR_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
 TURN_DETECTOR_LIVEKIT_ONNX_REMOTE: Final[str] = "onnx/model_q8.onnx"
@@ -102,7 +101,7 @@ GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
 )
 
 VAD_NATIVE_FILES: Final[tuple[tuple[str, str], ...]] = (
-    ("ggml-silero-v5.1.2.bin", "vad/silero-vad-v5.1.2.ggml.bin"),
+    ("voice/vad/silero-vad-v5.gguf", "vad/silero-vad-v5.gguf"),
 )
 VAD_ONNX_FALLBACK_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("onnx/model_int8.onnx", "vad/silero-vad-int8.onnx"),
@@ -665,8 +664,8 @@ def merge_lineage(
         "vad": {
             "base": f"{VAD_NATIVE_REPO}@{revisions[VAD_NATIVE_REPO]}",
             "license": "mit",
-            "format": "ggml",
-            "artifact": "vad/silero-vad-v5.1.2.ggml.bin",
+            "format": "gguf",
+            "artifact": "vad/silero-vad-v5.gguf",
             "onnxFallback": (
                 f"{VAD_ONNX_REPO}@{revisions[VAD_ONNX_REPO]}"
                 if VAD_ONNX_REPO in revisions
@@ -737,8 +736,8 @@ def write_license_notes(
             "Review upstream Apache-2.0 license and model card before release.\n"
         ),
         "LICENSE.vad": (
-            "VAD assets staged from ggml-org/whisper-vad as native GGML "
-            "Silero VAD v5.1.2 at vad/silero-vad-v5.1.2.ggml.bin.\n"
+            "VAD assets staged from the Eliza-1 release repo as native silero-vad-cpp "
+            "Silero VAD v5 GGUF at vad/silero-vad-v5.gguf.\n"
             "Optional legacy ONNX fallback may be staged from "
             "onnx-community/silero-vad at vad/silero-vad-int8.onnx.\n"
             "Declared upstream license: MIT.\n"
@@ -1027,7 +1026,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
             "nativeRepo": VAD_NATIVE_REPO,
             "nativeRemotePath": VAD_NATIVE_FILES[0][0],
             "nativeBundlePath": VAD_NATIVE_FILES[0][1],
-            "format": "ggml",
+            "format": "gguf",
             "onnxFallbackIncluded": bool(args.include_vad_onnx_fallback),
             "onnxFallbackRepo": (
                 VAD_ONNX_REPO if args.include_vad_onnx_fallback else None
@@ -1170,7 +1169,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "Also stage the legacy Silero ONNX fallback at "
-            "vad/silero-vad-int8.onnx. Native GGML VAD is always staged."
+            "vad/silero-vad-int8.onnx. Native GGUF VAD is always staged."
         ),
     )
     ap.add_argument(

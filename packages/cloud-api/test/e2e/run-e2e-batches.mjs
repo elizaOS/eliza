@@ -1,9 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
-import { rmSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
-import { dirname, join, relative } from "node:path";
-import { resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));

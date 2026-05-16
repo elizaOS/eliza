@@ -29,7 +29,7 @@ extern "C" {
 #define VC_GGUF_MAX_TENSOR_NAME 128
 #define VC_GGUF_MAX_TENSOR_DIMS 4
 
-typedef struct voice_gguf_tensor {
+typedef struct voice_gguf_weight_tensor {
     char name[VC_GGUF_MAX_TENSOR_NAME];
     /* Framework dims (un-reversed, so e.g. [80, 1, 251] for a Conv1d
      * weight). The on-disk gguf shape array stores these reversed; the
@@ -41,14 +41,14 @@ typedef struct voice_gguf_tensor {
     /* Pointer into the mmapped region — fp32 row-major. NULL until the
      * tensor block is mmapped. Lifetime tied to voice_gguf_tensors. */
     const float *data;
-} voice_gguf_tensor_t;
+} voice_gguf_weight_tensor_t;
 
 typedef struct voice_gguf_tensors {
     /* The mmapped region. */
     void *map;
     size_t map_size;
     /* All tensor descriptors. */
-    voice_gguf_tensor_t *tensors;
+    voice_gguf_weight_tensor_t *tensors;
     size_t n_tensors;
 } voice_gguf_tensors_t;
 
@@ -64,7 +64,7 @@ typedef struct voice_gguf_tensors {
 int voice_gguf_tensors_open(const char *path, voice_gguf_tensors_t *out);
 
 /* Look up a tensor by name. Returns NULL if not present. */
-const voice_gguf_tensor_t *voice_gguf_tensors_find(
+const voice_gguf_weight_tensor_t *voice_gguf_tensors_find(
     const voice_gguf_tensors_t *t,
     const char *name);
 

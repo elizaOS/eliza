@@ -212,6 +212,7 @@ export async function regenerateSamanthaPresetFromBundle(
 
 	const ffi: ElizaInferenceFfi = loadElizaInferenceFfi(libPath);
 	let ctx: ElizaInferenceContextHandle | null = null;
+	let ttsAcquired = false;
 	try {
 		if (
 			typeof ffi.encodeReferenceSupported !== "function" ||
@@ -228,6 +229,8 @@ export async function regenerateSamanthaPresetFromBundle(
 		}
 
 		ctx = ffi.create(opts.bundleRoot);
+		ffi.mmapAcquire(ctx, "tts");
+		ttsAcquired = true;
 
 		const wavBytes = new Uint8Array(readFileSync(refWav));
 		const pcm = decodeMonoFloat32Wav24kHz(wavBytes);
@@ -281,6 +284,14 @@ export async function regenerateSamanthaPresetFromBundle(
 		};
 	} finally {
 		if (ctx !== null) {
+			if (ttsAcquired) {
+				try {
+					ffi.mmapEvict(ctx, "tts");
+				} catch {
+					// Evict is best-effort during regeneration; destroy below
+					// tears down the context either way.
+				}
+			}
 			try {
 				ffi.destroy(ctx);
 			} catch {

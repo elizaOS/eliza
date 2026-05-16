@@ -12,9 +12,6 @@ import type {
   CapturedMemoryWrite,
   CapturedStateTransition,
   ScenarioContext,
-  ScenarioDefinition,
-  ScenarioFinalCheck,
-  ScenarioTurn,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-schema";
 
@@ -89,5 +86,3 @@ export interface RunnerContext extends ScenarioContext {
   stateTransitions: CapturedStateTransition[];
   artifacts: CapturedArtifact[];
 }
-
-export type { ScenarioDefinition, ScenarioFinalCheck, ScenarioTurn };

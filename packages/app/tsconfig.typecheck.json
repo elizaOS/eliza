@@ -4,6 +4,7 @@
   "compilerOptions": {
     "paths": {
       "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
+      "@elizaos/app-core/*": ["../app-core/dist/*"],
       "@elizaos/app-core/agent-bridge": [
         "../app-core/dist/agent-bridge.d.ts"
       ],

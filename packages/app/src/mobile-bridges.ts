@@ -12,6 +12,7 @@ import { Preferences } from "@capacitor/preferences";
 import { Agent } from "@elizaos/capacitor-agent";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
 import {
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   getBootConfig,
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
@@ -57,16 +58,16 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
         ? config.deviceBridgeUrl
         : null;
     }
-    // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
-    // Android local: the foreground agent service owns the loopback API and
-    // the WebView dials its device bridge for native llama.cpp calls.
-    // iOS local: requests are handled by the in-process ITTP route kernel;
-    // a loopback WebSocket bridge is unsafe in simulator runs where host
-    // adb port forwarding can expose another device's agent.
-    if (config.mode === "local" && ctx.isIOS) return null;
+    // Android local still needs the llama device bridge: the background agent
+    // service cannot call the Capacitor Llama plugin directly. Foreground API
+    // traffic uses Agent.request IPC; this WebSocket is only the native-model
+    // device bridge until that call path moves behind the same plugin surface.
     if (config.mode === "local" && ctx.isAndroid) {
       return apiBaseToDeviceBridgeUrl(MOBILE_LOCAL_AGENT_API_BASE);
     }
+    // iOS local uses the Bun/ITTP request bridge and must not open loopback.
+    if (config.mode === "local" && ctx.isIOS) return null;
+    // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
     if (config.mode !== "cloud-hybrid" && config.mode !== "local") return null;
     const apiBase = getBootConfig().apiBase?.trim();
     if (!apiBase) return null;
@@ -114,7 +115,8 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
     if (apiBase) details.apiBase = apiBase;
     if (authToken) details.authToken = authToken;
     if (ctx.isAndroid && runtimeConfig.mode === "local") {
-      details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
+      details.localApiBase = ANDROID_LOCAL_AGENT_IPC_BASE;
+      details.localRouteKernel = "agent-service-ipc";
     }
     if (ctx.isIOS && runtimeConfig.mode === "local") {
       details.localApiBase = IOS_LOCAL_AGENT_IPC_BASE;
@@ -254,7 +256,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
             ? { pairingToken: runtimeConfig.tunnelPairingToken }
             : {}),
           ...(ctx.isAndroid
-            ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
+            ? { localAgentApiBase: ANDROID_LOCAL_AGENT_IPC_BASE }
             : {}),
         });
         console.info(

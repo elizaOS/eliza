@@ -30,18 +30,6 @@ interface InvoiceApiPayload {
   paidAt?: string;
 }
 
-export interface InvoiceListEntry {
-  id: string;
-  stripeInvoiceId: string;
-  date: string;
-  total: string;
-  status: string;
-  invoiceUrl: string;
-  invoicePdf: string;
-  type: string;
-  creditsAdded?: number;
-}
-
 function adaptInvoice(
   payload: InvoiceApiPayload,
   organizationId: string,
@@ -98,19 +86,6 @@ export function useInvoice(
       );
       return adaptInvoice(r.invoice, organizationId);
     },
-    enabled: gate.enabled,
-  });
-}
-
-/** GET /api/invoices/list — pre-formatted invoices for the billing tab. */
-export function useInvoices() {
-  const gate = useAuthenticatedQueryGate();
-  return useQuery({
-    queryKey: authenticatedQueryKey(["invoices", "list"], gate),
-    queryFn: () =>
-      api<{ invoices: InvoiceListEntry[]; count: number }>(
-        "/api/invoices/list",
-      ).then((r) => r.invoices),
     enabled: gate.enabled,
   });
 }

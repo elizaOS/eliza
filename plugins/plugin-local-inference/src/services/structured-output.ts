@@ -103,6 +103,13 @@ export interface StructuredGenerateParams {
 	 * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
+	/**
+	 * Per-request chat-template thinking control for reasoning-capable local
+	 * models. `off` maps to `chat_template_kwargs.enable_thinking=false` for
+	 * response-handler/direct-reply calls that must emit user-visible text, while
+	 * planner/action calls can omit this and use the catalog/server default.
+	 */
+	thinking?: "auto" | "on" | "off";
 }
 
 /** True when `kind` is a span the model actually samples. */

@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/test/voice_emotion_classes_test.c" "CMakeFiles/voice_emotion_classes_test.dir/test/voice_emotion_classes_test.c.o" "gcc" "CMakeFiles/voice_emotion_classes_test.dir/test/voice_emotion_classes_test.c.o.d"
+  "/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/voice-classifier-cpp/test/voice_emotion_classes_test.c" "CMakeFiles/voice_emotion_classes_test.dir/test/voice_emotion_classes_test.c.o" "gcc" "CMakeFiles/voice_emotion_classes_test.dir/test/voice_emotion_classes_test.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

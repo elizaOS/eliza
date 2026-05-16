@@ -5,8 +5,7 @@
   cursor: pointer;
   display: flex;
   align-items: center;
-  font-family:
-    "DM Sans", "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Open Sans", Arial, system-ui, sans-serif;
   font-size: 16px;
   font-weight: 600;
   height: 48px;
@@ -81,8 +80,7 @@
     opacity 200ms ease,
     transform 200ms ease,
     visibility 200ms;
-  font-family:
-    "DM Sans", "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Open Sans", Arial, system-ui, sans-serif;
 }
 
 .wallet-adapter-dropdown-list-active {
@@ -204,8 +202,7 @@
   border-radius: 10px;
   background: #10141f;
   box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.6);
-  font-family:
-    "DM Sans", "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Open Sans", Arial, system-ui, sans-serif;
   flex: 1;
 }
 

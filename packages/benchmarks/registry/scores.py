@@ -223,13 +223,19 @@ def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="gaia:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="gaia:root"), ctx="gaia:metrics")
     overall = expect_float(get_required(metrics, "overall_accuracy", ctx="gaia:metrics"), ctx="gaia:overall_accuracy")
+    total_questions = expect_float(
+        get_required(metrics, "total_questions", ctx="gaia:metrics"),
+        ctx="gaia:total_questions",
+    )
+    if total_questions <= 0:
+        raise ValueError("gaia:total_questions must be positive")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_accuracy": overall,
-            "total_questions": metrics.get("total_questions") or 0,
+            "total_questions": total_questions,
             "correct_answers": metrics.get("correct_answers") or 0,
         },
     )
@@ -975,6 +981,12 @@ def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction
         get_required(metrics, "score", ctx="abliteration_robustness:metrics"),
         ctx="abliteration_robustness:metrics.score",
     )
+    n = expect_float(
+        get_required(metrics, "n", ctx="abliteration_robustness:metrics"),
+        ctx="abliteration_robustness:metrics.n",
+    )
+    if n <= 0:
+        raise ValueError("abliteration_robustness:metrics.n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -982,7 +994,7 @@ def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction
         metrics={
             "score": score,
             "refusal_rate": metrics.get("refusal_rate") or 0,
-            "n": metrics.get("n") or 0,
+            "n": n,
             "n_refused": metrics.get("n_refused") or 0,
         },
     )
@@ -1001,6 +1013,15 @@ def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "pass_at_1", ctx="lifeops_bench:root"),
         ctx="lifeops_bench:pass_at_1",
     )
+    scenarios = get_optional(root, "scenarios")
+    if not isinstance(scenarios, list) or len(scenarios) == 0:
+        raise ValueError("lifeops_bench:scenarios must contain at least one result")
+    seeds = expect_float(
+        get_required(root, "seeds", ctx="lifeops_bench:root"),
+        ctx="lifeops_bench:seeds",
+    )
+    if seeds <= 0:
+        raise ValueError("lifeops_bench:seeds must be positive")
     return ScoreExtraction(
         score=pass_at_1,
         unit="ratio",
@@ -1008,7 +1029,8 @@ def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "pass_at_1": pass_at_1,
             "pass_at_k": get_optional(root, "pass_at_k") or 0,
-            "seeds": get_optional(root, "seeds") or 0,
+            "seeds": seeds,
+            "scenario_count": len(scenarios),
             "total_cost_usd": get_optional(root, "total_cost_usd") or 0,
             "agent_cost_usd": get_optional(root, "agent_cost_usd") or 0,
             "eval_cost_usd": get_optional(root, "eval_cost_usd") or 0,
@@ -1124,6 +1146,9 @@ def _score_from_mmlu_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="mmlu:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="mmlu:root"), ctx="mmlu:metrics")
     score = expect_float(get_required(metrics, "score", ctx="mmlu:metrics"), ctx="mmlu:score")
+    n = expect_float(get_required(metrics, "n", ctx="mmlu:metrics"), ctx="mmlu:n")
+    if n <= 0:
+        raise ValueError("mmlu:n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -1136,6 +1161,9 @@ def _score_from_humaneval_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="humaneval:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="humaneval:root"), ctx="humaneval:metrics")
     score = expect_float(get_required(metrics, "score", ctx="humaneval:metrics"), ctx="humaneval:score")
+    n = expect_float(get_required(metrics, "n", ctx="humaneval:metrics"), ctx="humaneval:n")
+    if n <= 0:
+        raise ValueError("humaneval:n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
