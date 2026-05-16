@@ -30,10 +30,7 @@ export function ConnectionsTab() {
 
       {/* Social Media Section */}
       <div className="space-y-4">
-        <DashboardSection
-          label="Channels"
-          title="Social Media Connections"
-        />
+        <DashboardSection label="Channels" title="Social Media Connections" />
 
         <div className="grid gap-4">
           <DiscordGatewayConnection />

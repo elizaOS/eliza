@@ -229,10 +229,7 @@ write: ready for confirmation`}</pre>
             </section>
 
             <section id="downloads" className="px-6 py-16 sm:px-8 lg:px-12">
-              <SectionHeader
-                title="Install natively, boot from USB, or launch a VM"
-              >
-              </SectionHeader>
+              <SectionHeader title="Install natively, boot from USB, or launch a VM"></SectionHeader>
 
               <div className="mx-auto mt-10 grid max-w-7xl gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {installTargets.map((item) => {

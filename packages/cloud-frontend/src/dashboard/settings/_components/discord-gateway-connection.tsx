@@ -385,9 +385,6 @@ export function DiscordGatewayConnection() {
               <DiscordIcon className="h-5 w-5 text-[#5865F2]" />
               Discord Gateway Bot
             </CardTitle>
-            <CardDescription>
-              Connect your Discord bot for AI-powered conversations
-            </CardDescription>
           </div>
           {connections.length > 0 && (
             <Badge variant="outline">
@@ -839,7 +836,6 @@ export function DiscordGatewayConnection() {
                 What your Discord bot can do:
               </h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Respond to messages with AI-powered conversations</li>
                 <li>• Handle both server channels and direct messages (DMs)</li>
                 <li>• React only when mentioned (configurable)</li>
                 <li>• Process voice messages automatically</li>

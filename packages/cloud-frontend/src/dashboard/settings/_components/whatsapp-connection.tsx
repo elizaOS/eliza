@@ -169,9 +169,6 @@ export function WhatsAppConnection() {
               <MessageSquare className="h-5 w-5 text-green-500" />
               WhatsApp Business
             </CardTitle>
-            <CardDescription>
-              Connect WhatsApp Business for AI-powered conversations
-            </CardDescription>
           </div>
           {status?.connected && (
             <Badge variant="default" className="bg-green-500">
@@ -279,7 +276,6 @@ export function WhatsAppConnection() {
               </p>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• Receive and respond to WhatsApp messages</li>
-                <li>• Have AI-powered conversations 24/7</li>
                 <li>• Handle customer inquiries automatically</li>
               </ul>
             </div>
