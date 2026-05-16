@@ -282,8 +282,8 @@ if [ -n "$DRAFTER_PATH" ]; then
     --spec-type "$DFLASH_SPEC_TYPE"
     --n-gpu-layers-draft "$LLAMA_DRAFT_NGL"
     --ctx-size-draft "$LLAMA_DRAFT_CONTEXT"
-    --draft-min "$LLAMA_DRAFT_MIN"
-    --draft-max "$LLAMA_DRAFT_MAX"
+    --spec-draft-n-min "$LLAMA_DRAFT_MIN"
+    --spec-draft-n-max "$LLAMA_DRAFT_MAX"
   )
 fi
 if [ -n "$LLAMA_CACHE_TYPE_K" ]; then

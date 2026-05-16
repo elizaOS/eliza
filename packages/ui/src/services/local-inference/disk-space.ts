@@ -1,4 +1,5 @@
 import { statfs } from "node:fs/promises";
+<<<<<<< HEAD
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -10,11 +11,22 @@ export interface DiskSpace {
   freeBytes: number;
   totalBytes: number;
   pathProbed: string;
+=======
+import os from "node:os";
+
+export interface DiskSpace {
+  path: string;
+  totalBytes: number;
+  freeBytes: number;
+  availableBytes: number;
+  probed: boolean;
+>>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
 }
 
 export type DiskSpaceWarning = "low-disk" | "critical-disk";
 
 export interface DiskSpaceAdvice {
+<<<<<<< HEAD
   fits: boolean;
   warning?: DiskSpaceWarning;
   freeAfterDownloadBytes: number;
@@ -73,10 +85,30 @@ async function probeWindowsViaWmic(path: string): Promise<DiskSpace> {
     throw new Error("wmic logicaldisk produced no parseable output");
   }
   return { ...parsed, pathProbed: path };
+=======
+  warning?: DiskSpaceWarning;
+  requiredBytes: number;
+  safetyMarginBytes: number;
+}
+
+const DEFAULT_SAFETY_MARGIN_BYTES = 2 * 1024 ** 3;
+
+function fallbackDiskSpace(path: string): DiskSpace {
+  const totalBytes = os.totalmem();
+  const freeBytes = os.freemem();
+  return {
+    path,
+    totalBytes,
+    freeBytes,
+    availableBytes: freeBytes,
+    probed: false,
+  };
+>>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
 }
 
 export async function probeDiskSpace(path: string): Promise<DiskSpace> {
   try {
+<<<<<<< HEAD
     return await probePosixDiskSpace(path);
   } catch (statfsError) {
     if (process.platform !== "win32") {
@@ -91,12 +123,28 @@ export async function probeDiskSpace(path: string): Promise<DiskSpace> {
         `disk space probe failed: statfs(${original}) + wmic(${fallback})`,
       );
     }
+=======
+    const stats = await statfs(path);
+    const totalBytes = Number(stats.blocks) * Number(stats.bsize);
+    const freeBytes = Number(stats.bfree) * Number(stats.bsize);
+    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+    return {
+      path,
+      totalBytes,
+      freeBytes,
+      availableBytes,
+      probed: true,
+    };
+  } catch {
+    return fallbackDiskSpace(path);
+>>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47
   }
 }
 
 export function adviseDiskSpace(
   probe: DiskSpace,
   modelSizeBytes: number,
+<<<<<<< HEAD
   safetyMarginBytes: number = DEFAULT_SAFETY_MARGIN_BYTES,
 ): DiskSpaceAdvice {
   const required = modelSizeBytes + safetyMarginBytes;
@@ -112,3 +160,21 @@ export function adviseDiskSpace(
 }
 
 export const DISK_SPACE_DEFAULT_SAFETY_MARGIN_BYTES = DEFAULT_SAFETY_MARGIN_BYTES;
+=======
+): DiskSpaceAdvice {
+  const safetyMarginBytes = Math.max(
+    DEFAULT_SAFETY_MARGIN_BYTES,
+    Math.ceil(modelSizeBytes * 0.25),
+  );
+  const requiredBytes = modelSizeBytes + safetyMarginBytes;
+  const freeBytes = Math.max(0, probe.availableBytes || probe.freeBytes);
+
+  if (freeBytes < modelSizeBytes) {
+    return { warning: "critical-disk", requiredBytes, safetyMarginBytes };
+  }
+  if (freeBytes < requiredBytes) {
+    return { warning: "low-disk", requiredBytes, safetyMarginBytes };
+  }
+  return { requiredBytes, safetyMarginBytes };
+}
+>>>>>>> 72a4b02b9b97cf0333408999d3829bae98996d47

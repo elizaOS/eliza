@@ -92,8 +92,19 @@ jobs:
 
             # Use a refspec so a single-branch / shallow clone still creates
             # the remote-tracking ref for $DEPLOY_BRANCH on first deploy.
-            git fetch origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
-            git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+            #
+            # --no-recurse-submodules on both fetch + checkout: the provisioning
+            # worker daemon and agent router are pure Node/tsx code and never
+            # touch the llama.cpp / omnivoice.cpp / opencode submodules. If the
+            # deploy host has `fetch.recurseSubmodules=on-demand` (the default
+            # when submodules are present), recursing through a superproject
+            # commit whose submodule SHA was never pushed to the fork kills the
+            # whole deploy with `upload-pack: not our ref`. Skip submodule
+            # traversal entirely on this path.
+            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules \
+              origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+            git -c submodule.recurse=false checkout --no-recurse-submodules \
+              -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 
             # Pin bun version on first install to narrow `curl | bash` blast radius.
             if ! command -v bun >/dev/null 2>&1; then

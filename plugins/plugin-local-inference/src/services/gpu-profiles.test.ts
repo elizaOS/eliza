@@ -74,8 +74,8 @@ describe("applyGpuProfile", () => {
 		expect(args).toContain("2048");
 		expect(args).toContain("--mlock");
 		expect(args).toContain("-fa");
-		expect(args).toContain("--draft-min");
-		expect(args).toContain("--draft-max");
+		expect(args).toContain("--spec-draft-n-min");
+		expect(args).toContain("--spec-draft-n-max");
 		expect(args).toContain("32");
 	});
 

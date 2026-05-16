@@ -1142,7 +1142,7 @@ function parseBenchOutput(text) {
 
 /**
  * Run one bench pass of the spec binary. `withDrafter` toggles whether the
- * drafter actually drafts (`--draft-max 6` vs `--draft-max 0` — the latter
+ * drafter actually drafts (`--spec-draft-n-max 6` vs `--spec-draft-n-max 0` — the latter
  * makes every step an autoregressive target step, i.e. the no-speculation
  * baseline, while still exercising the same binary so the comparison is
  * apples-to-apples). Returns `{ available: false }` when the binary is
