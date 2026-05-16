@@ -1,10 +1,10 @@
 [Desktop Entry]
 Version=1.0
 Encoding=UTF-8
-_Name=Tails Documentation
-_Comment=Learn how to use Tails
+_Name=elizaOS Documentation
+_Comment=Learn how to use elizaOS
 _Keywords=learn
-Categories=Documentation;Tails;
+Categories=Documentation;Utility;
 Type=Application
 Terminal=false
 Exec=/usr/local/bin/tails-documentation doc

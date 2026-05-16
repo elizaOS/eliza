@@ -11,6 +11,8 @@
 //     pglite.data                  PGlite filesystem image
 //     vector.tar.gz                pgvector contrib (referenced via ../)
 //     fuzzystrmatch.tar.gz         fuzzystrmatch contrib (referenced via ../)
+//     ort-wasm-simd-threaded.mjs   ONNX Runtime Web WASM loader for local TTS
+//     ort-wasm-simd-threaded.wasm  ONNX Runtime Web WASM payload for local TTS
 //     plugins-manifest.json        list of plugins statically baked into the bundle
 //
 // What this build does NOT do:
@@ -184,6 +186,45 @@ function findPgliteDist() {
   return null;
 }
 
+function findOnnxRuntimeWebDist() {
+  // Android Kokoro TTS uses `onnxruntime-web/wasm` inside the bun agent.
+  // Bun bundles the JS import, but the runtime loader still resolves its
+  // worker-free WASM sidecars relative to agent-bundle.js on device. Stage the
+  // exact package version that the bundle resolves so stock APK installs do not
+  // fall back to missing node_modules at runtime.
+  const candidates = [
+    path.join(
+      repoRoot,
+      "plugins",
+      "plugin-aosp-local-inference",
+      "node_modules",
+      "onnxruntime-web",
+      "dist",
+    ),
+    path.join(repoRoot, "node_modules", "onnxruntime-web", "dist"),
+  ];
+  const bunDir = path.join(repoRoot, "node_modules", ".bun");
+  if (existsSync(bunDir)) {
+    const sortedEntries = readdirSyncSafe(bunDir)
+      .filter((e) => e.startsWith("onnxruntime-web@"))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    for (const entry of sortedEntries) {
+      candidates.push(
+        path.join(bunDir, entry, "node_modules", "onnxruntime-web", "dist"),
+      );
+    }
+  }
+  for (const c of candidates) {
+    if (
+      existsSync(path.join(c, "ort-wasm-simd-threaded.mjs")) &&
+      existsSync(path.join(c, "ort-wasm-simd-threaded.wasm"))
+    ) {
+      return c;
+    }
+  }
+  return null;
+}
+
 function readdirSyncSafe(p) {
   try {
     return readdirSync(p);
@@ -201,6 +242,16 @@ if (!pgliteDist) {
   process.exit(1);
 }
 console.log("[build-mobile] pglite dist:", pgliteDist);
+
+const onnxRuntimeWebDist = findOnnxRuntimeWebDist();
+if (!onnxRuntimeWebDist) {
+  console.error(
+    "[build-mobile] FATAL: could not locate onnxruntime-web/dist with " +
+      "ort-wasm-simd-threaded.{mjs,wasm}. Run `bun install` first.",
+  );
+  process.exit(1);
+}
+console.log("[build-mobile] onnxruntime-web dist:", onnxRuntimeWebDist);
 
 // Native deps without an Android prebuild — replace at bundle time with
 // throw-on-call shims. Bun.build's `--external` would leave bare-name imports
@@ -251,7 +302,7 @@ const nativeStubs = {
   // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
   // directly via aosp-llama-adapter.ts, never this package — but Bun.build
   // still has to resolve the dynamic import in
-  // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
+  // plugins/plugin-native-llama/src/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   mammoth: path.join(stubsDir, "mammoth.cjs"),
@@ -504,6 +555,7 @@ const iosFsSandboxPlugin = {
 // function`). Pin every `@elizaos/core` (and `@elizaos/shared`) import to
 // the same workspace `src/` entry so the bundle ships exactly one identity.
 const corePackages = [
+  "@elizaos/agent",
   "@elizaos/core",
   "@elizaos/shared",
   "@elizaos/plugin-sql",
@@ -517,6 +569,13 @@ const corePackages = [
 // from eliza's outer-repo layout where this whole tree was nested under
 // `eliza/`.
 const dedupeTargets = {
+  "@elizaos/agent": path.resolve(
+    repoRoot,
+    "packages",
+    "agent",
+    "src",
+    "index.ts",
+  ),
   "@elizaos/core": path.resolve(
     repoRoot,
     "packages",
@@ -596,9 +655,8 @@ const nativeCapacitorPlugin = {
       const packageName = args.path.replace("@elizaos/capacitor-", "");
       const target = path.resolve(
         repoRoot,
-        "packages",
-        "native-plugins",
-        packageName,
+        "plugins",
+        `plugin-native-${packageName}`,
         "src",
         "index.ts",
       );
@@ -859,15 +917,19 @@ const workspaceSrcFallbackPlugin = {
       const pkgDir = resolvePackageDir(pkgName);
       if (!pkgDir) return undefined;
 
-      const cleaned = subpath.replace(/\.js$/, "");
+      // Skip if dist exists and contains the requested entry — let the
+      // default resolver handle it normally. Some workspace packages build a
+      // root dist/index.js while package.json exports additional subpaths
+      // (for example @elizaos/plugin-x402/startup-validator); fall back to
+      // source when that subpath has not been emitted yet.
       const distDir = path.join(pkgDir, "dist");
       if (existsSync(distDir)) {
         if (!subpath) return undefined;
+        const cleanedDist = subpath.replace(/\.js$/, "");
         const distCandidates = [
-          `${cleaned}.js`,
-          `${cleaned}.mjs`,
-          `${cleaned}/index.js`,
-          `${cleaned}/index.mjs`,
+          `${cleanedDist}.js`,
+          `${cleanedDist}/index.js`,
+          cleanedDist,
         ];
         if (
           distCandidates.some((candidate) =>
@@ -903,6 +965,7 @@ const workspaceSrcFallbackPlugin = {
 
       // Strip an optional `.js` extension (TS source compiles to `.js` so
       // imports like `./foo.js` should resolve to `./foo.ts`).
+      const cleaned = subpath.replace(/\.js$/, "");
       const candidates = [
         `${cleaned}.ts`,
         `${cleaned}.tsx`,
@@ -1416,6 +1479,24 @@ for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
 
+for (const asset of [
+  "ort-wasm-simd-threaded.mjs",
+  "ort-wasm-simd-threaded.wasm",
+]) {
+  const src = path.join(onnxRuntimeWebDist, asset);
+  if (!existsSync(src)) {
+    console.error(
+      `[build-mobile] FATAL: missing ${asset} in ${onnxRuntimeWebDist}`,
+    );
+    process.exit(1);
+  }
+  await copyFile(src, path.join(outDir, asset));
+  const sz = (await stat(src)).size;
+  console.log(
+    `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+}
+
 const manifest = {
   generatedAt: new Date().toISOString(),
   bundle: bundleFilename,
@@ -1432,6 +1513,10 @@ const manifest = {
         expectedAt: "../fuzzystrmatch.tar.gz",
       },
     },
+  },
+  onnxRuntimeWeb: {
+    wasmLoader: "ort-wasm-simd-threaded.mjs",
+    wasm: "ort-wasm-simd-threaded.wasm",
   },
   plugins: {
     core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],

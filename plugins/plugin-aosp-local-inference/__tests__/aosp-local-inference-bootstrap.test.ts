@@ -368,7 +368,12 @@ describe("buildAospLoadModelArgs", () => {
     expect(buildAospLoadModelArgs("chat", "/models/chat.gguf")).toEqual({
       modelPath: "/models/chat.gguf",
       contextSize: 4096,
+      draftModelPath: undefined,
+      draftContextSize: undefined,
+      draftMin: undefined,
+      draftMax: undefined,
       useGpu: false,
+      gpuLayers: 0,
       kvCacheType: {
         k: "qjl1_256",
         v: "q4_polar",
@@ -383,6 +388,7 @@ describe("buildAospLoadModelArgs", () => {
       modelPath: "/models/bge-small.gguf",
       contextSize: 512,
       useGpu: false,
+      gpuLayers: 0,
       kvCacheType: {
         k: "f16",
         v: "f16",

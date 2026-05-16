@@ -23,7 +23,7 @@
   "styling": {
     "eyebrows": "section"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "/brand/favicons/favicon.svg",
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
@@ -1286,9 +1286,9 @@
     "metadata": {
       "og:site_name": "elizaOS Documentation",
       "og:type": "website",
-      "og:image": "/images/eliza-og.png",
+      "og:image": "/brand/ogembeds/elizaos_ogembed.svg",
       "x:card": "summary_large_image",
-      "x:image": "/images/eliza-og.png"
+      "x:image": "/brand/ogembeds/elizaos_ogembed.svg"
     }
   },
   "contextual": {

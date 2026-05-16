@@ -305,7 +305,7 @@ export function ConnectorModeSelector({
             type="button"
             data-testid={`connector-mode-${connectorId}-${mode.id}`}
             onClick={() => onModeChange(mode.id)}
-            className={`rounded-xl border px-3 py-1.5 text-xs-tight font-medium transition-all ${
+            className={`rounded-sm border px-3 py-1.5 text-xs-tight font-medium transition-all ${
               selectedMode === mode.id
                 ? "border-accent bg-accent/10 text-accent"
                 : "border-border/40 bg-card/40 text-muted hover:border-accent/40 hover:text-txt"

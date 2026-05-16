@@ -40,6 +40,11 @@ if (!target) {
 
 const resolvedTarget = resolve(target);
 copyDir(join(ASSETS_ROOT, "logos"), join(resolvedTarget, "brand", "logos"));
+copyDir(join(ASSETS_ROOT, "banners"), join(resolvedTarget, "brand", "banners"));
+copyDir(
+  join(ASSETS_ROOT, "ogembeds"),
+  join(resolvedTarget, "brand", "ogembeds"),
+);
 copyDir(
   join(ASSETS_ROOT, "concepts"),
   join(resolvedTarget, "brand", "concepts"),

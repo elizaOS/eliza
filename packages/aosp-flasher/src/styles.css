@@ -5,6 +5,8 @@
   --brand-black: #000000;
   --brand-gray: #d1d0d4;
   --brand-red: #e02020;
+  --brand-green: #00c853;
+  --brand-locked: #b04000;
 
   color: var(--brand-white);
   background: var(--brand-blue);
@@ -27,10 +29,15 @@ input {
   font: inherit;
 }
 
+/* --------------------------------------------------------------------------
+   Shell
+   -------------------------------------------------------------------------- */
+
 .flasher-shell {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--brand-blue);
-  color: var(--brand-white);
 }
 
 /* Header */
@@ -40,8 +47,8 @@ input {
   color: var(--brand-white);
   display: flex;
   justify-content: space-between;
-  min-height: 180px;
-  padding: 40px clamp(20px, 5vw, 64px);
+  min-height: 140px;
+  padding: 32px clamp(20px, 5vw, 64px);
   gap: 24px;
 }
 
@@ -62,7 +69,7 @@ p {
 }
 
 h1 {
-  font-size: clamp(2.4rem, 8vw, 5.6rem);
+  font-size: clamp(2rem, 6vw, 4rem);
   font-weight: 800;
   line-height: 0.95;
   letter-spacing: -0.02em;
@@ -71,12 +78,17 @@ h1 {
 }
 
 h2 {
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-bottom: 16px;
-  color: var(--brand-black);
+}
+
+h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
 }
 
 .status-pill {
@@ -92,272 +104,343 @@ h2 {
   white-space: nowrap;
 }
 
-.status-danger {
-  background: var(--brand-red);
-  color: var(--brand-white);
-}
-
-/* Grid */
-.workspace-grid {
-  display: grid;
-  gap: 0;
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
-  padding: 0;
-  background: var(--brand-blue);
-}
-
-.panel {
+/* Body */
+.workspace-body {
+  flex: 1;
   background: var(--brand-white);
   color: var(--brand-black);
-  border: 0;
-  border-radius: 0;
-  padding: 28px clamp(20px, 3vw, 36px);
-  border-right: 1px solid var(--brand-gray);
-  border-bottom: 1px solid var(--brand-gray);
+  padding: 0;
 }
 
-.panel-header {
+/* --------------------------------------------------------------------------
+   Screen container
+   -------------------------------------------------------------------------- */
+
+.screen {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px clamp(20px, 5vw, 48px);
+}
+
+.screen-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--brand-black);
+  padding-bottom: 12px;
 }
 
-.panel-header h2 {
+.screen-header h2 {
   margin-bottom: 0;
 }
 
-/* Device list */
+/* --------------------------------------------------------------------------
+   Device detection
+   -------------------------------------------------------------------------- */
+
 .device-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.device-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border: 2px solid var(--brand-black);
+  padding: 20px;
+}
+
+.device-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.device-name {
+  font-size: 1.1rem;
+}
+
+.notice {
+  background: #f5f5f5;
+  border-left: 4px solid var(--brand-blue);
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Spec list
+   -------------------------------------------------------------------------- */
+
+.spec-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
   display: grid;
   gap: 0;
 }
 
-.device-row {
+.spec-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
   align-items: start;
-  background: var(--brand-white);
-  border: 1px solid var(--brand-gray);
-  border-radius: 0;
-  color: var(--brand-black);
-  cursor: pointer;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--brand-gray);
+}
+
+.spec-icon {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.spec-ok {
+  background: transparent;
+}
+
+.spec-warn {
+  background: rgba(255, 88, 0, 0.05);
+}
+
+.spec-locked {
+  background: rgba(176, 64, 0, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+   Build selection
+   -------------------------------------------------------------------------- */
+
+.build-list {
   display: grid;
   gap: 12px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 72px;
-  padding: 14px;
-  margin-bottom: -1px;
+  margin: 16px 0 24px;
 }
 
-.device-row.selected {
-  background: var(--brand-black);
+.build-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+  border: 2px solid var(--brand-gray);
+  padding: 16px;
+  cursor: pointer;
+}
+
+.build-card.selected {
   border-color: var(--brand-black);
-  color: var(--brand-white);
+  background: #f9f9f9;
 }
 
-.device-row.selected .muted {
-  color: var(--brand-gray);
+.build-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.device-row strong,
-.device-row span {
-  display: block;
-  min-width: 0;
+.build-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
-.muted {
-  color: #4a4a4a;
-  font-size: 0.9rem;
-  overflow-wrap: anywhere;
-}
-
-.tag {
-  display: inline-block;
+.channel-badge {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.05em;
-  margin-top: 6px;
   padding: 3px 8px;
   text-transform: uppercase;
 }
 
-.tag-ok {
-  background: #00c853;
+.channel-stable {
+  background: var(--brand-green);
   color: var(--brand-black);
 }
 
-.tag-warn {
+.channel-beta {
   background: var(--brand-orange);
   color: var(--brand-black);
 }
 
-.state-badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 4px 8px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.state-device {
-  background: #00c853;
-  color: var(--brand-black);
-}
-
-.state-bootloader {
-  background: var(--brand-orange);
-  color: var(--brand-black);
-}
-
-.state-unauthorized,
-.state-offline {
-  background: var(--brand-gray);
-  color: var(--brand-black);
-}
-
-.state-recovery {
+.channel-nightly {
   background: var(--brand-blue);
   color: var(--brand-white);
 }
 
-/* Build panel */
-.field {
+/* --------------------------------------------------------------------------
+   Pre-flash confirmation
+   -------------------------------------------------------------------------- */
+
+.confirm-box {
+  border: 2px solid var(--brand-black);
+  padding: 24px;
+}
+
+.confirm-details {
   display: grid;
   gap: 8px;
+  margin: 16px 0;
+  padding: 16px;
+  background: #f5f5f5;
+}
+
+.confirm-details div {
+  display: flex;
+  gap: 12px;
+}
+
+.confirm-details dt {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  width: 80px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.confirm-details dd {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.confirm-warning {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.confirm-list {
+  margin: 0 0 20px;
+  padding-left: 20px;
+}
+
+.confirm-list li {
+  margin-bottom: 4px;
+}
+
+.confirm-checks {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 24px;
+  padding: 16px;
+  background: rgba(224, 32, 32, 0.06);
+  border: 1px solid rgba(224, 32, 32, 0.2);
+}
+
+/* --------------------------------------------------------------------------
+   Bootloader unlock guide
+   -------------------------------------------------------------------------- */
+
+.unlock-warning {
+  background: rgba(176, 64, 0, 0.08);
+  border-left: 4px solid var(--brand-locked);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.unlock-warning ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.unlock-warning li {
+  margin-bottom: 4px;
+}
+
+.unlock-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.step-counter {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.step-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand-gray);
+}
+
+.step-dot.done {
+  background: var(--brand-green);
+}
+
+.step-dot.active {
+  background: var(--brand-black);
+}
+
+.unlock-step-card {
+  border: 2px solid var(--brand-black);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.unlock-instructions {
+  margin: 12px 0 20px;
+  padding-left: 20px;
+}
+
+.unlock-instructions li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.waiting-confirm {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 88, 0, 0.08);
+  border: 1px solid var(--brand-orange);
   margin-bottom: 16px;
 }
 
-select {
-  background: var(--brand-white);
-  border: 1px solid var(--brand-black);
-  border-radius: 0;
+.unlocked-banner {
+  background: var(--brand-green);
   color: var(--brand-black);
-  min-height: 44px;
-  padding: 0 12px;
-}
-
-.build-details {
-  display: grid;
-  gap: 10px;
-  margin: 18px 0 0;
-}
-
-.build-details div {
-  border-top: 1px solid var(--brand-gray);
-  padding-top: 10px;
-}
-
-dt {
-  color: var(--brand-black);
-  font-size: 0.72rem;
+  padding: 32px;
+  text-align: center;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  margin-bottom: 4px;
-  text-transform: uppercase;
+  font-size: 1.2rem;
 }
 
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 0.9rem;
-}
+/* --------------------------------------------------------------------------
+   Flashing progress
+   -------------------------------------------------------------------------- */
 
-/* Action panel */
-.action-panel {
-  background: var(--brand-orange);
-  color: var(--brand-black);
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  grid-column: 1 / -1;
-}
-
-.action-panel h2 {
-  color: var(--brand-black);
-  margin-bottom: 0;
-}
-
-.action-panel .muted {
-  color: var(--brand-black);
-  opacity: 0.85;
-}
-
-.ack-row {
-  align-items: start;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
-.ack-danger {
-  background: rgba(0, 0, 0, 0.08);
-  border: 2px solid var(--brand-black);
-  padding: 10px 12px;
-  font-weight: 600;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-button {
-  background: var(--brand-black);
-  border: 0;
-  border-radius: 0;
-  color: var(--brand-white);
-  cursor: pointer;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  min-height: 48px;
-  padding: 0 20px;
-  text-transform: uppercase;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.btn-small {
-  font-size: 0.78rem;
-  min-height: 32px;
-  padding: 0 12px;
-}
-
-.btn-danger {
-  background: var(--brand-red);
-  color: var(--brand-white);
-}
-
-.btn-secondary {
+.flash-progress-bar {
+  height: 6px;
   background: var(--brand-gray);
-  color: var(--brand-black);
+  margin-bottom: 20px;
 }
 
-.error {
-  color: #8b0000;
-  font-weight: 600;
-  background: rgba(255, 0, 0, 0.1);
-  padding: 8px 12px;
-}
-
-/* Progress panel */
-.progress-panel {
-  grid-column: 1 / -1;
-  background: var(--brand-black);
-  color: var(--brand-white);
-}
-
-.progress-panel h2 {
-  color: var(--brand-white);
+.flash-progress-fill {
+  height: 100%;
+  background: var(--brand-blue);
+  transition: width 0.3s ease;
 }
 
 .step-list {
   display: grid;
-  gap: 10px;
-  margin: 0;
+  gap: 0;
+  margin: 20px 0;
   padding-left: 0;
   list-style: none;
 }
@@ -377,25 +460,25 @@ button:disabled {
 
 .step-running {
   border-left-color: var(--brand-blue);
-  background: rgba(11, 53, 241, 0.08);
+  background: rgba(11, 53, 241, 0.06);
 }
 
 .step-complete {
-  border-left-color: #00c853;
+  border-left-color: var(--brand-green);
 }
 
 .step-failed {
   border-left-color: var(--brand-red);
-  background: rgba(224, 32, 32, 0.08);
+  background: rgba(224, 32, 32, 0.06);
 }
 
 .step-waiting-user {
   border-left-color: var(--brand-orange);
-  background: rgba(255, 88, 0, 0.12);
+  background: rgba(255, 88, 0, 0.08);
 }
 
 .step-icon {
-  font-size: 1.2rem;
+  font-size: 1rem;
   margin-top: 2px;
 }
 
@@ -405,62 +488,201 @@ button:disabled {
 }
 
 .step-label {
-  color: var(--brand-white);
   font-size: 0.95rem;
 }
 
 .step-detail {
-  color: var(--brand-gray);
+  color: #555;
   font-size: 0.82rem;
   font-family: monospace;
   overflow-wrap: anywhere;
 }
 
 .user-action {
-  color: var(--brand-orange);
+  color: #b04000;
   font-weight: 700;
   font-size: 0.95rem;
   margin: 0;
   padding: 6px 10px;
-  background: rgba(255, 88, 0, 0.15);
+  background: rgba(255, 88, 0, 0.1);
   border: 1px solid var(--brand-orange);
 }
 
-/* Confirmation modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
+.terminal-output {
+  background: #111;
+  color: #eee;
+  font-family: monospace;
+  font-size: 0.82rem;
+  padding: 12px 16px;
+  border-radius: 0;
+  margin-top: 16px;
+  display: grid;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
 }
 
-.modal-box {
-  background: var(--brand-white);
+.terminal-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+   Complete screen
+   -------------------------------------------------------------------------- */
+
+.screen-complete {
+  text-align: center;
+}
+
+.complete-banner {
+  padding: 32px;
+  background: rgba(0, 200, 83, 0.08);
+  border: 2px solid var(--brand-green);
+  margin-bottom: 28px;
+}
+
+.complete-icon {
+  font-size: 3rem;
+  margin: 0 0 12px;
+}
+
+.complete-next {
+  text-align: left;
+  margin-bottom: 32px;
+}
+
+.complete-next ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.complete-next li {
+  margin-bottom: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Common elements
+   -------------------------------------------------------------------------- */
+
+.muted {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-top: 6px;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.tag-ok {
+  background: var(--brand-green);
   color: var(--brand-black);
-  max-width: 480px;
-  padding: 36px;
-  width: 90%;
 }
 
-.modal-box h2 {
+.tag-warn {
+  background: var(--brand-orange);
   color: var(--brand-black);
-  font-size: 1.2rem;
 }
 
-.modal-warning {
-  line-height: 1.6;
-  margin-bottom: 24px;
+.tag-error {
+  background: var(--brand-red);
+  color: var(--brand-white);
 }
 
-.modal-actions {
+.error {
+  color: #8b0000;
+  font-weight: 600;
+  background: rgba(255, 0, 0, 0.08);
+  padding: 10px 14px;
+  border-left: 3px solid var(--brand-red);
+  margin: 12px 0;
+}
+
+.action-row {
   display: flex;
   gap: 12px;
+  margin-top: 24px;
 }
 
-/* Footer */
+.action-row-split {
+  justify-content: space-between;
+}
+
+/* Buttons */
+button,
+a.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-height: 48px;
+  padding: 0 20px;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn-primary {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.btn-danger {
+  background: var(--brand-red);
+  color: var(--brand-white);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--brand-black);
+  border: 2px solid var(--brand-black);
+}
+
+.btn-small {
+  font-size: 0.78rem;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+/* Checkboxes */
+.ack-row {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  cursor: pointer;
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+
 .footer-band {
   background: var(--brand-black);
   color: var(--brand-white);
@@ -468,12 +690,12 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 32px clamp(20px, 5vw, 64px);
+  padding: 24px clamp(20px, 5vw, 64px);
 }
 
 .footer-brand {
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -484,39 +706,40 @@ button:disabled {
   color: var(--brand-white);
   font-weight: 700;
   letter-spacing: 0.04em;
-  padding: 14px 22px;
+  padding: 12px 20px;
   text-decoration: none;
   text-transform: uppercase;
 }
 
-/* Responsive */
-@media (max-width: 820px) {
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
   .header-band {
     align-items: flex-start;
     flex-direction: column;
-    gap: 18px;
+    gap: 12px;
+    min-height: auto;
+    padding: 24px 20px;
   }
 
-  .workspace-grid {
-    grid-template-columns: 1fr;
+  .screen {
+    padding: 24px 16px;
   }
 
-  .panel {
-    border-right: 0;
+  .device-card {
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .device-row {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .state-badge {
-    grid-column: 2;
-    justify-self: start;
-    margin-top: 4px;
+  .action-row-split {
+    flex-direction: column;
   }
 
   .footer-band {
     flex-direction: column;
     align-items: flex-start;
+    gap: 16px;
   }
 }

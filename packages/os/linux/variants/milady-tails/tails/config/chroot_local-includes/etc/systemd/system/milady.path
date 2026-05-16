@@ -1,0 +1,9 @@
+[Unit]
+Description=Start elizaOS when the live user session is ready
+
+[Path]
+PathExists=/run/user/1000/bus
+Unit=milady.service
+
+[Install]
+WantedBy=multi-user.target

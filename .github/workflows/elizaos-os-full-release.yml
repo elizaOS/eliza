@@ -29,8 +29,18 @@ jobs:
       publish: ${{ github.event_name == 'release' || inputs.publish == true }}
     secrets: inherit
 
+  publish-apt:
+    needs: [trigger-debian-package]
+    if: needs.trigger-debian-package.result == 'success'
+    uses: ./.github/workflows/publish-apt-repo.yml
+    with:
+      version: ${{ github.ref_name }}
+      tag: ${{ github.ref_name }}
+      channel: stable
+    secrets: inherit
+
   summary:
-    needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image]
+    needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image, publish-apt]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
@@ -44,4 +54,5 @@ jobs:
             echo "| Linux ISO | ${{ needs.trigger-linux-iso.result }} |"
             echo "| Debian .deb | ${{ needs.trigger-debian-package.result }} |"
             echo "| VM Image | ${{ needs.trigger-vm-image.result }} |"
+            echo "| apt Repo | ${{ needs.publish-apt.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"

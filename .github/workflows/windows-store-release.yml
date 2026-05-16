@@ -1,0 +1,225 @@
+name: Windows Store Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version string (e.g. 2.0.0-beta.0)
+        type: string
+        required: true
+      tag:
+        description: Git tag / GitHub release tag to download artifacts from
+        type: string
+        required: true
+      submit_to_store:
+        description: Submit MSIX to Windows Store via Partner Center API
+        type: boolean
+        default: true
+    secrets:
+      WINDOWS_SIGN_CERT_BASE64:
+        required: false
+      WINDOWS_SIGN_CERT_PASSWORD:
+        required: false
+      MS_TENANT_ID:
+        required: false
+      MS_CLIENT_ID:
+        required: false
+      MS_CLIENT_SECRET:
+        required: false
+      MS_APP_ID:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version string (e.g. 2.0.0-beta.0)
+        type: string
+        required: true
+      tag:
+        description: Git tag / GitHub release tag to download artifacts from
+        type: string
+        required: true
+      submit_to_store:
+        description: Submit MSIX to Windows Store via Partner Center API
+        type: boolean
+        default: true
+
+jobs:
+  build-msix:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    outputs:
+      can_submit: ${{ steps.store.outputs.can_submit }}
+      msix_path: ${{ steps.build.outputs.msix_path }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Check signing credentials
+        id: sign
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}")) {
+            Write-Warning "WINDOWS_SIGN_CERT_BASE64 not set — MSIX will be built unsigned"
+            "can_sign=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            "can_sign=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Check Partner Center credentials
+        id: store
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty("${{ secrets.MS_TENANT_ID }}")) {
+            Write-Warning "MS_TENANT_ID not set — MSIX will be built but not submitted to Windows Store"
+            "can_submit=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            "can_submit=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Download Windows installer from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          gh release download "${{ inputs.tag }}" --pattern "*windows*" --dir artifacts/ 2>&1 | Write-Host
+          Get-ChildItem artifacts/
+
+      - name: Decode signing cert
+        if: steps.sign.outputs.can_sign == 'true'
+        shell: pwsh
+        run: |
+          [System.Convert]::FromBase64String("${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}") |
+            Set-Content -Path signing.pfx -AsByteStream
+
+      - name: Build MSIX
+        id: build
+        shell: pwsh
+        env:
+          WINDOWS_SIGN_CERT_BASE64: ${{ steps.sign.outputs.can_sign == 'true' && secrets.WINDOWS_SIGN_CERT_BASE64 || '' }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ steps.sign.outputs.can_sign == 'true' && secrets.WINDOWS_SIGN_CERT_PASSWORD || '' }}
+          ELIZA_BUILD_VARIANT: store
+        run: |
+          $version = "${{ inputs.version }}"
+          New-Item -ItemType Directory -Force -Path dist-msix | Out-Null
+
+          & packages/app-core/packaging/msix/build-msix.ps1 `
+            -BuildDir artifacts `
+            -OutputDir dist-msix `
+            -Version $version
+
+          $msix = Get-ChildItem -Recurse -Filter "*.msix" | Select-Object -First 1
+          if (-not $msix) { Write-Error "No .msix file produced"; exit 1 }
+          $dest = "Eliza-$version.msix"
+          Copy-Item $msix.FullName $dest
+          "MSIX_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "msix_path=$dest" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Built: $dest ($([Math]::Round($msix.Length/1MB,1))MB)"
+
+      - name: Attach MSIX to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag }}"
+          if (!(gh release view $tag 2>$null)) {
+            Write-Warning "No GitHub release for $tag — skipping upload"
+            exit 0
+          }
+          gh release upload $tag $env:MSIX_PATH --clobber
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix-${{ inputs.version }}
+          path: Eliza-${{ inputs.version }}.msix
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Cleanup secrets
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Force signing.pfx -ErrorAction SilentlyContinue
+
+  submit-to-store:
+    needs: [build-msix]
+    if: needs.build-msix.result == 'success' && inputs.submit_to_store == true && needs.build-msix.outputs.can_submit == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-msix-${{ inputs.version }}
+
+      - name: Submit to Partner Center
+        shell: pwsh
+        env:
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
+          MS_APP_ID: ${{ secrets.MS_APP_ID }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Get Azure AD access token
+          $token = (Invoke-RestMethod `
+            -Uri "https://login.microsoftonline.com/$env:MS_TENANT_ID/oauth2/v2.0/token" `
+            -Method POST `
+            -Body @{
+              grant_type    = "client_credentials"
+              client_id     = $env:MS_CLIENT_ID
+              client_secret = $env:MS_CLIENT_SECRET
+              scope         = "https://manage.devcenter.microsoft.com/.default"
+            }).access_token
+          $h = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+          $base = "https://manage.devcenter.microsoft.com/v1.0/my/applications/$env:MS_APP_ID"
+
+          # Verify app exists
+          $app = Invoke-RestMethod -Uri $base -Headers $h
+          Write-Host "App: $($app.primaryName)"
+
+          # Delete any pending submission
+          try {
+            $subs = Invoke-RestMethod -Uri "$base/submissions" -Headers $h
+            if ($subs.pendingApplicationSubmission) {
+              $pid = $subs.pendingApplicationSubmission.id
+              Invoke-RestMethod -Uri "$base/submissions/$pid" -Method DELETE -Headers $h
+              Write-Host "Deleted pending submission: $pid"
+            }
+          } catch { Write-Host "No pending submission" }
+
+          # Create new submission
+          $sub = Invoke-RestMethod -Uri "$base/submissions" -Method POST -Headers $h -Body "{}"
+          $sid = $sub.id
+          $sasUrl = $sub.fileUploadUrl
+          Write-Host "Created submission: $sid"
+
+          # Pack MSIX into zip and upload via SAS
+          $msix = Get-ChildItem -Filter "*.msix" | Select-Object -First 1
+          Compress-Archive -Path $msix.FullName -DestinationPath submission.zip -Force
+          $bytes = [IO.File]::ReadAllBytes("submission.zip")
+          Invoke-RestMethod -Uri $sasUrl -Method PUT `
+            -Headers @{ "x-ms-blob-type" = "BlockBlob"; "Content-Type" = "application/zip" } `
+            -Body $bytes
+
+          # Update submission packages
+          $update = @{ applicationPackages = @(@{
+            fileName = $msix.Name; fileStatus = "PendingUpload"
+            minimumDirectXVersion = "None"; minimumSystemRam = "None"
+          }) } | ConvertTo-Json -Depth 5
+          Invoke-RestMethod -Uri "$base/submissions/$sid" -Method PUT -Headers $h -Body $update
+
+          # Commit
+          Invoke-RestMethod -Uri "$base/submissions/$sid/commit" -Method POST -Headers $h
+          Write-Host "Committed submission $sid"
+          Write-Host "Review: https://partner.microsoft.com/dashboard/products/$env:MS_APP_ID/submissions/$sid"
+          Write-Host "Note: Store review takes 1-3 business days."
+
+      - name: Cleanup
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Force submission.zip -ErrorAction SilentlyContinue

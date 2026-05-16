@@ -1,0 +1,136 @@
+name: Publish to apt Repository
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+      channel:
+        description: apt repo codename (stable | beta)
+        required: false
+        type: string
+        default: stable
+    secrets:
+      DEBIAN_GPG_PRIVATE_KEY:
+        required: true
+      DEBIAN_GPG_KEY_ID:
+        required: true
+      DEBIAN_GPG_PASSPHRASE:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+      channel:
+        description: apt repo codename (stable | beta)
+        required: false
+        type: string
+        default: stable
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  publish-apt:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check GPG credentials
+        id: gpg_check
+        env:
+          DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$DEBIAN_GPG_PRIVATE_KEY" ]]; then
+            echo "::warning::DEBIAN_GPG_PRIVATE_KEY not configured. Apt repo publish skipped."
+            echo "can_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout apt-repo branch
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: apt-repo
+          path: apt-repo
+          fetch-depth: 0
+
+      - name: Checkout main repo (for conf files)
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          path: src-repo
+          submodules: false
+
+      - name: Import GPG key
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        env:
+          DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
+          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
+        run: |
+          echo "$DEBIAN_GPG_PRIVATE_KEY" | gpg --batch --import
+          # Trust the key
+          KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | head -1 | cut -d: -f5)
+          echo "$KEY_ID:6:" | gpg --import-ownertrust
+
+      - name: Install reprepro
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: sudo apt-get install -y reprepro
+
+      - name: Download .deb from release
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/deb
+          gh release download "${{ inputs.tag }}" --pattern "*.deb" --dir /tmp/deb/
+          ls -la /tmp/deb/
+
+      - name: Add .deb to reprepro
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        env:
+          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
+        run: |
+          CODENAME="${{ inputs.channel }}"
+          # Ensure conf/ exists in apt-repo branch
+          mkdir -p apt-repo/conf
+          cp src-repo/packages/app-core/packaging/debian/apt-repo-config/conf/distributions apt-repo/conf/distributions
+
+          # Add the package
+          cd apt-repo
+          if [[ -n "$DEBIAN_GPG_PASSPHRASE" ]]; then
+            echo "$DEBIAN_GPG_PASSPHRASE" | reprepro --ask-passphrase includedeb "$CODENAME" /tmp/deb/*.deb
+          else
+            reprepro includedeb "$CODENAME" /tmp/deb/*.deb
+          fi
+
+      - name: Export GPG public key
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          gpg --armor --export > apt-repo/gpg.key
+
+      - name: Commit and push apt-repo branch
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          cd apt-repo
+          git config user.name "elizaOS CI"
+          git config user.email "ci@elizaos.ai"
+          git add -A
+          git commit -m "chore: add elizaos-app ${{ inputs.version }} to apt repo" || echo "Nothing to commit"
+          git push origin apt-repo

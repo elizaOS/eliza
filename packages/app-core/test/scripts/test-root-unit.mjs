@@ -132,7 +132,7 @@ const unitShards = [
         "eliza/packages/shared/src",
         "eliza/packages/app-core/test/live-agent",
         "eliza/packages/app-core/scripts",
-        "eliza/packages/native-plugins/llama/src",
+        "eliza/plugins/plugin-native-llama/src",
       ),
       ...[
         "eliza/packages/app-core/platforms/electrobun/src/menu-reset-from-main.test.ts",

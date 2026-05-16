@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { injectLatency } from "./latency";
 import {
   createAction,
@@ -261,11 +261,7 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
 
 // ---- Helpers ------------------------------------------------------------
 
-function notFound(
-  c: Parameters<Parameters<Hono["get"]>[1]>[0],
-  resource: string,
-  id: number,
-) {
+function notFound(c: Context, resource: string, id: number) {
   return c.json<ErrorEnvelope>(
     { error: { code: "not_found", message: `${resource} ${id} not found` } },
     404,

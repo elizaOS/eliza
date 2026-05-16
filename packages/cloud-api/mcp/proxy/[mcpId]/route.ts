@@ -7,6 +7,10 @@
  * GET /api/mcp/proxy/[mcpId] - Get MCP info
  */
 
+import {
+  calculateCreditMarkup,
+  DEFAULT_PLATFORM_FEE_RATE,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -116,8 +120,6 @@ app.post("/", async (c) => {
   }
 
   const creditsRequired = Number(mcp.credits_per_request || "1");
-  let affiliateFeeCredits = 0;
-  let platformFeeCredits = 0;
   let affiliateOwnerId: string | undefined;
   let affiliateCodeId: string | undefined;
 
@@ -135,13 +137,17 @@ app.post("/", async (c) => {
   if (referrer) {
     affiliateOwnerId = referrer.user_id;
     affiliateCodeId = referrer.id;
-    affiliateFeeCredits =
-      creditsRequired * (Number(referrer.markup_percent) / 100);
-    platformFeeCredits = creditsRequired * 0.2;
   }
 
-  const totalCreditsRequired =
-    creditsRequired + affiliateFeeCredits + platformFeeCredits;
+  const {
+    markupCredits: affiliateFeeCredits,
+    platformFeeCredits,
+    totalCredits: totalCreditsRequired,
+  } = calculateCreditMarkup({
+    baseCredits: creditsRequired,
+    markupPercent: referrer ? Number(referrer.markup_percent) : 0,
+    platformFeeRate: referrer ? DEFAULT_PLATFORM_FEE_RATE : 0,
+  });
 
   const preChargeResult = await creditsService.reserveAndDeductCredits({
     organizationId: user.organization_id,

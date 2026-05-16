@@ -232,7 +232,7 @@ export default function AppChargePaymentPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-200/70" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-200/70" />
       </div>
     );
   }
@@ -251,7 +251,7 @@ export default function AppChargePaymentPage() {
             </div>
           </div>
           <Link
-            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-white"
+            className="mt-5 inline-flex text-sm text-blue-200 hover:text-white"
             to="/"
           >
             Return home
@@ -262,13 +262,13 @@ export default function AppChargePaymentPage() {
   }
 
   const statusIcon = isPaid ? (
-    <CheckCircle2 className="h-7 w-7 text-emerald-200" />
+    <CheckCircle2 className="h-7 w-7 text-green-200" />
   ) : isExpired ? (
-    <AlertCircle className="h-7 w-7 text-amber-200" />
+    <AlertCircle className="h-7 w-7 text-orange-200" />
   ) : returnedFromPayment ? (
-    <Loader2 className="h-7 w-7 animate-spin text-cyan-200" />
+    <Loader2 className="h-7 w-7 animate-spin text-blue-200" />
   ) : (
-    <CreditCard className="h-7 w-7 text-cyan-200" />
+    <CreditCard className="h-7 w-7 text-blue-200" />
   );
   const statusText = isPaid
     ? "Paid"
@@ -278,9 +278,9 @@ export default function AppChargePaymentPage() {
         ? "Confirming"
         : "Ready";
   const statusClass = isPaid
-    ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100"
+    ? "border-green-300/30 bg-green-400/10 text-green-100"
     : isExpired
-      ? "border-amber-300/30 bg-amber-400/10 text-amber-100"
+      ? "border-orange-300/30 bg-orange-400/10 text-orange-100"
       : "border-[#0B35F1]/30 bg-[#0B35F1]/10 text-white";
   const shortId = charge.id.slice(0, 8);
 
@@ -337,7 +337,7 @@ export default function AppChargePaymentPage() {
               {statusText} - expires {formatDate(charge.expiresAt)}
             </div>
             {charge.paidAt && (
-              <div className="mt-2 text-xs text-emerald-200/75">
+              <div className="mt-2 text-xs text-green-200/75">
                 Confirmed {formatDate(charge.paidAt)}
               </div>
             )}
@@ -352,7 +352,7 @@ export default function AppChargePaymentPage() {
 
           {returnedFromPayment && !isPaid && !isExpired && (
             <div className="mt-7 flex items-center gap-3 border border-[#0B35F1]/25 bg-[#0B35F1]/10 p-3 text-sm text-white">
-              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-cyan-200" />
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-200" />
               <span>Waiting for confirmation.</span>
             </div>
           )}
@@ -367,7 +367,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("stripe")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-amber-300/25 bg-amber-400/10 text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-300/15 disabled:pointer-events-none disabled:opacity-30"
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-orange-300/25 bg-orange-400/10 text-orange-100 transition hover:border-orange-200/60 hover:bg-orange-300/15 disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "stripe" ? (
                 <Loader2 className="h-9 w-9 animate-spin" />
@@ -385,7 +385,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("oxapay")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-emerald-300/25 bg-emerald-400/10 text-emerald-100 transition hover:border-emerald-200/60 hover:bg-emerald-300/15 disabled:pointer-events-none disabled:opacity-30"
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-green-300/25 bg-green-400/10 text-green-100 transition hover:border-green-200/60 hover:bg-green-300/15 disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "oxapay" ? (
                 <Loader2 className="h-9 w-9 animate-spin" />

@@ -20,10 +20,10 @@ import { ElizaConnectButton } from "../../_components/eliza-connect-button";
 function statusBadgeColor(status: string): string {
   switch (status) {
     case "running":
-      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
+      return "border-green-500/40 bg-green-500/10 text-green-300";
     case "provisioning":
     case "pending":
-      return "border-amber-500/40 bg-amber-500/10 text-amber-300";
+      return "border-orange-500/40 bg-orange-500/10 text-orange-300";
     case "failed":
     case "error":
       return "border-red-500/40 bg-red-500/10 text-red-300";
@@ -38,10 +38,10 @@ function statusBadgeColor(status: string): string {
 function statusDotColor(status: string): string {
   switch (status) {
     case "running":
-      return "bg-emerald-400";
+      return "bg-green-400";
     case "provisioning":
     case "pending":
-      return "bg-amber-400";
+      return "bg-orange-400";
     case "failed":
     case "error":
       return "bg-red-400";
@@ -307,9 +307,9 @@ export default function AgentDetailPage() {
 
             <div className="space-y-2">
               <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                <Terminal className="h-4 w-4 text-emerald-400 shrink-0" />
+                <Terminal className="h-4 w-4 text-green-400 shrink-0" />
                 <code
-                  className="text-sm text-emerald-400 font-mono flex-1"
+                  className="text-sm text-green-400 font-mono flex-1"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 >
                   {adminDetails.sshCommand}
@@ -398,7 +398,7 @@ function InfoCell({
 }) {
   const valueColor =
     accent === "emerald"
-      ? "text-emerald-400"
+      ? "text-green-400"
       : accent === "blue"
         ? "text-blue-400"
         : accent === "orange"

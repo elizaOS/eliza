@@ -1,3 +1,4 @@
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
@@ -12,9 +13,9 @@ function StewardLoginSectionFallback() {
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
     <CloudVideoBackground
-      basePath="/clouds"
+      basePath={BRAND_PATHS.clouds}
       speed="4x"
-      poster="/clouds/poster.jpg"
+      poster={BRAND_PATHS.poster}
       scrim={0.82}
       scrimColor="rgba(0,0,0,1)"
       className="theme-cloud min-h-screen bg-black text-white"
@@ -40,21 +41,21 @@ export default function LoginPage() {
       <div className="space-y-6">
         <div className="space-y-2 text-center">
           <img
-            src="/brand/logos/elizacloud_logotext.svg"
-            alt="eliza cloud"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
+            alt="Eliza Cloud"
             className="mx-auto h-8 w-auto"
             draggable={false}
           />
           <h1 className="font-poppins text-2xl font-semibold text-white">
             Sign in
           </h1>
-          <p className="text-sm text-white/70">Run your Eliza in Cloud.</p>
+          <p className="text-sm text-white/70">Run Eliza in Cloud.</p>
         </div>
         <Suspense fallback={<StewardLoginSectionFallback />}>
           <StewardLoginSection />
         </Suspense>
-        <p className="border-t border-white/14 pt-4 text-center text-xs text-white/60">
-          By signing in, you agree to our{" "}
+        <p className="border-t border-white/14 pt-4 text-center text-xs text-white/74">
+          By signing in, you agree to the{" "}
           <Link
             to="/terms-of-service"
             className="text-white transition-colors hover:text-[#FF5800]"

@@ -4,7 +4,7 @@
  * making it safe to import from client components.
  */
 
-import { PLATFORM_MARKUP_MULTIPLIER } from "../billing/index.ts";
+import { PLATFORM_MARKUP_MULTIPLIER } from "../billing";
 
 /**
  * API key prefix length for display purposes.

@@ -324,9 +324,9 @@ export default function AgentDetailPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                  <Terminal className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <Terminal className="h-4 w-4 text-green-400 shrink-0" />
                   <code
-                    className="text-sm text-emerald-400 font-mono flex-1"
+                    className="text-sm text-green-400 font-mono flex-1"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
                   >
                     {adminDetails.sshCommand}
@@ -418,7 +418,7 @@ function InfoCell({
 }) {
   const valueColor =
     accent === "emerald"
-      ? "text-emerald-400"
+      ? "text-green-400"
       : accent === "blue"
         ? "text-blue-400"
         : accent === "orange"

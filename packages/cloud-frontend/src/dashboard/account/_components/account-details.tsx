@@ -67,8 +67,8 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                     </>
                   ) : (
                     <>
-                      <XCircle className="h-4 w-4 text-amber-400" />
-                      <span className="rounded-none border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                      <XCircle className="h-4 w-4 text-orange-400" />
+                      <span className="rounded-none border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
                         Not Verified
                       </span>
                     </>
@@ -93,8 +93,8 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                     </>
                   ) : (
                     <>
-                      <XCircle className="h-4 w-4 text-amber-400" />
-                      <span className="rounded-none border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">
+                      <XCircle className="h-4 w-4 text-orange-400" />
+                      <span className="rounded-none border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
                         Not Verified
                       </span>
                     </>
@@ -108,7 +108,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                 Account Status
               </p>
               <span
-                className={`rounded-none px-2 py-1 text-xs font-bold uppercase tracking-wide border ${user.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-rose-500/20 text-rose-400 border-rose-500/40"}`}
+                className={`rounded-none px-2 py-1 text-xs font-bold uppercase tracking-wide border ${user.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
               >
                 {user.is_active ? "Active" : "Inactive"}
               </span>

@@ -161,21 +161,20 @@ function readPositiveIntegerSetting(
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
-  const optIn = readRuntimeStringSetting(
+  const optOut = readRuntimeStringSetting(
     runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY",
   );
+  if (/^(0|false|no|off)$/i.test(optOut ?? "")) {
+    return false;
+  }
   const platform =
     readRuntimeStringSetting(runtime, "ELIZA_MOBILE_PLATFORM") ??
     readRuntimeStringSetting(runtime, "ELIZA_PLATFORM");
   const localLlama =
     readRuntimeStringSetting(runtime, "ELIZA_LOCAL_LLAMA") === "1" ||
     readRuntimeStringSetting(runtime, "ELIZA_DEVICE_BRIDGE_ENABLED") === "1";
-  return (
-    platform?.toLowerCase() === "android" &&
-    localLlama &&
-    /^(1|true|yes|on)$/i.test(optIn ?? "")
-  );
+  return platform?.toLowerCase() === "android" && localLlama;
 }
 
 function hasAndroidLocalDirectChatBlockingContent(
@@ -204,7 +203,13 @@ function hasAndroidLocalDirectChatBlockingContent(
 
 function isAndroidLocalDirectChatChannel(content: Content): boolean {
   const channelType = (content as Record<string, unknown>).channelType;
-  return channelType === ChannelType.VOICE_DM;
+  return (
+    channelType === ChannelType.API ||
+    channelType === ChannelType.DM ||
+    channelType === ChannelType.SELF ||
+    channelType === ChannelType.VOICE_DM ||
+    channelType === undefined
+  );
 }
 
 function shouldUseAndroidLocalDirectChat(
@@ -214,7 +219,9 @@ function shouldUseAndroidLocalDirectChat(
   if (!isAndroidLocalDirectChatRuntime(runtime)) {
     return false;
   }
-  const text = extractCompatTextContent(message.content).trim();
+  const text = normalizeAndroidLocalDirectUserText(
+    extractCompatTextContent(message.content),
+  );
   if (!text || text.length > 700) {
     return false;
   }
@@ -250,6 +257,13 @@ function escapeAndroidLocalChatTemplateTokens(text: string): string {
     .replaceAll("</think>", "</ think >");
 }
 
+function normalizeAndroidLocalDirectUserText(text: string): string {
+  return text
+    .replace(/(^|\s)\/(?:no_)?think\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildAndroidLocalDirectChatPrompt(args: {
   runtime: AgentRuntime;
   userText: string;
@@ -268,6 +282,14 @@ function buildAndroidLocalDirectChatPrompt(args: {
     escapeAndroidLocalChatTemplateTokens(args.userText),
     "<|im_end|>",
     "<|im_start|>assistant",
+    // Match llama.cpp's Qwen3 `enable_thinking=false` chat-template shape.
+    // The direct mobile path is for short voice/chat replies; pre-filling an
+    // empty think block prevents the model from spending its first tokens on
+    // hidden `<think>...</think>` scaffolding before any speakable text.
+    "<think>",
+    "",
+    "</think>",
+    "",
   ].join("\n");
 }
 
@@ -353,7 +375,10 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   if (!shouldUseAndroidLocalDirectChat(args.runtime, args.message)) {
     return null;
   }
-  const userText = extractCompatTextContent(args.message.content).trim();
+  const userText = normalizeAndroidLocalDirectUserText(
+    extractCompatTextContent(args.message.content),
+  );
+  if (!userText) return null;
   const prompt = buildAndroidLocalDirectChatPrompt({
     runtime: args.runtime,
     userText,
@@ -405,6 +430,9 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     stopSequences: ["<|im_end|>", "<|im_start|>"],
     temperature: 0,
     providerOptions: {
+      eliza: {
+        thinking: "off",
+      },
       androidLocal: {
         stopOnFirstSentence: true,
         minFirstSentenceChars: 12,

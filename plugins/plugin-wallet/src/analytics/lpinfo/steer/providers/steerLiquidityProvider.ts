@@ -36,15 +36,6 @@ export const steerLiquidityProvider: Provider = {
   cacheScope: "turn",
   roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    console.log("🚀 STEER_LIQUIDITY provider called");
-    console.log("📝 Message content:", message.content.text);
-    console.log("📺 Channel type:", message.content.channelType);
-    console.log("🔧 Runtime methods available:", {
-      getService: !!runtime.getService,
-      getCache: !!runtime.getCache,
-      getSetting: !!runtime.getSetting,
-    });
-
     let liquidityInfo = "";
 
     try {
@@ -53,7 +44,6 @@ export const steerLiquidityProvider: Provider = {
         "STEER_LIQUIDITY_SERVICE",
       ) as SteerLiquidityService;
       if (!steerLiquidityService) {
-        console.log("Steer liquidity service not available");
         return {
           data: {},
           values: {},
@@ -61,27 +51,21 @@ export const steerLiquidityProvider: Provider = {
         };
       }
 
-      console.log("Steer liquidity service found, generating report...");
-
       liquidityInfo += `=== STEER FINANCE LIQUIDITY POOLS REPORT ===\n\n`;
 
       // Extract token address and chain from message content
       const content = message.content.text || "";
-      console.log("Searching for token address and chain in content:", content);
 
       // More flexible regex to catch various formats
       const tokenMatch = content.match(/(0x[a-fA-F0-9]{40})/);
-      console.log("Token match result:", tokenMatch);
 
       // Also try to find any 0x pattern that might be a token address
       const anyHexMatch = content.match(/(0x[a-fA-F0-9]+)/);
-      console.log("Any hex match result:", anyHexMatch);
 
       // Extract chain name from content
       const chainMatch = content.match(
         /\b(base|ethereum|mainnet|polygon|arbitrum|optimism)\b/i,
       );
-      console.log("Chain match result:", chainMatch);
 
       // Map chain names to chain IDs
       const chainNameToId: { [key: string]: number } = {
@@ -96,7 +80,6 @@ export const steerLiquidityProvider: Provider = {
       const targetChainId = chainMatch
         ? chainNameToId[chainMatch[1].toLowerCase()]
         : null;
-      console.log("Target chain ID:", targetChainId);
 
       // Validate chain if specified
       if (
@@ -115,7 +98,6 @@ export const steerLiquidityProvider: Provider = {
 
       if (tokenMatch) {
         const tokenIdentifier = tokenMatch[1];
-        console.log(`Token identifier found: ${tokenIdentifier}`);
 
         // Validate token address format
         if (!isValidEthereumAddress(tokenIdentifier)) {

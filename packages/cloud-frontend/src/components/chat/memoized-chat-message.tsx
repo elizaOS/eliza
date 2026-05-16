@@ -722,7 +722,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                     {/* Elegant blinking cursor for streaming messages */}
                     {isStreamingMessage && (
                       <span
-                        className="streaming-cursor inline-block w-[3px] h-[1.1em] bg-gradient-to-b from-[#FF5800] to-[#FF5800]/60 ml-0.5 rounded-sm align-text-bottom"
+                        className="streaming-cursor inline-block w-[3px] h-[1.1em] bg-[#FF5800] ml-0.5 rounded-sm align-text-bottom"
                         style={{
                           verticalAlign: "text-bottom",
                           marginBottom: "2px",

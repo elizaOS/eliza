@@ -592,18 +592,18 @@ export function ApiTester({
       {endpoint.pricing && (
         <Card className="border-border/60 bg-background/60 rounded-none overflow-hidden">
           <div
-            className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-emerald-500" : endpoint.pricing.isVariable ? "bg-amber-500" : "bg-[#FF5800]"}`}
+            className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-green-500" : endpoint.pricing.isVariable ? "bg-orange-500" : "bg-[#FF5800]"}`}
           />
           <CardContent className="pt-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div
-                  className={`p-2.5 rounded-lg ${endpoint.pricing.isFree ? "bg-emerald-500/10" : endpoint.pricing.isVariable ? "bg-amber-500/10" : "bg-[#FF5800]/10"}`}
+                  className={`p-2.5 rounded-lg ${endpoint.pricing.isFree ? "bg-green-500/10" : endpoint.pricing.isVariable ? "bg-orange-500/10" : "bg-[#FF5800]/10"}`}
                 >
                   {endpoint.pricing.isFree ? (
-                    <Sparkles className={`h-5 w-5 text-emerald-400`} />
+                    <Sparkles className={`h-5 w-5 text-green-400`} />
                   ) : endpoint.pricing.isVariable ? (
-                    <TrendingUp className={`h-5 w-5 text-amber-400`} />
+                    <TrendingUp className={`h-5 w-5 text-orange-400`} />
                   ) : (
                     <Coins className={`h-5 w-5 text-[#FF5800]`} />
                   )}
@@ -611,7 +611,7 @@ export function ApiTester({
                 <div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-emerald-400" : endpoint.pricing.isVariable ? "text-amber-400" : "text-[#FF5800]"}`}
+                      className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-green-400" : endpoint.pricing.isVariable ? "text-orange-400" : "text-[#FF5800]"}`}
                     >
                       {formatEndpointPrice(endpoint.pricing)}
                     </span>
@@ -629,9 +629,9 @@ export function ApiTester({
                 </div>
               </div>
               {endpoint.pricing.isVariable && !endpoint.pricing.isFree && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                  <Info className="h-3.5 w-3.5 text-amber-400" />
-                  <span className="text-xs text-amber-400 font-medium">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-500/10 border border-orange-500/20 rounded-md">
+                  <Info className="h-3.5 w-3.5 text-orange-400" />
+                  <span className="text-xs text-orange-400 font-medium">
                     Variable pricing
                   </span>
                 </div>
@@ -1001,8 +1001,8 @@ export function ApiTester({
                         className={cn(
                           "rounded-none px-2.5 py-1 text-xs font-medium",
                           response.success
-                            ? "bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/30 dark:text-emerald-300"
-                            : "bg-rose-500/10 text-rose-600 ring-1 ring-inset ring-rose-500/30 dark:text-rose-300",
+                            ? "bg-green-500/10 text-green-600 ring-1 ring-inset ring-green-500/30 dark:text-green-300"
+                            : "bg-red-500/10 text-red-600 ring-1 ring-inset ring-red-500/30 dark:text-red-300",
                         )}
                       >
                         {response.status} {response.statusText}

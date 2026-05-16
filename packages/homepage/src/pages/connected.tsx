@@ -224,6 +224,7 @@ export default function ConnectedPage() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              aria-label="Open user menu"
               className="focus:outline-none focus:ring-2 focus:ring-black/30 rounded-full"
             >
               {user.avatar ? (
@@ -235,7 +236,7 @@ export default function ConnectedPage() {
                   className="rounded-full cursor-pointer hover:ring-2 hover:ring-white/20 transition-all"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-white/20 transition-all">
+                <div className="w-9 h-9 rounded-full bg-black flex items-center justify-center text-white text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-white/20 transition-all">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -243,7 +244,7 @@ export default function ConnectedPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-48 bg-[#1a1a1c] border-white/10 text-white"
+            className="w-48 bg-black border-white/10 text-white rounded-sm"
           >
             <div className="px-2 py-2 border-b border-white/10">
               <p className="text-sm font-medium">{displayName}</p>
@@ -322,6 +323,7 @@ export default function ConnectedPage() {
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy Telegram link"
+                aria-label="Copy Telegram link"
               >
                 {copiedTelegram ? (
                   <Check className="size-5 text-green-400" />
@@ -372,6 +374,7 @@ export default function ConnectedPage() {
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy number"
+                aria-label="Copy phone number"
               >
                 {copiedPhone ? (
                   <Check className="size-5 text-green-400" />

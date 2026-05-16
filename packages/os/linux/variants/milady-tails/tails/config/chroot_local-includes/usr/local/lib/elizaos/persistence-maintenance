@@ -1,0 +1,54 @@
+#!/bin/sh
+
+set -eu
+
+flag=/run/elizaos/persistence-maintenance
+runtime_dir=/run/user/1000
+bus="unix:path=${runtime_dir}/bus"
+units="elizaos-agent.service elizaos-renderer.service milady.service"
+patterns='/opt/milady/bin/bun|/opt/milady/bin/launcher|/usr/local/lib/elizaos/elizaos-webkit-shell|/usr/local/lib/elizaos/start-elizaos-|renderer-server[.]mjs|eliza-dist/entry[.]js'
+
+user_systemctl() {
+    [ -S "${runtime_dir}/bus" ] || return 0
+    runuser -u amnesia -- env \
+        HOME=/home/amnesia \
+        XDG_RUNTIME_DIR="${runtime_dir}" \
+        DBUS_SESSION_BUS_ADDRESS="${bus}" \
+        systemctl --user "$@" >/dev/null 2>&1 || true
+}
+
+kill_elizaos_processes() {
+    user_systemctl kill --kill-whom=all --signal=TERM ${units}
+    pkill -TERM -u amnesia -f "${patterns}" >/dev/null 2>&1 || true
+    sleep 2
+    user_systemctl kill --kill-whom=all --signal=KILL ${units}
+    pkill -KILL -u amnesia -f "${patterns}" >/dev/null 2>&1 || true
+}
+
+start_elizaos_units() {
+    user_systemctl reset-failed ${units}
+    user_systemctl start --no-block elizaos-agent.service
+    user_systemctl start --no-block elizaos-renderer.service
+    user_systemctl start --no-block milady.service
+}
+
+case "${1:-}" in
+    enter)
+        mkdir -p /run/elizaos
+        printf 'persistent-storage\n' > "${flag}"
+        kill_elizaos_processes
+        ;;
+    leave)
+        rm -f "${flag}"
+        start_elizaos_units
+        ;;
+    wait)
+        while [ -e "${flag}" ]; do
+            sleep 1
+        done
+        ;;
+    *)
+        echo "usage: persistence-maintenance enter|leave|wait" >&2
+        exit 64
+        ;;
+esac

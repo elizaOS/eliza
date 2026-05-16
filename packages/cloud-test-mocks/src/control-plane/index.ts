@@ -42,6 +42,10 @@ export async function startControlPlaneMock(
     hostname: options.hostname ?? "127.0.0.1",
     fetch: app.fetch,
   });
+  const port = server.port;
+  if (typeof port !== "number") {
+    throw new Error("Control plane mock server did not bind to a numeric port");
+  }
 
   const tickMs = options.tickMs ?? 0;
   let interval: ReturnType<typeof setInterval> | null = null;
@@ -58,8 +62,8 @@ export async function startControlPlaneMock(
       if (interval) clearInterval(interval);
       await server.stop(true);
     },
-    url: `http://${server.hostname}:${server.port}`,
-    port: server.port,
+    url: `http://${server.hostname}:${port}`,
+    port,
     store,
     tick,
     cleanupStuck,

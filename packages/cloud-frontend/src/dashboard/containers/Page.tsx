@@ -68,13 +68,13 @@ export default function ContainersPage() {
                   label="Running"
                   value={stats.running}
                   accent="emerald"
-                  icon={<Activity className="h-5 w-5 text-emerald-400" />}
+                  icon={<Activity className="h-5 w-5 text-green-400" />}
                 />
                 <DashboardStatCard
                   label="Building"
                   value={stats.building}
                   accent="amber"
-                  icon={<TrendingUp className="h-5 w-5 text-amber-400" />}
+                  icon={<TrendingUp className="h-5 w-5 text-orange-400" />}
                 />
                 <DashboardStatCard
                   label="Issues"

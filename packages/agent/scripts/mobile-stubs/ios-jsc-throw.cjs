@@ -3,7 +3,7 @@
 //
 // Currently used for: node:net, node:tls, node:dgram, node:cluster,
 // worker_threads. The Swift Capacitor plugin in
-// packages/native-plugins/bun-runtime/ exposes a fetch-based HTTP/HTTPS
+// plugins/plugin-native-bun-runtime/ exposes a fetch-based HTTP/HTTPS
 // surface plus a WebSocket bridge, but raw TCP servers, TLS sockets,
 // UDP datagrams, cluster fork, and worker threads are not in the v1
 // bridge surface. Code that reaches into these modules on ios-jsc gets

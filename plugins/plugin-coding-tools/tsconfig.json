@@ -7,7 +7,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "../..",
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -16,11 +16,18 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"]
+    }
   },
   "include": ["./**/*"],
   "exclude": [

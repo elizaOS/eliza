@@ -418,7 +418,7 @@ class StepChooseBridgeMixin:
                     "To save your bridge, "
                     '<a href="doc/persistent_storage">'
                     "create a Persistent Storage</a> "
-                    "on your Tails USB stick."
+                    "on your elizaOS USB stick."
                 )
             self.builder.get_object("step_bridge_persistence_help_label").set_label(
                 help_label

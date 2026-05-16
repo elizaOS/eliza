@@ -12,7 +12,7 @@
  *
  * The mobile-signals plugin already exposes a more elaborate Screen Time
  * status object on iOS — see
- * `eliza/packages/native-plugins/mobile-signals/ios/.../ScreenTimeSupport.swift`.
+ * `eliza/plugins/plugin-native-mobile-signals/ios/.../ScreenTimeSupport.swift`.
  * On macOS we mirror its philosophy: detect the entitlement, refuse to
  * attempt the framework call without it.
  */

@@ -9,7 +9,7 @@ export default defineConfig({
     alias: {
       "@elizaos/capacitor-wifi": resolve(
         rootDir,
-        "../../packages/native-plugins/wifi/src/index.ts",
+        "../../plugins/plugin-native-wifi/src/index.ts",
       ),
     },
   },

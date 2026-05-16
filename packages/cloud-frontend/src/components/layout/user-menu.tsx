@@ -401,7 +401,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
                   className="object-cover"
                 />
               )}
-              <AvatarFallback className="rounded-none bg-gradient-to-br from-[#FF5800]/20 to-[#FF5800]/5 font-semibold text-white">
+              <AvatarFallback className="rounded-none bg-[#FF5800]/15 font-semibold text-white">
                 {initials}
               </AvatarFallback>
             </Avatar>

@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["node", "bun-types"],
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
+      "@elizaos/cloud-test-mocks/*": ["../cloud-test-mocks/src/*"]
+    },
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "tests", "playwright.config.ts"]
+}

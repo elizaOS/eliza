@@ -344,7 +344,7 @@ export function ModelPlayground() {
                 </div>
               ) : null}
               {error ? (
-                <div className="text-sm text-amber-300/80">{error}</div>
+                <div className="text-sm text-orange-300/80">{error}</div>
               ) : null}
             </div>
           </div>

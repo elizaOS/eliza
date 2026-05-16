@@ -90,7 +90,7 @@ export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
                     <span>
                       {numberFormatter.format(provider.totalTokens)} tokens
                     </span>
-                    <span className="text-emerald-600 dark:text-emerald-400">
+                    <span className="text-green-600 dark:text-green-400">
                       {(provider.successRate * 100).toFixed(1)}% success
                     </span>
                   </div>

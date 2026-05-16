@@ -1,8 +1,8 @@
 [Desktop Entry]
 Version=1.8.4
-_Name=WhisperBack Error Reporting
-_Comment=Send feedback via encrypted e-mail
-_Keywords=feedback;bug;report;tails;error;
+_Name=Send Feedback
+_Comment=Send encrypted feedback to elizaOS support
+_Keywords=feedback;support;report;elizaos;error;
 Type=Application
 Exec=whisperback
 Icon=whisperback

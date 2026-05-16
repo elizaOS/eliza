@@ -25,8 +25,6 @@ export const kaminoPoolProvider: Provider = {
   cacheScope: "turn",
   roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    console.log("KAMINO_POOL provider called");
-
     let poolInfo = "";
 
     try {
@@ -47,8 +45,6 @@ export const kaminoPoolProvider: Provider = {
         poolInfo += "❌ Kamino liquidity service not available.\n";
       } else {
         if (poolAddress) {
-          console.log(`Pool address found: ${poolAddress}`);
-
           poolInfo += `=== KAMINO POOL ANALYSIS ===\n\n`;
           poolInfo += `🔍 Pool Address: ${poolAddress}\n\n`;
 

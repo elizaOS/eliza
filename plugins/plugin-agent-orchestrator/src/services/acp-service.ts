@@ -96,6 +96,13 @@ const DENY_ENV_PATTERNS = [
   /ELIZA_VAULT_PASSPHRASE/i,
 ];
 
+const SAFE_ELIZAOS_ENV_KEYS = new Set([
+  "ELIZAOS_BASE",
+  "ELIZAOS_CAPABILITY_RUNNER",
+  "ELIZAOS_EDITION",
+  "ELIZAOS_PRIVACY_MODE",
+]);
+
 export class AcpService extends Service {
   static serviceType = "ACP_SUBPROCESS_SERVICE";
 
@@ -1044,7 +1051,13 @@ function shouldForwardEnv(key: string): boolean {
     key === "TERM" ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
+    SAFE_ELIZAOS_ENV_KEYS.has(key) ||
     [
+      "XDG_RUNTIME_DIR",
+      "XDG_CONFIG_HOME",
+      "XDG_CACHE_HOME",
+      "XDG_DATA_HOME",
+      "XDG_STATE_HOME",
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
       "CEREBRAS_API_KEY",

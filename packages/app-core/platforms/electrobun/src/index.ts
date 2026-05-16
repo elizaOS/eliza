@@ -1038,7 +1038,27 @@ function attachMainWindow(
 		}
 	});
 
-	win.on("close", () => {
+	win.on("close", (event: unknown) => {
+		if (!isQuitting && process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY !== "0") {
+			const closeEvent = event as { preventDefault?: () => void } | undefined;
+			if (typeof closeEvent?.preventDefault === "function") {
+				closeEvent.preventDefault();
+				void getDesktopManager()
+					.hideWindow()
+					.catch((err: unknown) => {
+						logger.warn(
+							`[Main] Failed to minimize window on close: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					});
+				logger.info("[Main] Window close requested - minimized to tray");
+				showBackgroundRunNoticeOnce();
+				return;
+			}
+			logger.info(
+				"[Main] Window close requested - agent continues in background",
+			);
+		}
+
 		if (currentWindow?.id === win.id) {
 			currentWindow = null;
 			currentSendToWebview = null;

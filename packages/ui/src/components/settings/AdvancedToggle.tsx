@@ -120,7 +120,7 @@ export function AdvancedToggle(props: AdvancedToggleProps) {
     <label
       className={
         className ??
-        "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/50 bg-bg-hover px-3 py-1.5 text-xs-tight font-medium text-muted-strong"
+        "inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-sm border border-border/50 bg-bg-hover px-3 py-1.5 text-xs-tight font-medium text-muted-strong"
       }
     >
       <span>{label}</span>

@@ -13,6 +13,13 @@ import {
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "@elizaos/app-core";
+import {
+  type IosLocalAgentNativeRequestOptions,
+  type IosLocalAgentNativeRequestResult,
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
+  primeIosFullBunRuntime,
+} from "@elizaos/app-core/api/ios-local-agent-transport";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -56,15 +63,11 @@ import {
   getBootConfig,
   getWindowNavigationPath,
   IOS_LOCAL_AGENT_IPC_BASE,
-  type IosLocalAgentNativeRequestOptions,
-  type IosLocalAgentNativeRequestResult,
   initializeCapacitorBridge,
   initializeStorageBridge,
   installAndroidNativeAgentFetchBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
   installLocalProviderCloudPreferencePatch,
   isAppWindowRoute,
   isDetachedWindowShell,
@@ -79,7 +82,6 @@ import {
   type NetworkStatusChangeDetail,
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
-  primeIosFullBunRuntime,
   resolveWindowShellRoute,
   routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,

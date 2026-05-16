@@ -25,6 +25,36 @@ function isTruthyEnv(value: string | undefined): boolean {
 	);
 }
 
+const EXTERNAL_API_BASE_ENV_KEYS = [
+	"ELIZA_DESKTOP_TEST_API_BASE",
+	"ELIZA_DESKTOP_API_BASE",
+	"ELIZA_API_BASE_URL",
+	"ELIZA_API_BASE",
+] as const;
+
+function normalizeApiBase(raw: string | undefined): string | null {
+	if (!raw?.trim()) return null;
+	try {
+		const parsed = new URL(raw.trim());
+		return parsed.protocol === "http:" || parsed.protocol === "https:"
+			? parsed.origin
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+export function shouldEmbedRuntimeBundle(
+	env: Record<string, string | undefined> = process.env,
+): boolean {
+	for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
+		if (normalizeApiBase(env[key])) {
+			return false;
+		}
+	}
+	return !isTruthyEnv(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT);
+}
+
 function linuxCefChromiumFlags(): Record<string, string | true> {
 	// Linux CEF WebGPU/Vulkan is still experimental in Electrobun. Keep the
 	// default renderer path stable and let hardware debugging opt in explicitly.
@@ -277,9 +307,11 @@ function trimEnv(name: string): string {
 export function resolveElectrobunCopyMap({
 	buildVariant,
 	runtimeDistDir,
+	embedRuntime = buildVariant !== "store",
 }: {
 	buildVariant: "store" | "direct";
 	runtimeDistDir: string;
+	embedRuntime?: boolean;
 }): Record<string, string> {
 	const copy: Record<string, string> = {
 		[rendererDistDir]: "renderer",
@@ -288,7 +320,7 @@ export function resolveElectrobunCopyMap({
 		"assets/appIcon.ico": "assets/appIcon.ico",
 	};
 
-	if (buildVariant !== "store") {
+	if (buildVariant !== "store" && embedRuntime) {
 		copy[runtimeBundleDistDir] = runtimeDistDir;
 		if (fs.existsSync(runtimeBundleNodeModulesPath)) {
 			copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
@@ -373,6 +405,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 		(process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
 	const buildVariant: "store" | "direct" =
 		process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
+	const embedRuntime = shouldEmbedRuntimeBundle(process.env);
 	const brandConfigCopySource = resolveBrandConfigCopySource({
 		appName,
 		appId,
@@ -394,6 +427,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
 			exitOnLastWindowClosed: false,
 		},
 		scripts: {
+			// Electrobun removes the target build folder without `force: true`;
+			// seed it first so clean worktrees do not fail with ENOENT.
+			preBuild: "scripts/ensure-build-folder.ts",
 			// Sign native code inside the runtime dist node_modules on the inner app bundle
 			// before Electrobun runs the platform signing/notarization flow.
 			postBuild: "scripts/postwrap-sign-runtime-macos.ts",
@@ -454,7 +490,11 @@ export function createElectrobunConfig(): ElectrobunConfig {
 			// 2. Electrobun-native Dawn for Bun-side GpuWindow / <electrobun-wgpu>
 			//    surfaces and future native compute workloads.
 			copy: {
-				...resolveElectrobunCopyMap({ buildVariant, runtimeDistDir }),
+				...resolveElectrobunCopyMap({
+					buildVariant,
+					runtimeDistDir,
+					embedRuntime,
+				}),
 				[brandConfigCopySource]: "brand-config.json",
 				...(process.platform === "darwin" &&
 				fs.existsSync(libMacWindowEffectsDylib)

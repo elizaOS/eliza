@@ -38,7 +38,6 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const WORKSPACE_DIRS = [
   "packages",
   "packages/app-core/platforms",
-  "packages/native-plugins",
   "packages/examples",
   "cloud/packages",
   "plugins",

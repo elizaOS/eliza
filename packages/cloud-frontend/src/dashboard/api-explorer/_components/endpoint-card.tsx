@@ -21,8 +21,8 @@ interface EndpointCardProps {
 
 function getPricingTextStyle(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return "text-neutral-500";
-  if (pricing.isFree) return "text-emerald-400";
-  if (pricing.isVariable) return "text-amber-400";
+  if (pricing.isFree) return "text-green-400";
+  if (pricing.isVariable) return "text-orange-400";
   return "text-[#FF5800]";
 }
 
@@ -105,7 +105,7 @@ export function EndpointCard({
           {/* Tags and deprecated badge */}
           <div className="flex items-center gap-2">
             {endpoint.deprecated && (
-              <span className="text-[10px] text-rose-400 font-medium">
+              <span className="text-[10px] text-red-400 font-medium">
                 Deprecated
               </span>
             )}

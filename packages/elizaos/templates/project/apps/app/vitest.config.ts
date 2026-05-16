@@ -48,12 +48,15 @@ const reactDomPackageRoot = path.dirname(
 
 const nativePluginAliasEntries = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   find: new RegExp(`^@elizaos/capacitor-${name}$`),
-  replacement: path.join(NATIVE_PLUGINS_ROOT, `${name}/src/index.ts`),
+  replacement: path.join(
+    NATIVE_PLUGINS_ROOT,
+    `plugin-native-${name}/src/index.ts`,
+  ),
 }));
 const nativePluginAliasMap = Object.fromEntries(
   CAPACITOR_PLUGIN_NAMES.map((name) => [
     `@elizaos/capacitor-${name}`,
-    path.join(NATIVE_PLUGINS_ROOT, `${name}/src/index.ts`),
+    path.join(NATIVE_PLUGINS_ROOT, `plugin-native-${name}/src/index.ts`),
   ]),
 );
 

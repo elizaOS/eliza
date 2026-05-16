@@ -4,7 +4,7 @@
   "description": "Clone Ur Crush — standalone Next.js example showing AI-powered character creation against Eliza Cloud (image gen, scene gen, character analysis).",
   "scripts": {
     "dev": "next dev --port 3012",
-    "build": "node ../../../scripts/rm-path-recursive.mjs .next && next build",
+    "build": "node ../../../scripts/rm-path-recursive.mjs .next && node node_modules/next/dist/bin/next build",
     "start": "next start --port 3012",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

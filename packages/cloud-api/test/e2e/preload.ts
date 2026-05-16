@@ -12,7 +12,7 @@
  * Run with: bun test --preload <this-file> apps/api/test/e2e
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
@@ -22,6 +22,7 @@ import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
+import { privateKeyToAccount } from "viem/accounts";
 
 for (const envPath of [
   resolve("../../.env"),
@@ -33,6 +34,12 @@ for (const envPath of [
 
 const DEFAULT_TEST_SECRETS_MASTER_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+function testWalletAddress(seed: string): string {
+  const digest = createHash("sha256")
+    .update(`playwright:${seed}`)
+    .digest("hex");
+  return privateKeyToAccount(`0x${digest}`).address;
+}
 
 if (!process.env.SECRETS_MASTER_KEY) {
   process.env.SECRETS_MASTER_KEY = DEFAULT_TEST_SECRETS_MASTER_KEY;
@@ -62,6 +69,7 @@ async function ensureTestUser({
   stewardUserId: string;
   role?: string;
 }) {
+  const walletAddress = testWalletAddress(stewardUserId);
   const existingOrg = await dbWrite.query.organizations.findFirst({
     where: eq(organizations.slug, slug),
   });
@@ -94,7 +102,7 @@ async function ensureTestUser({
           organization_id: organization.id,
           role,
           steward_user_id: stewardUserId,
-          wallet_address: `0x${randomUUID().replaceAll("-", "").slice(0, 40)}`,
+          wallet_address: walletAddress,
           wallet_chain_type: "evm",
           wallet_verified: true,
         })
@@ -115,6 +123,9 @@ async function ensureTestUser({
       email,
       organization_id: organization.id,
       role,
+      wallet_address: walletAddress,
+      wallet_chain_type: "evm",
+      wallet_verified: true,
       is_active: true,
       updated_at: new Date(),
     })

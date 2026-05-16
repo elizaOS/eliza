@@ -210,4 +210,5 @@ export * from "./ui/tabs";
 export * from "./ui/textarea";
 export * from "./ui/toggle";
 export * from "./ui/tooltip";
+export * from "./voice-pill";
 export * from "./workspace/AppWorkspaceChrome";

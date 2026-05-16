@@ -726,7 +726,7 @@ export function ElizaAgentsTable({
                                   type="button"
                                   onClick={() => handleProvision(sb.id)}
                                   disabled={busy}
-                                  className="p-2 text-white/30 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-30"
+                                  className="p-2 text-white/30 hover:text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-30"
                                 >
                                   <Play className="h-4 w-4" />
                                 </button>
@@ -879,7 +879,7 @@ export function ElizaAgentsTable({
                         type="button"
                         onClick={() => handleProvision(sb.id)}
                         disabled={busy}
-                        className="py-2 px-3 text-emerald-400 hover:bg-emerald-500/10 transition-colors border border-emerald-500/20 disabled:opacity-30"
+                        className="py-2 px-3 text-green-400 hover:bg-green-500/10 transition-colors border border-green-500/20 disabled:opacity-30"
                       >
                         <Play className="h-3.5 w-3.5" />
                       </button>

@@ -1,0 +1,93 @@
+# SNAPCRAFT_STORE_CREDENTIALS: generate with: snapcraft export-login --snaps elizaos-app --acls package_upload,package_push,package_register -
+
+name: Publish Snap to Snap Store
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      channel:
+        description: Snap Store channel (edge | beta | candidate | stable)
+        required: false
+        type: string
+        default: stable
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+    secrets:
+      SNAPCRAFT_STORE_CREDENTIALS:
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      channel:
+        description: Snap Store channel (edge | beta | candidate | stable)
+        required: false
+        type: string
+        default: stable
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+
+    env:
+      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: false
+
+      - name: Check Snap Store credentials
+        id: creds_check
+        run: |
+          if [[ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]]; then
+            echo "::warning::SNAPCRAFT_STORE_CREDENTIALS not configured. Snap build will run but Store upload will be skipped."
+            echo "can_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+
+      - name: Update snap version
+        run: |
+          # Update the version in snapcraft.yaml to match the release
+          sed -i "s/^version: .*/version: \"${{ inputs.version }}\"/" packages/app-core/packaging/snap/snapcraft.yaml
+
+      - name: Build snap
+        run: |
+          cd packages/app-core/packaging/snap
+          snapcraft --destructive-mode
+          SNAP_FILE=$(find . -name "*.snap" -maxdepth 1 | head -1)
+          echo "SNAP_FILE=$SNAP_FILE" >> "$GITHUB_ENV"
+          echo "Built: $SNAP_FILE"
+          ls -la "$SNAP_FILE"
+
+      - name: Publish to Snap Store
+        if: steps.creds_check.outputs.can_publish == 'true'
+        run: |
+          cd packages/app-core/packaging/snap
+          snapcraft upload "$SNAP_FILE" --release ${{ inputs.channel }}
+          echo "Published snap to channel: ${{ inputs.channel }}"
+
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: elizaos-snap-${{ inputs.version }}
+          path: packages/app-core/packaging/snap/*.snap
+          retention-days: 30

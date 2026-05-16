@@ -1,4 +1,9 @@
 import {
+  type ApplicationUpdateSnapshot,
+  getApplicationUpdateSnapshot,
+  mapAgentUpdateStatusToSnapshot,
+} from "@elizaos/app-core/services/app-updates/update-policy";
+import {
   AlertTriangle,
   CheckCircle2,
   ExternalLink,
@@ -12,11 +17,6 @@ import {
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
 import { useBranding } from "../../config/branding";
-import {
-  type ApplicationUpdateSnapshot,
-  getApplicationUpdateSnapshot,
-  mapAgentUpdateStatusToSnapshot,
-} from "../../services/app-updates/update-policy";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";

@@ -3,12 +3,12 @@
 # DFlash-capable llama-server image for Vast.ai workers.
 #
 # CUDA:
-#   docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
+#   docker build -f packages/cloud-services/vast-pyworker/Dockerfile.dflash \
 #     --build-arg BACKEND=cuda \
 #     -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash .
 #
 # ROCm/HIP:
-#   docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
+#   docker build -f packages/cloud-services/vast-pyworker/Dockerfile.dflash \
 #     --build-arg BASE_IMAGE=rocm/dev-ubuntu-22.04:6.3 \
 #     --build-arg BACKEND=rocm \
 #     -t ghcr.io/YOUR_ORG/buun-llama-cpp:rocm-dflash .

@@ -1,0 +1,547 @@
+# ============================================================
+# Master Release Orchestrator — elizaOS cross-platform release
+# ============================================================
+#
+# Triggers:
+#   - Tag push (v*.*.*) on main or develop → full release
+#   - workflow_dispatch → manually chosen platforms / version
+#
+# Required secrets (grouped by platform):
+#
+# --- GitHub ---
+#   GITHUB_TOKEN              (automatic)
+#
+# --- Desktop (Electrobun) ---
+#   CSC_LINK                            base64-encoded Developer ID Application .p12
+#   CSC_KEY_PASSWORD                    password for the .p12
+#   APPLE_ID                            Apple ID email for notarization
+#   APPLE_APP_SPECIFIC_PASSWORD         app-specific password
+#   APPLE_TEAM_ID                       10-char Apple Developer Team ID
+#   WINDOWS_SIGN_CERT_BASE64            Windows code-signing certificate (base64)
+#   WINDOWS_SIGN_CERT_PASSWORD          Windows cert password
+#   WINDOWS_SIGN_TIMESTAMP_URL          RFC 3161 timestamp server URL
+#   RELEASE_UPLOAD_KEY                  (optional) SSH key for release host upload
+#   RELEASE_HOST_FINGERPRINT            (optional) SSH host fingerprint for release host
+#
+# --- Android ---
+#   ANDROID_KEYSTORE_BASE64             base64-encoded release keystore (.jks)
+#   ANDROID_KEYSTORE_PASSWORD           keystore password
+#   ANDROID_KEY_ALIAS                   signing key alias
+#   ANDROID_KEY_PASSWORD                signing key password
+#   PLAY_STORE_SERVICE_ACCOUNT_JSON     (optional) base64 Play Store service account
+#
+# --- Apple (iOS + macOS App Store) ---
+#   APPLE_ID                            (shared with desktop)
+#   APPLE_TEAM_ID                       (shared with desktop)
+#   APPLE_APP_SPECIFIC_PASSWORD         (shared with desktop)
+#   ITC_TEAM_ID                         App Store Connect team ID
+#   APP_STORE_APP_ID                    numeric App Store application ID
+#   MATCH_PASSWORD                      Fastlane Match passphrase
+#   MATCH_GIT_URL                       Fastlane Match git repo URL
+#   MATCH_GIT_BASIC_AUTHORIZATION       base64 git credentials for Match repo
+#   MAS_CSC_LINK                        base64-encoded Mac App Store .p12
+#   MAS_CSC_KEY_PASSWORD                password for macOS MAS .p12
+#   MAS_INSTALLER_CERT                  base64-encoded Mac installer certificate
+#   MAS_INSTALLER_KEY_PASSWORD          installer cert password
+#   APP_STORE_API_KEY_ID                App Store Connect API key ID
+#   APP_STORE_API_ISSUER_ID             App Store Connect API issuer ID
+#
+# ============================================================
+
+name: Release All Platforms
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 2.0.1 or 2.1.0-beta.3)"
+        required: true
+        type: string
+      channel:
+        description: "Release channel (auto-detected from version if not set)"
+        required: false
+        type: choice
+        options:
+          - auto
+          - stable
+          - beta
+          - canary
+        default: auto
+      platforms:
+        description: "Comma-separated platforms to build (all | desktop,android,apple,linux-os,npm)"
+        required: false
+        type: string
+        default: "all"
+      desktop_target:
+        description: "Desktop platform target"
+        required: false
+        type: choice
+        options:
+          - all
+          - macos
+          - windows
+          - linux
+        default: "all"
+      android_track:
+        description: "Android Play Store track"
+        required: false
+        type: choice
+        options:
+          - auto
+          - internal
+          - beta
+          - production
+        default: "auto"
+      apple_track:
+        description: "Apple distribution track"
+        required: false
+        type: choice
+        options:
+          - auto
+          - testflight
+          - app-store
+        default: "auto"
+      draft:
+        description: "Create GitHub release as draft"
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-all-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────
+  # 1. VALIDATE — parse version, detect channel,
+  #    compute per-platform enable flags, create
+  #    the GitHub draft release.
+  # ─────────────────────────────────────────────
+  validate:
+    name: Validate & Prepare Release
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      channel: ${{ steps.parse.outputs.channel }}
+      tag: ${{ steps.parse.outputs.tag }}
+      android_track: ${{ steps.parse.outputs.android_track }}
+      apple_track: ${{ steps.parse.outputs.apple_track }}
+      build_desktop: ${{ steps.parse.outputs.build_desktop }}
+      build_android: ${{ steps.parse.outputs.build_android }}
+      build_apple: ${{ steps.parse.outputs.build_apple }}
+      build_linux_os: ${{ steps.parse.outputs.build_linux_os }}
+      build_npm: ${{ steps.parse.outputs.build_npm }}
+      draft: ${{ steps.parse.outputs.draft }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Parse version and compute parameters
+        id: parse
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # ── Determine version string ──────────────────────────────────
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            RAW_VERSION="${{ github.ref_name }}"
+            RAW_VERSION="${RAW_VERSION#v}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RAW_VERSION="${{ inputs.version }}"
+          else
+            echo "::error::This workflow only runs on tag pushes or workflow_dispatch. Got event: ${{ github.event_name }}"
+            exit 1
+          fi
+
+          # ── Validate semver ───────────────────────────────────────────
+          if ! echo "$RAW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Version '$RAW_VERSION' is not valid semver (expected X.Y.Z or X.Y.Z-prerelease)"
+            exit 1
+          fi
+          VERSION="$RAW_VERSION"
+          TAG="v${VERSION}"
+          echo "Resolved version: $VERSION  tag: $TAG"
+
+          # ── Detect channel ────────────────────────────────────────────
+          CHANNEL_OVERRIDE="${{ inputs.channel || 'auto' }}"
+          if [[ "$CHANNEL_OVERRIDE" != "auto" ]]; then
+            CHANNEL="$CHANNEL_OVERRIDE"
+          elif echo "$VERSION" | grep -qE '-(alpha|beta|rc|nightly)'; then
+            CHANNEL="canary"
+          else
+            CHANNEL="stable"
+          fi
+          echo "Channel: $CHANNEL"
+
+          # ── Android track ─────────────────────────────────────────────
+          ANDROID_TRACK_OVERRIDE="${{ inputs.android_track || 'auto' }}"
+          if [[ "$ANDROID_TRACK_OVERRIDE" != "auto" ]]; then
+            ANDROID_TRACK="$ANDROID_TRACK_OVERRIDE"
+          elif echo "$VERSION" | grep -qE '-(beta|rc)'; then
+            ANDROID_TRACK="internal"
+          else
+            ANDROID_TRACK="production"
+          fi
+          echo "Android track: $ANDROID_TRACK"
+
+          # ── Apple track ───────────────────────────────────────────────
+          APPLE_TRACK_OVERRIDE="${{ inputs.apple_track || 'auto' }}"
+          if [[ "$APPLE_TRACK_OVERRIDE" != "auto" ]]; then
+            APPLE_TRACK="$APPLE_TRACK_OVERRIDE"
+          elif echo "$VERSION" | grep -qE '-[a-zA-Z]'; then
+            APPLE_TRACK="testflight"
+          else
+            APPLE_TRACK="app-store"
+          fi
+          echo "Apple track: $APPLE_TRACK"
+
+          # ── Draft flag ────────────────────────────────────────────────
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            DRAFT="${{ inputs.draft }}"
+          else
+            DRAFT="true"
+          fi
+          echo "Draft: $DRAFT"
+
+          # ── Platform enable flags ─────────────────────────────────────
+          PLATFORMS="${{ inputs.platforms || 'all' }}"
+          if [[ "$PLATFORMS" == "all" ]]; then
+            BUILD_DESKTOP="true"
+            BUILD_ANDROID="true"
+            BUILD_APPLE="true"
+            BUILD_LINUX_OS="true"
+            BUILD_NPM="true"
+          else
+            BUILD_DESKTOP="false"
+            BUILD_ANDROID="false"
+            BUILD_APPLE="false"
+            BUILD_LINUX_OS="false"
+            BUILD_NPM="false"
+            IFS=',' read -ra PLATFORM_LIST <<< "$PLATFORMS"
+            for P in "${PLATFORM_LIST[@]}"; do
+              P="${P// /}"
+              case "$P" in
+                desktop)   BUILD_DESKTOP="true" ;;
+                android)   BUILD_ANDROID="true" ;;
+                apple)     BUILD_APPLE="true" ;;
+                linux-os)  BUILD_LINUX_OS="true" ;;
+                npm)       BUILD_NPM="true" ;;
+                *) echo "::warning::Unknown platform '$P' — ignored" ;;
+              esac
+            done
+          fi
+
+          # npm publish via release.yaml only runs on GitHub release events
+          # (it does not accept workflow_call). Disable it here so callers
+          # know it must be triggered by the release creation itself.
+          if [[ "$BUILD_NPM" == "true" ]]; then
+            echo "::notice::npm publish is handled automatically by release.yaml when a GitHub release is created. The npm job in this orchestrator is a no-op reminder."
+          fi
+
+          echo "Platforms — desktop=$BUILD_DESKTOP android=$BUILD_ANDROID apple=$BUILD_APPLE linux-os=$BUILD_LINUX_OS npm=$BUILD_NPM"
+
+          # ── Create or validate GitHub Release ────────────────────────
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub release $TAG already exists — will upload to it."
+          else
+            DRAFT_FLAG=""
+            if [[ "$DRAFT" == "true" ]]; then
+              DRAFT_FLAG="--draft"
+            fi
+            PRERELEASE_FLAG=""
+            if [[ "$CHANNEL" != "stable" ]]; then
+              PRERELEASE_FLAG="--prerelease"
+            fi
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "elizaOS cross-platform release $TAG (channel: $CHANNEL)" \
+              $DRAFT_FLAG \
+              $PRERELEASE_FLAG
+            echo "Created GitHub release $TAG (draft=$DRAFT)"
+          fi
+
+          # ── Write outputs ─────────────────────────────────────────────
+          echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL"       >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "android_track=$ANDROID_TRACK" >> "$GITHUB_OUTPUT"
+          echo "apple_track=$APPLE_TRACK"     >> "$GITHUB_OUTPUT"
+          echo "build_desktop=$BUILD_DESKTOP" >> "$GITHUB_OUTPUT"
+          echo "build_android=$BUILD_ANDROID" >> "$GITHUB_OUTPUT"
+          echo "build_apple=$BUILD_APPLE"     >> "$GITHUB_OUTPUT"
+          echo "build_linux_os=$BUILD_LINUX_OS" >> "$GITHUB_OUTPUT"
+          echo "build_npm=$BUILD_NPM"          >> "$GITHUB_OUTPUT"
+          echo "draft=$DRAFT"                  >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────
+  # 2. DESKTOP — Electrobun (macOS/Windows/Linux)
+  # ─────────────────────────────────────────────
+  desktop:
+    name: Desktop (Electrobun)
+    needs: validate
+    if: needs.validate.outputs.build_desktop == 'true'
+    uses: ./.github/workflows/release-electrobun.yml
+    with:
+      tag: ${{ needs.validate.outputs.tag }}
+      draft: ${{ needs.validate.outputs.draft == 'true' }}
+      publish_release: true
+      platform: ${{ inputs.desktop_target || 'all' }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 3. ANDROID
+  # ─────────────────────────────────────────────
+  android:
+    name: Android (Play Store)
+    needs: validate
+    if: needs.validate.outputs.build_android == 'true'
+    uses: ./.github/workflows/android-release.yml
+    with:
+      track: ${{ needs.validate.outputs.android_track }}
+      version_name: ${{ needs.validate.outputs.version }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 4. APPLE — iOS + macOS App Store
+  # ─────────────────────────────────────────────
+  apple:
+    name: Apple (iOS + macOS App Store)
+    needs: validate
+    if: needs.validate.outputs.build_apple == 'true'
+    uses: ./.github/workflows/apple-store-release.yml
+    with:
+      platform: "both"
+      track: ${{ needs.validate.outputs.apple_track }}
+      version: ${{ needs.validate.outputs.version }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 5. LINUX OS — ISO + .deb + VM image
+  #
+  # elizaos-os-full-release.yml does not accept
+  # workflow_call. Call the three leaf workflows
+  # directly, matching what the full-release
+  # orchestrator does internally.
+  # ─────────────────────────────────────────────
+  linux-os-iso:
+    name: Linux ISO
+    needs: validate
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/build-linux-iso.yml
+    with:
+      channel: ${{ needs.validate.outputs.channel == 'stable' && 'stable' || 'beta' }}
+      publish: true
+    secrets: inherit
+
+  linux-os-deb:
+    name: Linux .deb package
+    needs: validate
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/build-debian-package.yml
+    secrets: inherit
+
+  linux-os-vm:
+    name: Linux VM image
+    needs: validate
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/build-vm-image.yml
+    with:
+      format: "ova"
+      publish: true
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 6. NPM — reminder / gate
+  #
+  # release.yaml does NOT accept workflow_call.
+  # It fires automatically when a GitHub release
+  # is created (the event created by the validate
+  # job above). This job just documents that fact.
+  # ─────────────────────────────────────────────
+  npm:
+    name: npm packages (auto-triggered)
+    needs: validate
+    if: needs.validate.outputs.build_npm == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Note — npm release auto-triggered
+        run: |
+          echo "## npm publish" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The \`release.yaml\` workflow does not support \`workflow_call\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "It is triggered automatically by the GitHub release creation in the" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`validate\` job above (event type: \`release: created\`)." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "No further action is needed for npm publishing." >> "$GITHUB_STEP_SUMMARY"
+          echo "npm publish for tag ${{ needs.validate.outputs.tag }} will be handled automatically by release.yaml"
+
+  # ─────────────────────────────────────────────
+  # 7. SNAP-NOTIFY — reminder to run snap publish
+  # ─────────────────────────────────────────────
+  snap-notify:
+    name: Snap Store (manual reminder)
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Snap Store publish reminder
+        run: |
+          echo "## Snap Store" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Action required:** Snap Store publish must be triggered manually." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run \`.github/workflows/snap-build-test.yml\` for this version:" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The snap workflow only builds and tests; a separate Snap Store credential" >> "$GITHUB_STEP_SUMMARY"
+          echo "setup and \`snapcraft upload\` step is required to publish to the Snap Store." >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "Snap Store publish: run snap-build-test.yml manually for version ${{ needs.validate.outputs.tag }}"
+          echo "Workflow: https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml"
+
+  # ─────────────────────────────────────────────
+  # 8. SUMMARY — report all results; optionally
+  #    publish the GitHub release draft.
+  # ─────────────────────────────────────────────
+  summary:
+    name: Release Summary
+    needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap-notify]
+    if: always()
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Write step summary
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="${{ needs.validate.outputs.tag }}"
+          CHANNEL="${{ needs.validate.outputs.channel }}"
+
+          result_icon() {
+            case "$1" in
+              success)   echo "success" ;;
+              failure)   echo "FAILURE" ;;
+              cancelled) echo "cancelled" ;;
+              skipped)   echo "skipped" ;;
+              *)         echo "$1" ;;
+            esac
+          }
+
+          # Compute aggregate linux-os result
+          ISO_R="${{ needs.linux-os-iso.result }}"
+          DEB_R="${{ needs.linux-os-deb.result }}"
+          VM_R="${{ needs.linux-os-vm.result }}"
+          LINUX_RESULT="success"
+          for R in "$ISO_R" "$DEB_R" "$VM_R"; do
+            if [[ "$R" == "failure" ]]; then LINUX_RESULT="FAILURE"; fi
+            if [[ "$R" == "cancelled" && "$LINUX_RESULT" != "FAILURE" ]]; then LINUX_RESULT="cancelled"; fi
+          done
+
+          {
+            echo "## elizaOS Cross-Platform Release — $TAG"
+            echo ""
+            echo "**Version:** \`$VERSION\`  **Channel:** \`$CHANNEL\`"
+            echo ""
+            echo "| Platform | Result |"
+            echo "|----------|--------|"
+            echo "| Desktop (Electrobun)   | $(result_icon '${{ needs.desktop.result }}') |"
+            echo "| Android                | $(result_icon '${{ needs.android.result }}') |"
+            echo "| Apple (iOS + macOS)    | $(result_icon '${{ needs.apple.result }}') |"
+            echo "| Linux ISO              | $(result_icon "$ISO_R") |"
+            echo "| Linux .deb             | $(result_icon "$DEB_R") |"
+            echo "| Linux VM image         | $(result_icon "$VM_R") |"
+            echo "| npm (auto-triggered)   | $(result_icon '${{ needs.npm.result }}') |"
+            echo "| Snap (manual reminder) | $(result_icon '${{ needs.snap-notify.result }}') |"
+            echo ""
+            echo "### Snap Store"
+            echo "Run [snap-build-test.yml](https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml) manually and then publish to the Snap Store."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub release (if all succeeded and not draft)
+        if: needs.validate.outputs.draft == 'false'
+        run: |
+          TAG="${{ needs.validate.outputs.tag }}"
+          DESKTOP_RESULT="${{ needs.desktop.result }}"
+          ANDROID_RESULT="${{ needs.android.result }}"
+          APPLE_RESULT="${{ needs.apple.result }}"
+          LINUX_ISO_RESULT="${{ needs.linux-os-iso.result }}"
+          LINUX_DEB_RESULT="${{ needs.linux-os-deb.result }}"
+          LINUX_VM_RESULT="${{ needs.linux-os-vm.result }}"
+
+          BUILD_DESKTOP="${{ needs.validate.outputs.build_desktop }}"
+          BUILD_ANDROID="${{ needs.validate.outputs.build_android }}"
+          BUILD_APPLE="${{ needs.validate.outputs.build_apple }}"
+          BUILD_LINUX_OS="${{ needs.validate.outputs.build_linux_os }}"
+
+          FAILED=0
+          check_result() {
+            local enabled="$1"
+            local result="$2"
+            local name="$3"
+            if [[ "$enabled" == "true" && "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::$name build result was '$result', expected success"
+              FAILED=1
+            fi
+          }
+
+          check_result "$BUILD_DESKTOP"  "$DESKTOP_RESULT"      "Desktop"
+          check_result "$BUILD_ANDROID"  "$ANDROID_RESULT"      "Android"
+          check_result "$BUILD_APPLE"    "$APPLE_RESULT"        "Apple"
+          check_result "$BUILD_LINUX_OS" "$LINUX_ISO_RESULT"    "Linux ISO"
+          check_result "$BUILD_LINUX_OS" "$LINUX_DEB_RESULT"    "Linux .deb"
+          check_result "$BUILD_LINUX_OS" "$LINUX_VM_RESULT"     "Linux VM"
+
+          if [[ "$FAILED" -eq 0 ]]; then
+            echo "All enabled platform builds succeeded — publishing GitHub release $TAG..."
+            gh release edit "$TAG" --draft=false
+            echo "Release $TAG is now public."
+          else
+            echo "::error::One or more platform builds failed. GitHub release $TAG remains as draft."
+            exit 1
+          fi
+
+      - name: Fail if any enabled platform failed
+        run: |
+          DESKTOP_RESULT="${{ needs.desktop.result }}"
+          ANDROID_RESULT="${{ needs.android.result }}"
+          APPLE_RESULT="${{ needs.apple.result }}"
+          LINUX_ISO_RESULT="${{ needs.linux-os-iso.result }}"
+          LINUX_DEB_RESULT="${{ needs.linux-os-deb.result }}"
+          LINUX_VM_RESULT="${{ needs.linux-os-vm.result }}"
+
+          BUILD_DESKTOP="${{ needs.validate.outputs.build_desktop }}"
+          BUILD_ANDROID="${{ needs.validate.outputs.build_android }}"
+          BUILD_APPLE="${{ needs.validate.outputs.build_apple }}"
+          BUILD_LINUX_OS="${{ needs.validate.outputs.build_linux_os }}"
+
+          FAILED=0
+          check_result() {
+            local enabled="$1"
+            local result="$2"
+            local name="$3"
+            if [[ "$enabled" == "true" && "$result" == "failure" ]]; then
+              echo "::error::$name failed (result: $result)"
+              FAILED=1
+            elif [[ "$enabled" == "true" && "$result" == "cancelled" ]]; then
+              echo "::warning::$name was cancelled"
+              FAILED=1
+            fi
+          }
+
+          check_result "$BUILD_DESKTOP"  "$DESKTOP_RESULT"      "Desktop"
+          check_result "$BUILD_ANDROID"  "$ANDROID_RESULT"      "Android"
+          check_result "$BUILD_APPLE"    "$APPLE_RESULT"        "Apple"
+          check_result "$BUILD_LINUX_OS" "$LINUX_ISO_RESULT"    "Linux ISO"
+          check_result "$BUILD_LINUX_OS" "$LINUX_DEB_RESULT"    "Linux .deb"
+          check_result "$BUILD_LINUX_OS" "$LINUX_VM_RESULT"     "Linux VM"
+
+          exit "$FAILED"

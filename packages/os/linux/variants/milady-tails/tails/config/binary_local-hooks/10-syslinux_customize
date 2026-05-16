@@ -35,11 +35,27 @@ perl -pni -E 'exit if m{^label[[:blank:]]+help$}' "${CFG_FILE}"
 Echo_message "customize syslinux menu"
 
 sed -i -e "s/Boot menu/SYSLINUX/" "${CFG_FILE}"
-sed -i -e "s/menu label Live/menu label Tails ${TAILS_VERSION}/" "${SYSLINUX_PATH}"/live*.cfg
-# Inserting the Tails version on this entry cuts part of the text
-sed -i -r -e 's/(menu label Tails )(.*)\(failsafe\)/\1(Troubleshooting Mode)/' \
+sed -i -e "s/menu label Live/menu label elizaOS ${TAILS_VERSION}/" "${SYSLINUX_PATH}"/live*.cfg
+# Inserting the version on this entry cuts part of the text
+sed -i -r -e 's/(menu label elizaOS )(.*)\(failsafe\)/\1(Troubleshooting Mode)/' \
     "${SYSLINUX_PATH}"/live*.cfg
-sed -i -r -e 's/(append .*)/\1\n\tsysappend 0x40000/g' "${SYSLINUX_PATH}"/live*.cfg
+sed -i -r -e 's/(append .*)/\1 elizaos_privacy=0\n\tsysappend 0x40000/g' "${SYSLINUX_PATH}"/live*.cfg
+
+LIVE_CFG="$(find "${SYSLINUX_PATH}" -maxdepth 1 -name 'live*.cfg' -print | sort | head -1)"
+if [ -n "${LIVE_CFG}" ]; then
+    kernel_line="$(awk '/^[[:blank:]]*kernel[[:blank:]]/ { print; exit }' "${LIVE_CFG}")"
+    append_line="$(awk '/^[[:blank:]]*append[[:blank:]]/ { print; exit }' "${LIVE_CFG}")"
+    if [ -n "${kernel_line}" ] && [ -n "${append_line}" ]; then
+        cat >>"${LIVE_CFG}" <<EOF
+
+label live-privacy
+	menu label elizaOS ${TAILS_VERSION} - Privacy Mode
+${kernel_line}
+${append_line} elizaos_privacy=1
+	sysappend 0x40000
+EOF
+    fi
+fi
 
 cat >"${SYSLINUX_PATH}/tails.cfg" <<EOF
 menu color sel      *           #ffffffff   #55555555   *

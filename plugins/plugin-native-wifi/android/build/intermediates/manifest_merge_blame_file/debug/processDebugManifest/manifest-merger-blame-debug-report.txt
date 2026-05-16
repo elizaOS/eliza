@@ -1,0 +1,31 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="ai.eliza.plugins.wifi" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+5-->INJECTED
+5-->INJECTED
+6
+7    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:3:5-76
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:3:22-73
+8    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:4:5-76
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:4:22-73
+9    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:5:5-79
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:5:22-76
+10    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:6:5-79
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:6:22-76
+11    <!--
+12      ACCESS_FINE_LOCATION is required for `WifiManager.scanResults` on
+13      API 26+ — without a granted runtime location permission the platform
+14      returns an empty list. Declared as normal `uses-permission`; runtime
+15      grant is the responsibility of the host app at first scan.
+16    -->
+17    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+17-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:13:5-79
+17-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/wifi/android/src/main/AndroidManifest.xml:13:22-76
+18
+19</manifest>

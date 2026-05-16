@@ -11,7 +11,7 @@ End-to-end checklist to bring the customer-tunnel stack online. Railway owns the
 ## 2. Headscale Railway service
 
 ```
-cd cloud/services/headscale
+cd packages/cloud-services/headscale
 # Push to a Railway service backed by this Dockerfile.
 railway up
 ```
@@ -39,7 +39,7 @@ Save the returned key as Railway secret `TUNNEL_PROXY_TS_AUTHKEY` on the tunnel-
 ## 4. Tunnel-proxy Railway service
 
 ```
-cd cloud/services/tunnel-proxy
+cd packages/cloud-services/tunnel-proxy
 railway up
 ```
 

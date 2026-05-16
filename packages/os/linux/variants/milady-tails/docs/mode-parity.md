@@ -1,6 +1,6 @@
-# milady-tails mode parity
+# elizaOS Live mode parity
 
-milady-tails v1.0 has two independent boot choices:
+elizaOS Live v1.0 has two independent boot choices:
 
 - Storage: amnesia or persistent USB
 - Network privacy: normal direct internet or Privacy Mode through Tor
@@ -9,11 +9,16 @@ The product requirement is that the same capabilities are available in all
 four combinations. Mode changes can affect speed, persistence, and trace
 footprint, but they must not silently remove features.
 
+Status as of 2026-05-16: the Phase 3-7 overlays are present in source and
+a full rebuild/test pass is in progress. Treat the table below as the
+target acceptance matrix until Phase 8 produces evidence from the rebuilt
+ISO.
+
 ## Matrix
 
 | Feature | Normal + amnesia | Normal + persistent USB | Privacy + amnesia | Privacy + persistent USB |
 |---|---|---|---|---|
-| Milady desktop app launches | Yes | Yes | Yes | Yes |
+| elizaOS normal GNOME window launches and is supervised | Yes | Yes | Yes | Yes |
 | Local LLM chat | Yes | Yes | Yes | Yes |
 | BUILD_APP with local stub | Yes | Yes | Yes | Yes |
 | BUILD_APP with Claude CLI | Yes | Yes | Yes, slower | Yes, slower |

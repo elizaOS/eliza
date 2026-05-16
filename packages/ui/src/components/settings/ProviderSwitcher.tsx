@@ -191,7 +191,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           ))}
         </aside>
 
-        <section className="min-w-0 rounded-xl border border-border/40 bg-card/35">
+        <section className="min-w-0 rounded-sm border border-border/40 bg-card/35">
           {visibleProviderPanelId === "__local__" ? (
             <LocalProviderPanel
               cloudCallsDisabled={selection.cloudCallsDisabled}

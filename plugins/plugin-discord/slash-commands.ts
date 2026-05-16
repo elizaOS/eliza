@@ -1,4 +1,8 @@
-import { createUniqueUuid, type IAgentRuntime } from "@elizaos/core";
+import {
+	createUniqueUuid,
+	hasRoleAccess,
+	type IAgentRuntime,
+} from "@elizaos/core";
 import type {
 	AutocompleteInteraction,
 	ChatInputCommandInteraction,
@@ -506,23 +510,16 @@ export async function handleSlashCommand(
 	// elizaOS role check — uses the agent's role hierarchy (OWNER > ADMIN > USER > GUEST)
 	if (command.requiredRole && command.requiredRole !== "GUEST" && context) {
 		try {
-			const accessModuleId = "@elizaos/agent";
-			const { hasRoleAccess } = (await import(accessModuleId)) as {
-				hasRoleAccess?: (
-					runtime: unknown,
-					message: unknown,
-					requiredRole: string,
-				) => Promise<boolean>;
-			};
 			const memory = {
 				entityId: context.entityId,
 				roomId: context.roomId,
 				content: { text: `/${command.name}`, source: "discord" },
 			};
-			const allowed =
-				typeof hasRoleAccess === "function"
-					? await hasRoleAccess(runtime, memory, command.requiredRole)
-					: true;
+			const allowed = await hasRoleAccess(
+				runtime,
+				memory,
+				command.requiredRole,
+			);
 			if (!allowed) {
 				await interaction.reply({
 					content: `You need at least **${command.requiredRole}** role to use \`/${command.name}\`.`,

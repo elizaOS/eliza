@@ -1,0 +1,9 @@
+ai.eliza.plugins.camera.elizaos-capacitor-camera-pngs-0 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/build/generated/res/pngs/debug
+ai.eliza.plugins.camera.elizaos-capacitor-camera-updated_navigation_xml-1 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/build/generated/updated_navigation_xml/debug
+ai.eliza.plugins.camera.elizaos-capacitor-camera-mergeDebugResources-2 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+ai.eliza.plugins.camera.elizaos-capacitor-camera-mergeDebugResources-3 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+ai.eliza.plugins.camera.elizaos-capacitor-camera-debug-4 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/build/intermediates/merged_res/debug/mergeDebugResources
+ai.eliza.plugins.camera.elizaos-capacitor-camera-debug-5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/build/intermediates/packaged_res/debug/packageDebugResources
+ai.eliza.plugins.camera.elizaos-capacitor-camera-debug-6 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/debug/res
+ai.eliza.plugins.camera.elizaos-capacitor-camera-main-7 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/camera/android/src/main/res
+gradleHome-0 /Users/shawwalters/.gradle

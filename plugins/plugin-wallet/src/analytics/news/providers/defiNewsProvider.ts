@@ -107,8 +107,6 @@ export const defiNewsProvider: Provider = {
   cacheScope: "turn",
   roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    console.log("DEFI_NEWS provider called");
-
     let defiNewsInfo = "";
 
     try {
@@ -121,15 +119,12 @@ export const defiNewsProvider: Provider = {
       ) as NewsDataService;
 
       if (!newsDataService) {
-        console.log("NewsData service not available");
         return {
           data: {},
           values: {},
           text: "DeFi News service not available.",
         };
       }
-
-      console.log("DeFi News services found, generating report...");
 
       // Check if a specific token is mentioned in the message
       const messageText = message.content.text || "";
@@ -146,8 +141,6 @@ export const defiNewsProvider: Provider = {
         extractedSymbols.unshift(namedSymbol); // Add to front
       }
 
-      console.log(`Extracted symbols: ${extractedSymbols.join(", ")}`);
-
       // If token symbols are detected and services are available, look them up
       if (extractedSymbols.length > 0 && coinGeckoService) {
         // Try to get Birdeye service for symbol lookup
@@ -161,8 +154,6 @@ export const defiNewsProvider: Provider = {
         if (birdeyeService && solanaService) {
           // Process up to 3 tokens
           for (const detectedSymbol of extractedSymbols.slice(0, 3)) {
-            console.log(`Looking up symbol: ${detectedSymbol}`);
-
             try {
               // Look up token by symbol across all chains
               const options =
@@ -171,16 +162,10 @@ export const defiNewsProvider: Provider = {
                 (t) => t.symbol.toUpperCase() === detectedSymbol.toUpperCase(),
               );
 
-              console.log(
-                `Birdeye found ${exactOptions.length} exact matches for ${detectedSymbol}`,
-              );
-
               if (exactOptions.length > 0) {
                 // Use the first exact match (usually the most popular/main token)
                 const tokenOption = exactOptions[0];
                 const tokenCA = tokenOption.address;
-
-                console.log(`Using token: ${tokenOption.symbol} at ${tokenCA}`);
 
                 // Verify it's actually a token
                 const addressType = await solanaService.getAddressType(tokenCA);
@@ -195,28 +180,16 @@ export const defiNewsProvider: Provider = {
                   if (tokenData) {
                     defiNewsInfo += tokenData;
                   }
-                } else {
-                  console.log(
-                    `Address ${tokenCA} is not a Token, it's a ${addressType}`,
-                  );
                 }
-              } else {
-                console.log(
-                  `No exact matches found for ${detectedSymbol}, skipping...`,
-                );
               }
             } catch (error) {
-              console.log(
-                `Error looking up ${detectedSymbol} via Birdeye:`,
-                error,
+              runtime.logger.warn(
+                `[DEFI_NEWS] error looking up ${detectedSymbol} via Birdeye: ${error instanceof Error ? error.message : String(error)}`,
               );
             }
           }
         } else {
           // Fallback to CoinGecko ID lookup for major tokens
-          console.log(
-            "Birdeye or Solana service not available, using CoinGecko fallback",
-          );
           for (const detectedSymbol of extractedSymbols.slice(0, 1)) {
             const coingeckoId = getCoinGeckoIdFromSymbol(detectedSymbol);
             if (coingeckoId) {
@@ -240,7 +213,6 @@ export const defiNewsProvider: Provider = {
         const globalCryptoData = await getGlobalCryptoData(coinGeckoService);
         defiNewsInfo += globalCryptoData;
       } else {
-        console.log("CoinGecko service not available, skipping market data");
         defiNewsInfo +=
           "⚠️ Market data unavailable (CoinGecko service not configured)\n\n";
       }
@@ -564,12 +536,8 @@ async function getTokenInfoByAddress(
         tokenSymbol = onChainSymbol;
       }
     } catch (_error) {
-      console.log("Could not fetch on-chain symbol, using provided:", symbol);
+      // fall back to provided symbol when on-chain lookup fails
     }
-
-    console.log(
-      `Fetching CoinGecko data for ${tokenSymbol} at ${tokenAddress}`,
-    );
 
     // Try to search CoinGecko by symbol
     let coinData: CoinGeckoCoinData | null = null;
@@ -583,11 +551,9 @@ async function getTokenInfoByAddress(
       );
 
       if (solanaMatch) {
-        console.log(`Found exact Solana platform match: ${solanaMatch.id}`);
         coinData = await coinGeckoService.getCoinData(solanaMatch.id);
       } else {
         // Use first result as fallback
-        console.log(`Using first search result: ${searchResults[0].id}`);
         coinData = await coinGeckoService.getCoinData(searchResults[0].id);
       }
     }

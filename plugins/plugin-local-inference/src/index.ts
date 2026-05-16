@@ -33,6 +33,12 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
+export {
+	handleLocalInferenceTtsRoute,
+	normalizeAudioBytes,
+	sanitizeLocalInferenceSpeechText,
+	sniffAudioContentType,
+} from "./routes/local-inference-tts-route.js";
 // === Phase 4A: embedding-presets extracted from packages/agent ===
 export {
 	detectEmbeddingPreset,

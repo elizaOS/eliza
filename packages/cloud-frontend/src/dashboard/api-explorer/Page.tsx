@@ -85,15 +85,15 @@ function getCategoryIcon(category: string) {
 function getMethodColor(method: string) {
   switch (method) {
     case "GET":
-      return "bg-emerald-500/20 text-emerald-400";
+      return "bg-green-500/20 text-green-400";
     case "POST":
       return "bg-blue-500/20 text-blue-400";
     case "PUT":
-      return "bg-amber-500/20 text-amber-400";
+      return "bg-orange-500/20 text-orange-400";
     case "DELETE":
-      return "bg-rose-500/20 text-rose-400";
+      return "bg-red-500/20 text-red-400";
     case "PATCH":
-      return "bg-violet-500/20 text-violet-400";
+      return "bg-blue-500/20 text-blue-400";
     default:
       return "bg-white/10 text-white/60";
   }
@@ -110,16 +110,16 @@ function formatPrice(pricing: ApiEndpoint["pricing"]) {
 
 function getPricingIcon(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return null;
-  if (pricing.isFree) return <Sparkles className="h-4 w-4 text-emerald-400" />;
+  if (pricing.isFree) return <Sparkles className="h-4 w-4 text-green-400" />;
   if (pricing.isVariable)
-    return <TrendingUp className="h-4 w-4 text-amber-400" />;
+    return <TrendingUp className="h-4 w-4 text-orange-400" />;
   return <Coins className="h-4 w-4 text-[#FF5800]" />;
 }
 
 function getPricingStyle(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return "";
-  if (pricing.isFree) return "bg-emerald-500/20 text-emerald-400";
-  if (pricing.isVariable) return "bg-amber-500/20 text-amber-400";
+  if (pricing.isFree) return "bg-green-500/20 text-green-400";
+  if (pricing.isVariable) return "bg-orange-500/20 text-orange-400";
   return "bg-[#FF5800]/20 text-[#FF5800]";
 }
 

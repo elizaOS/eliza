@@ -287,7 +287,7 @@ export default function SensitiveRequestPage() {
           <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
             {effectiveStatus === "success" ||
             effectiveStatus === "fulfilled" ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+              <CheckCircle2 className="h-4 w-4 text-green-300" />
             ) : effectiveStatus === "pending" ? (
               <LockKeyhole className="h-4 w-4 text-[#FF8A47]" />
             ) : (
@@ -299,7 +299,7 @@ export default function SensitiveRequestPage() {
               Eliza Cloud
             </p>
             <h1 className="mt-1 text-lg font-semibold">{copy.title}</h1>
-            <p className="mt-1 text-sm leading-relaxed text-white/60">
+            <p className="mt-1 text-sm leading-relaxed text-white/74">
               {copy.body}
             </p>
           </div>

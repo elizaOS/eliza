@@ -1388,7 +1388,7 @@ export function InfrastructureDashboard() {
                 running
               </span>
               {containerRows.filter((r) => r.type === "ghost").length > 0 && (
-                <span className="ml-2 text-amber-600">
+                <span className="ml-2 text-orange-600">
                   {containerRows.filter((r) => r.type === "ghost").length}{" "}
                   untracked
                 </span>
@@ -1497,10 +1497,10 @@ export function InfrastructureDashboard() {
 
           return (
             <div
-              className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 cursor-pointer"
+              className="flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/5 px-4 py-2.5 cursor-pointer"
               onClick={() => setIncidentsExpanded(!incidentsExpanded)}
             >
-              <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium">
@@ -1647,7 +1647,7 @@ export function InfrastructureDashboard() {
                           <span
                             className={
                               node.allocatedCount > 0
-                                ? "text-amber-600 dark:text-amber-400"
+                                ? "text-orange-600 dark:text-orange-400"
                                 : "text-muted-foreground"
                             }
                           >
@@ -1944,7 +1944,7 @@ export function InfrastructureDashboard() {
                                     <>
                                       <TableRow
                                         key={row.key}
-                                        className={`${isGhost ? "bg-amber-500/5 hover:bg-amber-500/10" : ""} cursor-pointer`}
+                                        className={`${isGhost ? "bg-orange-500/5 hover:bg-orange-500/10" : ""} cursor-pointer`}
                                         onClick={() => toggleRowExpand(row.key)}
                                       >
                                         <TableCell className="w-8 px-2">
@@ -1960,7 +1960,7 @@ export function InfrastructureDashboard() {
                                             {isGhost && (
                                               <Badge
                                                 variant="outline"
-                                                className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                                                className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30"
                                               >
                                                 ghost
                                               </Badge>
@@ -2002,7 +2002,7 @@ export function InfrastructureDashboard() {
                                                 row.heartbeatAgeMinutes !==
                                                   null &&
                                                 row.heartbeatAgeMinutes > 5
-                                                  ? "text-amber-600"
+                                                  ? "text-orange-600"
                                                   : ""
                                               }
                                             >
@@ -2193,7 +2193,7 @@ export function InfrastructureDashboard() {
                                                       ? "text-red-500"
                                                       : row.liveHealthSeverity ===
                                                           "warning"
-                                                        ? "text-amber-500"
+                                                        ? "text-orange-500"
                                                         : ""
                                                   }
                                                 >
@@ -3042,7 +3042,7 @@ export function InfrastructureDashboard() {
 
               <div>
                 <h4 className="mb-2 text-sm font-medium flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTriangle className="h-4 w-4 text-orange-500" />
                   Ghost Containers (
                   {auditResult.ghostContainers.reduce(
                     (s, n) => s + n.names.length,
@@ -3062,7 +3062,7 @@ export function InfrastructureDashboard() {
                     {auditResult.ghostContainers.map((g) => (
                       <div
                         key={g.nodeId}
-                        className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3"
+                        className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3"
                       >
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           Node: {g.nodeId} ({g.hostname})

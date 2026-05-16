@@ -8,24 +8,33 @@
     <!-- Primary SEO. These are duplicated at runtime by react-helmet-async
          once the SPA mounts; they live here so server-side crawlers and the
          pre-hydration paint see real metadata. -->
-    <title>eliza cloud - Launch Eliza</title>
-    <meta name="description" content="Launch your Eliza agent in the cloud or open the developer dashboard." />
+    <title>Eliza Cloud — your agent, always on</title>
+    <meta name="description" content="Run Eliza in Cloud. Always on." />
     <meta name="author" content="Eliza Cloud" />
     <meta name="creator" content="Eliza Cloud" />
     <meta name="publisher" content="Eliza Cloud" />
-    <meta name="keywords" content="AI,agents,elizaOS,Eliza Cloud,cloud agents,agent hosting" />
+    <meta
+      name="keywords"
+      content="AI,agents,elizaOS,Eliza Cloud,cloud agents,agent hosting"
+    />
     <meta name="robots" content="index, follow" />
-    <meta name="googlebot" content="index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1" />
+    <meta
+      name="googlebot"
+      content="index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1"
+    />
     <link rel="canonical" href="https://www.elizacloud.ai" />
 
     <!-- OpenGraph -->
-    <meta property="og:title" content="eliza cloud - Launch Eliza" />
-    <meta property="og:description" content="Launch your Eliza agent in the cloud or open the developer dashboard." />
+    <meta property="og:title" content="Eliza Cloud — your agent, always on" />
+    <meta property="og:description" content="Run Eliza in Cloud. Always on." />
     <meta property="og:url" content="https://www.elizacloud.ai" />
     <meta property="og:site_name" content="Eliza Cloud" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://www.elizacloud.ai/brand/logos/logo_white_blackbg.svg" />
+    <meta
+      property="og:image"
+      content="https://www.elizacloud.ai/brand/ogembeds/elizacloud_ogembed.svg"
+    />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="Eliza Cloud" />
@@ -33,26 +42,83 @@
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Eliza Cloud" />
-    <meta name="twitter:description" content="Launch your Eliza agent in the cloud or open the developer dashboard." />
-    <meta name="twitter:image" content="https://www.elizacloud.ai/brand/logos/logo_white_blackbg.svg" />
+    <meta name="twitter:description" content="Run Eliza in Cloud. Always on." />
+    <meta
+      name="twitter:image"
+      content="https://www.elizacloud.ai/brand/ogembeds/elizacloud_ogembed.svg"
+    />
 
     <!-- Icons / manifest -->
-    <link rel="icon" type="image/svg+xml" href="/brand/logos/logo_white_blackbg.svg" />
+    <link rel="icon" type="image/svg+xml" href="/brand/favicons/favicon.svg" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/brand/favicons/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/brand/favicons/favicon-16x16.png"
+    />
     <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
     <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
-    <link rel="apple-touch-icon" href="/brand/logos/logo_white_blackbg.svg" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/brand/favicons/apple-touch-icon.png"
+    />
     <link rel="manifest" href="/site.webmanifest" />
 
     <!-- JSON-LD structured data. Mirrors what app/page.tsx emits via Helmet,
          but inlined so crawlers see it without executing JS. -->
     <script type="application/ld+json">
-      {"@context":"https://schema.org","@type":"Organization","name":"Eliza Cloud","description":"Launch your Eliza agent in the cloud.","url":"https://www.elizacloud.ai","logo":"https://www.elizacloud.ai/brand/logos/logo_white_blackbg.svg","contactPoint":{"@type":"ContactPoint","contactType":"Customer Support","url":"https://www.elizacloud.ai/dashboard/account"}}
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Eliza Cloud",
+        "description": "Run Eliza in Cloud. Always on.",
+        "url": "https://www.elizacloud.ai",
+        "logo": "https://www.elizacloud.ai/brand/logos/logo_white_blackbg.svg",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "Customer Support",
+          "url": "https://www.elizacloud.ai/dashboard/account"
+        }
+      }
     </script>
     <script type="application/ld+json">
-      {"@context":"https://schema.org","@type":"WebApplication","name":"Eliza Cloud","description":"Launch your Eliza agent in the cloud.","url":"https://www.elizacloud.ai","applicationCategory":"LifestyleApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Cloud agent account"},"featureList":["Cloud agent hosting","Agent dashboard","Developer dashboard"]}
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Eliza Cloud",
+        "description": "Run Eliza in Cloud. Always on.",
+        "url": "https://www.elizacloud.ai",
+        "applicationCategory": "LifestyleApplication",
+        "operatingSystem": "Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Cloud agent account"
+        },
+        "featureList": [
+          "Cloud agent hosting",
+          "Agent dashboard",
+          "Developer dashboard"
+        ]
+      }
     </script>
   </head>
-  <body class="theme-cloud antialiased selection:bg-[#FF5800] selection:text-white" style="background-color: #000000; color: #ffffff; font-family: 'Poppins', system-ui, sans-serif;">
+  <body
+    class="theme-cloud antialiased selection:bg-[#FF5800] selection:text-white"
+    style="
+      background-color: #000000;
+      color: #ffffff;
+      font-family: &quot;Poppins&quot;, system-ui, sans-serif;
+    "
+  >
     <div id="root"></div>
     <script>
       (() => {

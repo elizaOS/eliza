@@ -23,6 +23,7 @@ import {
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
 
+import { elizaOsCapabilityAction } from "./actions/elizaos-capability.js";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
@@ -63,6 +64,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
   const terminalSupport = detectOrchestratorTerminalSupport();
   const localCodeAllowed = isLocalCodeExecutionAllowed();
   const codeExecutionAllowed = localCodeAllowed && terminalSupport.supported;
+  const liveOsActions = process.env.ELIZAOS_CAPABILITY_RUNNER
+    ? [elizaOsCapabilityAction]
+    : [];
 
   // Store-distributed builds cannot fork user-installed CLIs. Drop the host-CLI
   // services and the spawn-bearing actions; expose a single user-facing stub
@@ -107,11 +111,13 @@ export function createAgentOrchestratorPlugin(): Plugin {
             },
           },
         }),
+        ...liveOsActions,
       ]
     : [
         localCodeAllowed
           ? createTerminalUnsupportedTasksAction(terminalSupport)
           : tasksSandboxStubAction,
+        ...liveOsActions,
       ];
 
   const orchestratorProviders = codeExecutionAllowed
@@ -165,7 +171,7 @@ export type {
   ToolCategory,
   WriteMemoryOptions,
 } from "coding-agent-adapters";
-
+export { elizaOsCapabilityAction } from "./actions/elizaos-capability.js";
 // TASKS action surface.
 export {
   archiveCodingTaskAction,

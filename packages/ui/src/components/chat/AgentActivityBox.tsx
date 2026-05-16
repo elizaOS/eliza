@@ -40,7 +40,7 @@ export function AgentActivityBox({
   if (!sessions || sessions.length === 0) return null;
 
   return (
-    <div className="px-3 py-2 space-y-1 z-[1] mb-2 relative rounded-2xl border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] shadow-[0_12px_36px_rgba(0,0,0,0.12)] ring-1 ring-inset ring-white/6 backdrop-blur-[22px]">
+    <div className="px-3 py-2 space-y-1 z-[1] mb-2 relative rounded-sm border border-border bg-card shadow-sm">
       {sessions.map((s) => (
         <button
           key={s.sessionId}

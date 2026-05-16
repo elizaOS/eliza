@@ -114,7 +114,7 @@ function ConnectorRow({
 
   return (
     <details
-      className="group rounded-xl border border-border/60 bg-card/45 transition-colors open:bg-card/65"
+      className="group rounded-sm border border-border/60 bg-card/45 transition-colors open:bg-card/65"
       data-connector={plugin.id}
     >
       <summary className="flex cursor-pointer select-none list-none items-center gap-3 px-3 py-2.5">

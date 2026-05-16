@@ -110,7 +110,7 @@ export function ConnectorAccountList({
   return (
     <div
       className={cn(
-        "mt-3 flex flex-col gap-2 rounded-xl border border-border/40 bg-bg-accent/40 p-3",
+        "mt-3 flex flex-col gap-2 rounded-sm border border-border/40 bg-bg-accent/40 p-3",
         className,
       )}
     >

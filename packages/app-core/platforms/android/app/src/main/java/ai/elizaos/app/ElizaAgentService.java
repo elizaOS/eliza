@@ -480,6 +480,10 @@ public class ElizaAgentService extends Service {
             if (initDbWasm.exists()) initDbWasm.delete();
             File pgData = new File(root, "pglite.data");
             if (pgData.exists()) pgData.delete();
+            File ortWasmLoader = new File(root, "ort-wasm-simd-threaded.mjs");
+            if (ortWasmLoader.exists()) ortWasmLoader.delete();
+            File ortWasmBinary = new File(root, "ort-wasm-simd-threaded.wasm");
+            if (ortWasmBinary.exists()) ortWasmBinary.delete();
             File vec = new File(getFilesDir(), "vector.tar.gz");
             if (vec.exists()) vec.delete();
             File fuzzy = new File(getFilesDir(), "fuzzystrmatch.tar.gz");
@@ -523,6 +527,14 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(root, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
+        // ONNX Runtime Web sidecars used by the Android Kokoro TTS path.
+        // The mobile agent bundle imports onnxruntime-web/wasm; Bun resolves
+        // the module relative to agent-bundle.js, so these files must be
+        // extracted next to the bundle just like the PGlite WASM assets.
+        copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
+            new File(root, "ort-wasm-simd-threaded.mjs"));
+        copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
+            new File(root, "ort-wasm-simd-threaded.wasm"));
         // aapt2 not only strips `.gz` from `*.tar.gz` asset names, it also
         // DECOMPRESSES them into raw tar bytes. PGlite's loader does
         // `new URL("../X.tar.gz", ...)` then pipes the bytes through
@@ -558,6 +570,8 @@ public class ElizaAgentService extends Service {
 
         File bun = new File(abiDir, BUN_BINARY);
         if (bun.exists()) bun.setExecutable(true, false);
+        File llamaServer = new File(abiDir, "llama-server");
+        if (llamaServer.exists()) llamaServer.setExecutable(true, false);
         File launch = new File(root, AGENT_LAUNCH_SCRIPT);
         if (launch.exists()) launch.setExecutable(true, false);
         for (String name : abiFiles) {
@@ -1008,23 +1022,121 @@ public class ElizaAgentService extends Service {
             // model selection + persistence; the bun process only needs
             // the bridge handlers registered, not pre-warmed.
             agentEnv.put("ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD", "1");
-            // AOSP builds ship libllama.so under agent/{abi}/ and load it
-            // directly into the bun process via bun:ffi (see
-            // eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). The
-            // gradle BuildConfig.AOSP_BUILD field is wired by sub-task 2B;
-            // the Capacitor APK keeps its DeviceBridge loopback path.
+            // Native bun:ffi inference path. When the APK bundles the eliza
+            // llama.cpp fork's native libs under agent/{abi}/ (libllama.so +
+            // libeliza-llama-shim.so), opt the bun process into loading them
+            // directly via bun:ffi — see
+            // eliza/plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts.
+            // This is required, not optional: the eliza-1 model tiers are
+            // qwen35-arch + QJL/PolarQuant/TBQ-quantized, and the stock
+            // llama-cpp-capacitor JNI lib cannot load those GGUFs at all
+            // (`context->loadModel() returned false`). The fork libllama.so
+            // carries the kernels + qwen35 arch.
             //
-            // Also gate on `isBrandedDevice()` so the same APK can be
-            // installed on stock Android (Capacitor sideload) without the
-            // bun process auto-loading libllama.so. The aosp-llama-adapter
-            // tries to auto-download the default 2B GGUF from huggingface on first
-            // run and bun-on-untrusted_app cannot reach the network without
-            // configuration; the download fail then cascades into a
-            // mid-init crash (no stderr, no exit code, agent.log empty).
-            // The branded-device check uses `ro.elizaos.product` /
-            // `ro.elizaos.product` system props that are only set by
-            // AOSP product makefiles — stock Android leaves them empty
-            // and falls through to the DeviceBridge path.
+            // This was previously gated on `BuildConfig.AOSP_BUILD &&
+            // isBrandedDevice()`. That gate's sole rationale was the
+            // aosp-llama-adapter's first-run model auto-download crashing a
+            // network-restricted bun process — but that download is already
+            // suppressed unconditionally above
+            // (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1), and the adapter itself
+            // self-gates + defensively no-ops when the lib/shim is absent or
+            // incompatible. Presence of the bundled fork libs is therefore
+            // the correct, sufficient signal for both build types.
+            File abiLibllama = new File(abiDir, "libllama.so");
+            File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
+            File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
+            boolean nativeLlamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
+            if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
+                agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
+                Log.i(TAG, "agent/" + abiDir.getName()
+                    + "/libllama.so + shim present; enabling native bun:ffi inference (ELIZA_LOCAL_LLAMA=1)");
+            }
+            if (nativeLlamaBundled) {
+                if (!env.containsKey("ELIZA_MOBILE_LOCAL_DIRECT_REPLY")) {
+                    agentEnv.put("ELIZA_MOBILE_LOCAL_DIRECT_REPLY", "1");
+                }
+                if (!env.containsKey("ELIZA_KOKORO_PREWARM")) {
+                    agentEnv.put("ELIZA_KOKORO_PREWARM", "1");
+                }
+                if (!env.containsKey("ELIZA_KOKORO_PREWARM_DELAY_MS")) {
+                    // Kokoro's first on-device ORT/WASM synthesis can be
+                    // CPU-bound for tens of seconds. Keep the warmup opt-in,
+                    // but schedule it well after the local HTTP server should
+                    // be listening so app readiness is not blocked by audio
+                    // cache priming.
+                    agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
+                }
+                if (abiSpeculativeShim.isFile() && !env.containsKey("ELIZA_DFLASH")) {
+                    agentEnv.put("ELIZA_DFLASH", "1");
+                    Log.i(TAG, "agent/" + abiDir.getName()
+                        + "/libeliza-llama-speculative-shim.so present; enabling in-process DFlash (ELIZA_DFLASH=1)");
+                }
+                boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
+                if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {
+                    File debugLog = new File(agentStateDir(), "aosp-llama-debug.log");
+                    agentEnv.put("ELIZA_AOSP_LLAMA_DEBUG_LOG", debugLog.getAbsolutePath());
+                }
+                // Mobile llama.cpp defaults for the in-process fork loader.
+                // The adapter has safe fallbacks, but Java is the only layer
+                // that can reliably read the Android CPU count before bun's
+                // seccomp-limited runtime starts. Keep these tied to the
+                // bundled fork libs, not to full-AOSP branding: the regular
+                // debug APK uses the same bun:ffi path when those libs ship.
+                //
+                // The Eliza-1 native context is 128k. The regular debug APK
+                // runs the model in-process on phone CPU, so default to a
+                // small interactive context and let the adapter keep the tail
+                // of oversized prompts. Full branded AOSP builds keep the
+                // larger 16k context used by CVD/system smoke tests. This
+                // keeps the debug APK's first message-handler prefill bounded
+                // on Pixel-class devices instead of pinning bun behind a
+                // multi-minute FFI call before it can answer health checks or
+                // honor aborts.
+                if (!env.containsKey("ELIZA_LLAMA_N_CTX")) {
+                    agentEnv.put("ELIZA_LLAMA_N_CTX", brandedAospBuild ? "16384" : "4096");
+                }
+
+                if (!env.containsKey("ELIZA_LLAMA_THREADS")) {
+                    int cores = Runtime.getRuntime().availableProcessors();
+                    if (cores < 1) cores = 1;
+                    agentEnv.put("ELIZA_LLAMA_THREADS", String.valueOf(cores));
+                }
+
+                // Keep decode chunks bounded for stock APK runs while avoiding
+                // unnecessary multi-chunk prompt prefill. Pixel validation on
+                // eliza-1-0_8b showed 256-token chunks reduce native prefill
+                // time versus the older 64-token default, without blocking
+                // health/startup probes because the HTTP server binds after
+                // model prewarm. Branded AOSP keeps the historical 512-token
+                // chunk size for its longer smoke budget.
+                if (!env.containsKey("ELIZA_LLAMA_N_BATCH")) {
+                    agentEnv.put("ELIZA_LLAMA_N_BATCH", brandedAospBuild ? "512" : "256");
+                }
+                if (!env.containsKey("ELIZA_LLAMA_N_UBATCH")) {
+                    agentEnv.put("ELIZA_LLAMA_N_UBATCH", brandedAospBuild ? "512" : "256");
+                }
+
+                // Stage-1 RESPONSE_HANDLER is an internal structured planning
+                // call, not the user's requested chat completion budget. On the
+                // debug APK's in-process phone-CPU path, leaving it at the
+                // core default (1024) lets an unconstrained or malformed local
+                // decode run for minutes before the trajectory can record the
+                // first stage. The AOSP adapter now honors the Stage-1 GBNF
+                // grammar, so 384 tokens is ample for the HANDLE_RESPONSE
+                // envelope while still bounding failure cases tightly. Full
+                // branded AOSP keeps the core default unless explicitly set.
+                if (!brandedAospBuild && !env.containsKey("RESPONSE_HANDLER_MAX_TOKENS")) {
+                    agentEnv.put("RESPONSE_HANDLER_MAX_TOKENS", "384");
+                }
+                // Bound every native llama generation on debug APKs, not only
+                // Stage-1. Some downstream TEXT_LARGE calls request 8192
+                // tokens while the debug APK uses n_ctx=4096; without this cap
+                // the adapter must reserve the whole context for output and
+                // drops the prompt to a single token.
+                if (!brandedAospBuild && !env.containsKey("ELIZA_LLAMA_MAX_OUTPUT_TOKENS")) {
+                    agentEnv.put("ELIZA_LLAMA_MAX_OUTPUT_TOKENS", "384");
+                }
+            }
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
                 agentEnv.put("ELIZA_AOSP_BUILD", "1");
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
@@ -1047,48 +1159,9 @@ public class ElizaAgentService extends Service {
                 // operator overrides above are not inadvertently in effect.
                 agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "3600000");
 
-                // Eliza-1 native context is 128k. We pin to 16k
-                // because 16k easily fits the planner's ~12k-token
-                // prompts plus output reserve. KV-cache for 16k ctx on
-                // 1B-Q4_K_M / fp16 KV is ~512 MB (16384 cells × 16 layers
-                // × (256 MiB K + 256 MiB V) per llama.cpp's sched_reserve),
-                // which alongside the ~770 MB weights and ~290 MB compute
-                // buffer puts the model alone close to 1.6 GB. cvd has 4
-                // GB total RAM with ~640 MB free at agent start, and bun's
-                // heap routinely peaks at 1.5–2.0 GB during long planner
-                // cycles — the combined footprint hits OOM-killer
-                // territory and bun panics with a SIGSEGV mid-request.
-                // Override via env on real-device builds when ctx vs RAM
-                // trade-offs change.
-                if (!env.containsKey("ELIZA_LLAMA_N_CTX")) {
-                    agentEnv.put("ELIZA_LLAMA_N_CTX", "16384");
-                }
-
-                // Pin n_threads to the actual CPU count. The default of
-                // 0 in the adapter (and llama.cpp's auto-detect path)
-                // frequently returns 1 on Android because Android's
-                // seccomp filter blocks sched_getaffinity for app
-                // domains and llama.cpp's /proc/cpuinfo parse misses
-                // the core count on cvd. Cuttlefish x86_64 has 4 vCPUs;
-                // most real phones have 6–8 big.LITTLE cores. Read
-                // from the JVM at startup and pass through so the FFI
-                // side doesn't need to call any blocked syscall.
-                if (!env.containsKey("ELIZA_LLAMA_THREADS")) {
-                    int cores = Runtime.getRuntime().availableProcessors();
-                    if (cores < 1) cores = 1;
-                    agentEnv.put("ELIZA_LLAMA_THREADS", String.valueOf(cores));
-                }
-
-                // Smaller decode chunks → more event-loop yield points
-                // during prompt prefill. 2048 holds bun inside a single
-                // llama_decode call for ~30 s on cvd CPU; the watchdog
-                // probe sits on a closed listener queue that whole
-                // time. 512-token chunks land each call in ~6–8 s, so
-                // the 30 s probe timeout has a realistic chance to
-                // wake the listener between chunks.
-                if (!env.containsKey("ELIZA_LLAMA_N_BATCH")) {
-                    agentEnv.put("ELIZA_LLAMA_N_BATCH", "512");
-                }
+                // Native llama.cpp ctx/thread/batch defaults are applied above
+                // whenever the fork libs are bundled. Full AOSP only needs
+                // its longer timeout budget here.
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             if (!env.containsKey("TMPDIR")) {
@@ -1224,13 +1297,16 @@ public class ElizaAgentService extends Service {
             //   - On AOSP cvd we want a deterministic agent binary, not
             //     one that mutates its prompts mid-smoke.
             //
-            // Hard-disable both the bootstrap and the trajectory ingest
-            // path so the agent never spins up a training round on-device.
-            // Trajectories are still useful for live chat context, but
-            // this disables PERSISTENCE — the optimizer has no input data
-            // and no-ops at boot.
+            // Hard-disable the bootstrap so the agent never spins up a
+            // training round on-device. Keep trajectory persistence available
+            // in debug APKs: Android local-llama bringup depends on the
+            // per-turn trace files as the ground-truth failure record. Release
+            // builds keep the historical opt-out unless an operator overrides
+            // the env explicitly.
             agentEnv.put("ELIZA_DISABLE_AUTO_BOOTSTRAP", "1");
-            agentEnv.put("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
+            if (!env.containsKey("ELIZA_DISABLE_TRAJECTORY_LOGGING")) {
+                agentEnv.put("ELIZA_DISABLE_TRAJECTORY_LOGGING", BuildConfig.DEBUG ? "0" : "1");
+            }
 
             // ── Vault passphrase ──────────────────────────────────────
             // The runtime's vault-bootstrap mirrors process.env secrets

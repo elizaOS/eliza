@@ -158,6 +158,8 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "pglite.wasm",
   "initdb.wasm",
   "pglite.data",
+  "ort-wasm-simd-threaded.mjs",
+  "ort-wasm-simd-threaded.wasm",
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
   "plugins-manifest.json",
@@ -220,9 +222,14 @@ function run(command, args, { cwd, env = process.env } = {}) {
   });
 }
 
+function resolveNodeExecutable() {
+  if (!process.versions?.bun) return process.execPath;
+  return process.env.NODE?.trim() || "node";
+}
+
 function runCapacitor(args) {
   return run(
-    process.execPath,
+    resolveNodeExecutable(),
     [
       path.join(
         appDir,
@@ -1400,6 +1407,26 @@ function removeApplicationComponentClassBlock(xml, className) {
     "g",
   );
   return xml.replace(pairedRe, "\n").replace(selfClosingRe, "\n");
+}
+
+function removeXmlCommentsContaining(xml, markers) {
+  let patched = xml;
+  for (const marker of markers) {
+    const escapedMarker = escapeRegExp(marker);
+    patched = patched.replace(
+      new RegExp(`\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`, "g"),
+      "\n",
+    );
+  }
+  return patched;
+}
+
+function ensureManifestApplicationClosedBeforeTopLevelEntries(xml) {
+  if (xml.includes("</application>")) return xml;
+  return xml.replace(
+    /\n\s*(<(?:uses-permission|uses-feature)\b)/,
+    "\n    </application>\n\n    $1",
+  );
 }
 
 function removeStaleAndroidJavaSourceRoots(dstJava) {
@@ -4316,6 +4343,124 @@ public class AgentPlugin extends Plugin {
 `;
 }
 
+function cloudSafeTasksWorkerJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.work.Worker;
+import androidx.work.WorkerParameters;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public class ElizaTasksWorker extends Worker {
+
+    private static final String TAG = "ElizaTasksWorker";
+    private static final String CAPACITOR_PREFS_GROUP = "CapacitorStorage";
+    private static final String KEY_DEVICE_SECRET = "eliza:device-secret";
+    private static final String KEY_AGENT_BASE = "eliza:agent-base";
+    private static final String WAKE_PATH = "/api/internal/wake";
+    private static final int CONNECT_TIMEOUT_MS = 5_000;
+    private static final int READ_TIMEOUT_MS = 25_000;
+    private static final long DEADLINE_MS = 25_000L;
+
+    public ElizaTasksWorker(@NonNull Context context, @NonNull WorkerParameters params) {
+        super(context, params);
+    }
+
+    @NonNull
+    @Override
+    public Result doWork() {
+        Context context = getApplicationContext();
+        SharedPreferences prefs = context.getSharedPreferences(
+            CAPACITOR_PREFS_GROUP,
+            Context.MODE_PRIVATE
+        );
+
+        String deviceSecret = prefs.getString(KEY_DEVICE_SECRET, null);
+        String agentBase = prefs.getString(KEY_AGENT_BASE, null);
+        if (deviceSecret == null || deviceSecret.isEmpty() || agentBase == null || agentBase.isEmpty()) {
+            Log.w(TAG, "cloud wake credentials are not provisioned; skipping");
+            return Result.failure();
+        }
+
+        String body;
+        try {
+            JSONObject json = new JSONObject();
+            json.put("kind", "refresh");
+            json.put("deadlineMs", System.currentTimeMillis() + DEADLINE_MS);
+            body = json.toString();
+        } catch (JSONException e) {
+            Log.e(TAG, "failed to serialize wake body", e);
+            return Result.failure();
+        }
+
+        String endpoint = trimTrailingSlash(agentBase) + WAKE_PATH;
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(endpoint);
+            if (!"https".equalsIgnoreCase(url.getProtocol())) {
+                Log.w(TAG, "cloud wake requires https agent base");
+                return Result.failure();
+            }
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setDoOutput(true);
+            conn.setUseCaches(false);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Authorization", "Bearer " + deviceSecret);
+
+            try (OutputStream out = conn.getOutputStream()) {
+                out.write(body.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+
+            int status = conn.getResponseCode();
+            if (status >= 200 && status < 300) {
+                Log.i(TAG, "cloud wake delivered ok status=" + status);
+                return Result.success();
+            }
+            if (status == HttpURLConnection.HTTP_UNAUTHORIZED
+                || (status >= 400 && status < 500 && status != HttpURLConnection.HTTP_CLIENT_TIMEOUT)) {
+                Log.w(TAG, "cloud wake rejected with permanent status=" + status + "; not retrying");
+                return Result.failure();
+            }
+            Log.w(TAG, "cloud wake transient failure status=" + status + "; will retry");
+            return Result.retry();
+        } catch (IOException e) {
+            Log.w(TAG, "cloud wake network failure; will retry", e);
+            return Result.retry();
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private static String trimTrailingSlash(String value) {
+        if (value == null) return "";
+        int end = value.length();
+        while (end > 0 && value.charAt(end - 1) == '/') {
+            end--;
+        }
+        return value.substring(0, end);
+    }
+}
+`;
+}
+
 function rewriteCloudJavaSources(javaRoots, androidPackage) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -4330,10 +4475,19 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
       touched += 1;
     }
     const agentPlugin = path.join(root, "AgentPlugin.java");
-    if (fs.existsSync(agentPlugin)) {
+    if (fs.existsSync(mainActivity) || fs.existsSync(agentPlugin)) {
       fs.writeFileSync(
         agentPlugin,
         cloudSafeAgentPluginJava(androidPackage),
+        "utf8",
+      );
+      touched += 1;
+    }
+    const tasksWorker = path.join(root, "ElizaTasksWorker.java");
+    if (fs.existsSync(tasksWorker)) {
+      fs.writeFileSync(
+        tasksWorker,
+        cloudSafeTasksWorkerJava(androidPackage),
         "utf8",
       );
       touched += 1;
@@ -4708,6 +4862,8 @@ function stripAndroidForCloud() {
       );
       xml = removeApplicationComponentClassBlock(xml, component);
     }
+    xml = removeXmlCommentsContaining(xml, ANDROID_CLOUD_STRIPPED_COMPONENTS);
+    xml = ensureManifestApplicationClosedBeforeTopLevelEntries(xml);
 
     for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
       const escaped = escapeRegExp(`android.permission.${perm}`);
@@ -4839,6 +4995,7 @@ async function buildAndroid() {
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
+    bunChannel: "stable",
   });
 
   const env = {
@@ -5106,7 +5263,9 @@ async function buildAndroidSystem() {
   await stageAndroidAgentRuntime({
     androidDir,
     spikeDir: androidAgentSpikeDir,
+    bunChannel: "canary",
   });
+  auditAndroidSystemSource("pre-gradle");
 
   const env = {
     ...process.env,

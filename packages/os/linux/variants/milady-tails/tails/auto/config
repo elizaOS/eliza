@@ -133,9 +133,9 @@ $RUN_LB_CONFIG \
     --bootstrap-config trixie \
     --archive-areas "main contrib non-free non-free-firmware" \
     --includes none \
-    --iso-application="Tails" \
-    --iso-publisher="https://tails.net/" \
-    --iso-volume="TAILS ${TAILS_FULL_VERSION}" \
+    --iso-application="elizaOS" \
+    --iso-publisher="https://elizaos.ai/" \
+    --iso-volume="ELIZAOS ${TAILS_FULL_VERSION}" \
     --linux-flavours amd64 \
     --memtest none \
     --mirror-binary "$DEBIAN_MIRROR" \
@@ -158,15 +158,15 @@ install -d config/chroot_local-includes/etc/amnesia/
 install -d config/chroot_local-includes/etc/tails/
 
 # os-release
-cat >>config/chroot_local-includes/etc/os-release <<EOF
-NAME="Tails"
-ID="tails"
-ID_LIKE="debian"
-PRETTY_NAME="Tails"
+cat >config/chroot_local-includes/etc/os-release <<EOF
+NAME="elizaOS"
+ID="elizaos-tails"
+ID_LIKE="tails debian"
+PRETTY_NAME="elizaOS"
 VERSION="$TAILS_VERSION"
-HOME_URL="https://tails.net/"
-SUPPORT_URL="https://tails.net/support/"
-BUG_REPORT_URL="https://tails.net/doc/first_steps/whisperback/"
+HOME_URL="https://elizaos.ai/"
+SUPPORT_URL="https://elizaos.ai/"
+BUG_REPORT_URL="https://elizaos.ai/"
 TAILS_DISTRIBUTION="$TAILS_DISTRIBUTION"
 TAILS_SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH"
 TAILS_GIT_COMMIT="$GIT_COMMIT"
@@ -219,4 +219,4 @@ sed -i "s,%%topdir%%,$(pwd)," /usr/share/debootstrap/scripts/debian-common
 # `mkdir -p` some of its subdirectories, so if it does not exist yet
 # by then, it'll be created with the default umask, which will prevent
 # users such as _apt from using it during the build process)
-install -d -m 2777 config/chroot_local-includes/tmp/
+install -d -m 1777 config/chroot_local-includes/tmp/

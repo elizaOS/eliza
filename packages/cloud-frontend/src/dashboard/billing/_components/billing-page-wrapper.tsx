@@ -20,7 +20,7 @@ export function BillingPageWrapper({
   return (
     <div className="max-w-7xl mx-auto">
       {canceled && (
-        <div className="mb-4 border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-400">
+        <div className="mb-4 border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           Payment canceled. No charges were made.
         </div>
       )}

@@ -47,14 +47,14 @@ exit_because_disabled() {
     msg="$(gettext "The Unsafe Browser was disabled in the Welcome Screen.\n\n")"
     # People with a Persistent Storage might have the Unsafe Browser disabled by default
     if persistence_is_enabled; then
-        msg="${msg}""$(gettext "To use the Unsafe Browser, restart Tails and make sure that the Unsafe Browser is enabled in the additional settings of the Welcome Screen.")"
+        msg="${msg}""$(gettext "To use the Unsafe Browser, restart elizaOS and make sure that the Unsafe Browser is enabled in the additional settings of the Welcome Screen.")"
     else
-        msg="${msg}""$(gettext "To use the Unsafe Browser, restart Tails.")"
+        msg="${msg}""$(gettext "To use the Unsafe Browser, restart elizaOS.")"
     fi
 
     restart="$(gettext "_Restart")"
     cancel="$(gettext "_Cancel")"
-    confirm_msg="$(gettext "Do you really want to restart Tails now?\n\nAll your current work will be lost.")"
+    confirm_msg="$(gettext "Do you really want to restart elizaOS now?\n\nAll your current work will be lost.")"
     confirm_button="$(gettext "Restart Now")"
     if _zenity --question --title "" --text "${msg}" --icon-name="dialog-error" \
         --ok-label "${restart}" --cancel-label "${cancel}" --default-cancel &&

@@ -95,7 +95,7 @@ export function TelegramBotSetupPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void disconnect();
             }}
@@ -166,7 +166,7 @@ export function TelegramBotSetupPanel() {
           <Button
             variant="default"
             size="sm"
-            className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void validateAndSave();
             }}

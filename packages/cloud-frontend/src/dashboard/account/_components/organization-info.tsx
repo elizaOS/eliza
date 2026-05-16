@@ -78,7 +78,7 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
                 Status
               </p>
               <span
-                className={`rounded-none px-2 py-1 text-xs font-bold uppercase tracking-wide border ${organization.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-rose-500/20 text-rose-400 border-rose-500/40"}`}
+                className={`rounded-none px-2 py-1 text-xs font-bold uppercase tracking-wide border ${organization.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
               >
                 {organization.is_active ? "Active" : "Inactive"}
               </span>

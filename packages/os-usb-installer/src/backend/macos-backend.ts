@@ -49,6 +49,7 @@ interface DiskUtilInfoPlist {
   Removable?: boolean;
   RemovableMediaOrExternalDevice?: boolean;
   Internal?: boolean;
+  OSInternalMedia?: boolean;
   VirtualOrPhysical?: string;
 }
 
@@ -313,11 +314,14 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
       if (disk.Size > TWO_TB) continue;
 
       const info = await getDiskUtilInfo(deviceId);
-      const isInternal = info.Internal === true;
+      const isInternal =
+        info.Internal === true || info.OSInternalMedia === true;
+      const isVirtual = info.VirtualOrPhysical === "Virtual";
       const isRemovable =
         info.Removable === true || info.RemovableMediaOrExternalDevice === true;
       const busProtocol = (info.BusProtocol ?? "").toLowerCase();
-      const isUsb = busProtocol.includes("usb");
+      const isUsb = busProtocol === "usb";
+      const isDiskImage = busProtocol === "disk image" || isVirtual;
 
       const content = disk.Content ?? "";
       const isApfsOrHfs =
@@ -326,6 +330,10 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
       let safety: RemovableDrive["safety"] = "unknown";
       if (isInternal || isApfsOrHfs) {
         safety = "blocked-system";
+      } else if (isDiskImage) {
+        // Disk images (mounted .dmg, simulator runtimes, etc.) are not real USB drives.
+        // Skip them entirely — they are not writable installer targets.
+        continue;
       } else if (isUsb || isRemovable) {
         safety = "safe-removable";
       }

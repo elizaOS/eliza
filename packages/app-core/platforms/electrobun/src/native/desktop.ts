@@ -1116,6 +1116,10 @@ X-GNOME-Autostart-enabled=true
 	}
 
 	async closeWindow(): Promise<void> {
+		if (process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY !== "0") {
+			await this.hideWindow();
+			return;
+		}
 		this.getWindow()?.close();
 	}
 

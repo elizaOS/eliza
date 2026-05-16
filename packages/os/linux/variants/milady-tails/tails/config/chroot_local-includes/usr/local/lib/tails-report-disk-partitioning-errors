@@ -16,21 +16,21 @@ if [ ! -e "${REPARTITIONING_ERROR_FLAG_FILE}" ]; then
 fi
 
 title=$(gettext 'Partitioning Error')
-details=$(gettext 'Errors were detected in the partitioning of your Tails USB stick.')
+details=$(gettext 'Errors were detected in the partitioning of your elizaOS USB stick.')
 
 if /usr/local/lib/tpscli is-created; then
     text="$(
         cat <<EOTEXT
 ${details}
 
-$(gettext 'We recommend that you create a backup of your Tails using <i>Tails Cloner</i> to migrate to a new USB stick.')
+$(gettext 'We recommend that you create a backup of your elizaOS using <i>elizaOS USB Cloner</i> to migrate to a new USB stick.')
 EOTEXT
     )"
     if zenity \
         --question \
         --icon-name=error \
         --cancel-label="$(gettext 'Close')" \
-        --ok-label="$(gettext 'Open Tails Cloner')" \
+        --ok-label="$(gettext 'Open elizaOS USB Cloner')" \
         --title="$title" --text="$text"; then
         exec tails-installer --backup
     fi
@@ -41,7 +41,7 @@ ${details}
 
 $(gettext 'Creation of Persistent Storage has been disabled.')
 
-$(gettext 'We recommend that you reinstall Tails from scratch. If the error persists, reinstall on a new USB stick.')
+$(gettext 'We recommend that you reinstall elizaOS from scratch. If the error persists, reinstall on a new USB stick.')
 EOTEXT
     )"
     exec zenity \

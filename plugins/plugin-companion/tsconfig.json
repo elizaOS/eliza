@@ -39,10 +39,10 @@
       ],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
-        "../../packages/native-plugins/appblocker/src/index.ts"
+        "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "../../packages/native-plugins/mobile-signals/src/index.ts"
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [

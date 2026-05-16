@@ -1,3 +1,8 @@
+import {
+  BRAND_FAVICONS,
+  BRAND_PATHS,
+  OG_EMBED_FILES,
+} from "@elizaos/shared-brand";
 import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
@@ -5,6 +10,8 @@ import { Toaster } from "sonner";
 import { StewardWalletProviders } from "@/pages/login/steward-wallet-providers";
 import { CreditsProvider } from "@/providers/CreditsProvider";
 import { StewardAuthProvider } from "@/providers/StewardProvider";
+
+const ogImage = `${BRAND_PATHS.ogembeds}/${OG_EMBED_FILES.cloud}`;
 
 const baseUrl =
   import.meta.env.VITE_APP_URL ||
@@ -31,25 +38,22 @@ export default function RootLayout() {
       <Helmet>
         <html lang="en" />
         <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
-        <title>eliza cloud - Run in Cloud</title>
+        <title>eliza cloud - Launch Eliza</title>
         <meta
           name="description"
-          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
+          content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
-        <meta property="og:title" content="eliza cloud - Run in Cloud" />
+        <meta property="og:title" content="eliza cloud - Launch Eliza" />
         <meta
           property="og:description"
-          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
+          content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
         <meta property="og:url" content={`${baseUrl}/`} />
         <meta property="og:site_name" content="Eliza Cloud" />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="en_US" />
-        <meta
-          property="og:image"
-          content="/brand/logos/logo_white_blackbg.svg"
-        />
+        <meta property="og:image" content={ogImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content="Eliza Cloud" />
@@ -57,23 +61,13 @@ export default function RootLayout() {
         <meta name="twitter:title" content="Eliza Cloud" />
         <meta
           name="twitter:description"
-          content="Run your Eliza agent in Cloud. Sign in, manage agents, and connect elizaOS devices."
+          content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
-        <meta
-          name="twitter:image"
-          content="/brand/logos/logo_white_blackbg.svg"
-        />
-        <link
-          rel="icon"
-          type="image/svg+xml"
-          href="/brand/favicons/favicon.svg"
-        />
-        <link rel="alternate icon" href="/brand/favicons/favicon.ico" />
-        <link rel="shortcut icon" href="/brand/favicons/favicon.ico" />
-        <link
-          rel="apple-touch-icon"
-          href="/brand/favicons/apple-touch-icon.png"
-        />
+        <meta name="twitter:image" content={ogImage} />
+        <link rel="icon" type="image/svg+xml" href={BRAND_FAVICONS.svg} />
+        <link rel="alternate icon" href={BRAND_FAVICONS.ico} />
+        <link rel="shortcut icon" href={BRAND_FAVICONS.ico} />
+        <link rel="apple-touch-icon" href={BRAND_FAVICONS.appleTouchIcon} />
         <link rel="manifest" href="/site.webmanifest" />
       </Helmet>
       {/*
@@ -97,6 +91,12 @@ export default function RootLayout() {
               disableTransitionOnChange
             >
               <NavigationProgress />
+              <a
+                href="#main"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[#FF5800]"
+              >
+                Skip to content
+              </a>
               <Outlet />
               <Toaster
                 richColors

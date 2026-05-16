@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -e
+
+# Some inherited tools are generated or installed by packages, not carried in
+# chroot_local-includes. Patch only visible strings; keep module/package names.
+for file in /usr/local/share/perl/*/Tails/IUK/Frontend.pm; do
+    [ -f "${file}" ] || continue
+    perl -0pi -e '
+        s/Tails Cloner/elizaOS USB Cloner/g;
+        s/Tails USB stick/elizaOS USB stick/g;
+    ' "${file}"
+done
+
+for file in \
+    /usr/share/applications/tails-documentation.desktop \
+    /usr/share/applications/tails-backup.desktop \
+    /usr/share/applications/tails-installer.desktop \
+    /usr/share/applications/tca.desktop \
+    /usr/share/applications/org.boum.tails.AdditionalSoftware.desktop \
+    /usr/share/applications/whisperback.desktop
+do
+    [ -f "${file}" ] || continue
+    # Locale-specific upstream translations can still include the old product
+    # name after gettext generation. Remove translated launcher strings so
+    # every locale falls back to the curated elizaOS English labels.
+    perl -0pi -e '
+        s/^(Name|Comment|Keywords)\[[^\n]+\]\s*=\s*[^\n]*\n//mg;
+        s/Categories=Utilities;Tails;/Categories=Utilities;ElizaOS;/g;
+    ' "${file}"
+done

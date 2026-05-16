@@ -66,8 +66,20 @@ export interface FlashPlan {
   privilegedFlashImplemented: boolean;
 }
 
+export interface DeviceSpecs {
+  storageAvailableBytes: number;
+  storageTotalBytes: number;
+  androidVersion: string;
+  abi: string;
+  bootloaderLocked: boolean | null;
+  supportedByElizaOs: boolean;
+  /** codename to use for build lookup, e.g. "bluejay" */
+  supportedBuildCodename: string | null;
+}
+
 export interface AospFlasherBackend {
   listConnectedDevices(): Promise<ConnectedDevice[]>;
+  getDeviceSpecs(serial: string): Promise<DeviceSpecs>;
   listBuilds(): Promise<AospBuild[]>;
   createFlashPlan(request: FlashRequest): Promise<FlashPlan>;
   executeFlashPlan(

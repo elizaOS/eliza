@@ -402,7 +402,7 @@ export default defineConfig({
       "eliza/packages/app-core/platforms/electrobun/src/native/steward.test.ts",
       "eliza/packages/app-core/platforms/electrobun/src/application-menu.test.ts",
       "eliza/packages/app-core/scripts/**/*.test.ts",
-      "eliza/packages/native-plugins/llama/src/**/*.test.ts",
+      "eliza/plugins/plugin-native-llama/src/**/*.test.ts",
       "eliza/packages/shared/src/**/*.test.ts",
       "eliza/plugins/plugin-browser/src/**/*.test.ts",
       "eliza/packages/app-core/src/**/*.test.tsx",

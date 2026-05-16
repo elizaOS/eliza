@@ -1,0 +1,19 @@
+[Unit]
+Description=elizaOS local app renderer
+ConditionUser=1000
+After=elizaos-agent.service
+Wants=elizaos-agent.service
+RefuseManualStop=yes
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/elizaos/start-elizaos-renderer-user
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos-renderer
+KillMode=mixed
+Nice=5
+
+[Install]
+WantedBy=default.target

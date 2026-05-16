@@ -68,7 +68,7 @@ export default function PrivacyPolicyPage() {
 
       <LandingHeader />
 
-      <main className="flex-1 px-6 pt-32 pb-16 sm:px-8 lg:px-12">
+      <main id="main" className="flex-1 px-6 pt-32 pb-16 sm:px-8 lg:px-12">
         <div className="mx-auto w-full max-w-4xl space-y-10">
           <Link
             to="/login"
@@ -82,7 +82,7 @@ export default function PrivacyPolicyPage() {
             <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
               Privacy Policy
             </h1>
-            <p className="text-base text-white/60">
+            <p className="text-base text-white/74">
               Last updated: November 4, 2025
             </p>
           </div>

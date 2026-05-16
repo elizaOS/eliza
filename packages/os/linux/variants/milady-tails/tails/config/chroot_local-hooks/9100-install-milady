@@ -1,0 +1,172 @@
+#!/bin/sh
+
+set -e
+
+src=/usr/share/elizaos/milady-app
+dst=/opt/milady
+
+echo "Installing elizaOS desktop app"
+
+if [ ! -x "${src}/bin/launcher" ]; then
+    echo "ERROR: missing elizaOS launcher at ${src}/bin/launcher" >&2
+    exit 1
+fi
+
+chown -R root:root "${src}"
+find "${src}" -type d -exec chmod 755 {} +
+find "${src}" -type f -exec chmod go-w {} +
+
+rm -rf "${dst}"
+mkdir -p /opt
+cp -a "${src}" "${dst}"
+chown -R root:root "${dst}"
+find "${dst}" -type d -exec chmod 755 {} +
+find "${dst}" -type f -exec chmod go-w {} +
+
+if [ ! -f "${dst}/Resources/version.json" ]; then
+    mkdir -p "${dst}/Resources"
+    printf '%s\n' '{"name":"elizaOS","identifier":"ai.elizaos.app","version":"dev","channel":"dev","source":"elizaOS"}' \
+        > "${dst}/Resources/version.json"
+fi
+
+python3 - "${dst}/Resources/version.json" \
+    "${dst}/Resources/app/brand-config.json" "${dst}/Info.plist" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+version_path = Path(sys.argv[1])
+brand_path = Path(sys.argv[2])
+plist_path = Path(sys.argv[3])
+
+version_info = json.loads(version_path.read_text(encoding="utf-8"))
+version_info["name"] = "elizaOS"
+version_info["identifier"] = "ai.elizaos.app"
+version_path.write_text(
+    json.dumps(version_info, separators=(",", ":")) + "\n",
+    encoding="utf-8",
+)
+
+brand_config = json.loads(brand_path.read_text(encoding="utf-8"))
+brand_config.update(
+    {
+        "appName": "elizaOS",
+        "appId": "ai.elizaos.app",
+        "namespace": "eliza",
+        "urlScheme": "elizaos",
+        "configDirName": "elizaOS",
+        "appDescription": "AI agents for elizaOS Live",
+        "buildVariant": "direct",
+        "configExportFileName": "eliza-config.json",
+        "startupLogFileName": "eliza-startup.log",
+        "linuxDesktopFileName": "milady.desktop",
+        "linuxDesktopEntryName": "elizaOS",
+        "cefVersionMarkerFileName": ".eliza-version",
+        "runtimeDistDirName": "eliza-dist",
+        "browserWorkspacePartition": "persist:eliza-browser",
+        "releaseNotesPartition": "persist:eliza-release-notes",
+        "cefDesktopPartition": "persist:eliza-desktop-cef",
+        "trustedCloseMessageType": "eliza.trusted-eliza-window.close",
+    }
+)
+brand_path.write_text(json.dumps(brand_config, indent="\t") + "\n", encoding="utf-8")
+
+if plist_path.exists():
+    text = plist_path.read_text(encoding="utf-8")
+    text = text.replace("ai.milady.milady", "ai.elizaos.app")
+    text = text.replace("Milady-dev", "elizaOS")
+    text = text.replace("<string>milady</string>", "<string>elizaos</string>")
+    plist_path.write_text(text, encoding="utf-8")
+PY
+chmod 644 "${dst}/Resources/version.json" \
+    "${dst}/Resources/app/brand-config.json" \
+    "${dst}/Info.plist" 2>/dev/null || true
+
+python3 - "${dst}/Resources/build.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    build_info = json.load(handle)
+
+build_info["defaultRenderer"] = "native"
+build_info["availableRenderers"] = ["native"]
+runtime = build_info.setdefault("runtime", {})
+runtime["exitOnLastWindowClosed"] = False
+build_info["chromiumFlags"] = {
+    "disable-gpu": True,
+    "disable-gpu-compositing": True,
+    "disable-gpu-sandbox": True,
+    "disable-vulkan": True,
+    "disable-features": "Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
+    "enable-software-rasterizer": True,
+    "force-software-rasterizer": True,
+    "use-gl": "swiftshader",
+    "use-angle": "swiftshader",
+    "disable-dev-shm-usage": True,
+    "user-data-dir": "/home/amnesia/.cache/ai.elizaos.app/dev/CEF/partitions",
+}
+
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(build_info, handle, separators=(",", ":"))
+    handle.write("\n")
+PY
+chmod 644 "${dst}/Resources/build.json"
+
+python3 - "${dst}/Resources/app/eliza-dist/node_modules/@elizaos/agent/package.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    package_json = json.load(handle)
+
+exports = dict(package_json.get("exports") or {})
+exports["./services/permissions/probers/index"] = {
+    "types": "./dist/packages/agent/src/services/permissions/probers/index.d.ts",
+    "import": "./dist/packages/agent/src/services/permissions/probers/index.js",
+    "default": "./dist/packages/agent/src/services/permissions/probers/index.js",
+}
+exports["./services/permissions/probers/*"] = {
+    "types": "./dist/packages/agent/src/services/permissions/probers/*.d.ts",
+    "import": "./dist/packages/agent/src/services/permissions/probers/*.js",
+    "default": "./dist/packages/agent/src/services/permissions/probers/*.js",
+}
+package_json["exports"] = exports
+
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(package_json, handle, separators=(",", ":"))
+    handle.write("\n")
+PY
+chmod 644 "${dst}/Resources/app/eliza-dist/node_modules/@elizaos/agent/package.json"
+
+rm -rf "${dst}/node_modules" "${dst}/bin/node_modules"
+ln -s Resources/app/eliza-dist/node_modules "${dst}/node_modules"
+ln -s ../Resources/app/eliza-dist/node_modules "${dst}/bin/node_modules"
+chown -h root:root "${dst}/node_modules" "${dst}/bin/node_modules"
+
+find "${dst}/bin" -maxdepth 1 -type f -exec chmod 755 {} +
+
+if [ -e "${dst}/bin/chrome-sandbox" ]; then
+    chown root:root "${dst}/bin/chrome-sandbox"
+    chmod 0755 "${dst}/bin/chrome-sandbox"
+fi
+
+if [ -f "${dst}/Resources/appIcon.png" ]; then
+    install -Dm0644 "${dst}/Resources/appIcon.png" /usr/share/pixmaps/milady.png
+fi
+if [ -f /usr/share/tails/greeter/icons/elizaos-logo.png ]; then
+    install -Dm0644 /usr/share/tails/greeter/icons/elizaos-logo.png \
+        /usr/share/pixmaps/elizaos.png
+fi
+
+if command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f /usr/share/fonts/truetype/elizaos || true
+fi
+
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate /usr/share/applications/milady.desktop
+fi
+
+rm -rf "${src}"

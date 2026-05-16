@@ -46,7 +46,11 @@ const npmArgs = ["run", "build"];
 await Promise.all(
   pluginNames.map(async (name) => {
     console.log(`[plugin:${name}] building...`);
-    await run(npmCommand, npmArgs, path.join(pluginsDir, name));
+    await run(
+      npmCommand,
+      npmArgs,
+      path.join(pluginsDir, `plugin-native-${name}`),
+    );
     console.log(`[plugin:${name}] done`);
   }),
 );
