@@ -29,8 +29,8 @@
       "@/routing/*": ["./src/routing/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "drizzle-orm": ["./node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+      "drizzle-orm": ["../../node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
