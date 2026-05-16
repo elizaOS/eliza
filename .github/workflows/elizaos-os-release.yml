@@ -8,6 +8,7 @@ on:
       - "packages/os/**"
       - "packages/os-homepage/**"
       - "packages/os-usb-installer/**"
+      - "packages/aosp-flasher/**"
 
 jobs:
   validate-os-release:

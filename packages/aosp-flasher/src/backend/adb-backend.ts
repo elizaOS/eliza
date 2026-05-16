@@ -84,7 +84,7 @@ function sleep(ms: number): Promise<void> {
 interface RawAdbDevice {
   serial: string;
   state: string;
-  model?: string;
+  model: string | undefined;
 }
 
 function parseAdbDevices(output: string): RawAdbDevice[] {

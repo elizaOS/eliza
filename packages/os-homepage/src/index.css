@@ -781,3 +781,202 @@ h3 {
     width: 100%;
   }
 }
+
+/* ── OS Downloads section ─────────────────────────────────────────────────── */
+
+.os-downloads {
+  color: var(--brand-white);
+}
+
+.os-downloads .section-head {
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.os-downloads .section-lede {
+  max-width: 44rem;
+  margin-top: 0.75rem;
+  font-size: clamp(1rem, 1.4vw, 1.2rem);
+  font-weight: 300;
+  opacity: 0.8;
+}
+
+.artifact-category {
+  margin-bottom: clamp(3rem, 6vw, 5rem);
+}
+
+.artifact-category-head {
+  margin-bottom: 1.5rem;
+}
+
+.artifact-category-head h2 {
+  margin-bottom: 0.35rem;
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 500;
+}
+
+.artifact-category-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 300;
+  opacity: 0.7;
+}
+
+.artifact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1.25rem;
+}
+
+.artifact-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s ease;
+}
+
+.artifact-card[data-available="false"] {
+  opacity: 0.75;
+}
+
+.artifact-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.artifact-card-head {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.artifact-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.artifact-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.artifact-badge-kind {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.artifact-badge-platform {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--brand-white);
+}
+
+.artifact-badge-soon {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.artifact-label {
+  margin: 0;
+  font-size: clamp(0.95rem, 1.3vw, 1.05rem);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.artifact-description {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 300;
+  line-height: 1.45;
+  opacity: 0.75;
+}
+
+.artifact-prereq {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 88, 0, 0.12);
+  border-left: 2px solid var(--brand-orange);
+  font-size: 0.82rem;
+  color: var(--brand-orange);
+}
+
+.artifact-prereq-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+}
+
+.artifact-card-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.artifact-size {
+  font-size: 0.82rem;
+  font-weight: 300;
+  opacity: 0.6;
+}
+
+.artifact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.artifact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  opacity: 0.7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.artifact-link:hover {
+  opacity: 1;
+  color: var(--brand-orange);
+}
+
+.artifact-link .icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.artifact-download-button {
+  flex: 1 1 auto;
+  justify-content: center;
+  background: var(--brand-white);
+  color: var(--brand-black);
+}
+
+.artifact-download-button-disabled {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: default;
+  pointer-events: none;
+}
+
+.artifact-channel-note {
+  margin-top: clamp(1.5rem, 3vw, 2.5rem);
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 2px solid var(--brand-blue);
+  font-size: 0.9rem;
+}
+
+.artifact-channel-note p {
+  margin: 0;
+  opacity: 0.75;
+}
