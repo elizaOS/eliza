@@ -203,6 +203,16 @@ export function hasActiveTaskAgentWorkForMessage(
 	return false;
 }
 
+export function shouldSuppressTimeoutForInFlightDispatchForTests({
+	generationTimedOut,
+	responseDispatchInFlight,
+}: {
+	generationTimedOut: boolean;
+	responseDispatchInFlight: boolean;
+}): boolean {
+	return generationTimedOut && responseDispatchInFlight;
+}
+
 /**
  * Class representing a Message Manager for handling Discord messages.
  */
@@ -780,6 +790,7 @@ export class MessageManager {
 				: null;
 			let typingStarted = false;
 			let responseEmitted = false;
+			let responseDispatchInFlight = false;
 			let generationTimedOut = false;
 			const generationTimeoutMs = resolveGenerationTimeoutMs(
 				this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
@@ -827,6 +838,17 @@ export class MessageManager {
 						},
 						"Failed to send Discord failure reply",
 					);
+				}
+			};
+
+			const runResponseDispatch = async <T>(
+				dispatch: () => Promise<T>,
+			): Promise<T> => {
+				responseDispatchInFlight = true;
+				try {
+					return await dispatch();
+				} finally {
+					responseDispatchInFlight = false;
 				}
 			};
 
@@ -947,39 +969,31 @@ export class MessageManager {
 						}
 					}
 
-					// Commit-to-send flag: mark `responseEmitted` true now, before any
-					// `channel.send` / `user.send` / `sendMessageInChunks` awaits. If
-					// the discord-generation timer races against an in-flight Discord
-					// HTTP call, the catch handler now sees the commit and skips the
-					// "before I could send a Discord reply" failure note (the message
-					// is almost certainly already delivered, since the HTTP request
-					// is in flight by the time the await suspends). If the send
-					// genuinely fails, the underlying error still surfaces through
-					// the catch chain — the only behavior change is suppressing the
-					// duplicate user-facing failure note for the race case.
-					responseEmitted = true;
-
 					let messages: DiscordMessage[] = [];
 					if (draftStream?.isStarted() && !draftStream.isDone()) {
 						if (hasText || files.length === 0) {
-							messages = await draftStream.finalize(textContent);
+							messages = await runResponseDispatch(() =>
+								draftStream.finalize(textContent),
+							);
 						} else {
 							await finalizePendingDraft();
 						}
 
 						if (files.length > 0) {
 							try {
-								const attachmentMessage = await channel.send({
-									files,
-									...(outboundReplyToMessageId &&
-									(replyToMode === "all" || !hasText)
-										? {
-												reply: {
-													messageReference: outboundReplyToMessageId,
-												},
-											}
-										: {}),
-								});
+								const attachmentMessage = await runResponseDispatch(() =>
+									channel.send({
+										files,
+										...(outboundReplyToMessageId &&
+										(replyToMode === "all" || !hasText)
+											? {
+													reply: {
+														messageReference: outboundReplyToMessageId,
+													},
+												}
+											: {}),
+									}),
+								);
 								messages.push(attachmentMessage);
 							} catch (error) {
 								this.runtime.logger.warn(
@@ -1007,10 +1021,12 @@ export class MessageManager {
 							return [];
 						}
 
-						const dmMessage = await user.send({
-							content: textContent,
-							files: files.length > 0 ? files : undefined,
-						});
+						const dmMessage = await runResponseDispatch(() =>
+							user.send({
+								content: textContent,
+								files: files.length > 0 ? files : undefined,
+							}),
+						);
 						messages = [dmMessage];
 					} else {
 						if (!message.id) {
@@ -1020,14 +1036,16 @@ export class MessageManager {
 							);
 							return [];
 						}
-						messages = await sendMessageInChunks(
-							channel,
-							textContent,
-							outboundReplyToMessageId ?? "",
-							files,
-							undefined,
-							this.runtime,
-							replyToMode,
+						messages = await runResponseDispatch(() =>
+							sendMessageInChunks(
+								channel,
+								textContent,
+								outboundReplyToMessageId ?? "",
+								files,
+								undefined,
+								this.runtime,
+								replyToMode,
+							),
 						);
 					}
 
@@ -1206,6 +1224,26 @@ export class MessageManager {
 							timeoutMs: generationTimeoutMs,
 						},
 						"Suppressing Discord timeout reply while task-agent work is still active",
+					);
+					return;
+				}
+
+				if (
+					shouldSuppressTimeoutForInFlightDispatchForTests({
+						generationTimedOut,
+						responseDispatchInFlight,
+					})
+				) {
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							timeoutMs: generationTimeoutMs,
+						},
+						"Suppressing Discord timeout handling while response dispatch is in flight",
 					);
 					return;
 				}

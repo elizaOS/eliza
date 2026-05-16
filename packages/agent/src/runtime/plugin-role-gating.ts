@@ -73,7 +73,7 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Sender-role lookup cache
+// Sender-role lookup dedup
 // ---------------------------------------------------------------------------
 // `checkSenderRole` does two DB queries (resolveWorldForMessage +
 // resolveEntityRole). When state composition runs, every gated provider's
@@ -85,22 +85,20 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 // stats compound and the provider provider-loop hits its overall
 // timeout cap, dropping providers from the prompt's context.
 //
-// Cache key: `${agentId}|${entityId}|${roomId}`. Roles are scoped per
-// world, and a room's world is stable for a single conversation. TTL is
-// short so admin promotions/demotions become visible within the cache
-// window.
-//
-// In-flight dedup ensures parallel callers for the same key share one DB
-// roundtrip instead of N.
-type CachedRoleCheck = {
-  value: { role: string; isOwner: boolean; isAdmin: boolean } | null;
-  expiresAt: number;
-};
+// This intentionally dedups only live in-flight checks. Provider redaction is
+// security-sensitive, and `checkSenderRole` also depends on live connector
+// metadata stamped onto the current message, so resolved role decisions are not
+// cached across turns.
+type RoleCheckValue = {
+  role: string;
+  isOwner: boolean;
+  isAdmin: boolean;
+} | null;
 
-const ROLE_CHECK_CACHE_TTL_MS = 30_000;
-const ROLE_CHECK_CACHE_MAX_SIZE = 512;
-const roleCheckCache = new Map<string, CachedRoleCheck>();
-const roleCheckInflight = new Map<string, Promise<CachedRoleCheck["value"]>>();
+const roleCheckInflightByRuntime = new WeakMap<
+  IAgentRuntime,
+  Map<string, Promise<RoleCheckValue>>
+>();
 let roleCheckLoader:
   | Promise<typeof import("./roles.ts").checkSenderRole>
   | undefined;
@@ -120,44 +118,45 @@ function loadCheckSenderRole() {
   return roleCheckLoader;
 }
 
-async function fetchAndCacheSenderRole(
+function stableStringify(value: unknown): string {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
+function liveRoleMetadataKey(message: Memory): string {
+  const source =
+    typeof message.content.source === "string" ? message.content.source : "";
+  const metadata = (message as Memory & { metadata?: unknown }).metadata;
+  return stableStringify({ metadata, source });
+}
+
+async function fetchSenderRole(
   runtime: IAgentRuntime,
   message: Memory,
-  cacheKey: string,
-): Promise<CachedRoleCheck["value"]> {
+): Promise<RoleCheckValue> {
   const checkSenderRole = await loadCheckSenderRole();
   const fresh = await checkSenderRole(runtime, message);
-  const value = fresh
+  return fresh
     ? { role: fresh.role, isOwner: fresh.isOwner, isAdmin: fresh.isAdmin }
     : null;
-  roleCheckCache.set(cacheKey, {
-    value,
-    expiresAt: Date.now() + ROLE_CHECK_CACHE_TTL_MS,
-  });
-
-  // Bound the cache. Drop the oldest-inserted 25% (FIFO via Map iteration
-  // order) when we cross the threshold so a long-running agent never
-  // accumulates unbounded entries. FIFO is intentional — true LRU would
-  // require tracking last-access timestamps on every cache hit, and the
-  // 30s TTL is short enough that the eviction policy difference doesn't
-  // meaningfully affect hit rate for the parallel-Promise.all workload
-  // this cache is sized for.
-  if (roleCheckCache.size > ROLE_CHECK_CACHE_MAX_SIZE) {
-    const toDrop = Math.ceil(roleCheckCache.size / 4);
-    let dropped = 0;
-    for (const k of roleCheckCache.keys()) {
-      roleCheckCache.delete(k);
-      if (++dropped >= toDrop) break;
-    }
-  }
-
-  return value;
 }
 
 async function getCachedSenderRole(
   runtime: IAgentRuntime,
   message: Memory,
-): Promise<CachedRoleCheck["value"]> {
+): Promise<RoleCheckValue> {
   const entityId = message.entityId;
   const roomId = message.roomId;
   if (!entityId || !roomId) {
@@ -168,19 +167,16 @@ async function getCachedSenderRole(
       : null;
   }
 
-  const key = `${runtime.agentId}|${entityId}|${roomId}`;
-  const cached = roleCheckCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
+  const key = `${runtime.agentId}|${entityId}|${roomId}|${liveRoleMetadataKey(message)}`;
+  let roleCheckInflight = roleCheckInflightByRuntime.get(runtime);
+  if (!roleCheckInflight) {
+    roleCheckInflight = new Map();
+    roleCheckInflightByRuntime.set(runtime, roleCheckInflight);
   }
-
-  // Dedup: if a fetch for this key is already in flight (another gated
-  // provider's wrapper running in the same Promise.all batch), await the
-  // shared promise instead of starting a duplicate DB query.
   const inflight = roleCheckInflight.get(key);
   if (inflight) return inflight;
 
-  const promise = fetchAndCacheSenderRole(runtime, message, key).finally(() => {
+  const promise = fetchSenderRole(runtime, message).finally(() => {
     roleCheckInflight.delete(key);
   });
   roleCheckInflight.set(key, promise);

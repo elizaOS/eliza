@@ -249,15 +249,20 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
 const TASK_AGENT_COMPLEXITY_RE =
   /\b(repo|repository|code|coding|debug|fix|implement|investigate|research|analyze|analysis|summarize|summary|write|draft|document|plan|workflow|automation|parallel|delegate|subtask|agent|orchestrate|coordinate|compare|test|tests|pull request|pr\b|branch|commit)\b/i;
 
-let frameworkStateCache:
-  | {
-      expiresAt: number;
-      value: {
-        configuredSubscriptionProvider?: string;
-        frameworks: TaskAgentFrameworkAvailability[];
-      };
-    }
-  | undefined;
+type FrameworkInventory = {
+  configuredSubscriptionProvider?: string;
+  frameworks: TaskAgentFrameworkAvailability[];
+};
+type FrameworkDiscoveryCacheKey = "static" | "preflight";
+type FrameworkStateCacheEntry = {
+  expiresAt: number;
+  value: FrameworkInventory;
+};
+
+const frameworkStateCache = new Map<
+  FrameworkDiscoveryCacheKey,
+  FrameworkStateCacheEntry
+>();
 
 // In-flight dedup for the slow `computeTaskAgentFrameworkState` path.
 // Multiple providers (CODING_AGENT_EXAMPLES, ACTIVE_WORKSPACE_CONTEXT)
@@ -267,18 +272,22 @@ let frameworkStateCache:
 // installed CLI binaries and adapter availability — the dominant
 // per-turn cost when the cache is cold. With this dedup, the first
 // caller starts the probe and the rest await its promise.
-let frameworkStateInflight:
-  | Promise<{
-      configuredSubscriptionProvider?: string;
-      frameworks: TaskAgentFrameworkAvailability[];
-    }>
-  | undefined;
+const frameworkStateInflight = new Map<
+  FrameworkDiscoveryCacheKey,
+  Promise<FrameworkInventory>
+>();
 const frameworkCooldowns = new Map<
   SupportedTaskAgentAdapter,
   { until: number; reason: string }
 >();
 const TASK_AGENT_USAGE_EXHAUSTED_RE =
   /\b(insufficient(?:[_\s]+(?:credits?|quota))|insufficient_quota|out of credits|credit balance|usage (?:has )?(?:reached|exceeded)|(?:you(?:'ve| have)? hit your usage limits?)|usage[-\s]?limits?|quota exceeded|payment required|status(?:code)?[:\s]*402)\b/i;
+
+function frameworkDiscoveryCacheKey(
+  probe?: TaskAgentFrameworkProbe,
+): FrameworkDiscoveryCacheKey {
+  return probe?.checkAvailableAgents ? "preflight" : "static";
+}
 
 function normalizePreflightAdapterId(
   value: string | undefined,
@@ -835,10 +844,12 @@ export async function getTaskAgentFrameworkState(
   probe?: TaskAgentFrameworkProbe,
   profileInput?: TaskAgentTaskProfileInput,
 ): Promise<TaskAgentFrameworkState> {
-  if (frameworkStateCache && frameworkStateCache.expiresAt > Date.now()) {
+  const cacheKey = frameworkDiscoveryCacheKey(probe);
+  const cached = frameworkStateCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
     return computeTaskAgentFrameworkStateFromInventory(
       runtime,
-      frameworkStateCache.value,
+      cached.value,
       probe,
       profileInput,
     );
@@ -850,17 +861,21 @@ export async function getTaskAgentFrameworkState(
   // in the same state-composition cycle share one probe instead of
   // racing N independent filesystem walks.
   if (!profileInput) {
-    if (!frameworkStateInflight) {
+    let inflight = frameworkStateInflight.get(cacheKey);
+    if (!inflight) {
       // Forward `probe` to the cold compute so the first caller's ACP
       // preflight data (auth/install/docs status) is reflected in the
       // cached inventory. Without this, the dedup path would silently
       // strip the probe and bake stale availability into the 15s cache
       // for all parallel and subsequent callers in the window.
+      // The in-flight and cache entries are keyed by discovery source:
+      // probe-backed ACP preflight and static filesystem/env discovery
+      // must not share a cold-fill promise or cached inventory.
       // The cached value still strips probe-dependent enrichment fields
       // (`recommended`, `selectionScore`, `selectionSignals`) so they
       // can be recomputed per-call from `computeTaskAgentFrameworkStateFromInventory`.
       const inflightProbe = probe;
-      frameworkStateInflight = (async () => {
+      inflight = (async () => {
         try {
           const fresh = await computeTaskAgentFrameworkState(
             runtime,
@@ -876,17 +891,18 @@ export async function getTaskAgentFrameworkState(
               selectionSignals: undefined,
             })),
           };
-          frameworkStateCache = {
+          frameworkStateCache.set(cacheKey, {
             expiresAt: Date.now() + 15_000,
             value: inventory,
-          };
+          });
           return inventory;
         } finally {
-          frameworkStateInflight = undefined;
+          frameworkStateInflight.delete(cacheKey);
         }
       })();
+      frameworkStateInflight.set(cacheKey, inflight);
     }
-    const inventory = await frameworkStateInflight;
+    const inventory = await inflight;
     return computeTaskAgentFrameworkStateFromInventory(
       runtime,
       inventory,
@@ -905,20 +921,13 @@ export async function getTaskAgentFrameworkState(
 
 function computeTaskAgentFrameworkStateFromInventory(
   runtime: IAgentRuntime,
-  inventory: {
-    configuredSubscriptionProvider?: string;
-    frameworks: TaskAgentFrameworkAvailability[];
-  },
+  inventory: FrameworkInventory,
   probe?: TaskAgentFrameworkProbe,
   profileInput?: TaskAgentTaskProfileInput,
 ): TaskAgentFrameworkState {
   const clonedProbe = {
     ...probe,
     checkAvailableAgents: undefined,
-  };
-  frameworkStateCache = {
-    expiresAt: Date.now() + 15_000,
-    value: inventory,
   };
   return {
     ...computeTaskAgentFrameworkStateFromCachedInventory(
@@ -1049,10 +1058,6 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
       framework.selectionSignals = scored.selectionSignals;
     }
   }
-  frameworkStateCache = {
-    expiresAt: Date.now() + 15_000,
-    value: inventory,
-  };
   return {
     configuredSubscriptionProvider,
     frameworks,
@@ -1220,7 +1225,8 @@ function buildPreferredReason(
 }
 
 export function clearTaskAgentFrameworkStateCache(): void {
-  frameworkStateCache = undefined;
+  frameworkStateCache.clear();
+  frameworkStateInflight.clear();
 }
 
 export function isUsageExhaustedTaskAgentError(text: string): boolean {
