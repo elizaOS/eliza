@@ -1,6 +1,6 @@
-"use client";
-
 /// <reference path="../../types/react-syntax-highlighter.d.ts" />
+
+"use client";
 
 import { CheckIcon, CopyIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";

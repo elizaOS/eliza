@@ -1,0 +1,181 @@
+name: Build elizaOS VM Image
+
+on:
+  workflow_call:
+    inputs:
+      format:
+        type: string
+        default: ova
+      publish:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      format:
+        description: Output format
+        type: choice
+        options: [qcow2, ova, vmdk, all]
+        default: ova
+      publish:
+        description: Upload to GitHub Release
+        type: boolean
+        default: false
+
+jobs:
+  build-vm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install QEMU and tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 \
+            qemu-utils \
+            ovmf \
+            cloud-image-utils \
+            libguestfs-tools \
+            python3 \
+            just \
+            curl
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache upstream Debian image
+        uses: actions/cache@v4
+        with:
+          path: packages/os/linux/vm/disk-base/.cache
+          key: elizaos-vm-upstream-${{ hashFiles('packages/os/linux/vm/disk-base/mmdebstrap.recipe') }}
+          restore-keys: elizaos-vm-upstream-
+
+      - name: Build VM base image
+        working-directory: packages/os/linux
+        run: sudo bash vm/scripts/build-base.sh
+        timeout-minutes: 60
+
+      - name: Deploy elizaOS to VM
+        working-directory: packages/os/linux
+        continue-on-error: true
+        run: bash vm/scripts/deploy.sh
+
+      - name: Run VM integration tests
+        working-directory: packages/os/linux
+        continue-on-error: true
+        timeout-minutes: 20
+        run: bash vm/scripts/run-tests.sh
+
+      - name: Generate VM bundle metadata
+        working-directory: packages/os/linux
+        run: |
+          mkdir -p vm/output
+          python3 vm/scripts/generate-bundle-metadata.py \
+            --output-dir vm/output/bundle-metadata
+
+      - name: Convert to OVA (for VirtualBox / VMware)
+        id: ova
+        if: inputs.format == 'ova' || inputs.format == 'all' || inputs.format == 'vmdk' || inputs.format == ''
+        continue-on-error: true
+        run: |
+          BASE_QCOW=$(find packages/os/linux -maxdepth 1 -name "*.qcow2" | head -1)
+          if [ -z "$BASE_QCOW" ]; then
+            echo "No qcow2 image found, skipping OVA conversion"
+            exit 0
+          fi
+          DATE=$(date +%Y.%m.%d)
+          VMDK="elizaos-vm-${DATE}.vmdk"
+          OVA="elizaos-vm-${DATE}.ova"
+          OVF="elizaos-vm-${DATE}.ovf"
+
+          echo "Converting qcow2 to vmdk..."
+          qemu-img convert -f qcow2 -O vmdk "$BASE_QCOW" "$VMDK"
+
+          # Minimal OVF descriptor
+          cat > "$OVF" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Envelope xmlns="http://schemas.dmtf.org/ovf/envelope/1"
+                    xmlns:ovf="http://schemas.dmtf.org/ovf/envelope/1"
+                    xmlns:rasd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData">
+            <References>
+              <File ovf:href="${VMDK}" ovf:id="file1"/>
+            </References>
+            <VirtualSystem ovf:id="elizaOS">
+              <Name>elizaOS</Name>
+              <VirtualHardwareSection>
+                <Item>
+                  <rasd:ElementName>4 virtual CPUs</rasd:ElementName>
+                  <rasd:InstanceID>1</rasd:InstanceID>
+                  <rasd:ResourceType>3</rasd:ResourceType>
+                  <rasd:VirtualQuantity>4</rasd:VirtualQuantity>
+                </Item>
+                <Item>
+                  <rasd:ElementName>4096 MB RAM</rasd:ElementName>
+                  <rasd:InstanceID>2</rasd:InstanceID>
+                  <rasd:ResourceType>4</rasd:ResourceType>
+                  <rasd:VirtualQuantity>4096</rasd:VirtualQuantity>
+                </Item>
+              </VirtualHardwareSection>
+            </VirtualSystem>
+          </Envelope>
+          EOF
+
+          tar -cvf "$OVA" "$OVF" "$VMDK"
+          sha256sum "$OVA" > "${OVA}.sha256"
+          OVA_SHA256=$(cut -d' ' -f1 "${OVA}.sha256")
+          OVA_SIZE=$(stat --format="%s" "$OVA")
+
+          echo "ova_path=$OVA" >> "$GITHUB_OUTPUT"
+          echo "ova_sha256=$OVA_SHA256" >> "$GITHUB_OUTPUT"
+          echo "ova_size=$OVA_SIZE" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload VM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: elizaos-vm-image
+          path: |
+            elizaos-vm-*.ova
+            elizaos-vm-*.ova.sha256
+            elizaos-vm-*.qcow2
+            packages/os/linux/vm/output/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'workflow_call' && inputs.publish == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            elizaos-vm-*.ova
+            elizaos-vm-*.ova.sha256
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write VM metadata to summary
+        run: |
+          {
+            echo "## elizaOS VM Image"
+            echo "| Field | Value |"
+            echo "| ----- | ----- |"
+            if [ -n "${{ steps.ova.outputs.ova_path }}" ]; then
+              echo "| OVA | \`${{ steps.ova.outputs.ova_path }}\` |"
+              echo "| SHA-256 | \`${{ steps.ova.outputs.ova_sha256 }}\` |"
+              echo "| Size | ${{ steps.ova.outputs.ova_size }} bytes |"
+            else
+              echo "| OVA | not produced |"
+            fi
+            echo "| Format | ${{ inputs.format || 'ova' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

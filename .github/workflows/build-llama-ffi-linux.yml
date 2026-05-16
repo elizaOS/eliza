@@ -81,16 +81,16 @@ jobs:
       - name: Cache llama.cpp cmake build dir
         uses: actions/cache@v5
         with:
-          path: packages/inference/llama.cpp/build
-          key: llama-ffi-linux-cpu-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}
+          path: plugins/plugin-local-inference/native/llama.cpp/build
+          key: llama-ffi-linux-cpu-${{ hashFiles('plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt') }}
           restore-keys: |
             llama-ffi-linux-cpu-
 
       - name: Configure llama.cpp (CPU, shared, no server)
         run: |
           set -euo pipefail
-          cmake -S packages/inference/llama.cpp \
-                -B packages/inference/llama.cpp/build \
+          cmake -S plugins/plugin-local-inference/native/llama.cpp \
+                -B plugins/plugin-local-inference/native/llama.cpp/build \
                 -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DBUILD_SHARED_LIBS=ON \
@@ -104,12 +104,12 @@ jobs:
       - name: Build llama.cpp shared library
         run: |
           set -euo pipefail
-          cmake --build packages/inference/llama.cpp/build --target llama -j 4
+          cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama -j 4
 
       - name: Verify artifact
         run: |
           set -euo pipefail
-          ART_DIR="packages/inference/llama.cpp/build"
+          ART_DIR="plugins/plugin-local-inference/native/llama.cpp/build"
           if [ -f "$ART_DIR/libllama.so" ]; then
             ART="$ART_DIR/libllama.so"
           elif [ -f "$ART_DIR/bin/libllama.so" ]; then
@@ -129,8 +129,8 @@ jobs:
           STAGE_DIR="artifacts/libelizainference/linux-x64-cpu"
           mkdir -p "$STAGE_DIR"
           for cand in \
-            packages/inference/llama.cpp/build/libllama.so \
-            packages/inference/llama.cpp/build/bin/libllama.so; do
+            plugins/plugin-local-inference/native/llama.cpp/build/libllama.so \
+            plugins/plugin-local-inference/native/llama.cpp/build/bin/libllama.so; do
             if [ -f "$cand" ]; then
               cp "$cand" "$STAGE_DIR/libelizainference.so"
               break
@@ -143,7 +143,7 @@ jobs:
             echo "ref=${{ github.ref }}"
             echo "sha=${{ github.sha }}"
             echo "runner=ubuntu-22.04"
-            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+            echo "llama_sha=$(git -C plugins/plugin-local-inference/native/llama.cpp rev-parse HEAD || echo n/a)"
           } > "$STAGE_DIR/BUILD_INFO.txt"
           echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
 
@@ -178,8 +178,8 @@ jobs:
       - name: Configure llama.cpp (CUDA, shared, no server)
         run: |
           set -euo pipefail
-          cmake -S packages/inference/llama.cpp \
-                -B packages/inference/llama.cpp/build \
+          cmake -S plugins/plugin-local-inference/native/llama.cpp \
+                -B plugins/plugin-local-inference/native/llama.cpp/build \
                 -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DBUILD_SHARED_LIBS=ON \
@@ -193,7 +193,7 @@ jobs:
       - name: Build llama.cpp shared library
         run: |
           set -euo pipefail
-          cmake --build packages/inference/llama.cpp/build --target llama -j 4
+          cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama -j 4
 
       - name: Stage artifact (linux-x64-cuda)
         id: stage
@@ -202,8 +202,8 @@ jobs:
           STAGE_DIR="artifacts/libelizainference/linux-x64-cuda"
           mkdir -p "$STAGE_DIR"
           for cand in \
-            packages/inference/llama.cpp/build/libllama.so \
-            packages/inference/llama.cpp/build/bin/libllama.so; do
+            plugins/plugin-local-inference/native/llama.cpp/build/libllama.so \
+            plugins/plugin-local-inference/native/llama.cpp/build/bin/libllama.so; do
             if [ -f "$cand" ]; then
               cp "$cand" "$STAGE_DIR/libelizainference.so"
               break

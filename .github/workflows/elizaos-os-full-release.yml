@@ -1,0 +1,47 @@
+name: elizaOS Full OS Release
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload artifacts to release
+        type: boolean
+        default: false
+
+jobs:
+  trigger-linux-iso:
+    uses: ./.github/workflows/build-linux-iso.yml
+    with:
+      channel: stable
+      publish: ${{ github.event_name == 'release' || inputs.publish == true }}
+    secrets: inherit
+
+  trigger-debian-package:
+    uses: ./.github/workflows/build-debian-package.yml
+    secrets: inherit
+
+  trigger-vm-image:
+    uses: ./.github/workflows/build-vm-image.yml
+    with:
+      format: ova
+      publish: ${{ github.event_name == 'release' || inputs.publish == true }}
+    secrets: inherit
+
+  summary:
+    needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image]
+    runs-on: ubuntu-latest
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Release summary
+        run: |
+          {
+            echo "## elizaOS OS Release Summary"
+            echo "| Artifact | Status |"
+            echo "| -------- | ------ |"
+            echo "| Linux ISO | ${{ needs.trigger-linux-iso.result }} |"
+            echo "| Debian .deb | ${{ needs.trigger-debian-package.result }} |"
+            echo "| VM Image | ${{ needs.trigger-vm-image.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

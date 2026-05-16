@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { DryRunUsbInstallerBackend } from "./backend/dry-run-backend";
+import { createPlatformBackend } from "./backend";
 import { InstallerApp } from "./components/InstallerApp";
 import "./styles.css";
 
@@ -12,6 +12,6 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <InstallerApp backend={new DryRunUsbInstallerBackend()} />
+    <InstallerApp backend={createPlatformBackend()} />
   </StrictMode>,
 );

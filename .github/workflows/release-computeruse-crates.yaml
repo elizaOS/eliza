@@ -53,6 +53,7 @@ jobs:
   # Stage 1: computeruse-computer-use (base)
   # ============================================
   build-computer-use:
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -157,6 +158,7 @@ jobs:
   # Stage 2: computeruse-rs (depends on computer-use)
   # ============================================
   build-computeruse-rs:
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: build-computer-use
@@ -247,6 +249,7 @@ jobs:
   # Both depend on computeruse-rs
   # ============================================
   build-mcp-agent:
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-computer-use, build-computeruse-rs]
@@ -333,6 +336,7 @@ jobs:
         working-directory: .
 
   build-workflow-recorder:
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-computer-use, build-computeruse-rs]
@@ -417,6 +421,7 @@ jobs:
   # Stage 4: computeruse-cli (depends on mcp-agent)
   # ============================================
   build-cli:
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [build-computer-use, build-mcp-agent]
@@ -499,6 +504,7 @@ jobs:
   # Stage 5: Binding crates (independent)
   # ============================================
   build-bindings:
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: build-computer-use
@@ -584,7 +590,7 @@ jobs:
   release-summary:
     runs-on: ubuntu-latest
     needs: [build-computer-use, build-computeruse-rs, build-mcp-agent, build-workflow-recorder, build-cli, build-bindings]
-    if: always()
+    if: ${{ false }} # packages/computeruse is no longer present in this repo.
 
     steps:
       - name: Generate release summary

@@ -244,6 +244,16 @@ jobs:
           sha256sum "$AAB_PATH" "$APK_PATH" > packages/app/android/app/build/outputs/release-SHA256SUMS.txt
           cat packages/app/android/app/build/outputs/release-SHA256SUMS.txt
 
+      - name: Stage sideload APK with canonical name
+        run: |
+          VERSION="${{ steps.version.outputs.name }}"
+          APK_SRC="packages/app/android/app/build/outputs/apk/release/app-release.apk"
+          SIDELOAD_APK="elizaos-android-${VERSION}-release.apk"
+          cp "$APK_SRC" "$SIDELOAD_APK"
+          sha256sum "$SIDELOAD_APK" > "${SIDELOAD_APK}.sha256"
+          echo "Sideload APK: $SIDELOAD_APK"
+          echo "SHA256: $(cat "${SIDELOAD_APK}.sha256")"
+
       - name: Upload Android release artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -252,6 +262,8 @@ jobs:
             packages/app/android/app/build/outputs/bundle/release/app-release.aab
             packages/app/android/app/build/outputs/apk/release/app-release.apk
             packages/app/android/app/build/outputs/release-SHA256SUMS.txt
+            elizaos-android-${{ steps.version.outputs.name }}-release.apk
+            elizaos-android-${{ steps.version.outputs.name }}-release.apk.sha256
           retention-days: 90
 
       - name: Attach Android artifacts to GitHub Release
@@ -260,6 +272,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.name }}"
           TAG="v${VERSION}"
+          SIDELOAD_APK="elizaos-android-${VERSION}-release.apk"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "::error::No GitHub release found for $TAG; cannot attach AAB."
             exit 1
@@ -270,7 +283,13 @@ jobs:
              "Eliza-${VERSION}.apk"
           cp packages/app/android/app/build/outputs/release-SHA256SUMS.txt \
              "Eliza-${VERSION}.android.SHA256SUMS.txt"
-          gh release upload "$TAG" "Eliza-${VERSION}.aab" "Eliza-${VERSION}.apk" "Eliza-${VERSION}.android.SHA256SUMS.txt" --clobber
+          gh release upload "$TAG" \
+            "Eliza-${VERSION}.aab" \
+            "Eliza-${VERSION}.apk" \
+            "Eliza-${VERSION}.android.SHA256SUMS.txt" \
+            "${SIDELOAD_APK}" \
+            "${SIDELOAD_APK}.sha256" \
+            --clobber
 
       - name: Clean up keystore
         if: always()

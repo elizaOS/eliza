@@ -10,8 +10,10 @@ declare module "react-syntax-highlighter" {
     customStyle?: CSSProperties;
     language?: string;
     lineNumberStyle?: CSSProperties;
+    PreTag?: string;
     showLineNumbers?: boolean;
     style?: SyntaxHighlighterStyle;
+    wrapLongLines?: boolean;
   };
 
   export const Prism: ComponentType<SyntaxHighlighterProps>;

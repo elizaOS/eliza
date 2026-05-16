@@ -1968,6 +1968,7 @@
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
+        "@stwd/sdk": "^0.8.1",
         "@tailwindcss/vite": "^4",
         "@vitejs/plugin-react": "^6.0.0",
         "lucide-react": "^1.0.0",

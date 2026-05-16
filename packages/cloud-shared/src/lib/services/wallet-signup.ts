@@ -106,3 +106,73 @@ export async function findOrCreateUserByWalletAddress(
     return { user: raced, isNewAccount: false };
   }
 }
+
+/**
+ * Find or create a user for a Solana wallet.
+ * Solana base58 addresses are case-sensitive, so this path must not pass
+ * through EVM checksum normalization or lowercase storage.
+ */
+export async function findOrCreateSolanaUserByWalletAddress(
+  walletAddress: string,
+  options?: FindOrCreateWalletOptions,
+): Promise<{ user: UserWithOrganization; isNewAccount: boolean }> {
+  const grantInitialCredits = options?.grantInitialCredits !== false;
+
+  const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
+  if (existing) {
+    return { user: existing, isNewAccount: false };
+  }
+
+  const slug = `wallet-solana-${walletAddress}`;
+  let org: Organization | null = (await organizationsRepository.findBySlug(slug)) ?? null;
+  if (!org) {
+    try {
+      org = await organizationsService.create({
+        name: `Solana Wallet ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
+        slug,
+        credit_balance: "0.00",
+      });
+
+      if (grantInitialCredits && INITIAL_FREE_CREDITS > 0) {
+        try {
+          await creditsService.addCredits({
+            organizationId: org.id,
+            amount: INITIAL_FREE_CREDITS,
+            description: "Wallet sign-up bonus",
+            metadata: { type: "wallet_signup", chain: "solana" },
+          });
+        } catch (err) {
+          logger.error("[WalletSignup] Failed to grant initial Solana credits:", err);
+        }
+      }
+    } catch (e) {
+      const isUniqueViolation =
+        e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
+      if (!isUniqueViolation) throw e;
+
+      org = (await organizationsRepository.findBySlug(slug)) ?? null;
+      if (!org) {
+        throw new Error("Organization creation failed and could not find existing Solana org");
+      }
+    }
+  }
+
+  try {
+    const created = await usersRepository.create({
+      steward_user_id: `wallet:solana:${walletAddress}`,
+      wallet_address: walletAddress,
+      wallet_chain_type: "solana",
+      wallet_verified: true,
+      organization_id: org.id,
+    });
+    const user: UserWithOrganization = { ...created, organization: org };
+    return { user, isNewAccount: true };
+  } catch (e) {
+    const isUniqueViolation =
+      e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
+    if (!isUniqueViolation) throw e;
+    const raced = await usersRepository.findBySolanaWalletAddressWithOrganization(walletAddress);
+    if (!raced) throw e;
+    return { user: raced, isNewAccount: false };
+  }
+}

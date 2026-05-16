@@ -69,4 +69,8 @@ export interface UsbInstallerBackend {
   listRemovableDrives(): Promise<RemovableDrive[]>;
   listImages(): Promise<ElizaOsImage[]>;
   createWritePlan(request: WriteRequest): Promise<WritePlan>;
+  executeWritePlan?(
+    plan: WritePlan,
+    onProgress: (step: InstallerStepId, progress: number) => void,
+  ): Promise<void>;
 }

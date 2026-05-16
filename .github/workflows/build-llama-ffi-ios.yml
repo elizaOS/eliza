@@ -11,7 +11,7 @@ name: Build libelizainference (iOS, FFI static)
 # on mobile (see `runtime-target.ts` decision rules) and the bun:ffi
 # loader on iOS opens the framework binary that ships inside the .ipa.
 #
-# This workflow reuses `packages/inference/llama.cpp/build-xcframework.sh`
+# This workflow reuses `plugins/plugin-local-inference/native/llama.cpp/build-xcframework.sh`
 # as the source of truth for cmake flags so a manual local build matches
 # CI exactly.
 #
@@ -87,10 +87,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
-            packages/inference/llama.cpp/build-ios-device
-            packages/inference/llama.cpp/build-ios-sim
-            packages/inference/llama.cpp/build-macos
-          key: llama-ffi-ios-${{ hashFiles('packages/inference/llama.cpp/build-xcframework.sh', 'packages/inference/llama.cpp/CMakeLists.txt') }}
+            plugins/plugin-local-inference/native/llama.cpp/build-ios-device
+            plugins/plugin-local-inference/native/llama.cpp/build-ios-sim
+            plugins/plugin-local-inference/native/llama.cpp/build-macos
+          key: llama-ffi-ios-${{ hashFiles('plugins/plugin-local-inference/native/llama.cpp/build-xcframework.sh', 'plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt') }}
           restore-keys: |
             llama-ffi-ios-
 
@@ -101,16 +101,16 @@ jobs:
           # slice fan-out. CRITICAL: we do NOT modify the script in this
           # workflow — the source of truth lives in the repo so a
           # developer can reproduce locally.
-          cd packages/inference/llama.cpp
+          cd plugins/plugin-local-inference/native/llama.cpp
           bash build-xcframework.sh
 
       - name: Verify XCFramework
         run: |
           set -euo pipefail
-          XCF_DIR="packages/inference/llama.cpp/build-apple/llama.xcframework"
+          XCF_DIR="plugins/plugin-local-inference/native/llama.cpp/build-apple/llama.xcframework"
           if [ ! -d "$XCF_DIR" ]; then
             echo "expected XCFramework missing: $XCF_DIR"
-            find packages/inference/llama.cpp -maxdepth 3 -name "*.xcframework" -type d || true
+            find plugins/plugin-local-inference/native/llama.cpp -maxdepth 3 -name "*.xcframework" -type d || true
             exit 1
           fi
           ls -la "$XCF_DIR"
@@ -121,7 +121,7 @@ jobs:
           set -euo pipefail
           STAGE_DIR="artifacts/libelizainference/ios-arm64"
           mkdir -p "$STAGE_DIR"
-          XCF_DIR="packages/inference/llama.cpp/build-apple/llama.xcframework"
+          XCF_DIR="plugins/plugin-local-inference/native/llama.cpp/build-apple/llama.xcframework"
           cp -R "$XCF_DIR" "$STAGE_DIR/llama.xcframework"
           {
             echo "target=ios-arm64"
@@ -131,7 +131,7 @@ jobs:
             echo "sha=${{ github.sha }}"
             echo "runner=macos-14"
             echo "ios_min=${{ env.IOS_MIN_OS_VERSION }}"
-            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+            echo "llama_sha=$(git -C plugins/plugin-local-inference/native/llama.cpp rev-parse HEAD || echo n/a)"
           } > "$STAGE_DIR/BUILD_INFO.txt"
           echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
 

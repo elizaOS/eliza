@@ -76,7 +76,12 @@ jobs:
 
       - name: Run interop (TypeScript) tests
         timeout-minutes: 10
-        run: cd packages/interop && bun run test
+        run: |
+          if [ -d packages/interop ]; then
+            cd packages/interop && bun run test
+          else
+            echo "packages/interop is not present; skipping interop tests"
+          fi
 
   # Lint and format job
   lint-and-format:

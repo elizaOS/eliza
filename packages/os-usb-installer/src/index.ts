@@ -16,5 +16,9 @@ export {
   detectPlatformId,
   MOCK_REMOVABLE_DRIVES,
   PLATFORM_NOTES,
+  createPlatformBackend,
+  MacOsUsbInstallerBackend,
+  LinuxUsbInstallerBackend,
+  WindowsUsbInstallerBackend,
 } from "./backend";
 export { InstallerApp } from "./components/InstallerApp";

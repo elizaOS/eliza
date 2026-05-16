@@ -182,6 +182,14 @@ export const CacheKeys = {
     nonce: (nonce: string) => `siwe:nonce:${nonce}:v1`,
     pattern: () => `siwe:*`,
   },
+  /**
+   * SIWS (Sign-In With Solana) nonce cache.
+   * Single-use nonces stored by value; consumed on verify.
+   */
+  siws: {
+    nonce: (nonce: string) => `siws:nonce:${nonce}:v1`,
+    pattern: () => `siws:*`,
+  },
   walletAuth: {
     user: (address: string) => `wallet-auth:user:${address}:v1`,
   },
@@ -323,6 +331,9 @@ export const CacheTTL = {
     user: 30, // 30 seconds - avoid DB upsert on every wallet-authenticated request
   },
   siwe: {
+    nonce: 300, // 5 minutes - one-time nonce TTL
+  },
+  siws: {
     nonce: 300, // 5 minutes - one-time nonce TTL
   },
   userMetrics: {

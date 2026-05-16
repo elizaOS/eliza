@@ -69,7 +69,7 @@ img {
   gap: 1.5rem;
   padding: 1rem clamp(1rem, 4vw, 3rem);
   background: transparent;
-  color: var(--brand-white);
+  color: var(--brand-black);
 }
 
 .site-header-solid {
@@ -272,6 +272,43 @@ h3 {
   background: var(--brand-gray);
 }
 
+.hero-cloud {
+  position: relative;
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  overflow: hidden;
+  color: var(--brand-black);
+  isolation: isolate;
+  padding-top: clamp(7rem, 10vw, 10rem);
+  padding-bottom: clamp(2rem, 5vw, 4.5rem);
+}
+
+.cloud-video {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cloud-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.hero-cloud-inner {
+  max-width: 52rem;
+}
+
+.hero-cloud h1,
+.hero-cloud .hero-copy {
+  color: var(--brand-black);
+}
+
 .split-band,
 .section-head {
   display: grid;
@@ -450,6 +487,14 @@ h3 {
   padding: 1rem;
   background: var(--brand-black);
   color: var(--brand-white);
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.hw-tile:hover {
+  background: var(--brand-orange);
+  color: var(--brand-black);
 }
 
 .hw-tile .product-image {
@@ -485,6 +530,12 @@ h3 {
   line-height: 1.35;
   color: var(--brand-white);
   opacity: 0.85;
+}
+
+.hw-tile:hover .hw-tile-meta,
+.hw-tile:hover p {
+  color: var(--brand-black);
+  opacity: 1;
 }
 
 .product-detail-hero {
@@ -550,6 +601,162 @@ h3 {
   font-size: 0.85rem;
   font-weight: 300;
   opacity: 0.7;
+}
+
+.checkout-hero {
+  display: flex;
+  min-height: 72vh;
+  align-items: center;
+  padding-top: clamp(7rem, 10vw, 10rem);
+}
+
+.checkout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .checkout-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(20rem, 1.1fr);
+  }
+}
+
+.checkout-copy p {
+  max-width: 34rem;
+  margin-bottom: 0;
+  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+  font-weight: 300;
+  line-height: 1.4;
+}
+
+.checkout-product-shot .product-image {
+  aspect-ratio: 1 / 1;
+  background: var(--brand-white);
+}
+
+.checkout-flow {
+  padding-top: clamp(3rem, 7vw, 6rem);
+}
+
+.checkout-panel {
+  display: grid;
+  gap: 1.25rem;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.checkout-product-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.65rem;
+}
+
+.picker-item {
+  display: flex;
+  min-height: 5rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--brand-white);
+  padding: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-item-active {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.picker-item span,
+.picker-item strong {
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.color-row,
+.oauth-row,
+.email-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.color-row {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.color-swatch {
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 0;
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 0;
+  cursor: pointer;
+}
+
+.color-swatch-active {
+  outline: 4px solid var(--brand-orange);
+}
+
+.checkout-button {
+  width: fit-content;
+  background: var(--brand-white);
+  color: var(--brand-black);
+}
+
+.login-box {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.email-row input {
+  min-height: 3.25rem;
+  flex: 1 1 16rem;
+  border: 0;
+  padding: 0 1rem;
+  background: var(--brand-white);
+  color: var(--brand-black);
+  font-size: 1rem;
+}
+
+.email-row button,
+.oauth-row a {
+  display: inline-flex;
+  min-height: 3.25rem;
+  align-items: center;
+  border: 0;
+  background: var(--brand-white);
+  color: var(--brand-black);
+  padding: 0 1rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.email-row button:hover,
+.oauth-row a:hover {
+  background: var(--brand-orange);
+}
+
+.checkout-message {
+  margin: 0;
+  color: var(--brand-gray);
+  font-size: 0.95rem;
+}
+
+.checkout-result {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
 }
 
 @media (min-width: 700px) {

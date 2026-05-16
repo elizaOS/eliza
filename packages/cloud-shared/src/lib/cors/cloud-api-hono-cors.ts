@@ -27,6 +27,9 @@ import { CORS_ALLOW_HEADER_NAMES, CORS_ALLOW_METHOD_NAMES } from "../cors-consta
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://elizacloud.ai",
   "https://www.elizacloud.ai",
+  "https://elizaos.ai",
+  "https://www.elizaos.ai",
+  "https://os.elizacloud.ai",
   "https://eliza.ai",
   "https://www.eliza.ai",
 ]);

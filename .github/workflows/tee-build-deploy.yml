@@ -5,7 +5,8 @@ on:
     branches:
       - main
     paths:
-      - "Dockerfile"
+      - "packages/app-core/deploy/Dockerfile.ci"
+      - "packages/app-core/deploy/docker-compose.yml"
   workflow_dispatch:
     inputs:
       logLevel:
@@ -73,7 +74,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile
+          file: packages/app-core/deploy/Dockerfile.ci
           push: true
           tags: |
             ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:latest
@@ -83,6 +84,7 @@ jobs:
           export DOCKER_IMAGE_FULL_NAME=${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
       - name: Update Docker Compose
         run: |
+          cp packages/app-core/deploy/docker-compose.yml ./tee-docker-compose.yaml
           sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" ./tee-docker-compose.yaml
 
       - name: Deploy to Phala Cloud

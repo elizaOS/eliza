@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildRawGitHubAssetBase } from "./lib/asset-cdn.mjs";
@@ -11,6 +11,12 @@ const REPOSITORY = "elizaos/eliza";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 // SCRIPT_DIR is packages/app-core/scripts; the repo root is three levels up.
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
+const OS_MANIFEST_PATH = path.resolve(
+  REPO_ROOT,
+  "packages/os/release/beta-2026-05-16/manifest.json",
+);
+const GITHUB_RELEASES_BASE = `https://github.com/${REPOSITORY}/releases/download`;
+const ELIZAOS_DOWNLOADS_BASE = "https://downloads.elizaos.ai/os";
 const OUTPUT_PATH = path.resolve(
   REPO_ROOT,
   "packages/homepage/src/generated/release-data.ts",
@@ -312,7 +318,244 @@ function buildRelease(release) {
   };
 }
 
-function buildPayload(release, canaryRelease = null, stableRelease = release) {
+// Maps a manifest artifact kind/platform to the OsArtifact kind field.
+function manifestKindToArtifactKind(manifestKind, target) {
+  if (manifestKind === "raw-image") return "iso";
+  if (manifestKind === "vm-image") {
+    const hypervisor = target?.hypervisor ?? "";
+    if (/ova/i.test(hypervisor)) return "ova";
+    return "ova"; // all VM images surface as OVA-class for download UX
+  }
+  if (manifestKind === "android-image") return "apk";
+  if (manifestKind === "usb-installer") return "desktop-app";
+  return "iso";
+}
+
+function manifestPlatformToArtifactPlatform(target) {
+  const platform = target?.platform ?? "";
+  if (/android|cuttlefish/i.test(platform)) return "android";
+  if (/linux/i.test(platform)) return "linux";
+  if (/macos|apple/i.test(platform)) return "macos";
+  if (/windows|win/i.test(platform)) return "windows";
+  return "linux";
+}
+
+function buildOsArtifactsFromManifest(manifest, channel, version) {
+  const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : [];
+  return artifacts.map((artifact) => ({
+    id: artifact.id,
+    label: artifact.filename.replace(/\.zst$|\.zip$/, ""),
+    description: artifact.notes ?? "",
+    platform: manifestPlatformToArtifactPlatform(artifact.target),
+    kind: manifestKindToArtifactKind(artifact.kind, artifact.target),
+    channel,
+    version,
+    downloadUrl: artifact.downloadUrl ?? null,
+    checksumUrl: null,
+    sizeBytes: artifact.sizeBytes ?? null,
+    sha256: artifact.sha256 ?? null,
+    releaseNotesUrl: null,
+    requiresHardware: undefined,
+  }));
+}
+
+function buildStaticOsArtifacts(channel, version) {
+  const releaseTag = `v${version}`;
+  const githubBase = `${GITHUB_RELEASES_BASE}/${releaseTag}`;
+  return [
+    {
+      id: `elizaos-linux-live-${channel}`,
+      label: "elizaOS Linux Live ISO",
+      description:
+        "Bootable ISO image for USB flashing and bare-metal installs. Flash to an 8 GB+ USB drive with the USB Installer app.",
+      platform: "linux",
+      kind: "iso",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-debian-package",
+      label: "elizaOS Debian / Ubuntu package",
+      description:
+        "Install elizaOS on an existing Debian or Ubuntu system via apt.",
+      platform: "linux",
+      kind: "deb",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+    },
+    {
+      id: "elizaos-vm-ova",
+      label: "elizaOS VM (OVA)",
+      description:
+        "OVA image for VirtualBox, VMware Fusion, and UTM. Import directly — no flashing required.",
+      platform: "cross-platform",
+      kind: "ova",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+    },
+    {
+      id: "elizaos-usb-installer-macos",
+      label: "USB Installer — macOS",
+      description:
+        "Desktop app for macOS (Apple Silicon + Intel) that writes the elizaOS ISO to a USB drive using diskutil and dd with native authorization.",
+      platform: "macos",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-usb-installer-linux",
+      label: "USB Installer — Linux",
+      description:
+        "Desktop app for Linux that writes the elizaOS ISO to a USB drive using lsblk and dd via pkexec.",
+      platform: "linux",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-usb-installer-windows",
+      label: "USB Installer — Windows",
+      description:
+        "Desktop app for Windows that writes the elizaOS ISO to a USB drive using PowerShell disk management.",
+      platform: "windows",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "8 GB USB drive",
+    },
+    {
+      id: "elizaos-aosp-flasher-macos",
+      label: "AOSP Flasher — macOS",
+      description:
+        "GUI tool for macOS that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
+      platform: "macos",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "Android device with unlocked bootloader",
+    },
+    {
+      id: "elizaos-aosp-flasher-linux",
+      label: "AOSP Flasher — Linux",
+      description:
+        "GUI tool for Linux that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
+      platform: "linux",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "Android device with unlocked bootloader",
+    },
+    {
+      id: "elizaos-aosp-flasher-windows",
+      label: "AOSP Flasher — Windows",
+      description:
+        "GUI tool for Windows that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
+      platform: "windows",
+      kind: "desktop-app",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+      requiresHardware: "Android device with unlocked bootloader",
+    },
+    {
+      id: "elizaos-android-apk",
+      label: "elizaOS Android APK",
+      description:
+        "Sideload elizaOS onto any Android device without AOSP flashing. No unlocked bootloader required.",
+      platform: "android",
+      kind: "apk",
+      channel,
+      version,
+      downloadUrl: null,
+      checksumUrl: null,
+      sizeBytes: null,
+      sha256: null,
+      releaseNotesUrl: null,
+    },
+  ];
+}
+
+async function buildOsArtifacts() {
+  let manifest = null;
+  try {
+    const raw = await readFile(OS_MANIFEST_PATH, "utf8");
+    manifest = JSON.parse(raw);
+  } catch {
+    // Manifest not available — use static artifacts only.
+  }
+
+  const channel = manifest?.release?.channel ?? "beta";
+  const version = manifest?.release?.version ?? "2.0.0-beta.2-os.20260516";
+
+  const fromManifest = manifest
+    ? buildOsArtifactsFromManifest(manifest, channel, version)
+    : [];
+
+  // Deduplicate: static artifacts use well-known IDs not found in the manifest.
+  // Manifest artifacts use their own IDs. Merge with static list appended.
+  const staticArtifacts = buildStaticOsArtifacts(channel, version);
+
+  // Remove any static artifact whose ID is already supplied by the manifest.
+  const manifestIds = new Set(fromManifest.map((a) => a.id));
+  const uniqueStatic = staticArtifacts.filter((a) => !manifestIds.has(a.id));
+
+  return [...fromManifest, ...uniqueStatic];
+}
+
+function buildPayload(
+  release,
+  canaryRelease = null,
+  stableRelease = release,
+  osArtifacts = [],
+) {
   const tagName = release?.tag_name ?? "unavailable";
   return {
     generatedAt: new Date().toISOString(),
@@ -338,6 +581,7 @@ function buildPayload(release, canaryRelease = null, stableRelease = release) {
     release: buildRelease(release),
     stableRelease: buildRelease(stableRelease),
     canaryRelease: canaryRelease ? buildRelease(canaryRelease) : null,
+    osArtifacts,
   };
 }
 
@@ -393,6 +637,22 @@ export type ReleaseDataCdn = {
   homepageAssetBaseUrl: string;
 };
 
+export type OsArtifact = {
+  id: string;
+  label: string;
+  description: string;
+  platform: 'linux' | 'android' | 'macos' | 'windows' | 'cross-platform';
+  kind: 'iso' | 'deb' | 'ova' | 'apk' | 'desktop-app';
+  channel: 'stable' | 'beta' | 'nightly';
+  version: string;
+  downloadUrl: string | null;
+  checksumUrl: string | null;
+  sizeBytes: number | null;
+  sha256: string | null;
+  releaseNotesUrl: string | null;
+  requiresHardware?: string;
+};
+
 export type ReleaseDataPayload = {
   generatedAt: string;
   scripts: ReleaseDataScripts;
@@ -401,6 +661,7 @@ export type ReleaseDataPayload = {
   release: ReleaseDataRelease;
   stableRelease: ReleaseDataRelease;
   canaryRelease: ReleaseDataRelease | null;
+  osArtifacts: OsArtifact[];
 };
 
 `;
@@ -451,6 +712,7 @@ async function writePayload(payload) {
 }
 
 async function main() {
+  const osArtifacts = await buildOsArtifacts();
   try {
     const releases = await fetchReleases();
     const stableRelease = pickStableRelease(releases);
@@ -458,12 +720,12 @@ async function main() {
     // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
     await writePayload(
-      buildPayload(primaryRelease, canaryRelease, stableRelease),
+      buildPayload(primaryRelease, canaryRelease, stableRelease, osArtifacts),
     );
     const tag = primaryRelease?.tag_name ?? "no published release";
     const canaryTag = canaryRelease?.tag_name;
     console.log(
-      `homepage release data: stable=${tag}${canaryTag ? `, canary=${canaryTag}` : ""}`,
+      `homepage release data: stable=${tag}${canaryTag ? `, canary=${canaryTag}` : ""}, osArtifacts=${osArtifacts.length}`,
     );
   } catch (error) {
     if (existsSync(OUTPUT_PATH)) {
@@ -473,7 +735,7 @@ async function main() {
       return;
     }
 
-    await writePayload(buildPayload(null));
+    await writePayload(buildPayload(null, null, null, osArtifacts));
     console.warn(
       `homepage release data refresh failed, wrote fallback file: ${error instanceof Error ? error.message : String(error)}`,
     );
