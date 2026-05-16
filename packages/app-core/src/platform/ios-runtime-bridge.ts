@@ -6,7 +6,7 @@
 // Preferences so the simulator host can read it. The probe runs once per
 // page load and is a no-op when the flag is absent.
 import { Preferences } from "@capacitor/preferences";
-import { primeIosFullBunRuntime } from "@elizaos/ui";
+import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 
 export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
   "eliza:ios-full-bun-smoke:request";

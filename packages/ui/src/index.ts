@@ -2,6 +2,7 @@
 // imported by Node-side plugin loaders without forcing a CSS evaluation
 // (Node refuses ".css" extensions). Renderers must opt-in explicitly.
 
+export { resolveAppBranding } from "@elizaos/shared";
 export * from "./App";
 export type {
   AppLaunchDiagnostic,
@@ -282,7 +283,6 @@ export {
   getByPath,
   interpolateString,
   parseAllowedHostEnv,
-  resolveAppBranding,
   resolveCharacterCatalog,
   resolveDynamic,
   resolveFields,

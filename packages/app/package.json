@@ -50,7 +50,7 @@
     "cap:sync:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor sync android",
     "cap:open:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor open ios",
     "cap:open:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor open android",
-    "build:web": "bun --bun vite build",
+    "build:web": "node ../../node_modules/@elizaos/vitest-vite/bin/vite.js build",
     "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
     "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public"
   },
