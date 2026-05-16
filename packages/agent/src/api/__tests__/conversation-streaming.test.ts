@@ -162,6 +162,71 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("alpha beta gamma");
   });
 
+  it("streams cleaned snapshots from the Android local direct path", async () => {
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+    const useModel = vi.fn(
+      async (
+        _modelType: unknown,
+        params: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        await params.onStreamChunk?.("Yes");
+        await params.onStreamChunk?.(", locally.");
+        return "Yes, locally.";
+      },
+    );
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("can you hear me locally?"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => {
+          chunks.push(chunk);
+        },
+        onSnapshot: (text) => {
+          snapshots.push(text);
+        },
+      },
+    );
+
+    expect(useModel).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        stream: true,
+        maxTokens: 20,
+        providerOptions: {
+          androidLocal: {
+            minFirstSentenceChars: 12,
+            stopOnFirstSentence: true,
+          },
+        },
+        onStreamChunk: expect.any(Function),
+      }),
+    );
+    expect(chunks).toEqual(["Yes", ", locally."]);
+    expect(chunks.join("")).toBe("Yes, locally.");
+    expect(snapshots).toEqual(["Yes", "Yes, locally."]);
+    expect(result.text).toBe("Yes, locally.");
+    expect(result.localInference).toEqual(
+      expect.objectContaining({
+        provider: "mobile-local-direct-reply",
+        streamedChunks: 2,
+      }),
+    );
+  });
+
   it("aborts the message runtime when the chat generation timeout fires", async () => {
     let signalFromOptions: AbortSignal | undefined;
     let observedAbort: (() => void) | undefined;

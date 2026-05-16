@@ -49,7 +49,7 @@
  *     - llama_sampler_chain_add / llama_sampler_init_temp /
  *       llama_sampler_init_top_p / llama_sampler_init_dist /
  *       llama_sampler_init_greedy / llama_sampler_sample /
- *       llama_sampler_accept / llama_sampler_free
+ *       llama_sampler_free
  *     - llama_get_model / llama_n_ctx / llama_model_n_embd
  *     - llama_set_embeddings / llama_get_embeddings_seq / llama_get_embeddings
  *   libeliza-llama-shim.so (dlopen'd second; NEEDED libllama.so):
@@ -94,6 +94,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 
 /**
  * `bun:ffi` is a Bun built-in. In non-Bun bundle targets (Vitest under Node,
@@ -235,6 +236,11 @@ interface LlamaSymbols {
   // (`eliza_llama_batch_get_one` / `eliza_llama_decode`) instead.
 
   llama_sampler_chain_add: (chain: Pointer, sampler: Pointer) => void;
+  llama_sampler_init_grammar: (
+    vocab: Pointer,
+    grammar: Pointer,
+    root: Pointer,
+  ) => Pointer;
   llama_sampler_init_temp: (t: number) => Pointer;
   llama_sampler_init_top_p: (p: number, min_keep: number) => Pointer;
   llama_sampler_init_dist: (seed: number) => Pointer;
@@ -321,71 +327,53 @@ interface ShimSymbols {
   eliza_llama_decode: (ctx: Pointer, batch: Pointer) => number;
 }
 
+interface SpeculativeShimSymbols {
+  eliza_speculative_supported: () => number;
+  eliza_speculative_is_compat: (ctx: Pointer) => number;
+  eliza_speculative_init: (
+    ctxTarget: Pointer,
+    ctxDraft: Pointer,
+    specType: Pointer,
+    nDraft: number,
+    nMin: number,
+    pMin: number,
+  ) => Pointer;
+  eliza_speculative_free: (handle: Pointer) => void;
+  eliza_speculative_generate_text: (
+    handle: Pointer,
+    prompt: Pointer,
+    grammar: Pointer,
+    maxTokens: number,
+    temperature: number,
+    outText: Pointer,
+    outCap: number,
+  ) => number;
+  eliza_speculative_stream_open: (
+    handle: Pointer,
+    prompt: Pointer,
+    grammar: Pointer,
+    maxTokens: number,
+    temperature: number,
+  ) => Pointer;
+  eliza_speculative_stream_next: (
+    stream: Pointer,
+    outText: Pointer,
+    outCap: number,
+    outDone: Pointer,
+    outDrafted: Pointer,
+    outAccepted: Pointer,
+  ) => number;
+  eliza_speculative_stream_free: (stream: Pointer) => void;
+  eliza_speculative_last_stats_json: (
+    handle: Pointer,
+    outJson: Pointer,
+    outCap: number,
+  ) => number;
+  eliza_speculative_print_stats: (handle: Pointer) => void;
+}
+
 interface RuntimeWithRegisterService {
   registerService?: (name: string, impl: unknown) => unknown;
-  /**
-   * Optional `getService` accessor used to locate the shared
-   * libelizainference FFI context the voice lifecycle wired at boot.
-   * The DFlash dispatcher reads it through this hook so it never
-   * dlopens the library twice from this plugin.
-   */
-  getService?: (name: string) => unknown;
-}
-
-/**
- * Shape exported by the voice lifecycle's `eliza-inference-ffi` service
- * (registered in `voice/lifecycle.ts`). The DFlash dispatcher only reads
- * the two fields it needs to construct the streaming runner — handle
- * lifetime is owned by the lifecycle service, not by this plugin.
- *
- * Typed structurally so this plugin doesn't take a hard `@elizaos/app-core`
- * dep; the consumer-side voice service registers the real shape under
- * the canonical service name.
- */
-interface SharedFfiContext {
-  ffi: { llmStreamSupported?(): boolean };
-  handle: bigint;
-  /**
-   * Factory the voice lifecycle exposes so this plugin can construct an
-   * `FfiStreamingRunner` without importing `@elizaos/app-core`. The
-   * lifecycle service plugs in `new FfiStreamingRunner(ffi, ctx)` at
-   * registration time.
-   */
-  buildStreamingRunner: (args: {
-    ffi: { llmStreamSupported?(): boolean };
-    ctx: bigint;
-  }) => {
-    generateWithUsage(args: unknown): Promise<{
-      text: string;
-      slotId: number;
-      firstTokenMs: number | null;
-      drafted: number;
-      accepted: number;
-    }>;
-  };
-}
-
-/**
- * Best-effort lookup of the shared FFI context. The voice lifecycle
- * registers it under the canonical service name; absent runtimes
- * (test rigs, builds without voice) just return null and the dispatcher
- * stays on the single-model FFI decode path.
- */
-function resolveSharedFfiContext(
-  runtime: RuntimeWithRegisterService,
-): SharedFfiContext | null {
-  if (typeof runtime.getService !== "function") return null;
-  const found = runtime.getService("eliza-inference-ffi");
-  if (
-    found &&
-    typeof found === "object" &&
-    "ffi" in found &&
-    "handle" in found &&
-    "buildStreamingRunner" in found
-  ) {
-    return found as SharedFfiContext;
-  }
-  return null;
 }
 
 /**
@@ -450,6 +438,10 @@ interface AospLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
     /**
      * Optional per-request abort signal. The decode loop checks
      * `signal.aborted` between every chunked prefill batch and between
@@ -603,12 +595,97 @@ function isAospEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  * are clamped to the fallback to avoid passing an int32-min into the
  * shim setters.
  */
-function readEnvInt(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
+function readEnvInt(
+  name: string,
+  fallback: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env[name]?.trim();
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return parsed;
+}
+
+function readEnvFloat(
+  name: string,
+  fallback: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function envFlagEnabled(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function envFlagDisabled(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "0" || raw === "false" || raw === "no" || raw === "off";
+}
+
+function firstSentenceEndIndex(text: string, minChars = 12): number {
+  const minEnd = Math.max(1, minChars);
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch !== "." && ch !== "!" && ch !== "?") continue;
+    if (i + 1 < minEnd) continue;
+    const prev = i > 0 ? text[i - 1] : "";
+    const next = i + 1 < text.length ? text[i + 1] : "";
+    if (/\d/.test(prev) && /\d/.test(next)) continue;
+    return i + 1;
+  }
+  return -1;
+}
+
+export function resolveAospGenerateTokenBudget(options: {
+  requestedMaxTokens?: number;
+  nCtx: number;
+  nBatch: number;
+  env?: NodeJS.ProcessEnv;
+}): {
+  requestedMaxTokens: number;
+  maxTokens: number;
+  maxOutputReserve: number;
+  contextCap: number;
+  envCap: number | null;
+  capped: boolean;
+} {
+  const env = options.env ?? process.env;
+  const defaultMaxTokens = readEnvInt(
+    "ELIZA_LLAMA_DEFAULT_MAX_TOKENS",
+    512,
+    env,
+  );
+  const requested =
+    Number.isFinite(options.requestedMaxTokens) &&
+    options.requestedMaxTokens != null &&
+    options.requestedMaxTokens > 0
+      ? Math.floor(options.requestedMaxTokens)
+      : defaultMaxTokens;
+  // Never let an oversized caller budget reserve the whole context. On
+  // Android a generic TEXT_LARGE call can arrive with maxTokens=8192 while
+  // n_ctx=4096; without this clamp the prompt capacity collapses to 1 token
+  // and the phone spends minutes decoding an irrelevant tail.
+  const usableContext = Math.max(1, options.nCtx - options.nBatch);
+  const contextCap = Math.max(1, Math.floor(usableContext / 2));
+  const envCapRaw = readEnvInt("ELIZA_LLAMA_MAX_OUTPUT_TOKENS", 0, env);
+  const envCap = envCapRaw > 0 ? Math.min(envCapRaw, contextCap) : null;
+  const cap = envCap ?? contextCap;
+  const maxTokens = Math.max(1, Math.min(requested, cap));
+  return {
+    requestedMaxTokens: requested,
+    maxTokens,
+    maxOutputReserve: maxTokens,
+    contextCap,
+    envCap,
+    capped: maxTokens !== requested,
+  };
 }
 
 /**
@@ -683,6 +760,16 @@ export function resolveLlamaShimPath(
   return path.join(resolveAbiDir(arch, cwd), "libeliza-llama-shim.so");
 }
 
+export function resolveSpeculativeShimPath(
+  arch: NodeJS.Architecture = process.arch,
+  cwd: string = process.cwd(),
+): string {
+  return path.join(
+    resolveAbiDir(arch, cwd),
+    "libeliza-llama-speculative-shim.so",
+  );
+}
+
 function resolveAbiDir(arch: NodeJS.Architecture, cwd: string): string {
   const abiDir =
     arch === "arm64" ? "arm64-v8a" : arch === "x64" ? "x86_64" : null;
@@ -755,6 +842,10 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
     // The pointer-style wrappers in ShimSymbols are bound below.
 
     llama_sampler_chain_add: { args: [T.ptr, T.ptr], returns: T.void },
+    llama_sampler_init_grammar: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.ptr,
+    },
     llama_sampler_init_temp: { args: [T.f32], returns: T.ptr },
     llama_sampler_init_top_p: { args: [T.f32, T.u32], returns: T.ptr },
     llama_sampler_init_dist: { args: [T.u32], returns: T.ptr },
@@ -846,6 +937,41 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
   return handle.symbols;
 }
 
+function dlopenSpeculativeShim(
+  ffi: BunFFIModule,
+  shimPath: string,
+): SpeculativeShimSymbols {
+  const T = ffi.FFIType;
+  const handle = ffi.dlopen<SpeculativeShimSymbols>(shimPath, {
+    eliza_speculative_supported: { args: [], returns: T.i32 },
+    eliza_speculative_is_compat: { args: [T.ptr], returns: T.i32 },
+    eliza_speculative_init: {
+      args: [T.ptr, T.ptr, T.ptr, T.i32, T.i32, T.f32],
+      returns: T.ptr,
+    },
+    eliza_speculative_free: { args: [T.ptr], returns: T.void },
+    eliza_speculative_generate_text: {
+      args: [T.ptr, T.ptr, T.ptr, T.i32, T.f32, T.ptr, T.i32],
+      returns: T.i32,
+    },
+    eliza_speculative_stream_open: {
+      args: [T.ptr, T.ptr, T.ptr, T.i32, T.f32],
+      returns: T.ptr,
+    },
+    eliza_speculative_stream_next: {
+      args: [T.ptr, T.ptr, T.i32, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_speculative_stream_free: { args: [T.ptr], returns: T.void },
+    eliza_speculative_last_stats_json: {
+      args: [T.ptr, T.ptr, T.i32],
+      returns: T.i32,
+    },
+    eliza_speculative_print_stats: { args: [T.ptr], returns: T.void },
+  });
+  return handle.symbols;
+}
+
 function encodeCString(text: string): Uint8Array {
   const enc = new TextEncoder().encode(text);
   const buf = new Uint8Array(enc.length + 1);
@@ -854,15 +980,26 @@ function encodeCString(text: string): Uint8Array {
   return buf;
 }
 
+function decodeCStringBytes(buf: Uint8Array): string {
+  let end = buf.indexOf(0);
+  if (end < 0) end = buf.length;
+  return new TextDecoder().decode(buf.subarray(0, end));
+}
+
 class AospLlamaAdapter implements AospLoader {
   private readonly ffi: BunFFIModule;
   private readonly sym: LlamaSymbols;
   private readonly shim: ShimSymbols;
+  private readonly speculativeShim: SpeculativeShimSymbols | null;
   private model: Pointer | null = null;
   private ctx: Pointer | null = null;
+  private draftModel: Pointer | null = null;
+  private draftCtx: Pointer | null = null;
+  private speculativeHandle: Pointer | null = null;
   private vocab: Pointer | null = null;
   private nCtx = 0;
   private loadedPath: string | null = null;
+  private loadedDraftPath: string | null = null;
   private backendInitialized = false;
   /**
    * Tracks whether the current ctx has had at least one successful
@@ -874,10 +1011,16 @@ class AospLlamaAdapter implements AospLoader {
    */
   private hasDecoded = false;
 
-  constructor(ffi: BunFFIModule, sym: LlamaSymbols, shim: ShimSymbols) {
+  constructor(
+    ffi: BunFFIModule,
+    sym: LlamaSymbols,
+    shim: ShimSymbols,
+    speculativeShim: SpeculativeShimSymbols | null = null,
+  ) {
     this.ffi = ffi;
     this.sym = sym;
     this.shim = shim;
+    this.speculativeShim = speculativeShim;
   }
 
   private ensureBackend(): void {
@@ -888,6 +1031,242 @@ class AospLlamaAdapter implements AospLoader {
 
   currentModelPath(): string | null {
     return this.loadedPath;
+  }
+
+  private loadModelPointer(modelPath: string, useGpu: boolean, phase: string): Pointer {
+    const modelParamsPtr = this.shim.eliza_llama_model_params_default();
+    if (!modelParamsPtr) {
+      throw new Error(
+        `[aosp-llama] ${phase}: eliza_llama_model_params_default returned NULL`,
+      );
+    }
+    let modelPtr: Pointer = 0;
+    try {
+      if (!useGpu) {
+        this.shim.eliza_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
+      }
+      const pathBuf = encodeCString(modelPath);
+      const startedAt = Date.now();
+      writeAospLlamaDebugLog(`${phase}:modelLoad:start`, {
+        model: path.basename(modelPath),
+      });
+      modelPtr = this.shim.eliza_llama_model_load_from_file(
+        this.ffi.ptr(pathBuf),
+        modelParamsPtr,
+      );
+      writeAospLlamaDebugLog(`${phase}:modelLoad:done`, {
+        model: path.basename(modelPath),
+        ok: Boolean(modelPtr),
+        latencyMs: Date.now() - startedAt,
+      });
+    } finally {
+      this.shim.eliza_llama_model_params_free(modelParamsPtr);
+    }
+    if (!modelPtr) {
+      throw new Error(
+        `[aosp-llama] ${phase}: llama_model_load_from_file returned NULL for ${modelPath}`,
+      );
+    }
+    return modelPtr;
+  }
+
+  private initContextPointer(args: {
+    modelPtr: Pointer;
+    modelPath: string;
+    contextSize: number;
+    maxThreads: number;
+    nBatch: number;
+    nUBatch: number;
+    kvCacheType?: { k?: KvCacheTypeName; v?: KvCacheTypeName };
+    embeddings: boolean;
+    phase: string;
+  }): Pointer {
+    const ctxParamsPtr = this.shim.eliza_llama_context_params_default();
+    if (!ctxParamsPtr) {
+      throw new Error(
+        `[aosp-llama] ${args.phase}: eliza_llama_context_params_default returned NULL`,
+      );
+    }
+    let ctxPtr: Pointer = 0;
+    try {
+      this.shim.eliza_llama_context_params_set_n_ctx(
+        ctxParamsPtr,
+        args.contextSize,
+      );
+      this.shim.eliza_llama_context_params_set_n_batch(
+        ctxParamsPtr,
+        args.nBatch,
+      );
+      this.shim.eliza_llama_context_params_set_n_ubatch(
+        ctxParamsPtr,
+        args.nUBatch,
+      );
+      this.shim.eliza_llama_context_params_set_n_threads(
+        ctxParamsPtr,
+        args.maxThreads,
+      );
+      this.shim.eliza_llama_context_params_set_n_threads_batch(
+        ctxParamsPtr,
+        args.maxThreads,
+      );
+      this.shim.eliza_llama_context_params_set_embeddings(
+        ctxParamsPtr,
+        args.embeddings,
+      );
+      if (args.embeddings) {
+        this.shim.eliza_llama_context_params_set_pooling_type(
+          ctxParamsPtr,
+          LLAMA_POOLING_TYPE_MEAN,
+        );
+      }
+      if (args.kvCacheType?.k !== undefined) {
+        this.shim.eliza_llama_context_params_set_type_k(
+          ctxParamsPtr,
+          kvCacheTypeNameToEnum(args.kvCacheType.k),
+        );
+      }
+      if (args.kvCacheType?.v !== undefined) {
+        this.shim.eliza_llama_context_params_set_type_v(
+          ctxParamsPtr,
+          kvCacheTypeNameToEnum(args.kvCacheType.v),
+        );
+      }
+      const startedAt = Date.now();
+      writeAospLlamaDebugLog(`${args.phase}:contextInit:start`, {
+        model: path.basename(args.modelPath),
+        contextSize: args.contextSize,
+        nBatch: args.nBatch,
+        nUBatch: args.nUBatch,
+        maxThreads: args.maxThreads,
+        kvCacheType: args.kvCacheType,
+      });
+      ctxPtr = this.shim.eliza_llama_init_from_model(
+        args.modelPtr,
+        ctxParamsPtr,
+      );
+      writeAospLlamaDebugLog(`${args.phase}:contextInit:done`, {
+        model: path.basename(args.modelPath),
+        ok: Boolean(ctxPtr),
+        latencyMs: Date.now() - startedAt,
+      });
+    } finally {
+      this.shim.eliza_llama_context_params_free(ctxParamsPtr);
+    }
+    if (!ctxPtr) {
+      throw new Error(
+        `[aosp-llama] ${args.phase}: llama_init_from_model returned NULL for ${args.modelPath}`,
+      );
+    }
+    return ctxPtr;
+  }
+
+  private async configureSpeculativeDraft(args: {
+    loadArgs: AospLlamaLoadOptions;
+    useGpu: boolean;
+    maxThreads: number;
+    targetContextSize: number;
+    nBatch: number;
+    nUBatch: number;
+    kvCacheType?: { k?: KvCacheTypeName; v?: KvCacheTypeName };
+  }): Promise<void> {
+    if (!args.loadArgs.draftModelPath) return;
+    const required = envFlagEnabled("ELIZA_DFLASH_REQUIRED");
+    if (!this.speculativeShim) {
+      const message =
+        "[aosp-llama] DFlash drafter present but speculative shim is not bundled";
+      if (required) throw new Error(message);
+      logger.warn(`${message}; using target-only decode`);
+      return;
+    }
+    if (this.speculativeShim.eliza_speculative_supported() !== 1) {
+      const message =
+        "[aosp-llama] speculative shim reports unsupported for this llama.cpp checkout";
+      if (required) throw new Error(message);
+      logger.warn(`${message}; using target-only decode`);
+      return;
+    }
+    if (this.ctx === null) return;
+    if (this.speculativeShim.eliza_speculative_is_compat(this.ctx) !== 1) {
+      const message = "[aosp-llama] target context is not speculative-compatible";
+      if (required) throw new Error(message);
+      logger.warn(`${message}; using target-only decode`);
+      return;
+    }
+
+    const draftPath = args.loadArgs.draftModelPath;
+    const draftContextSize =
+      args.loadArgs.draftContextSize ??
+      readEnvInt(
+        "ELIZA_DFLASH_DRAFT_N_CTX",
+        Math.min(2048, args.targetContextSize),
+      );
+    const draftBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_BATCH", args.nBatch);
+    const draftUBatch = readEnvInt(
+      "ELIZA_DFLASH_DRAFT_N_UBATCH",
+      args.nUBatch,
+    );
+    const draftMax =
+      args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 16);
+    // Mobile chat turns are short. The fork's DFlash draft-simple path clears
+    // any draft shorter than n_min before target verification, so a default of
+    // 4 often degenerates into target-only decode on Pixel. Keep the default
+    // permissive and let the target model verify every drafted token.
+    const draftMin =
+      args.loadArgs.draftMin ?? readEnvInt("ELIZA_DFLASH_DRAFT_MIN", 1);
+    const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.75);
+    const draftModel = this.loadModelPointer(
+      draftPath,
+      args.useGpu,
+      "loadModel:dflashDraft",
+    );
+    let draftCtx: Pointer = 0;
+    let specHandle: Pointer = 0;
+    try {
+      draftCtx = this.initContextPointer({
+        modelPtr: draftModel,
+        modelPath: draftPath,
+        contextSize: draftContextSize,
+        maxThreads: args.maxThreads,
+        nBatch: draftBatch,
+        nUBatch: draftUBatch,
+        kvCacheType: args.kvCacheType,
+        embeddings: false,
+        phase: "loadModel:dflashDraft",
+      });
+      const specType = encodeCString("dflash");
+      specHandle = this.speculativeShim.eliza_speculative_init(
+        this.ctx,
+        draftCtx,
+        this.ffi.ptr(specType),
+        draftMax,
+        draftMin,
+        draftPMin,
+      );
+      if (!specHandle) {
+        throw new Error("[aosp-llama] eliza_speculative_init returned NULL");
+      }
+    } catch (err) {
+      if (draftCtx) this.sym.llama_free(draftCtx);
+      this.sym.llama_model_free(draftModel);
+      throw err;
+    }
+    this.draftModel = draftModel;
+    this.draftCtx = draftCtx;
+    this.speculativeHandle = specHandle;
+    this.loadedDraftPath = draftPath;
+    writeAospLlamaDebugLog("loadModel:dflash:ready", {
+      target: path.basename(args.loadArgs.modelPath),
+      draft: path.basename(draftPath),
+      draftContextSize,
+      draftBatch,
+      draftUBatch,
+      draftMax,
+      draftMin,
+      draftPMin,
+    });
+    logger.info(
+      `[aosp-llama] in-process DFlash ready (draft=${path.basename(draftPath)}, n_ctx=${draftContextSize}, n_draft=${draftMax})`,
+    );
   }
 
   async loadModel(args: AospLlamaLoadOptions): Promise<void> {
@@ -913,7 +1292,7 @@ class AospLlamaAdapter implements AospLoader {
     // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
     // upstream defaults that under-use phone CPU cores.
     //
-    // contextSize default: 16384. Eliza-1 mobile (the AOSP default chat
+    // contextSize default: 4096. Eliza-1 mobile (the Android debug APK chat
     // model) has a 128k native context window. The planner builds
     // ~12k-token prompts on every chat turn (system + tools + history +
     // user message). 16k fits comfortably with output reserve while
@@ -921,7 +1300,7 @@ class AospLlamaAdapter implements AospLoader {
     // override lets builders push higher on real-device hardware where
     // RAM permits.
     const contextSize =
-      args.contextSize ?? readEnvInt("ELIZA_LLAMA_N_CTX", 16384);
+      args.contextSize ?? readEnvInt("ELIZA_LLAMA_N_CTX", 4096);
     // n_threads via the precedence chain. Never pass 0 — see
     // resolveThreads docblock for why "auto-detect" is dangerous on
     // Android.
@@ -934,6 +1313,17 @@ class AospLlamaAdapter implements AospLoader {
           ? { k: args.cacheTypeK, v: args.cacheTypeV }
           : undefined),
     );
+    const nBatchParam = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
+    const nUBatchParam = readEnvInt("ELIZA_LLAMA_N_UBATCH", 64);
+    writeAospLlamaDebugLog("loadModel:start", {
+      model: path.basename(args.modelPath),
+      contextSize,
+      maxThreads,
+      useGpu,
+      nBatch: nBatchParam,
+      nUBatch: nUBatchParam,
+      kvCacheType,
+    });
 
     // Materialize llama_model_params via the shim. The shim runs
     // llama_model_default_params() under the hood, so use_mmap=true,
@@ -953,10 +1343,19 @@ class AospLlamaAdapter implements AospLoader {
         this.shim.eliza_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
       }
       const pathBuf = encodeCString(args.modelPath);
+      const modelLoadStartedAt = Date.now();
+      writeAospLlamaDebugLog("loadModel:modelLoad:start", {
+        model: path.basename(args.modelPath),
+      });
       modelPtr = this.shim.eliza_llama_model_load_from_file(
         this.ffi.ptr(pathBuf),
         modelParamsPtr,
       );
+      writeAospLlamaDebugLog("loadModel:modelLoad:done", {
+        model: path.basename(args.modelPath),
+        ok: Boolean(modelPtr),
+        latencyMs: Date.now() - modelLoadStartedAt,
+      });
     } finally {
       this.shim.eliza_llama_model_params_free(modelParamsPtr);
     }
@@ -993,7 +1392,7 @@ class AospLlamaAdapter implements AospLoader {
       //     we'd read OOB on the mean-pool fallback. By forcing MEAN at
       //     init we collapse the embed() path to a single read.
       this.shim.eliza_llama_context_params_set_n_ctx(ctxParamsPtr, contextSize);
-      // n_batch = 512 (AOSP default): the per-decode token cap. We chunk
+      // n_batch = 64 (Android debug default): the per-decode token cap. We chunk
       // longer prompts in the decode loop. Smaller chunks = more frequent
       // event-loop yields, so the service watchdog's HTTP probe doesn't
       // sit on a closed listener queue for the entire prompt prefill.
@@ -1002,10 +1401,8 @@ class AospLlamaAdapter implements AospLoader {
       // probe (30 s timeout) a realistic chance to wake the listener
       // between chunks. The previous default of 2048 ran each chunk
       // for ~30 s and triggered repeated probe failures.
-      // n_ubatch = 512: matches the chunk size, upstream default for
+      // n_ubatch = 64: matches the chunk size, small enough for phone CPU
       // phone CPU cache.
-      const nBatchParam = readEnvInt("ELIZA_LLAMA_N_BATCH", 512);
-      const nUBatchParam = readEnvInt("ELIZA_LLAMA_N_UBATCH", 512);
       this.shim.eliza_llama_context_params_set_n_batch(
         ctxParamsPtr,
         nBatchParam,
@@ -1045,7 +1442,21 @@ class AospLlamaAdapter implements AospLoader {
           kvCacheTypeNameToEnum(kvCacheType.v),
         );
       }
+      const ctxInitStartedAt = Date.now();
+      writeAospLlamaDebugLog("loadModel:contextInit:start", {
+        model: path.basename(args.modelPath),
+        contextSize,
+        nBatch: nBatchParam,
+        nUBatch: nUBatchParam,
+        maxThreads,
+        kvCacheType,
+      });
       ctxPtr = this.shim.eliza_llama_init_from_model(modelPtr, ctxParamsPtr);
+      writeAospLlamaDebugLog("loadModel:contextInit:done", {
+        model: path.basename(args.modelPath),
+        ok: Boolean(ctxPtr),
+        latencyMs: Date.now() - ctxInitStartedAt,
+      });
     } finally {
       this.shim.eliza_llama_context_params_free(ctxParamsPtr);
     }
@@ -1062,13 +1473,50 @@ class AospLlamaAdapter implements AospLoader {
     this.nCtx = this.sym.llama_n_ctx(ctxPtr);
     this.loadedPath = args.modelPath;
     this.hasDecoded = false;
-    const nBatchEffective = readEnvInt("ELIZA_LLAMA_N_BATCH", 512);
+    try {
+      await this.configureSpeculativeDraft({
+        loadArgs: args,
+        useGpu,
+        maxThreads,
+        targetContextSize: contextSize,
+        nBatch: nBatchParam,
+        nUBatch: nUBatchParam,
+        kvCacheType,
+      });
+    } catch (err) {
+      await this.unloadModel();
+      throw err;
+    }
+    const nBatchEffective = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
+    writeAospLlamaDebugLog("loadModel:ready", {
+      model: path.basename(args.modelPath),
+      nCtx: this.nCtx,
+      nBatch: nBatchEffective,
+      maxThreads,
+      useGpu,
+      kvK: kvCacheType?.k ?? "f16",
+      kvV: kvCacheType?.v ?? "f16",
+      dflash: this.speculativeHandle !== null,
+      draft: this.loadedDraftPath ? path.basename(this.loadedDraftPath) : null,
+    });
     logger.info(
-      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"})`,
+      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"}, dflash=${this.speculativeHandle !== null})`,
     );
   }
 
   async unloadModel(): Promise<void> {
+    if (this.speculativeHandle !== null) {
+      this.speculativeShim?.eliza_speculative_free(this.speculativeHandle);
+      this.speculativeHandle = null;
+    }
+    if (this.draftCtx !== null) {
+      this.sym.llama_free(this.draftCtx);
+      this.draftCtx = null;
+    }
+    if (this.draftModel !== null) {
+      this.sym.llama_model_free(this.draftModel);
+      this.draftModel = null;
+    }
     if (this.ctx !== null) {
       this.sym.llama_free(this.ctx);
       this.ctx = null;
@@ -1080,7 +1528,214 @@ class AospLlamaAdapter implements AospLoader {
     this.vocab = null;
     this.nCtx = 0;
     this.loadedPath = null;
+    this.loadedDraftPath = null;
     this.hasDecoded = false;
+  }
+
+  private readSpeculativeStats(): string {
+    if (!this.speculativeShim || this.speculativeHandle === null) return "{}";
+    const buf = new Uint8Array(4096);
+    const rc = this.speculativeShim.eliza_speculative_last_stats_json(
+      this.speculativeHandle,
+      this.ffi.ptr(buf),
+      buf.length,
+    );
+    if (rc < 0 && -rc > buf.length) {
+      logger.warn(
+        `[aosp-llama] speculative stats JSON truncated (${buf.length} < ${-rc})`,
+      );
+    }
+    return decodeCStringBytes(buf);
+  }
+
+  private async generateWithSpeculativeShim(args: {
+    prompt: string;
+    stopSequences?: string[];
+    maxTokens?: number;
+    temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
+    signal?: AbortSignal;
+  }): Promise<string> {
+    if (!this.speculativeShim || this.speculativeHandle === null) {
+      throw new Error("[aosp-llama] speculative generate called before init");
+    }
+    if (args.signal?.aborted) {
+      throw makeAbortError(args.signal);
+    }
+    const maxTokens =
+      Number.isFinite(args.maxTokens) && args.maxTokens != null
+        ? Math.max(1, Math.floor(args.maxTokens))
+        : readEnvInt("ELIZA_LLAMA_DEFAULT_MAX_TOKENS", 512);
+    const promptBuf = encodeCString(args.prompt);
+    const grammarBuf = encodeCString(args.grammar?.trim() ?? "");
+    const outBuf = new Uint8Array(
+      Math.max(1024, readEnvInt("ELIZA_DFLASH_STREAM_CHUNK_BYTES", 16_384)),
+    );
+    const doneBuf = new Int32Array(1);
+    const draftedBuf = new Int32Array(1);
+    const acceptedBuf = new Int32Array(1);
+    const startedAt = Date.now();
+    writeAospLlamaDebugLog("generate:dflash:start", {
+      promptChars: args.prompt.length,
+      maxTokens,
+      temperature: args.temperature ?? null,
+      grammarBytes: args.grammar?.trim().length ?? 0,
+      draft: this.loadedDraftPath ? path.basename(this.loadedDraftPath) : null,
+      streaming: true,
+    });
+    const stream = this.speculativeShim.eliza_speculative_stream_open(
+      this.speculativeHandle,
+      this.ffi.ptr(promptBuf),
+      this.ffi.ptr(grammarBuf),
+      maxTokens,
+      args.temperature ?? 0.7,
+    );
+    if (!stream) {
+      const statsText = this.readSpeculativeStats();
+      writeAospLlamaDebugLog("generate:dflash:error", {
+        rc: -1,
+        latencyMs: Date.now() - startedAt,
+        stats: statsText,
+        phase: "stream_open",
+      });
+      throw new Error(
+        `[aosp-llama] in-process DFlash stream_open failed stats=${statsText}`,
+      );
+    }
+    this.hasDecoded = true;
+    const stopSequences = args.stopSequences ?? [];
+    const findFirstStop = (text: string): number => {
+      let firstStopAt = -1;
+      for (const stop of stopSequences) {
+        if (stop.length > 0) {
+          const at = text.indexOf(stop);
+          if (at >= 0 && (firstStopAt < 0 || at < firstStopAt)) {
+            firstStopAt = at;
+          }
+        }
+      }
+      return firstStopAt;
+    };
+    let output = "";
+    let emittedChars = 0;
+    let steps = 0;
+    let firstChunkMs: number | null = null;
+    let totalDrafted = 0;
+    let totalAccepted = 0;
+    try {
+      while (true) {
+        if (args.signal?.aborted) {
+          throw makeAbortError(args.signal);
+        }
+        outBuf.fill(0);
+        doneBuf[0] = 0;
+        draftedBuf[0] = 0;
+        acceptedBuf[0] = 0;
+        const rc = this.speculativeShim.eliza_speculative_stream_next(
+          stream,
+          this.ffi.ptr(outBuf),
+          outBuf.length,
+          this.ffi.ptr(doneBuf),
+          this.ffi.ptr(draftedBuf),
+          this.ffi.ptr(acceptedBuf),
+        );
+        if (rc < 0) {
+          const statsText = this.readSpeculativeStats();
+          let stats: unknown = statsText;
+          try {
+            stats = JSON.parse(statsText);
+          } catch {
+            // Keep the raw string in logs if native wrote a non-JSON value.
+          }
+          writeAospLlamaDebugLog("generate:dflash:error", {
+            rc,
+            latencyMs: Date.now() - startedAt,
+            stats,
+            phase: "stream_next",
+          });
+          throw new Error(
+            `[aosp-llama] in-process DFlash stream_next failed rc=${rc} stats=${statsText}`,
+          );
+        }
+        steps += 1;
+        totalDrafted += draftedBuf[0] ?? 0;
+        totalAccepted += acceptedBuf[0] ?? 0;
+        const chunk = decodeCStringBytes(outBuf);
+        if (chunk.length > 0) {
+          if (firstChunkMs === null) firstChunkMs = Date.now() - startedAt;
+          output += chunk;
+          const stopAt = findFirstStop(output);
+          const sentenceEnd = args.stopOnFirstSentence
+            ? firstSentenceEndIndex(output, args.minFirstSentenceChars)
+            : -1;
+          const emitUntil =
+            stopAt >= 0 && (sentenceEnd < 0 || stopAt <= sentenceEnd)
+              ? stopAt
+              : sentenceEnd >= 0
+                ? sentenceEnd
+                : output.length;
+          if (emitUntil > emittedChars) {
+            await args.onTextChunk?.(output.slice(emittedChars, emitUntil));
+            emittedChars = emitUntil;
+          }
+          writeAospLlamaDebugLog("generate:dflash:chunk", {
+            step: steps,
+            chunkChars: chunk.length,
+            outputChars: output.length,
+            latencyMs: Date.now() - startedAt,
+            drafted: draftedBuf[0] ?? 0,
+            accepted: acceptedBuf[0] ?? 0,
+            done: Boolean(doneBuf[0]),
+          });
+          if (stopAt >= 0) {
+            output = output.slice(0, stopAt);
+            break;
+          }
+          if (sentenceEnd >= 0) {
+            output = output.slice(0, sentenceEnd);
+            writeAospLlamaDebugLog("generate:dflash:early-stop", {
+              reason: "first_sentence",
+              step: steps,
+              outputChars: output.length,
+              latencyMs: Date.now() - startedAt,
+            });
+            break;
+          }
+        }
+        if (doneBuf[0] === 1) break;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    } finally {
+      this.speculativeShim.eliza_speculative_stream_free(stream);
+    }
+    const statsText = this.readSpeculativeStats();
+    let stats: unknown = statsText;
+    try {
+      stats = JSON.parse(statsText);
+    } catch {
+      // Keep the raw string in logs if the native side wrote a non-JSON value.
+    }
+    writeAospLlamaDebugLog("generate:dflash:done", {
+      outputChars: output.length,
+      rc: output.length,
+      latencyMs: Date.now() - startedAt,
+      firstChunkMs,
+      steps,
+      totalDrafted,
+      totalAccepted,
+      stats,
+      outputPreview: output.slice(
+        0,
+        readEnvInt("ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_CHARS", 2048),
+      ),
+    });
+    logger.info(
+      `[aosp-llama] DFlash stream done: ${output.length} chars in ${Date.now() - startedAt}ms firstChunkMs=${firstChunkMs ?? "none"} steps=${steps} drafted=${totalDrafted} accepted=${totalAccepted} stats=${statsText}`,
+    );
+    return output;
   }
 
   async generate(args: {
@@ -1088,6 +1743,10 @@ class AospLlamaAdapter implements AospLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    grammar?: string;
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    stopOnFirstSentence?: boolean;
+    minFirstSentenceChars?: number;
     signal?: AbortSignal;
   }): Promise<string> {
     if (this.ctx === null || this.model === null || this.vocab === null) {
@@ -1095,9 +1754,34 @@ class AospLlamaAdapter implements AospLoader {
     }
     const ctx = this.ctx;
     const vocab = this.vocab;
+    writeAospLlamaDebugLog("generate:start", {
+      promptChars: args.prompt.length,
+      maxTokens: args.maxTokens ?? null,
+      temperature: args.temperature ?? null,
+      grammarBytes: args.grammar?.trim().length ?? 0,
+      nCtx: this.nCtx,
+    });
     // Early-exit: caller cancelled before we even tokenized.
     if (args.signal?.aborted) {
       throw makeAbortError(args.signal);
+    }
+
+    if (this.speculativeHandle !== null && !envFlagDisabled("ELIZA_DFLASH")) {
+      try {
+        return await this.generateWithSpeculativeShim(args);
+      } catch (err) {
+        if (envFlagEnabled("ELIZA_DFLASH_REQUIRED")) {
+          throw err;
+        }
+        logger.warn(
+          `[aosp-llama] in-process DFlash failed; falling back to target-only decode: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        writeAospLlamaDebugLog("generate:dflash:fallback", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     // 0. Reset KV cache for this turn. The b8198 cuttlefish build
@@ -1154,8 +1838,17 @@ class AospLlamaAdapter implements AospLoader {
         `[aosp-llama] llama_tokenize second pass failed: ${written}`,
       );
     }
+    writeAospLlamaDebugLog("generate:tokenized", {
+      promptBytes: promptByteLen,
+      requiredTokens: required,
+      writtenTokens: written,
+    });
 
-    // 2. Build a sampler chain: temp → top_p → dist (or greedy). The
+    // 2. Build a sampler chain: optional grammar → temp → top_p → dist (or
+    // greedy). Stage-1 RESPONSE_HANDLER calls carry a GBNF grammar that forces
+    // the HANDLE_RESPONSE envelope; without this sampler the small AOSP model
+    // free-generates plain text / unused-token gibberish and the message
+    // service cannot parse a structured plan.
     // sampler_chain_params struct is single-field (no_perf bool); the
     // shim materializes it with llama.cpp's default and we don't
     // override.
@@ -1174,6 +1867,31 @@ class AospLlamaAdapter implements AospLoader {
     }
     if (!chain) {
       throw new Error("[aosp-llama] llama_sampler_chain_init returned NULL");
+    }
+    const grammar = args.grammar?.trim();
+    if (grammar) {
+      writeAospLlamaDebugLog("generate:grammar:start", {
+        grammarBytes: grammar.length,
+      });
+      const grammarBuf = encodeCString(grammar);
+      const grammarRootBuf = encodeCString("root");
+      const grammarSampler = this.sym.llama_sampler_init_grammar(
+        vocab,
+        this.ffi.ptr(grammarBuf),
+        this.ffi.ptr(grammarRootBuf),
+      );
+      if (!grammarSampler) {
+        throw new Error(
+          "[aosp-llama] llama_sampler_init_grammar returned NULL",
+        );
+      }
+      this.sym.llama_sampler_chain_add(chain, grammarSampler);
+      writeAospLlamaDebugLog("generate:grammar:done", {
+        grammarBytes: grammar.length,
+      });
+      logger.info(
+        `[aosp-llama] grammar sampler enabled (${grammar.length} bytes)`,
+      );
     }
     const temperature = args.temperature ?? 0.7;
     if (temperature <= 0) {
@@ -1224,8 +1942,19 @@ class AospLlamaAdapter implements AospLoader {
       // Decode chunk size is bounded by n_batch (set in loadModel).
       // Reading it here mirrors the parameter that loadModel committed
       // to via eliza_llama_context_params_set_n_batch.
-      const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 2048);
-      const maxOutputReserve = args.maxTokens ?? 512;
+      const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
+      const tokenBudget = resolveAospGenerateTokenBudget({
+        requestedMaxTokens: args.maxTokens,
+        nCtx: this.nCtx,
+        nBatch,
+      });
+      const maxOutputReserve = tokenBudget.maxOutputReserve;
+      if (tokenBudget.capped) {
+        writeAospLlamaDebugLog("generate:maxTokens:capped", tokenBudget);
+        logger.warn(
+          `[aosp-llama] capping maxTokens ${tokenBudget.requestedMaxTokens} -> ${tokenBudget.maxTokens} (n_ctx=${this.nCtx}, n_batch=${nBatch}, envCap=${tokenBudget.envCap ?? "none"})`,
+        );
+      }
       // Reserve maxOutputReserve + n_batch (one ubatch slack) + an
       // empirical 25 % safety margin. llama.cpp's Flash-Attention sliding
       // memory allocator on the b8198 build returns
@@ -1243,6 +1972,14 @@ class AospLlamaAdapter implements AospLoader {
         const head = written - promptCapacity;
         promptTokens = tokens.subarray(head);
         promptLen = promptCapacity;
+        writeAospLlamaDebugLog("generate:prompt:truncated", {
+          written,
+          promptCapacity,
+          droppedHeadTokens: head,
+          nCtx: this.nCtx,
+          maxOutputReserve,
+          nBatch,
+        });
         logger.warn(
           `[aosp-llama] prompt ${written} tokens > capacity ${promptCapacity} (n_ctx=${this.nCtx} - reserve ${maxOutputReserve}); dropping ${head} head tokens`,
         );
@@ -1259,6 +1996,11 @@ class AospLlamaAdapter implements AospLoader {
         }
         const chunkLen = Math.min(nBatch, promptLen - offset);
         const chunk = promptTokens.subarray(offset, offset + chunkLen);
+        writeAospLlamaDebugLog("generate:prefill:chunk:start", {
+          offset,
+          chunkLen,
+          promptLen,
+        });
         const promptBatchPtr = this.shim.eliza_llama_batch_get_one(
           this.ffi.ptr(chunk),
           chunkLen,
@@ -1280,6 +2022,12 @@ class AospLlamaAdapter implements AospLoader {
             `[aosp-llama] llama_decode (prompt chunk @${offset}/${promptLen}) returned ${decodeRc}`,
           );
         }
+        writeAospLlamaDebugLog("generate:prefill:chunk:done", {
+          offset,
+          chunkLen,
+          promptLen,
+          latencyMs: Date.now() - chunkStart,
+        });
         // Mark the ctx as decoded so subsequent generate()/embed() calls
         // will issue the leading llama_memory_clear safely.
         this.hasDecoded = true;
@@ -1314,9 +2062,14 @@ class AospLlamaAdapter implements AospLoader {
       logger.info(
         `[aosp-llama] prefill done: ${promptLen} tokens in ${prefillElapsedMs}ms (${prefillTokPerSec.toFixed(1)} tok/s overall)`,
       );
+      writeAospLlamaDebugLog("generate:prefill:done", {
+        promptLen,
+        latencyMs: prefillElapsedMs,
+        tokensPerSecond: prefillTokPerSec,
+      });
 
       // 4. Token loop.
-      const maxTokens = args.maxTokens ?? 512;
+      const maxTokens = tokenBudget.maxTokens;
       const stopSequences = args.stopSequences ?? [];
       const pieceBuf = new Uint8Array(256);
       const singleToken = new Int32Array(1);
@@ -1332,10 +2085,37 @@ class AospLlamaAdapter implements AospLoader {
         if (args.signal?.aborted) {
           throw makeAbortError(args.signal);
         }
+        const traceToken = i < 8 || (i + 1) % 32 === 0;
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:token:start", {
+            index: i,
+          });
+        }
         const next = this.sym.llama_sampler_sample(chain, ctx, -1);
-        if (this.sym.llama_vocab_is_eog(vocab, next)) break;
-        this.sym.llama_sampler_accept(chain, next);
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:token:sampled", {
+            index: i,
+            token: next,
+          });
+        }
+        if (this.sym.llama_vocab_is_eog(vocab, next)) {
+          writeAospLlamaDebugLog("generate:decode:eog", {
+            index: i,
+            token: next,
+          });
+          break;
+        }
+        // This fork's llama_sampler_sample() already accepts the sampled
+        // token into the sampler chain before returning. Calling
+        // llama_sampler_accept() again advances grammar state twice and can
+        // abort inside the grammar sampler on the first generated token.
 
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:piece:start", {
+            index: i,
+            token: next,
+          });
+        }
         const wrote = this.sym.llama_token_to_piece(
           vocab,
           next,
@@ -1344,9 +2124,19 @@ class AospLlamaAdapter implements AospLoader {
           0,
           false,
         );
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:piece:done", {
+            index: i,
+            token: next,
+            bytes: wrote,
+          });
+        }
         if (wrote > 0) {
           const piece = new TextDecoder().decode(pieceBuf.subarray(0, wrote));
           output += piece;
+          if (piece.length > 0) {
+            void args.onTextChunk?.(piece);
+          }
           if (stopSequences.some((s) => s.length > 0 && output.endsWith(s))) {
             for (const stop of stopSequences) {
               if (stop.length > 0 && output.endsWith(stop)) {
@@ -1356,13 +2146,39 @@ class AospLlamaAdapter implements AospLoader {
             }
             break;
           }
+          const sentenceEnd = args.stopOnFirstSentence
+            ? firstSentenceEndIndex(output, args.minFirstSentenceChars)
+            : -1;
+          if (sentenceEnd >= 0) {
+            output = output.slice(0, sentenceEnd);
+            writeAospLlamaDebugLog("generate:decode:early-stop", {
+              reason: "first_sentence",
+              index: i,
+              outputChars: output.length,
+              latencyMs: Date.now() - decodeStart,
+            });
+            break;
+          }
         }
 
         singleToken[0] = next;
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:stepBatch:start", {
+            index: i,
+            token: next,
+          });
+        }
         const stepBatchPtr = this.shim.eliza_llama_batch_get_one(
           this.ffi.ptr(singleToken),
           1,
         );
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:stepBatch:done", {
+            index: i,
+            token: next,
+            ok: Boolean(stepBatchPtr),
+          });
+        }
         if (!stepBatchPtr) {
           throw new Error(
             "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
@@ -1370,9 +2186,22 @@ class AospLlamaAdapter implements AospLoader {
         }
         let stepRc: number;
         try {
+          if (traceToken) {
+            writeAospLlamaDebugLog("generate:decode:stepDecode:start", {
+              index: i,
+              token: next,
+            });
+          }
           stepRc = this.shim.eliza_llama_decode(ctx, stepBatchPtr);
         } finally {
           this.shim.eliza_llama_batch_free(stepBatchPtr);
+        }
+        if (traceToken) {
+          writeAospLlamaDebugLog("generate:decode:stepDecode:done", {
+            index: i,
+            token: next,
+            rc: stepRc,
+          });
         }
         if (stepRc !== 0) {
           throw new Error(
@@ -1409,6 +2238,20 @@ class AospLlamaAdapter implements AospLoader {
       logger.info(
         `[aosp-llama] gen done: ${output.length} chars in ${decodeElapsedMs}ms (~${decodeTokPerSec.toFixed(1)} char/s)`,
       );
+      writeAospLlamaDebugLog("generate:decode:done", {
+        outputChars: output.length,
+        maxTokens,
+        requestedMaxTokens: tokenBudget.requestedMaxTokens,
+        latencyMs: decodeElapsedMs,
+        outputPreview: output.slice(
+          0,
+          readEnvInt("ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_CHARS", 2048),
+        ),
+        outputTail:
+          output.length > 512 && process.env.ELIZA_AOSP_LLAMA_DEBUG_OUTPUT_TAIL !== "0"
+            ? output.slice(-512)
+            : undefined,
+      });
       return output;
     } finally {
       this.sym.llama_sampler_free(chain);
@@ -1575,9 +2418,11 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
 
   let libPath: string;
   let shimPath: string;
+  let speculativeShimPath: string | null = null;
   try {
     libPath = resolveLibllamaPath();
     shimPath = resolveLlamaShimPath();
+    speculativeShimPath = resolveSpeculativeShimPath();
   } catch (err) {
     logger.error(
       "[aosp-llama] Cannot resolve native library paths:",
@@ -1634,7 +2479,27 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
     return null;
   }
 
-  cachedAdapter = new AospLlamaAdapter(ffi, symbols, shim);
+  let speculativeShim: SpeculativeShimSymbols | null = null;
+  if (speculativeShimPath && existsSync(speculativeShimPath)) {
+    try {
+      speculativeShim = dlopenSpeculativeShim(ffi, speculativeShimPath);
+      logger.info(
+        `[aosp-llama] speculative shim loaded (${path.basename(speculativeShimPath)}, supported=${speculativeShim.eliza_speculative_supported()})`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[aosp-llama] speculative shim present but dlopen failed; DFlash will stay target-only: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  } else {
+    logger.info(
+      "[aosp-llama] speculative shim not bundled; DFlash disabled for this APK",
+    );
+  }
+
+  cachedAdapter = new AospLlamaAdapter(ffi, symbols, shim, speculativeShim);
   return cachedAdapter;
 }
 
@@ -1643,11 +2508,11 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
  * builds (when `ELIZA_LOCAL_LLAMA !== "1"`). Returns true on successful
  * registration so the caller can confirm precedence.
  *
- * When DFlash is requested (a `draftModelPath` is on the load args, or
- * `ELIZA_DFLASH=1` is in env), `loadModel` and `generate` are routed to
- * the out-of-process llama-server adapter (`aosp-dflash-adapter.ts`) so
- * speculative decoding can use the upstream `--model-draft` + `--spec-type
- * dflash` flags. `embed()` always stays on the in-process FFI path.
+ * When an in-process speculative shim and `draftModelPath` are available,
+ * the regular FFI adapter loads target + drafter contexts and uses the
+ * native DFlash draft/verify loop. The legacy llama-server adapter remains
+ * reachable only through ELIZA_DFLASH_SERVER_SPAWN=1 for diagnostics.
+ * `embed()` always stays on the target in-process FFI path.
  */
 export async function registerAospLlamaLoader(
   runtime: RuntimeWithRegisterService,
@@ -1657,12 +2522,9 @@ export async function registerAospLlamaLoader(
   const adapter = await buildAdapter();
   if (!adapter) return false;
 
-  // Lazy-construct the DFlash adapter on first use. The AOSP build hosts
-  // both the target and the drafter in-process via the FFI streaming-LLM
-  // runner (no more cross-compiled `llama-server` binary); the adapter
-  // only constructs when libelizainference exports the streaming symbols
-  // AND the voice/text FFI context has been initialized. Otherwise the
-  // dispatcher falls back to the single-model FFI decode path below.
+  // Lazy-construct the legacy server-spawn adapter on first use. Production
+  // stock APK DFlash is in-process; this child-process adapter only runs when
+  // ELIZA_DFLASH_SERVER_SPAWN=1 is explicitly set.
   const { buildDflashAdapter, shouldRouteViaDflash } = await import(
     "./aosp-dflash-adapter.js"
   );
@@ -1671,19 +2533,10 @@ export async function registerAospLlamaLoader(
   const getDflashAdapter = () => {
     if (!dflashProbed) {
       dflashProbed = true;
-      const ffiCtx = resolveSharedFfiContext(runtime);
-      if (!ffiCtx) {
-        logger.warn(
-          "[aosp-llama] DFlash requested but the FFI context is not registered yet; " +
-            "falling back to single-model FFI decode. The voice lifecycle wires the " +
-            "context at boot — confirm bootstrap order.",
-        );
-        return null;
-      }
       dflashAdapter = buildDflashAdapter();
       if (dflashAdapter) {
         logger.info(
-          "[aosp-llama] FFI streaming DFlash adapter ready (in-process drafter+target)",
+          "[aosp-llama] DFlash adapter ready (llama-server drafter+target)",
         );
       }
     }
@@ -1695,30 +2548,40 @@ export async function registerAospLlamaLoader(
   runtime.registerService(SERVICE_NAME, {
     // Accept the shared LocalInferenceLoader shape (`{ modelPath }`) AND the
     // AOSP-specific extension (`{ modelPath, kvCacheType?, draftModelPath?, … }`).
-    // When draftModelPath is set (or ELIZA_DFLASH=1) and a llama-server binary
-    // is staged for this ABI, route through the spawn-and-route DFlash adapter.
+    // Only the explicit diagnostic server-spawn path bypasses the in-process
+    // adapter. Normal DFlash pairing goes through adapter.loadModel(a), where
+    // the speculative shim loads the drafter context in-process.
     loadModel: async (a: AospLlamaLoadOptions) => {
       if (shouldRouteViaDflash(a) && a.draftModelPath) {
         const df = getDflashAdapter();
         if (df) {
-          // Tear down any FFI model that was loaded so we don't double-occupy
-          // RAM with the in-process target weights.
-          if (adapter.currentModelPath() !== null) {
-            await adapter.unloadModel();
+          try {
+            // Tear down any FFI model that was loaded so we don't double-occupy
+            // RAM with the server-side target weights.
+            if (adapter.currentModelPath() !== null) {
+              await adapter.unloadModel();
+            }
+            await df.loadModel({
+              modelPath: a.modelPath,
+              draftModelPath: a.draftModelPath,
+              contextSize: a.contextSize,
+              draftContextSize: a.draftContextSize,
+              draftMin: a.draftMin,
+              draftMax: a.draftMax,
+              cacheTypeK: a.cacheTypeK,
+              cacheTypeV: a.cacheTypeV,
+              disableThinking: a.disableThinking,
+            });
+            activeBackend = "dflash";
+            return;
+          } catch (err) {
+            if (envFlagEnabled("ELIZA_DFLASH_REQUIRED")) {
+              throw err;
+            }
+            logger.warn(
+              `[aosp-llama] DFlash load failed; falling back to single-model FFI decode: ${err instanceof Error ? err.message : String(err)}`,
+            );
           }
-          await df.loadModel({
-            modelPath: a.modelPath,
-            draftModelPath: a.draftModelPath,
-            contextSize: a.contextSize,
-            draftContextSize: a.draftContextSize,
-            draftMin: a.draftMin,
-            draftMax: a.draftMax,
-            cacheTypeK: a.cacheTypeK,
-            cacheTypeV: a.cacheTypeV,
-            disableThinking: a.disableThinking,
-          });
-          activeBackend = "dflash";
-          return;
         }
         logger.warn(
           "[aosp-llama] DFlash requested but llama-server binary missing; falling back to single-model FFI decode",
@@ -1744,6 +2607,9 @@ export async function registerAospLlamaLoader(
       stopSequences?: string[];
       maxTokens?: number;
       temperature?: number;
+      grammar?: string;
+      onTextChunk?: (chunk: string) => void | Promise<void>;
+      signal?: AbortSignal;
     }) => {
       if (activeBackend === "dflash") {
         const df = dflashAdapter;
