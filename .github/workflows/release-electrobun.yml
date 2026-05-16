@@ -311,7 +311,10 @@ jobs:
         env:
           ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           ELIZA_VALIDATE_CDN: "1"
-        run: bun run release:check
+        run: |
+          node packages/app-core/scripts/write-homepage-release-data.mjs
+          node packages/app-core/scripts/generate-static-asset-manifest.mjs
+          bun run release:check
 
   build-browser-companions:
     name: Build Agent Browser Bridge companions
