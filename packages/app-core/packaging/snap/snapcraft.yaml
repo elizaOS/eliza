@@ -125,25 +125,25 @@ parts:
         const path = require("path");
         if (!fs.existsSync("plugins")) process.exit(0);
         const keep = new Set([
-          "app-lifeops",
-          "app-task-coordinator",
-          "app-training",
-          "app-wallet",
           "plugin-agent-skills",
           "plugin-anthropic",
           "plugin-browser",
           "plugin-elizacloud",
           "plugin-elizamaker",
           "plugin-imessage",
+          "plugin-lifeops",
           "plugin-local-inference",
           "plugin-ollama",
           "plugin-pdf",
           "plugin-signal",
           "plugin-sql",
           "plugin-streaming",
+          "plugin-task-coordinator",
           "plugin-telegram",
+          "plugin-training",
           "plugin-video",
           "plugin-wallet",
+          "plugin-wallet-ui",
           "plugin-wechat",
           "plugin-whatsapp",
         ]);
@@ -479,23 +479,23 @@ parts:
         --filter=@elizaos/skills \
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \
-        --filter=@elizaos/app-lifeops \
-        --filter=@elizaos/app-task-coordinator \
-        --filter=@elizaos/app-training \
-        --filter=@elizaos/app-wallet \
         --filter=@elizaos/plugin-agent-skills \
         --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-elizamaker \
         --filter=@elizaos/plugin-imessage \
+        --filter=@elizaos/plugin-lifeops \
         --filter=@elizaos/plugin-local-inference \
         --filter=@elizaos/plugin-ollama \
         --filter=@elizaos/plugin-pdf \
         --filter=@elizaos/plugin-signal \
         --filter=@elizaos/plugin-sql \
         --filter=@elizaos/plugin-streaming \
+        --filter=@elizaos/plugin-task-coordinator \
         --filter=@elizaos/plugin-telegram \
+        --filter=@elizaos/plugin-training \
         --filter=@elizaos/plugin-video \
         --filter=@elizaos/plugin-wallet \
+        --filter=@elizaos/plugin-wallet-ui \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/capacitor-contacts \
