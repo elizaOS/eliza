@@ -219,7 +219,9 @@ function shouldUseAndroidLocalDirectChat(
   if (!isAndroidLocalDirectChatRuntime(runtime)) {
     return false;
   }
-  const text = extractCompatTextContent(message.content).trim();
+  const text = normalizeAndroidLocalDirectUserText(
+    extractCompatTextContent(message.content),
+  );
   if (!text || text.length > 700) {
     return false;
   }
@@ -253,6 +255,13 @@ function escapeAndroidLocalChatTemplateTokens(text: string): string {
     .replaceAll("<|im_end|>", "<| im_end |>")
     .replaceAll("<think>", "< think >")
     .replaceAll("</think>", "</ think >");
+}
+
+function normalizeAndroidLocalDirectUserText(text: string): string {
+  return text
+    .replace(/(^|\s)\/(?:no_)?think\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildAndroidLocalDirectChatPrompt(args: {
@@ -366,7 +375,10 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   if (!shouldUseAndroidLocalDirectChat(args.runtime, args.message)) {
     return null;
   }
-  const userText = extractCompatTextContent(args.message.content).trim();
+  const userText = normalizeAndroidLocalDirectUserText(
+    extractCompatTextContent(args.message.content),
+  );
+  if (!userText) return null;
   const prompt = buildAndroidLocalDirectChatPrompt({
     runtime: args.runtime,
     userText,

@@ -1055,6 +1055,17 @@ public class ElizaAgentService extends Service {
                 if (!env.containsKey("ELIZA_MOBILE_LOCAL_DIRECT_REPLY")) {
                     agentEnv.put("ELIZA_MOBILE_LOCAL_DIRECT_REPLY", "1");
                 }
+                if (!env.containsKey("ELIZA_KOKORO_PREWARM")) {
+                    agentEnv.put("ELIZA_KOKORO_PREWARM", "1");
+                }
+                if (!env.containsKey("ELIZA_KOKORO_PREWARM_DELAY_MS")) {
+                    // Kokoro's first on-device ORT/WASM synthesis can be
+                    // CPU-bound for tens of seconds. Keep the warmup opt-in,
+                    // but schedule it well after the local HTTP server should
+                    // be listening so app readiness is not blocked by audio
+                    // cache priming.
+                    agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
+                }
                 if (abiSpeculativeShim.isFile() && !env.containsKey("ELIZA_DFLASH")) {
                     agentEnv.put("ELIZA_DFLASH", "1");
                     Log.i(TAG, "agent/" + abiDir.getName()

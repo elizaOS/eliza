@@ -194,7 +194,7 @@ describe("generateChatResponse token streaming", () => {
       useModel,
     });
 
-    const message = createChatMessage("can you hear me locally?");
+    const message = createChatMessage("/no_think can you hear me locally?");
     message.content = {
       ...message.content,
       channelType: ChannelType.VOICE_DM,
@@ -214,6 +214,10 @@ describe("generateChatResponse token streaming", () => {
         },
       },
     );
+
+    const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
+    expect(directParams.prompt).not.toContain("/no_think");
+    expect(directParams.prompt).toContain("can you hear me locally?");
 
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),

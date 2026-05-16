@@ -1430,6 +1430,7 @@ export function makeKokoroTextToSpeechHandler(
     config: KokoroEngineDiscoveryResult;
   }> {
     if (backendPromise) return backendPromise;
+    const started = Date.now();
     const promise = Promise.resolve().then(() => {
       const config = opts.discover
         ? opts.discover()
@@ -1460,6 +1461,15 @@ export function makeKokoroTextToSpeechHandler(
         }),
       };
     });
+    promise
+      .then(({ config }) => {
+        logger.info(
+          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH backend ready in ${Date.now() - started}ms (${config.runtimeKind}, voice=${config.defaultVoiceId})`,
+        );
+      })
+      .catch(() => {
+        // The awaited handler path reports the actual startup error.
+      });
     backendPromise = promise.catch((err) => {
       backendPromise = null;
       throw err;
@@ -1482,7 +1492,10 @@ export function makeKokoroTextToSpeechHandler(
     };
     signal?.addEventListener("abort", abort, { once: true });
     try {
+      const started = Date.now();
       const { backend, config } = await ensureBackend();
+      const backendReadyMs = Date.now() - started;
+      const synthStarted = Date.now();
       const audio = await backend.synthesize({
         phrase: {
           id: 0,
@@ -1498,14 +1511,59 @@ export function makeKokoroTextToSpeechHandler(
         },
         cancelSignal,
       });
+      const synthMs = Date.now() - synthStarted;
       if (cancelSignal.cancelled) {
         throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
       }
-      return encodeWavPcm16(audio.pcm, audio.sampleRate);
+      const encodeStarted = Date.now();
+      const wav = encodeWavPcm16(audio.pcm, audio.sampleRate);
+      const encodeMs = Date.now() - encodeStarted;
+      logger.info(
+        `[aosp-local-inference] Kokoro TEXT_TO_SPEECH completed chars=${text.length} voice=${resolveStagedSpeechVoice(params, config)} backendReadyMs=${backendReadyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${audio.pcm.length} wavBytes=${wav.byteLength}`,
+      );
+      return wav;
     } finally {
       signal?.removeEventListener("abort", abort);
     }
   };
+}
+
+export function prewarmKokoroTextToSpeechHandler(
+  handler: TextToSpeechHandler,
+): void {
+  if (readBooleanEnv("ELIZA_KOKORO_PREWARM") !== true) return;
+
+  const delayMs = readPositiveIntEnv("ELIZA_KOKORO_PREWARM_DELAY_MS", 5_000);
+  const timeoutMs = readPositiveIntEnv(
+    "ELIZA_KOKORO_PREWARM_TIMEOUT_MS",
+    45_000,
+  );
+  const text =
+    process.env.ELIZA_KOKORO_PREWARM_TEXT?.trim() || "Hello from Eliza.";
+
+  setTimeout(() => {
+    const started = Date.now();
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    void handler({} as never, {
+      text,
+      signal: abortController.signal,
+    })
+      .then((bytes) => {
+        logger.info(
+          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
+        );
+      })
+      .catch((err) => {
+        logger.warn(
+          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm failed: " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+      });
+  }, delayMs);
 }
 
 type BunFfiModule = {
@@ -1907,12 +1965,13 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_TO_SPEECH,
     ModelType.TRANSCRIPTION,
   ];
+  const kokoroTextToSpeechHandler = makeKokoroTextToSpeechHandler();
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
         ? makeEmbeddingHandler(loader, lifecycle)
         : modelType === ModelType.TEXT_TO_SPEECH
-          ? makeKokoroTextToSpeechHandler()
+          ? kokoroTextToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
             ? makeAospTranscriptionHandler()
             : makeGenerateHandler(loader, lifecycle);
@@ -1956,6 +2015,7 @@ export async function ensureAospLocalInferenceHandlers(
         (err instanceof Error ? err.message : String(err)),
     );
   });
+  prewarmKokoroTextToSpeechHandler(kokoroTextToSpeechHandler);
 
   console.log(
     `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,
