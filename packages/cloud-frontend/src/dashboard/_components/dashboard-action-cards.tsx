@@ -1,7 +1,5 @@
 /**
- * Dashboard action cards — the primary landing experience for users.
- * Shows quick-access cards for agent administration, APIs, billing, instances,
- * and app monetization.
+ * Dashboard action cards — primary landing tiles. Flat brand surfaces.
  */
 
 "use client";
@@ -26,13 +24,7 @@ interface DashboardActionCardsProps {
   className?: string;
 }
 
-const ACTION_CARD_SKELETON_IDS = [
-  "agent",
-  "api",
-  "billing",
-  "instances",
-  "apps",
-];
+const ACTION_CARD_SKELETON_IDS = ["agent", "api", "billing", "instances", "apps"];
 
 export function DashboardActionCards({
   creditBalance,
@@ -46,113 +38,72 @@ export function DashboardActionCards({
         : "$0.00";
 
   return (
-    <div className={cn("grid gap-4 sm:grid-cols-2 xl:grid-cols-5", className)}>
-      {/* My Agent */}
+    <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-5", className)}>
       <Link
         to="/dashboard/my-agents"
-        className="group relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-orange-500/15 via-orange-600/10 to-transparent p-5 transition-all duration-300 hover:border-orange-500/40 hover:shadow-lg hover:shadow-orange-500/5 sm:col-span-2 xl:col-span-1"
+        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-[#FF5800] p-5 text-black transition-colors hover:bg-black hover:text-white sm:col-span-2 xl:col-span-1"
       >
         <div className="mb-4 flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400 transition-colors group-hover:bg-orange-500/30">
-            <Rocket className="h-5 w-5" />
-          </div>
-          <ArrowRight className="h-4 w-4 text-white/30 transition-all duration-300 group-hover:translate-x-1 group-hover:text-orange-400" />
+          <Rocket className="h-5 w-5" />
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </div>
-        <div>
-          <h3 className="text-base font-semibold text-white">My Agent</h3>
-        </div>
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
+        <h3 className="text-base font-semibold">My Agent</h3>
       </Link>
 
-      {/* Developer APIs */}
-      <div className="group relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-cyan-500/15 via-cyan-600/10 to-transparent p-5 transition-all duration-300 hover:border-cyan-500/40 hover:shadow-lg hover:shadow-cyan-500/5 sm:col-span-2 xl:col-span-1">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/20 text-cyan-400 transition-colors group-hover:bg-cyan-500/30">
-            <Code className="h-5 w-5" />
-          </div>
-        </div>
+      <div className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-[#0B35F1] p-5 text-white sm:col-span-2 xl:col-span-1">
+        <Code className="h-5 w-5" />
         <div>
-          <h3 className="text-base font-semibold text-white">API Access</h3>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/dashboard/api-keys"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-400 transition-colors hover:text-cyan-300"
-            >
+          <h3 className="text-base font-semibold">API Access</h3>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium">
+            <Link to="/dashboard/api-keys" className="inline-flex items-center gap-1.5 hover:text-[#FF5800]">
               <KeyRound className="h-3 w-3" />
               Keys
             </Link>
-            <Link
-              to="/docs"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-400 transition-colors hover:text-cyan-300"
-            >
+            <Link to="/docs" className="inline-flex items-center gap-1.5 hover:text-[#FF5800]">
               <BookOpen className="h-3 w-3" />
               Docs
             </Link>
-            <Link
-              to="/dashboard/api-explorer"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-400 transition-colors hover:text-cyan-300"
-            >
+            <Link to="/dashboard/api-explorer" className="inline-flex items-center gap-1.5 hover:text-[#FF5800]">
               <Bot className="h-3 w-3" />
               Explorer
             </Link>
           </div>
         </div>
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-cyan-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
       </div>
 
-      {/* Billing */}
       <Link
         to="/dashboard/billing"
-        className="group relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-emerald-500/15 via-emerald-600/10 to-transparent p-5 transition-all duration-300 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5"
+        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-black p-5 text-white transition-colors hover:bg-white/[0.06]"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 transition-colors group-hover:bg-emerald-500/30">
-            <Wallet className="h-5 w-5" />
-          </div>
-          <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
+        <div className="flex items-center justify-between">
+          <Wallet className="h-5 w-5" />
+          <span className="rounded-sm bg-[#FF5800] px-2 py-0.5 text-xs font-semibold text-black">
             {formattedBalance}
           </span>
         </div>
-        <div>
-          <h3 className="text-base font-semibold text-white">Billing</h3>
-        </div>
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
+        <h3 className="text-base font-semibold">Billing</h3>
       </Link>
 
-      {/* Containers & Instances */}
       <Link
         to="/dashboard/containers"
-        className="group relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-violet-500/15 via-violet-600/10 to-transparent p-5 transition-all duration-300 hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-500/5"
+        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-black p-5 text-white transition-colors hover:bg-white/[0.06]"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400 transition-colors group-hover:bg-violet-500/30">
-            <Server className="h-5 w-5" />
-          </div>
-          <ArrowRight className="h-4 w-4 text-white/30 transition-all duration-300 group-hover:translate-x-1 group-hover:text-violet-400" />
+        <div className="flex items-center justify-between">
+          <Server className="h-5 w-5" />
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </div>
-        <div>
-          <h3 className="text-base font-semibold text-white">Instances</h3>
-        </div>
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-violet-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
+        <h3 className="text-base font-semibold">Instances</h3>
       </Link>
 
-      {/* Apps & Monetization */}
       <Link
         to="/dashboard/apps"
-        className="group relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-amber-500/15 via-amber-600/10 to-transparent p-5 transition-all duration-300 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-500/5"
+        className="group relative flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-black p-5 text-white transition-colors hover:bg-white/[0.06]"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400 transition-colors group-hover:bg-amber-500/30">
-            <Store className="h-5 w-5" />
-          </div>
-          <CreditCard className="h-4 w-4 text-white/30 transition-all duration-300 group-hover:text-amber-400" />
+        <div className="flex items-center justify-between">
+          <Store className="h-5 w-5" />
+          <CreditCard className="h-4 w-4" />
         </div>
-        <div>
-          <h3 className="text-base font-semibold text-white">
-            Apps &amp; Monetization
-          </h3>
-        </div>
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
+        <h3 className="text-base font-semibold">Apps &amp; Monetization</h3>
       </Link>
     </div>
   );
@@ -160,20 +111,14 @@ export function DashboardActionCards({
 
 export function DashboardActionCardsSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {ACTION_CARD_SKELETON_IDS.map((id) => (
         <div
           key={id}
-          className="flex min-h-[168px] flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-5"
+          className="flex min-h-[148px] flex-col justify-between rounded-sm border border-white/10 bg-white/5 p-5"
         >
-          <div className="mb-4 flex items-center justify-between">
-            <div className="h-10 w-10 rounded-lg bg-white/10 animate-pulse" />
-            <div className="h-4 w-4 rounded bg-white/10 animate-pulse" />
-          </div>
-          <div className="space-y-2">
-            <div className="h-5 w-28 rounded bg-white/10 animate-pulse" />
-            <div className="h-4 w-full rounded bg-white/10 animate-pulse" />
-          </div>
+          <div className="h-5 w-5 animate-pulse bg-white/10" />
+          <div className="h-5 w-28 animate-pulse bg-white/10" />
         </div>
       ))}
     </div>

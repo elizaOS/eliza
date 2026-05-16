@@ -155,7 +155,7 @@ export function SidebarNavigationItem({
             </span>
           )}
           {item.badge && !item.isNew && (
-            <span className="rounded-full bg-white/18 px-2 py-0.5 text-[10px] font-semibold text-white/70">
+            <span className="rounded-sm bg-white/18 px-2 py-0.5 text-[10px] font-semibold text-white/70">
               {item.badge}
             </span>
           )}

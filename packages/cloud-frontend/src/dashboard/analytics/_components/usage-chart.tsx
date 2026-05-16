@@ -168,7 +168,7 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
 
       <ChartContainer
         config={chartConfig}
-        className="h-[340px] w-full rounded-2xl border border-border/70 bg-background/70 p-5 sm:p-6"
+        className="h-[340px] w-full rounded-sm border border-border/70 bg-background/70 p-5 sm:p-6"
       >
         <AreaChart data={chartData}>
           <defs>

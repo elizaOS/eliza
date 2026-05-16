@@ -370,7 +370,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             </div>
           )}
 
-          <div className="bg-neutral-900 rounded-xl p-4">
+          <div className="bg-neutral-900 rounded-sm p-4">
             <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-[#FF5800]" />
               Requests Over Time
@@ -416,7 +416,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             )}
           </div>
 
-          <div className="bg-neutral-900 rounded-xl p-4">
+          <div className="bg-neutral-900 rounded-sm p-4">
             <h3 className="text-sm font-medium text-white mb-4">User Growth</h3>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
@@ -501,7 +501,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="bg-neutral-900 rounded-xl p-4">
+                <div className="bg-neutral-900 rounded-sm p-4">
                   <h3 className="text-sm font-medium text-white mb-4">
                     By Source
                   </h3>
@@ -548,7 +548,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   )}
                 </div>
 
-                <div className="bg-neutral-900 rounded-xl p-4">
+                <div className="bg-neutral-900 rounded-sm p-4">
                   <h3 className="text-sm font-medium text-white mb-4">
                     By Type
                   </h3>
@@ -639,7 +639,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 </div>
               )}
 
-              <div className="bg-neutral-900 rounded-xl p-4">
+              <div className="bg-neutral-900 rounded-sm p-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-white">
                     Top Visitors
@@ -714,7 +714,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
       {/* Logs Tab */}
       {activeTab === "logs" && (
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-white">Request Logs</h3>
             <div className="flex items-center gap-2">

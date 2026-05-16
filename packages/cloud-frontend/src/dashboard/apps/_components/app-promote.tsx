@@ -117,7 +117,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-500/10">
               <Share2 className="h-5 w-5 text-blue-400" />
@@ -129,7 +129,7 @@ export function AppPromote({ app }: AppPromoteProps) {
           </div>
         </div>
 
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-green-500/10">
               <Search className="h-5 w-5 text-green-400" />
@@ -141,7 +141,7 @@ export function AppPromote({ app }: AppPromoteProps) {
           </div>
         </div>
 
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-purple-500/10">
               <TrendingUp className="h-5 w-5 text-purple-400" />
@@ -155,7 +155,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       </div>
 
       {/* Promotional Assets */}
-      <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-medium text-white flex items-center gap-2">
@@ -209,7 +209,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
       {/* Suggestions */}
       {suggestions && (
-        <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+        <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-white">Promotion Tips</h3>
           <div className="space-y-2">
             {suggestions.tips.map((tip, index) => (
@@ -237,7 +237,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       )}
 
       {/* Connected Ad Accounts */}
-      <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">
             Connected Ad Accounts

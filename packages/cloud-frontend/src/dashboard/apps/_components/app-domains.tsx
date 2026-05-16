@@ -240,7 +240,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
     <TooltipProvider>
       <div className="space-y-4">
         {/* Main Domains Card */}
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
@@ -457,7 +457,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
         </AnimatePresence>
 
         {/* Quick Reference */}
-        <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="bg-neutral-900 rounded-sm p-4">
           <h3 className="text-sm font-medium text-white mb-4">
             Quick DNS Reference
           </h3>
@@ -757,7 +757,7 @@ function DnsConfigPanel({
     domainStatus?.records?.filter((r) => r.type === "TXT") || [];
 
   return (
-    <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+    <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">

@@ -80,8 +80,8 @@ export default function StewardEmailCallbackPage() {
   if (status === "error") {
     return (
       <Frame>
-        <div className="rounded-full bg-red-500/20 p-4">
-          <AlertTriangle className="h-8 w-8 text-red-400" />
+        <div className="bg-[#FF5800] p-4 text-black">
+          <AlertTriangle className="h-8 w-8" />
         </div>
         <h1 className="text-lg font-semibold text-white">Sign-in failed</h1>
         <p className="max-w-xs text-center text-sm text-white/60">{error}</p>
@@ -92,7 +92,7 @@ export default function StewardEmailCallbackPage() {
   if (status === "success") {
     return (
       <Frame>
-        <CheckCircle2 className="h-12 w-12 text-emerald-400" />
+        <CheckCircle2 className="h-12 w-12 text-white" />
         <h1 className="text-lg font-semibold text-white">Signed in</h1>
         <p className="text-sm text-white/60">
           Returning to the app authorization screen...

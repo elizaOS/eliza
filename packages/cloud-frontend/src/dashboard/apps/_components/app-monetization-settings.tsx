@@ -166,7 +166,7 @@ export function AppMonetizationSettings({
         {/* Monetization Toggle Card */}
         <div
           className={cn(
-            "rounded-xl p-4 border transition-colors",
+            "rounded-sm p-4 border transition-colors",
             settings.monetizationEnabled
               ? "bg-emerald-500/5 border-emerald-500/20"
               : "bg-neutral-900 border-white/10",
@@ -232,7 +232,7 @@ export function AppMonetizationSettings({
         {/* Settings Grid */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Markup Controls */}
-          <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+          <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
             <h3 className="text-sm font-medium text-white">Revenue Settings</h3>
 
             {/* Inference Markup */}

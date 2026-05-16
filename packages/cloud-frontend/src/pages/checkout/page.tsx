@@ -269,7 +269,7 @@ export default function CheckoutPage() {
           </div>
         </section>
 
-        <section className="self-center bg-black/78 p-4 text-white backdrop-blur-md md:p-5">
+        <section className="self-center bg-black/78 p-4 text-white md:p-5">
           <div className="grid gap-5 md:grid-cols-[0.95fr_1fr]">
             <div className="bg-white p-0">
               <HardwareVisual product={product} />
@@ -347,7 +347,7 @@ export default function CheckoutPage() {
         </section>
 
         {collection === "elizaos-hardware" ? (
-          <section className="bg-black/78 p-4 backdrop-blur-md md:col-span-2">
+          <section className="bg-black/78 p-4 md:col-span-2">
             <h2 className="text-xl font-semibold text-white">Preorder</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
               {products.map((item) => (

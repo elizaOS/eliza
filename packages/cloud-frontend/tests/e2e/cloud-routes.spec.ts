@@ -2,6 +2,95 @@ import { expect, type Page, test } from "@playwright/test";
 
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 
+// Console messages we explicitly tolerate. Keep this list short and
+// document each entry — anything that lands here is a regression candidate.
+const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
+  /Failed to load resource.*favicon/i,
+  // Vite dev HMR ping noise when the dev server restarts during a test
+  /\[vite\] connecting/i,
+  /\[vite\] connected/i,
+];
+
+// Requests we don't fail on if they 4xx/5xx — e.g. optional analytics,
+// third-party heartbeats. Keep this empty until proven necessary.
+const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [
+  /\/__telemetry__/,
+];
+
+// Page-title sanity per route. The homepage title is the brand fallback;
+// when a sub-page accidentally inherits it (because of missing <title> on
+// that route), it's a real bug we want to fail on.
+const HOMEPAGE_TITLE_FALLBACK = /eliza cloud - Your Eliza, always online/i;
+const ROUTE_TITLE_RULES: Record<string, RegExp> = {
+  "/": HOMEPAGE_TITLE_FALLBACK,
+  "/login": /login/i,
+  "/os": /elizaos|operating system/i,
+  "/terms-of-service": /terms/i,
+  "/privacy-policy": /privacy/i,
+  "/blog": /blog/i,
+  "/docs": /doc/i,
+};
+
+interface CapturedFailures {
+  pageErrors: string[];
+  consoleErrors: string[];
+  failedResponses: Array<{ url: string; status: number }>;
+}
+
+function attachFailureCollectors(page: Page): CapturedFailures {
+  const captured: CapturedFailures = {
+    pageErrors: [],
+    consoleErrors: [],
+    failedResponses: [],
+  };
+
+  page.on("pageerror", (err) => {
+    captured.pageErrors.push(err.message ?? String(err));
+  });
+
+  page.on("console", (msg) => {
+    if (msg.type() !== "error") return;
+    const text = msg.text();
+    if (CONSOLE_ERROR_ALLOWLIST.some((r) => r.test(text))) return;
+    captured.consoleErrors.push(text);
+  });
+
+  page.on("response", (resp) => {
+    const status = resp.status();
+    if (status < 400) return;
+    const url = resp.url();
+    if (NETWORK_FAILURE_ALLOWLIST.some((r) => r.test(url))) return;
+    captured.failedResponses.push({ url, status });
+  });
+
+  return captured;
+}
+
+function assertNoFailures(route: string, captured: CapturedFailures) {
+  const lines: string[] = [];
+  if (captured.pageErrors.length) {
+    lines.push(
+      `Uncaught page errors on ${route}:\n` +
+        captured.pageErrors.map((e) => `  - ${e}`).join("\n"),
+    );
+  }
+  if (captured.consoleErrors.length) {
+    lines.push(
+      `Console errors on ${route}:\n` +
+        captured.consoleErrors.map((e) => `  - ${e}`).join("\n"),
+    );
+  }
+  if (captured.failedResponses.length) {
+    lines.push(
+      `Failed responses on ${route}:\n` +
+        captured.failedResponses
+          .map((f) => `  - ${f.status} ${f.url}`)
+          .join("\n"),
+    );
+  }
+  if (lines.length) throw new Error(lines.join("\n\n"));
+}
+
 const publicRoutes = [
   "/",
   "/login",
@@ -161,22 +250,41 @@ test.beforeEach(async ({ context, page }) => {
 
 for (const route of publicRoutes) {
   test(`public route renders: ${route}`, async ({ page }) => {
+    const captured = attachFailureCollectors(page);
     await page.goto(route);
     await expect(page.locator("body")).toBeVisible();
     await expect(page.locator("text=Not found")).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
+
+    // Title rule: each route should set a route-specific <title>; sub-pages
+    // must not silently fall back to the homepage title.
+    const pathKey = route.split("?")[0];
+    const titleRule = ROUTE_TITLE_RULES[pathKey];
+    const title = await page.title();
+    if (titleRule) {
+      expect(title, `unexpected title on ${route}: ${title}`).toMatch(titleRule);
+    }
+    if (pathKey !== "/") {
+      expect(title, `route ${route} fell back to homepage title`).not.toMatch(
+        HOMEPAGE_TITLE_FALLBACK,
+      );
+    }
+
+    assertNoFailures(route, captured);
   });
 }
 
 for (const route of dashboardRoutes) {
   test(`dashboard route renders: ${route}`, async ({ page }) => {
+    const captured = attachFailureCollectors(page);
     await page.goto(route);
     await expect(page.locator("body")).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
     await expect(page.locator("text=Not found")).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
+    assertNoFailures(route, captured);
   });
 }
 

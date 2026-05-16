@@ -302,7 +302,7 @@ export function AgentCard({
         role="button"
         tabIndex={0}
       >
-        <div className="group relative overflow-hidden rounded-xl bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
+        <div className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
           <div className="flex items-center gap-4 p-4">
             {/* Avatar */}
             <div className="relative flex-shrink-0 w-12 h-12 overflow-hidden rounded-lg">
@@ -497,7 +497,7 @@ export function AgentCard({
       role="button"
       tabIndex={0}
     >
-      <div className="group relative aspect-square w-full overflow-hidden rounded-xl">
+      <div className="group relative aspect-square w-full overflow-hidden rounded-sm">
         <Skeleton className="absolute inset-0 w-full h-full" />
 
         <Image

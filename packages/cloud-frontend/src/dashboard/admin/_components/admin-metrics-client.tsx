@@ -868,7 +868,7 @@ function StatCell({
 }) {
   return (
     <div
-      className={`backdrop-blur-sm bg-[rgba(10,10,10,0.75)] p-3 md:p-4 space-y-1 ${className ?? ""}`}
+      className={`bg-[rgba(10,10,10,0.75)] p-3 md:p-4 space-y-1 ${className ?? ""}`}
     >
       <div className="flex items-center justify-between">
         <p className="text-xs md:text-sm lg:text-base font-mono text-white">

@@ -89,7 +89,7 @@ function AgentConsoleOverview({
 
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-      <div className="rounded-2xl border border-white/36 bg-white/58 p-5 shadow-[0_18px_54px_rgba(3,28,58,0.12)] backdrop-blur-2xl">
+      <div className="rounded-sm border border-white/36 bg-white/58 p-5 shadow-sm">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl space-y-3">
             <p className="text-xs font-semibold uppercase tracking-normal text-accent">
@@ -110,7 +110,7 @@ function AgentConsoleOverview({
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
             <Link
               to={chatPath}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-accent bg-primary px-4 text-sm font-medium text-primary-fg shadow-[0_12px_32px_rgba(217,95,22,0.24)] transition-colors hover:bg-accent-hover"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-sm border border-accent bg-primary px-4 text-sm font-medium text-primary-fg transition-colors hover:bg-accent-hover"
             >
               <MessageCircle className="h-4 w-4" />
               {primaryAgent ? "Open agent chat" : "Go to my agent"}
@@ -118,7 +118,7 @@ function AgentConsoleOverview({
             <button
               type="button"
               onClick={onCreateNew}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/42 bg-white/36 px-4 text-sm font-medium text-[#06131f]/78 transition-colors hover:bg-white/58 hover:text-[#06131f]"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-sm border border-white/42 bg-white/36 px-4 text-sm font-medium text-[#06131f]/78 transition-colors hover:bg-white/58 hover:text-[#06131f]"
             >
               <Server className="h-4 w-4" />
               Runtime admin
@@ -126,7 +126,7 @@ function AgentConsoleOverview({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-px overflow-hidden rounded-2xl border border-white/42 bg-white/42 sm:grid-cols-3">
+        <div className="mt-5 grid gap-px overflow-hidden rounded-sm border border-white/42 bg-white/42 sm:grid-cols-3">
           <div className="bg-white/44 p-4">
             <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
               Owned agents
@@ -161,9 +161,9 @@ function AgentConsoleOverview({
             <Link
               key={section.title}
               to={section.to}
-              className="group flex items-start gap-3 rounded-2xl border border-white/36 bg-white/50 p-4 shadow-[0_14px_42px_rgba(3,28,58,0.1)] backdrop-blur-2xl transition-colors hover:border-accent/40 hover:bg-white/68"
+              className="group flex items-start gap-3 rounded-sm border border-white/36 bg-white/50 p-4 shadow-sm transition-colors hover:border-accent/40 hover:bg-white/68"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/48 bg-white/52 text-accent">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-white/48 bg-white/52 text-accent">
                 <Icon className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">

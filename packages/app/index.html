@@ -211,7 +211,13 @@
     body {
       margin: 0;
       padding: 0;
-      background-color: var(--bg, #08080a);
+      /* FOUC fallback. The native splash (capacitor SplashScreen,
+         AppTheme.NoActionBarLaunch, LaunchScreen.storyboard) is brand
+         orange #FF5800. The dark chat shell takes over once React mounts.
+         Painting orange here would strobe into dark; painting pure black
+         matches the chat shell and is a cleaner handoff. --bg is set by
+         the active theme as soon as styles load. */
+      background-color: var(--bg, #000000);
       color: var(--text, #e8e8ec);
       font-family: var(--font-sans, "Poppins", "Open Sans", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;

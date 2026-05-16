@@ -308,7 +308,7 @@ export default function ApiExplorerPage() {
                 </div>
               </div>
 
-              <div className="bg-neutral-900 rounded-xl p-4 md:p-6 space-y-6">
+              <div className="bg-neutral-900 rounded-sm p-4 md:p-6 space-y-6">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     {getCategoryIcon(selectedEndpoint.category)}
@@ -415,7 +415,7 @@ export default function ApiExplorerPage() {
               )}
 
               {filteredEndpoints.length === 0 ? (
-                <div className="flex flex-col items-center justify-center min-h-[300px] bg-neutral-900 rounded-xl">
+                <div className="flex flex-col items-center justify-center min-h-[300px] bg-neutral-900 rounded-sm">
                   <Search className="h-12 w-12 text-neutral-600 mb-4" />
                   <h3 className="text-lg font-medium text-white mb-1">
                     No endpoints found

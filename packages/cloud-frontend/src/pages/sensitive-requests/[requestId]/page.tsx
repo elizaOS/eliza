@@ -282,7 +282,7 @@ export default function SensitiveRequestPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#080A0D] px-4 py-6 text-white">
-      <main className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+      <main className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
             {effectiveStatus === "success" ||

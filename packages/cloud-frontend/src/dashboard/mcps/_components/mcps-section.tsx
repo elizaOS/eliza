@@ -212,7 +212,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
   return (
     <div className={cn("space-y-4", className)}>
       {/* What is MCP Info Card */}
-      <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+      <div className="p-4 rounded-sm bg-white/5 border border-white/10">
         <h3 className="text-base font-medium text-white mb-1">What is MCP?</h3>
         <p className="text-sm text-white/60 mb-3">
           The Model Context Protocol (MCP) is an open standard that enables AI
@@ -333,7 +333,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
               <div className="shrink-0 flex items-start justify-between p-4 sm:p-6 border-b border-white/10">
                 <div className="flex items-center gap-4">
                   <div
-                    className="p-3 rounded-xl border"
+                    className="p-3 rounded-sm border"
                     style={{
                       backgroundColor: `${selectedServer.color}15`,
                       borderColor: `${selectedServer.color}40`,
@@ -363,7 +363,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     </DrawerDescription>
                   </div>
                 </div>
-                <DrawerClose className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                <DrawerClose className="p-2 hover:bg-white/10 rounded-sm transition-colors">
                   <X className="h-5 w-5 text-neutral-500" />
                 </DrawerClose>
               </div>
@@ -377,7 +377,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                       MCP Endpoint
                     </label>
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-white/5 border border-white/10 p-3 font-mono text-sm text-white/80 rounded-xl overflow-x-auto">
+                      <div className="flex-1 bg-white/5 border border-white/10 p-3 font-mono text-sm text-white/80 rounded-sm overflow-x-auto">
                         {typeof window !== "undefined"
                           ? window.location.origin
                           : ""}
@@ -390,7 +390,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                             selectedServer.id,
                           )
                         }
-                        className="p-3 bg-white/5 border border-white/10 hover:border-white/30 transition-colors rounded-xl"
+                        className="p-3 bg-white/5 border border-white/10 hover:border-white/30 transition-colors rounded-sm"
                       >
                         {copiedEndpoint === selectedServer.id ? (
                           <Check className="h-4 w-4 text-green-400" />
@@ -406,7 +406,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     <label className="text-xs text-neutral-500 uppercase tracking-wider">
                       Configuration
                     </label>
-                    <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-white/70 rounded-xl overflow-x-auto">
+                    <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-white/70 rounded-sm overflow-x-auto">
                       <pre>
                         {JSON.stringify(
                           {
@@ -460,7 +460,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     <label className="text-xs text-neutral-500 uppercase tracking-wider">
                       Server Response
                     </label>
-                    <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-green-400/80 rounded-xl overflow-x-auto max-h-48 overflow-y-auto">
+                    <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-green-400/80 rounded-sm overflow-x-auto max-h-48 overflow-y-auto">
                       <pre>{testResult}</pre>
                     </div>
                   </motion.div>
@@ -468,7 +468,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
 
                 {/* x402 Info */}
                 {selectedServer.x402Enabled && (
-                  <div className="mt-6 bg-purple-500/10 border border-purple-500/30 p-4 rounded-xl">
+                  <div className="mt-6 bg-purple-500/10 border border-purple-500/30 p-4 rounded-sm">
                     <div className="flex items-center gap-2 mb-2">
                       <Zap className="h-4 w-4 text-purple-400" />
                       <span className="text-sm font-medium text-purple-300">
@@ -493,13 +493,13 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     href={selectedServer.endpoint}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-xl text-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-sm text-sm"
                   >
                     <ExternalLink className="h-4 w-4" />
                     <span className="hidden sm:inline">Open Endpoint</span>
                   </a>
                   <button
-                    className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-xl text-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-sm text-sm"
                     onClick={() =>
                       window.open(
                         "https://modelcontextprotocol.io/introduction",
@@ -514,7 +514,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                 <button
                   onClick={() => testMcpServer(selectedServer)}
                   disabled={testingServer === selectedServer.id}
-                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800]/20 border border-[#FF5800]/30 text-[#FF5800] hover:bg-[#FF5800]/30 transition-colors rounded-xl text-sm disabled:opacity-50"
+                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800]/20 border border-[#FF5800]/30 text-[#FF5800] hover:bg-[#FF5800]/30 transition-colors rounded-sm text-sm disabled:opacity-50"
                 >
                   {testingServer === selectedServer.id ? (
                     <span className="h-4 w-4 border-2 border-[#FF5800]/30 border-t-[#FF5800] rounded-full animate-spin" />
@@ -548,13 +548,13 @@ function MCPCard({
       onClick={onSelect}
       className="block w-full h-full text-left"
     >
-      <div className="group relative h-full overflow-hidden rounded-xl bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
+      <div className="group relative h-full overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
         {/* Header */}
         <div className="p-4 pb-3">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
               <div
-                className="p-2 rounded-xl border shrink-0"
+                className="p-2 rounded-sm border shrink-0"
                 style={{
                   backgroundColor: `${server.color}15`,
                   borderColor: `${server.color}40`,
@@ -638,7 +638,7 @@ function MCPCard({
 // Empty State
 function MCPsEmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[160px] md:min-h-[240px] gap-4 bg-neutral-900 rounded-xl">
+    <div className="flex flex-col items-center justify-center min-h-[160px] md:min-h-[240px] gap-4 bg-neutral-900 rounded-sm">
       <Puzzle className="h-10 w-10 text-neutral-600" />
       <h3 className="text-lg font-medium text-neutral-500">
         No MCPs match your search

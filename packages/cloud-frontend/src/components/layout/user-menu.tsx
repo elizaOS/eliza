@@ -245,22 +245,25 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
 
     const fetchProfile = async () => {
       try {
-        const response = await fetch("/api/v1/user");
-        if (response.ok && mounted) {
-          const data = await response.json();
-          if (isUserProfileResponse(data) && data.success && data.data) {
-            const profile = data.data;
-            setUserProfile({
-              id: profile.id ?? "",
-              name: profile.name ?? null,
-              avatar: profile.avatar ?? null,
-              email: profile.email ?? null,
-              organizationCreditBalance:
-                profile.organization?.credit_balance !== undefined
-                  ? Number(profile.organization.credit_balance)
-                  : null,
-            });
-          }
+        const response = await fetch("/api/v1/user", {
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok || !mounted) return;
+        const contentType = response.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) return;
+        const data = await response.json();
+        if (isUserProfileResponse(data) && data.success && data.data) {
+          const profile = data.data;
+          setUserProfile({
+            id: profile.id ?? "",
+            name: profile.name ?? null,
+            avatar: profile.avatar ?? null,
+            email: profile.email ?? null,
+            organizationCreditBalance:
+              profile.organization?.credit_balance !== undefined
+                ? Number(profile.organization.credit_balance)
+                : null,
+          });
         }
       } catch (error) {
         console.error("[UserMenu] Failed to fetch user profile:", error);

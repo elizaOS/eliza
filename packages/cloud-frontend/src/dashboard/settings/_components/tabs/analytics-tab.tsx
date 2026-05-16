@@ -187,7 +187,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-0">
         {/* Total Requests */}
-        <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-1">
+        <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-1">
           <div className="flex items-center justify-between">
             <p className="text-xs md:text-sm lg:text-base font-mono text-white">
               Total Requests
@@ -216,7 +216,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
         </div>
 
         {/* Total Cost */}
-        <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
+        <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
           <div className="flex items-center justify-between">
             <p className="text-xs md:text-sm lg:text-base font-mono text-white">
               Total Cost
@@ -245,7 +245,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
         </div>
 
         {/* Success Rate */}
-        <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-t lg:border-t border-r border-b lg:border-l-0 border-brand-surface p-3 md:p-4 space-y-1">
+        <div className="bg-[rgba(10,10,10,0.75)] border-t lg:border-t border-r border-b lg:border-l-0 border-brand-surface p-3 md:p-4 space-y-1">
           <div className="flex items-center justify-between">
             <p className="text-xs md:text-sm lg:text-base font-mono text-white">
               Success Rate
@@ -271,7 +271,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
         </div>
 
         {/* Token Volume */}
-        <div className="backdrop-blur-sm border-t lg:border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
+        <div className="border-t lg:border-t border-r border-b border-brand-surface p-3 md:p-4 space-y-1">
           <div className="flex items-center justify-between">
             <p className="text-xs md:text-sm lg:text-base font-mono text-white">
               Token Volume
@@ -408,7 +408,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
             {/* Burn Rate Cards */}
             <div className="space-y-0">
               {/* Daily Burn Card */}
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-2">
+              <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3 md:p-4 space-y-2">
                 <p className="text-xs md:text-sm font-mono text-white/60 uppercase">
                   Daily Burn (24h)
                 </p>
@@ -440,7 +440,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
               </div>
 
               {/* Weekly Projection */}
-              <div className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface p-3 md:p-4 space-y-2">
+              <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface p-3 md:p-4 space-y-2">
                 <p className="text-xs md:text-sm font-mono text-white/60 uppercase">
                   Weekly Projection
                 </p>

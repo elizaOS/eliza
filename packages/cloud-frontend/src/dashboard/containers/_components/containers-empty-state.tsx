@@ -15,7 +15,7 @@ export function ContainersEmptyState() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] gap-6 bg-neutral-900 rounded-xl py-12">
+    <div className="flex flex-col items-center justify-center min-h-[400px] gap-6 bg-neutral-900 rounded-sm py-12">
       <div className="text-center space-y-2">
         <h3 className="text-xl font-medium text-white">No containers yet</h3>
       </div>

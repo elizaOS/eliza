@@ -267,7 +267,7 @@ export function ApisTab({ user }: ApisTabProps) {
                   {apiKeys.map((apiKey) => (
                     <div
                       key={apiKey.id}
-                      className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface p-4 space-y-3"
+                      className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-4 space-y-3"
                     >
                       {/* Name and Permission Badge */}
                       <div className="space-y-2">
@@ -396,7 +396,7 @@ export function ApisTab({ user }: ApisTabProps) {
                   {apiKeys.map((apiKey, _index) => (
                     <div
                       key={apiKey.id}
-                      className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface hover:bg-[rgba(10,10,10,0.85)] transition-colors"
+                      className="bg-[rgba(10,10,10,0.75)] border border-brand-surface hover:bg-[rgba(10,10,10,0.85)] transition-colors"
                     >
                       {/* Main Info Row */}
                       <div className="p-4 flex items-start justify-between gap-6">

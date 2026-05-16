@@ -20,8 +20,9 @@ import {
   normalizeChatResponseText,
 } from "../chat-routes.js";
 
-type RuntimeOverrides = Partial<AgentRuntime> & {
+type RuntimeOverrides = Omit<Partial<AgentRuntime>, "useModel"> & {
   messageService?: NonNullable<AgentRuntime["messageService"]>;
+  useModel?: UseModelMock | AgentRuntime["useModel"];
 };
 
 type MessageService = NonNullable<AgentRuntime["messageService"]>;

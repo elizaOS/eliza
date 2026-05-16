@@ -107,7 +107,7 @@ export default function RootLayout() {
                     background: "#000000",
                     border: "1px solid rgba(255, 255, 255, 0.14)",
                     color: "#FFFFFF",
-                    borderRadius: "0",
+                    borderRadius: "2px",
                   },
                   className: "font-poppins",
                 }}

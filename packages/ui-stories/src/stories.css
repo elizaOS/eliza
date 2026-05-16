@@ -1,0 +1,118 @@
+/* Pull in the full @elizaos/ui stylesheet bundle so theme tokens, Tailwind
+ * utilities, and brand fonts are all available. */
+@import "@elizaos/ui/styles";
+
+/* Local layout for the gallery shell. */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: var(--font-sans);
+}
+
+.gallery-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.gallery-surface {
+  padding: 32px 24px 48px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.gallery-surface.theme-cloud {
+  background: linear-gradient(180deg, #0230f5 0%, #075cff 50%, #17adff 100%);
+  color: #ffffff;
+}
+
+.gallery-surface.theme-os {
+  background: #0b35f1;
+  color: #ffffff;
+}
+
+.gallery-surface.theme-app {
+  background: #000000;
+  color: #ffffff;
+}
+
+.gallery-surface-title {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 24px;
+}
+
+.gallery-section {
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+  padding: 24px 0;
+}
+
+.gallery-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.gallery-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.gallery-name {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.gallery-import {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  opacity: 0.6;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.gallery-toc {
+  position: sticky;
+  top: 0;
+  background: #000;
+  color: #fff;
+  padding: 12px 24px;
+  z-index: 10;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid #ff5800;
+}
+
+.gallery-toc a {
+  color: #ff5800;
+  text-decoration: none;
+}
+
+.gallery-toc a:hover {
+  text-decoration: underline;
+}

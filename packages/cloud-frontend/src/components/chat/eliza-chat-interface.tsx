@@ -1407,7 +1407,7 @@ export function ElizaChatInterface({
     <div className="flex h-full w-full min-h-0 justify-center py-3 pr-3">
       {/* Main Chat Area - Centered with max width for readability */}
       <div
-        className={`flex flex-col items-center flex-1 min-h-0 w-full px-4 sm:px-6 rounded-2xl bg-[#070707] ${isEmptyChat ? "justify-center" : ""}`}
+        className={`flex flex-col items-center flex-1 min-h-0 w-full px-4 sm:px-6 rounded-sm bg-[#070707] ${isEmptyChat ? "justify-center" : ""}`}
       >
         {/* Pending document processing banner */}
         <PendingDocumentsProcessor characterId={selectedCharacterId} />
@@ -1559,7 +1559,7 @@ export function ElizaChatInterface({
           className="py-4 md:py-6 w-full"
         >
           <div className="mx-auto max-w-4xl">
-            <div className="relative rounded-2xl border border-white/12 bg-white/4 overflow-hidden shadow-lg shadow-black/20">
+            <div className="relative rounded-sm border border-white/12 bg-white/4 overflow-hidden shadow-lg shadow-black/20">
               {/* Robot Eye Visor Scanner */}
               {loadingState.isSending && (
                 <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden pointer-events-none z-10">
@@ -1647,7 +1647,7 @@ export function ElizaChatInterface({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
-                      className="w-56 rounded-xl border-white/10 bg-neutral-800/60 backdrop-blur-md p-1.5"
+                      className="w-56 rounded-sm border-white/10 bg-neutral-800/60 p-1.5"
                       align="start"
                       side="top"
                       sideOffset={8}
@@ -1758,7 +1758,7 @@ export function ElizaChatInterface({
                             <SelectTrigger className="w-full h-8 rounded-lg border-white/10 bg-white/5 text-sm">
                               <SelectValue placeholder="Select voice" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-lg border-white/10 bg-neutral-800/60 backdrop-blur-md">
+                            <SelectContent className="rounded-lg border-white/10 bg-neutral-800/60">
                               <SelectItem value="default">
                                 Default Voice
                               </SelectItem>
@@ -1844,7 +1844,7 @@ export function ElizaChatInterface({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
-                      className="w-72 rounded-xl border-white/10 bg-neutral-800/60 backdrop-blur-md p-1.5"
+                      className="w-72 rounded-sm border-white/10 bg-neutral-800/60 p-1.5"
                       align="end"
                       side="top"
                       sideOffset={8}
@@ -1934,7 +1934,7 @@ export function ElizaChatInterface({
                               More models
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent
-                              className="w-64 rounded-xl border-white/10 bg-neutral-800/60 backdrop-blur-md p-0"
+                              className="w-64 rounded-sm border-white/10 bg-neutral-800/60 p-0"
                               sideOffset={8}
                             >
                               <ScrollArea
@@ -2091,7 +2091,7 @@ export function ElizaChatInterface({
                               More models
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent
-                              className="w-64 rounded-xl border-white/10 bg-neutral-800/60 backdrop-blur-md p-1.5"
+                              className="w-64 rounded-sm border-white/10 bg-neutral-800/60 p-1.5"
                               sideOffset={8}
                             >
                               {ADDITIONAL_IMAGE_MODELS.map((model) => {
@@ -2176,7 +2176,7 @@ export function ElizaChatInterface({
                       isMessageLimitReached
                     }
                     size="icon"
-                    className="h-8 w-8 rounded-xl bg-[#FF5800] hover:bg-[#e54e00] disabled:bg-white/10 transition-colors group"
+                    className="h-8 w-8 rounded-sm bg-[#FF5800] hover:bg-[#e54e00] disabled:bg-white/10 transition-colors group"
                   >
                     {loadingState.isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin text-white" />
