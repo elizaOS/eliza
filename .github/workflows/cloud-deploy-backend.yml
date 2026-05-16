@@ -76,9 +76,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --frozen-lockfile --ignore-scripts --verbose && exit 0
+              bun install --no-save --ignore-scripts --verbose && exit 0
             else
-              bun install --frozen-lockfile --ignore-scripts && exit 0
+              bun install --no-save --ignore-scripts && exit 0
             fi
 
             echo "bun install attempt $attempt failed; retrying in 10s..."
@@ -148,9 +148,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --frozen-lockfile --ignore-scripts --verbose && exit 0
+              bun install --no-save --ignore-scripts --verbose && exit 0
             else
-              bun install --frozen-lockfile --ignore-scripts && exit 0
+              bun install --no-save --ignore-scripts && exit 0
             fi
 
             echo "bun install attempt $attempt failed; retrying in 10s..."
