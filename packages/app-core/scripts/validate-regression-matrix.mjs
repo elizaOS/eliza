@@ -8,20 +8,16 @@ const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 function findRepoRoot(startDir) {
   let currentDir = startDir;
-  let matchedRoot = null;
   while (true) {
     if (
       fs.existsSync(path.join(currentDir, "package.json")) &&
       fs.existsSync(path.join(currentDir, ".github", "workflows"))
     ) {
-      matchedRoot = currentDir;
+      return currentDir;
     }
 
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
-      if (matchedRoot) {
-        return matchedRoot;
-      }
       throw new Error(`Unable to resolve repository root from ${startDir}.`);
     }
 

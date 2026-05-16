@@ -150,8 +150,8 @@ jobs:
           if [[ -n "$PLAY_STORE_SERVICE_ACCOUNT_JSON" ]]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::PLAY_STORE_SERVICE_ACCOUNT_JSON is required for Android release publishing."
-            exit 1
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "PLAY_STORE_SERVICE_ACCOUNT_JSON is not configured; signed APK/AAB artifacts will still attach to GitHub Release, but Play Store upload will be skipped."
           fi
 
       - name: Install dependencies
@@ -167,7 +167,27 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
-      - name: Run Android store preflight
+      - name: Run Android signing preflight
+        working-directory: packages/app
+        env:
+          ELIZAOS_KEYSTORE_PATH: /tmp/elizaos-upload.jks
+          ELIZAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ELIZAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          bun run preflight:android:sideload
+          missing=()
+          [[ ! -s "$ELIZAOS_KEYSTORE_PATH" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -z "$ELIZAOS_KEYSTORE_PASSWORD" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -z "$ELIZAOS_KEY_ALIAS" ]] && missing+=("ANDROID_KEY_ALIAS")
+          [[ -z "$ELIZAOS_KEY_PASSWORD" ]] && missing+=("ANDROID_KEY_PASSWORD")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing Android release signing inputs: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Run Play Store preflight
+        if: steps.play_store_credentials.outputs.ready == 'true'
         working-directory: packages/app
         env:
           ELIZAOS_KEYSTORE_PATH: /tmp/elizaos-upload.jks
@@ -334,7 +354,7 @@ jobs:
             echo "::error::Signed AAB build result was '${{ needs.build-aab.result }}', expected success"
             failed=1
           fi
-          if [[ "${{ needs.publish-play-store.result }}" != "success" ]]; then
+          if [[ "${{ needs.build-aab.outputs.play_store_ready }}" == "true" && "${{ needs.publish-play-store.result }}" != "success" ]]; then
             echo "::error::Play Store publish result was '${{ needs.publish-play-store.result }}', expected success"
             failed=1
           fi
