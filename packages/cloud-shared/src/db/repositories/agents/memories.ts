@@ -397,7 +397,7 @@ export class MemoriesRepository {
    * Creates a new memory.
    */
   async create(input: CreateMemoryInput): Promise<Memory> {
-    const [memoryResult] = await dbWrite
+    const memoryResults = (await dbWrite
       .insert(memoryTable)
       .values({
         id: input.id,
@@ -411,7 +411,8 @@ export class MemoriesRepository {
         worldId: input.worldId,
         createdAt: new Date(),
       })
-      .returning();
+      .returning()) as unknown as MemoryRow[];
+    const memoryResult = memoryResults[0];
 
     if (!memoryResult) {
       throw new Error(`Memory not returned after create: ${input.id}`);

@@ -160,7 +160,7 @@ export class ParticipantsRepository {
       return requireParticipant(existing[0], "existence check");
     }
 
-    const results = await dbWrite
+    const results = (await dbWrite
       .insert(participantTable)
       .values({
         roomId: input.roomId,
@@ -169,7 +169,7 @@ export class ParticipantsRepository {
         roomState: input.roomState ? JSON.stringify(input.roomState) : undefined,
         createdAt: new Date(),
       })
-      .returning();
+      .returning()) as unknown as ParticipantRecord[];
 
     return requireParticipant(results[0], "create");
   }
