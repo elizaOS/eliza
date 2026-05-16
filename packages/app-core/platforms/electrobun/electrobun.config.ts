@@ -427,6 +427,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
 			exitOnLastWindowClosed: false,
 		},
 		scripts: {
+			// Electrobun removes the target build folder without `force: true`;
+			// seed it first so clean worktrees do not fail with ENOENT.
+			preBuild: "scripts/ensure-build-folder.ts",
 			// Sign native code inside the runtime dist node_modules on the inner app bundle
 			// before Electrobun runs the platform signing/notarization flow.
 			postBuild: "scripts/postwrap-sign-runtime-macos.ts",

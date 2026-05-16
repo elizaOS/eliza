@@ -38,6 +38,11 @@ const mockAppInfo = (version: string, build: string) => {
 const STABLE_MANIFEST_URL =
   "https://github.com/elizaOS/eliza/releases/latest/download/android-update-manifest-stable.json";
 
+const setFetchMock = (mock: ReturnType<typeof vi.fn>) => {
+  global.fetch = mock as unknown as typeof fetch;
+  return mock;
+};
+
 function makeManifest(versionCode: number) {
   return {
     schemaVersion: 1,
@@ -84,10 +89,12 @@ describe("AndroidUpdateChecker.check()", () => {
     mockAppInfo("1.0.10", "10");
 
     const manifest = makeManifest(10);
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => manifest,
-    } as Response);
+    setFetchMock(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => manifest,
+      } as Response),
+    );
 
     const result = await AndroidUpdateChecker.check("stable");
 
@@ -102,10 +109,12 @@ describe("AndroidUpdateChecker.check()", () => {
     mockAppInfo("1.0.10", "10");
 
     const manifest = makeManifest(11);
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => manifest,
-    } as Response);
+    setFetchMock(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => manifest,
+      } as Response),
+    );
 
     const result = await AndroidUpdateChecker.check("stable");
 
@@ -119,7 +128,7 @@ describe("AndroidUpdateChecker.check()", () => {
     vi.stubEnv("VITE_ANDROID_BUILD_VARIANT", "sideload");
     mockAppInfo("1.0.10", "10");
 
-    global.fetch = vi.fn().mockRejectedValue(new Error("Network failure"));
+    setFetchMock(vi.fn().mockRejectedValue(new Error("Network failure")));
 
     const result = await AndroidUpdateChecker.check("stable");
 
@@ -131,11 +140,13 @@ describe("AndroidUpdateChecker.check()", () => {
     vi.stubEnv("VITE_ANDROID_BUILD_VARIANT", "sideload");
     mockAppInfo("1.0.10", "10");
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      statusText: "Not Found",
-    } as Response);
+    setFetchMock(
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+      } as Response),
+    );
 
     const result = await AndroidUpdateChecker.check("stable");
 
@@ -153,12 +164,12 @@ describe("AndroidUpdateChecker.check()", () => {
       String(Date.now() - 60 * 60 * 1000),
     );
 
-    global.fetch = vi.fn();
+    const fetchMock = setFetchMock(vi.fn());
 
     const result = await AndroidUpdateChecker.check("stable");
 
     expect(result).toBeNull();
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fetches correct stable manifest URL", async () => {
@@ -167,14 +178,16 @@ describe("AndroidUpdateChecker.check()", () => {
     mockAppInfo("1.0.10", "10");
 
     const manifest = makeManifest(10);
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => manifest,
-    } as Response);
+    const fetchMock = setFetchMock(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => manifest,
+      } as Response),
+    );
 
     await AndroidUpdateChecker.check("stable");
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenCalledWith(
       STABLE_MANIFEST_URL,
       expect.any(Object),
     );
