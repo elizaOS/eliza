@@ -6,6 +6,8 @@ import { logger } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
 
 const KNOWN_ADAPTER_TYPES = new Set([
+  "elizaos",
+  "pi-agent",
   "claude",
   "codex",
   "opencode",
@@ -22,8 +24,12 @@ export function normalizeTaskAgentAdapter(
   switch (normalized) {
     case "elizaos":
     case "eliza-os":
+    case "eliza":
+      return "elizaos";
     case "pi-agent":
     case "pi agent":
+    case "pi":
+      return "pi-agent";
     case "opencode":
     case "open-code":
     case "open code":

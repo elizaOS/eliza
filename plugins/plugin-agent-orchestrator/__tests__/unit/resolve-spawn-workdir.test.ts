@@ -57,9 +57,11 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
 });
 
 describe("task-agent adapter aliases", () => {
-  it("maps benchmark elizaOS aliases to the supported ACP adapter", () => {
-    expect(normalizeTaskAgentAdapter("elizaos")).toBe("opencode");
-    expect(normalizeTaskAgentAdapter("pi-agent")).toBe("opencode");
+  it("keeps benchmark elizaOS aliases as first-class adapters", () => {
+    expect(normalizeTaskAgentAdapter("elizaos")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("eliza")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("pi-agent")).toBe("pi-agent");
+    expect(normalizeTaskAgentAdapter("pi")).toBe("pi-agent");
     expect(normalizeTaskAgentAdapter("claude-code")).toBe("claude");
     expect(normalizeTaskAgentAdapter("openai-codex")).toBe("codex");
   });
@@ -69,7 +71,7 @@ describe("task-agent adapter aliases", () => {
       getSetting: (key: string) =>
         key === "BENCHMARK_TASK_AGENT" ? "elizaos" : undefined,
     };
-    expect(resolvePinnedAdapter(runtime as never)).toBe("opencode");
+    expect(resolvePinnedAdapter(runtime as never)).toBe("elizaos");
   });
 
   it("lets BENCHMARK_TASK_AGENT override stale default-agent settings", () => {
@@ -81,6 +83,6 @@ describe("task-agent adapter aliases", () => {
             ? "codex"
             : undefined,
     };
-    expect(resolvePinnedAdapter(runtime as never)).toBe("opencode");
+    expect(resolvePinnedAdapter(runtime as never)).toBe("elizaos");
   });
 });

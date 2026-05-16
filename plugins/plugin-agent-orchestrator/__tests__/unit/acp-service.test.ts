@@ -287,7 +287,7 @@ describe("AcpService", () => {
     expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
   });
 
-  it("normalizes BENCHMARK_TASK_AGENT=elizaos to the OpenCode ACP adapter", async () => {
+  it("keeps BENCHMARK_TASK_AGENT=elizaos as the native default adapter", async () => {
     const reg = nextProc();
     const service = new AcpService(
       runtime({
@@ -306,14 +306,16 @@ describe("AcpService", () => {
     closeOk(reg);
     const session = await spawned;
 
-    expect(session.agentType).toBe("opencode");
+    expect(session.agentType).toBe("elizaos");
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    expect(args).not.toContain("elizaos");
+    expect(args).toContain("elizaos");
+    expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
+    expect(env?.OPENCODE_MODEL).toBeUndefined();
+    expect(env?.OPENAI_MODEL).toBeUndefined();
   });
 
   it("uses an explicit OpenCode ACP command override when configured", async () => {

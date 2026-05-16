@@ -118,6 +118,10 @@ describe("plugin-openai Cerebras config (pure)", () => {
     const runtime = buildRuntime({
       ELIZA_PROVIDER: "cerebras",
       CEREBRAS_MODEL: "gpt-oss-120b",
+      SMALL_MODEL: "stale-small",
+      LARGE_MODEL: "stale-large",
+      ACTION_PLANNER_MODEL: "stale-planner",
+      RESPONSE_HANDLER_MODEL: "stale-response",
     });
     expect(getSmallModel(runtime)).toBe("gpt-oss-120b");
     expect(getLargeModel(runtime)).toBe("gpt-oss-120b");

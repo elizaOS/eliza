@@ -8,12 +8,12 @@ import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
-import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import type {
   AcpEventCallback,
   AcpJsonRpcMessage,
@@ -81,7 +81,13 @@ const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
+const DEFAULT_AGENTS: AgentType[] = [
+  "elizaos",
+  "pi-agent",
+  "opencode",
+  "codex",
+  "claude",
+];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -94,7 +100,7 @@ export class AcpService extends Service {
   static serviceType = "ACP_SUBPROCESS_SERVICE";
 
   capabilityDescription =
-    "Manages asynchronous ACPX task-agent sessions for open-ended background work";
+    "Manages asynchronous Agent Client Protocol task-agent sessions for open-ended background work";
 
   readonly defaultApprovalPreset: ApprovalPreset;
   readonly agentSelectionStrategy: string;
@@ -123,7 +129,7 @@ export class AcpService extends Service {
         this.setting("BENCHMARK_TASK_AGENT") ??
           this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
           this.setting("ELIZA_DEFAULT_AGENT_TYPE"),
-      ) ?? "codex";
+      ) ?? "elizaos";
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
@@ -153,7 +159,7 @@ export class AcpService extends Service {
   async start(): Promise<void> {
     this.started = true;
     this.log("debug", "AcpService initialized", {
-      cliPath: this.cliPath,
+      transportCommand: this.cliPath,
       defaultAgent: this.defaultAgent,
       defaultApprovalPreset: this.defaultApprovalPreset,
     });
@@ -530,7 +536,8 @@ export class AcpService extends Service {
     timeoutMs?: number;
     model?: string;
   }): string[] {
-    const format = this.setting("ACPX_FORMAT") ?? "json";
+    const format =
+      this.setting("ELIZA_ACP_FORMAT") ?? this.setting("ACPX_FORMAT") ?? "json";
     const args = [
       "--format",
       format,
@@ -616,7 +623,7 @@ export class AcpService extends Service {
       proc.on("error", (err: NodeJS.ErrnoException) => {
         record.stderr = capStderr(record.stderr + errorMessage(err));
         if (err.code === "ENOENT") {
-          const message = `acpx CLI not found at ${this.cliPath}. Set ELIZA_ACP_CLI or npm install -g acpx@latest.`;
+          const message = `ACP transport command not found at ${this.cliPath}. Set ELIZA_ACP_CLI to an ACP-compatible agent transport.`;
           record.stderr = capStderr(`${record.stderr}\n${message}`);
           if (opts.sessionId)
             this.emitSessionEvent(opts.sessionId, "error", {
@@ -699,7 +706,7 @@ export class AcpService extends Service {
     try {
       return JSON.parse(line) as AcpJsonRpcMessage;
     } catch {
-      this.log("warn", "malformed acpx NDJSON line ignored", {
+      this.log("warn", "malformed ACP NDJSON line ignored", {
         sessionId,
         line: line.slice(0, 200),
       });
@@ -867,7 +874,7 @@ export class AcpService extends Service {
 
   private async requireSession(sessionId: string): Promise<SessionInfo> {
     const session = await this.store.get(sessionId);
-    if (!session) throw new Error(`acpx session not found: ${sessionId}`);
+    if (!session) throw new Error(`ACP session not found: ${sessionId}`);
     return session;
   }
 
@@ -878,7 +885,7 @@ export class AcpService extends Service {
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
     if (active.length >= this.maxSessions)
-      throw new Error(`acpx max session limit reached (${this.maxSessions})`);
+      throw new Error(`ACP max session limit reached (${this.maxSessions})`);
   }
 
   private async stopTrackedProcess(sessionId: string): Promise<void> {
@@ -938,13 +945,13 @@ export class AcpService extends Service {
 
   private classifyExitError(code: number | null, stderr: string): string {
     if (code === 1 && isAuthText(stderr))
-      return "acpx auth failed. Re-authenticate the selected agent or set ACPX_AUTH_* credentials.";
+      return "ACP transport auth failed. Re-authenticate the selected agent or set the required provider credentials.";
     if (code === 4)
-      return "acpx session was not found. This is likely an internal session bookkeeping error.";
-    if (code === 5) return "acpx permission denied.";
-    if (code === 3) return "acpx prompt timed out.";
+      return "ACP session was not found. This is likely an internal session bookkeeping error.";
+    if (code === 5) return "ACP transport permission denied.";
+    if (code === 3) return "ACP prompt timed out.";
     if (stderr.trim()) return stderr.trim().slice(0, 500);
-    return `acpx subprocess exited with code ${code ?? "unknown"}`;
+    return `ACP transport exited with code ${code ?? "unknown"}`;
   }
 
   private lastOutput(sessionId: string): string {
