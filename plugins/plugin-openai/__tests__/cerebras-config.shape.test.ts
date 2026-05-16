@@ -6,6 +6,8 @@ import {
   getActionPlannerModel,
   getApiKey,
   getBaseURL,
+  getImageDescriptionApiKey,
+  getImageDescriptionBaseURL,
   getLargeModel,
   getResponseHandlerModel,
   getSmallModel,
@@ -32,6 +34,8 @@ const ENV_KEYS = [
   "OPENAI_PLANNER_MODEL",
   "OPENAI_EMBEDDING_URL",
   "OPENAI_EMBEDDING_DIMENSIONS",
+  "OPENAI_IMAGE_DESCRIPTION_API_KEY",
+  "OPENAI_IMAGE_DESCRIPTION_BASE_URL",
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>();
@@ -129,6 +133,21 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getLargeModel(runtime)).toBe("gpt-oss-120b");
     expect(getResponseHandlerModel(runtime)).toBe("gpt-oss-120b");
     expect(getActionPlannerModel(runtime)).toBe("gpt-oss-120b");
+  });
+
+  it("can route image descriptions to OpenAI while text uses Cerebras", () => {
+    const runtime = buildRuntime({
+      OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+      CEREBRAS_API_KEY: "csk-cerebras-fake",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_IMAGE_DESCRIPTION_API_KEY: "sk-vision-fake",
+      OPENAI_IMAGE_DESCRIPTION_BASE_URL: "https://api.openai.com/v1",
+    });
+
+    expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
+    expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getImageDescriptionBaseURL(runtime)).toBe("https://api.openai.com/v1");
+    expect(getImageDescriptionApiKey(runtime)).toBe("sk-vision-fake");
   });
 
   it("respects an explicit OPENAI_BASE_URL for OpenAI-compatible non-Cerebras endpoints", () => {
