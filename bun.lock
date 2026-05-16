@@ -2274,6 +2274,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -2947,6 +2948,7 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -2961,6 +2963,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -3446,6 +3449,7 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -3574,6 +3578,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -3706,6 +3711,7 @@
         "@stwd/sdk": "^0.8.1",
         "ethers": "^6.16.0",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
         "viem": "^2.48.8",
       },
       "devDependencies": {
@@ -3928,6 +3934,7 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
+        "react": "^19.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",

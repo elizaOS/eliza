@@ -22,7 +22,8 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/ui": "workspace:*",
+    "react": "^19.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

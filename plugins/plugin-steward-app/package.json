@@ -33,6 +33,7 @@
     "@stwd/sdk": "^0.8.1",
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",
+    "react": "^19.0.0",
     "viem": "^2.48.8"
   },
   "elizaos": {
