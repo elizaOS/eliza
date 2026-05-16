@@ -1,6 +1,6 @@
 # Relationship to usbeliza
 
-Both **usbeliza** (`packages/os/linux/`) and **milady-tails**
+Both **usbeliza** (`packages/os/linux/`) and **elizaOS Live**
 (`packages/os/linux/variants/milady-tails/`, this directory) are live-USB
 Linux distributions built from the same agent framework. They differ in
 how the user *experiences* the OS.
@@ -26,7 +26,7 @@ Both consume:
 
 ## The session layer is different
 
-| Aspect | usbeliza | milady-tails |
+| Aspect | usbeliza | elizaOS Live |
 |---|---|---|
 | **Boot lands in** | Fullscreen chat box (`elizad` Tauri shell) on a minimal sway desktop | Real Linux desktop (GNOME by default, or i3/sway/KDE swappable) with Milady Electrobun app auto-launched |
 | **Desktop environment** | sway, minimal, no panel, no notifications surface | GNOME (Tails default), or whatever the user installs |
@@ -55,20 +55,20 @@ packages/os/linux/
 │
 └── variants/
     └── milady-tails/
-        ├── live-build/          ← milady-tails-specific live-build config
-        ├── Justfile             ← milady-tails Justfile (will import shared recipes)
+        ├── live-build/          ← elizaOS Live-specific live-build config
+        ├── Justfile             ← elizaOS Live Justfile (will import shared recipes)
         ├── docs/                ← this file + customization vocabulary, etc.
         └── scripts/             ← variant-specific build helpers
 ```
 
 So when a bug gets fixed in the agent it benefits both variants. When
-the live-build script changes for usbeliza, milady-tails is unaffected
+the live-build script changes for usbeliza, elizaOS Live is unaffected
 (separate config tree).
 
 ## Why two variants instead of one
 
 - **Different audiences.** Privacy-conscious users + minimalists pick
-  usbeliza. Linux power users who want an AI co-pilot pick milady-tails.
+  usbeliza. Linux power users who want an AI co-pilot pick elizaOS Live.
 - **Different constraints, different correct designs.** Forcing one ISO
   to serve both audiences means the kiosk users complain about the
   panel, and the desktop users complain about the lack of file manager.
@@ -85,7 +85,7 @@ clearer to keep them separate.
 
 ## Decision log
 
-- **2026-05-13**: Initial scaffold. `milady-tails` lives at
+- **2026-05-13**: Initial scaffold. elizaOS Live lives at
   `packages/os/linux/variants/milady-tails/`. Chose this location over
   `packages/os/linux-milady/` (sibling) because the agent + crates + docs
   are shared and the variants pattern reflects that.

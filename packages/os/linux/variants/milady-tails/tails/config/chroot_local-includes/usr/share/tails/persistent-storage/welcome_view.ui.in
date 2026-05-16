@@ -53,9 +53,9 @@
                     <property name="can-default">False</property>
                     <property name="can-focus">True</property>
                     <property name="halign">start</property>
-                    <property name="label" translatable="yes">Everything you do disappears automatically when you shut down Tails.
+                    <property name="label" translatable="yes">Everything you do disappears automatically when you shut down elizaOS.
 
-But you can save some of your files and configuration in an encrypted Persistent Storage on your Tails USB stick, for example:
+But you can save some of your files and configuration in an encrypted Persistent Storage on your elizaOS USB stick, for example:
 
 • Your documents
 • Your Wi-Fi passwords
@@ -92,7 +92,7 @@ But you can save some of your files and configuration in an encrypted Persistent
                     <property name="halign">start</property>
                     <property name="label" translatable="yes">Sorry, it is impossible to create a Persistent Storage on this device.
 
-To be able to use Tails with a Persistent Storage, please follow our instructions on &lt;a href="install"&gt;installing Tails on a USB stick&lt;/a&gt;.</property>
+To be able to use elizaOS with a Persistent Storage, please follow our instructions on &lt;a href="install"&gt;installing elizaOS on a USB stick&lt;/a&gt;.</property>
                     <property name="max-width-chars">50</property>
                     <property name="use-markup">True</property>
                     <property name="wrap">True</property>

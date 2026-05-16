@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+
+import os
+import signal
+import sys
+
+import gi
+
+gi.require_version("Gdk", "3.0")
+gi.require_version("Gtk", "3.0")
+gi.require_version("WebKit2", "4.1")
+
+from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
+
+
+def ensure_live_user() -> None:
+    if os.geteuid() == 0:
+        print("elizaOS WebKit shell must run as the live user, not as root.", file=sys.stderr)
+        raise SystemExit(1)
+    if os.environ.get("USER") not in (None, "amnesia"):
+        print("elizaOS WebKit shell must run as the Tails live user 'amnesia'.", file=sys.stderr)
+        raise SystemExit(1)
+
+
+def set_if_available(settings, method_name: str, value) -> None:
+    method = getattr(settings, method_name, None)
+    if method is not None:
+        method(value)
+
+
+def build_webview(url: str) -> WebKit2.WebView:
+    state_dir = os.environ.get("ELIZA_STATE_DIR", "/home/amnesia/.eliza")
+    data_dir = os.path.join(state_dir, "webkit-data")
+    cache_dir = os.path.join(state_dir, "webkit-cache")
+    os.makedirs(data_dir, mode=0o700, exist_ok=True)
+    os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+
+    manager = WebKit2.WebsiteDataManager(
+        base_data_directory=data_dir,
+        base_cache_directory=cache_dir,
+    )
+    context = WebKit2.WebContext.new_with_website_data_manager(manager)
+    context.set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY, None)
+
+    settings = WebKit2.Settings()
+    set_if_available(settings, "set_enable_javascript", True)
+    set_if_available(settings, "set_enable_html5_database", True)
+    set_if_available(settings, "set_enable_html5_local_storage", True)
+    set_if_available(settings, "set_enable_media", True)
+    set_if_available(settings, "set_enable_webaudio", True)
+    set_if_available(settings, "set_enable_webgl", True)
+    set_if_available(settings, "set_enable_developer_extras", False)
+    set_if_available(settings, "set_enable_hyperlink_auditing", False)
+    set_if_available(settings, "set_enable_write_console_messages_to_stdout", True)
+    set_if_available(settings, "set_javascript_can_open_windows_automatically", False)
+    set_if_available(settings, "set_media_playback_requires_user_gesture", False)
+
+    view = WebKit2.WebView.new_with_context(context)
+    view.set_settings(settings)
+    view.load_uri(url)
+    return view
+
+
+def main() -> int:
+    ensure_live_user()
+
+    url = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
+        "ELIZAOS_SHELL_URL",
+        "http://127.0.0.1:5174/?apiBase=http%3A%2F%2F127.0.0.1%3A31337",
+    )
+
+    window = Gtk.Window(title="elizaOS")
+    window.set_default_size(1280, 900)
+    window.set_position(Gtk.WindowPosition.CENTER)
+    window.set_wmclass("elizaOS", "elizaOS")
+    window.set_icon_name("elizaos")
+
+    view = build_webview(url)
+    window.add(view)
+
+    def minimize_to_background(*_args):
+        window.iconify()
+        return True
+
+    def reload_after_failure(_view, _event, failing_uri, error):
+        print(f"elizaOS WebKit load failed for {failing_uri}: {error}", file=sys.stderr)
+        GLib.timeout_add_seconds(3, lambda: (_view.load_uri(url), False)[1])
+        return False
+
+    window.connect("delete-event", minimize_to_background)
+    view.connect("load-failed", reload_after_failure)
+    window.connect("destroy", Gtk.main_quit)
+
+    signal.signal(signal.SIGTERM, lambda *_args: Gtk.main_quit())
+    signal.signal(signal.SIGINT, lambda *_args: Gtk.main_quit())
+
+    screen = Gdk.Screen.get_default()
+    if screen is not None:
+        provider = Gtk.CssProvider()
+        provider.load_from_data(
+            b"window { background: #F7F9FF; } "
+            b"webview { background: #F7F9FF; }"
+        )
+        Gtk.StyleContext.add_provider_for_screen(
+            screen,
+            provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+    window.show_all()
+    window.present()
+    Gtk.main()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

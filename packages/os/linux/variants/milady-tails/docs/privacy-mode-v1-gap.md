@@ -1,6 +1,6 @@
 # Privacy Mode v1 Chromium WebView gap
 
-Privacy Mode routes Milady agent traffic through Tor by booting the Tails
+Privacy Mode routes elizaOS agent traffic through Tor by booting the live
 networking stack in Tor-only mode. That covers agent-side requests made from
 Bun, system tools, and the Tails-managed browser path.
 
@@ -11,7 +11,7 @@ patched to inject an explicit proxy configuration.
 
 ## v1.0 Behavior
 
-- Milady agent requests: routed through Tor in Privacy Mode.
+- elizaOS agent requests: routed through Tor in Privacy Mode.
 - System Tor Browser behavior: preserved from Tails.
 - Chromium WebView windows: not guaranteed to use Tor in v1.0.
 - Mode switching: requires reboot because Privacy Mode is selected from the
@@ -24,4 +24,4 @@ Patch the Electrobun launch path to pass a Chromium proxy flag such as
 an integration check that proves WebView network traffic exits through Tor.
 
 Until that lands, Privacy Mode UX must disclose the WebView caveat anywhere
-users can open external web content from the Milady app.
+users can open external web content from the elizaOS app.

@@ -1,0 +1,34 @@
+#!/bin/sh
+
+set -eu
+
+export HOME=/home/amnesia
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+
+if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
+    /usr/local/lib/elizaos/persistence-maintenance wait
+fi
+
+user_env_file="${XDG_RUNTIME_DIR}/user-env"
+
+has_display_env() {
+    [ -e "${user_env_file}" ] || return 1
+    tr '\0' '\n' < "${user_env_file}" \
+        | grep -Eq '^(DISPLAY|WAYLAND_DISPLAY)='
+}
+
+for _ in $(seq 1 60); do
+    if has_display_env; then
+        exec /usr/local/lib/run-with-env --env-file "${user_env_file}" -- /usr/local/bin/milady "$@"
+    fi
+
+    if [ -S "${XDG_RUNTIME_DIR}/bus" ]; then
+        systemctl --user start tails-dump-user-env.service >/dev/null 2>&1 || true
+    fi
+
+    sleep 1
+done
+
+echo "elizaOS user display environment was not dumped; retrying via systemd." >&2
+exit 75

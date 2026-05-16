@@ -30,7 +30,7 @@ New file in the variant's `scripts/` dir. Structure lifted from
 - **Combo loop** over 4 `(storage, privacy)` tuples, each driving 2 QEMU knobs:
   - **privacy axis → boot-menu pick.** Boot with `-display none` + a QMP
     socket; wait ~3 s for the boot menu; `privacy` combos `send-key` one
-    `down`+`ret` to select "Milady — Privacy Mode", `normal` combos `ret`
+    `down`+`ret` to select "elizaOS — Privacy Mode", `normal` combos `ret`
     immediately. Screendump the menu as evidence.
   - **storage axis → disk topology.** `amnesia` combos boot `-cdrom`-style,
     no writable partition. `persistent` combos use `v18`'s `usb.img`
@@ -45,7 +45,7 @@ New file in the variant's `scripts/` dir. Structure lifted from
 ### `scripts/mode-parity-checklist.sh` — the shared checklist
 Sourced so all 4 combos run *byte-identical* probes. `run_feature_checklist()`
 = `v11-e2e.sh`'s phases A–H verbatim (minus onboarding, run once per combo
-as setup), **plus** these milady-tails probes mapped 1:1 to
+as setup), **plus** these elizaOS Live probes mapped 1:1 to
 `docs/mode-parity.md` rows: `app-launches`, `local-llm-chat`,
 `build-app-stub`, `set-wallpaper`, `network-status`, `network-mode`
 (asserts the privacy-mode chat action reports Tor on/off correctly per
@@ -75,7 +75,7 @@ only pre-authorized v1.0 caveat is the Chromium proxy leak.
 
 ## Ordered implementation checklist
 1. Create `variants/milady-tails/scripts/`.
-2. Write `mode-parity-checklist.sh` — extract `v11-e2e.sh` phases A–H + the 8 milady-tails probes; mark expected-difference probes observed-only.
+2. Write `mode-parity-checklist.sh` — extract `v11-e2e.sh` phases A–H + the 8 elizaOS Live probes; mark expected-difference probes observed-only.
 3. Write `mode-parity.sh` — combo loop; copy helpers from `v9-smoke.sh`, the `usb.img` machinery from `v18-usb-block-test.sh`, the boot-menu `send-key` from `iso-qmp.sh`.
 4. Per-combo ports/sockets/`-name`/artifact dirs + cleanup trap.
 5. The cross-combo diff → `parity-report.md` with the gap-detection rule.

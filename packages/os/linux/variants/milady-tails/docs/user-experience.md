@@ -1,7 +1,7 @@
 # User experience flows
 
 Plain-language walkthrough of what users actually see and do. Mirrors
-Tails' Welcome Screen pattern with Milady branding. **Same greeter window
+Tails' Welcome Screen pattern with elizaOS branding. **Same greeter window
 every boot** — the only thing that changes is whether a persistence
 partition has been created on the USB.
 
@@ -10,11 +10,11 @@ partition has been created on the USB.
 ## The boot sequence (always the same)
 
 1. **Boot menu** (~3 seconds) — isolinux/grub. Pick:
-   - "**Milady**" (default) — direct internet, fast
-   - "**Milady — Privacy Mode**" — Tor routing, slow but anonymous
-2. **Plymouth splash** (~10 seconds) — Milady wordmark while the
+   - "**elizaOS**" (default) — direct internet, fast
+   - "**elizaOS — Privacy Mode**" — Tor routing, slow but anonymous
+2. **Plymouth splash** (~10 seconds) — elizaOS wordmark while the
    kernel + initramfs load.
-3. **Milady greeter** — same GTK window every time.
+3. **elizaOS greeter** — same GTK window every time.
 
 ---
 
@@ -23,7 +23,7 @@ partition has been created on the USB.
 Always shows the same fields:
 
 ```
-┌───── Welcome to Milady ──────────────────────────┐
+┌───── Welcome to elizaOS ─────────────────────────┐
 │                                                  │
 │  Language:       [ English  ▼ ]                  │
 │  Keyboard:       [ US       ▼ ]                  │
@@ -36,7 +36,7 @@ Always shows the same fields:
 │  Persistent Storage:                             │
 │    ← THIS ROW changes based on USB state         │
 │                                                  │
-│            [  Start Milady  ]                    │
+│            [  Start elizaOS  ]                   │
 │                                                  │
 │            powered by Tails — about              │
 └──────────────────────────────────────────────────┘
@@ -55,19 +55,19 @@ Persistent Storage row shows:
 ```
 
 Steps:
-1. User accepts defaults, clicks **Start Milady**.
+1. User accepts defaults, clicks **Start elizaOS**.
 2. GNOME desktop loads.
-3. Milady auto-launches fullscreen.
-4. Milady starts the v36 3-question chat onboarding:
-   - "Hi. I'm Milady. What should I call you?"
+3. The elizaOS app auto-launches as the always-on home window.
+4. elizaOS starts the v36 3-question chat onboarding:
+   - "Hi. I'm elizaOS. What should I call you?"
    - "Want to sign into Claude?"
    - "Last question. What do you want me to build first?"
-5. User chats with Milady, builds apps, etc. All in RAM.
+5. User chats with elizaOS, builds apps, etc. All in RAM.
 6. Power off / unplug → **everything gone**. The USB itself is
    unmodified (live ISO is read-only on the stick).
 
-Optionally during the session: user says "save my work to this USB" →
-Milady triggers `tails-persistence-setup`:
+Optionally during the session, after the agent action exists: user says
+"save my work to this USB" -> elizaOS opens the Persistent Storage UI:
 - Prompts for an encryption passphrase
 - Creates LUKS partition on the USB
 - Asks which dirs to persist (`~/.eliza/`, Wi-Fi passwords, etc.)
@@ -88,10 +88,10 @@ Persistent Storage row shows:
 Steps:
 1. User types their passphrase, clicks **Unlock** → LUKS partition
    unlocks, gets bind-mounted to `~/.eliza/`, `~/.milady/`, etc.
-2. User clicks **Start Milady**.
+2. User clicks **Start elizaOS**.
 3. GNOME desktop loads.
-4. Milady auto-launches fullscreen — **already configured from last
-   time**. Chat history is there. Built apps are there. Downloaded
+4. The elizaOS app auto-launches as the always-on home window — **already
+   configured from last time**. Chat history is there. Built apps are there. Downloaded
    models are there. Wi-Fi connects automatically.
 5. User continues working where they left off.
 6. Power off → encrypted partition seals automatically, USB now
@@ -108,9 +108,10 @@ Same greeter, same persistence row with the passphrase field. The
 user **just doesn't type it**.
 
 Steps:
-1. User clicks **Start Milady** without entering the passphrase.
+1. User clicks **Start elizaOS** without entering the passphrase.
 2. GNOME loads.
-3. Milady auto-launches. **Fresh state.** Onboarding runs from scratch.
+3. The elizaOS app auto-launches as the always-on home window. **Fresh state.**
+   Onboarding runs from scratch.
    No chat history visible. No persisted apps.
 4. User has an amnesia session for this boot.
 5. Power off → encrypted partition was never unlocked, stays sealed.
@@ -164,7 +165,11 @@ and sealed. They just don't see it that session.
 
 ---
 
-## What's identical across all four combos (no gaps)
+## What's intended to be identical across all four combos
+
+This is the target v1.0 contract. The current overlay still needs an ISO
+rebuild plus QEMU/USB validation before these rows can be treated as
+verified behavior.
 
 | Feature | Status |
 |---|---|
@@ -179,8 +184,8 @@ and sealed. They just don't see it that session.
 | Cloud APIs (Anthropic, OpenAI, etc.) | ✓ identical (slower in Privacy Mode) |
 
 **The one v1.0 gap**: Chromium WebView windows may leak in Privacy
-Mode (CEF doesn't auto-inherit SOCKS proxy). Milady's agent (Bun fetch)
-respects Tor, but if Milady opens a `chromium --app=...` window for an
+Mode (CEF doesn't auto-inherit SOCKS proxy). The elizaOS agent (Bun fetch)
+respects Tor, but if elizaOS opens a `chromium --app=...` window for an
 OAuth flow, that window may bypass Tor. This is a known security gap,
 documented in `docs/privacy-mode-v1-gap.md`, fixed in v1.1.
 
@@ -220,9 +225,9 @@ because the threat model implications matter.
 The greeter handles it all. Three flows:
 
 1. **First-time users**: amnesia by default. No setup needed.
-2. **"I want my work to stick"**: chat with Milady → say "save my
-   work to encrypted USB" → Milady opens persistence wizard.
-3. **"I just want privacy this once"**: at boot menu, pick "Milady —
+2. **"I want my work to stick"**: chat with elizaOS -> say "save my
+   work to encrypted USB" -> elizaOS opens persistence wizard.
+3. **"I just want privacy this once"**: at boot menu, pick "elizaOS —
    Privacy Mode". Independent of persistence.
 
 The choice is **per-boot**. Users can mix and match every session.
@@ -239,5 +244,5 @@ Same USB, different decisions, different experiences.
 - Cross-distro packaging (.deb / .AppImage / Flatpak — post-v2.0)
 
 The v1.0 release is intentionally small: **a USB stick that boots into
-either amnesia or persistent, with an optional Tor mode, and Milady as
+either amnesia or persistent, with an optional Tor mode, and elizaOS as
 the desktop home**. That's the whole product. Everything else is later.

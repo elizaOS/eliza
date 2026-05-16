@@ -1,3 +1,38 @@
+* {
+ font-family: "Poppins", sans-serif;
+}
+
+window,
+dialog {
+ background: #F7F9FF;
+ color: #0B35F1;
+}
+
+headerbar,
+.titlebar {
+ background: #0B35F1;
+ color: #ffffff;
+}
+
+button.suggested-action,
+button.suggested-action:hover,
+switch:checked {
+ background: #0B35F1;
+ color: #ffffff;
+ border-color: #0B35F1;
+}
+
+button.destructive-action,
+button.destructive-action:hover {
+ background: #DCE5FF;
+ color: #0B35F1;
+ border-color: #B8C7FF;
+}
+
+infobar {
+ border-top: 3px solid #0B35F1;
+}
+
 :selected GtkLabel:disabled {
   color: inherit;
 }

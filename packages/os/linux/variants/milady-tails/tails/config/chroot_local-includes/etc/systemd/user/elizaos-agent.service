@@ -1,0 +1,19 @@
+[Unit]
+Description=elizaOS local agent runtime
+ConditionUser=1000
+Wants=tails-dump-user-env.service
+After=tails-dump-user-env.service
+RefuseManualStop=yes
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/elizaos/start-elizaos-agent-user
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos-agent
+KillMode=mixed
+Nice=5
+
+[Install]
+WantedBy=default.target

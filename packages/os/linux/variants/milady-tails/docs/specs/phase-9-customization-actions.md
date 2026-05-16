@@ -72,7 +72,7 @@ theme`, `make it dark`, etc. Distinct from `SET_WALLPAPER` — THEME is GTK
 theme + dotfiles, no image generation. `handler` writes `gsettings set
 org.gnome.desktop.interface gtk-theme/color-scheme` and/or
 `~/.config/gtk-{3,4}.0/settings.ini`. Curated theme set (ship
-`Adwaita-dark` + the Milady-branded dark theme from Phase 2). Writes to
+`Adwaita-dark` + the elizaOS-branded dark theme from Phase 2). Writes to
 `~/.config/milady/` (already in Phase 7's persistence dir list).
 
 ## Action 4 — NOTIFICATIONS

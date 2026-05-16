@@ -63,7 +63,7 @@
         <child>
           <object class="GtkButton" id="restart_button">
             <property name="can-focus">True</property>
-            <property name="label" translatable="yes">_Restart Tails</property>
+            <property name="label" translatable="yes">_Restart elizaOS</property>
             <property name="receives-default">True</property>
             <property name="use-underline">True</property>
             <signal name="clicked" handler="on_restart_button_clicked"/>

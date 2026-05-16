@@ -1,0 +1,221 @@
+#include <tunables/global>
+#include <tunables/torbrowser>
+
+@{torbrowser_firefox_executable} = /usr/local/lib/tor-browser/firefox.real
+
+profile torbrowser_firefox @{torbrowser_firefox_executable} {
+  #include <abstractions/audio>
+  #include <abstractions/dri-enumerate>
+  #include <abstractions/gnome>
+  #include <abstractions/ibus>
+  #include <abstractions/mesa>
+  #include <abstractions/opencl>
+  #include if exists <abstractions/vulkan>
+  #include if exists <abstractions/dbus-session-strict>
+
+  userns,
+
+  deny capability sys_ptrace,
+
+  # Uncomment the following lines if you want to give the Tor Browser read-write
+  # access to most of your personal files.
+  # #include <abstractions/user-download>
+  # @{HOME}/ r,
+
+  # Flatpak and XDG Desktop Portal support
+  /.flatpak-info r,
+  @{run}/flatpak/pulse/config r,
+  @{run}/host/** r,
+  owner @{HOME}/.var/app/org.boum.tails.TorBrowser/** rwkl,
+  owner @{run}/flatpak/doc/** rw,
+  owner @{run}/user/@{uid}/doc/by-app/org.boum.tails.TorBrowser/** rw,
+
+  # Audio support
+  /{,usr/}bin/pulseaudio Pixr,
+
+  #dbus,
+  network netlink raw,
+  network tcp,
+
+  # ibus socket
+  owner @{HOME}/.cache/ibus/dbus-* rw,
+
+  ptrace (trace) peer=@{profile_name},
+  signal (receive, send) set=("term") peer=@{profile_name},
+
+  deny /etc/host.conf r,
+  deny /etc/hosts r,
+  deny /etc/nsswitch.conf r,
+  deny /etc/os-release r,
+  deny /etc/resolv.conf r,
+  deny /etc/passwd r,
+  deny /etc/group r,
+  deny /etc/mailcap r,
+
+  /etc/machine-id r,
+  /var/lib/dbus/machine-id r,
+
+  /dev/ r,
+  /dev/shm/ r,
+
+  owner @{PROC}/@{pid}/cgroup r,
+  owner @{PROC}/@{pid}/environ r,
+  owner @{PROC}/@{pid}/fd/ r,
+  owner @{PROC}/@{pid}/mountinfo r,
+  owner @{PROC}/@{pid}/oom_score_adj rw,
+  owner @{PROC}/@{pid}/smaps r,
+  owner @{PROC}/@{pid}/stat r,
+  owner @{PROC}/@{pid}/statm r,
+  owner @{PROC}/@{pid}/status r,
+  owner @{PROC}/@{pid}/task/ r,
+  owner @{PROC}/@{pid}/task/*/comm r,
+  owner @{PROC}/@{pid}/task/*/stat r,
+  @{PROC}/sys/kernel/random/uuid r,
+
+  @{torbrowser_home_dir}/ r,
+  @{torbrowser_home_dir}/** mr,
+  @{torbrowser_home_dir}/glxtest ix,
+  @{torbrowser_home_dir}/vaapitest ix,
+  deny @{torbrowser_home_dir}/fonts/.uuid.* w,
+  deny @{torbrowser_home_dir}/TorBrowser/Data/Browser/.mozilla/ w,
+  owner @{HOME}/.cache/tor-browser/{,**} rwkl,
+  owner @{HOME}/.tor-browser/profile.default/{,**} rwk,
+
+  # intel-media-driver
+  /etc/igfx_user_feature*.txt r,
+
+  # parent Firefox process when restarting after upgrade, Web Content processes
+  @{torbrowser_firefox_executable} pxmr -> torbrowser_firefox,
+
+  /etc/mailcap r,
+  /etc/mime.types r,
+
+  /usr/share/ r,
+  /usr/share/glib-2.0/schemas/gschemas.compiled r,
+  /usr/share/mime/ r,
+  /usr/share/themes/ r,
+  /usr/share/applications/** rk,
+  /usr/share/gnome/applications/ r,
+  /usr/share/gnome/applications/kde4/ r,
+  /usr/share/poppler/cMap/ r,
+
+  # Distribution homepage
+  /usr/share/homepage/ r,
+  /usr/share/homepage/** r,
+
+  /sys/bus/pci/devices/ r,
+  @{sys}/devices/pci[0-9]*/**/irq r,
+  /sys/devices/system/cpu/ r,
+  /sys/devices/system/cpu/present r,
+  @{sys}/devices/system/cpu/cpu[0-9]*/cpu_capacity r,
+  /sys/devices/system/node/ r,
+  /sys/devices/system/node/node[0-9]*/meminfo r,
+  /sys/fs/cgroup/cpu,cpuacct/{,user.slice/}cpu.cfs_quota_us r,
+  @{sys}/fs/cgroup/**/cpu.max r,
+  deny /sys/class/input/ r,
+  deny /sys/devices/virtual/block/*/uevent r,
+
+  #include <abstractions/gstreamer>
+
+  # Required for multiprocess Firefox (aka Electrolysis, i.e. e10s)
+  owner /{dev,run}/shm/org.chromium.* rw,
+  owner /dev/shm/org.mozilla.ipc.[0-9]*.[0-9]* rw, # for Chromium IPC
+
+  # Required for Wayland display protocol support
+  owner /dev/shm/wayland.mozilla.ipc.[0-9]* rw,
+
+  # The Wayland Proxy prevents certain types of Wayland issues from
+  # crashing the client application. Details:
+  # https://mastransky.wordpress.com/2023/12/22/wayland-proxy-load-balancer/
+  owner @{run}/user/@{uid}/wayland-proxy-@{pid} rw,
+
+  # Silence denial logs about permissions we don't need
+  deny @{HOME}/.cache/fontconfig/ rw,
+  deny @{HOME}/.cache/fontconfig/** rw,
+  deny @{HOME}/.config/gtk-2.0/ rw,
+  deny @{HOME}/.config/gtk-2.0/** rw,
+  deny @{PROC}/@{pid}/net/route r,
+  deny /sys/devices/system/cpu/cpufreq/policy[0-9]*/cpuinfo_max_freq r,
+  deny /sys/devices/system/cpu/*/cache/index[0-9]*/size r,
+  deny @{run}/user/@{uid}/dconf/user rw,
+  deny /usr/bin/lsb_release x,
+
+  # Silence denial logs about PulseAudio
+  deny /etc/pulse/client.conf r,
+  deny /usr/bin/pulseaudio x,
+
+  # KDE 4
+  owner @{HOME}/.kde/share/config/* r,
+
+  # Xfce4
+  /etc/xfce4/defaults.list r,
+  /usr/share/xfce4/applications/ r,
+
+  # u2f (tested with Yubikey 4)
+  /sys/class/ r,
+  /sys/bus/ r,
+  /sys/class/hidraw/ r,
+  @{run}/udev/data/c24{5,7,9}:* r,
+  /dev/hidraw* rw,
+  # Yubikey NEO also needs this:
+  /sys/devices/**/hidraw/hidraw*/uevent r,
+
+  # Needed for Firefox sandboxing via unprivileged user namespaces
+  capability sys_admin,
+  capability sys_chroot,
+  owner @{PROC}/@{pid}/{gid,uid}_map w,
+  owner @{PROC}/@{pid}/setgroups w,
+
+  # Remove these rules once we can assume abstractions/vulkan is recent enough
+  # to include them
+  /etc/glvnd/egl_vendor.d/{*,.json} r,
+  /usr/share/glvnd/egl_vendor.d/{,*.json} r,
+
+  # Grant read-write access to the XDG directories
+  owner @{HOME}/{Documents,Downloads,Music,Pictures,Videos}/ rw,
+  owner @{HOME}/{Documents,Downloads,Music,Pictures,Videos}/** rwk,
+
+  # Grant read-write access to bookmarks
+  owner @{HOME}/.mozilla/firefox/bookmarks/ rwk,
+  owner @{HOME}/.mozilla/firefox/bookmarks/** rwk,
+  owner /live/persistence/TailsData_unlocked/bookmarks/ rwk,
+  owner /live/persistence/TailsData_unlocked/bookmarks/** rwk,
+
+  # Allow system-wide add-ons
+  /etc/xul-ext/ r,
+  /etc/xul-ext/** r,
+  /usr/local/share/tor-browser-extensions/ r,
+  /usr/local/share/tor-browser-extensions/** rk,
+  /usr/share/{xul-,web}ext/ r,
+  /usr/share/{xul-,web}ext/** r,
+  /usr/share/{chromium,mozilla}/extensions/ r,
+  /usr/share/{chromium,mozilla}/extensions/** r,
+
+  # Grant read access to the included Tails documentation
+  /usr/share/doc/tails/website/ r,
+  /usr/share/doc/tails/website/** r,
+
+  # Grant access to assistive technologies
+  # (otherwise, Firefox crashes when Orca is enabled: tails/tails#9261)
+  owner @{HOME}/.cache/at-spi2-*/ rw,
+  owner @{HOME}/.cache/at-spi2-*/socket rw,
+
+  # Spell checking (the "enchant" abstraction includes these rules
+  # too, but it allows way more stuff than what we need)
+  /usr/share/hunspell/                             r,
+  /usr/share/hunspell/*                            r,
+
+  # Deny access to the list of recently used files. This overrides the
+  # access to it that's granted by the freedesktop.org abstraction.
+  deny @{HOME}/.local/share/recently-used.xbel* rw,
+
+  # Silence denial logs about permissions we don't need (Tails-specific)
+  deny /usr/local/lib/tor-browser/update.test/ rw,
+
+  # Deny access to GVFS
+  deny @{HOME}/.local/share/gvfs-metadata/home r,
+
+  # Workaround bug in abstractions/gnome
+  # XXX:Bullseye: remove
+  /etc/xdg/mimeapps.list r,
+}

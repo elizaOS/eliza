@@ -1,0 +1,58 @@
+#!/bin/sh
+
+set -eu
+
+interval="${MILADY_KEEPER_INTERVAL:-5}"
+runtime_dir=/run/user/1000
+bus="unix:path=${runtime_dir}/bus"
+user_unit_dir=/home/amnesia/.config/systemd/user
+
+clear_user_unit_override() {
+    for path in \
+        "${user_unit_dir}/elizaos-agent.service" \
+        "${user_unit_dir}/elizaos-agent.service.d" \
+        "${user_unit_dir}/default.target.wants/elizaos-agent.service" \
+        "${user_unit_dir}/elizaos-renderer.service" \
+        "${user_unit_dir}/elizaos-renderer.service.d" \
+        "${user_unit_dir}/default.target.wants/elizaos-renderer.service" \
+        "${user_unit_dir}/milady.service" \
+        "${user_unit_dir}/milady.service.d" \
+        "${user_unit_dir}/default.target.wants/milady.service" \
+        "${user_unit_dir}/desktop.target.wants/milady.service"
+    do
+        [ -e "${path}" ] || [ -L "${path}" ] || continue
+        rm -rf "${path}"
+    done
+}
+
+while :; do
+    if [ -S "${runtime_dir}/bus" ]; then
+        clear_user_unit_override
+        runuser -u amnesia -- env \
+            HOME=/home/amnesia \
+            XDG_RUNTIME_DIR="${runtime_dir}" \
+            DBUS_SESSION_BUS_ADDRESS="${bus}" \
+            systemctl --user daemon-reload >/dev/null 2>&1 || true
+        runuser -u amnesia -- env \
+            HOME=/home/amnesia \
+            XDG_RUNTIME_DIR="${runtime_dir}" \
+            DBUS_SESSION_BUS_ADDRESS="${bus}" \
+            systemctl --user reset-failed elizaos-agent.service elizaos-renderer.service milady.service >/dev/null 2>&1 || true
+        runuser -u amnesia -- env \
+            HOME=/home/amnesia \
+            XDG_RUNTIME_DIR="${runtime_dir}" \
+            DBUS_SESSION_BUS_ADDRESS="${bus}" \
+            systemctl --user start --no-block elizaos-agent.service >/dev/null 2>&1 || true
+        runuser -u amnesia -- env \
+            HOME=/home/amnesia \
+            XDG_RUNTIME_DIR="${runtime_dir}" \
+            DBUS_SESSION_BUS_ADDRESS="${bus}" \
+            systemctl --user start --no-block elizaos-renderer.service >/dev/null 2>&1 || true
+        runuser -u amnesia -- env \
+            HOME=/home/amnesia \
+            XDG_RUNTIME_DIR="${runtime_dir}" \
+            DBUS_SESSION_BUS_ADDRESS="${bus}" \
+            systemctl --user start --no-block milady.service >/dev/null 2>&1 || true
+    fi
+    sleep "${interval}"
+done

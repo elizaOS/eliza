@@ -1,0 +1,11 @@
+--- /usr/share/debootstrap/scripts/debian-common	2019-07-06 13:22:30.000000000 +0200
++++ /usr/share/debootstrap/scripts/debian-common	2019-08-05 14:15:07.165451726 +0200
+@@ -217,4 +217,8 @@
+ 
+ 	progress $bases $bases CONFBASE "Configuring base system"
+ 	info BASESUCCESS "Base system installed successfully."
++
++	# Tails-specific part:
++	chroot $TARGET /usr/bin/dpkg-divert --divert /usr/bin/apt-get.real --rename /usr/bin/apt-get
++	cp -f %%topdir%%/data/wrappers/apt-get $TARGET/usr/bin/apt-get
+ }

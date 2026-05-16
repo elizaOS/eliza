@@ -12,7 +12,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Tor Project\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"POT-Creation-Date: 2026-05-16 16:43+0000\n"
 "PO-Revision-Date: 2026-04-03 09:12+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: Croatian <https://hosted.weblate.org/projects/tor/tails-gui/"
@@ -102,8 +102,8 @@ msgstr ""
 "stvoriti trajno spremište i aktivirati funkciju <b>Dodatni softver</b>."
 
 #: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:325
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:344
 msgid "Create Persistent Storage"
 msgstr "Stvori trajno spremište"
 
@@ -196,22 +196,24 @@ msgstr "Dodatni softver je uspješno instaliran"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:678
 msgid "Additional Software"
 msgstr "Dodatni programi"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+#, fuzzy
 msgid ""
 "You can install additional software automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Pri pokretanju Tails-a možeš automatski instalirati dodatne programe iz tvog "
 "trajnog spremišta."
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+#, fuzzy
 msgid ""
 "The following software is installed automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Sljedeći program su automatski instalirani iz tvog trajnog spremišta "
 "prilikom pokretanja Tailsa."
@@ -233,7 +235,7 @@ msgstr "_Stvori trajno spremište"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:62
 msgid ""
-"Tails needs donations to keep everybody free and safe online.\n"
+"elizaOS needs donations to keep everybody free and safe online.\n"
 "\n"
 "Every bit helps in our fight against surveillance and censorship!\n"
 "\n"
@@ -241,7 +243,7 @@ msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/electrum:72
 msgid ""
-"Tails protects your wallet.\n"
+"elizaOS protects your wallet.\n"
 "\n"
 "Help us keep your bitcoins safe!\n"
 "\n"
@@ -268,8 +270,9 @@ msgid "Persistence is disabled for Electrum"
 msgstr "Trajnost je deaktivirana za Electrum"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:193
+#, fuzzy
 msgid ""
-"When you reboot Tails, all of Electrum's data will be lost, including your "
+"When you reboot elizaOS, all of Electrum's data will be lost, including your "
 "Bitcoin wallet.\n"
 "It is strongly recommended to only run Electrum when its persistence feature "
 "is activated."
@@ -772,8 +775,10 @@ msgid "Persistent Storage Still Locked"
 msgstr "Trajno spremište je još uvijek zaključano"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+#, fuzzy
 msgid ""
-"Do you really want to start Tails without unlocking your Persistent Storage?"
+"Do you really want to start elizaOS without unlocking your Persistent "
+"Storage?"
 msgstr ""
 "Stvarno želiš pokrenuti Tails bez otključavanje tvog trajnog spremišta?"
 
@@ -788,10 +793,10 @@ msgstr "_Raspored tipkovnice"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
 msgid ""
-"Your language and keyboard layout will be saved unencrypted on your Tails "
+"Your language and keyboard layout will be saved unencrypted on your elizaOS "
 "USB stick and applied automatically in the future.\n"
 "\n"
-"Someone who finds your Tails USB stick can see your language and keyboard "
+"Someone who finds your elizaOS USB stick can see your language and keyboard "
 "layout."
 msgstr ""
 
@@ -833,7 +838,8 @@ msgid "Failed to repair the file system of your Persistent Storage."
 msgstr "Neuspjelo konfiguriranje trajnog spremišta"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
-msgid "Start Tails to send an error report and learn how to recover your data."
+msgid ""
+"Start elizaOS to send an error report and learn how to recover your data."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:559
@@ -853,20 +859,23 @@ msgstr "Zatvori"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
 msgid ""
-"You aborted the repair of the file system. You can either start Tails "
+"You aborted the repair of the file system. You can either start elizaOS "
 "without Persistent Storage or restart the computer to try repairing the file "
 "system again."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
-msgid "Start Tails and open the Persistent Storage settings to find out more."
+#, fuzzy
+msgid ""
+"Start elizaOS and open the Persistent Storage settings to find out more."
 msgstr ""
 "Za više informacija pokreni Tails i otvori postavke za trajno spremište."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked. Its content will be available until you "
-"shut down Tails."
+"shut down elizaOS."
 msgstr ""
 "Tvoje trajno spremište je otključano. Njegov će sadržaj biti dostupan sve "
 "dok ne ugasiš Tails."
@@ -882,7 +891,7 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
-msgid "Start Tails to learn how to recover your data."
+msgid "Start elizaOS to learn how to recover your data."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
@@ -893,7 +902,7 @@ msgstr ""
 msgid ""
 "Errors were detected in the file system of your Persistent Storage.\n"
 "\n"
-"Tails can try to fix these errors, but this might erase some of your data "
+"elizaOS can try to fix these errors, but this might erase some of your data "
 "and take a long time.\n"
 "\n"
 "If you already have an up-to-date backup of your Persistent Storage, we "
@@ -915,7 +924,7 @@ msgstr "Stvori trajno spremište"
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
 #, fuzzy
 msgid ""
-"Start Tails to learn how to create a partition image of your Persistent "
+"Start elizaOS to learn how to create a partition image of your Persistent "
 "Storage."
 msgstr "Neuspjela izrada trajnog spremišta"
 
@@ -927,24 +936,27 @@ msgstr ""
 "o grešci."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+#, fuzzy
 msgid ""
-"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"Failed to upgrade the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Neuspjela nadogradnja trajnog spremišta. Pokreni Tails i pošalji izvještaj o "
 "grešci."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+#, fuzzy
 msgid ""
-"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"Failed to unlock the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Neuspjelo otključavanje trajnog spremišta. Pokreni Tails i pošalji izvještaj "
 "o grešci."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+#, fuzzy
 msgid ""
-"Failed to activate the Persistent Storage. Please start Tails and send an "
+"Failed to activate the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Neuspjelo aktiviranje trajnog spremišta. Pokreni Tails i pošalji izvještaj o "
@@ -1032,12 +1044,13 @@ msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
 msgstr "Nije moguće kopirati %(infile)s u %(outfile)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
-msgid "Removing existing Tails system"
+#, fuzzy
+msgid "Removing existing elizaOS system"
 msgstr "Uklanja se postojeći Tails sustav"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
-#, python-format
-msgid "Unable to remove file from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove file from previous elizaOS system: %(message)s"
 msgstr "Nije moguće ukloniti datoteku iz prethodnog Tails sustava: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
@@ -1046,8 +1059,8 @@ msgid "Unable to chmod %(file)s: %(message)s"
 msgstr "Nije moguće izmijeniti dozvole %(file)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
-#, python-format
-msgid "Unable to remove directory from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove directory from previous elizaOS system: %(message)s"
 msgstr "Nije moguće ukloniti mapu iz prethodnog Tails sustava: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:669
@@ -1173,7 +1186,8 @@ msgstr "Sinkroniziranje podataka na disku …"
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
 msgid ""
 "Unable to clone because the target USB stick is being used. Close all open "
-"files on the target USB stick, restart Tails Cloner, and try to clone again."
+"files on the target USB stick, restart elizaOS USB Cloner, and try to clone "
+"again."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:189
@@ -1190,23 +1204,25 @@ msgid "Cloning complete! (%s)"
 msgstr "Instalacija dovršena! (%s)"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
-msgid "Tails installation failed!"
+#, fuzzy
+msgid "elizaOS installation failed!"
 msgstr "Tails instalacija nije uspjela!"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
-#, fuzzy
-msgid "Tails Cloner"
-msgstr "Tails instalacija"
+msgid "elizaOS USB Cloner"
+msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
-msgid "Clone the current Tails"
+#, fuzzy
+msgid "Clone the current elizaOS"
 msgstr "Kloniraj trenutačni Tails"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
-msgid "Use a downloaded Tails ISO image"
+#, fuzzy
+msgid "Use a downloaded elizaOS ISO image"
 msgstr "Koristi preuzetu Tails ISO sliku"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
@@ -1243,7 +1259,8 @@ msgid "No ISO image selected"
 msgstr "ISO slika nije odabrana"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
-msgid "Please select a Tails ISO image."
+#, fuzzy
+msgid "Please select an elizaOS ISO image."
 msgstr "Odaberi Tails ISO sliku."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
@@ -1265,11 +1282,11 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
-#, python-format
+#, fuzzy, python-format
 msgid ""
 "The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
-"manufacturer and Tails will fail to start from it. Please try installing on "
-"a different model."
+"manufacturer and elizaOS will fail to start from it. Please try installing "
+"on a different model."
 msgstr ""
 "Proizvođač je konfigurirao USB stick „%(pretty_name)s” kao neuklonjiv medij "
 "i Tails se neće uspjeti pokrenuti. Pokušaj instalirati na drugačijem modelu."
@@ -1280,19 +1297,19 @@ msgid "The device \"%(pretty_name)s\" is read-only."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"The device \"%(pretty_name)s\" is too small to install elizaOS (at least "
 "%(size)s GB is required)."
 msgstr ""
 "Uređaj „%(pretty_name)s” je premalen da bi se na njega instalirao Tails "
 "(potrebno je barem %(size)s GB)."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
-"downloaded Tails ISO image:\n"
+"To upgrade device \"%(pretty_name)s\" from this elizaOS, you need to use a "
+"downloaded elizaOS ISO image:\n"
 "%(dl_url)s"
 msgstr ""
 "Za nadograđivanje uređaja \"%(pretty_name)s\" iz ovog Tailsa, moraš "
@@ -1300,7 +1317,8 @@ msgstr ""
 "%(dl_url)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
-msgid "No device suitable to install Tails could be found"
+#, fuzzy
+msgid "No device suitable to install elizaOS could be found"
 msgstr "Nije pronađen uređaj prikladan za instalaciju Tailsa"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
@@ -1309,7 +1327,8 @@ msgid "Plug in a USB stick of at least %0.1f GB."
 msgstr "Uključi USB ili SD karticu s barem %0.1f GB."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
-msgid "An error happened while installing Tails"
+#, fuzzy
+msgid "An error happened while installing elizaOS"
 msgstr "Došlo je do pogreške prilikom instaliranja Tailsa"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
@@ -1385,7 +1404,8 @@ msgid "%(filename)s selected"
 msgstr "%(filename)s odabrano"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
-msgid "Unable to find Tails on ISO"
+#, fuzzy
+msgid "Unable to find elizaOS on ISO"
 msgstr "Nije moguće pronaći Tails u ISO slici"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
@@ -1497,18 +1517,18 @@ msgid "Partitioning Error"
 msgstr "Particije i pogoni"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
-msgid "Errors were detected in the partitioning of your Tails USB stick."
+msgid "Errors were detected in the partitioning of your elizaOS USB stick."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
 msgid ""
-"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
-"i> to migrate to a new USB stick."
+"We recommend that you create a backup of your elizaOS using <i>elizaOS USB "
+"Cloner</i> to migrate to a new USB stick."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
 #, fuzzy
-msgid "Open Tails Cloner"
+msgid "Open elizaOS USB Cloner"
 msgstr "Tails instalacija"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
@@ -1519,7 +1539,7 @@ msgstr "Neuspjelo stvaranje trajnog spremišta."
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
 #, fuzzy
 msgid ""
-"We recommend that you reinstall Tails from scratch. If the error persists, "
+"We recommend that you reinstall elizaOS from scratch. If the error persists, "
 "reinstall on a new USB stick."
 msgstr "Za to, intaliraj Tails na USB stick i stvori trajno spremište."
 
@@ -1566,28 +1586,13 @@ msgstr "Pokreni ponovo"
 msgid "Power Off"
 msgstr "Isključi"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:27
-#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
-msgid "Tails"
-msgstr "Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:30
-#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
-msgid "About Tails"
-msgstr "O Tailsu"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:34
+#: config/chroot_local-includes/usr/local/bin/tails-about:33
 #, fuzzy
 msgid "Check for Upgrades"
 msgstr "Greška prilikom provjere nadogradnji"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:57
+#: config/chroot_local-includes/usr/local/bin/tails-about:56
 msgid "UNRELEASED"
-msgstr ""
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:64
-#, python-format
-msgid "Built from %s"
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
@@ -1626,8 +1631,9 @@ msgstr ""
 "naredbenom retku</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+#, fuzzy
 msgid ""
-"To do so, unlock your Persistent Storage when starting Tails and install "
+"To do so, unlock your Persistent Storage when starting elizaOS and install "
 "some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
 "a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
 msgstr ""
@@ -1649,7 +1655,8 @@ msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
 #, fuzzy
-msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+msgid ""
+"To do so, install elizaOS on a USB stick and create a Persistent Storage."
 msgstr "Za to, intaliraj Tails na USB stick i stvori trajno spremište."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:304
@@ -1809,10 +1816,10 @@ msgstr ""
 msgid ""
 "<b>Not enough memory available to check for upgrades.</b>\n"
 "\n"
-"Make sure this system satisfies the requirements for running Tails.\n"
+"Make sure this system satisfies the requirements for running elizaOS.\n"
 "See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
 "\n"
-"Try to restart Tails to check for upgrades again.\n"
+"Try to restart elizaOS to check for upgrades again.\n"
 "\n"
 "Or do a manual upgrade.\n"
 "See {manual_upgrade_url}"
@@ -1875,9 +1882,10 @@ msgstr ""
 "spremište</a>."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+#, fuzzy
 msgid ""
 "To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
-"Storage</a> on your Tails USB stick."
+"Storage</a> on your elizaOS USB stick."
 msgstr ""
 "Za spremanje tvog mosta <a href=\"doc/first_steps/persistence\">stvori "
 "stalno spremište</a> na tvom Tails USB sticku."
@@ -2252,7 +2260,7 @@ msgstr "_Pošalji izvještaj o grešci"
 msgid ""
 "Impossible to delete the Persistent Storage while it is unlocked.\n"
 "\n"
-"To delete the Persistent Storage, restart Tails without unlocking the "
+"To delete the Persistent Storage, restart elizaOS without unlocking the "
 "Persistent Storage and open the Persistent Storage settings again."
 msgstr ""
 "Za brisanje trajnog spremišta, ponovo pokreni Tails bez otključavanja "
@@ -2265,7 +2273,7 @@ msgid ""
 "only.\n"
 "\n"
 "To delete the Persistent Storage, turn off the read-only protection of the "
-"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"USB stick, restart elizaOS without unlocking the Persistent Storage and open "
 "the Persistent Storage settings again."
 msgstr ""
 "Za brisanje trajnog spremišta, ponovo pokreni Tails bez otključavanja "
@@ -2522,12 +2530,13 @@ msgstr ""
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
 msgid ""
-"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"To use the Unsafe Browser, restart elizaOS and make sure that the Unsafe "
 "Browser is enabled in the additional settings of the Welcome Screen."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
-msgid "To use the Unsafe Browser, restart Tails."
+#, fuzzy
+msgid "To use the Unsafe Browser, restart elizaOS."
 msgstr "Za korištenje nesigurnog preglednika ponovo pokreni Tails."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
@@ -2535,9 +2544,10 @@ msgid "_Restart"
 msgstr "_Pokreni ponovo"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+#, fuzzy
 msgid ""
-"Do you really want to restart Tails now?\\n\\nAll your current work will be "
-"lost."
+"Do you really want to restart elizaOS now?\\n\\nAll your current work will "
+"be lost."
 msgstr ""
 "Stvarno želiš ponovo pokrenuti Tails?\\n\\nIzgubit ćeš sav tvoj trenutačni "
 "rad."
@@ -2669,7 +2679,7 @@ msgstr "Nevažeći blok OpenPGP javnog ključa kontakta"
 msgid ""
 "You turned on Offline Mode in the Welcome Screen.\n"
 "It is impossible to connect to Tor in Offline Mode.\n"
-"To connect to Tor and the Internet, restart Tails without Offline Mode."
+"To connect to Tor and the Internet, restart elizaOS without Offline Mode."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:65
@@ -2700,19 +2710,25 @@ msgstr "Konfiguracija pisača"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
 #, fuzzy
-msgid "Tails Documentation"
-msgstr "Tails dokumentacija"
+msgid "elizaOS Documentation"
+msgstr "Dokumentacija"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
-msgid "Learn how to use Tails"
+#, fuzzy
+msgid "Learn how to use elizaOS"
 msgstr "Nauči kako koristiti Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
 msgid "learn"
 msgstr ""
 
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About elizaOS"
+msgstr ""
+
 #: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
-msgid "Learn more about Tails"
+#, fuzzy
+msgid "Learn more about elizaOS"
 msgstr "Saznaj više o Tailsu"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
@@ -2720,8 +2736,9 @@ msgid "Back Up Persistent Storage"
 msgstr "Spremi sigurnosnu kopiju trajnog spremišta"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+#, fuzzy
 msgid ""
-"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+"Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick"
 msgstr ""
 "Spremi sigurnosnu kopiju Tailsovog trajnog spremišta na jedan drugi Tails "
 "USB stick"
@@ -2731,16 +2748,18 @@ msgid "backup"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
-msgid "Install, clone, upgrade Tails"
+#, fuzzy
+msgid "Install, clone, upgrade elizaOS"
 msgstr "Instaliraj, kloniraj, nadogradi Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
 #, fuzzy
-msgid "install;clone;upgrade;manual"
+msgid "elizaOS;install;clone;upgrade;USB;"
 msgstr "Instaliraj, kloniraj, nadogradi Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
-msgid "Connect Tails to the Tor network"
+#, fuzzy
+msgid "Connect elizaOS to the Tor network"
 msgstr "Spoji Tails na Tor mrežu"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
@@ -2785,7 +2804,7 @@ msgstr ""
 #, fuzzy
 msgid ""
 "Configure the additional software installed from your Persistent Storage "
-"when starting Tails"
+"when starting elizaOS"
 msgstr ""
 "Prilikom pokretanja Tailsa konfiguriraj dodatni softver koji je instaliran "
 "iz tvog trajnog spremišta"
@@ -2796,16 +2815,21 @@ msgid "persistent;storage;package;install"
 msgstr "Izbriši trajno spremište i instaliraj ga ponovo"
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
-msgid "WhisperBack Error Reporting"
-msgstr "WhisperBack izvještavanje o greškama"
+msgid "Send Feedback"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
-msgid "Send feedback via encrypted e-mail"
-msgstr "Pošalji povratne informacije putem šifriranog e-maila"
+msgid "Send encrypted feedback to elizaOS support"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
-msgid "feedback;bug;report;tails;error;"
+#, fuzzy
+msgid "feedback;support;report;elizaos;error;"
 msgstr "povratne informacije;izvještaj;tails;greška;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
 
 #: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
 msgid "Tails specific tools"
@@ -2825,7 +2849,7 @@ msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:882
 msgid "Administration Password"
 msgstr "Administratorska lozinka"
 
@@ -2852,7 +2876,7 @@ msgid "Disable"
 msgstr "Deaktiviraj"
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:886
 msgid "MAC Address Anonymization"
 msgstr "Anonimizacija MAC adrese"
 
@@ -2908,88 +2932,94 @@ msgstr "Dektiviraj nesigurni preglednik"
 msgid "Settings were loaded from the Persistent Storage."
 msgstr "Postavke su učitane iz stalnog spremišta."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
-msgid "Welcome to Tails!"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:111
+#, fuzzy
+msgid "Welcome to elizaOS!"
 msgstr "Dobrodošli u Tails!"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:144
 msgid "Language and Formats"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:180
 msgid "Default Settings"
 msgstr "Standardne postavke"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:230
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:251
 msgid "Save"
 msgstr "Spremi"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:280
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:392
 #, fuzzy
 msgid "_Persistent Storage"
 msgstr "Stvori trajno spremište"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:300
+#, fuzzy
 msgid ""
 "You can save some of your files and configuration in an encrypted Persistent "
-"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi "
 "passwords, and so on."
 msgstr ""
 "Neke svoje datoteke i konfiguraciju možeš spremiti u šifriranom trajnom "
 "spremištu na tvom Tails USB stiku: tvoje dokumente, straničnike preglednika, "
 "Wi-Fi lozinke itd."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
-msgid "Create and configure a Persistent Storage after starting Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:327
+#, fuzzy
+msgid "Create and configure a Persistent Storage after starting elizaOS"
 msgstr "Stvori i konfiguriraj trajno spremište nakon pokretanja Tailsa"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:419
 msgid "Show Passphrase"
 msgstr "Pokaži lozinku"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:476
 msgid "Enter your passphrase"
 msgstr "Upiši lozinku"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:491
 msgid "Unlock Encryption"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:558
 msgid "Impossible to unlock the Persistent Storage."
 msgstr "Nemoguće otključati trajno spremište."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:618
 #, fuzzy
 msgid "Partitioning Errors"
 msgstr "Particije i pogoni"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:654
+#, fuzzy
 msgid ""
-"Errors were detected in the partitioning of your Tails USB stick.\n"
+"Errors were detected in the partitioning of your elizaOS USB stick.\n"
 "\n"
-"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
-msgstr ""
+"Try reinstalling elizaOS. If the error persists, reinstall on a new USB "
+"stick."
+msgstr "Za to, intaliraj Tails na USB stick i stvori trajno spremište."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:686
 msgid "_Additional Settings"
 msgstr "_Dodatne postavke"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:769
 msgid "Add an additional setting"
 msgstr "Dodaj jednu dodatnu postavku"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:816
 msgid "Shutdown"
 msgstr "Gašenje"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
-msgid "_Start Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:825
+#, fuzzy
+msgid "_Start elizaOS"
 msgstr "_Pokreni Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:854
 msgid ""
 "The default settings are safe in most situations. To add a custom setting, "
 "press the \"+\" button below."
@@ -2997,7 +3027,7 @@ msgstr ""
 "Standardne postavke su sigurne u većini slučajeva. Za dodavanje prilagođene "
 "postavke, pritisni gumb „+”."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:890
 msgid "Network Configuration"
 msgstr "Mrežna konfiguracija"
 
@@ -3056,16 +3086,17 @@ msgstr "WhisperBack izvještavanje o greškama"
 msgid ""
 "Your Persistent Storage is unlocked.\n"
 "\n"
-"Its content is available until you shut down Tails.\n"
+"Its content is available until you shut down elizaOS.\n"
 "\n"
 "<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
 "Persistent Storage.</a>"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+#, fuzzy
 msgid ""
 "Turn on the features of the Persistent Storage for the data that you want to "
-"save to your Tails USB stick."
+"save to your elizaOS USB stick."
 msgstr ""
 "Uključi funkcije trajnog spremišta za podatke koje želiš spremiti na tvoj "
 "Tails USB stick."
@@ -3142,98 +3173,113 @@ msgid "Applications"
 msgstr "Aplikacije"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "elizaOS Data"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:432
+msgid "Save elizaOS memory, settings, and local runtime state."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:448
+#, fuzzy
+msgid "Activate elizaOS Data"
+msgstr "Aktiviraj SSH klijent"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:461
 msgid "Tor Browser Bookmarks"
 msgstr "Straničnici Tor preglednika"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:477
 msgid "Activate Tor Browser Bookmarks"
 msgstr "Aktiviraj straničnike Tor preglednika"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:490
 msgid "Electrum Bitcoin Wallet"
 msgstr "Electrum Bitcoin novčanik"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:506
 msgid "Activate Electrum Bitcoin Wallet"
 msgstr "Aktiviraj Electrum Bitcoin novčanik"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
 msgid "Thunderbird Email Client"
 msgstr "Thunderbird e-mail klijent"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
 msgid "Activate Thunderbird Email Client"
 msgstr "Aktiviraj Thunderbird e-mail klijent"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
 msgid "GnuPG"
 msgstr "GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:549
 msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:565
 msgid "Activate GnuPG"
 msgstr "Aktiviraj GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:578
 #, fuzzy
 msgid "Pidgin Internet Messenger"
 msgstr "Pidgin Internet Messenger"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:594
 msgid "Activate Pidgin Internet Messenger"
 msgstr "Aktiviraj Pidgin Internet Messenger"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:607
 msgid "SSH Client"
 msgstr "SSH klijent"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:623
 msgid "Activate SSH Client"
 msgstr "Aktiviraj SSH klijent"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:650
 msgid "Advanced Settings"
 msgstr "Napredne postavke"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
-msgid "Install additional software automatically when starting Tails."
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:679
+#, fuzzy
+msgid "Install additional software automatically when starting elizaOS."
 msgstr "Pri pokretanju Tails-a instaliraj dodatni softver automatski."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:704
 msgid "Configure Additional Software"
 msgstr "Konfiguriraj dodatni softver"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:717
 msgid "Activate Additional Software"
 msgstr "Aktiviraj dodatni softver"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:730
 msgid "Dotfiles"
 msgstr "Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:731
 msgid "Symlink every file in the Dotfiles folder into the Home folder."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:764
 #, fuzzy
 msgid "Activate Dotfiles"
 msgstr "Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:796
 msgid "Custom"
 msgstr "Prilagođeno"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:815
+#, fuzzy
 msgid ""
-"To add or remove custom features, modify /live/persistence/"
-"TailsData_unlocked/persistence.conf."
-msgstr ""
+"To add or remove custom features, modify the Persistent Storage "
+"configuration file directly."
+msgstr "Neuspjelo aktiviranje nekih funkcija trajnog spremišta: {features}."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:857
 msgid ""
 "<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
 "a>"
@@ -3245,7 +3291,7 @@ msgid ""
 "<b>Your Persistent Storage is locked.</b>\n"
 "\n"
 "To use or configure your Persistent Storage, unlock it in the Welcome Screen "
-"when starting Tails.\n"
+"when starting elizaOS.\n"
 "\n"
 "To delete your Persistent Storage, click <b>Delete</b> on the right of the "
 "title bar."
@@ -3291,11 +3337,12 @@ msgid "_Create Persistent Storage"
 msgstr "_Stvori trajno spremište"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+#, fuzzy
 msgid ""
-"Everything you do disappears automatically when you shut down Tails.\n"
+"Everything you do disappears automatically when you shut down elizaOS.\n"
 "\n"
 "But you can save some of your files and configuration in an encrypted "
-"Persistent Storage on your Tails USB stick, for example:\n"
+"Persistent Storage on your elizaOS USB stick, for example:\n"
 "\n"
 "• Your documents\n"
 "• Your Wi-Fi passwords\n"
@@ -3318,11 +3365,12 @@ msgstr ""
 "<a href=\"doc/persistent_storage\">Saznaj više o trajnom spremištu.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+#, fuzzy
 msgid ""
 "Sorry, it is impossible to create a Persistent Storage on this device.\n"
 "\n"
-"To be able to use Tails with a Persistent Storage, please follow our "
-"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+"To be able to use elizaOS with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing elizaOS on a USB stick</a>."
 msgstr ""
 "Nažalost, nije moguće je stvoriti trajno spremište na ovom uređaju.\n"
 "\n"
@@ -3343,8 +3391,9 @@ msgid "_Change Passphrase…"
 msgstr "Promijeni _lozinku …"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
-msgid "_Restart Tails"
-msgstr "Ponovo pok_reni Tails"
+#, fuzzy
+msgid "_Restart elizaOS"
+msgstr "Ponovo pokreni kasnije"
 
 #: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
 msgid "File Containers"
@@ -3996,6 +4045,26 @@ msgstr "Prosinac"
 msgid "Clock"
 msgstr "Sat"
 
+#, fuzzy
+#~ msgid "Tails Cloner"
+#~ msgstr "Tails instalacija"
+
+#~ msgid "About Tails"
+#~ msgstr "O Tailsu"
+
+#, fuzzy
+#~ msgid "Tails Documentation"
+#~ msgstr "Tails dokumentacija"
+
+#~ msgid "WhisperBack Error Reporting"
+#~ msgstr "WhisperBack izvještavanje o greškama"
+
+#~ msgid "Send feedback via encrypted e-mail"
+#~ msgstr "Pošalji povratne informacije putem šifriranog e-maila"
+
+#~ msgid "_Restart Tails"
+#~ msgstr "Ponovo pok_reni Tails"
+
 #~ msgid "Bridge address malformed"
 #~ msgstr "Adresa mosta krivog oblika"
 
@@ -4005,9 +4074,6 @@ msgstr "Sat"
 
 #~ msgid "Scan QR Code"
 #~ msgstr "Skeniraj QR kod"
-
-#~ msgid "Documentation"
-#~ msgstr "Dokumentacija"
 
 #, fuzzy
 #~| msgid ""

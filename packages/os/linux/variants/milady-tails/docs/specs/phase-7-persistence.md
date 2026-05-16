@@ -4,10 +4,14 @@ User opts into LUKS persistence via the greeter; Milady's data survives
 reboots; **no Tails persistence code is modified, only added
 configuration**. Paths: `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
+Status as of 2026-05-15: the `MiladyData` backend feature, frontend row,
+and on-activated cleanup hook exist locally. They remain unbuilt and
+unverified in a live ISO.
+
 ## Key finding: this Tails release uses modern Persistent Storage (`tps`)
 
-PLAN.md says "reuse `tails-persistence-setup`" — but this Tails tree
-replaced the legacy Perl GTK app with the Python **Persistent Storage**
+The original plan said "reuse `tails-persistence-setup`", but this Tails
+tree replaced the legacy Perl GTK app with the Python **Persistent Storage**
 stack (`tps` backend + `tps_frontend` UI). It still writes a
 `persistence.conf` in the live-boot(5) format — same kernel machinery —
 but feature definitions live in **code**, not a static preset file.
@@ -94,8 +98,11 @@ means an amnesia→persistent transition mid-session loses no data.
 
 `TAILS/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/10-clean-runtime-state`
 (executable, runs as root after the bind-mount):
-- `rm -rf /home/amnesia/.eliza/sockets/*` — stale sockets must not survive.
-- `chown -R 1000:1000 /home/amnesia/.eliza /home/amnesia/.milady /home/amnesia/.config/milady` — normalize ownership defensively.
+- remove stale Chromium/Electrobun runtime cache and singleton lock files
+  under `/home/amnesia/.eliza` (`Cache`, `Code Cache`, `GPUCache`,
+  `DawnCache`, `Crashpad`, `LOCK`, `Singleton*`).
+- Ownership normalization is a possible hardening follow-up if live
+  validation finds mixed owners; it is not in the current hook.
 
 Directory name **must** equal `Feature.Id` (`MiladyData`).
 
@@ -121,7 +128,7 @@ Two new elizaOS Actions in the Milady agent, NOT Tails code:
 - **"what's on my persistent storage?"** — enumerate enabled features via
   `tpscli`/D-Bus, `du -sh` each binding dest.
 
-The Tails-side contract Phase 7 owns: `/etc/milady/...` is irrelevant
+The Tails-side contract Phase 7 owns: `/etc/elizaos/...` is irrelevant
 here — `tps`'s D-Bus service + `persistence.conf` are the source of truth.
 
 ## 6. Lessons from usbeliza's persistence bugs to avoid
@@ -135,9 +142,9 @@ not pre-create partitions in a build hook, do not hardcode mount paths
 to confirm the modified `features.py` is actually in it (don't trust grep).
 
 ## Ordered implementation checklist
-1. Add the `MiladyData` `Feature` subclass to `tps/configuration/features.py`.
-2. Add the `milady_data_*` row to `features_view.ui.in`.
-3. Add the `on-activated-hooks/MiladyData/10-clean-runtime-state` hook.
+1. Add the `MiladyData` `Feature` subclass to `tps/configuration/features.py`. Done locally.
+2. Add the `milady_data_*` row to `features_view.ui.in`. Done locally.
+3. Add the `on-activated-hooks/MiladyData/10-clean-runtime-state` hook. Done locally.
 4. Confirm Tails' `NetworkConnections` feature is offered in the greeter UI — do NOT re-declare it.
 5. Add the 2 agent chat actions (thin — shell Tails' GUI).
 6. Build the ISO; inspect the squashfs for the 3 modified/added files.

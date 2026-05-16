@@ -8,7 +8,16 @@ if [ "$2" != "up" ]; then
 fi
 
 [ -x /usr/sbin/ferm ] || exit 2
-/usr/sbin/ferm /etc/ferm/ferm.conf
+
+privacy_mode="$(cat /etc/elizaos/privacy-mode 2>/dev/null || printf on)"
+if [ "${privacy_mode}" = "off" ]; then
+    /usr/sbin/ferm /etc/ferm/ferm-direct.conf
+    if [ -s /etc/resolv-over-clearnet.conf ]; then
+        cp /etc/resolv-over-clearnet.conf /etc/resolv.conf
+    fi
+else
+    /usr/sbin/ferm /etc/ferm/ferm.conf
+fi
 
 if [ -e /var/lib/iptables/session-rules ]; then
     while read -r rule; do

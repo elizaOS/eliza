@@ -2,13 +2,13 @@
 
 The shared agent tree at `packages/os/linux/agent/` was written for
 **usbeliza** (sway + `elizad` Tauri shell + `eliza` user + `/home/eliza`
-+ `~/.eliza` + a detached systemd `eliza-agent` service). milady-tails
++ `~/.eliza` + a detached systemd `eliza-agent` service). elizaOS Live
 runs **GNOME/Wayland + the Electrobun Milady app + the `amnesia` user
 (uid 1000) + Tails-native paths**.
 
 This audit is the exhaustive list of every usbeliza-specific assumption
 that must change for Phase 6. The single highest-leverage realization:
-**on milady-tails the agent is an in-session Electrobun child, not a
+**on elizaOS Live the agent is an in-session Electrobun child, not a
 detached systemd service** — so most Category A sway code *simplifies*
 (the agent already has `WAYLAND_DISPLAY` etc.) rather than needing a
 GNOME reimplementation.
@@ -36,7 +36,7 @@ under GNOME Mutter.
 ## Category B — `USBELIZA_*` env var rename surface — MUST-FIX
 
 The agent reads `USBELIZA_*` (sometimes `ELIZA_*` alias), never `MILADY_*`.
-milady-tails' conventions are `MILADY_*` / `ELIZA_*` → `~/.eliza`. Decide
+elizaOS Live's conventions are `MILADY_*` / `ELIZA_*` → `~/.eliza`. Decide
 the canonical prefix project-wide; each of these needs an alias.
 
 Load-bearing state-dir resolvers: `onboarding/state.ts:50`,
@@ -56,7 +56,7 @@ Other `USBELIZA_*` reads (review each): `main.ts:23-24`
 
 ## Category C — `/home/eliza`, `~/.eliza`, `eliza` user — MUST-FIX
 
-`HOME` fallbacks default to `/home/eliza`; on milady-tails it's
+`HOME` fallbacks default to `/home/eliza`; on elizaOS Live it's
 `/home/amnesia`. The `.eliza` directory segment is hardcoded everywhere.
 
 `/home/eliza` literal fallbacks: `download-model.ts:79,87`,
@@ -82,7 +82,7 @@ Character: `characters/eliza.ts:44,51` (`username: "eliza"`,
 ## Category D — Process / persistence-script assumptions — MUST-FIX
 
 - `runtime/flows/persistence-flow.ts:20-110` — `DEFAULT_RUNNER` shells
-  `/usr/local/bin/usbeliza-persistence-setup`. milady-tails uses Tails'
+  `/usr/local/bin/usbeliza-persistence-setup`. elizaOS Live uses Tails'
   native Persistent Storage (`tps`) — that script won't exist. Swap
   `DEFAULT_RUNNER` for a `tps` driver (or gate the flow). See
   [`phase-7-persistence.md`](./phase-7-persistence.md).
@@ -94,7 +94,7 @@ Character: `characters/eliza.ts:44,51` (`username: "eliza"`,
   Won't exist; calibration apply silently degrades until an `amnesia`
   equivalent is added.
 - `runtime/claude-cloud-plugin.ts` / `login-claude.ts` / codegen — probe
-  `claude`/`codex` binaries; confirm the milady-tails ISO bakes them.
+  `claude`/`codex` binaries; confirm the elizaOS ISO bakes them.
 - Privacy-mode: the agent spawns `curl` / `fetch`s directly with no proxy
   handling — in Privacy Mode these must route through Tor's SOCKS proxy.
 
@@ -102,14 +102,14 @@ Character: `characters/eliza.ts:44,51` (`username: "eliza"`,
 
 - `runtime/actions/wallpaper.ts:210-213` + `open-app.ts:12-16` — code
   *assumes* "eliza-agent runs from systemd, not the session, so
-  `SWAYSOCK`/`WAYLAND_DISPLAY` aren't inherited". **False on milady-tails**
+  `SWAYSOCK`/`WAYLAND_DISPLAY` aren't inherited". **False on elizaOS Live**
   — the Electrobun app hosts the agent in-session. This premise is the
   root of all Category A.
 - `onboarding/apply-system.ts:9-14` — references the systemd unit
-  `usbeliza-apply-calibration.service`. milady-tails has none; calibration
+  `usbeliza-apply-calibration.service`. elizaOS Live has none; calibration
   re-apply should hang off the Phase 5 `/etc/xdg/autostart/` path.
 - `main.ts` / `chat.ts` / `eliza.ts` comments assume the consumer is
-  `elizad`'s Tauri shell. milady-tails' consumer is Electrobun. The HTTP
+  `elizad`'s Tauri shell. elizaOS Live's consumer is Electrobun. The HTTP
   wire shape is reusable; the empty-first-message onboarding trigger must
   be honored by Electrobun, and port `41337` (only `USBELIZA_AGENT_PORT`/
   `ELIZA_API_PORT` overrides) needs reconciling with milady's port system.
@@ -118,7 +118,7 @@ Character: `characters/eliza.ts:44,51` (`username: "eliza"`,
 
 - `characters/eliza.ts:26-57` — the persona's `OS_CONTEXT_PREAMBLE` says
   "the chat box IS their desktop, there is no separate browser/file
-  manager". On milady-tails the chat is an *app*; browser/files/terminal
+  manager". On elizaOS Live the chat is an *app*; browser/files/terminal
   *are* separate. **Borderline must-fix** — it shapes every LLM reply.
 - Reply/comment copy referencing `~/.eliza/apps`, "Phase 1.5", "Her-style
   desktop ricing" (`apps.ts`, `build-app.ts`, `system.ts`, `install-package.ts`).

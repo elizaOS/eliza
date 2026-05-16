@@ -1,0 +1,154 @@
+#!/bin/sh
+
+set -eu
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "elizaOS must run as the live user, not as root." >&2
+    exit 1
+fi
+
+if [ "$(id -un)" != "amnesia" ]; then
+    echo "elizaOS must run as the Tails live user 'amnesia'." >&2
+    exit 1
+fi
+
+if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
+    /usr/local/lib/elizaos/persistence-maintenance wait
+fi
+
+if [ ! -x /opt/milady/bin/launcher ]; then
+    echo "elizaOS launcher is not installed at /opt/milady/bin/launcher." >&2
+    exit 1
+fi
+
+export ELIZAOS_EDITION="${ELIZAOS_EDITION:-live-usb}"
+export ELIZAOS_BASE="${ELIZAOS_BASE:-tails}"
+export ELIZAOS_CAPABILITY_RUNNER="${ELIZAOS_CAPABILITY_RUNNER:-/usr/local/lib/elizaos/capability-runner}"
+export ELIZA_NAMESPACE="${ELIZA_NAMESPACE:-eliza}"
+export ELIZA_APP_NAME="${ELIZA_APP_NAME:-elizaOS}"
+export ELIZA_APP_ID="${ELIZA_APP_ID:-ai.elizaos.app}"
+export ELIZA_URL_SCHEME="${ELIZA_URL_SCHEME:-elizaos}"
+export ELIZA_CONFIG_DIR_NAME="${ELIZA_CONFIG_DIR_NAME:-elizaOS}"
+
+export HOME=/home/amnesia
+export ELIZA_STATE_DIR="${ELIZA_STATE_DIR:-/home/amnesia/.eliza}"
+export MILADY_STATE_DIR="${MILADY_STATE_DIR:-${ELIZA_STATE_DIR}}"
+export MILADY_ELIZA_SOURCE="${MILADY_ELIZA_SOURCE:-local}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${ELIZA_STATE_DIR}/xdg-config}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${ELIZA_STATE_DIR}/xdg-cache}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-${ELIZA_STATE_DIR}/xdg-data}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-${ELIZA_STATE_DIR}/xdg-state}"
+export ELECTROBUN_CONSOLE="${ELECTROBUN_CONSOLE:-0}"
+export ELIZA_DESKTOP_FORCE_CEF="${ELIZA_DESKTOP_FORCE_CEF:-0}"
+export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+export MESA_LOADER_DRIVER_OVERRIDE="${MESA_LOADER_DRIVER_OVERRIDE:-llvmpipe}"
+export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export ELIZAOS_LIVE_EMBEDDING_FALLBACK="${ELIZAOS_LIVE_EMBEDDING_FALLBACK:-1}"
+export ELIZA_DISABLE_PROACTIVE_AGENT="${ELIZA_DISABLE_PROACTIVE_AGENT:-1}"
+export ELIZA_API_PORT="${ELIZA_API_PORT:-31337}"
+export ELIZA_PORT="${ELIZA_PORT:-${ELIZA_API_PORT}}"
+export ELIZA_API_BIND="${ELIZA_API_BIND:-127.0.0.1}"
+export ELIZA_DESKTOP_API_BASE="${ELIZA_DESKTOP_API_BASE:-http://127.0.0.1:${ELIZA_API_PORT}}"
+export ELIZA_API_BASE="${ELIZA_API_BASE:-${ELIZA_DESKTOP_API_BASE}}"
+
+case "$(cat /etc/elizaos/privacy-mode 2>/dev/null || printf on)" in
+    off)
+        export ELIZAOS_PRIVACY_MODE=0
+        ;;
+    *)
+        export ELIZAOS_PRIVACY_MODE=1
+        ;;
+esac
+
+mkdir -p \
+    "${ELIZA_STATE_DIR}" \
+    "${ELIZA_STATE_DIR}/logs" \
+    "${XDG_CONFIG_HOME}" \
+    "${XDG_CACHE_HOME}" \
+    "${XDG_DATA_HOME}" \
+    "${XDG_STATE_HOME}"
+
+read_runtime_identity() {
+    field="${1}"
+    fallback="${2}"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "${field}" "${fallback}" <<'PY'
+import json
+import sys
+
+field = sys.argv[1]
+fallback = sys.argv[2]
+try:
+    with open("/opt/milady/Resources/version.json", encoding="utf-8") as handle:
+        value = json.load(handle).get(field)
+    if isinstance(value, str) and value.strip():
+        print(value.strip())
+    else:
+        print(fallback)
+except Exception:
+    print(fallback)
+PY
+        return
+    fi
+    printf '%s\n' "${fallback}"
+}
+
+prepare_cef_profile() {
+    app_identifier="$(read_runtime_identity identifier ai.elizaos.app)"
+    app_channel="$(read_runtime_identity channel dev)"
+
+    for cef_root in \
+        "/home/amnesia/.cache/${app_identifier}/${app_channel}/CEF" \
+        "/home/amnesia/.cache/ai.milady.milady/dev/CEF"
+    do
+        case "${cef_root}" in
+            /home/amnesia/.cache/*/CEF) ;;
+            *) continue ;;
+        esac
+
+        rm -rf "${cef_root}/Partitions/default"
+        mkdir -p "${cef_root}"
+        if [ -d "${cef_root}/partitions/default" ] && [ ! -e "${cef_root}/default" ]; then
+            mv "${cef_root}/partitions/default" "${cef_root}/default"
+        fi
+        if [ -e "${cef_root}/partitions" ] && [ ! -L "${cef_root}/partitions" ]; then
+            rm -rf "${cef_root}/partitions.legacy"
+            mv "${cef_root}/partitions" "${cef_root}/partitions.legacy" 2>/dev/null \
+                || rm -rf "${cef_root}/partitions"
+        fi
+        mkdir -p "${cef_root}/default"
+        ln -sfn . "${cef_root}/partitions"
+        printf '2\n' > "${cef_root}/.electrobun_cef_cache_version"
+        chmod 700 \
+            /home/amnesia/.cache \
+            "$(dirname "$(dirname "${cef_root}")")" \
+            "$(dirname "${cef_root}")" \
+            "${cef_root}" \
+            "${cef_root}/default" 2>/dev/null || true
+        chmod 600 "${cef_root}/.electrobun_cef_cache_version" 2>/dev/null || true
+    done
+}
+
+prepare_cef_profile
+
+startup_session="elizaos-live-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+export ELIZA_STARTUP_SESSION_ID="${ELIZA_STARTUP_SESSION_ID:-${startup_session}}"
+export ELIZA_STARTUP_STATE_FILE="${ELIZA_STARTUP_STATE_FILE:-${ELIZA_STATE_DIR}/logs/startup-state.json}"
+export ELIZA_STARTUP_EVENTS_FILE="${ELIZA_STARTUP_EVENTS_FILE:-${ELIZA_STATE_DIR}/logs/startup-events.jsonl}"
+
+if command -v flock >/dev/null 2>&1; then
+    lock_file="${XDG_RUNTIME_DIR:-/run/user/1000}/milady.lock"
+    exec 9>"${lock_file}"
+    if ! flock -n 9; then
+        if [ "${MILADY_WAIT_FOR_LOCK:-0}" = "1" ]; then
+            flock 9
+	    else
+	        echo "elizaOS is already running."
+	        exit 0
+	    fi
+    fi
+fi
+
+cd /opt/milady
+exec /opt/milady/bin/launcher "$@"

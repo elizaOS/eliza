@@ -3,6 +3,11 @@
 Goal: `/opt/milady/` exists in the chroot and contains a runnable binary.
 Paths are relative to `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
+Status as of 2026-05-15: the host build recipe, staged payload,
+`9100-install-milady` hook, runtime package list, and desktop file exist
+locally. They still need an ISO rebuild and live runtime validation before
+Phase 4 is done.
+
 ## 1. The Milady Linux build — the real (fragile) sequence
 
 A naive `bun run build:desktop` from the milady repo **fails**. The repo
@@ -56,7 +61,7 @@ line, operate on absolute chroot paths, fail loud on missing input.
 
 Steps:
 1. `echo "Installing Milady Electrobun app"`.
-2. Verify the staged tree exists at `/usr/share/milady-tails/milady-app/` (placed there via `chroot_local-includes` — see §4). Guard: `[ -d "$STAGE" ] || { echo "..." >&2; exit 1; }`.
+2. Verify the staged tree exists at `/usr/share/elizaos/milady-app/` (placed there via `chroot_local-includes` — see §4). Guard: `[ -d "$STAGE" ] || { echo "..." >&2; exit 1; }`.
 3. Install into `/opt/milady/`: `mkdir -p /opt/milady && cp -a "$STAGE"/. /opt/milady/` so `/opt/milady/bin/launcher` is the runnable binary. (Use `cp -a` of the whole tree — avoids per-file globbing; the tree has filenames with spaces, e.g. `bin/bun Helper`.)
 4. Guard `version.json`: `[ -f /opt/milady/Resources/version.json ]` — write a minimal one if absent (defensive; the build normally produces it).
 5. Ship the `.desktop` entry as a static `chroot_local-includes` file (cleaner than heredoc in the hook): `TAILS/config/chroot_local-includes/usr/share/applications/milady.desktop` with `Exec=/opt/milady/bin/launcher`, absolute `Icon=`, `StartupWMClass=Milady`. The hook just verifies it exists.
@@ -105,7 +110,7 @@ host, then stages the tree into `chroot_local-includes`.**
 The recipe: run the §1 build sequence (resolving the milady repo root,
 which is 5 levels up from the variant dir) → `cp -a`/`tar` the
 `Milady-*/` tree into
-`TAILS/config/chroot_local-includes/usr/share/milady-tails/milady-app/`.
+`TAILS/config/chroot_local-includes/usr/share/elizaos/milady-app/`.
 live-build copies `chroot_local-includes/*` into the chroot verbatim; the
 `9100` hook installs it.
 
@@ -140,12 +145,12 @@ Linux release published yet — that's a v1.1 reproducibility path).
 
 ## Ordered implementation checklist
 
-1. Add the `just milady-app` recipe — the §1 build sequence + stage into `chroot_local-includes/usr/share/milady-tails/milady-app/`.
-2. `.gitignore` that staging path (already done in the variant `.gitignore`).
-3. Create `TAILS/config/chroot_local-packageslists/milady-runtime.list` (§3).
-4. Create `TAILS/config/chroot_local-includes/usr/share/applications/milady.desktop`.
-5. Create `TAILS/config/chroot_local-hooks/9100-install-milady` (§2).
-6. Make `just build` / `just binary` depend on `just milady-app`.
-7. `just build` → `just boot` → verify `/opt/milady/bin/launcher` exists, Milady appears in the apps menu, clicking it renders the chat UI.
+1. Add the `just milady-app` recipe — the §1 build sequence + stage into `chroot_local-includes/usr/share/elizaos/milady-app/`. Done locally.
+2. `.gitignore` that staging path. Done locally.
+3. Create `TAILS/config/chroot_local-packageslists/milady-runtime.list` (§3). Done locally.
+4. Create `TAILS/config/chroot_local-includes/usr/share/applications/milady.desktop`. Done locally.
+5. Create `TAILS/config/chroot_local-hooks/9100-install-milady` (§2). Done locally.
+6. Make `just build` / `just binary` depend on `just milady-app`. Done locally.
+7. `just build` → `just boot` → verify `/opt/milady/bin/launcher` exists, Milady appears in the apps menu, clicking it renders the chat UI. Not yet run on the current overlay.
 8. `ldd` the installed `libcef.so` in the booted chroot; check `journalctl`/AppArmor for `DENIED` on the launcher + bun helpers; add missing packages.
 9. Re-measure the ISO size; update PLAN.md's size figure + document the budget.

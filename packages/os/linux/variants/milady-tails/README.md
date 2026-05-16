@@ -1,16 +1,16 @@
-# milady-tails — full Linux + Milady, USB-only, optional Tor + optional persistence
+# elizaOS Live
 
-A live-USB distribution that takes **all of Tails**, rebrands it as
-**Milady**, adds the **Milady Electrobun app** as the desktop home,
-and gives users **two opt-in features**: encrypted persistence on the
-USB stick, and Tor routing for privacy.
+A live-USB distribution that boots as **elizaOS**, includes the bundled
+elizaOS desktop app as the home surface, and gives users **two opt-in
+features**: encrypted persistence on the USB stick, and Tor routing for
+privacy.
 
 ```
 ┌────────────────────────────────────────────────┐
 │  Full Linux desktop (GNOME by default)         │
 │                                                │
 │   ┌──────────────────────────────────────┐    │
-│   │      Milady Electrobun app           │    │
+│   │      elizaOS desktop app             │    │
 │   │   (chat, agent, BUILD_APP, voice…)   │    │
 │   └──────────────────────────────────────┘    │
 │                                                │
@@ -61,8 +61,8 @@ boot-time walkthrough and the feature-parity matrix.
 
 `packages/os/linux/` (usbeliza) is the **minimal kiosk variant**: chat
 IS the entire UI, no normal Linux desktop visible. This variant
-(milady-tails) is the **full desktop variant**: real Linux with a
-normal GUI, Milady as the home app.
+(currently stored at `variants/milady-tails/`) is the **full desktop
+elizaOS variant**: real Linux with a normal GUI, elizaOS as the home app.
 
 Both share the same agent code (`@elizaos/*` framework, BUILD_APP /
 OPEN_APP actions, plugin pattern). They differ at the live-build +
@@ -70,10 +70,10 @@ session layer. See [`docs/relationship-to-usbeliza.md`](./docs/relationship-to-u
 
 ## Architecture
 
-We **start from a full copy of Tails** (6077 tracked files, in
-`tails/`) and **add Milady on top** — additive only, no deletion.
-Tor, AppArmor, MAC spoofing, persistence-setup, Plymouth — all
-preserved. The Milady additions live as new chroot hooks + package
+We keep the upstream live-OS internals intact and layer elizaOS branding,
+the elizaOS app, persistence wiring, and supervised OS capabilities on top.
+Tor, AppArmor, MAC spoofing, persistence setup, Plymouth, and the normal
+desktop remain preserved. The additions live as new chroot hooks + package
 lists + branding overrides.
 
 This matches the `packages/os/android/vendor/eliza/` pattern in this
@@ -81,20 +81,30 @@ monorepo (brand vendor tree inside the upstream system's structure).
 
 ## License
 
-GPL-3.0-or-later (inherited from Tails). Our additions are
-Apache-2.0 where possible, dual-licensed under both. Tails project
-credited prominently in CREDITS, NOTICE, the rebranded greeter, and
-the in-app About page.
+GPL-3.0-or-later for the inherited live-OS components. Our additions are
+Apache-2.0 where possible, dual-licensed under both where required.
 
 ## Status
 
-**Phase 1 — in progress.** The containerized build pipeline is complete
-(`just build` produces an ISO on any host with Docker — no Vagrant, no
-host setup). The base ISO is mid-build; not yet verified-booting.
+**Phase 1 — done.** The containerized build pipeline produced a 1.9 GB
+elizaOS ISO, and that ISO boots in QEMU to the elizaOS greeter via
+`-cdrom`.
 
-Phases 2–9 are **fully spec'd** ([`docs/specs/`](./docs/specs/));
-implementation hasn't started. See [`PLAN.md`](./PLAN.md) for the phase
-map and [`ROADMAP.md`](./ROADMAP.md) for the honest road to a real,
+**Phase 2 — overlay implemented, rebuild pending.** The OS branding
+overlays now target elizaOS: boot menu, Plymouth, greeter, wallpaper,
+dark GNOME defaults, `/etc/os-release`, `/etc/issue`, and the visible app
+surfaces.
+The remaining Phase 2 gate is rebuilding the ISO and doing the visual
+QEMU pass.
+
+**Phases 3–7 — overlay implemented, rebuild pending.** Privacy mode,
+elizaOS app install/autostart, the conservative elizaOS capability broker,
+and elizaOS Persistent Storage rows/hooks are in the tree. They still need
+the rebuilt ISO + QEMU/USB validation before they can be marked done.
+
+Phases 8–9 are **fully spec'd** ([`docs/specs/`](./docs/specs/)) but not
+implemented. See [`PLAN.md`](./PLAN.md) for the phase map and
+[`ROADMAP.md`](./ROADMAP.md) for the honest road to a real,
 fully-working demo.
 
 ## Build it
@@ -102,10 +112,21 @@ fully-working demo.
 Only requirement is Docker. From this directory:
 
 ```
-just config    # ~1 min go/no-go
-just build     # full clean ISO → out/
+just static-smoke # CPU-light syntax/config checks, no Docker/QEMU
+just config    # ~1 min live-build go/no-go
+just build     # full clean ISO -> out/
+just build-cool # low-CPU demo build, skips offline docs, caps Docker+squashfs to 2 CPUs
+just build-demo # fastest full demo build; skips bundled offline website/docs
 just boot      # boot the latest ISO in QEMU
+just usb-write /dev/sdX # write the latest ISO with removable-disk guards
 ```
+
+Set `ELIZAOS_BUILD_CPUS=2`, `ELIZAOS_MKSQUASHFS_PROCESSORS=2`, or
+`ELIZAOS_BUILD_MEMORY=8g` when you need Docker to stay out of the way of
+Android/AOSP/app builds on the same machine. `just build-cool` sets the
+CPU and squashfs caps to 2 by default and skips rebuilding the bundled
+offline website/docs; set `ELIZAOS_SKIP_WEBSITE=0` if you need exact
+offline docs in a cool build.
 
 ## Docs
 
