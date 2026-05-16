@@ -1,6 +1,7 @@
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type OsArtifact, OsDownloads } from "./components/OsDownloads";
 
 const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
@@ -234,6 +235,7 @@ function Header({ solid = false }: { solid?: boolean }) {
       </a>
       <nav className="site-nav" aria-label="Product switcher">
         <a href="/#download">Download</a>
+        <a href="#downloads">All downloads</a>
         <a href="/#hardware">Hardware</a>
       </nav>
     </header>
@@ -899,7 +901,6 @@ function HomePage() {
                 <ArrowRight className="icon" />
               </a>
             </div>
-            <FeaturedUsbCard />
             <HardwareTiles />
           </div>
         </section>
