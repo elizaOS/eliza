@@ -1,0 +1,160 @@
+{
+  "uuid": "6e6bd1e2-1c1f-4aef-9f8a-9b3b7c6d8a01",
+  "lastMigration": 32,
+  "name": "Hetzner Cloud — static catalog",
+  "endpointPrefix": "v1",
+  "latency": 0,
+  "port": 4568,
+  "hostname": "",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "11111111-1111-4111-8111-111111111111",
+      "type": "http",
+      "documentation": "List datacenter locations",
+      "method": "get",
+      "endpoint": "locations",
+      "responses": [
+        {
+          "uuid": "11111111-1111-4111-8111-111111111112",
+          "body": "{\n  \"locations\": [\n    {\"id\": 1, \"name\": \"fsn1\", \"description\": \"Falkenstein DC Park 1\", \"country\": \"DE\", \"city\": \"Falkenstein\", \"latitude\": 50.47612, \"longitude\": 12.370071, \"network_zone\": \"eu-central\"},\n    {\"id\": 2, \"name\": \"nbg1\", \"description\": \"Nuremberg DC Park 1\", \"country\": \"DE\", \"city\": \"Nuremberg\", \"latitude\": 49.452102, \"longitude\": 11.076665, \"network_zone\": \"eu-central\"},\n    {\"id\": 3, \"name\": \"hel1\", \"description\": \"Helsinki DC Park 1\", \"country\": \"FI\", \"city\": \"Helsinki\", \"latitude\": 60.169855, \"longitude\": 24.938379, \"network_zone\": \"eu-central\"}\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "22222222-2222-4222-8222-222222222221",
+      "type": "http",
+      "documentation": "List server types",
+      "method": "get",
+      "endpoint": "server_types",
+      "responses": [
+        {
+          "uuid": "22222222-2222-4222-8222-222222222222",
+          "body": "{\n  \"server_types\": [\n    {\"id\": 22, \"name\": \"cx22\", \"description\": \"CX22\", \"cores\": 2, \"memory\": 4, \"disk\": 40, \"architecture\": \"x86\", \"storage_type\": \"local\", \"cpu_type\": \"shared\", \"deprecated\": false},\n    {\"id\": 32, \"name\": \"cx32\", \"description\": \"CX32\", \"cores\": 4, \"memory\": 8, \"disk\": 80, \"architecture\": \"x86\", \"storage_type\": \"local\", \"cpu_type\": \"shared\", \"deprecated\": false},\n    {\"id\": 42, \"name\": \"cx42\", \"description\": \"CX42\", \"cores\": 8, \"memory\": 16, \"disk\": 160, \"architecture\": \"x86\", \"storage_type\": \"local\", \"cpu_type\": \"shared\", \"deprecated\": false},\n    {\"id\": 111, \"name\": \"cpx11\", \"description\": \"CPX11\", \"cores\": 2, \"memory\": 2, \"disk\": 40, \"architecture\": \"x86\", \"storage_type\": \"local\", \"cpu_type\": \"shared\", \"deprecated\": false},\n    {\"id\": 121, \"name\": \"cpx21\", \"description\": \"CPX21\", \"cores\": 3, \"memory\": 4, \"disk\": 80, \"architecture\": \"x86\", \"storage_type\": \"local\", \"cpu_type\": \"shared\", \"deprecated\": false}\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "33333333-3333-4333-8333-333333333331",
+      "type": "http",
+      "documentation": "List images",
+      "method": "get",
+      "endpoint": "images",
+      "responses": [
+        {
+          "uuid": "33333333-3333-4333-8333-333333333332",
+          "body": "{\n  \"images\": [\n    {\"id\": 67794396, \"type\": \"system\", \"status\": \"available\", \"name\": \"debian-12\", \"description\": \"Debian 12\", \"os_flavor\": \"debian\", \"os_version\": \"12\", \"architecture\": \"x86\"},\n    {\"id\": 161547269, \"type\": \"system\", \"status\": \"available\", \"name\": \"ubuntu-24.04\", \"description\": \"Ubuntu 24.04\", \"os_flavor\": \"ubuntu\", \"os_version\": \"24.04\", \"architecture\": \"x86\"}\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "44444444-4444-4444-8444-444444444441",
+      "type": "http",
+      "documentation": "Pricing skeleton",
+      "method": "get",
+      "endpoint": "pricing",
+      "responses": [
+        {
+          "uuid": "44444444-4444-4444-8444-444444444442",
+          "body": "{\n  \"pricing\": {\n    \"currency\": \"EUR\",\n    \"vat_rate\": \"0\",\n    \"image\": {\"price_per_gb_month\": {\"net\": \"0\", \"gross\": \"0\"}},\n    \"floating_ip\": {\"price_monthly\": {\"net\": \"0\", \"gross\": \"0\"}},\n    \"floating_ips\": [],\n    \"traffic\": {\"price_per_tb\": {\"net\": \"0\", \"gross\": \"0\"}},\n    \"server_backup\": {\"percentage\": \"0\"},\n    \"server_types\": [],\n    \"load_balancer_types\": [],\n    \"volume\": {\"price_per_gb_month\": {\"net\": \"0\", \"gross\": \"0\"}}\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "11111111-1111-4111-8111-111111111111" },
+    { "type": "route", "uuid": "22222222-2222-4222-8222-222222222221" },
+    { "type": "route", "uuid": "33333333-3333-4333-8333-333333333331" },
+    { "type": "route", "uuid": "44444444-4444-4444-8444-444444444441" }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [{ "key": "Content-Type", "value": "application/json" }],
+  "proxyReqHeaders": [{ "key": "", "value": "" }],
+  "proxyResHeaders": [{ "key": "", "value": "" }],
+  "data": [],
+  "callbacks": []
+}
