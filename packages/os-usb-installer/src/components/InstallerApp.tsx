@@ -280,7 +280,12 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           src="/brand/logos/elizaOS_text_white.svg"
           alt="elizaOS"
         />
-        <a className="cta-link" href="https://elizaos.ai" target="_blank" rel="noreferrer">
+        <a
+          className="cta-link"
+          href="https://elizaos.ai"
+          target="_blank"
+          rel="noreferrer"
+        >
           elizaOS docs
         </a>
       </section>

@@ -1,9 +1,9 @@
 :root {
-  --brand-blue: #0B35F1;
-  --brand-orange: #FF5800;
-  --brand-white: #FFFFFF;
+  --brand-blue: #0b35f1;
+  --brand-orange: #ff5800;
+  --brand-white: #ffffff;
   --brand-black: #000000;
-  --brand-gray: #D1D0D4;
+  --brand-gray: #d1d0d4;
 
   color: var(--brand-white);
   background: var(--brand-blue);

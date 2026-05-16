@@ -397,7 +397,7 @@ write: ready for confirmation`}</pre>
                   {releaseChecks.map((item) => (
                     <div
                       key={item}
-                      className="flex gap-3 rounded-lg border border-white/32 bg-white/24 p-4 text-sm text-white shadow-[0_18px_54px_rgba(3,28,58,0.12)] backdrop-blur-2xl"
+                      className="flex gap-3 border border-white/14 bg-black p-4 text-sm text-white"
                     >
                       <ShieldCheck className="h-5 w-5 shrink-0 text-accent" />
                       <span>{item}</span>
@@ -408,7 +408,7 @@ write: ready for confirmation`}</pre>
             </section>
 
             <section className="px-6 py-16 sm:px-8 lg:px-12">
-              <div className="mx-auto flex max-w-7xl flex-col gap-5 rounded-lg border border-white/32 bg-white/24 p-6 text-white shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+              <div className="mx-auto flex max-w-7xl flex-col gap-5 border border-white/14 bg-black p-6 text-white sm:p-8 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-sm font-bold uppercase text-accent">
                     Eliza Cloud
@@ -424,7 +424,7 @@ write: ready for confirmation`}</pre>
                 </div>
                 <Link
                   to="/login?intent=signup"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-fg shadow-[0_18px_46px_rgba(217,95,22,0.32)] transition-colors hover:bg-accent-hover"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 bg-[#FF5800] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#FF5800]/85"
                 >
                   Run in cloud
                   <ArrowRight className="h-5 w-5" />
