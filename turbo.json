@@ -169,6 +169,10 @@
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
     },
+    "@elizaos/contracts#build": {
+      "dependsOn": [],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/electrobun#build": {
       "dependsOn": ["^build"],
       "outputs": ["build/**"]
