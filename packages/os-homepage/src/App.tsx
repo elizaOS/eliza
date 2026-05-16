@@ -89,28 +89,6 @@ function productCheckoutUrl(sku: string) {
   return `${checkoutBaseUrl}?sku=${sku}`;
 }
 
-function CloudHero({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="band hero-cloud" data-hero="cloud">
-      <video
-        className="cloud-video"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        poster="/clouds/poster.jpg"
-        data-testid="cloud-video"
-      >
-        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
-        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
-      </video>
-      <div className="cloud-scrim" aria-hidden="true" />
-      <div className="band-inner hero-cloud-inner">{children}</div>
-    </section>
-  );
-}
-
 function ProductImage({ product }: { product: Product }) {
   return (
     <img
@@ -259,9 +237,7 @@ function HomePage() {
               draggable={false}
             />
             <h1>The agentic operating system.</h1>
-            <p className="hero-copy">
-              For devices that run themselves.
-            </p>
+            <p className="hero-copy">For devices that run themselves.</p>
             <div className="hero-actions">
               <a href="#download" className="button">
                 Download

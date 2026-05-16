@@ -101,16 +101,14 @@ export function installApiFetchBridge(): void {
     if (input instanceof Request) {
       const url = new URL(input.url, window.location.origin);
       if (url.origin === window.location.origin && isApiPath(url.pathname)) {
+        const request = new Request(input, init);
         const rewritten = browserApiBase()
           ? `${browserApiBase()}${url.pathname}${url.search}${url.hash}`
-          : input.url;
-        return nativeFetch(
-          new Request(rewritten, {
-            ...input,
-            credentials: init?.credentials ?? input.credentials ?? "include",
-            headers: withAuthHeaders(init?.headers ?? input.headers),
-          }),
-        );
+          : request.url;
+        return nativeFetch(new Request(rewritten, request), {
+          headers: withAuthHeaders(request.headers),
+          credentials: request.credentials ?? "include",
+        });
       }
     }
 
