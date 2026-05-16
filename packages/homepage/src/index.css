@@ -1,5 +1,6 @@
 /* Vendored fonts — loaded from local bundle, no Google Fonts CDN request. */
 @import "@fontsource-variable/open-sans";
+@import "../../ui/src/styles/base.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "../../ui/src";
@@ -19,7 +20,7 @@ body {
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-brand-orange: #ff5800;
+  --color-brand-orange: var(--accent);
   --font-sans: var(--font-open-sans);
   --font-mono: var(--font-mono);
   --font-inter: var(--font-sans);
@@ -43,7 +44,7 @@ body {
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
+  --color-muted: var(--muted-background);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -62,68 +63,22 @@ body {
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --bg: #f7f4ef;
-  --bg-accent: #f0ece4;
-  --bg-elevated: rgba(255, 255, 255, 0.88);
-  --bg-hover: rgba(255, 255, 255, 0.96);
-  --bg-muted: #ede8de;
-  --surface: rgba(255, 255, 255, 0.82);
-  --text: #171717;
-  --text-strong: #0a0a0a;
-  --chat-text: var(--text);
-  --txt: var(--text);
-  --muted-strong: rgba(23, 23, 23, 0.72);
-  --border-strong: rgba(23, 23, 23, 0.2);
-  --border-hover: #ff8a24;
-  --accent-rgb: 255, 138, 36;
-  --accent-hover: #ff9a3d;
-  --accent-muted: #d95f16;
-  --accent-subtle: rgba(255, 138, 36, 0.16);
-  --accent-foreground: #fff7ee;
-  --primary: #ff8a24;
-  --primary-foreground: #fff7ee;
-  --ok: hsl(142 76% 36%);
-  --ok-muted: hsla(142 76% 36% / 0.7);
-  --ok-subtle: hsla(142 76% 36% / 0.1);
-  --warn: #ff8a24;
-  --warn-muted: rgba(255, 138, 36, 0.72);
-  --warn-subtle: rgba(255, 138, 36, 0.16);
-  --danger: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --destructive-subtle: hsla(0 84% 60% / 0.1);
-  --font-body: var(--font-sans);
-  --font-display: var(--font-sans);
-  --font-chat: var(--font-sans);
-  --mono: var(--font-mono);
+  --background: var(--bg);
+  --foreground: var(--text);
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --secondary: var(--bg-accent);
+  --secondary-foreground: var(--text-strong);
+  --muted-background: var(--bg-muted);
+  --muted-foreground: var(--muted);
+  --sidebar: var(--bg-elevated);
+  --sidebar-foreground: var(--text);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--bg-accent);
+  --sidebar-accent-foreground: var(--text-strong);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
@@ -174,15 +129,15 @@ body {
   width: 6px;
 }
 .landing-scroll::-webkit-scrollbar-track {
-  background: #000;
+  background: var(--bg-accent);
 }
 .landing-scroll::-webkit-scrollbar-thumb {
-  background: #ff5800;
+  background: var(--accent);
   border-radius: 3px;
 }
 .landing-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #ff5800 #000;
+  scrollbar-color: var(--accent) var(--bg-accent);
 }
 
 @keyframes blink {
@@ -201,7 +156,7 @@ body {
 
 /* Intro SVG wordmark */
 .intro-logo .letter-e {
-  fill: #ff4800;
+  fill: var(--accent);
 }
 .intro-logo .letter-l {
   fill: none;
@@ -218,11 +173,11 @@ body {
   opacity: 1;
 }
 .intro-logo .letter-i {
-  fill: #a5a5a5;
+  fill: var(--muted);
 }
 .intro-logo .letter-z-fill {
-  fill: #fff;
-  stroke: #ff7ba1;
+  fill: var(--card);
+  stroke: var(--accent-hover);
   stroke-width: 1px;
   stroke-miterlimit: 10;
   stroke-dasharray: 0 30;
@@ -247,14 +202,14 @@ body {
   }
 }
 .intro-logo .letter-z-shadow {
-  fill: #ff7ba1;
+  fill: var(--accent-hover);
   stroke: none;
 }
 .intro-logo .letter-a-shadow {
-  fill: #6300ff;
+  fill: var(--sky-0);
 }
 .intro-logo .letter-a {
-  fill: #6cff6c;
+  fill: var(--ok);
 }
 
 @keyframes draw-line {

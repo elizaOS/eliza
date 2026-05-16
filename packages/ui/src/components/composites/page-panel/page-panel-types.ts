@@ -48,7 +48,7 @@ export interface PanelNoticeProps extends React.HTMLAttributes<HTMLDivElement> {
   actions?: React.ReactNode;
 }
 
-export interface PageEmptyStateProps extends EmptyStateProps {
+export interface PageEmptyStateProps extends Omit<EmptyStateProps, "variant"> {
   variant?: "panel" | "inset" | "surface" | "workspace";
 }
 

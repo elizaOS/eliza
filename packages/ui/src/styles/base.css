@@ -87,8 +87,7 @@
   --font-sans: "Open Sans", Arial, system-ui, sans-serif;
   --mono: var(--font-sans);
   --font-body: var(--font-sans);
-  --font-display:
-    var(--font-sans);
+  --font-display: var(--font-sans);
   --font-chat: var(--font-sans);
 
   /* Legacy */

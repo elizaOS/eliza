@@ -5,21 +5,11 @@
 
 "use client";
 
-import { Button, ElizaCloudLockup, ProductSwitcher } from "@elizaos/ui";
+import { Button, ElizaCloudLockup } from "@elizaos/ui";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import UserMenu from "./user-menu";
-
-const appUrl = import.meta.env.VITE_ELIZA_APP_URL || "https://eliza.app";
-const osUrl = import.meta.env.VITE_ELIZA_OS_URL || "https://elizaos.ai";
-
-const productLinks = [
-  { label: "ElizaOS", href: osUrl },
-  { label: "Eliza App", href: appUrl },
-  { label: "Eliza Cloud", href: "/", active: true },
-  { label: "Docs", href: "/docs" },
-];
 
 export default function LandingHeader() {
   const { ready, authenticated } = useSessionAuth();
@@ -37,17 +27,6 @@ export default function LandingHeader() {
         <Link to="/" className="flex items-center gap-3">
           <ElizaCloudLockup />
         </Link>
-
-        <ProductSwitcher
-          activeClassName="bg-white text-[#0c4f8d]"
-          className="hidden border-white/22 bg-white/14 text-white/76 lg:flex"
-          inactiveClassName="hover:bg-white/18 hover:text-white"
-          items={productLinks.map((link) => ({
-            ...link,
-            external:
-              !link.href.startsWith("/") && !link.href.includes("localhost"),
-          }))}
-        />
 
         <div className="flex items-center gap-3">
           {authenticated ? (

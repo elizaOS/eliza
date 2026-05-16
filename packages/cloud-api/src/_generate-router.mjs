@@ -227,7 +227,7 @@ export async function generateRouter() {
 
 function mountLine(entry) {
   const line = `  app.route(${JSON.stringify(entry.path)}, ${entry.ident});`;
-  if (line.length <= 100) return line;
+  if (line.length <= 80) return line;
   return `  app.route(\n    ${JSON.stringify(entry.path)},\n    ${entry.ident},\n  );`;
 }
 

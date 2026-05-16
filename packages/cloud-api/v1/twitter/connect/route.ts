@@ -59,7 +59,9 @@ app.post("/", async (c) => {
     const redirectUrl = safeRedirectTarget.toString();
     const callbackUrl = `${baseUrl}/api/v1/twitter/callback`;
 
-    let authLink;
+    let authLink: Awaited<
+      ReturnType<typeof twitterAutomationService.generateAuthLink>
+    >;
     try {
       authLink = await twitterAutomationService.generateAuthLink(
         callbackUrl,

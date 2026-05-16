@@ -183,7 +183,7 @@ export function OnboardingOverlay() {
       {/* Clickable highlight area - clicking advances the tour */}
       {targetRect && (
         <div
-          className="absolute border-2 border-[#FF5800] rounded-lg pointer-events-auto cursor-pointer transition-all duration-300 hover:bg-white/5"
+          className="pointer-events-auto absolute cursor-pointer rounded-lg border-2 border-accent transition-all duration-300 hover:bg-accent/10"
           style={{
             top: targetRect.top,
             left: targetRect.left,
@@ -203,21 +203,21 @@ export function OnboardingOverlay() {
       {targetRect && (
         <div
           ref={tooltipRef}
-          className="absolute w-80 bg-[#1A1A1A] border border-[#353535] rounded-lg shadow-2xl pointer-events-auto transition-all duration-300"
+          className="pointer-events-auto absolute w-80 rounded-lg border border-border bg-card shadow-2xl transition-all duration-300"
           style={{
             top: tooltipPosition.top,
             left: tooltipPosition.left,
           }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-[#353535]">
+          <div className="flex items-center justify-between border-b border-border p-4">
             <div className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />
-              <h3 className="text-white font-medium">{currentStep.title}</h3>
+              <span className="inline-block h-2 w-2 rounded-full bg-accent" />
+              <h3 className="font-medium text-txt">{currentStep.title}</h3>
             </div>
             <button
               onClick={skipTour}
-              className="text-white/60 hover:text-white transition-colors"
+              className="text-muted transition-colors hover:text-txt"
               aria-label="Skip tour"
             >
               <X className="h-4 w-4" />
@@ -226,25 +226,25 @@ export function OnboardingOverlay() {
 
           {/* Content */}
           <div className="p-4">
-            <p className="text-white/80 text-sm leading-relaxed">
+            <p className="text-sm leading-relaxed text-muted-strong">
               {currentStep.description}
             </p>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between p-4 border-t border-[#353535]">
+          <div className="flex items-center justify-between border-t border-border p-4">
             {/* Progress indicator */}
             <div className="flex items-center gap-1.5">
               {Array.from({ length: totalSteps }).map((_, i) => (
                 <div
                   key={i}
                   className={cn(
-                    "w-2 h-2 rounded-full transition-colors",
-                    i === currentStepIndex ? "bg-[#FF5800]" : "bg-white/20",
+                    "h-2 w-2 rounded-full transition-colors",
+                    i === currentStepIndex ? "bg-accent" : "bg-muted/30",
                   )}
                 />
               ))}
-              <span className="ml-2 text-xs text-white/40">
+              <span className="ml-2 text-xs text-muted">
                 {currentStepIndex + 1} of {totalSteps}
               </span>
             </div>
@@ -256,7 +256,7 @@ export function OnboardingOverlay() {
                   variant="ghost"
                   size="sm"
                   onClick={prevStep}
-                  className="text-white/60 hover:text-white hover:bg-white/10"
+                  className="text-muted hover:bg-bg-hover hover:text-txt"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Back
@@ -265,7 +265,7 @@ export function OnboardingOverlay() {
               <Button
                 size="sm"
                 onClick={nextStep}
-                className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white"
+                className="bg-accent text-accent-fg hover:bg-accent/90"
               >
                 {isLastStep ? "Done" : "Next"}
                 {!isLastStep && <ChevronRight className="h-4 w-4 ml-1" />}

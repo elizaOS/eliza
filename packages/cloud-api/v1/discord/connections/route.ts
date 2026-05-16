@@ -124,7 +124,9 @@ app.post("/", async (c) => {
     }
 
     // Create connection - rely on database unique constraint to prevent duplicates
-    let connection;
+    let connection: Awaited<
+      ReturnType<typeof discordConnectionsRepository.create>
+    >;
     try {
       connection = await discordConnectionsRepository.create({
         organizationId: user.organization_id,

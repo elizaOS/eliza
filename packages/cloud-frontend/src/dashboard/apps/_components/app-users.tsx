@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, AvatarFallback, Button } from "@elizaos/ui";
+import { Avatar, AvatarFallback, Button, EmptyState } from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
@@ -71,7 +71,7 @@ export function AppUsers({ appId }: AppUsersProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-8 w-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -81,25 +81,22 @@ export function AppUsers({ appId }: AppUsersProps) {
 
   if (!hasUsers && !hasVisitors) {
     return (
-      <div className="bg-neutral-900 rounded-xl p-8 text-center">
-        <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center mx-auto mb-3">
-          <UsersIcon className="h-6 w-6 text-neutral-500" />
-        </div>
-        <h3 className="text-sm font-medium text-white mb-1">No users yet</h3>
-        <p className="text-xs text-neutral-500">
-          Users will appear here once they start using your app
-        </p>
-      </div>
+      <EmptyState
+        variant="dashed"
+        icon={<UsersIcon className="h-6 w-6" />}
+        title="No users yet"
+        description="Users will appear here once they start using your app"
+      />
     );
   }
 
   return (
     <div className="space-y-4">
       {hasUsers && (
-        <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
-              <UsersIcon className="h-4 w-4 text-[#FF5800]" />
+            <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
+              <UsersIcon className="h-4 w-4 text-accent" />
               Authenticated Users ({users.length})
             </h3>
           </div>
@@ -108,20 +105,20 @@ export function AppUsers({ appId }: AppUsersProps) {
             {users.map((appUser) => (
               <div
                 key={appUser.id}
-                className="flex items-center justify-between p-3 bg-black/30 hover:bg-black/40 rounded-lg border border-white/5 hover:border-white/10 transition-all"
+                className="flex items-center justify-between rounded-lg border border-border bg-bg-accent p-3 transition-all hover:border-border-strong hover:bg-bg-hover"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-gradient-to-br from-[#FF5800] to-purple-600 text-white text-xs">
+                    <AvatarFallback className="bg-accent text-accent-fg text-xs">
                       {appUser.user_id.substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium truncate">
+                    <p className="truncate text-sm font-medium text-txt">
                       User {appUser.user_id.substring(0, 8)}
                     </p>
-                    <div className="flex items-center gap-3 text-xs text-neutral-500">
+                    <div className="flex items-center gap-3 text-xs text-muted">
                       <span className="flex items-center gap-1">
                         <Activity className="h-3 w-3" />
                         {appUser.total_requests}
@@ -134,13 +131,13 @@ export function AppUsers({ appId }: AppUsersProps) {
                   </div>
 
                   <div className="text-right hidden lg:block">
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs text-muted">
                       First seen{" "}
                       {formatDistanceToNow(new Date(appUser.first_seen_at), {
                         addSuffix: true,
                       })}
                     </p>
-                    <p className="text-[10px] text-neutral-600 mt-0.5">
+                    <p className="mt-0.5 text-[10px] text-muted">
                       Last seen{" "}
                       {formatDistanceToNow(new Date(appUser.last_seen_at), {
                         addSuffix: true,
@@ -155,10 +152,10 @@ export function AppUsers({ appId }: AppUsersProps) {
       )}
 
       {hasVisitors && (
-        <div className="bg-neutral-900 rounded-xl p-4 space-y-4">
+        <div className="space-y-4 rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
-              <Globe className="h-4 w-4 text-blue-400" />
+            <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
+              <Globe className="h-4 w-4 text-accent" />
               Visitors ({visitors.length})
             </h3>
             <Button
@@ -177,14 +174,14 @@ export function AppUsers({ appId }: AppUsersProps) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10">
-                  <th className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
+                <tr className="border-b border-border">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted">
                     IP Address
                   </th>
-                  <th className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted">
                     Requests
                   </th>
-                  <th className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted">
                     Last Seen
                   </th>
                 </tr>
@@ -193,24 +190,24 @@ export function AppUsers({ appId }: AppUsersProps) {
                 {visitors.map((visitor, index) => (
                   <tr
                     key={visitor.ip}
-                    className="border-b border-white/5 hover:bg-white/5"
+                    className="border-b border-border/60 hover:bg-bg-hover"
                   >
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white/5">
-                          <span className="text-neutral-500 text-[10px]">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-bg-accent">
+                          <span className="text-[10px] text-muted">
                             {index + 1}
                           </span>
                         </div>
-                        <code className="text-white font-mono text-xs">
+                        <code className="font-mono text-xs text-txt">
                           {visitor.ip}
                         </code>
                       </div>
                     </td>
-                    <td className="py-2 px-3 text-right text-white text-xs font-medium">
+                    <td className="px-3 py-2 text-right text-xs font-medium text-txt">
                       {visitor.requestCount.toLocaleString()}
                     </td>
-                    <td className="py-2 px-3 text-right text-neutral-500 text-xs">
+                    <td className="px-3 py-2 text-right text-xs text-muted">
                       {formatDistanceToNow(new Date(visitor.lastSeen), {
                         addSuffix: true,
                       })}

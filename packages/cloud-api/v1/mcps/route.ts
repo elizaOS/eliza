@@ -166,7 +166,7 @@ app.get("/", async (c) => {
 
     const { category, search, status, scope, limit, offset } = validation.data;
 
-    let mcps;
+    let mcps: Awaited<ReturnType<typeof userMcpsService.listPublic>>;
 
     if (scope === "public") {
       mcps = await userMcpsService.listPublic({

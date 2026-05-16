@@ -282,7 +282,9 @@ async function __hono_POST(
       }
     }
 
-    let enqueueResult;
+    let enqueueResult: Awaited<
+      ReturnType<typeof provisioningJobService.enqueueAgentProvisionOnce>
+    >;
     try {
       enqueueResult = await provisioningJobService.enqueueAgentProvisionOnce({
         agentId,

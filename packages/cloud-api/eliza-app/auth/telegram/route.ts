@@ -210,7 +210,9 @@ async function handleTelegramAuth(request: Request): Promise<Response> {
     // ---- STANDARD FLOW: Find or create user with both Telegram and phone number ----
     // Note: Conflict checks are handled in the service layer with database constraints
     // to avoid TOCTOU race conditions. The service returns proper error codes.
-    let result;
+    let result: Awaited<
+      ReturnType<typeof elizaAppUserService.findOrCreateByTelegramWithPhone>
+    >;
     try {
       result = await elizaAppUserService.findOrCreateByTelegramWithPhone(
         authData,

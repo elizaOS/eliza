@@ -207,7 +207,9 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
     );
   } else {
     // ---- STANDARD FLOW: Find or create user by Discord ID (with optional phone cross-linking) ----
-    let result;
+    let result: Awaited<
+      ReturnType<typeof elizaAppUserService.findOrCreateByDiscordId>
+    >;
     try {
       result = await elizaAppUserService.findOrCreateByDiscordId(
         discordUser.id,

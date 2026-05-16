@@ -1,4 +1,5 @@
 import { Button } from "@elizaos/ui/button";
+import { Card } from "@elizaos/ui/components";
 import { ProductSwitcher as SharedProductSwitcher } from "@elizaos/ui/product-switcher";
 import {
   ArrowRight,
@@ -30,10 +31,10 @@ const productLinks = [
 ];
 
 const colors = [
-  { name: "Orange", value: "#ff5800" },
-  { name: "Blue", value: "#0057ff" },
-  { name: "White", value: "#f8f8f5" },
-  { name: "Black", value: "#111111" },
+  { name: "Orange", value: "var(--accent)" },
+  { name: "Blue", value: "var(--info)" },
+  { name: "White", value: "var(--os-product-white)" },
+  { name: "Black", value: "var(--os-product-black)" },
 ];
 
 const products = [
@@ -113,8 +114,13 @@ function CtaLink({
   variant?: "primary" | "secondary";
 }) {
   return (
-    <Button asChild variant={variant === "primary" ? "default" : "outline"}>
-      <a className={`cta ${variant}`} href={href}>
+    <Button
+      asChild
+      className="cta"
+      size="lg"
+      variant={variant === "primary" ? "default" : "outline"}
+    >
+      <a href={href}>
         {children}
         <ArrowRight aria-hidden="true" size={18} />
       </a>
@@ -180,6 +186,64 @@ function ProductVisual({ className }: { className: string }) {
       </div>
       <span className="brand-mark">elizaOS</span>
     </div>
+  );
+}
+
+function ProductCard({
+  product,
+}: {
+  product: (typeof products)[number];
+}) {
+  const { Icon } = product;
+
+  return (
+    <Card className="product-card" variant="flat">
+      <ProductVisual className={product.className} />
+      <div className="product-info">
+        <Icon aria-hidden="true" />
+        <div>
+          <h3>{product.name}</h3>
+          <p>{product.status}</p>
+        </div>
+      </div>
+      <Swatches names={product.colors} />
+      <div className="buy-row">
+        <strong>{product.price}</strong>
+        <Button asChild size="sm">
+          <a href={product.href}>Buy in Cloud</a>
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function InstallTile({
+  tile,
+}: {
+  tile: (typeof installTiles)[number];
+}) {
+  const [Icon, title, body] = tile;
+
+  return (
+    <Card className="install-tile" variant="flat">
+      <a href="/downloads/elizaos-beta-manifest.json">
+        <Icon aria-hidden="true" />
+        <span>{title}</span>
+        <small>{body}</small>
+      </a>
+    </Card>
+  );
+}
+
+function SetupCard({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <Card className="setup-card" variant="flat">
+      {children}
+    </Card>
   );
 }
 
@@ -253,41 +317,19 @@ export function App() {
           <h2>Pick the device. Pick the color. Buy with your Eliza account.</h2>
         </div>
         <div className="product-grid">
-          {products.map(({ Icon, ...product }) => (
-            <article className="product-card" key={product.id}>
-              <ProductVisual className={product.className} />
-              <div className="product-info">
-                <Icon aria-hidden="true" />
-                <div>
-                  <h3>{product.name}</h3>
-                  <p>{product.status}</p>
-                </div>
-              </div>
-              <Swatches names={product.colors} />
-              <div className="buy-row">
-                <strong>{product.price}</strong>
-                <a href={product.href}>Buy in Cloud</a>
-              </div>
-            </article>
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} />
           ))}
         </div>
       </section>
 
       <section className="install-strip" id="downloads">
-        {installTiles.map(([Icon, title, body]) => (
-          <a
-            className="install-tile"
-            href="/downloads/elizaos-beta-manifest.json"
-            key={title}
-          >
-            <Icon aria-hidden="true" />
-            <span>{title}</span>
-            <small>{body}</small>
-          </a>
+        {installTiles.map((tile) => (
+          <InstallTile key={tile[1]} tile={tile} />
         ))}
       </section>
 
-      <section className="purchase-flow">
+      <Card className="purchase-flow" variant="flat">
         <div>
           <Cloud aria-hidden="true" />
           <h2>Hardware orders live in Eliza Cloud.</h2>
@@ -313,32 +355,32 @@ export function App() {
         <CtaLink href={`${CLOUD_URL}/checkout?collection=elizaos-hardware`}>
           Open Cloud checkout
         </CtaLink>
-      </section>
+      </Card>
 
       <section className="setup-section">
-        <article>
+        <SetupCard>
           <HardDriveDownload aria-hidden="true" />
           <h3>Make your own USB</h3>
           <p>
             Download the beta installer, select a removable drive, verify,
             write, boot.
           </p>
-        </article>
-        <article>
+        </SetupCard>
+        <SetupCard>
           <MonitorCog aria-hidden="true" />
           <h3>Run the VM</h3>
           <p>Use the bundled launcher on macOS, Windows, or Linux hosts.</p>
-        </article>
-        <article>
+        </SetupCard>
+        <SetupCard>
           <Smartphone aria-hidden="true" />
           <h3>Flash Android</h3>
           <p>ADB discovery, guided flashing, and post-install validation.</p>
-        </article>
-        <article>
+        </SetupCard>
+        <SetupCard>
           <ShieldCheck aria-hidden="true" />
           <h3>Verify install</h3>
           <p>Checksums, removable-drive guards, and boot health checks.</p>
-        </article>
+        </SetupCard>
       </section>
     </main>
   );

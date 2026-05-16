@@ -177,7 +177,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -191,6 +191,7 @@ jobs:
           install-command: bun install --ignore-scripts
           install-native-deps: "true"
           run-postinstall: "true"
+          init-submodules: "false"
 
       # TODO: verify this script exists in eliza or port equivalent.
       # In eliza this was `bun run test:regression-matrix:release`.
@@ -297,7 +298,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -311,6 +312,7 @@ jobs:
           install-command: bun install --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "true"
+          init-submodules: "false"
 
       - name: Package Agent Browser Bridge release bundles
         id: package-browser-bridge
@@ -373,7 +375,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Validate public desktop signing inputs
         env:

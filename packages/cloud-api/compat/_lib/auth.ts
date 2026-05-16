@@ -9,6 +9,7 @@
 
 import type { Organization } from "@/db/repositories/organizations";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import type { ServiceKeyIdentity } from "@/lib/auth/service-key";
 import { requireServiceKey, ServiceKeyAuthError } from "@/lib/auth/service-key";
 import { authenticateWaifuBridge } from "@/lib/auth/waifu-bridge";
 
@@ -30,7 +31,7 @@ export async function requireCompatAuth(
   // 1. X-Service-Key (eliza-cloud S2S)
   const serviceKeyHeader = request.headers.get("X-Service-Key");
   if (serviceKeyHeader !== null) {
-    let serviceKeyIdentity;
+    let serviceKeyIdentity: ServiceKeyIdentity;
     try {
       serviceKeyIdentity = requireServiceKey(request);
     } catch (err) {
