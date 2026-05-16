@@ -47,7 +47,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
