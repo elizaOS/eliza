@@ -1,12 +1,5 @@
 /**
- * Section header component with orange dot indicator and optional title/description.
- * Supports left, center, and right alignment with customizable styling.
- *
- * @param props - Section header configuration
- * @param props.label - Label text displayed with dot indicator
- * @param props.title - Optional title text
- * @param props.description - Optional description text
- * @param props.align - Text alignment (left, center, right)
+ * Section header: accent dot + label, optional title and description.
  */
 import { cn } from "../../lib/utils";
 
@@ -46,19 +39,12 @@ export function SectionHeader({
           align === "right" && "justify-end",
         )}
       >
-        <span
-          className="inline-block w-2 h-2 rounded-full"
-          style={{ backgroundColor: "#FF5800" }}
-        />
+        <span className="inline-block w-2 h-2 bg-accent" />
         <p
           className={cn(
-            "text-xl uppercase tracking-wider font-normal",
+            "text-xl uppercase tracking-wider font-normal text-txt leading-[26px]",
             labelClassName,
           )}
-          style={{
-            color: "#E1E1E1",
-            lineHeight: "26px",
-          }}
         >
           {label}
         </p>
@@ -67,7 +53,7 @@ export function SectionHeader({
       {title && (
         <h2
           className={cn(
-            "text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-white",
+            "text-3xl md:text-4xl lg:text-5xl font-bold mb-4 text-txt-strong",
             titleClassName,
           )}
         >
@@ -78,7 +64,7 @@ export function SectionHeader({
       {description && (
         <div
           className={cn(
-            "text-white/70 text-base md:text-lg",
+            "text-muted-foreground text-base md:text-lg",
             align === "center" && "max-w-2xl mx-auto",
             descriptionClassName,
           )}
@@ -90,7 +76,6 @@ export function SectionHeader({
   );
 }
 
-// Simple variant with just label and dot
 export function SectionLabel({
   children,
   className,
@@ -100,17 +85,8 @@ export function SectionLabel({
 }) {
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <span
-        className="inline-block w-2 h-2"
-        style={{ backgroundColor: "#FF5800" }}
-      />
-      <span
-        className="text-xl uppercase font-normal"
-        style={{
-          color: "#E1E1E1",
-          lineHeight: "26px",
-        }}
-      >
+      <span className="inline-block w-2 h-2 bg-accent" />
+      <span className="text-xl uppercase font-normal text-txt leading-[26px]">
         {children}
       </span>
     </div>

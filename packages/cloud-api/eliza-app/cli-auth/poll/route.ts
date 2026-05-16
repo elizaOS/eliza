@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "@/db/client";
 import { cliAuthSessions } from "@/db/schemas/cli-auth-sessions";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -44,7 +45,7 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, status: "pending" });
   } catch (error) {
-    console.error("[CLI Auth Poll] Error:", error);
+    logger.error("[CLI Auth Poll] Error", { error });
     return c.json({ success: false, error: "Failed to poll session" }, 500);
   }
 });

@@ -23,9 +23,7 @@ test.describe("live: public routes against real backend", () => {
   // smoke — they would either need real credentials or hit production data.
   const publicRoutes = [
     "/",
-    "/os",
     "/login",
-    "/blog",
     "/docs",
     "/bsc",
     "/privacy-policy",

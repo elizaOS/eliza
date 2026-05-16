@@ -201,4 +201,9 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler pages deploy dist --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}
+        # Do NOT pass a positional `dist` argument: wrangler.toml already sets
+        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
+        # ignore wrangler.toml — which silently drops the `functions/` upload
+        # (so `_middleware.ts` never runs and `/api/*` falls through to the
+        # SPA's index.html instead of being proxied to the API Worker).
+        run: bunx wrangler pages deploy --project-name=eliza-cloud --branch=${{ steps.pages.outputs.branch }}

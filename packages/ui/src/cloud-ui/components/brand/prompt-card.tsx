@@ -1,10 +1,5 @@
 /**
- * Prompt card component displaying interactive prompt suggestions.
- * Used in landing page with hover effects and click handling.
- *
- * @param props - Prompt card configuration
- * @param props.prompt - Prompt text to display
- * @param props.onClick - Optional callback when card is clicked
+ * Prompt card: flat surface for clickable prompt suggestions.
  */
 
 import { ArrowUp } from "lucide-react";
@@ -22,19 +17,18 @@ export function PromptCard({ prompt, onClick, className }: PromptCardProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative bg-black/40 border border-white/10 p-4 text-left hover:border-white/30 transition-all",
+        "group relative rounded-sm border border-border bg-bg-elevated p-4 text-left hover:border-border-strong hover:bg-bg-hover transition-colors",
         className,
       )}
     >
-      <p className="text-sm text-white/70 group-hover:text-white/90">
+      <p className="text-sm text-muted-foreground group-hover:text-txt">
         {prompt}
       </p>
-      <ArrowUp className="absolute bottom-4 right-4 h-4 w-4 text-white/40 group-hover:text-white/70" />
+      <ArrowUp className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground group-hover:text-txt" />
     </button>
   );
 }
 
-// Grid of prompt cards
 interface PromptCardGridProps {
   prompts: string[];
   onPromptClick?: (prompt: string) => void;

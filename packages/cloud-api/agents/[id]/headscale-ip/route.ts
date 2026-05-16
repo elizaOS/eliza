@@ -11,6 +11,7 @@
 
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const UUID_RE =
@@ -61,13 +62,13 @@ app.get("/", async (c) => {
 
   const expectedToken = getExpectedInternalToken(c);
   if (!expectedToken) {
-    console.error("[headscale-ip] internal lookup token is not configured");
+    logger.error("[headscale-ip] internal lookup token is not configured");
     return c.json({ error: "internal auth not configured" }, 503);
   }
 
   const providedToken = getInternalToken(c) ?? "";
   if (!constantTimeEqual(providedToken, expectedToken)) {
-    console.warn(`[headscale-ip] blocked unauthorized lookup for ${agentId}`);
+    logger.warn("[headscale-ip] blocked unauthorized lookup", { agentId });
     return c.json({ error: "forbidden" }, 403);
   }
 
@@ -99,8 +100,7 @@ app.get("/", async (c) => {
       status: sandbox.status,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[headscale-ip] lookup error:", msg);
+    logger.error("[headscale-ip] lookup error", { error: err });
     return c.json({ error: "lookup failed" }, 500);
   }
 });

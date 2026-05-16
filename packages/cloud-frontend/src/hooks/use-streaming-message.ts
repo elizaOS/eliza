@@ -350,8 +350,7 @@ function processSSEMessage(
       onComplete?.();
       break;
     case "connected":
-      // Connection confirmation - can be ignored or logged
-      console.debug("[Stream] Connected:", data);
+      // Connection confirmation - no-op
       break;
     case "warning": {
       // Warning event - log but don't treat as error

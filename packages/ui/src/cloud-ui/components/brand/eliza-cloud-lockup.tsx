@@ -19,7 +19,7 @@ export function ElizaCloudLockup({
     >
       <span
         className={cn(
-          "font-[family-name:var(--font-display)] text-2xl font-normal leading-none tracking-normal text-white",
+          "font-[family-name:var(--font-display)] text-2xl font-normal leading-none tracking-normal text-current",
           logoClassName,
           textClassName,
         )}

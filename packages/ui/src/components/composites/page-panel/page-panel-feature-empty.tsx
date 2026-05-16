@@ -42,7 +42,7 @@ export function PagePanelFeatureEmpty({
       <div className="w-full max-w-2xl text-center">
         <div
           className={cn(
-            "mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border",
+            "mx-auto flex h-14 w-14 items-center justify-center rounded-sm border",
             iconTone,
           )}
         >

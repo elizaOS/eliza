@@ -75,16 +75,6 @@ const hardwareProducts: Product[] = [
     detail: "AOSP build with elizaOS as the shell.",
   },
   {
-    slug: "box",
-    sku: "elizaos-box",
-    name: "ElizaOS Box",
-    ships: "Pre-order",
-    image: "/assets/billboard_concept.jpg",
-    imageAlt: "ElizaOS box campaign concept",
-    summary: "A household agent appliance.",
-    detail: "Sits on the shelf. Runs the home.",
-  },
-  {
     slug: "chibi-usb",
     sku: "elizaos-usb-chibi",
     name: "Chibi USB key",
@@ -131,6 +121,31 @@ function ProductImage({ product }: { product: Product }) {
       className="product-image"
       draggable={false}
     />
+  );
+}
+
+function FeaturedUsbCard() {
+  const usb = hardwareProducts.find((p) => p.slug === "usb");
+  if (!usb) return null;
+  return (
+    <a href={`/hardware/${usb.slug}`} className="hw-featured">
+      <div className="hw-featured-media">
+        <ProductImage product={usb} />
+      </div>
+      <div className="hw-featured-body">
+        <span className="hw-featured-kicker">Pre-order</span>
+        <h3>{usb.name}</h3>
+        <p>{usb.detail}</p>
+        <div className="hw-featured-meta">
+          {usb.price ? <strong>{usb.price}</strong> : null}
+          {usb.ships ? <span>{usb.ships}</span> : null}
+        </div>
+        <span className="hw-featured-cta">
+          Reserve a USB
+          <ArrowRight className="icon" />
+        </span>
+      </div>
+    </a>
   );
 }
 
@@ -248,7 +263,14 @@ function HomePage() {
       <Header />
       <main>
         <CloudHero>
-          <h1>An operating system for your agent.</h1>
+          <img
+            src="/assets/elizaos-face.svg"
+            alt=""
+            aria-hidden="true"
+            className="hero-mark"
+            draggable={false}
+          />
+          <h1>The agentic operating system.</h1>
           <p className="hero-copy">
             Local first. Open source. Runs on your phone, your laptop, a USB
             stick, or a mini PC.
@@ -319,6 +341,7 @@ function HomePage() {
                 <ArrowRight className="icon" />
               </a>
             </div>
+            <FeaturedUsbCard />
             <HardwareTiles />
           </div>
         </section>

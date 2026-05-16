@@ -102,7 +102,9 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(
     page.getByRole("heading", { name: /^Run in cloud\.$/ }),
   ).toBeVisible();
-  await expectCloudPath(page.getByRole("link", { name: /^Launch Eliza$/ }).last());
+  await expectCloudPath(
+    page.getByRole("link", { name: /^Launch Eliza$/ }).last(),
+  );
 
   await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
   await expect(page.locator(".brand-section").first()).toHaveCSS(

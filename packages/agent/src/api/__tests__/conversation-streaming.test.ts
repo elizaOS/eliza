@@ -64,9 +64,10 @@ function createChatMessage(text: string) {
 }
 
 function createUseModelMock(
-  impl: (modelType: unknown, params: unknown) => Promise<unknown>,
+  impl: (...args: Parameters<UseModel>) => Promise<unknown>,
 ): UseModelMock {
-  return vi.fn(impl) as unknown as UseModelMock;
+  const mock = vi.fn(async (...args: Parameters<UseModel>) => impl(...args));
+  return mock as unknown as UseModelMock;
 }
 
 function createStreamingMessageService(

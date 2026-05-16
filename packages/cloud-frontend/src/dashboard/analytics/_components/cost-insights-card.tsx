@@ -46,14 +46,14 @@ export function CostInsightsCard({
   return (
     <BrandCard
       corners={false}
-      className="border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent shadow-md dark:from-amber-500/10"
+      className="border-[#FF5800]/40 bg-[#FF5800]/10"
     >
       <div className="flex flex-col gap-2 p-6 pb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>
           <Badge
             variant="outline"
-            className="border-amber-500/20 bg-amber-500/10 text-xs font-medium text-amber-300"
+            className="border-[#FF5800]/30 bg-[#FF5800]/10 text-xs font-medium text-[#FF5800]"
           >
             {costTrending.burnChangePercent > 0 ? "+" : ""}
             {costTrending.burnChangePercent.toFixed(1)}%

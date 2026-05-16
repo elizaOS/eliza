@@ -7,6 +7,7 @@
 
 import type { Plugin, UUID } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
+import { logger } from "../utils/logger";
 import { DebugTraceCollector, getCollector, registerCollector, removeCollector } from "./collector";
 import { storeDebugTrace } from "./store";
 import type {
@@ -124,7 +125,7 @@ async function handleRunStarted(payload: RunStartedPayload): Promise<void> {
 
   registerCollector(collector);
 
-  console.log(`[Debug] Trace started: ${runId.substring(0, 8)} (mode: ${agentMode})`);
+  logger.info(`[Debug] Trace started: ${runId.substring(0, 8)} (mode: ${agentMode})`);
 }
 
 async function handleRunEnded(payload: RunEndedPayload): Promise<void> {
@@ -134,7 +135,7 @@ async function handleRunEnded(payload: RunEndedPayload): Promise<void> {
   const collector = getCollector(runId);
 
   if (!collector) {
-    console.warn(`[Debug] No collector found for runId: ${runId.substring(0, 8)}`);
+    logger.warn(`[Debug] No collector found for runId: ${runId.substring(0, 8)}`);
     return;
   }
 
@@ -160,7 +161,7 @@ async function handleRunEnded(payload: RunEndedPayload): Promise<void> {
   // Clean up
   removeCollector(runId);
 
-  console.log(
+  logger.info(
     `[Debug] Trace completed: ${runId.substring(0, 8)} (${trace.summary.totalActions} actions, ${trace.summary.totalModelCalls} model calls, ${formatDuration(trace.durationMs ?? 0)})`,
   );
 }
@@ -356,7 +357,7 @@ export const debugPlugin: Plugin = {
  */
 export function getDebugPluginIfEnabled(): Plugin | undefined {
   if (isDebugTracingEnabled()) {
-    console.log("[Debug] Debug tracing plugin enabled");
+    logger.info("[Debug] Debug tracing plugin enabled");
     return debugPlugin;
   }
   return undefined;

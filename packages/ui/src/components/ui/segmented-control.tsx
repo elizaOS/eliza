@@ -34,7 +34,7 @@ export function SegmentedControl<T extends string>({
     <div
       data-segmented-control
       className={cn(
-        "flex w-fit max-w-full self-start items-center gap-1 rounded-2xl border border-border/30 bg-card/40 p-1 backdrop-blur-sm",
+        "flex w-fit max-w-full self-start items-center gap-1 rounded-sm border border-border bg-card p-1",
         className,
       )}
       {...props}
@@ -50,10 +50,10 @@ export function SegmentedControl<T extends string>({
             disabled={item.disabled}
             onClick={() => !item.disabled && onValueChange(item.value)}
             className={cn(
-              "relative inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all",
+              "relative inline-flex items-center gap-1.5 rounded-sm px-3.5 py-2 text-xs font-semibold transition-colors",
               isActive
-                ? "border border-accent/26 bg-accent/14 text-txt shadow-sm"
-                : "border border-transparent text-muted hover:bg-card/60 hover:text-txt",
+                ? "border border-accent/30 bg-accent-subtle text-txt shadow-xs"
+                : "border border-transparent text-muted hover:bg-bg-hover hover:text-txt",
               buttonClassName,
               isActive ? activeButtonClassName : inactiveButtonClassName,
             )}

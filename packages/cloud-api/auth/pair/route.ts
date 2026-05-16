@@ -12,6 +12,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -69,8 +70,7 @@ app.post("/", async (c) => {
       { "Cache-Control": "no-store, no-cache, must-revalidate" },
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[auth/pair] error:", msg);
+    logger.error("[auth/pair] error", { error: err });
     return c.json({ error: "Pairing failed" }, 500);
   }
 });

@@ -199,10 +199,10 @@ export function AffiliatesPageClient() {
           WHY cyan accent: Visually distinct from orange affiliate branding so users don’t merge the two mentally. */}
       <BrandCard
         corners={false}
-        className="border-l-4 border-l-cyan-500/60 border border-white/10"
+        className="border-l-4 border-l-[#0B35F1] border border-white/10"
       >
         <div className="flex items-start gap-3 mb-4">
-          <Users className="h-5 w-5 text-cyan-400 mt-0.5 shrink-0" />
+          <Users className="h-5 w-5 text-[#0B35F1] mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-semibold text-white mb-1">
               Invite friends
@@ -224,7 +224,7 @@ export function AffiliatesPageClient() {
             <Button
               variant="secondary"
               size="sm"
-              className="shrink-0 bg-cyan-500/15 hover:bg-cyan-500/25 text-white border-cyan-500/30"
+              className="shrink-0 bg-[#0B35F1]/15 hover:bg-[#0B35F1]/25 text-white border-[#0B35F1]/30"
               onClick={() => refetchReferral()}
             >
               Retry
@@ -258,14 +258,14 @@ export function AffiliatesPageClient() {
                   ? "1 friend has joined with your link."
                   : `${referralMe.total_referrals} friends have joined with your link.`}
             </p>
-            <div className="flex items-center gap-3 bg-white/5 border border-cyan-500/20 rounded-lg p-3">
-              <LinkIcon className="h-5 w-5 text-cyan-400/60 shrink-0" />
+            <div className="flex items-center gap-3 bg-white/5 border border-[#0B35F1]/20 rounded-lg p-3">
+              <LinkIcon className="h-5 w-5 text-[#0B35F1]/60 shrink-0" />
               <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
                 {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
               </div>
               <Button
                 variant="secondary"
-                className="shrink-0 bg-cyan-500/15 hover:bg-cyan-500/25 text-white border-cyan-500/30"
+                className="shrink-0 bg-[#0B35F1]/15 hover:bg-[#0B35F1]/25 text-white border-[#0B35F1]/30"
                 onClick={() => {
                   void (async () => {
                     if (!pageOrigin) {

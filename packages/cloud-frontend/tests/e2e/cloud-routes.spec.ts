@@ -1,5 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 
+// In live-prod mode the mocked-API specs do not apply (cookies are scoped to
+// 127.0.0.1, fixtures don't exist on real backends). Skip the whole file.
+test.skip(
+  Boolean(process.env.CLOUD_E2E_LIVE_URL),
+  "cloud-routes.spec uses local mocks; live-prod runs cloud-routes-live.spec instead",
+);
+
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 
 // Console messages we explicitly tolerate. Keep this list short and
@@ -24,10 +31,8 @@ const HOMEPAGE_TITLE_FALLBACK = /eliza cloud - Your Eliza, always online/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/": HOMEPAGE_TITLE_FALLBACK,
   "/login": /login/i,
-  "/os": /elizaos|operating system/i,
   "/terms-of-service": /terms/i,
   "/privacy-policy": /privacy/i,
-  "/blog": /blog/i,
   "/docs": /doc/i,
 };
 
@@ -94,10 +99,8 @@ function assertNoFailures(route: string, captured: CapturedFailures) {
 const publicRoutes = [
   "/",
   "/login",
-  "/os",
   "/terms-of-service",
   "/privacy-policy",
-  "/blog",
   "/docs",
   "/checkout?collection=elizaos-hardware",
   "/payment/pay_req_1",

@@ -10,7 +10,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import appConfig from "../app.config";
 
 const here = import.meta.dirname;
 const root = join(here, "..");
@@ -23,8 +22,10 @@ function read(rel: string): string {
 
 describe("brand surfaces", () => {
   it("app.config web/theme colors are brand orange", () => {
-    expect(appConfig.web.themeColor).toBe(BRAND_ORANGE);
-    expect(appConfig.web.backgroundColor).toBe(BRAND_ORANGE);
+    const src = read("app.config.ts");
+    expect(src).toMatch(/themeColor:\s*"#FF5800"/);
+    expect(src).toMatch(/backgroundColor:\s*"#FF5800"/);
+    expect(BRAND_ORANGE).toBe("#FF5800");
   });
 
   it("capacitor config splash, ios and android backgrounds are brand orange", () => {

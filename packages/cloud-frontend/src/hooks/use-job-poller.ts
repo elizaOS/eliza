@@ -158,7 +158,9 @@ export function useJobPoller(options: UseJobPollerOptions = {}) {
               callbacksRef.current.onFailed?.(updatedJob);
               needsRefresh = true;
             }
-          } catch {}
+          } catch (err) {
+            console.warn("[JobPoller] Failed to update job", job.jobId, err);
+          }
         }
 
         if (needsRefresh && autoRefresh && !cancelled) {

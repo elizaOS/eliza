@@ -92,24 +92,24 @@ export function BrandTabsResponsive({
         <Select value={value || defaultValue} onValueChange={onValueChange}>
           <SelectTrigger
             className={cn(
-              "w-full h-8 rounded-sm border border-white/10 bg-black/50 backdrop-blur-sm",
-              "text-white text-xs px-3 py-1",
-              "hover:bg-[#252527] transition-colors",
+              "w-full h-8 rounded-sm border border-border bg-bg-elevated",
+              "text-txt text-xs px-3 py-1",
+              "hover:bg-bg-hover transition-colors",
             )}
           >
             <SelectValue>
               {tabs.find((tab) => tab.value === (value || defaultValue))?.label}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent className="bg-[#1A1A1A] border-white/10">
+          <SelectContent className="bg-bg-elevated border-border">
             {tabs.map((tab) => (
               <SelectItem
                 key={tab.value}
                 value={tab.value}
                 disabled={tab.disabled}
                 className={cn(
-                  "text-white text-xs cursor-pointer",
-                  "hover:bg-[#252527] focus:bg-[#252527]",
+                  "text-txt text-xs cursor-pointer",
+                  "hover:bg-bg-hover focus:bg-bg-hover",
                   "data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed",
                 )}
               >
@@ -130,7 +130,7 @@ export function BrandTabsResponsive({
           breakpoint === "sm" && "sm:inline-flex",
           breakpoint === "md" && "md:inline-flex",
           breakpoint === "lg" && "lg:inline-flex",
-          "h-8 lg:h-9 items-center justify-center rounded-none bg-black/50 border border-white/10 p-0 backdrop-blur-sm",
+          "h-8 lg:h-9 items-center justify-center rounded-sm bg-bg-elevated border border-border p-0",
         )}
       >
         {tabs.map((tab) => (
@@ -139,10 +139,10 @@ export function BrandTabsResponsive({
             value={tab.value}
             disabled={tab.disabled}
             className={cn(
-              "inline-flex items-center gap-1.5 lg:gap-2 rounded-none px-2.5 lg:px-4 xl:px-6 py-1 lg:py-1.5 text-xs lg:text-sm font-medium transition-all whitespace-nowrap",
+              "inline-flex items-center gap-1.5 lg:gap-2 rounded-none px-2.5 lg:px-4 xl:px-6 py-1 lg:py-1.5 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap",
               "border-b-2 border-transparent",
-              "text-white/70 hover:text-white/90",
-              "data-[state=active]:border-white data-[state=active]:bg-[#252527] data-[state=active]:text-white",
+              "text-txt/70 hover:text-txt",
+              "data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               "disabled:pointer-events-none disabled:opacity-50",
             )}

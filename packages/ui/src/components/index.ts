@@ -4,7 +4,6 @@
 export type {
   BrandButtonProps,
   KeyMetric,
-  LockOnButtonProps,
   TabItem,
 } from "../cloud-ui/components/brand";
 export {
@@ -23,9 +22,7 @@ export {
   DashboardStatCard,
   ElizaCloudLockup,
   ElizaLogo,
-  HUDContainer,
   KeyMetricsGrid,
-  LockOnButton,
   MiniStatCard,
   PromptCard,
   PromptCardGrid,

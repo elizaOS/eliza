@@ -11,6 +11,7 @@ import {
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
 import { syncUserFromSteward } from "@/lib/steward-sync";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
@@ -22,7 +23,7 @@ const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 let stewardAuthMetricCounter = 0;
 function logStewardAuth(outcome: string, ttl: number | null) {
   stewardAuthMetricCounter += 1;
-  console.log("[steward-auth]", {
+  logger.info("[steward-auth]", {
     timestamp: new Date().toISOString(),
     ttl,
     outcome,
@@ -76,11 +77,11 @@ app.post("/", async (c) => {
       });
     } catch (error) {
       logStewardAuth("sync-failed", null);
-      console.error(
+      logger.error(
         "[steward-auth] Failed to sync Steward user before setting cookie",
         {
           stewardUserId: claims.userId,
-          error: error instanceof Error ? error.message : String(error),
+          error,
         },
       );
       return c.json(

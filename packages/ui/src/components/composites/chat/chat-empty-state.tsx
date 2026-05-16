@@ -40,7 +40,7 @@ export function ChatEmptyState({
     >
       {variant === "default" ? (
         <>
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-subtle">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-sm bg-accent-subtle">
             <svg
               width="32"
               height="32"

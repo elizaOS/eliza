@@ -45,6 +45,7 @@ const WRITE_BUILD_INFO_SCRIPT = fs.existsSync(
 )
   ? path.join(ROOT, "scripts", "write-build-info.ts")
   : path.join(ROOT, "packages", "scripts", "write-build-info.ts");
+const APP_CORE_PACKAGE_DIR = path.join(ROOT, "packages", "app-core");
 const CORE_PACKAGE_DIR = path.join(ROOT, "packages", "core");
 const SHARED_PACKAGE_DIR = path.join(ROOT, "packages", "shared");
 
@@ -570,6 +571,7 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
 function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/core", CORE_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/shared", SHARED_PACKAGE_DIR);
+  ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 
 function stageDesktopBuild() {

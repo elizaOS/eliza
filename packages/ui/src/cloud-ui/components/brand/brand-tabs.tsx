@@ -1,13 +1,6 @@
 /**
- * Brand tabs component system matching the landing page design.
- * Uses border-based active state and requires unique `id` prop to prevent hydration errors.
- *
- * @example
- * <BrandTabs id="my-unique-tabs" defaultValue="tab1">
- *   <BrandTabsList>
- *     <BrandTabsTrigger value="tab1">Tab 1</BrandTabsTrigger>
- *   </BrandTabsList>
- * </BrandTabs>
+ * Brand tabs: flat, token-driven, with bottom-border active state.
+ * Requires a unique `id` on the consumer to avoid hydration mismatches when used in pairs.
  */
 
 "use client";
@@ -25,7 +18,7 @@ const BrandTabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center justify-center rounded-none bg-black/50 border border-white/10 p-0 backdrop-blur-sm",
+      "inline-flex h-9 items-center justify-center rounded-sm border border-border bg-bg-elevated p-0",
       className,
     )}
     {...props}
@@ -40,10 +33,9 @@ const BrandTabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center gap-2 rounded-none px-6 py-1.5 text-sm font-medium transition-all whitespace-nowrap",
-      "border-b-2 border-transparent",
-      "text-white/70 hover:text-white/90",
-      "data-[state=active]:border-white data-[state=active]:bg-[#252527] data-[state=active]:text-white",
+      "inline-flex items-center gap-2 rounded-none px-6 py-1.5 text-sm font-medium transition-colors whitespace-nowrap",
+      "border-b-2 border-transparent text-txt/70 hover:text-txt",
+      "data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       "disabled:pointer-events-none disabled:opacity-50",
       className,
@@ -68,7 +60,6 @@ const BrandTabsContent = React.forwardRef<
 ));
 BrandTabsContent.displayName = TabsPrimitive.Content.displayName;
 
-// Simple tab variant for category filters
 interface SimpleBrandTabsProps {
   tabs: string[];
   activeTab: string;

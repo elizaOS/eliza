@@ -6,6 +6,7 @@
  */
 
 import type { UUID } from "@elizaos/core";
+import { logger } from "../utils/logger";
 import type {
   ActionExecutionStepData,
   DebugFailure,
@@ -235,7 +236,7 @@ export class DebugTraceCollector {
     },
   ): void {
     if (!this.pendingModelCall) {
-      console.warn("[DebugTraceCollector] recordModelCallEnd called without matching start");
+      logger.warn("[DebugTraceCollector] recordModelCallEnd called without matching start");
       return;
     }
 
@@ -356,7 +357,7 @@ export class DebugTraceCollector {
     error?: string;
   }): void {
     if (!this.pendingAction) {
-      console.warn("[DebugTraceCollector] recordActionEnd called without matching start");
+      logger.warn("[DebugTraceCollector] recordActionEnd called without matching start");
       return;
     }
 

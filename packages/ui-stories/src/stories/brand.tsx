@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, Cloud, Cpu, Zap } from "lucide-react";
+import { Activity, Cloud, Cpu } from "lucide-react";
 
 import type { StoryDefinition } from "../Story.tsx";
 
@@ -21,12 +21,10 @@ import { DashboardSection } from "@ui-src/cloud-ui/components/brand/dashboard-se
 import { DashboardStatCard } from "@ui-src/cloud-ui/components/brand/dashboard-stat-card.tsx";
 import { ElizaCloudLockup } from "@ui-src/cloud-ui/components/brand/eliza-cloud-lockup.tsx";
 import { ElizaLogo } from "@ui-src/cloud-ui/components/brand/eliza-logo.tsx";
-import { HUDContainer } from "@ui-src/cloud-ui/components/brand/hud-container.tsx";
 import {
   KeyMetricsGrid,
   type KeyMetric,
 } from "@ui-src/cloud-ui/components/brand/key-metrics-grid.tsx";
-import { LockOnButton } from "@ui-src/cloud-ui/components/brand/lock-on-button.tsx";
 import { MiniStatCard } from "@ui-src/cloud-ui/components/brand/mini-stat-card.tsx";
 import { PromptCard, PromptCardGrid } from "@ui-src/cloud-ui/components/brand/prompt-card.tsx";
 import {
@@ -201,38 +199,12 @@ export const brandStories: StoryDefinition[] = [
     render: () => <ElizaLogo />,
   },
   {
-    name: "HUDContainer",
-    importPath: 'import { HUDContainer } from "@elizaos/ui/cloud-ui/components/brand/hud-container"',
-    render: () => (
-      <HUDContainer className="p-6" cornerSize="md">
-        <p style={{ color: "#fff", margin: 0 }}>Install elizaOS</p>
-      </HUDContainer>
-    ),
-  },
-  {
     name: "KeyMetricsGrid",
     importPath: 'import { KeyMetricsGrid } from "@elizaos/ui/cloud-ui/components/brand/key-metrics-grid"',
     render: () => (
       <div style={{ width: "100%" }}>
         <KeyMetricsGrid metrics={sampleMetrics} columns={3} />
       </div>
-    ),
-  },
-  {
-    name: "LockOnButton",
-    importPath: 'import { LockOnButton } from "@elizaos/ui/cloud-ui/components/brand/lock-on-button"',
-    render: () => (
-      <>
-        <LockOnButton variant="primary">Lock on</LockOnButton>
-        <LockOnButton variant="outline">Outline</LockOnButton>
-        <LockOnButton variant="ghost">Ghost</LockOnButton>
-        <LockOnButton variant="hud" icon={<Zap />}>
-          HUD
-        </LockOnButton>
-        <LockOnButton size="sm">Small</LockOnButton>
-        <LockOnButton size="lg">Large</LockOnButton>
-        <LockOnButton disabled>Disabled</LockOnButton>
-      </>
     ),
   },
   {

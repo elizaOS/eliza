@@ -1,13 +1,11 @@
 /**
- * Brand card component with brand styling and optional corner bracket decorations.
- * Supports hover effects and customizable corner styling.
+ * Brand card: flat surface, theme-token driven, xs rounding, with optional corner brackets.
  *
- * @param props - Brand card props
- * @param props.hover - Whether to enable hover effects
- * @param props.corners - Whether to display corner brackets
- * @param props.cornerSize - Size of corner brackets (sm, md, lg, xl)
- * @param props.cornerColor - Color of corner brackets
- * @param props.asChild - If true, renders as a child component
+ * @param props.hover - Enable hover treatment (border + bg shift)
+ * @param props.corners - Render corner brackets
+ * @param props.cornerSize - Corner bracket size
+ * @param props.cornerColor - Corner bracket color override (defaults to currentColor)
+ * @param props.asChild - If true, render as Radix Slot child
  */
 
 import { Slot } from "@radix-ui/react-slot";
@@ -31,7 +29,7 @@ export function BrandCard({
   hover = false,
   corners = true,
   cornerSize = "md",
-  cornerColor = "#E1E1E1",
+  cornerColor,
   asChild = false,
   ...props
 }: BrandCardProps) {
@@ -40,9 +38,9 @@ export function BrandCard({
   return (
     <Component
       className={cn(
-        "relative border border-white/10 bg-black/55 p-4 md:p-6 !rounded-none backdrop-blur-sm",
+        "relative rounded-sm border border-border bg-bg-elevated p-4 md:p-6 text-txt",
         hover &&
-          "group transition-[border-color,background-color,transform] duration-300 hover:border-white/25 hover:bg-black/65",
+          "group transition-colors duration-200 hover:border-border-strong hover:bg-bg-hover",
         className,
       )}
       {...props}
@@ -53,7 +51,6 @@ export function BrandCard({
   );
 }
 
-// Agent card variant used in landing page
 interface AgentCardProps {
   title: string;
   description: string;
@@ -73,9 +70,8 @@ export function AgentCard({
 }: AgentCardProps) {
   return (
     <BrandCard hover className={cn("group", className)}>
-      {/* Icon */}
       <div
-        className="mb-4 inline-flex border border-current/15 p-3 !rounded-none"
+        className="mb-4 inline-flex rounded-sm border border-current/15 p-3"
         style={{
           backgroundColor: `${color}20`,
           color: color,
@@ -84,11 +80,9 @@ export function AgentCard({
         {icon}
       </div>
 
-      {/* Content */}
-      <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
-      <p className="text-white/60 text-sm mb-4">{description}</p>
+      <h3 className="text-xl font-bold text-txt-strong mb-2">{title}</h3>
+      <p className="text-muted-foreground text-sm mb-4">{description}</p>
 
-      {/* Action */}
       {action && action}
     </BrandCard>
   );

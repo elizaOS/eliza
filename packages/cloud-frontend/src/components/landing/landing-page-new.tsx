@@ -52,9 +52,11 @@ export function LandingPage({ accessError }: LandingPageProps) {
     }
   }, [ready, authenticated, navigate]);
 
-  if (!ready) return null;
-
-  if (authenticated) {
+  // Render the landing page on SSR and during client auth-loading so the SSR
+  // markup matches the client first paint (avoids React #418 hydration error).
+  // The useEffect above swaps in /dashboard/agents once we know the user is
+  // authenticated.
+  if (ready && authenticated) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black text-white">
         <Loader2 className="h-6 w-6 animate-spin" />

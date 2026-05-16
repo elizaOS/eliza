@@ -70,14 +70,14 @@ export function TagEditor({
         {normalizedItems.map((item) => (
           <span
             key={item}
-            className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-bg-accent px-2.5 py-1 text-xs text-txt"
+            className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg-accent px-2.5 py-1 text-xs text-txt"
           >
             <span>{item}</span>
             <Button
               type="button"
               size="icon"
               variant="ghost"
-              className="h-4 w-4 rounded-full text-muted hover:text-txt"
+              className="h-4 w-4 rounded-sm text-muted hover:text-txt"
               aria-label={`${removeLabel} ${item}`}
               onClick={() => removeItem(item)}
             >

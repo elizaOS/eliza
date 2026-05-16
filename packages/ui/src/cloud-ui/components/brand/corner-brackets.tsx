@@ -30,13 +30,13 @@ const sizeMap = {
 export function CornerBrackets({
   className,
   size = "md",
-  color = "#E1E1E1",
+  color,
   variant = "corners",
   hoverColor,
   hoverScale = false,
 }: CornerBracketsProps) {
   const sizeClass = sizeMap[size];
-  const borderStyle = { borderColor: color };
+  const borderStyle = color ? { borderColor: color } : undefined;
 
   // Add hover class if hoverColor is provided
   const hoverClass = hoverColor ? "corner-bracket-hover" : "";
@@ -47,7 +47,7 @@ export function CornerBrackets({
         {/* Top-left corner */}
         <div
           className={cn(
-            "absolute left-0 top-0 border-l-2 border-t-2",
+            "absolute left-0 top-0 border-l-2 border-t-2 border-current",
             sizeClass,
             hoverClass,
             hoverScale && "corner-bracket-tl",
@@ -57,7 +57,7 @@ export function CornerBrackets({
         {/* Top-right corner */}
         <div
           className={cn(
-            "absolute right-0 top-0 border-r-2 border-t-2",
+            "absolute right-0 top-0 border-r-2 border-t-2 border-current",
             sizeClass,
             hoverClass,
             hoverScale && "corner-bracket-tr",
@@ -67,7 +67,7 @@ export function CornerBrackets({
         {/* Bottom-left corner */}
         <div
           className={cn(
-            "absolute bottom-0 left-0 border-b-2 border-l-2",
+            "absolute bottom-0 left-0 border-b-2 border-l-2 border-current",
             sizeClass,
             hoverClass,
             hoverScale && "corner-bracket-bl",
@@ -77,7 +77,7 @@ export function CornerBrackets({
         {/* Bottom-right corner */}
         <div
           className={cn(
-            "absolute bottom-0 right-0 border-b-2 border-r-2",
+            "absolute bottom-0 right-0 border-b-2 border-r-2 border-current",
             sizeClass,
             hoverClass,
             hoverScale && "corner-bracket-br",
@@ -93,7 +93,7 @@ export function CornerBrackets({
       {/* Top-left corner */}
       <div
         className={cn(
-          "absolute top-0 left-0 border-t border-l",
+          "absolute top-0 left-0 border-t border-l border-current",
           sizeClass,
           hoverClass,
           hoverScale && "corner-bracket-tl",
@@ -104,7 +104,7 @@ export function CornerBrackets({
       {/* Top-right corner */}
       <div
         className={cn(
-          "absolute top-0 right-0 border-t border-r",
+          "absolute top-0 right-0 border-t border-r border-current",
           sizeClass,
           hoverClass,
           hoverScale && "corner-bracket-tr",
@@ -115,7 +115,7 @@ export function CornerBrackets({
       {/* Bottom-left corner */}
       <div
         className={cn(
-          "absolute bottom-0 left-0 border-b border-l",
+          "absolute bottom-0 left-0 border-b border-l border-current",
           sizeClass,
           hoverClass,
           hoverScale && "corner-bracket-bl",
@@ -126,7 +126,7 @@ export function CornerBrackets({
       {/* Bottom-right corner */}
       <div
         className={cn(
-          "absolute bottom-0 right-0 border-b border-r",
+          "absolute bottom-0 right-0 border-b border-r border-current",
           sizeClass,
           hoverClass,
           hoverScale && "corner-bracket-br",

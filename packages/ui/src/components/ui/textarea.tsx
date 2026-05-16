@@ -14,8 +14,8 @@ const textareaVariants = cva(
     variants: {
       variant: {
         default:
-          "flex rounded-md border-input bg-bg px-3 py-2 ring-offset-bg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        form: "rounded-2xl border-border/60 bg-bg/70 px-4 py-3 outline-none shadow-sm focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent",
+          "flex rounded-sm border-input bg-bg px-3 py-2 ring-offset-bg placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        form: "rounded-sm border-border bg-bg px-4 py-3 outline-none shadow-xs focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent",
         config:
           "border-border bg-card font-[var(--mono)] placeholder:text-muted placeholder:opacity-60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent",
       },

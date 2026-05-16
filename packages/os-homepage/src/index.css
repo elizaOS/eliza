@@ -169,6 +169,14 @@ img {
   max-width: 50rem;
 }
 
+.hero-mark {
+  display: block;
+  width: clamp(3.25rem, 5vw, 4.5rem);
+  height: auto;
+  margin-bottom: 1.25rem;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.18));
+}
+
 .hero-cloud h1,
 .hero-cloud .hero-copy {
   color: var(--brand-black);
@@ -388,6 +396,94 @@ h3 {
 .section-head .button {
   justify-self: start;
   align-self: end;
+}
+
+#hardware {
+  scroll-margin-top: 4rem;
+}
+
+.hw-featured {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(1.25rem, 3vw, 2.5rem);
+  align-items: center;
+  margin-bottom: clamp(2rem, 5vw, 3.5rem);
+  padding: clamp(1.25rem, 2vw, 1.75rem);
+  background: var(--brand-black);
+  border-radius: var(--radius-xs);
+  color: var(--brand-white);
+  transition: transform 160ms ease;
+}
+
+.hw-featured:hover {
+  transform: translateY(-2px);
+}
+
+@media (min-width: 800px) {
+  .hw-featured {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  }
+}
+
+.hw-featured-media .product-image {
+  aspect-ratio: 4 / 3;
+  background: var(--brand-blue);
+}
+
+.hw-featured-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hw-featured-kicker {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-orange);
+}
+
+.hw-featured-body h3 {
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.02;
+  margin: 0;
+}
+
+.hw-featured-body p {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 1.05rem;
+  font-weight: 300;
+  line-height: 1.4;
+  opacity: 0.88;
+}
+
+.hw-featured-meta {
+  display: flex;
+  gap: 1.25rem;
+  align-items: baseline;
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.hw-featured-meta strong {
+  font-size: 1.4rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.hw-featured-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--brand-orange);
 }
 
 .hw-grid {

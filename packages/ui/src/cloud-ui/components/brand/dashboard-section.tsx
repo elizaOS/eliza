@@ -19,8 +19,8 @@ export function DashboardSection({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2">
-        <span className="inline-block size-2 bg-[#FF5800]" />
-        <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
+        <span className="inline-block size-2 bg-accent" />
+        <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-muted-foreground">
           {label}
         </p>
       </div>
@@ -28,12 +28,12 @@ export function DashboardSection({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
             {title ? (
-              <h2 className="text-xl font-semibold text-white md:text-2xl">
+              <h2 className="text-xl font-semibold text-txt-strong md:text-2xl">
                 {title}
               </h2>
             ) : null}
             {description ? (
-              <div className="max-w-3xl text-sm text-white/55 md:text-base">
+              <div className="max-w-3xl text-sm text-muted-foreground md:text-base">
                 {description}
               </div>
             ) : null}
