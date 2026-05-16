@@ -177,6 +177,10 @@ type TextToSpeechHandler = (
   params: TextToSpeechParams | string,
 ) => Promise<Uint8Array>;
 
+interface KokoroPrewarmOptions {
+  shouldSkip?: () => boolean;
+}
+
 type TranscriptionHandler = (
   runtime: IAgentRuntime,
   params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
@@ -1530,6 +1534,7 @@ export function makeKokoroTextToSpeechHandler(
 
 export function prewarmKokoroTextToSpeechHandler(
   handler: TextToSpeechHandler,
+  opts: KokoroPrewarmOptions = {},
 ): void {
   if (readBooleanEnv("ELIZA_KOKORO_PREWARM") !== true) return;
 
@@ -1542,6 +1547,12 @@ export function prewarmKokoroTextToSpeechHandler(
     process.env.ELIZA_KOKORO_PREWARM_TEXT?.trim() || "Hello from Eliza.";
 
   setTimeout(() => {
+    if (opts.shouldSkip?.()) {
+      logger.info(
+        "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
+      );
+      return;
+    }
     const started = Date.now();
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), timeoutMs);
@@ -1965,7 +1976,15 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_TO_SPEECH,
     ModelType.TRANSCRIPTION,
   ];
-  const kokoroTextToSpeechHandler = makeKokoroTextToSpeechHandler();
+  const baseKokoroTextToSpeechHandler = makeKokoroTextToSpeechHandler();
+  let foregroundKokoroTextToSpeechUsed = false;
+  const kokoroTextToSpeechHandler: TextToSpeechHandler = async (
+    runtime,
+    params,
+  ) => {
+    foregroundKokoroTextToSpeechUsed = true;
+    return baseKokoroTextToSpeechHandler(runtime, params);
+  };
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
@@ -2015,7 +2034,9 @@ export async function ensureAospLocalInferenceHandlers(
         (err instanceof Error ? err.message : String(err)),
     );
   });
-  prewarmKokoroTextToSpeechHandler(kokoroTextToSpeechHandler);
+  prewarmKokoroTextToSpeechHandler(kokoroTextToSpeechHandler, {
+    shouldSkip: () => foregroundKokoroTextToSpeechUsed,
+  });
 
   console.log(
     `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,
