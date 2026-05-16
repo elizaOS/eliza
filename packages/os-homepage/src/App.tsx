@@ -180,24 +180,34 @@ function ProductVisual({ className }: { className: string }) {
     );
   }
 
+  if (className === "phone-render") {
+    return (
+      <div className="visual phone-render">
+        <div className="phone-camera" />
+        <div className="phone-screen">
+          <FaceLogo />
+          <span>elizaOS</span>
+        </div>
+      </div>
+    );
+  }
+
   if (className === "box-render") {
     return (
       <div className="visual box-render">
-        <img
-          alt="Orange ElizaOS Box concept"
-          src="/assets/elizaos-box-concept.avif"
-        />
-        <span className="brand-mark">Box</span>
+        <div className="box-shell">
+          <FaceLogo />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={`visual ${className}`}>
-      <div className="device-face">
+    <div className="visual usb-render">
+      <div className="usb-body">
         <FaceLogo />
       </div>
-      <span className="brand-mark">elizaOS</span>
+      <div className="usb-plug" />
     </div>
   );
 }
@@ -406,23 +416,14 @@ export function App() {
           className="hero-showcase"
           role="img"
         >
-          <div className="phone-render hero-phone">
-            <div className="device-face">
-              <FaceLogo />
-            </div>
-            <span className="brand-mark">elizaOS</span>
+          <div className="hero-product hero-phone">
+            <ProductVisual className="phone-render" />
           </div>
-          <div className="box-render hero-box">
-            <div className="device-face">
-              <FaceLogo />
-            </div>
-            <span className="brand-mark">Box</span>
+          <div className="hero-product hero-box">
+            <ProductVisual className="box-render" />
           </div>
-          <div className="usb-render hero-usb">
-            <div className="device-face">
-              <FaceLogo />
-            </div>
-            <span className="brand-mark">USB</span>
+          <div className="hero-product hero-usb">
+            <ProductVisual className="usb-render" />
           </div>
         </div>
       </section>

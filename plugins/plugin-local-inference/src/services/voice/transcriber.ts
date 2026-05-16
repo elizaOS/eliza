@@ -69,6 +69,60 @@ export class AsrUnavailableError extends Error {
 	}
 }
 
+export type AsrBackendPreference =
+	| "auto"
+	| "fused"
+	| "ffi-batch"
+	| "openvino-whisper";
+
+function normalizeBooleanEnv(value: string | undefined): boolean {
+	const normalized = value?.trim().toLowerCase();
+	return (
+		normalized === "1" ||
+		normalized === "true" ||
+		normalized === "yes" ||
+		normalized === "on"
+	);
+}
+
+export function normalizeAsrBackendPreference(
+	value: string | null | undefined,
+): AsrBackendPreference | null {
+	const normalized = value?.trim().toLowerCase().replace(/_/g, "-");
+	if (!normalized) return null;
+	switch (normalized) {
+		case "auto":
+			return "auto";
+		case "fused":
+		case "streaming":
+		case "fused-streaming":
+			return "fused";
+		case "batch":
+		case "ffi-batch":
+		case "fused-batch":
+			return "ffi-batch";
+		case "openvino":
+		case "openvino-whisper":
+		case "whisper-openvino":
+			return "openvino-whisper";
+		default:
+			return null;
+	}
+}
+
+export function readAsrBackendPreferenceFromEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): AsrBackendPreference | null {
+	return normalizeAsrBackendPreference(env.ELIZA_LOCAL_ASR_BACKEND);
+}
+
+function allowOpenVinoWhisperFromEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): boolean | null {
+	if (env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO === undefined) return null;
+	return normalizeBooleanEnv(env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO);
+}
+
 /* ==================================================================== *
  * Shared base — event fan-out, VAD gating, word detection.
  * ==================================================================== */
@@ -743,14 +797,13 @@ export interface CreateStreamingTranscriberOptions {
 	 *   `"ffi-batch"`        → fused batch (interim) only (throws if unavailable),
 	 *   `"openvino-whisper"` → OpenVINO Whisper (NPU→CPU autoprobe) only,
 	 *   `"auto"`             (default) → fused streaming → fused batch →
-	 *                                    OpenVINO whisper (when installed) → throw.
+	 *                                    OpenVINO whisper (when enabled) → throw.
 	 */
-	prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper";
+	prefer?: AsrBackendPreference;
 	/**
-	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Defaults to true
-	 * so Intel hosts with the OpenVINO worker/model installed get the ASR
-	 * product path from elizaOS/eliza#7633 when the fused build is unavailable.
-	 * Set explicitly to `false` to require fused ASR only.
+	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
+	 * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
+	 * to keep the OpenVINO Whisper tier when the fused build is unavailable.
 	 */
 	allowOpenVinoWhisper?: boolean;
 }
@@ -772,8 +825,12 @@ export interface CreateStreamingTranscriberOptions {
 export function createStreamingTranscriber(
 	opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
-	const prefer = opts.prefer ?? "auto";
-	const allowOpenVinoWhisper = opts.allowOpenVinoWhisper !== false;
+	const prefer = opts.prefer ?? readAsrBackendPreferenceFromEnv() ?? "auto";
+	const envAllowsOpenVinoWhisper = allowOpenVinoWhisperFromEnv();
+	const allowOpenVinoWhisper =
+		prefer === "openvino-whisper" ||
+		opts.allowOpenVinoWhisper !== false ||
+		envAllowsOpenVinoWhisper;
 
 	const tryFusedStreaming = (): StreamingTranscriber | null => {
 		if (!opts.ffi || !opts.getContext) return null;

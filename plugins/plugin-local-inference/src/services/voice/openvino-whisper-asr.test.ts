@@ -69,6 +69,9 @@ beforeEach(() => {
 
 afterEach(() => {
 	mockState.runtimeFixture = null;
+	vi.unstubAllEnvs();
+	delete process.env.ELIZA_LOCAL_ASR_BACKEND;
+	delete process.env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO;
 });
 
 describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
@@ -104,6 +107,19 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
 		t.dispose();
 	});
 
+	it("uses ELIZA_LOCAL_ASR_BACKEND=openvino-whisper as an explicit backend preference", () => {
+		vi.stubEnv("ELIZA_LOCAL_ASR_BACKEND", "openvino-whisper");
+		mockState.runtimeFixture = {
+			pythonBin: "/fake/python",
+			workerScript: "/fake/worker.py",
+			modelDir: "/fake/model",
+			deviceChain: "NPU,CPU",
+		};
+		const t = createStreamingTranscriber({});
+		expect(t).toBeInstanceOf(OpenVinoStreamingTranscriber);
+		t.dispose();
+	});
+
 	it("auto chain uses OpenVINO by default when artifacts are present and no fused build is available", () => {
 		mockState.runtimeFixture = {
 			pythonBin: "/fake/python",
@@ -115,6 +131,18 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
 		expect(t).toBeInstanceOf(OpenVinoStreamingTranscriber);
 		t.dispose();
 		expect(mockState.disposeCalls.count).toBe(1);
+	});
+
+	it("auto chain skips OpenVINO when ELIZA_LOCAL_ASR_ALLOW_OPENVINO disables it", () => {
+		vi.stubEnv("ELIZA_LOCAL_ASR_ALLOW_OPENVINO", "false");
+		mockState.runtimeFixture = {
+			pythonBin: "/fake/python",
+			workerScript: "/fake/worker.py",
+			modelDir: "/fake/model",
+			deviceChain: "NPU,CPU",
+		};
+		expect(() => createStreamingTranscriber({})).toThrow(AsrUnavailableError);
+		expect(mockState.disposeCalls.count).toBe(0);
 	});
 
 	it("auto chain skips OpenVINO when allowOpenVinoWhisper is explicitly false", () => {

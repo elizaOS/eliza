@@ -160,7 +160,9 @@ jobs:
           exit 1
 
       - name: Build backend artifact
-        run: bun run --cwd packages/cloud-api build
+        run: |
+          bun run --cwd packages/cloud-api codegen
+          bun run --cwd packages/cloud-api lint
 
       - name: Prepare SSH access
         run: |
