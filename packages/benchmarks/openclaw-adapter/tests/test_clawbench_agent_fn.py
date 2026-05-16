@@ -52,6 +52,16 @@ def test_build_clawbench_agent_fn_returns_callable(client: OpenClawClient) -> No
     assert inspect.iscoroutinefunction(agent_fn)
 
 
+def test_build_clawbench_agent_fn_defaults_to_direct_transport() -> None:
+    with patch("openclaw_adapter.clawbench.OpenClawClient") as mock_client_cls:
+        build_clawbench_agent_fn(
+            scenario_yaml={"name": "inbox_triage", "prompt": "Triage the inbox."},
+            fixtures={"inbox": [{"id": 1}]},
+        )
+
+    mock_client_cls.assert_called_once_with(direct_openai_compatible=True)
+
+
 def test_build_bfcl_agent_fn_returns_callable(client: OpenClawClient) -> None:
     agent_fn = build_bfcl_agent_fn(client=client)
     assert callable(agent_fn)

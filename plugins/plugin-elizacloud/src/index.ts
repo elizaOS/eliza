@@ -32,11 +32,11 @@ import { CloudManagedGatewayRelayService } from "./services/cloud-managed-gatewa
 import { CloudModelRegistryService } from "./services/cloud-model-registry";
 import { createCloudApiClient } from "./utils/sdk-client";
 
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO) as string;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM) as string;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA) as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER) as string;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER) as string;
+const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
+const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
+const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
+const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
+const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {

@@ -243,13 +243,34 @@ app.post("/", async (c) => {
     });
 
     if (!chatResponse.ok) {
+      if (chatResponse.status >= 500) {
+        return c.json(
+          {
+            success: false,
+            error: "Responses provider unavailable",
+            code: "internal_error",
+          },
+          503,
+        );
+      }
       return chatResponse;
     }
 
     const payload = (await chatResponse.json()) as ChatCompletionPayload;
     return c.json(mapChatCompletionToResponse(payload, body.model.trim()));
   } catch (error) {
-    return failureResponse(c, error);
+    const response = failureResponse(c, error);
+    if (response.status >= 500) {
+      return c.json(
+        {
+          success: false,
+          error: "Responses provider unavailable",
+          code: "internal_error",
+        },
+        503,
+      );
+    }
+    return response;
   }
 });
 

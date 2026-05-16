@@ -1950,7 +1950,8 @@ export class SignalService extends Service implements ISignalService {
       .filter((memory) => memory.content.source === "signal")
       .filter((memory) => this.memoryMatchesAccount(memory, normalizedAccountId))
       .filter(
-        (memory) => typeof memory.content.text === "string" && memory.content.text.trim().length > 0
+        (memory) =>
+          typeof memory.content.text === "string" && memory.content.text.trim().length > 0
       )
       .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
       .slice(0, requestedLimit)

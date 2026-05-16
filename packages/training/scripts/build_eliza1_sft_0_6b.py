@@ -15,7 +15,7 @@ and the structural ``format_ok`` gate in ``benchmarks/eliza1_gates.yaml``):
     action-selection-cases.ts``: a user turn → the action the agent should pick
     (or a plain reply for ``expectedAction: null``). This is the structured
     agent-loop behavior the action-selection benchmark measures, taught in two
-    surface forms: a TOON-ish ``ACTION: NAME`` line + short reply.
+    surface forms: a legacy ``ACTION: NAME`` line + short reply.
   * ``tool_use`` — Cerebras-generated OpenAI-style function-call turns over the
     canonical action catalog, plus repaired noisy converted rows.
   * ``personality`` — from ``packages/benchmarks/personality-bench/tests/
@@ -29,7 +29,7 @@ and the structural ``format_ok`` gate in ``benchmarks/eliza1_gates.yaml``):
     "thought":...,"replyText":...,"contexts":[...],"contextSlices":[...],
     "candidateActions":[...],"parentActionHints":[...],"requiresTool":...,
     "extract":{...}}``; ``shouldRespond`` dropped on direct channels). On-wire
-    form is JSON — not "TOON" — matching the runtime model call. Deterministic
+    form is JSON, matching the runtime model call. Deterministic
     seed rows + Cerebras augmentation. Teaches the ``format_ok`` gate's target.
   * ``voice_emotion`` — spoken replies carrying omnivoice-singing inline
     expressive tags in ``replyText`` (``[happy]`` ``[sad]`` ``[angry]``
@@ -444,7 +444,7 @@ def _cerebras_assistant_and_refusals(client, n_batches: int, per_batch: int) -> 
 # byte-exact generator that calls ``buildResponseGrammar``+``compilePrefillPlan``
 # from TS would be even tighter; this Python builder mirrors the same fixed key
 # order / span kinds without a TS dependency at corpus-build time. Canonical
-# on-wire form is JSON — not "TOON" — matching the runtime model call.)
+# on-wire form is JSON, matching the runtime model call.)
 
 # Fixed envelope key order — must match STAGE1_ENVELOPE_KEYS in
 # packages/core/src/runtime/response-grammar.ts.
@@ -923,7 +923,7 @@ def main() -> int:
             "format_ok_gate": "action_selection rows teach 'ACTION: NAME {params}' + structured_decode rows teach the W3 flat JSON envelope (shouldRespond/thought/replyText/contexts/.../requiresTool/extract) that buildResponseGrammar constrains",
             "personality_bench": "PASS-graded shut_up/hold_style/note_trait_unrelated/escalation/scope trajectories",
             "action_selection_benchmark": "1:1 with action-selection-cases.ts case ids",
-            "structured_decode": "Stage-1 response envelope rows — JSON (not TOON), key order matches packages/core/src/runtime/response-grammar.ts STAGE1_ENVELOPE_KEYS; direct + non-direct paths",
+            "structured_decode": "Stage-1 response envelope rows — JSON, key order matches packages/core/src/runtime/response-grammar.ts STAGE1_ENVELOPE_KEYS; direct + non-direct paths",
             "voice_emotion": "spoken replies with omnivoice-singing inline tags ([happy]/[sad]/[angry]/[nervous]/[calm]/[excited]/[whisper]/[singing] + non-verbals [laughter]/[sigh]) in replyText",
         },
         "sources": {

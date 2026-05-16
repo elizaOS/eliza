@@ -124,6 +124,9 @@ export interface PluginManifestVerdict {
  * Mirrors the logic in plugin-auto-enable-engine.addToAllowlist.
  */
 export function pluginShortId(packageName: string): string {
+  if (packageName === "@elizaos/plugin-companion") {
+    return packageName;
+  }
   return packageName.includes("/plugin-")
     ? packageName.slice(packageName.lastIndexOf("/plugin-") + "/plugin-".length)
     : packageName;

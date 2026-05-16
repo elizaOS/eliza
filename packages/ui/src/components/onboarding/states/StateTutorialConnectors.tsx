@@ -4,7 +4,7 @@ export interface StateTutorialConnectorsProps {
 
 export function StateTutorialConnectors(
   props: StateTutorialConnectorsProps,
-): JSX.Element {
+): React.JSX.Element {
   const { onContinue } = props;
   return (
     <section

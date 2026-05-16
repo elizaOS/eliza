@@ -1,8 +1,11 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(
@@ -25,6 +28,9 @@ const iosSelectLocal = process.argv.includes("--ios-select-local");
 const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
 const androidSelectLocal = process.argv.includes("--android-select-local");
 const androidBackground = process.argv.includes("--android-background");
+const androidStageSmokeModel = process.argv.includes(
+  "--android-stage-smoke-model",
+);
 const iosBackground = process.argv.includes("--ios-background");
 const iosBackgroundTaskId =
   argValue("--ios-background-task-id") ?? "ai.eliza.tasks.refresh";
@@ -32,6 +38,7 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-0_8b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-32k.gguf";
@@ -40,10 +47,43 @@ const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE = /in one short sentence/i;
 const ANDROID_HEALTH_ATTEMPTS = 240;
 const ANDROID_FULL_TURN_TIMEOUT_MS = 10 * 60_000;
+const ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = Number.parseInt(
+  process.env.ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS?.trim() || "180",
+  10,
+);
+const ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = Number.parseInt(
+  process.env.ANDROID_LOCAL_INFERENCE_READY_DELAY_MS?.trim() || "2000",
+  10,
+);
 const ANDROID_FULL_TURN_PROMPT =
-  "Reply in one short sentence confirming Android local inference is running.";
+  "Reply with exactly these four words: android smoke model works.";
+const ANDROID_FULL_TURN_EXPECTED_REPLY = "android smoke model works";
 const ANDROID_FULL_TURN_FAILURE_RE =
-  /something went wrong|no local gguf|no local model|no model registered|no provider|connect a provider|device_disconnected|device_timeout|timed out|chat generation failed/i;
+  /something went wrong|no local gguf|no local model|no model registered|no provider|connect a provider|device_disconnected|device_timeout|timed out|chat generation failed|waiting for the model download|set chat routing|progress:\s*0%/i;
+const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
+  process.env.ANDROID_SMOKE_MODEL_CONTEXT_SIZE?.trim() || "4096",
+  10,
+);
+const ANDROID_SMOKE_MODEL_ID =
+  process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-0_8b";
+const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
+  process.env.ANDROID_SMOKE_MODEL_RELATIVE_PATH?.trim() ||
+  "bundles/0_8b/text/eliza-1-0_8b-32k.gguf";
+const ANDROID_SMOKE_MODEL_FILE =
+  process.env.ANDROID_SMOKE_MODEL_FILE?.trim() || "eliza-1-0_8b-32k.gguf";
+const ANDROID_SMOKE_MODEL_SIZE_BYTES = Number.parseInt(
+  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim() || "556982432",
+  10,
+);
+const ANDROID_SMOKE_MODEL_SHA256 =
+  process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() ||
+  "9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581";
+const ANDROID_SMOKE_MODEL_URL =
+  process.env.ANDROID_SMOKE_MODEL_URL?.trim() ||
+  `https://huggingface.co/elizaos/eliza-1/resolve/main/${ANDROID_SMOKE_MODEL_RELATIVE_PATH
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}?download=true`;
 const IOS_WAKE_POLL_ATTEMPTS = 30;
 const IOS_WAKE_POLL_DELAY_MS = 1000;
 const ANDROID_WAKE_POLL_ATTEMPTS = 30;
@@ -65,6 +105,7 @@ Options:
   --ios-select-local               Pre-seed iOS onboarding/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
   --android-select-local           Tap through Android first-run Local runtime selection
+  --android-stage-smoke-model      Stage the smallest active Eliza-1 GGUF into Android app data
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
   --ios-background-task-id ID      iOS BGTask identifier to simulate (default: ai.eliza.tasks.refresh)
@@ -466,7 +507,7 @@ function androidDeviceSerial(adb) {
   );
 }
 
-function launchAndroidEmulatorApp() {
+async function launchAndroidEmulatorApp() {
   const adb = adbPath();
   if (!adb) {
     const message =
@@ -497,6 +538,9 @@ function launchAndroidEmulatorApp() {
   if (androidSelectLocal) {
     forceStopConflictingAndroidAgents(context);
     preseedAndroidLocalRuntime(context);
+  }
+  if (androidStageSmokeModel) {
+    await stageAndroidSmokeModel(context);
   }
 
   console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
@@ -562,6 +606,166 @@ function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
+async function sha256File(filePath) {
+  const hash = createHash("sha256");
+  await pipeline(fs.createReadStream(filePath), hash);
+  return hash.digest("hex");
+}
+
+async function verifySmokeModelFile(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  const stat = fs.statSync(filePath);
+  if (Number.isFinite(ANDROID_SMOKE_MODEL_SIZE_BYTES)) {
+    if (stat.size !== ANDROID_SMOKE_MODEL_SIZE_BYTES) return false;
+  }
+  if (ANDROID_SMOKE_MODEL_SHA256) {
+    const actual = await sha256File(filePath);
+    if (actual !== ANDROID_SMOKE_MODEL_SHA256) return false;
+  }
+  return true;
+}
+
+async function ensureAndroidSmokeModelLocalFile() {
+  const explicit = process.env.ANDROID_SMOKE_MODEL_PATH?.trim();
+  if (explicit) {
+    if (!(await verifySmokeModelFile(explicit))) {
+      throw new Error(
+        `ANDROID_SMOKE_MODEL_PATH did not match expected size/hash: ${explicit}`,
+      );
+    }
+    return explicit;
+  }
+
+  const cacheDir =
+    process.env.ANDROID_SMOKE_MODEL_CACHE_DIR?.trim() ||
+    path.join(os.homedir(), ".cache", "eliza", "android-smoke-models");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const finalPath = path.join(cacheDir, ANDROID_SMOKE_MODEL_FILE);
+  if (await verifySmokeModelFile(finalPath)) return finalPath;
+
+  const stagingPath = `${finalPath}.part`;
+  try {
+    fs.unlinkSync(stagingPath);
+  } catch {
+    // stale partial is fine
+  }
+  console.log(
+    `[local-chat-smoke] Downloading Android smoke model ${ANDROID_SMOKE_MODEL_ID} from ${ANDROID_SMOKE_MODEL_URL}.`,
+  );
+  const response = await fetch(ANDROID_SMOKE_MODEL_URL, { redirect: "follow" });
+  if (!response.ok || !response.body) {
+    throw new Error(
+      `Failed to download ${ANDROID_SMOKE_MODEL_ID}: HTTP ${response.status} ${response.statusText}`,
+    );
+  }
+  await pipeline(
+    Readable.fromWeb(response.body),
+    fs.createWriteStream(stagingPath),
+  );
+  if (!(await verifySmokeModelFile(stagingPath))) {
+    try {
+      fs.unlinkSync(stagingPath);
+    } catch {
+      // best effort
+    }
+    throw new Error(
+      `Downloaded Android smoke model failed size/hash verification: ${stagingPath}`,
+    );
+  }
+  fs.renameSync(stagingPath, finalPath);
+  return finalPath;
+}
+
+function androidRunAs(context, script, label, options = {}) {
+  const output = tryExec(
+    context.adb,
+    [
+      "-s",
+      context.serial,
+      "shell",
+      `run-as ${shellQuote(appId())} sh -c ${shellQuote(script)}`,
+    ],
+    options.allowFailure ? { allowFailure: true } : undefined,
+  );
+  if (output === null && !options.allowFailure) {
+    throw new Error(label);
+  }
+  return output;
+}
+
+async function stageAndroidSmokeModel(context) {
+  const targetDir = "files/.eliza/local-inference/models";
+  const targetFile = `${targetDir}/${ANDROID_SMOKE_MODEL_FILE}`;
+  const existingBytes = androidRunAs(
+    context,
+    `test -f ${shellQuote(targetFile)} && wc -c < ${shellQuote(targetFile)}`,
+    "Failed to inspect Android smoke model.",
+    { allowFailure: true },
+  );
+  const expectedSize = String(ANDROID_SMOKE_MODEL_SIZE_BYTES);
+  if (existingBytes?.trim() === expectedSize) {
+    writeAndroidSmokeModelManifest(context, targetDir);
+    console.log(
+      `[local-chat-smoke] Reused staged Android smoke model ${ANDROID_SMOKE_MODEL_ID}: ${targetFile}`,
+    );
+    return;
+  }
+
+  const source = await ensureAndroidSmokeModelLocalFile();
+  const tmpTarget = `/data/local/tmp/${ANDROID_SMOKE_MODEL_FILE}`;
+  requireExec(
+    context.adb,
+    ["-s", context.serial, "push", source, tmpTarget],
+    "Failed to push Android smoke model.",
+  );
+  tryExec(context.adb, ["-s", context.serial, "shell", "chmod", "0644", tmpTarget], {
+    allowFailure: true,
+  });
+  const copyScript = [
+    `mkdir -p ${shellQuote(targetDir)}`,
+    `cp ${shellQuote(tmpTarget)} ${shellQuote(targetFile)}`,
+    `chmod 600 ${shellQuote(targetFile)}`,
+  ].join(" && ");
+  androidRunAs(context, copyScript, "Failed to stage Android smoke model.");
+  writeAndroidSmokeModelManifest(context, targetDir);
+  tryExec(context.adb, ["-s", context.serial, "shell", "rm", "-f", tmpTarget], {
+    allowFailure: true,
+  });
+  console.log(
+    `[local-chat-smoke] Staged Android smoke model ${ANDROID_SMOKE_MODEL_ID}: ${targetFile}`,
+  );
+}
+
+function writeAndroidSmokeModelManifest(context, targetDir) {
+  const manifest = JSON.stringify(
+    {
+      models: [
+        {
+          id: ANDROID_SMOKE_MODEL_ID,
+          role: "chat",
+          filename: ANDROID_SMOKE_MODEL_FILE,
+          ggufFile: ANDROID_SMOKE_MODEL_FILE,
+          sha256: ANDROID_SMOKE_MODEL_SHA256,
+          sizeBytes: ANDROID_SMOKE_MODEL_SIZE_BYTES,
+          contextSize: ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
+          useGpu: false,
+          maxThreads: 2,
+        },
+      ],
+    },
+    null,
+    2,
+  );
+  const encoded = Buffer.from(manifest, "utf8").toString("base64");
+  const target = `${targetDir}/manifest.json`;
+  const script = [
+    `mkdir -p ${shellQuote(targetDir)}`,
+    `(printf %s ${encoded} | base64 -d > ${shellQuote(target)}) || (printf %s ${encoded} | toybox base64 -d > ${shellQuote(target)})`,
+    `chmod 600 ${shellQuote(target)}`,
+  ].join(" && ");
+  androidRunAs(context, script, "Failed to write Android smoke model manifest.");
+}
+
 function forceStopConflictingAndroidAgents(context) {
   const id = appId();
   for (const packageName of [id, ...ANDROID_CONFLICTING_AGENT_PACKAGES]) {
@@ -592,7 +796,7 @@ function preseedAndroidLocalRuntime(context) {
     id: "local:android",
     kind: "remote",
     label: "On-device agent",
-    apiBase: "http://127.0.0.1:31337",
+    apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
   });
   writeAndroidCapacitorPreferences(context, {
     "eliza:mobile-runtime-mode": "local",
@@ -1616,48 +1820,65 @@ function localInferenceSummary({ hub, device, providers }) {
 }
 
 async function requireLocalInferenceReady(baseUrl, authToken) {
-  const hub = await requestJson(
-    "GET",
-    "/api/local-inference/hub",
-    undefined,
-    baseUrl,
-    authToken,
-  );
-  const device = await requestOptionalJson(
-    "GET",
-    "/api/local-inference/device",
-    baseUrl,
-    authToken,
-  );
-  const providers = await requestOptionalJson(
-    "GET",
-    "/api/local-inference/providers",
-    baseUrl,
-    authToken,
-  );
-
-  const activeStatus = String(hub?.active?.status ?? "");
-  const activeError = String(hub?.active?.error ?? "");
-  if (activeStatus === "error") {
-    throw new Error(
-      `Local inference hub is in error state: ${activeError || "unknown"}`,
+  let lastSnapshot = null;
+  for (
+    let attempt = 1;
+    attempt <= ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS;
+    attempt += 1
+  ) {
+    const hub = await requestJson(
+      "GET",
+      "/api/local-inference/hub",
+      undefined,
+      baseUrl,
+      authToken,
     );
+    const device = await requestOptionalJson(
+      "GET",
+      "/api/local-inference/device",
+      baseUrl,
+      authToken,
+    );
+    const providers = await requestOptionalJson(
+      "GET",
+      "/api/local-inference/providers",
+      baseUrl,
+      authToken,
+    );
+
+    lastSnapshot = localInferenceSummary({ hub, device, providers });
+
+    const activeStatus = String(hub?.active?.status ?? "");
+    const activeError = String(hub?.active?.error ?? "");
+    if (activeStatus === "error") {
+      throw new Error(
+        `Local inference hub is in error state: ${activeError || "unknown"}`,
+      );
+    }
+
+    const activeReady = activeStatus === "ready";
+    const deviceConnected = device?.connected === true;
+    const deviceModelPath =
+      typeof device?.modelPath === "string" &&
+      device.modelPath.trim().length > 0;
+
+    if (activeReady || (deviceConnected && deviceModelPath)) {
+      return { hub, device, providers };
+    }
+
+    if (attempt % 10 === 0) {
+      console.warn(
+        `[local-chat-smoke] Local inference not ready yet (${attempt}/${ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS}): ${JSON.stringify(lastSnapshot)}`,
+      );
+    }
+    await sleep(ANDROID_LOCAL_INFERENCE_READY_DELAY_MS);
   }
 
-  const activeReady = activeStatus === "ready";
-  const deviceConnected = device?.connected === true;
-  const deviceModelPath =
-    typeof device?.modelPath === "string" && device.modelPath.trim().length > 0;
-
-  if (!activeReady && !(deviceConnected && deviceModelPath)) {
-    throw new Error(
-      `Local inference is not ready for a full turn: ${JSON.stringify(
-        localInferenceSummary({ hub, device, providers }),
-      )}`,
-    );
-  }
-
-  return { hub, device, providers };
+  throw new Error(
+    `Local inference is not ready for a full turn: ${JSON.stringify(
+      lastSnapshot,
+    )}`,
+  );
 }
 
 function extractDoneEventFromSse(text) {
@@ -1703,6 +1924,17 @@ function requireUsableFullTurnReply(done, rawStreamText) {
     ANDROID_FULL_TURN_FAILURE_RE.test(reply)
   ) {
     throw new Error(`Full-turn smoke returned unusable reply: ${reply}`);
+  }
+  const normalizedReply = reply
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  if (normalizedReply !== ANDROID_FULL_TURN_EXPECTED_REPLY) {
+    throw new Error(
+      `Full-turn smoke returned the wrong reply: ${reply} (expected ${ANDROID_FULL_TURN_EXPECTED_REPLY})`,
+    );
   }
   return reply;
 }
@@ -1754,9 +1986,24 @@ async function runLocalInferenceApiSmoke(
   );
   const done = extractDoneEventFromSse(streamText);
   const reply = requireUsableFullTurnReply(done, streamText);
+  const postTurnDevice = await requestOptionalJson(
+    "GET",
+    "/api/local-inference/device",
+    baseUrl,
+    authToken,
+  );
+  const loadedPath = postTurnDevice?.devices?.find?.(
+    (device) => typeof device?.loadedPath === "string" && device.loadedPath,
+  )?.loadedPath;
+  if (!loadedPath) {
+    throw new Error(
+      `Full-turn smoke did not load a native device model: ${JSON.stringify(postTurnDevice)}`,
+    );
+  }
   console.log("[local-chat-smoke] conversation:", conversationId);
   console.log("[local-chat-smoke] greeting:", greeting.text);
   console.log("[local-chat-smoke] reply:", reply);
+  console.log("[local-chat-smoke] loaded model:", loadedPath);
   console.log(
     "[local-chat-smoke] local inference:",
     JSON.stringify(localInferenceSummary(readiness)),
@@ -1771,7 +2018,7 @@ async function main() {
       iosContext = launchIosSimulatorApp();
     }
     if (platform === "android" || platform === "both") {
-      androidContext = launchAndroidEmulatorApp();
+      androidContext = await launchAndroidEmulatorApp();
       if (androidSelectLocal) {
         await selectAndroidLocalRuntime(androidContext);
       }

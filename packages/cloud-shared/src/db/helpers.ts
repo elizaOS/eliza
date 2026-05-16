@@ -28,6 +28,7 @@
  * @module db/helpers
  */
 
+import { observeDbOperation } from "../lib/observability/cloud-backend-observability";
 import { logger } from "../lib/utils/logger";
 import {
   type Database,
@@ -78,8 +79,11 @@ export function useWriteDb<T>(fn: (db: Database) => T): T {
  *   return db.query.users.findMany({ limit: 100 });
  * });
  */
-export async function readQuery<T>(fn: (db: Database) => Promise<T>): Promise<T> {
-  return fn(dbRead);
+export async function readQuery<T>(
+  fn: (db: Database) => Promise<T>,
+  label = "readQuery",
+): Promise<T> {
+  return observeDbOperation("read", label, () => fn(dbRead));
 }
 
 /**
@@ -91,8 +95,11 @@ export async function readQuery<T>(fn: (db: Database) => Promise<T>): Promise<T>
  *   return created;
  * });
  */
-export async function writeQuery<T>(fn: (db: Database) => Promise<T>): Promise<T> {
-  return fn(dbWrite);
+export async function writeQuery<T>(
+  fn: (db: Database) => Promise<T>,
+  label = "writeQuery",
+): Promise<T> {
+  return observeDbOperation("write", label, () => fn(dbWrite));
 }
 
 // ============================================================================
@@ -110,7 +117,7 @@ export async function writeQuery<T>(fn: (db: Database) => Promise<T>): Promise<T
  * });
  */
 export async function writeTransaction<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
-  return dbWrite.transaction(fn);
+  return observeDbOperation("transaction", "writeTransaction", () => dbWrite.transaction(fn));
 }
 
 // ============================================================================

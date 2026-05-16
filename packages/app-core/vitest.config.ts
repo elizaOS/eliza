@@ -10,7 +10,7 @@ const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
-const cloudSdkSrc = path.join(monorepoRoot, "cloud/packages/sdk/src");
+const cloudSdkSrc = path.join(monorepoRoot, "packages/cloud-sdk/src");
 const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-lifeops/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
@@ -179,6 +179,10 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/app-lifeops$/,
+        replacement: path.join(appLifeopsSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-lifeops$/,
         replacement: path.join(appLifeopsSrc, "index.ts"),
       },
       {

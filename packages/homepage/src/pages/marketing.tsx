@@ -24,6 +24,9 @@ type DownloadButton = {
   label: string;
   sublabel?: string;
   href: string;
+  releaseTagName?: string;
+  releaseUrl?: string;
+  releasePublishedAtLabel?: string;
 };
 
 // Hardcoded fallbacks point at /releases/latest/download by filename. They are
@@ -93,11 +96,30 @@ function buildButtonFromGenerated(
         label: "macOS Apple Silicon",
         sublabel,
         href: d.url,
+        releaseTagName: d.releaseTagName,
+        releaseUrl: d.releaseUrl,
+        releasePublishedAtLabel: d.releasePublishedAtLabel,
       };
     case "macos-x64":
-      return { id: "macos-intel", label: "macOS Intel", sublabel, href: d.url };
+      return {
+        id: "macos-intel",
+        label: "macOS Intel",
+        sublabel,
+        href: d.url,
+        releaseTagName: d.releaseTagName,
+        releaseUrl: d.releaseUrl,
+        releasePublishedAtLabel: d.releasePublishedAtLabel,
+      };
     case "windows-x64":
-      return { id: "windows", label: "Windows", sublabel, href: d.url };
+      return {
+        id: "windows",
+        label: "Windows",
+        sublabel,
+        href: d.url,
+        releaseTagName: d.releaseTagName,
+        releaseUrl: d.releaseUrl,
+        releasePublishedAtLabel: d.releasePublishedAtLabel,
+      };
     case "linux-x64":
       // The release-data script produces "linux-x64" for AppImage or .tar.gz;
       // map by file extension so the right card lights up.
@@ -107,15 +129,29 @@ function buildButtonFromGenerated(
           label: "AppImage",
           sublabel,
           href: d.url,
+          releaseTagName: d.releaseTagName,
+          releaseUrl: d.releaseUrl,
+          releasePublishedAtLabel: d.releasePublishedAtLabel,
         };
       }
-      return { id: "linux-tar", label: "Tarball", sublabel, href: d.url };
+      return {
+        id: "linux-tar",
+        label: "Tarball",
+        sublabel,
+        href: d.url,
+        releaseTagName: d.releaseTagName,
+        releaseUrl: d.releaseUrl,
+        releasePublishedAtLabel: d.releasePublishedAtLabel,
+      };
     case "linux-deb":
       return {
         id: "linux-deb",
         label: "Debian / Ubuntu",
         sublabel,
         href: d.url,
+        releaseTagName: d.releaseTagName,
+        releaseUrl: d.releaseUrl,
+        releasePublishedAtLabel: d.releasePublishedAtLabel,
       };
     default:
       return null;
@@ -180,6 +216,9 @@ function DownloadCard({
   button: DownloadButton;
   highlighted: boolean;
 }) {
+  const hasRelease =
+    button.releaseTagName && button.releaseTagName !== "unavailable";
+
   return (
     <a
       href={button.href}
@@ -195,6 +234,15 @@ function DownloadCard({
       </span>
       {button.sublabel ? (
         <span className="text-xs text-white/60">{button.sublabel}</span>
+      ) : null}
+      {hasRelease ? (
+        <span className="text-xs text-white/45">
+          From {button.releaseTagName}
+          {button.releasePublishedAtLabel &&
+          button.releasePublishedAtLabel !== "unavailable"
+            ? ` · ${button.releasePublishedAtLabel}`
+            : null}
+        </span>
       ) : null}
     </a>
   );
@@ -304,6 +352,25 @@ export default function Marketing() {
               Download
             </a>
           </div>
+        </section>
+
+        <section className="mt-16 grid gap-4 border-y border-white/10 py-8 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="max-w-2xl">
+            <h2 className="text-2xl font-semibold">Eliza Cloud</h2>
+            <p className="mt-2 text-sm leading-6 text-white/65">
+              Use the web version of the app connected to a cloud agent. Create
+              an account, provision an agent, and start chatting without a local
+              install.
+            </p>
+          </div>
+          <a
+            href={CLOUD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center justify-center rounded-md border border-white/15 px-5 text-sm font-semibold text-white/85 transition-colors hover:border-white/40 hover:bg-white/10 hover:text-white"
+          >
+            Use the web app
+          </a>
         </section>
 
         <section id="download" className="mt-16 scroll-mt-8">

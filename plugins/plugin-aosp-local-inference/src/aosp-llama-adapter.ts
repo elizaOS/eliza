@@ -647,7 +647,7 @@ export function resolveThreads(
   try {
     /* Boundary cast: dynamic require returns weakly-typed module shape */
     const os = require("node:os") as { cpus(): unknown[] };
-    const count = os.cpus().length;
+    const count = os.cpus()?.length ?? 0;
     if (count > 0) return count;
   } catch {
     // require unavailable in some bundler contexts; fall through.

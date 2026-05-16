@@ -5,7 +5,7 @@ export interface StateHelloProps {
   onBegin: () => void;
 }
 
-export function StateHello(props: StateHelloProps): JSX.Element {
+export function StateHello(props: StateHelloProps): React.JSX.Element {
   const { transcript, onBegin } = props;
   return (
     <section className="eliza-ob-screen centered" data-eliza-ob-state="hello">

@@ -4,11 +4,7 @@
   "compilerOptions": {
     "noEmit": true,
     "incremental": false,
-    "composite": false,
-    "paths": {
-      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
-      "@elizaos/contracts/*": ["../../packages/contracts/src/*"]
-    }
+    "composite": false
   },
   "include": ["*.ts", "tsup.config.ts"],
   "exclude": [

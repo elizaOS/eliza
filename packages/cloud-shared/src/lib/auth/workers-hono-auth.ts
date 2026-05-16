@@ -195,6 +195,38 @@ function looksLikeJwt(token: string): boolean {
   return parts.length === 3 && parts.every((p) => p.length > 0);
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isLocalDevAdminEnabled(c: AppContext): boolean {
+  const explicit = c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
+  const devMode = c.env.NODE_ENV !== "production" && c.env.LOCAL_DEV === "true";
+  if (!explicit && !devMode) return false;
+  return isLoopbackHostname(new URL(c.req.url).hostname);
+}
+
+function localDevAdminUser(): AuthedUser & {
+  organization_id: string;
+  organization: NonNullable<AuthedUser["organization"]>;
+} {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    email: "local-dev-admin@localhost",
+    organization_id: "00000000-0000-4000-8000-000000000002",
+    organization: {
+      id: "00000000-0000-4000-8000-000000000002",
+      name: "Local Dev",
+      is_active: true,
+    },
+    is_active: true,
+    role: "admin",
+    steward_id: null,
+    wallet_address: null,
+    is_anonymous: false,
+  };
+}
+
 function toAuthedUser(user: UserWithOrganization): AuthedUser {
   return {
     id: user.id,
@@ -418,6 +450,13 @@ export async function requireAdmin(c: AppContext): Promise<{
   };
   role: string | null;
 }> {
+  if (isLocalDevAdminEnabled(c)) {
+    const user = localDevAdminUser();
+    c.set("user", user);
+    c.set("authMethod", "session");
+    return { user, role: "super_admin" };
+  }
+
   const user = await requireUserOrApiKeyWithOrg(c);
   const { adminService } = await import("../services/admin");
   try {

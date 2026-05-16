@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import {
   ADDITIONAL_MODELS,
   type CatalogModel,
@@ -34,24 +35,35 @@ const FALLBACK_MODELS: SelectorModel[] = sortSelectorModels([
 );
 
 export function useAvailableModels() {
+  const { authenticated, ready } = useSessionAuth();
   const [models, setModels] = useState<SelectorModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
+  const [refreshTick, setRefreshTick] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the model catalog must refetch after auth readiness changes and explicit steward-token-sync events.
   useEffect(() => {
+    if (!ready) return;
+    const requestId = ++requestIdRef.current;
+    const controller = new AbortController();
+
     async function fetchModels() {
       setIsLoading(true);
 
       try {
         const response = await fetch("/api/v1/models", {
           credentials: "include",
+          signal: controller.signal,
         });
+        if (requestIdRef.current !== requestId) return;
 
         if (!response.ok) {
           throw new Error("Failed to fetch models");
         }
 
         const data: ModelsResponse = await response.json();
+        if (requestIdRef.current !== requestId) return;
         const filteredModels = sortSelectorModels(
           (data.data || []).filter(isSelectableTextModel).map(toSelectorModel),
         );
@@ -67,6 +79,7 @@ export function useAvailableModels() {
 
         setError(null);
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
         console.error("[useAvailableModels] Error fetching models:", err);
 
         const errorMessage =
@@ -82,11 +95,25 @@ export function useAvailableModels() {
 
         setModels(FALLBACK_MODELS);
       } finally {
-        setIsLoading(false);
+        if (requestIdRef.current === requestId) {
+          setIsLoading(false);
+        }
       }
     }
 
     void fetchModels();
+    return () => {
+      controller.abort();
+    };
+  }, [ready, authenticated, refreshTick]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleTokenSync = () => setRefreshTick((tick) => tick + 1);
+    window.addEventListener("steward-token-sync", handleTokenSync);
+    return () => {
+      window.removeEventListener("steward-token-sync", handleTokenSync);
+    };
   }, []);
 
   return { models, isLoading, error };

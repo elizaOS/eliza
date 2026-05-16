@@ -149,6 +149,17 @@ export function translateUmbrellaAction(
   name: string,
   kwargs: Record<string, unknown>,
 ): { name: string; kwargs: Record<string, unknown> } {
+  if (name === "ARCHIVE_EMAIL_THREAD" || name === "ARCHIVE_THREAD") {
+    return {
+      name: "MESSAGE",
+      kwargs: {
+        ...kwargs,
+        source: kwargs.source ?? "gmail",
+        operation: kwargs.operation ?? "manage",
+        manageOperation: kwargs.manageOperation ?? "archive",
+      },
+    };
+  }
   if (name !== "CALENDAR") return { name, kwargs };
   const subaction = kwargs.subaction;
   if (typeof subaction !== "string" || subaction.length === 0) {
@@ -158,6 +169,47 @@ export function translateUmbrellaAction(
   if (!granular) return { name, kwargs };
   const { subaction: _stripped, ...rest } = kwargs;
   return { name: granular, kwargs: rest };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function completedResponseForRepeatedLifeOpsPrompt(
+  turns: LifeOpsBenchTurnRecord[],
+  userText: string,
+): string | null {
+  const previous = turns[turns.length - 1];
+  if (!previous || previous.userText !== userText) return null;
+  const call = previous.toolCalls.find((candidate) => candidate.ok);
+  if (!call) return null;
+
+  const translated = translateUmbrellaAction(call.name, call.arguments);
+  const args = translated.kwargs;
+  const result = isPlainRecord(call.result) ? call.result : {};
+
+  if (
+    translated.name === "MESSAGE" &&
+    args.operation === "manage" &&
+    args.manageOperation === "archive"
+  ) {
+    const threadId = String(result.thread_id ?? args.threadId ?? "the thread");
+    return `Archived ${threadId}.`;
+  }
+
+  if (
+    (call.name === "CALENDAR_CHECK_AVAILABILITY" ||
+      translated.name === "calendar.check_availability" ||
+      translated.name === "CALENDAR") &&
+    (args.subaction === "check_availability" ||
+      args.action === "check_availability")
+  ) {
+    const events = Array.isArray(result.events) ? result.events : [];
+    if (events.length === 0) return "You are free for that time.";
+    return "You have a conflict during that time.";
+  }
+
+  return null;
 }
 
 export class LifeOpsBenchHandler {
@@ -307,6 +359,27 @@ export class LifeOpsBenchHandler {
         404,
         `No lifeops_bench session for task_id=${taskId}; call /reset first`,
       );
+      return;
+    }
+
+    const completedText = completedResponseForRepeatedLifeOpsPrompt(
+      session.turns,
+      text,
+    );
+    if (completedText) {
+      session.lastAssistantText = completedText;
+      session.turns.push({
+        userText: text,
+        assistantText: completedText,
+        toolCalls: [],
+      });
+      writeJson(res, 200, {
+        task_id: taskId,
+        text: completedText,
+        tool_calls: [],
+        usage: {},
+        world_hash: session.backend.stateHash(),
+      });
       return;
     }
 

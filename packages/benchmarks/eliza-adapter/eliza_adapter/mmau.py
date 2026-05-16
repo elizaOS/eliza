@@ -88,8 +88,15 @@ class _BaseMMAUAgent:
         return str(getattr(response, "text", ""))
 
     async def _transcribe(self, sample: MMAUSample) -> str:
-        if sample.transcript:
-            return sample.transcript
+        transcript = getattr(sample, "transcript", "")
+        if isinstance(transcript, str) and transcript.strip():
+            return transcript.strip()
+        metadata = getattr(sample, "metadata", None)
+        if isinstance(metadata, dict):
+            for key in ("transcript", "audio_transcript", "caption"):
+                value = metadata.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
         if sample.audio_bytes is None:
             return ""
         api_key = os.environ.get("GROQ_API_KEY", "").strip()

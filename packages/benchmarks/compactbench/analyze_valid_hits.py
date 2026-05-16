@@ -24,6 +24,7 @@ import time
 from typing import Any
 
 from eliza_compactbench.cerebras_provider import register_cerebras_provider
+from eliza_compactbench.safe_generators import install_safe_action_phrase_generator
 from eliza_compactbench.valid_hits import evaluate_valid_hit, is_refusal, normalize_text
 
 
@@ -145,6 +146,9 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
     from compactbench.engine import derive_case_seed, generate_case
     from compactbench.providers import get_provider_cls
     from compactbench.runner import resolve_compactor_class
+
+    if not install_safe_action_phrase_generator():
+        raise SystemExit("failed to install safe CompactBench generators")
 
     difficulty = DifficultyLevel(args.difficulty.lower())
     suite_dir = args.benchmarks_dir / args.suite

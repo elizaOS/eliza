@@ -98,7 +98,7 @@ export class AcpService extends Service {
   readonly defaultApprovalPreset: ApprovalPreset;
   readonly agentSelectionStrategy: string;
 
-  protected override readonly runtime: RuntimeLike;
+  protected readonly runtime: RuntimeLike;
   private readonly logger: RuntimeLogger;
   private readonly store: SessionStore;
   private readonly cliPath: string;

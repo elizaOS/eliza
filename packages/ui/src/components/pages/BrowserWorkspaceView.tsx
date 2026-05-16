@@ -417,7 +417,7 @@ function resolveSolanaCluster(
   return undefined;
 }
 
-export function BrowserWorkspaceView(): ReactJSX.Element {
+export function BrowserWorkspaceView(): React.JSX.Element {
   useRenderGuard("BrowserWorkspaceView");
   const {
     getStewardPending,
@@ -2061,7 +2061,7 @@ export function BrowserWorkspaceView(): ReactJSX.Element {
 
   function renderBrowserWorkspaceTabRow(
     tab: BrowserWorkspaceTab,
-  ): ReactJSX.Element {
+  ): React.JSX.Element {
     const active = tab.id === selectedTabId;
     const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
     const label = getBrowserWorkspaceTabLabel(tab, t);

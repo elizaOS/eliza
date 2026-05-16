@@ -206,7 +206,7 @@ function formatLabel(value: string): string {
   return value.replaceAll("-", " ");
 }
 
-function SectionHeader({ children }: { children: string }): JSX.Element {
+function SectionHeader({ children }: { children: string }): React.JSX.Element {
   return (
     <h3 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-accent">
       {children}
@@ -214,7 +214,7 @@ function SectionHeader({ children }: { children: string }): JSX.Element {
   );
 }
 
-function ChipList({ items }: { items: readonly string[] }): JSX.Element {
+function ChipList({ items }: { items: readonly string[] }): React.JSX.Element {
   if (items.length === 0) {
     return <span className="text-xs text-muted">None declared</span>;
   }
@@ -238,7 +238,7 @@ function WidgetPreview({
 }: {
   declaration: PluginWidgetDeclaration;
   pluginId: string;
-}): JSX.Element {
+}): React.JSX.Element {
   const Component = useMemo(
     () => getWidgetComponent(pluginId, declaration.id),
     [declaration.id, pluginId],
@@ -260,7 +260,7 @@ function WidgetPreview({
 export function AppDetailsView({
   slug,
   onLaunched,
-}: AppDetailsViewProps): JSX.Element {
+}: AppDetailsViewProps): React.JSX.Element {
   const { plugins, appRuns, t, setTab, setState, setActionNotice } = useApp();
 
   // Catalog of registry apps for slug → app resolution.

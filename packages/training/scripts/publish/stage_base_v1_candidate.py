@@ -16,6 +16,7 @@ Usage:
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
         --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-dflash-drafter-2b.gguf \
         --drafter-source Qwen/Qwen3.5-0.8B-Base \
+        --vision-gguf /tmp/eliza1-eval-models/mmproj-2b.gguf \
         --out /tmp/eliza1-stage/eliza-1-2b
 """
 
@@ -144,6 +145,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="The .eliza1.json sidecar for the text GGUF (quant block).")
     ap.add_argument("--drafter-gguf", required=True, type=Path)
     ap.add_argument(
+        "--vision-gguf",
+        required=True,
+        type=Path,
+        help="Per-tier mmproj GGUF; every active Eliza-1 tier is vision-capable.",
+    )
+    ap.add_argument(
         "--drafter-source",
         default="Qwen/Qwen3.5-0.8B-Base",
         help="Upstream HF repo the drafter GGUF was converted from (provenance).",
@@ -163,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     text_rel = PP.text_artifact_name(tier, TEXT_CONTEXT_BY_TIER[tier])
     if out.exists():
         shutil.rmtree(out)
-    for sub in ("text", "tts", "asr", "vad", "dflash", "cache", "evals",
+    for sub in ("text", "tts", "asr", "vad", "vision", "dflash", "cache", "evals",
                 "licenses", "evidence/platform", "checksums"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
@@ -232,6 +239,11 @@ def main(argv: list[str] | None = None) -> int:
         "kernelCaps": {"required": REQUIRED_KERNELS_BY_TIER[tier], "optional": []},
     }, indent=2) + "\n")
 
+    # --- vision mmproj ---
+    vision_dest = out / "vision" / f"mmproj-{tier}.gguf"
+    shutil.copy2(args.vision_gguf, vision_dest)
+    vision_sha = sha256_file(vision_dest)
+
     # --- voice / asr / vad / cache ---
     # Voice follows eliza1_manifest: OmniVoice is the default backend on every
     # tier; small/workstation tiers also ship Kokoro as a frozen fallback.
@@ -254,9 +266,9 @@ def main(argv: list[str] | None = None) -> int:
     for repo, remote, dest in asset_map:
         download_asset(repo, remote, dest)
 
-    # extra licenses (text / dflash / eliza-1) from a local bundle dir if given
+    # extra licenses (text / dflash / vision / eliza-1) from a local bundle dir if given
     if args.licenses_from and args.licenses_from.is_dir():
-        for name in ("LICENSE.text", "LICENSE.dflash", "LICENSE.eliza-1"):
+        for name in ("LICENSE.text", "LICENSE.dflash", "LICENSE.vision", "LICENSE.eliza-1"):
             src = args.licenses_from / name
             if src.is_file():
                 shutil.copy2(src, out / "licenses" / name)
@@ -277,6 +289,9 @@ def main(argv: list[str] | None = None) -> int:
     dflash_files = [
         {"path": f"dflash/drafter-{tier}.gguf", "sha256": drafter_sha},
         f_sha(out / "dflash" / "target-meta.json"),
+    ]
+    vision_files = [
+        {"path": f"vision/mmproj-{tier}.gguf", "sha256": vision_sha},
     ]
     text_files = [
         {"path": text_rel, "sha256": text_sha, "ctx": TEXT_CTX_BY_TIER[tier]}
@@ -352,6 +367,10 @@ def main(argv: list[str] | None = None) -> int:
             base=f"{args.drafter_source} (upstream base GGUF; used as self/cross-drafter — not distilled)",
             license="apache-2.0",
         ),
+        "vision": M.LineageEntry(
+            base=f"{TEXT_BASE_BY_TIER[tier]} vision projector",
+            license="apache-2.0; review upstream model card before release",
+        ),
         "asr": M.LineageEntry(base=A.ASR_REPO_BY_TIER[tier], license="apache-2.0; review upstream model card before release"),
         "vad": M.LineageEntry(base=A.VAD_NATIVE_REPO, license="mit"),
     }
@@ -406,17 +425,18 @@ def main(argv: list[str] | None = None) -> int:
                 "repo": args.drafter_source,
                 "note": "DFlash drafter must share the Qwen3.5 tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in dflash/target-meta.json.",
             },
+            "vision": {
+                "repo": TEXT_BASE_BY_TIER[tier],
+                "file": f"vision/mmproj-{tier}.gguf",
+                "note": "Per-tier multimodal projector staged with the text target.",
+            },
             # The Zod `z.record(z.enum(slots), ...)` treats every slot as a
             # required key. This bundle ships no dedicated embedding model
-            # (pools from the text backbone) and no vision mmproj — record
-            # that honestly rather than omitting the keys.
+            # (pools from the text backbone) — record that honestly rather
+            # than omitting the key.
             "embedding": {
                 "repo": "n/a",
                 "note": "not shipped in this candidate bundle; the runtime pools embeddings from the text backbone.",
-            },
-            "vision": {
-                "repo": "n/a",
-                "note": "not shipped in this candidate bundle; the text GGUF is text-only (no mmproj).",
             },
         },
     }
@@ -430,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
             "text": [M.FileEntry(**f) for f in text_files],
             "voice": [M.FileEntry(**f) for f in voice_files],
             "asr": [M.FileEntry(**f) for f in asr_files],
-            "vision": [],
+            "vision": [M.FileEntry(**f) for f in vision_files],
             "dflash": [M.FileEntry(**f) for f in dflash_files],
             "cache": [M.FileEntry(**f) for f in cache_files],
             "vad": [M.FileEntry(**f) for f in vad_files],

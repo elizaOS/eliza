@@ -371,7 +371,7 @@ export class CloudContainerService extends Service {
   }
 
   private isAuthenticated(): boolean {
-    return this.authService.isAuthenticated() === true;
+    return this.authService?.isAuthenticated?.() === true;
   }
 }
 

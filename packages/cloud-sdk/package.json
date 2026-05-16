@@ -9,10 +9,8 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun run build.ts",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run src/live.e2e.test.ts"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
   },
   "exports": {
     ".": {

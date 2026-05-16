@@ -10,8 +10,9 @@ import {
 } from "./voice-preset-format";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// .../packages/app-core/src/services/local-inference/voice -> packages/app-core
-const APP_CORE_ROOT = path.resolve(HERE, "../../../..");
+// .../plugins/plugin-local-inference/src/services/voice -> repo root
+const REPO_ROOT = path.resolve(HERE, "../../../../..");
+const APP_CORE_ROOT = path.join(REPO_ROOT, "packages", "app-core");
 const SCRIPT = path.join(
 	APP_CORE_ROOT,
 	"scripts",

@@ -291,6 +291,39 @@ export interface AppConfig {
   namespace?: string;
 }
 
+export const DEFAULT_APP_CONFIG: AppConfig = {
+  appName: "Eliza",
+  appId: "app.eliza",
+  orgName: "elizaos",
+  repoName: "eliza",
+  cliName: "eliza",
+  description: "Open-source AI agents for everyone",
+  envPrefix: "ELIZA",
+  namespace: "eliza",
+  defaultApps: ["@elizaos/plugin-lifeops"],
+  desktop: {
+    bundleId: "app.eliza",
+    urlScheme: "elizaos",
+  },
+  web: {
+    shortName: "Eliza",
+    themeColor: "#08080a",
+    backgroundColor: "#0a0a0a",
+    shareImagePath: "/og-image.png",
+  },
+  branding: {
+    appName: "Eliza",
+    orgName: "elizaos",
+    repoName: "eliza",
+    docsUrl: "https://eliza.how",
+    appUrl: "https://eliza.how",
+    bugReportUrl: "https://github.com/elizaOS/eliza/issues/new",
+    hashtag: "#elizaOS",
+    fileExtension: ".eliza-agent",
+    packageScope: "elizaos",
+  },
+};
+
 /**
  * Resolve a full BrandingConfig from an AppConfig.
  * Merges app-specific overrides with the framework defaults.

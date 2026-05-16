@@ -44,8 +44,8 @@ import {
   useSessionAuth,
   useStewardAuth,
 } from "@/lib/hooks/use-session-auth";
-import { useCredits } from "@/lib/providers/CreditsProvider";
 import { useChatStore } from "@/lib/stores/chat-store";
+import { useCredits } from "@/providers/CreditsProvider";
 import { FeedbackModal } from "./feedback-modal";
 
 interface UserProfileResponse {

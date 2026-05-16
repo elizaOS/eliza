@@ -11,7 +11,7 @@ const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 
 function getCanonicalOwnerId(runtime: IAgentRuntime): string | undefined {
 	for (const key of CANONICAL_OWNER_SETTING_KEYS) {
-		const value = runtime.getSetting(key);
+		const value = runtime.getSetting?.(key);
 		if (typeof value !== "string") {
 			continue;
 		}
@@ -57,7 +57,7 @@ export function resolveElizaOwnerEntityId(runtime: IAgentRuntime): string {
 		return configuredOwnerId;
 	}
 
-	const agentName = runtime.character.name?.trim() || runtime.agentId;
+	const agentName = runtime.character?.name?.trim() || runtime.agentId;
 	return stringToUuid(`${agentName}-admin-entity`);
 }
 

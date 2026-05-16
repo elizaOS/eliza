@@ -6,6 +6,18 @@ export const GatewayIntentBits = {
   MessageContent: 32768,
 } as const;
 
+export const ApplicationCommandOptionType = {
+  String: 3,
+  Integer: 4,
+  Boolean: 5,
+  User: 6,
+  Channel: 7,
+  Role: 8,
+  Mentionable: 9,
+  Number: 10,
+  Attachment: 11,
+} as const;
+
 export class Client {
   login(): Promise<string> {
     return Promise.resolve("stub-token");

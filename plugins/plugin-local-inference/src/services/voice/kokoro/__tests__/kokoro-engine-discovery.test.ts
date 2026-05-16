@@ -73,7 +73,7 @@ describe("resolveKokoroEngineConfig", () => {
 		expect(resolveKokoroEngineConfig()).toBeNull();
 	});
 
-	it("returns the canonical Samantha default when af_same.bin is staged", () => {
+	it("returns the canonical Bella default when staged", () => {
 		const fx = makeStaged({
 			modelFile: "kokoro-v1.0.onnx",
 			voices: ["af_same.bin", "af_bella.bin"],
@@ -82,7 +82,7 @@ describe("resolveKokoroEngineConfig", () => {
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
-		expect(cfg?.defaultVoiceId).toBe("af_same");
+		expect(cfg?.defaultVoiceId).toBe("af_bella");
 		expect(cfg?.layout.modelFile).toBe("kokoro-v1.0.onnx");
 		expect(cfg?.layout.sampleRate).toBe(24_000);
 		expect(cfg?.layout.root).toBe(fx.root);
@@ -106,10 +106,7 @@ describe("resolveKokoroEngineConfig", () => {
 			const cfg = resolveKokoroEngineConfig();
 			expect(cfg).not.toBeNull();
 			expect(cfg?.defaultVoiceId).toBe("af_bella");
-			expect(warnings.some((w) => /af_same/.test(w))).toBe(true);
-			expect(warnings.some((w) => /falling back to af_bella/.test(w))).toBe(
-				true,
-			);
+			expect(warnings).toEqual([]);
 		} finally {
 			console.warn = origWarn;
 		}

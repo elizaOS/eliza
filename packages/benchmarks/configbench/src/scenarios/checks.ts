@@ -54,9 +54,9 @@ export function checkAgentResponded(): ScenarioCheck {
     evaluate: (result: ScenarioOutcome): CheckVerdict => ({
       passed:
         result.agentResponses.length > 0 &&
-        result.agentResponses.some((r) => r.length > 0),
+        result.agentResponses.some((r) => r.trim().length > 0),
       expected: "At least one non-empty agent response",
-      actual: `${result.agentResponses.length} responses`,
+      actual: `${result.agentResponses.filter((r) => r.trim().length > 0).length}/${result.agentResponses.length} non-empty responses`,
     }),
   };
 }

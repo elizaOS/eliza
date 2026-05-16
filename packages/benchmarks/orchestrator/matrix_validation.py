@@ -39,6 +39,16 @@ COMMON_ENV_KEYS: tuple[str, ...] = (
     "OPENAI_SMALL_MODEL",
     "PYTHONPATH",
 )
+SECRET_KEY_MARKERS: tuple[str, ...] = (
+    "API_KEY",
+    "AUTH",
+    "BEARER",
+    "CREDENTIAL",
+    "PASSWORD",
+    "SECRET",
+    "TOKEN",
+)
+REDACTED_VALUE = "<redacted>"
 
 
 @dataclass(frozen=True)
@@ -98,8 +108,32 @@ def _trajectory_expectations(adapter_id: str) -> list[str]:
     return expectations
 
 
+def _is_secret_key(key: str) -> bool:
+    key_upper = key.upper()
+    return any(marker in key_upper for marker in SECRET_KEY_MARKERS)
+
+
+def _redact_for_report(value: Any, *, key: str = "") -> Any:
+    if key and _is_secret_key(key):
+        return REDACTED_VALUE
+    if isinstance(value, dict):
+        return {
+            str(k): _redact_for_report(v, key=str(k))
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_for_report(item) for item in value]
+    if isinstance(value, tuple):
+        return [_redact_for_report(item) for item in value]
+    return value
+
+
 def _summarize_env(env: dict[str, str], keys: tuple[str, ...] = COMMON_ENV_KEYS) -> dict[str, str]:
-    return {key: env[key] for key in keys if key in env}
+    return {
+        key: _redact_for_report(env[key], key=key)
+        for key in keys
+        if key in env
+    }
 
 
 def build_cross_matrix_report(
@@ -182,10 +216,10 @@ def build_cross_matrix_report(
                     cwd=adapter.cwd,
                     command=command,
                     command_display=command_display,
-                    default_extra_config=dict(adapter.default_extra_config),
-                    effective_extra_config=effective_extra,
+                    default_extra_config=_redact_for_report(dict(adapter.default_extra_config)),
+                    effective_extra_config=_redact_for_report(effective_extra),
                     required_env=required_env,
-                    env_overrides=env_overrides,
+                    env_overrides=_redact_for_report(env_overrides),
                     propagated_env=propagated_env,
                     result_locator_patterns=_result_patterns_for(
                         adapter.id,

@@ -38,7 +38,13 @@ function walk(dir) {
   return out;
 }
 
-const testFiles = E2E_ROOTS.flatMap(walk);
+const testFiles = E2E_ROOTS.filter((root) => {
+  try {
+    return statSync(root).isDirectory();
+  } catch {
+    return false;
+  }
+}).flatMap(walk);
 const tests = testFiles.map((p) => ({
   path: p,
   text: readFileSync(p, "utf8"),

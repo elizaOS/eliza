@@ -10,8 +10,22 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
-const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b", "27b-256k"]);
-const VISION_TIERS = new Set<Eliza1Tier>(["4b", "9b", "27b", "27b-256k"]);
+const DFLASH_TIERS = new Set<Eliza1Tier>([
+	"0_8b",
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+]);
+const VISION_TIERS = new Set<Eliza1Tier>([
+	"0_8b",
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+]);
 
 function passingBackends() {
 	return {
@@ -199,6 +213,9 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
+		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).toContain(
+			"dflash",
+		);
 		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).not.toContain(
 			"eagle3",
 		);
@@ -235,15 +252,8 @@ describe("validateManifest — valid input", () => {
 		}
 	});
 
-	it("represents vision only on 4B, 9B, and 27B-class tiers", () => {
-		for (const tier of ["0_8b", "2b"] as const) {
-			const m = baseManifest(tier);
-			expect(m.files.vision).toEqual([]);
-			expect(m.lineage.vision).toBeUndefined();
-			expect(validateManifest(m).ok).toBe(true);
-		}
-
-		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
+	it("represents vision on every active tier", () => {
+		for (const tier of ELIZA_1_TIERS) {
 			const m = baseManifest(tier);
 			expect(m.files.vision).toEqual([
 				{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA },
@@ -516,8 +526,8 @@ describe("validateManifest — contract rejections", () => {
 		expect(result.ok).toBe(true);
 	});
 
-	it("rejects missing vision artifacts on 4B, 9B, and 27B-class tiers", () => {
-		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
+	it("rejects missing vision artifacts on every active tier", () => {
+		for (const tier of ELIZA_1_TIERS) {
 			const m = baseManifest(tier);
 			m.files.vision = [];
 			m.lineage.vision = undefined;
@@ -531,21 +541,9 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("rejects vision artifacts on 0_8B and 2B text/voice-only tiers", () => {
+	it("accepts vision artifacts on 0_8B and 2B mobile tiers", () => {
 		for (const tier of ["0_8b", "2b"] as const) {
-			const m = baseManifest(tier);
-			m.files.vision = [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }];
-			m.lineage.vision = {
-				base: "eliza-1-vision",
-				license: "apache-2.0",
-			};
-			const result = validateManifest(m);
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.errors.some((e) => e.includes("files.vision"))).toBe(
-					true,
-				);
-			}
+			expect(validateManifest(baseManifest(tier)).ok).toBe(true);
 		}
 	});
 });
@@ -574,7 +572,7 @@ describe("canSetAsDefault", () => {
 			sourceModels: {
 				text: { repo: "Qwen/Qwen3.5-9B" },
 				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
-				drafter: { repo: "elizalabs/eliza-1" },
+				drafter: { repo: "elizaos/eliza-1" },
 				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
 				embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
 				vad: { repo: "onnx-community/silero-vad" },

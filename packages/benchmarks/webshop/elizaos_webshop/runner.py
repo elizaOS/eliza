@@ -288,6 +288,10 @@ class WebShopRunner:
             "status": status,
             "timestamp": datetime.now().isoformat(),
             "mode": mode,
+            "sample": self.use_sample_tasks,
+            "split": self.split,
+            "profile": self.profile,
+            "use_hf": self.use_hf,
         }
 
         return WebShopReport(
@@ -335,6 +339,10 @@ class WebShopRunner:
             "average_turns": report.average_turns,
             "average_steps": report.average_steps,
             "average_duration_ms": report.average_duration_ms,
+            "sample": bool(report.summary.get("sample", False)),
+            "split": str(report.summary.get("split", "")),
+            "profile": str(report.summary.get("profile", "")),
+            "use_hf": bool(report.summary.get("use_hf", False)),
             "summary": report.summary,
         }
 

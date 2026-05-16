@@ -1,18 +1,18 @@
-export type * from "../../../packages/core/src/connectors/account-manager.ts";
+export type * from "../../../core/src/connectors/account-manager.ts";
 
 import { createHash } from "node:crypto";
 
 export {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
-  CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
-  getConnectorAccountManager,
-  resetConnectorAccountManagerForTests,
-} from "../../../packages/core/src/connectors/account-manager.ts";
+	CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
+	getConnectorAccountManager,
+	resetConnectorAccountManagerForTests,
+} from "../../../core/src/connectors/account-manager.ts";
 export type {
-  IAgentRuntime,
-  Plugin,
-} from "../../../packages/core/src/types/index.ts";
-export { Service } from "../../../packages/core/src/types/service.ts";
+	IAgentRuntime,
+	Plugin,
+} from "../../../core/src/types/index.ts";
+export { Service } from "../../../core/src/types/service.ts";
 
 type LogFn = (...args: unknown[]) => void;
 

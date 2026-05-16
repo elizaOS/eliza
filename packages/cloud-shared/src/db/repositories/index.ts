@@ -56,13 +56,12 @@ export * from "./ai-pricing";
 export * from "./analytics-alert-events";
 export * from "./anonymous-sessions";
 export * from "./api-keys";
-// ============================================
-// App Domain
-// ============================================
-export * from "./app-auth-codes";
 export * from "./app-credit-balances";
 export * from "./app-databases";
 export * from "./app-earnings";
+// ============================================
+// App Domain
+// ============================================
 export * from "./apps";
 // ============================================
 // Character Domain (User-created definitions)

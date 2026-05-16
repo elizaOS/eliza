@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLOUD_V2_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+CLOUD_SERVICES_DIR="$CLOUD_V2_DIR/cloud-services"
+CLOUD_INFRA_DIR="$CLOUD_V2_DIR/cloud-infra/cloud"
 CLUSTER_NAME="eliza-local"
 REGISTRY_NAME="kind-registry"
 REGISTRY_PORT="5001"
@@ -198,7 +200,7 @@ pass "Secret eliza-agent-secrets created from .env.agents"
 
 # 14. Build & deploy operator
 info "Building operator..."
-cd "$CLOUD_V2_DIR/services/operator"
+cd "$CLOUD_SERVICES_DIR/operator"
 npm install --silent 2>/dev/null
 npx pepr build 2>&1 | tail -1
 
@@ -214,7 +216,7 @@ kubectl label namespace pepr-system app.kubernetes.io/managed-by=Helm --overwrit
 kubectl annotate namespace pepr-system meta.helm.sh/release-name=eliza-operator --overwrite > /dev/null 2>&1
 kubectl annotate namespace pepr-system meta.helm.sh/release-namespace=pepr-system --overwrite > /dev/null 2>&1
 helm upgrade --install eliza-operator \
-  "$CLOUD_V2_DIR/services/operator/dist/eliza-operator-chart/" \
+  "$CLOUD_SERVICES_DIR/operator/dist/eliza-operator-chart/" \
   --namespace pepr-system --wait --timeout 120s
 
 kubectl rollout status deployment/pepr-eliza-operator-watcher -n pepr-system --timeout=60s > /dev/null 2>&1
@@ -222,23 +224,23 @@ pass "Operator deployed"
 
 # 15. Build & push agent-server image
 info "Building agent-server image..."
-cd "$CLOUD_V2_DIR/services/agent-server"
+cd "$CLOUD_SERVICES_DIR/agent-server"
 bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
 cd "$SCRIPT_DIR"
 
 docker build -t "localhost:${REGISTRY_PORT}/agent-server:dev" \
-  "$CLOUD_V2_DIR/services/agent-server"
+  "$CLOUD_SERVICES_DIR/agent-server"
 docker push "localhost:${REGISTRY_PORT}/agent-server:dev"
 pass "Agent-server image pushed to localhost:${REGISTRY_PORT}"
 
 # 16. Build & push gateway-discord image
 info "Building gateway-discord image..."
-cd "$CLOUD_V2_DIR/services/gateway-discord"
+cd "$CLOUD_SERVICES_DIR/gateway-discord"
 bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
 cd "$SCRIPT_DIR"
 
 docker build -t "localhost:${REGISTRY_PORT}/gateway-discord:dev" \
-  "$CLOUD_V2_DIR/services/gateway-discord"
+  "$CLOUD_SERVICES_DIR/gateway-discord"
 docker push "localhost:${REGISTRY_PORT}/gateway-discord:dev"
 pass "Gateway-discord image pushed to localhost:${REGISTRY_PORT}"
 
@@ -252,6 +254,7 @@ ELIZA_CLOUD_URL=http://eliza-cloud.eliza-infra.svc:3000
 KV_REST_API_URL=http://redis-rest.eliza-infra.svc:8079
 KV_REST_API_TOKEN=local_dev_token
 GATEWAY_BOOTSTRAP_SECRET=local-dev-gateway-secret-change-me
+AGENT_SERVER_SHARED_SECRET=local-dev-agent-server-secret
 VOICE_MESSAGE_ENABLED=false
 LOG_LEVEL=debug
 # Eliza App bot (optional — set to test the system-wide bot)
@@ -270,7 +273,7 @@ pass "Secret gateway-discord-secrets created from .env.gateway"
 # 18. Deploy gateway-discord via Helm chart
 info "Deploying gateway-discord via Helm..."
 helm upgrade --install gateway-discord \
-  "$CLOUD_V2_DIR/services/gateway-discord/chart" \
+  "$CLOUD_SERVICES_DIR/gateway-discord/chart" \
   --namespace eliza-infra \
   --values "$SCRIPT_DIR/values-gateway.yaml" \
   --wait --timeout 120s
@@ -278,12 +281,12 @@ pass "Gateway-discord deployed via Helm"
 
 # 19. Build & push gateway-webhook image
 info "Building gateway-webhook image..."
-cd "$CLOUD_V2_DIR/services/gateway-webhook"
+cd "$CLOUD_SERVICES_DIR/gateway-webhook"
 bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
 cd "$SCRIPT_DIR"
 
 docker build -t "localhost:${REGISTRY_PORT}/gateway-webhook:dev" \
-  "$CLOUD_V2_DIR/services/gateway-webhook"
+  "$CLOUD_SERVICES_DIR/gateway-webhook"
 docker push "localhost:${REGISTRY_PORT}/gateway-webhook:dev"
 pass "Gateway-webhook image pushed to localhost:${REGISTRY_PORT}"
 
@@ -294,6 +297,8 @@ if [ ! -f "$GW_WEBHOOK_ENV_FILE" ]; then
   info "  No .env.gateway-webhook found, creating with defaults..."
   cat > "$GW_WEBHOOK_ENV_FILE" <<'DEFAULTS'
 GATEWAY_BOOTSTRAP_SECRET=local-dev-gateway-secret-change-me
+GATEWAY_INTERNAL_SECRET=local-dev-gateway-internal-secret
+AGENT_SERVER_SHARED_SECRET=local-dev-agent-server-secret
 KV_REST_API_URL=http://redis-rest.eliza-infra.svc:8079
 KV_REST_API_TOKEN=local_dev_token
 ELIZA_CLOUD_URL=http://eliza-cloud.eliza-infra.svc:3000
@@ -323,7 +328,7 @@ pass "Secret gateway-webhook-secrets created from .env.gateway-webhook"
 # 21. Deploy gateway-webhook via Helm chart
 info "Deploying gateway-webhook via Helm..."
 helm upgrade --install gateway-webhook \
-  "$CLOUD_V2_DIR/packages/infra/charts/gateway-webhook" \
+  "$CLOUD_INFRA_DIR/charts/gateway-webhook" \
   --namespace eliza-infra \
   --values "$SCRIPT_DIR/values-gateway-webhook.yaml" \
   --wait --timeout 120s

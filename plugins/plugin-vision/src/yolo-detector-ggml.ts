@@ -463,8 +463,8 @@ export class YOLODetector {
     if (!this.bindings || !this.handle) return [];
 
     const meta = await sharp(imageBuffer).metadata();
-    const origW = meta.width;
-    const origH = meta.height;
+    const origW = meta.width ?? 0;
+    const origH = meta.height ?? 0;
     if (!origW || !origH) return [];
 
     // The C library's yolo_detect takes the source image directly

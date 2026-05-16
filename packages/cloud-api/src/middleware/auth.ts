@@ -96,6 +96,25 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  );
+}
+
+function isLocalDevAdminRequest(
+  c: Parameters<MiddlewareHandler<AppEnv>>[0],
+): boolean {
+  const explicit = c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true";
+  const devMode = c.env.NODE_ENV !== "production" && c.env.LOCAL_DEV === "true";
+  if (!explicit && !devMode) return false;
+  const url = new URL(c.req.url);
+  return (
+    url.pathname.startsWith("/api/v1/admin/") &&
+    isLoopbackHostname(url.hostname)
+  );
+}
+
 export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   const url = new URL(c.req.url);
   const pathname = url.pathname;
@@ -106,6 +125,11 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   if (isPublicPath(pathname)) {
+    await next();
+    return;
+  }
+
+  if (isLocalDevAdminRequest(c)) {
     await next();
     return;
   }

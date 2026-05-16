@@ -25,7 +25,7 @@ import {
   readPngDimensions,
   type OcrWithCoordsBlock,
 } from "./ocr-with-coords";
-import type { RapidOCRService } from "./ocr-service-rapid";
+import type { OCRService } from "./ocr-service";
 import type { OCRResult } from "./types";
 
 // ── PNG synth helper ────────────────────────────────────────────────────────
@@ -174,14 +174,14 @@ describe("readPngDimensions", () => {
 
 // ── RapidOcrCoordAdapter.describe ───────────────────────────────────────────
 
-function stubRapid(result: OCRResult): RapidOCRService {
+function stubRapid(result: OCRResult): Pick<OCRService, "extractText"> {
   // Cast through `unknown` because we deliberately stub only the surface the
   // adapter touches; `RapidOCRService` carries onnxruntime-node session
   // members that have no role here.
   const stub = {
     extractText: vi.fn(async () => result),
   };
-  return stub as unknown as RapidOCRService;
+  return stub as unknown as Pick<OCRService, "extractText">;
 }
 
 describe("RapidOcrCoordAdapter.describe", () => {

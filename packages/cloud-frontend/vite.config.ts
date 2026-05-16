@@ -14,6 +14,22 @@ import { defineConfig, loadEnv } from "vite";
 // `content/` directory in this package.
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
+function resolveFile(path: string): string {
+  const candidates = [
+    path,
+    `${path}.ts`,
+    `${path}.tsx`,
+    `${path}/index.ts`,
+    `${path}/index.tsx`,
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return path;
+}
+
 // Some subtrees under `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` were
 // moved into this package (browser-only files: utils.ts, hooks, providers,
 // stores, toast-adapter). Build a vite plugin that intercepts those imports
@@ -26,21 +42,11 @@ function resolveLocalFirst(
   sharedBase: string,
 ): string {
   const sub = id.replace(/^@\/(?:lib|db|types|components)\/?/, "");
-  const localPath = r(`${localBase}/${sub}`);
-  const candidates = [
-    localPath,
-    `${localPath}.ts`,
-    `${localPath}.tsx`,
-    `${localPath}/index.ts`,
-    `${localPath}/index.tsx`,
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate) && statSync(candidate).isFile()) {
-      return candidate;
+  for (const base of [localBase, sharedBase]) {
+    const resolved = resolveFile(r(`${base}/${sub}`));
+    if (resolved !== r(`${base}/${sub}`)) {
+      return resolved;
     }
-  }
-  if (existsSync(localPath) && statSync(localPath).isDirectory()) {
-    return localPath;
   }
   return r(`${sharedBase}/${sub}`);
 }
@@ -113,8 +119,11 @@ export default defineConfig(({ mode }) => {
         name: "eliza-blog-raw-mdx",
         enforce: "pre",
         transform(source, id) {
-          const [filePath, query] = id.split("?");
-          if (query?.split("&").includes("raw")) {
+          const queryIndex = id.indexOf("?");
+          const filePath =
+            queryIndex === -1 ? id : id.slice(0, queryIndex);
+          const query = queryIndex === -1 ? "" : id.slice(queryIndex + 1);
+          if (query === "raw" || query.includes("&raw")) {
             return null;
           }
           if (
@@ -199,6 +208,9 @@ export default defineConfig(({ mode }) => {
               "./src/components",
               "../../packages/ui/src/cloud-ui/components",
             );
+          }
+          if (source.startsWith("@/")) {
+            return resolveFile(r(`./src/${source.slice(2)}`));
           }
           return null;
         },
@@ -304,6 +316,48 @@ export default defineConfig(({ mode }) => {
           find: /^@elizaos\/cloud-shared\/(.*)$/,
           replacement: `${r("../cloud-shared/src")}/$1`,
         },
+        {
+          find: /^@\/lib\/hooks\/(.*)$/,
+          replacement: `${r("./src/hooks")}/$1`,
+        },
+        {
+          find: /^@\/lib\/providers\/(.*)$/,
+          replacement: `${r("./src/providers")}/$1`,
+        },
+        {
+          find: /^@\/lib\/stores\/(.*)$/,
+          replacement: `${r("./src/lib/stores")}/$1`,
+        },
+        {
+          find: /^@\/lib\/utils\/logger$/,
+          replacement: r("../cloud-shared/src/lib/utils/logger.ts"),
+        },
+        {
+          find: /^@\/lib\/config\/feature-flags$/,
+          replacement: r("../cloud-shared/src/lib/config/feature-flags.ts"),
+        },
+        {
+          find: /^@\/lib\/onboarding\/tours$/,
+          replacement: r("../cloud-shared/src/lib/onboarding/tours.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/copy-to-clipboard$/,
+          replacement: r("../cloud-shared/src/lib/utils/copy-to-clipboard.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/default-avatar$/,
+          replacement: r("../cloud-shared/src/lib/utils/default-avatar.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/referral-invite-url$/,
+          replacement: r(
+            "../cloud-shared/src/lib/utils/referral-invite-url.ts",
+          ),
+        },
+        {
+          find: /^@\/lib\/utils\/referral-me-fetch$/,
+          replacement: r("../cloud-shared/src/lib/utils/referral-me-fetch.ts"),
+        },
         // `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` are handled by
         // the `eliza-cloud-frontend-alias-fallback` plugin above (local-first,
         // cloud-shared fallback).
@@ -311,7 +365,6 @@ export default defineConfig(({ mode }) => {
           find: /^@\/packages(\/.*)?$/,
           replacement: `${r("../cloud-shared/src")}$1`,
         },
-        { find: /^@\/(.*)$/, replacement: `${r("./src")}/$1` },
       ],
     },
     server: {

@@ -598,7 +598,8 @@ def test_message_manage_operation_inferred_from_operation_aliases(field: str) ->
     assert world.emails["email_000001"].folder == "archive"
 
 
-def test_archive_email_thread_alias_matches_message_manage_archive() -> None:
+@pytest.mark.parametrize("action_name", ["ARCHIVE_EMAIL_THREAD", "ARCHIVE_THREAD"])
+def test_archive_thread_alias_matches_message_manage_archive(action_name: str) -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action
     from eliza_lifeops_bench.types import Action
@@ -606,7 +607,7 @@ def test_archive_email_thread_alias_matches_message_manage_archive() -> None:
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
     archived = _execute_action(
         Action(
-            name="ARCHIVE_EMAIL_THREAD",
+            name=action_name,
             kwargs={"threadId": "thread_00001"},
         ),
         world,

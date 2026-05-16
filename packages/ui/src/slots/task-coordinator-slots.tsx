@@ -51,28 +51,28 @@ export function registerTaskCoordinatorSlots(
 
 export function CodingAgentSettingsSection(
   props: TaskCoordinatorCodingAgentSettingsSectionProps,
-): JSX.Element | null {
+): React.JSX.Element | null {
   const Component = registered.CodingAgentSettingsSection;
   return Component ? <Component {...props} /> : null;
 }
 
 export function CodingAgentTasksPanel(
   props: TaskCoordinatorCodingAgentTasksPanelProps,
-): JSX.Element | null {
+): React.JSX.Element | null {
   const Component = registered.CodingAgentTasksPanel;
   return Component ? <Component {...props} /> : null;
 }
 
 export function CodingAgentControlChip(
   props: TaskCoordinatorCodingAgentControlChipProps,
-): JSX.Element | null {
+): React.JSX.Element | null {
   const Component = registered.CodingAgentControlChip;
   return Component ? <Component {...props} /> : null;
 }
 
 export function PtyConsoleBase(
   props: TaskCoordinatorPtyConsoleBaseProps,
-): JSX.Element | null {
+): React.JSX.Element | null {
   const Component = registered.PtyConsoleBase;
   return Component ? <Component {...props} /> : null;
 }

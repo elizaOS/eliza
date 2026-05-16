@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../test/helpers/real-runtime";
+} from "../../../packages/test/helpers/real-runtime.ts";
 import { entityAction } from "../src/actions/entity.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { LifeOpsService } from "../src/lifeops/service.ts";

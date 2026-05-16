@@ -211,6 +211,32 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
       state.releaseCalls.find((r) => r.contextId === firstId),
     ).toBeDefined();
   });
+
+  it("defaults Android loads to CPU-safe params", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/android-qwen.gguf" });
+
+    expect(state.initContextCalls).toHaveLength(1);
+    expect(state.initContextCalls[0].params.n_gpu_layers).toBe(0);
+    expect(state.initContextCalls[0].params.flash_attn).toBe(false);
+  });
+
+  it("allows Android callers to opt into GPU params explicitly", async () => {
+    vi.resetModules();
+    const state = installMockPlugin();
+    const { CapacitorLlamaAdapter } = await import("./capacitor-llama-adapter");
+
+    const adapter = new CapacitorLlamaAdapter();
+    await adapter.load({ modelPath: "/tmp/android-vulkan.gguf", useGpu: true });
+
+    expect(state.initContextCalls).toHaveLength(1);
+    expect(state.initContextCalls[0].params.n_gpu_layers).toBe(99);
+    expect(state.initContextCalls[0].params.flash_attn).toBe(true);
+  });
 });
 
 describe("CapacitorLlamaAdapter DFlash + cache type wiring", () => {

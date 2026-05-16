@@ -214,7 +214,8 @@ function resolvePersistedCloudIdentity(runtime: AgentRuntime | null): {
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
   return (
-    resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL)
+    resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ??
+    DEFAULT_CLOUD_API_BASE_URL
   );
 }
 
@@ -407,8 +408,8 @@ export async function fetchCloudCredits(
         data?: { balance?: unknown };
       };
       const rawBalance =
-        coerceCloudBalance(creditResponse.balance) ??
-        coerceCloudBalance(creditResponse.data?.balance);
+        coerceCloudBalance(creditResponse?.balance) ??
+        coerceCloudBalance(creditResponse?.data?.balance);
 
       if (typeof rawBalance === "number") {
         return withCreditFlags(rawBalance);

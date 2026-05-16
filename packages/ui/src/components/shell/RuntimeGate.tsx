@@ -38,10 +38,10 @@ import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/auto-download-recommended";
 import {
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
-  MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
   persistMobileRuntimeModeForServerTarget,
@@ -109,7 +109,7 @@ async function startMobileLocalAgent(): Promise<void> {
       capacitorWithPlugins.Plugins?.Agent ??
       Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
     await registeredAgent.start?.({
-      apiBase: isIOS ? IOS_LOCAL_AGENT_IPC_BASE : MOBILE_LOCAL_AGENT_API_BASE,
+      apiBase: isIOS ? IOS_LOCAL_AGENT_IPC_BASE : ANDROID_LOCAL_AGENT_IPC_BASE,
       mode: "local",
     });
   } catch {
@@ -427,6 +427,7 @@ export function RuntimeGate() {
     null,
   );
   const provisionRunIdRef = React.useRef(0);
+  const autoCreateRequestRef = React.useRef(false);
 
   // Remote sub-view
   const [remoteUrl, setRemoteUrl] = React.useState("");
@@ -736,12 +737,11 @@ export function RuntimeGate() {
     const localApiBase = isIOS
       ? IOS_LOCAL_AGENT_IPC_BASE
       : isAndroid
-        ? MOBILE_LOCAL_AGENT_API_BASE
+        ? ANDROID_LOCAL_AGENT_IPC_BASE
         : resolveLocalAgentApiBase();
     if (isAndroid || isIOS) {
-      // Mobile local mode pins a stable local-agent identity. Android serves
-      // the loopback URL from the foreground service; iOS uses a custom
-      // in-app scheme resolved by the Capacitor/native IPC bridge.
+      // Mobile local mode pins a stable local-agent identity resolved by the
+      // Capacitor/native bridge instead of exposing WebView fetch to loopback.
       // Persisting it as a `remote` active server keeps the existing startup
       // restore branch working while `local` mobile runtime mode records the
       // user-visible distinction.
@@ -794,6 +794,9 @@ export function RuntimeGate() {
         label: "On-device agent",
         apiBase: localApiBase,
       });
+      // Fire-and-forget on desktop too: selecting local mode should start the
+      // recommended model download immediately while onboarding continues.
+      void autoDownloadRecommendedLocalModelInBackground(localApiBase);
     }
     persistMobileRuntimeModeForServerTarget("local");
     setState("onboardingServerTarget", "local");
@@ -936,7 +939,11 @@ export function RuntimeGate() {
   // ── Cloud: provision + connect ─────────────────────────────────────
 
   const provisionAndConnect = React.useCallback(
-    async (agentId: string, existingJobId?: string) => {
+    async (
+      agentId: string,
+      existingJobId?: string,
+      options?: { keepProvisioningChatVisible?: boolean },
+    ) => {
       const runId = provisionRunIdRef.current + 1;
       provisionRunIdRef.current = runId;
       const isCurrentRun = () => provisionRunIdRef.current === runId;
@@ -944,7 +951,9 @@ export function RuntimeGate() {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
       }
-      setCloudStage("provisioning");
+      if (!options?.keepProvisioningChatVisible) {
+        setCloudStage("provisioning");
+      }
       setProvisionStatus(
         t("runtimegate.startingProvisioning", {
           defaultValue: "Starting provisioning...",
@@ -1306,12 +1315,18 @@ export function RuntimeGate() {
       }
 
       // No agents yet — auto-create "My Agent" and provision.
+      if (autoCreateRequestRef.current) return;
+      autoCreateRequestRef.current = true;
       setError(null);
       const createRes = await client.createCloudCompatAgent({
         agentName: DEFAULT_AUTO_AGENT_NAME,
       });
-      if (cancelled) return;
+      if (cancelled) {
+        autoCreateRequestRef.current = false;
+        return;
+      }
       if (!createRes.success || !createRes.data?.agentId) {
+        autoCreateRequestRef.current = false;
         setError(
           createRes.data?.message ||
             t("runtimegate.failedCreate", {
@@ -1339,8 +1354,10 @@ export function RuntimeGate() {
         await provisionAndConnect(
           createRes.data.agentId,
           createRes.data.jobId ?? undefined,
+          { keepProvisioningChatVisible: true },
         );
       } catch (err) {
+        autoCreateRequestRef.current = false;
         setError(
           err instanceof Error
             ? err.message
@@ -1565,7 +1582,7 @@ export function RuntimeGate() {
           <div className="mt-4 flex w-full max-w-[28rem] flex-col gap-3">
             <ProvisioningChatView
               agentId={currentAgentId}
-              cloudApiBase={client.getBaseUrl()}
+              cloudApiBase={client.getBaseUrl() || window.location.origin}
               onContainerReady={(bridgeUrl) => {
                 void client
                   .getCloudCompatAgent(currentAgentId ?? "")

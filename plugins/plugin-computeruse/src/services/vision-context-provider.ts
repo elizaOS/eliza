@@ -1,4 +1,6 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { listProcesses } from "../platform/process-list.js";
+import { listWindows } from "../platform/windows-list.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ActionHistoryEntry } from "../types.js";
 
@@ -10,7 +12,7 @@ export type VisionContextBBox = [number, number, number, number];
 export interface VisionContextFocusedWindow {
   app: string;
   title: string;
-  bbox: VisionContextBBox;
+  bbox: VisionContextBBox | null;
 }
 
 export interface VisionContextRecentAction {
@@ -28,7 +30,7 @@ export interface VisionContext {
 interface ComputerUseContextSource {
   getCurrentScene(): Scene | null;
   refreshScene?(mode?: "idle" | "active" | "agent-turn"): Promise<Scene>;
-  getRecentActions(): ActionHistoryEntry[];
+  getRecentActions?(): ActionHistoryEntry[];
 }
 
 interface RuntimeCacheReader {
@@ -42,10 +44,20 @@ function isComputerUseContextSource(
     typeof candidate === "object" &&
     candidate !== null &&
     typeof (candidate as { getCurrentScene?: unknown }).getCurrentScene ===
-      "function" &&
-    typeof (candidate as { getRecentActions?: unknown }).getRecentActions ===
       "function"
   );
+}
+
+function uniqueProcessNames(): string[] {
+	const names = new Set<string>();
+	for (const process of listProcesses()) {
+		const name = process.name.trim();
+		if (name) names.add(name);
+		if (names.size >= 50) break;
+	}
+	const out = [...names];
+	if (out[0] === "launchd") return [];
+	return out;
 }
 
 function uniqueVisibleAppNames(scene: Scene | null): string[] {
@@ -71,12 +83,28 @@ function focusedWindowFromScene(
   };
 }
 
+function focusedWindowFromPlatform(): VisionContextFocusedWindow | null {
+  const [window] = listWindows();
+  if (!window) return null;
+	const app = window.app.trim();
+	const title = window.title.trim();
+	if (!app && !title) return null;
+	if (!app && title === "unknown") return null;
+	return {
+		app,
+		title,
+    bbox: null,
+  };
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 export class VisionContextProvider extends Service {
   static override serviceType = VISION_CONTEXT_SERVICE_TYPE;
+
+  private readonly recentActions: VisionContextRecentAction[] = [];
 
   override capabilityDescription =
     "Provides compact desktop scene context for vision prompts.";
@@ -88,19 +116,32 @@ export class VisionContextProvider extends Service {
   }
 
   override async stop(): Promise<void> {
-    // Stateless provider.
+    this.recentActions.length = 0;
   }
 
   async getContext(): Promise<VisionContext> {
     const computerUse = this.runtime.getService("computeruse");
-    const source = isComputerUseContextSource(computerUse) ? computerUse : null;
-    const scene = await this.getScene(source);
-    return {
-      openApps: uniqueVisibleAppNames(scene),
-      focusedWindow: focusedWindowFromScene(scene),
+		const source = isComputerUseContextSource(computerUse) ? computerUse : null;
+		const scene = await this.getScene(source);
+		const processNames = uniqueProcessNames();
+		const sceneAppNames = uniqueVisibleAppNames(scene);
+		return {
+			openApps: sceneAppNames.length > 0 ? sceneAppNames : processNames,
+      focusedWindow: focusedWindowFromScene(scene) ?? focusedWindowFromPlatform(),
       recentActions: this.getRecentActions(source),
       currentTaskGoal: await this.getCurrentTaskGoal(),
     };
+  }
+
+  noteAction(action: string): void {
+    const label = action.trim();
+    if (!label) {
+      throw new Error("VisionContextProvider requires a non-empty action label");
+    }
+    this.recentActions.push({ action: label, ts: Date.now() });
+    if (this.recentActions.length > 10) {
+      this.recentActions.splice(0, this.recentActions.length - 10);
+    }
   }
 
   private async getScene(
@@ -120,11 +161,12 @@ export class VisionContextProvider extends Service {
   private getRecentActions(
     source: ComputerUseContextSource | null,
   ): VisionContextRecentAction[] {
-    if (!source) return [];
-    return source.getRecentActions().map((entry) => ({
+    if (!source?.getRecentActions) return [...this.recentActions];
+    const sourceActions = source.getRecentActions().map((entry) => ({
       action: entry.action,
       ts: entry.timestamp,
     }));
+    return sourceActions.length > 0 ? sourceActions : [...this.recentActions];
   }
 
   private async getCurrentTaskGoal(): Promise<string | null> {

@@ -30,7 +30,7 @@ function stringSetting(
 }
 
 function characterConfig(runtime: IAgentRuntime): TwitchMultiAccountConfig {
-  const settings = runtime.character.settings as
+  const settings = runtime.character?.settings as
     | Record<string, unknown>
     | undefined;
   const raw = settings?.twitch;

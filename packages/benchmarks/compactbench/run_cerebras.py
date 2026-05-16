@@ -38,6 +38,7 @@ if EXTERNAL_SRC.exists():
     sys.path.insert(0, str(EXTERNAL_SRC))
 
 from eliza_compactbench.cerebras_provider import register_cerebras_provider
+from eliza_compactbench.safe_generators import install_safe_action_phrase_generator
 
 
 def main() -> int:
@@ -59,7 +60,7 @@ def main() -> int:
     parser.add_argument(
         "--score",
         action="store_true",
-        help="Print a score summary after the run completes.",
+        help="Print the repaired elizaOS benchmark score after the run completes.",
     )
     parser.add_argument(
         "--analyze-valid-hits",
@@ -83,6 +84,9 @@ def main() -> int:
 
     if not register_cerebras_provider():
         print("error: failed to register cerebras provider", file=sys.stderr)
+        return 2
+    if not install_safe_action_phrase_generator():
+        print("error: failed to install safe CompactBench generators", file=sys.stderr)
         return 2
 
     from compactbench.dsl import DifficultyLevel
@@ -142,19 +146,7 @@ def main() -> int:
 
     print(f"wrote {args.output}")
 
-    if args.score:
-        # Mirror `compactbench score` behavior using its public surface.
-        from compactbench.cli import score as score_cmd
-
-        try:
-            score_cmd(results=args.output)
-        except SystemExit as exc:
-            # typer.Exit subclasses SystemExit; let a successful score
-            # (code 0) fall through, surface failures to the caller.
-            code = exc.code if isinstance(exc.code, int) else 1
-            return code
-
-    if args.analyze_valid_hits:
+    if args.score or args.analyze_valid_hits:
         from argparse import Namespace
 
         from analyze_valid_hits import _run_analysis
@@ -179,10 +171,10 @@ def main() -> int:
             seed_slot=None,
         )
         summary = asyncio.run(_run_analysis(analysis_args))
-        print("repaired benchmark analysis:")
+        print("benchmark score:")
         print(
-            f"  overall_score={summary['overall_score']:.3f} "
-            f"benchmark_quality_score={summary['benchmark_quality_score']:.3f} "
+          f"  overall_score={summary['overall_score']:.3f} "
+          f"benchmark_quality_score={summary['benchmark_quality_score']:.3f} "
             f"raw_lexical_overall_score={summary['raw_lexical_overall_score']:.3f} "
             f"valid_false_negatives={summary['valid_false_negatives']} "
             f"semantic_false_positives={summary['semantic_false_positives']}"

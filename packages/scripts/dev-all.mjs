@@ -86,7 +86,7 @@ const agentEnv = {
   ),
   ELIZA_CLOUD_URL: urls.cloudWeb,
   ELIZA_WALLET_OS_STORE: envDefault("ELIZA_WALLET_OS_STORE", "1"),
-  ELIZA_DEVICE_BRIDGE_ENABLED: envDefault("ELIZA_DEVICE_BRIDGE_ENABLED", "1"),
+  ELIZA_ALLOW_NO_PROVIDER: envDefault("ELIZA_ALLOW_NO_PROVIDER", "1"),
   ELIZA_DISABLE_LOCAL_EMBEDDINGS: envDefault(
     "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
     "true",
@@ -95,6 +95,7 @@ const agentEnv = {
     process.env.ELIZA_SKIP_PLUGINS,
     "@elizaos/plugin-companion",
     "@elizaos/plugin-lifeops",
+    "@elizaos/plugin-wallet",
   ]
     .filter(Boolean)
     .join(","),
@@ -215,6 +216,12 @@ const cloudDevVarsCommand = packagedCloudAvailable
   ? [bunBin, "run", "packages/scripts/cloud/admin/sync-api-dev-vars.ts"]
   : [bunBin, "run", "--cwd", "cloud", "packages/scripts/sync-api-dev-vars.ts"];
 const defaultPrepareCommands = [
+  [
+    "shared package build",
+    "packages/shared",
+    [bunBin, "run", "build:dist"],
+    commonEnv,
+  ],
   ["ui package build", "packages/ui", [bunBin, "run", "build:dist"], commonEnv],
   [
     "wallet plugin build",

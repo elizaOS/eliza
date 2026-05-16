@@ -114,28 +114,26 @@ export async function handleImageDescription(
     let response: Response | null = null;
     let attemptedRetry = false;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const nextResponse = await client.routes.postApiV1ChatCompletionsRaw({
+      response = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
       });
-      if (!nextResponse) break;
-      response = nextResponse;
-      if (nextResponse.status !== 429 || attemptedRetry) break;
+      if (response.status !== 429 || attemptedRetry) break;
 
       // `Number(null) === 0`, so guard against a missing header before
       // calling `Number(...)` — otherwise the header path always wins with a
       // bogus `0` and the body fallback becomes unreachable.
-      const headerValue = nextResponse.headers.get("retry-after");
+      const headerValue = response.headers.get("retry-after");
       const headerRetryAfter =
         headerValue !== null && Number.isFinite(Number(headerValue))
           ? Number(headerValue)
           : undefined;
       let bodyRetryAfter: number | undefined;
       try {
-        const peek = (await nextResponse.clone().json()) as {
+        const peek = (await response.clone().json()) as {
           retryAfter?: unknown;
         };
         bodyRetryAfter =
-          typeof peek.retryAfter === "number" && Number.isFinite(peek.retryAfter)
+          typeof peek?.retryAfter === "number" && Number.isFinite(peek.retryAfter)
             ? peek.retryAfter
             : undefined;
       } catch {

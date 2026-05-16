@@ -1,7 +1,7 @@
 "use client";
 
 import { useContext, useEffect, useState } from "react";
-import { LocalStewardAuthContext } from "@/lib/providers/StewardProvider";
+import { LocalStewardAuthContext } from "@/providers/StewardProvider";
 
 export type SessionAuthSource = "none" | "steward";
 

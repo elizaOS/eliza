@@ -194,7 +194,6 @@ class OpenClawBFCLAgent:
             provider=provider or _default_underlying_provider(),
             model=self._model_name,
             direct_openai_compatible=True,
-            allow_text_tool_calls=False,
         )
         self._initialized = False
 
@@ -288,7 +287,7 @@ def build_bfcl_agent_fn(
             "thought": <reasoning or None>,
         }
     """
-    bridge = client or OpenClawClient()
+    bridge = client or OpenClawClient(direct_openai_compatible=True)
 
     async def _agent_fn(
         prompt: str,

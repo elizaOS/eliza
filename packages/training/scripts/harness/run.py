@@ -25,17 +25,26 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.toon import ToonDecoder  # noqa: E402
-
-from . import emit, validate as v  # noqa: E402
-from .personas import Persona, PERSONAS  # noqa: E402
-from .prompt import (  # noqa: E402
-    build_canonical_record,
-    build_tool_specs,
-    build_user_messages,
-    system_prompt_for_action,
-    visible_actions_for,
-)
+try:  # noqa: SIM105
+    from . import emit, validate as v  # type: ignore[import-not-found]  # noqa: E402
+    from .personas import Persona, PERSONAS  # type: ignore[import-not-found]  # noqa: E402
+    from .prompt import (  # type: ignore[import-not-found]  # noqa: E402
+        build_canonical_record,
+        build_tool_specs,
+        build_user_messages,
+        system_prompt_for_action,
+        visible_actions_for,
+    )
+except ImportError:  # direct script invocation: python scripts/harness/run.py
+    from scripts.harness import emit, validate as v  # type: ignore[no-redef]  # noqa: E402
+    from scripts.harness.personas import Persona, PERSONAS  # type: ignore[no-redef]  # noqa: E402
+    from scripts.harness.prompt import (  # type: ignore[no-redef]  # noqa: E402
+        build_canonical_record,
+        build_tool_specs,
+        build_user_messages,
+        system_prompt_for_action,
+        visible_actions_for,
+    )
 
 
 CATALOG_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
@@ -113,10 +122,69 @@ def determine_task_type(action: dict[str, Any]) -> str:
     return "message_handler"
 
 
+def _json_schema_for_action(action: dict[str, Any]) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+    for param in action.get("parameters") or []:
+        if not isinstance(param, dict):
+            continue
+        name = param.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        ptype = param.get("type")
+        json_type = ptype if ptype in {"string", "number", "integer", "boolean", "array", "object"} else "string"
+        properties[name] = {
+            "type": json_type,
+            "description": param.get("description") or "",
+        }
+        if param.get("required"):
+            required.append(name)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+        "additionalProperties": True,
+    }
+
+
+def _openai_tools_for_action(action: dict[str, Any]) -> list[dict[str, Any]]:
+    return [{
+        "type": "function",
+        "function": {
+            "name": action["name"],
+            "description": action.get("description") or "",
+            "parameters": _json_schema_for_action(action),
+        },
+    }]
+
+
+def _normalize_response_tool_calls(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    calls: list[dict[str, Any]] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            continue
+        function = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+        name = function.get("name") or raw.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        arguments = function.get("arguments") if "arguments" in function else raw.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                parsed = json.loads(arguments)
+            except json.JSONDecodeError:
+                parsed = {}
+            arguments = parsed if isinstance(parsed, dict) else {}
+        calls.append({"name": name, "arguments": arguments if isinstance(arguments, dict) else {}})
+    return calls
+
+
 async def call_openai_compatible(
     client: httpx.AsyncClient,
     api_key: str,
     messages: list[dict[str, str]],
+    tools: list[dict[str, Any]],
     sem: asyncio.Semaphore,
     *,
     api_url: str,
@@ -124,14 +192,17 @@ async def call_openai_compatible(
     reasoning_effort: str,
     temperature: float,
     max_tokens: int = 800,
-) -> tuple[str, str]:
-    """Returns (content, raw_reasoning) on success or empty strings."""
+) -> tuple[str, str, list[dict[str, Any]]]:
+    """Returns (content, raw_reasoning, native tool calls) on success."""
     payload = {
         "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
     headers = {
@@ -142,13 +213,14 @@ async def call_openai_compatible(
     backoff = 5.0
     last_content = ""
     last_reasoning = ""
+    last_tool_calls: list[dict[str, Any]] = []
     for attempt in range(8):
         async with sem:
             try:
                 r = await client.post(api_url, json=payload, headers=headers, timeout=120.0)
             except (httpx.HTTPError, asyncio.TimeoutError):
                 if attempt == 7:
-                    return last_content, last_reasoning
+                    return last_content, last_reasoning, last_tool_calls
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 1.7, 60)
                 continue
@@ -173,20 +245,21 @@ async def call_openai_compatible(
             choice = data["choices"][0]["message"]
             content = (choice.get("content") or "").strip()
             reasoning = (choice.get("reasoning") or "").strip()
+            tool_calls = _normalize_response_tool_calls(choice.get("tool_calls"))
         except (KeyError, ValueError, IndexError):
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, 30)
             continue
         last_content = content or last_content
         last_reasoning = reasoning or last_reasoning
+        last_tool_calls = tool_calls or last_tool_calls
+        if tool_calls:
+            return content, reasoning, tool_calls
         if content:
-            return content, reasoning
-        # if no content, but reasoning has TOON-looking text, return that
-        if reasoning and ("\n" in reasoning) and (":" in reasoning):
-            return reasoning, reasoning
+            return content, reasoning, tool_calls
         await asyncio.sleep(backoff)
         backoff = min(backoff * 1.5, 30)
-    return last_content, last_reasoning
+    return last_content, last_reasoning, last_tool_calls
 
 
 async def process_scenario(
@@ -201,8 +274,6 @@ async def process_scenario(
     reasoning_effort: str,
     scenario: dict[str, Any],
     scenario_idx: int,
-    decoder: ToonDecoder,
-    decoder_lock: asyncio.Lock,
     sem: asyncio.Semaphore,
 ) -> dict[str, Any]:
     """Returns a status dict: {ok, reason, accepted, scenario_id}."""
@@ -215,6 +286,7 @@ async def process_scenario(
 
     available_actions = visible_actions_for(action, catalog)
     tool_specs = build_tool_specs(action)
+    openai_tools = _openai_tools_for_action(action)
     system_prompt = system_prompt_for_action(
         agent_id="eliza",
         action_name=action_name,
@@ -225,10 +297,11 @@ async def process_scenario(
 
     expected_arg_keys = scenario.get("expected_arg_keys") or []
 
-    raw, reasoning = await call_openai_compatible(
+    raw, reasoning, tool_calls = await call_openai_compatible(
         client,
         api_key,
         messages,
+        openai_tools,
         sem,
         api_url=api_url,
         model=model,
@@ -237,33 +310,42 @@ async def process_scenario(
     )
 
     async def _validate(text: str) -> v.ValidationResult:
-        async with decoder_lock:
-            return v.validate(
-                raw_response=text,
-                decoder=decoder,
-                task_type=task_type,
-                scenario_kind=scenario["kind"],
-                expected_action=action_name,
-                expected_arg_keys=expected_arg_keys,
-                catalog_action_names=catalog_action_names,
-            )
+        return v.validate(
+            raw_response=text,
+            tool_calls=tool_calls,
+            task_type=task_type,
+            scenario_kind=scenario["kind"],
+            expected_action=action_name,
+            expected_arg_keys=expected_arg_keys,
+            catalog_action_names=catalog_action_names,
+        )
 
-    result = await _validate(raw) if raw else v.ValidationResult(False, "no content")
+    result = await _validate(raw) if (raw or tool_calls) else v.ValidationResult(False, "no content")
     if not result.ok:
         # retry once at lower temp
-        retry_raw, retry_reasoning = await call_openai_compatible(
+        retry_raw, retry_reasoning, retry_tool_calls = await call_openai_compatible(
             client,
             api_key,
             messages,
+            openai_tools,
             sem,
             api_url=api_url,
             model=model,
             reasoning_effort=reasoning_effort,
             temperature=0.4,
         )
-        retry_result = await _validate(retry_raw) if retry_raw else v.ValidationResult(False, "no content")
+        retry_result = v.validate(
+            raw_response=retry_raw,
+            tool_calls=retry_tool_calls,
+            task_type=task_type,
+            scenario_kind=scenario["kind"],
+            expected_action=action_name,
+            expected_arg_keys=expected_arg_keys,
+            catalog_action_names=catalog_action_names,
+        ) if (retry_raw or retry_tool_calls) else v.ValidationResult(False, "no content")
         if retry_result.ok:
             raw = retry_raw
+            tool_calls = retry_tool_calls
             result = retry_result
         else:
             emit.append_failure({
@@ -318,8 +400,6 @@ async def process_action(
     api_url: str,
     model: str,
     reasoning_effort: str,
-    decoder: ToonDecoder,
-    decoder_lock: asyncio.Lock,
     sem: asyncio.Semaphore,
     stats_lock: asyncio.Lock,
     global_stats: dict[str, Any],
@@ -351,10 +431,8 @@ async def process_action(
             reasoning_effort=reasoning_effort,
             scenario=sc,
             scenario_idx=idx,
-            decoder=decoder,
-            decoder_lock=decoder_lock,
             sem=sem,
-            )
+        )
         if result["accepted"]:
             accepted += 1
         else:
@@ -400,8 +478,6 @@ async def main_async(args: argparse.Namespace) -> None:
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-    decoder = ToonDecoder()
-    decoder_lock = asyncio.Lock()
     sem = asyncio.Semaphore(args.concurrency)
     stats_lock = asyncio.Lock()
     global_stats = {"done": 0, "accepted": 0, "rejected": 0}
@@ -443,8 +519,6 @@ async def main_async(args: argparse.Namespace) -> None:
                     api_url=args.api_url,
                     model=args.model,
                     reasoning_effort=args.reasoning_effort,
-                    decoder=decoder,
-                    decoder_lock=decoder_lock,
                     sem=sem,
                     stats_lock=stats_lock,
                     global_stats=global_stats,
@@ -458,8 +532,6 @@ async def main_async(args: argparse.Namespace) -> None:
                 await rep_task
             except asyncio.CancelledError:
                 pass
-
-    decoder.close()
 
     for r in results:
         manifest["actions"][r["action"]] = {

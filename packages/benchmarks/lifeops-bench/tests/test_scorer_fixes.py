@@ -353,10 +353,11 @@ def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
     assert matches == [True, True]
 
 
-def test_archive_email_thread_alias_scores_like_message_manage_archive() -> None:
+@pytest.mark.parametrize("action_name", ["ARCHIVE_EMAIL_THREAD", "ARCHIVE_THREAD"])
+def test_archive_thread_alias_scores_like_message_manage_archive(action_name: str) -> None:
     predicted = [
         Action(
-            name="ARCHIVE_EMAIL_THREAD",
+            name=action_name,
             kwargs={"threadId": "thread_00001"},
         )
     ]

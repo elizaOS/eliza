@@ -38,7 +38,7 @@ function cryptoStatusCacheKey(
   baseUrl: string,
   headers: Record<string, string>,
 ): string {
-  return `${baseUrl}|${headers.Authorization}`;
+  return `${baseUrl}|${headers.Authorization ?? ""}`;
 }
 
 async function fetchCryptoStatusCached(

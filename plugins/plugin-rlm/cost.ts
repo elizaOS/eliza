@@ -114,7 +114,7 @@ export function loadPricingFromEnv(): void {
     const customPricing = JSON.parse(pricingJson) as PricingTable;
     for (const [backend, models] of Object.entries(customPricing)) {
       for (const [model, prices] of Object.entries(models)) {
-        setModelPricing(backend, model, prices.input, prices.output);
+        setModelPricing(backend, model, prices.input ?? 1.0, prices.output ?? 3.0);
       }
     }
   } catch (e) {

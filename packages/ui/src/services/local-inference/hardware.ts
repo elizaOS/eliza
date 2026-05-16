@@ -12,6 +12,12 @@
 
 import fs from "node:fs";
 import os from "node:os";
+import {
+  adviseDiskSpace,
+  type DiskSpace,
+  type DiskSpaceWarning,
+  probeDiskSpace,
+} from "./disk-space";
 import type {
   HardwareProbe,
   ModelBucket,
@@ -311,4 +317,100 @@ export function assessFit(
   if (modelSizeGb > effectiveGb * 0.9) return "wontfit";
   if (modelSizeGb > effectiveGb * 0.7) return "tight";
   return "fits";
+}
+
+export type OnboardingMemoryFit = "fits" | "tight" | "wontfit";
+export type OnboardingDiskFit = "fits" | "low-disk" | "critical-disk";
+export type OnboardingRecommendation =
+  | "local-ok"
+  | "local-with-warning"
+  | "cloud-only";
+
+export interface OnboardingHardwareAdvice {
+  memory: OnboardingMemoryFit;
+  disk: OnboardingDiskFit;
+  recommended: OnboardingRecommendation;
+  reasons: string[];
+}
+
+export interface OnboardingHardwareModel {
+  sizeBytes: number;
+  ramGbRequired: number;
+}
+
+export interface OnboardingHardwareOptions {
+  workspacePath?: string;
+}
+
+function diskFitFromWarning(
+  warning: DiskSpaceWarning | undefined,
+): OnboardingDiskFit {
+  if (warning === "critical-disk") return "critical-disk";
+  if (warning === "low-disk") return "low-disk";
+  return "fits";
+}
+
+function memoryReason(
+  memory: OnboardingMemoryFit,
+  model: OnboardingHardwareModel,
+): string | null {
+  if (memory === "wontfit") {
+    return `Less than ${model.ramGbRequired} GB of usable memory for this model`;
+  }
+  if (memory === "tight") {
+    return "Memory is close to the model requirement; performance may suffer";
+  }
+  return null;
+}
+
+function diskReason(
+  disk: OnboardingDiskFit,
+  probe: DiskSpace,
+  modelSizeBytes: number,
+): string | null {
+  const freeGb = Math.max(
+    0,
+    Math.round((probe.freeBytes / (1024 ** 3)) * 10) / 10,
+  );
+  if (disk === "critical-disk") {
+    return `Only ${freeGb} GB free disk space — not enough to download this model`;
+  }
+  if (disk === "low-disk") {
+    const modelGb = Math.round((modelSizeBytes / (1024 ** 3)) * 10) / 10;
+    return `Low free disk space (${freeGb} GB) for a ${modelGb} GB model plus safety margin`;
+  }
+  return null;
+}
+
+function recommendationFrom(
+  memory: OnboardingMemoryFit,
+  disk: OnboardingDiskFit,
+): OnboardingRecommendation {
+  if (memory === "wontfit" || disk === "critical-disk") return "cloud-only";
+  if (memory === "tight" || disk === "low-disk") return "local-with-warning";
+  return "local-ok";
+}
+
+export async function assessOnboardingHardware(
+  model: OnboardingHardwareModel,
+  opts: OnboardingHardwareOptions = {},
+): Promise<OnboardingHardwareAdvice> {
+  const probe = await probeHardware();
+  const modelSizeGb = model.sizeBytes / (1024 ** 3);
+  const memory = assessFit(probe, modelSizeGb, model.ramGbRequired);
+  const workspacePath = opts.workspacePath ?? os.homedir();
+  const diskProbe = await probeDiskSpace(workspacePath);
+  const diskAdvice = adviseDiskSpace(diskProbe, model.sizeBytes);
+  const disk = diskFitFromWarning(diskAdvice.warning);
+  const reasons: string[] = [];
+  const memReason = memoryReason(memory, model);
+  if (memReason) reasons.push(memReason);
+  const dReason = diskReason(disk, diskProbe, model.sizeBytes);
+  if (dReason) reasons.push(dReason);
+  return {
+    memory,
+    disk,
+    recommended: recommendationFrom(memory, disk),
+    reasons,
+  };
 }

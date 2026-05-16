@@ -215,7 +215,9 @@ def _eliza_1_payload(score: float) -> dict[str, Any]:
 
 def _evm_payload(score: float) -> dict[str, Any]:
     return {
+        "normalized_score": score,
         "final_reward": score,
+        "max_reward": 1.0,
         "final_contracts": _passed_count(score),
         "model": "synthetic-calibration",
         "run_id": "synthetic-calibration",
@@ -224,7 +226,9 @@ def _evm_payload(score: float) -> dict[str, Any]:
 
 def _solana_payload(score: float) -> dict[str, Any]:
     return {
+        "normalized_score": score,
         "final_reward": score,
+        "max_reward": 1.0,
         "final_programs": _passed_count(score),
         "messages": ["synthetic calibration rollout"],
         "cumulative_rewards": [score],
@@ -247,6 +251,7 @@ def _experience_payload(score: float) -> dict[str, Any]:
 def _framework_payload(score: float) -> dict[str, Any]:
     return {
         "runtime": "synthetic-calibration",
+        "overall_score": score,
         "scenarios": {
             "calibration": {
                 "throughput": {
@@ -578,15 +583,16 @@ def _openclaw_payload(score: float) -> dict[str, Any]:
 
 
 def _gauntlet_payload(score: float) -> dict[str, Any]:
+    raw_score = score * 100.0
     return {
         "results": {
-            "overall_score": score,
+            "overall_score": raw_score,
             "passed": score > 0,
             "components": {
-                "task_completion": score,
-                "safety": score,
-                "efficiency": score,
-                "capital": score,
+                "task_completion": raw_score,
+                "safety": raw_score,
+                "efficiency": raw_score,
+                "capital": raw_score,
             },
         }
     }

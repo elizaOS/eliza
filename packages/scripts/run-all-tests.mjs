@@ -480,7 +480,7 @@ function collectScriptsToRun(scripts) {
   const scriptNames = [];
   const seenCommands = new Set();
 
-  if (scripts.test) {
+  if (scripts.test && onlyFlag !== "e2e") {
     const resolvedTestCommand =
       resolveScriptCommand("test", scripts) ||
       normalizeWhitespace(scripts.test);
@@ -488,6 +488,10 @@ function collectScriptsToRun(scripts) {
     if (resolvedTestCommand) {
       seenCommands.add(resolvedTestCommand);
     }
+  }
+
+  if (onlyFlag === "test") {
+    return scriptNames;
   }
 
   for (const scriptName of EXTRA_SCRIPT_NAMES) {

@@ -29,7 +29,9 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
+        ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -46,7 +48,9 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
+        ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -82,14 +86,8 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {
-    "0_8b",
-    "2b",
-    "4b",
-    "9b",
-    "27b",
-    "27b-256k",
-}
+VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
+DFLASH_TIERS: Final[set[str]] = set(ELIZA_1_DFLASH_TIERS)
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "0_8b": (2500, 3700),
@@ -296,8 +294,18 @@ def _publish_blocking_reasons(
 ) -> list[str]:
     reasons = [
         f"text artifact is a local stand-in, not final Eliza-1 {tier} text weights",
-        f"DFlash drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 {tier} text weights",
-        "required text quality, ASR WER, VAD latency, expressive voice, DFlash acceptance, first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are missing or failed",
+        *(
+            (
+                f"DFlash drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 {tier} text weights",
+            )
+            if tier in DFLASH_TIERS
+            else ()
+        ),
+        (
+            "required text quality, ASR WER, VAD latency, expressive voice, "
+            + ("DFlash acceptance, " if tier in DFLASH_TIERS else "")
+            + "first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are missing or failed"
+        ),
         "required Metal, Vulkan, and CPU backend verification is not pass for the staged bytes",
         "text and DFlash license blobs are local provenance notes, not release-reviewed license attestations",
         "release evidence is local-standin and cannot be uploaded by the publish orchestrator",
@@ -322,9 +330,14 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
         ),
         "LICENSE.dflash": (
             "Eliza-1 local DFlash stand-in provenance note.\n\n"
-            "This bundle uses a local stand-in drafter GGUF for runtime "
-            "layout testing. It is not trained or verified against final "
-            f"Eliza-1 {tier} text weights and is not publishable.\n"
+            + (
+                "This bundle uses a local stand-in drafter GGUF for runtime "
+                "layout testing. It is not trained or verified against final "
+                f"Eliza-1 {tier} text weights and is not publishable.\n"
+                if tier in DFLASH_TIERS
+                else f"Eliza-1 {tier} has DFlash disabled; the bundle carries "
+                "release-policy metadata instead of a drafter GGUF.\n"
+            )
         ),
         "LICENSE.eliza-1": (
             "Eliza-1 local bundle license notice.\n\n"
@@ -386,13 +399,73 @@ def _write_target_meta(
     bundle_dir: Path,
     tier: str,
     text_files: Sequence[StagedFile],
-    drafter_file: StagedFile,
+    drafter_file: StagedFile | None,
     reasons: Sequence[str],
 ) -> None:
     if not text_files:
         raise ValueError("_write_target_meta requires at least one text file")
     primary_text = text_files[0]
     required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
+    if tier not in DFLASH_TIERS:
+        policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
+        policy_path = bundle_dir / policy_rel
+        _json_write(
+            policy_path,
+            {
+                "schemaVersion": 1,
+                "kind": "dflash-release-policy",
+                "tier": tier,
+                "status": "disabled",
+                "dflashEnabled": False,
+                "requiresDrafter": False,
+                "releaseEligibleWithoutDrafter": True,
+                "reason": f"DFlash is disabled for Eliza-1 {tier}; no drafter GGUF ships.",
+                "publishBlockingReasons": list(reasons),
+            },
+        )
+        _json_write(
+            bundle_dir / "dflash" / "target-meta.json",
+            {
+                "schemaVersion": 2,
+                "tier": tier,
+                "status": "disabled",
+                "dflashEnabled": False,
+                "publishEligible": False,
+                "reason": f"DFlash is disabled for Eliza-1 {tier}.",
+                "targetText": {
+                    "path": str(
+                        Path(primary_text.destination).relative_to(bundle_dir)
+                    ),
+                    "sha256": primary_text.sha256,
+                    "provenance": primary_text.provenance,
+                    "finalElizaWeights": False,
+                },
+                "targetTextVariants": [
+                    {
+                        "path": str(Path(item.destination).relative_to(bundle_dir)),
+                        "sha256": item.sha256,
+                        "provenance": item.provenance,
+                        "finalElizaWeights": False,
+                    }
+                    for item in text_files
+                ],
+                "drafter": None,
+                "acceptanceWindow": None,
+                "acceptanceRate": None,
+                "kernelCaps": {"required": required_kernels, "optional": []},
+                "disabledPolicy": {
+                    "path": policy_rel,
+                    "sha256": sha256_file(policy_path),
+                    "releaseMode": "fail-open-no-drafter",
+                    "requiresDrafter": False,
+                    "releaseEligibleWithoutDrafter": True,
+                },
+                "publishBlockingReasons": list(reasons),
+            },
+        )
+        return
+    if drafter_file is None:
+        raise ValueError(f"_write_target_meta requires a drafter for DFlash tier {tier}")
     drafter_target_sha = _read_drafter_target_checkpoint_sha256(
         Path(drafter_file.destination)
     )
@@ -476,9 +549,9 @@ def _write_eval_files(
         "voice_rtf": voice_rtf if voice_rtf > 0 else None,
         "asr_wer": None,
         "vad_latency_ms": None,
-        "vad_boundary_ms": None,
-        "vad_endpoint_ms": None,
-        "vad_false_barge_in_rate": None,
+        "vad_boundary_mae_ms": None,
+        "vad_endpoint_p95_ms": None,
+        "vad_false_bargein_per_hour": None,
         "first_token_latency_ms": None,
         "first_audio_latency_ms": None,
         "barge_in_cancel_ms": None,
@@ -488,8 +561,8 @@ def _write_eval_files(
         "expressive_tag_faithfulness": None,
         "expressive_mos": None,
         "expressive_tag_leakage": None,
-        "mobile_peak_rss_mb": None,
-        "mobile_thermal_ok": None,
+        "peak_rss_mb": None,
+        "thermal_throttle_pct": None,
     }
     aggregate = {
         "schemaVersion": 1,
@@ -695,13 +768,15 @@ def _write_quantization_sidecars(
     return written
 
 
-def _collect_files(bundle_dir: Path) -> dict[str, list[FileEntry]]:
-    def entries(subdir: str, *, text: bool = False) -> list[FileEntry]:
+def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]:
+    def entries(subdir: str, *, text: bool = False, gguf_only: bool = False) -> list[FileEntry]:
         root = bundle_dir / subdir
         if not root.is_dir():
             return []
         out: list[FileEntry] = []
         for path in sorted(p for p in root.iterdir() if p.is_file()):
+            if gguf_only and path.suffix != ".gguf":
+                continue
             out.append(
                 FileEntry(
                     path=str(path.relative_to(bundle_dir)),
@@ -716,7 +791,7 @@ def _collect_files(bundle_dir: Path) -> dict[str, list[FileEntry]]:
         "voice": entries("tts"),
         "asr": entries("asr"),
         "vision": entries("vision"),
-        "dflash": entries("dflash"),
+        "dflash": entries("dflash", gguf_only=True) if tier in DFLASH_TIERS else [],
         "cache": entries("cache"),
         "vad": entries("vad"),
     }
@@ -741,7 +816,7 @@ def _write_lineage(
     *,
     bundle_dir: Path,
     text_file: StagedFile,
-    drafter_file: StagedFile,
+    drafter_file: StagedFile | None,
     vision_file: StagedFile | None = None,
 ) -> dict[str, LineageEntry]:
     existing = {
@@ -757,15 +832,18 @@ def _write_lineage(
                 ),
                 "license": "local stand-in; release license not attested",
             },
-            "drafter": {
-                "base": (
-                    f"local-standin:{drafter_file.source}"
-                    f"@sha256:{drafter_file.sha256}"
-                ),
-                "license": "local stand-in; release license not attested",
-            },
         }
     )
+    if drafter_file is not None:
+        existing["drafter"] = {
+            "base": (
+                f"local-standin:{drafter_file.source}"
+                f"@sha256:{drafter_file.sha256}"
+            ),
+            "license": "local stand-in; release license not attested",
+        }
+    else:
+        existing.pop("drafter", None)
     if vision_file is not None:
         existing["vision"] = {
             "base": (
@@ -1010,7 +1088,7 @@ def _write_release_evidence(
             *rels("asr"),
             *rels("vad"),
             *rels("vision"),
-            *rels("dflash"),
+            *(rels("dflash") if tier in DFLASH_TIERS else []),
         ],
         "standIns": [asdict(item) for item in staged],
         "checksumManifest": str(CHECKSUM_PATH),
@@ -1169,12 +1247,27 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         fallback_candidates=DEFAULT_TEXT_STANDIN_CANDIDATES,
         label="text",
     )
-    drafter_source = _choose_source(
-        explicit=args.drafter_source,
-        bundle_dir=bundle_dir,
-        source_subdir="dflash",
-        fallback_candidates=DEFAULT_DRAFTER_STANDIN_CANDIDATES,
-        label="DFlash drafter",
+    drafter_source = (
+        _choose_source(
+            explicit=args.drafter_source,
+            bundle_dir=bundle_dir,
+            source_subdir="dflash",
+            fallback_candidates=DEFAULT_DRAFTER_STANDIN_CANDIDATES,
+            label="DFlash drafter",
+        )
+        if tier in DFLASH_TIERS
+        else None
+    )
+    vision_source = (
+        _choose_source(
+            explicit=getattr(args, "vision_source", None),
+            bundle_dir=bundle_dir,
+            source_subdir="vision",
+            fallback_candidates=(),
+            label="vision mmproj",
+        )
+        if tier in VISION_TIERS
+        else None
     )
     smoke_report_path = (
         args.local_smoke_report
@@ -1192,7 +1285,6 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         release_state=release_state, source_models=source_models
     )
 
-    drafter_dest = bundle_dir / "dflash" / f"drafter-{tier}.gguf"
     text_staged = [
         _stage_file(
             role=f"text:{ctx}",
@@ -1207,9 +1299,11 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         )
         for ctx in contexts
     ]
-    staged = [
-        *text_staged,
-        _stage_file(
+    staged = [*text_staged]
+    drafter_staged: StagedFile | None = None
+    if drafter_source is not None:
+        drafter_dest = bundle_dir / "dflash" / f"drafter-{tier}.gguf"
+        drafter_staged = _stage_file(
             role="dflash",
             source=drafter_source,
             destination=drafter_dest,
@@ -1219,16 +1313,19 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
                 else "local-standin"
             ),
             force=args.force,
-        ),
-    ]
-    vision_candidates = _bundle_source_candidates(bundle_dir, "vision")
-    if tier in VISION_TIERS and vision_candidates:
+        )
+        staged.append(drafter_staged)
+    if vision_source is not None:
         staged.append(
             _stage_file(
                 role="vision",
-                source=vision_candidates[0],
+                source=vision_source,
                 destination=bundle_dir / "vision" / f"mmproj-{tier}.gguf",
-                provenance="local-source-candidate",
+                provenance=(
+                    "local-source-candidate"
+                    if _is_under(vision_source, bundle_dir / "source")
+                    else "local-standin"
+                ),
                 force=args.force,
             )
         )
@@ -1238,14 +1335,14 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
     lineage = _write_lineage(
         bundle_dir=bundle_dir,
         text_file=text_staged[0],
-        drafter_file=staged[len(text_staged)],
+        drafter_file=drafter_staged,
         vision_file=vision_staged,
     )
     _write_target_meta(
         bundle_dir=bundle_dir,
         tier=tier,
         text_files=text_staged,
-        drafter_file=staged[len(text_staged)],
+        drafter_file=drafter_staged,
         reasons=reasons,
     )
     gate_report = _write_eval_files(
@@ -1280,7 +1377,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         reasons=reasons,
     )
 
-    files = _collect_files(bundle_dir)
+    files = _collect_files(bundle_dir, tier=tier)
     manifest = _manifest_for_local_bundle(
         bundle_dir=bundle_dir,
         tier=tier,
@@ -1367,6 +1464,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--bundle-dir", type=Path, default=DEFAULT_BUNDLE_DIR)
     ap.add_argument("--text-source", type=Path, default=None)
     ap.add_argument("--drafter-source", type=Path, default=None)
+    ap.add_argument("--vision-source", type=Path, default=None)
     ap.add_argument("--context", choices=tuple({c for v in CONTEXTS_BY_TIER.values() for c in v}), default=None)
     ap.add_argument(
         "--all-contexts",

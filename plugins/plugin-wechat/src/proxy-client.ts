@@ -18,7 +18,7 @@ export class ProxyClient {
     this.apiKey = account.apiKey;
     this.baseUrl = normalizeProxyUrl(account.proxyUrl);
     this.accountId = account.id;
-    this.deviceType = account.deviceType;
+    this.deviceType = account.deviceType ?? "ipad";
   }
 
   private async request<T>(

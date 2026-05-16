@@ -35,6 +35,7 @@ from openclaw_adapter.terminal_bench import (  # noqa: E402
     OpenClawTerminalAgent,
     build_terminal_bench_agent_fn,
 )
+from openclaw_adapter.woobench import build_openclaw_woobench_agent_fn  # noqa: E402
 
 __all__.extend(
     [
@@ -47,6 +48,7 @@ __all__.extend(
         "build_mint_agent_fn",
         "build_swe_bench_agent_fn",
         "build_terminal_bench_agent_fn",
+        "build_openclaw_woobench_agent_fn",
         "OpenClawTerminalAgent",
     ]
 )

@@ -41,7 +41,7 @@ function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
   const textPath =
     modelId === "eliza-1-4b"
       ? "text/eliza-1-4b-64k.gguf"
-      : "text/eliza-1-2b-32k.gguf";
+      : "text/eliza-1-2b-128k.gguf";
   const drafterPath =
     modelId === "eliza-1-4b"
       ? "dflash/drafter-4b.gguf"
@@ -56,7 +56,7 @@ function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
         {
           path: textPath,
           sha256: "0".repeat(64),
-          ctx: 32768,
+          ctx: modelId === "eliza-1-4b" ? 65536 : 131072,
         },
       ],
       voice: [
@@ -319,12 +319,12 @@ describe("iOS local-agent local inference flow", () => {
     await eventually(() => {
       const filenames = downloadModel.mock.calls.map((call) => call[1]);
       expect(filenames).toContain("eliza-1-2b.manifest.json");
-      expect(filenames).toContain("eliza-1-2b-32k.gguf");
+      expect(filenames).toContain("eliza-1-2b-128k.gguf");
       expect(mockState.hashFile).toHaveBeenCalledWith(
         "/models/eliza-1-2b.manifest.json",
       );
       expect(mockState.hashFile).toHaveBeenCalledWith(
-        "/models/eliza-1-2b-32k.gguf",
+        "/models/eliza-1-2b-128k.gguf",
       );
     });
   }, 30_000);
@@ -416,8 +416,8 @@ describe("iOS local-agent local inference flow", () => {
       load,
       availableModels: [
         {
-          name: "eliza-1-2b-32k.gguf",
-          path: "/models/eliza-1-2b-32k.gguf",
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b-128k.gguf",
           size: 1_200_000_000,
         },
       ],
@@ -429,7 +429,7 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-2b-32k.gguf",
+        modelPath: "/models/eliza-1-2b-128k.gguf",
         contextSize: 6144,
         maxThreads: 6,
         useGpu: true,
@@ -447,8 +447,8 @@ describe("iOS local-agent local inference flow", () => {
       },
       availableModels: [
         {
-          name: "eliza-1-2b-32k.gguf",
-          path: "/models/eliza-1-2b-32k.gguf",
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b-128k.gguf",
           size: 1_200_000_000,
         },
       ],
@@ -460,7 +460,7 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-2b-32k.gguf",
+        modelPath: "/models/eliza-1-2b-128k.gguf",
         useGpu: true,
       }),
     );

@@ -226,7 +226,7 @@ def _normalize_action(action: Action) -> Action:
         return _normalize_action(Action(name=aliased_name, kwargs=action.kwargs))
     if action.name in {"REPLY", "RESPOND"}:
         return Action(name="REPLY", kwargs=action.kwargs)
-    if action.name == "ARCHIVE_EMAIL_THREAD":
+    if action.name in {"ARCHIVE_EMAIL_THREAD", "ARCHIVE_THREAD"}:
         kwargs = dict(action.kwargs)
         kwargs.setdefault("source", "gmail")
         kwargs.setdefault("operation", "manage")

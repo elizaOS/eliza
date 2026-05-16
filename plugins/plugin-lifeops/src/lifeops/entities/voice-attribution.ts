@@ -27,19 +27,17 @@ import type { SELF_ENTITY_ID } from "./types.js";
  * fallback is wired in `voice-observer.ts` so this module stays
  * dependency-free for unit testing.
  */
-// Trigger phrases ("my name is", "i'm", "this is", …) match
-// case-insensitively because ASR-emitted prefixes are unreliably cased.
-// The captured *name* is still anchored on an uppercase first letter to
-// filter lowercased noise — the captures use an explicit
-// "first letter [A-Z], rest [A-Za-z…]" pattern even though the regex as
-// a whole carries the `i` flag, by wrapping the inner pattern in a
-// case-sensitive `(?-i:…)` group.
+// Trigger phrases ("my name is", "i'm", "this is", ...) match common ASR
+// casing variants explicitly. The captured name stays anchored on an uppercase
+// first letter to filter lowercased noise; JavaScript RegExp does not support
+// scoped flag groups such as `(?-i:...)`.
+const NAME_PATTERN = "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
 const NAME_CLAIM_PATTERNS: RegExp[] = [
-  /\bmy\s+name\s+is\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
-  /\bi\s+am\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
-  /\bi['’]?m\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
-  /\bthis\s+is\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
-  /\bit['’]?s\s+((?-i:[A-Z][A-Za-z'.-]{1,40}(?:\s+[A-Z][A-Za-z'.-]{1,40}){0,2}))\b/i,
+  new RegExp(`\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b`),
+  new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b`),
+  new RegExp(`\\b[Ii]['’]?m\\s+(${NAME_PATTERN})\\b`),
+  new RegExp(`\\b[Tt]his\\s+is\\s+(${NAME_PATTERN})\\b`),
+  new RegExp(`\\b[Ii]t['’]?s\\s+(${NAME_PATTERN})\\b`),
 ];
 
 export function extractSelfNameClaim(

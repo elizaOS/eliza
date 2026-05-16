@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
+import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
+import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import {
   AgentRuntime,
   type Content,
@@ -99,6 +100,11 @@ function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
 
+function isTauBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "tau_bench" || normalized === "tau-bench";
+}
+
 function isTerminalBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "terminal-bench" || normalized === "terminal_bench";
@@ -117,6 +123,34 @@ function isVisualWebBenchmarkName(benchmark: string): boolean {
 function isOsworldBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "osworld" || normalized === "os-world";
+}
+
+function isActionCallingBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "action-calling" || normalized === "action_calling";
+}
+
+function normalizeActionCallingNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const rawMessages = Array.isArray(context.messages) ? context.messages : [];
+  const messages = normalizeLocaNativeMessages(rawMessages);
+  messages[0] = {
+    role: "system",
+    content:
+      "You are running an action-calling benchmark through the Eliza benchmark server. " +
+      "Use native tool calls only. Do not serialize tool calls in prose, XML, markdown, or JSON text. " +
+      "If the user asks for multiple operations, emit every required tool call.",
+  };
+  if (messages.length > 1) return messages;
+  return [
+    messages[0],
+    {
+      role: "user",
+      content: text,
+    },
+  ];
 }
 
 function normalizeBfclNativeMessages(
@@ -139,6 +173,30 @@ function normalizeBfclNativeMessages(
     {
       role: "user",
       content: question,
+    },
+  ];
+}
+
+function normalizeTauNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const rawMessages = Array.isArray(context.messages) ? context.messages : [];
+  const messages = normalizeLocaNativeMessages(rawMessages);
+  messages[0] = {
+    role: "system",
+    content:
+      "You are running TauBench through the Eliza benchmark server. Use " +
+      "native tool calls for TauBench tools. Do not describe a tool call in " +
+      "prose. Use ordinary assistant text only for required customer " +
+      "confirmation or final task completion.",
+  };
+  if (messages.length > 1) return messages;
+  return [
+    messages[0],
+    {
+      role: "user",
+      content: text,
     },
   ];
 }
@@ -647,6 +705,15 @@ export async function startBenchmarkServer() {
   const skipPlugins = new Set([
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
+  const initialOpenAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
+  const initialElizaProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
+  const initialBenchProvider =
+    process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
+  const initialCerebrasIntent =
+    (!!initialOpenAiBaseUrl &&
+      /(^|\.)cerebras\.ai(\/|$)/i.test(initialOpenAiBaseUrl)) ||
+    initialElizaProvider === "cerebras" ||
+    initialBenchProvider === "cerebras";
 
   // Local-inference stays enabled by default in benchmark mode so embedding,
   // memory, and retrieval behavior remain representative of the Eliza-1 stack.
@@ -657,6 +724,12 @@ export async function startBenchmarkServer() {
     process.env.ELIZA_BENCH_SKIP_EMBEDDING === "1";
   if (skipEmbeddingPlugin) {
     skipPlugins.add("@elizaos/plugin-local-inference");
+  }
+  if (initialCerebrasIntent && !skipEmbeddingPlugin) {
+    skipPlugins.add("@elizaos/plugin-local-inference");
+    elizaLogger.info(
+      "[bench] Cerebras benchmark mode: using @elizaos/plugin-openai's deterministic local TEXT_EMBEDDING fallback instead of @elizaos/plugin-local-inference without an active backend.",
+    );
   }
 
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
@@ -790,12 +863,9 @@ export async function startBenchmarkServer() {
   // wrong on my end. Please try again."). Suppress Groq when the
   // explicit intent is a different provider.
   const groqApiKey = process.env.GROQ_API_KEY?.trim();
-  const _openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
-  const _cerebrasIntent =
-    !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
-  const _explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
-  const _benchProvider =
-    process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
+  const _cerebrasIntent = initialCerebrasIntent;
+  const _explicitProvider = initialElizaProvider;
+  const _benchProvider = initialBenchProvider;
   const _suppressGroqForOtherProvider =
     _cerebrasIntent ||
     (_explicitProvider !== undefined &&
@@ -848,31 +918,7 @@ export async function startBenchmarkServer() {
         openaiPlugin,
         "@elizaos/plugin-openai",
       );
-      // Cerebras has no /v1/embeddings endpoint. The openai plugin's
-      // TEXT_EMBEDDING handler will 404 against api.cerebras.ai and stall
-      // Stage 1 of the message pipeline before the planner picks an action.
-      // Strip TEXT_EMBEDDING when cerebras is the explicit intent so
-      // plugin-local-embedding (loaded via CORE_PLUGINS) wins for embeddings
-      // while the openai plugin still serves TEXT_LARGE / TEXT_SMALL.
-      let strippedEmbedding = false;
-      if (
-        (baseUrlIsCerebras || providerIsCerebras) &&
-        openaiPluginResolved.models &&
-        "TEXT_EMBEDDING" in openaiPluginResolved.models
-      ) {
-        const filteredModels = { ...openaiPluginResolved.models } as Record<
-          string,
-          unknown
-        >;
-        delete filteredModels.TEXT_EMBEDDING;
-        plugins.push({
-          ...openaiPluginResolved,
-          models: filteredModels as typeof openaiPluginResolved.models,
-        });
-        strippedEmbedding = true;
-      } else {
-        plugins.push(openaiPluginResolved);
-      }
+      plugins.push(openaiPluginResolved);
       elizaLogger.info(
         `[bench] Loaded LLM plugin: @elizaos/plugin-openai (baseURL=${openAiBaseURL ?? "default"}, key=${
           openAiApiKey
@@ -880,11 +926,11 @@ export async function startBenchmarkServer() {
             : cerebrasApiKey
               ? "CEREBRAS_API_KEY"
               : "none"
-        }${strippedEmbedding ? ", TEXT_EMBEDDING stripped (cerebras)" : ""})`,
+        }${baseUrlIsCerebras || providerIsCerebras ? ", TEXT_EMBEDDING local fallback (cerebras)" : ""})`,
       );
-      if (strippedEmbedding) {
+      if (baseUrlIsCerebras || providerIsCerebras) {
         elizaLogger.info(
-          "[bench] Cerebras detected: removed openai plugin's TEXT_EMBEDDING handler so @elizaos/plugin-local-inference serves embeddings.",
+          "[bench] Cerebras detected: keeping openai plugin's deterministic local TEXT_EMBEDDING fallback because Cerebras does not expose /v1/embeddings.",
         );
       }
     } catch (error: unknown) {
@@ -1759,6 +1805,106 @@ export async function startBenchmarkServer() {
             context: benchmarkContext,
             image: parsed.image,
           });
+
+          if (
+            isActionCallingBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeActionCallingNativeMessages(
+                  text,
+                  benchmarkContext,
+                ),
+                tools: benchmarkContext.tools,
+                toolChoice:
+                  typeof benchmarkContext.tool_choice === "string"
+                    ? benchmarkContext.tool_choice
+                    : "required",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 2048,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction =
+              firstLocaBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              toolCalls.length > 0
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
 
           if (
             isLocaBenchmarkName(session.benchmark) &&

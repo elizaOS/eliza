@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_ELIGIBLE_MODEL_IDS } from "./catalog";
 import { searchHuggingFaceGguf } from "./hf-search";
 
 function jsonResponse(body: unknown): Response {
@@ -66,5 +67,12 @@ describe("searchHuggingFaceGguf", () => {
     expect(
       results.map((result) => result.parameterLabel ?? result.params),
     ).toEqual(["0.8B", "2B", "0.8B"]);
+    expect(results.every((result) => result.id.startsWith("hf:"))).toBe(true);
+    expect(results.every((result) => !result.id.startsWith("eliza-1-"))).toBe(
+      true,
+    );
+    expect(
+      results.every((result) => !DEFAULT_ELIGIBLE_MODEL_IDS.has(result.id)),
+    ).toBe(true);
   });
 });

@@ -35,6 +35,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     EXIT_OK,
     EXIT_RELEASE_EVIDENCE_FAIL,
     EXIT_USAGE,
+    OrchestratorError,
     PublishContext,
     run,
     validate_bundle_layout,
@@ -350,7 +351,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
-            "repo": "elizalabs/eliza-1",
+            "repo": "elizaos/eliza-1",
             "file": "bundles/4b/dflash/drafter-4b.gguf",
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
@@ -563,7 +564,7 @@ def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_layout_accepts_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
+def test_layout_rejects_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(
         tmp_path,
         tier="0_8b",
@@ -571,10 +572,11 @@ def test_layout_accepts_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
     )
     _disable_dflash_for_tier(bundle, "0_8b")
 
-    layout = validate_bundle_layout(_ctx("0_8b", bundle))
+    with pytest.raises(OrchestratorError) as excinfo:
+        validate_bundle_layout(_ctx("0_8b", bundle))
 
-    assert layout["dflash"]
-    assert not any(path.suffix == ".gguf" for path in layout["dflash"])
+    assert excinfo.value.exit_code == EXIT_BUNDLE_LAYOUT_FAIL
+    assert "dflash/ must contain at least one .gguf" in str(excinfo.value)
 
 
 def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:

@@ -54,11 +54,11 @@ function toConnectorAccount(settings: MatrixSettings): ConnectorAccount {
     createdAt: now,
     updatedAt: now,
     metadata: {
-      homeserver: settings.homeserver,
-      userId: settings.userId,
+      homeserver: settings.homeserver ?? "",
+      userId: settings.userId ?? "",
       deviceId: settings.deviceId ?? "",
-      encryption: settings.encryption,
-      autoJoin: settings.autoJoin,
+      encryption: settings.encryption ?? false,
+      autoJoin: settings.autoJoin ?? false,
     },
   };
 }

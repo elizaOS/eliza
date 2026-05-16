@@ -203,9 +203,9 @@ export async function handleInteractionCreate(
 			"Received component interaction",
 		);
 		const interactionUser = interaction.user;
-		const userId = interactionUser.id;
+		const userId = interactionUser?.id;
 		const interactionMessage = interaction.message;
-		const messageId = interactionMessage.id;
+		const messageId = interactionMessage?.id;
 
 		if (!service.userSelections.has(userId)) {
 			service.userSelections.set(userId, {});
@@ -435,7 +435,7 @@ export async function buildStandardizedRooms(
 						.filter((member: GuildMember) =>
 							channel
 								.permissionsFor(member)
-								.has(PermissionsBitField.Flags.ViewChannel),
+								?.has(PermissionsBitField.Flags.ViewChannel),
 						)
 						.map((member: GuildMember) =>
 							service.resolveDiscordEntityId(member.id),
@@ -483,7 +483,7 @@ export async function buildStandardizedUsers(
 	guild: Guild,
 ): Promise<Entity[]> {
 	const entities: Entity[] = [];
-	const clientUser = service.client.user;
+	const clientUser = service.client?.user;
 	const botId = clientUser?.id;
 
 	if (guild.memberCount > 1000) {
@@ -648,7 +648,7 @@ export async function onReady(
 	if (
 		typeof discordApiToken === "string" &&
 		discordApiToken.trim().length > 0 &&
-		typeof readyClient.rest.setToken === "function"
+		typeof readyClient.rest?.setToken === "function"
 	) {
 		readyClient.rest.setToken(discordApiToken.trim());
 	}
@@ -696,7 +696,7 @@ export async function onReady(
 			);
 		}
 	}
-	const inviteUrl = readyClientUser.id
+	const inviteUrl = readyClientUser?.id
 		? generateInviteUrl(readyClientUser.id, "MODERATOR_VOICE")
 		: undefined;
 
@@ -709,7 +709,7 @@ export async function onReady(
 
 	const agentName =
 		service.runtime.character.name ||
-		readyClientUser.username ||
+		readyClientUser?.username ||
 		service.runtime.agentId;
 
 	if (inviteUrl) {
@@ -728,7 +728,7 @@ export async function onReady(
 	}
 
 	service.runtime.logger.success(
-		`Discord client logged in successfully as ${readyClientUser.username || agentName}`,
+		`Discord client logged in successfully as ${readyClientUser?.username || agentName}`,
 	);
 
 	const guilds = service.client ? await service.client.guilds.fetch() : null;

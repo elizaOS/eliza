@@ -584,7 +584,7 @@ function addLegacyAdapterMethods(
   return adapter;
 }
 
-async function sendMessageAndWaitForResponse(
+export async function sendMessageAndWaitForResponseForTest(
   rt: IAgentRuntime,
   room: Room,
   user: Entity,
@@ -608,6 +608,7 @@ async function sendMessageAndWaitForResponse(
   };
 
   let captured: Content | null = null;
+  let returned: Content | null = null;
   const callback = async (responseContent: Content): Promise<Memory[]> => {
     if (captured === null) captured = responseContent;
     return [];
@@ -630,7 +631,19 @@ async function sendMessageAndWaitForResponse(
 
   const work = (async () => {
     if (messageService && typeof messageService.handleMessage === "function") {
-      await messageService.handleMessage(rt, message, callback);
+      const result = await messageService.handleMessage(rt, message, callback);
+      const responseContent = (
+        result && typeof result === "object"
+          ? (result as { responseContent?: unknown }).responseContent
+          : undefined
+      );
+      if (
+        responseContent &&
+        typeof responseContent === "object" &&
+        !Array.isArray(responseContent)
+      ) {
+        returned = responseContent as Content;
+      }
     } else {
       await new Promise<void>((resolveEvent, rejectEvent) => {
         try {
@@ -664,7 +677,7 @@ async function sendMessageAndWaitForResponse(
   });
 
   await Promise.race([work, timeout]);
-  return captured ?? { text: "" };
+  return captured ?? returned ?? { text: "" };
 }
 
 export const elizaHandler: Handler = {
@@ -935,7 +948,7 @@ export const elizaHandler: Handler = {
 
     for (const msg of userMessages) {
       try {
-        const response = await sendMessageAndWaitForResponse(
+        const response = await sendMessageAndWaitForResponseForTest(
           runtime,
           room,
           user,

@@ -522,9 +522,9 @@ export async function probeDiscordTab(
     ...result,
     identity: {
       ...emptyDiscordTabProbe(null).identity,
-      ...(result.identity),
+      ...(result.identity ?? {}),
     },
-    dmInbox: result.dmInbox,
+    dmInbox: result.dmInbox ?? emptyDiscordDmInboxProbe(),
   };
 }
 

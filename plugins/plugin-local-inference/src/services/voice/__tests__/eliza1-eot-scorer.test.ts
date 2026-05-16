@@ -147,11 +147,11 @@ describe("Eliza1EotScorer", () => {
 		expect(result.probability).toBe(0.5);
 	});
 
-	it("falls back to 0.5 for empty transcript without calling the model", async () => {
+	it("uses the model score for empty transcript input", async () => {
 		const fake = buildFakeModel({ imEndProbability: () => 0.9 });
 		const scorer = new Eliza1EotScorer({ model: fake.model });
 		const result = await scorer.score("   ");
-		expect(result.probability).toBe(0.5);
+		expect(result.probability).toBe(0.9);
 	});
 
 	it("attaches a LoRA adapter to the context when loraPath is set", async () => {

@@ -32,7 +32,13 @@
       "@elizaos/cloud-sdk": ["./packages/cloud-sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["./packages/cloud-sdk/src/*"],
       "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/src/index.ts"],
-      "@elizaos/plugin-wallet-ui/*": ["./plugins/plugin-wallet-ui/src/*"]
+      "@elizaos/plugin-wallet-ui/*": ["./plugins/plugin-wallet-ui/src/*"],
+      "@elizaos/plugin-local-inference": [
+        "./plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "./plugins/plugin-local-inference/src/*"
+      ]
     }
   },
   "exclude": [

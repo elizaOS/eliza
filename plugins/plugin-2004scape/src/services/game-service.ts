@@ -649,7 +649,7 @@ Your choice:`;
   }
 
   private resolveSetting(key: string): string | undefined {
-    const fromRuntime = this.runtime.getSetting(key);
+    const fromRuntime = this.runtime.getSetting?.(key);
     if (typeof fromRuntime === "string" && fromRuntime.trim())
       return fromRuntime.trim();
     const fromEnv = process.env[key];

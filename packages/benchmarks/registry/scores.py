@@ -303,6 +303,7 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 
     results = expect_list(results_raw, ctx="vending_bench:results") if isinstance(results_raw, list) else []
     total_revenue = 0.0
+    total_incremental_revenue = 0.0
     total_profit = 0.0
     total_items_sold = 0.0
     total_orders = 0.0
@@ -310,20 +311,30 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
         if not isinstance(item, dict):
             continue
         total_revenue += to_float(item.get("total_revenue"))
+        total_incremental_revenue += to_float(
+            item.get("incremental_revenue", item.get("incremental_revenue_vs_noop"))
+        )
         total_profit += to_float(item.get("profit"))
         total_items_sold += to_float(item.get("items_sold"))
         total_orders += to_float(item.get("orders_placed"))
 
     run_count = len([item for item in results if isinstance(item, dict)])
     avg_revenue = (total_revenue / run_count) if run_count else to_float(metrics.get("avg_revenue"))
+    avg_incremental_revenue = (
+        (total_incremental_revenue / run_count)
+        if run_count
+        else to_float(metrics.get("avg_incremental_revenue"))
+    )
     avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
     max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
-        score=avg_revenue,
-        unit="usd_revenue_per_run",
+        score=avg_incremental_revenue,
+        unit="usd_incremental_revenue_per_run",
         higher_is_better=True,
         metrics={
-            "primary_score_note": "Average revenue per run; net worth is tracked as a secondary metric so no-op/no-spend policies do not win smoke runs.",
+            "primary_score_note": "Average incremental revenue over the no-op starter-inventory baseline; raw revenue and net worth are diagnostic secondary metrics.",
+            "avg_incremental_revenue": avg_incremental_revenue,
+            "total_incremental_revenue": total_incremental_revenue,
             "avg_revenue": avg_revenue,
             "total_revenue": total_revenue,
             "avg_profit": avg_profit,
@@ -535,12 +546,34 @@ def _score_from_solana_json(data: JSONValue) -> ScoreExtraction:
         and final_reward == 0.0
     ):
         raise ValueError("solana: empty rollout artifact is not publishable")
+    normalized_raw = get_optional(root, "normalized_score")
+    max_reward_raw = get_optional(root, "max_reward")
+    max_reward = 0.0
+    if isinstance(max_reward_raw, (int, float)):
+        max_reward = float(max_reward_raw)
+    else:
+        try:
+            from benchmarks.solana.skill_templates import (
+                get_total_expected_deterministic_reward,
+            )
+
+            max_reward = float(get_total_expected_deterministic_reward())
+        except Exception:
+            max_reward = final_reward if final_reward > 0 else 1.0
+    if isinstance(normalized_raw, (int, float)):
+        normalized_score = float(normalized_raw)
+    else:
+        normalized_score = final_reward / max_reward if max_reward > 0 else 0.0
+    normalized_score = max(0.0, min(1.0, normalized_score))
     return ScoreExtraction(
-        score=final_reward,
-        unit="unique_instructions",
+        score=normalized_score,
+        unit="ratio",
         higher_is_better=True,
         metrics={
+            "normalized_score": normalized_score,
             "final_reward": final_reward,
+            "max_reward": max_reward,
+            "raw_unit": "unique_instructions",
             "final_programs": final_programs or 0,
             "model": root.get("model") or "",
             "run_id": root.get("run_id") or "",
@@ -684,10 +717,10 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from VoiceBench results.
 
-    VoiceBench is a latency benchmark: we report the average end-to-end
-    latency (ms) for the ``simple`` mode as the primary score (lower is
-    better) and surface key percentile + transcription metrics for context.
-    Falls back to whichever mode key is present when ``simple`` is missing.
+    VoiceBench reports latency and transcription quality. The primary
+    benchmark score is the normalized transcription quality ratio so
+    calibration harnesses have the same 0=wrong, 1=perfect direction as the
+    rest of the matrix. Latency stays in metrics for performance comparison.
     """
     root = expect_dict(data, ctx="voicebench:root")
     summary = expect_dict(get_required(root, "summary", ctx="voicebench:root"), ctx="voicebench:summary")
@@ -699,10 +732,14 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
         get_required(mode_summary, "avgEndToEndMs", ctx=f"voicebench:summary.{mode_key}"),
         ctx=f"voicebench:summary.{mode_key}.avgEndToEndMs",
     )
+    quality = expect_float(
+        mode_summary.get("transcriptionNormalizedAccuracy", 0.0),
+        ctx=f"voicebench:summary.{mode_key}.transcriptionNormalizedAccuracy",
+    )
     return ScoreExtraction(
-        score=avg_e2e,
-        unit="ms",
-        higher_is_better=False,
+        score=quality,
+        unit="ratio",
+        higher_is_better=True,
         metrics={
             "mode": mode_key,
             "avgEndToEndMs": avg_e2e,
@@ -815,6 +852,10 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
             "average_duration_ms": root.get("average_duration_ms") or 0,
             "total_tasks": int(total_tasks),
             "total_trials": int(total_trials),
+            "sample": bool(root.get("sample", False)),
+            "split": root.get("split") or "",
+            "profile": root.get("profile") or "",
+            "use_hf": bool(root.get("use_hf", False)),
         },
     )
 
@@ -892,8 +933,8 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
         ctx="gauntlet:components",
     )
     return ScoreExtraction(
-        score=overall,
-        unit="score",
+        score=overall / 100.0,
+        unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_score": overall,

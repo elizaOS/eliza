@@ -4,7 +4,7 @@ export interface StateTutorialViewsProps {
 
 export function StateTutorialViews(
   props: StateTutorialViewsProps,
-): JSX.Element {
+): React.JSX.Element {
   const { onContinue } = props;
   return (
     <section

@@ -100,6 +100,19 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
+      { find: /^react$/, replacement: r("./node_modules/react/index.js") },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: r("./node_modules/react/jsx-runtime.js"),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: r("./node_modules/react-dom/index.js"),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: r("./node_modules/react-dom/client.js"),
+      },
       { find: /^@elizaos\/ui$/, replacement: r("../ui/src/cloud-ui/index.ts") },
       {
         find: /^@elizaos\/ui\/primitives$/,
@@ -125,6 +138,24 @@ export default defineConfig({
       {
         find: /^@\/packages(\/.*)?$/,
         replacement: `${r("../cloud-shared/src")}$1`,
+      },
+      { find: /^@\/lib\/hooks\/(.*)$/, replacement: `${r("./src/hooks")}/$1` },
+      { find: /^@\/hooks\/(.*)$/, replacement: `${r("./src/hooks")}/$1` },
+      {
+        find: /^@\/lib\/providers\/(.*)$/,
+        replacement: `${r("./src/providers")}/$1`,
+      },
+      {
+        find: /^@\/providers\/(.*)$/,
+        replacement: `${r("./src/providers")}/$1`,
+      },
+      {
+        find: /^@\/lib\/stores\/(.*)$/,
+        replacement: `${r("./src/lib/stores")}/$1`,
+      },
+      {
+        find: /^@\/stores\/(.*)$/,
+        replacement: `${r("./src/stores")}/$1`,
       },
       { find: /^@\/(.*)$/, replacement: `${r("./src")}/$1` },
     ],

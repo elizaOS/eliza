@@ -48,7 +48,9 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
+        ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -66,7 +68,9 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
+        ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
         REQUIRED_KERNELS_BY_TIER,
         SUPPORTED_BACKENDS_BY_TIER,
@@ -84,14 +88,8 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 
-VISION_TIERS: Final[set[str]] = {
-    "0_8b",
-    "2b",
-    "4b",
-    "9b",
-    "27b",
-    "27b-256k",
-}
+VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
+DFLASH_TIERS: Final[set[str]] = set(ELIZA_1_DFLASH_TIERS)
 EMBEDDING_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
 EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
@@ -236,14 +234,19 @@ def _publish_blocking_reasons(*, tier: str, text_substituted: bool, drafter_stam
             f"text backbone for {tier} is a substituted upstream GGUF artifact; "
             "the exact source repository, file, and revision are recorded in the manifest lineage block"
         )
-    if drafter_stamp_only:
+    if tier in DFLASH_TIERS and drafter_stamp_only:
         reasons.append(
             f"DFlash drafter for {tier} is stamped against the text-checkpoint sha256 but not yet "
             "re-distilled to the rebranded text weights; acceptance-rate eval is pending"
         )
+    evals_pending = (
+        "required text quality, ASR WER, VAD latency, expressive voice, "
+        + ("DFlash acceptance, " if tier in DFLASH_TIERS else "")
+        + "first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals "
+        "are not yet run for these bytes"
+    )
     reasons.extend([
-        "required text quality, ASR WER, VAD latency, expressive voice, DFlash acceptance, first-token, "
-        "first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are not yet run for these bytes",
+        evals_pending,
         "required Metal, Vulkan, and CPU backend verification has not been run against the staged bytes",
         "release evidence is weights-staged, not an upload candidate; the publish orchestrator will not upload",
     ])
@@ -335,9 +338,59 @@ def _stage_recipe_sidecars(bundle_dir: Path, recipes_dir: Path, *, force: bool) 
 
 
 def _write_target_meta(*, bundle_dir: Path, tier: str, text_files: Sequence[StagedFile],
-                       drafter_file: StagedFile, reasons: Sequence[str]) -> None:
+                       drafter_file: StagedFile | None, reasons: Sequence[str]) -> None:
+    if not text_files:
+        raise ValueError("_write_target_meta requires at least one text file")
     primary_text = text_files[0]
     required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
+    if tier not in DFLASH_TIERS:
+        policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
+        policy_path = bundle_dir / policy_rel
+        _json_write(policy_path, {
+            "schemaVersion": 1,
+            "kind": "dflash-release-policy",
+            "tier": tier,
+            "status": "disabled",
+            "dflashEnabled": False,
+            "requiresDrafter": False,
+            "releaseEligibleWithoutDrafter": True,
+            "reason": f"DFlash is disabled for Eliza-1 {tier}; no drafter GGUF ships.",
+            "publishBlockingReasons": list(reasons),
+        })
+        _json_write(bundle_dir / "dflash" / "target-meta.json", {
+            "schemaVersion": 2,
+            "tier": tier,
+            "status": "disabled",
+            "dflashEnabled": False,
+            "publishEligible": False,
+            "reason": f"DFlash is disabled for Eliza-1 {tier}.",
+            "targetText": {
+                "path": str(Path(primary_text.destination).relative_to(bundle_dir)),
+                "sha256": primary_text.sha256,
+                "provenance": primary_text.provenance,
+                "finalElizaWeights": True,
+            },
+            "targetTextVariants": [
+                {"path": str(Path(it.destination).relative_to(bundle_dir)), "sha256": it.sha256,
+                 "provenance": it.provenance, "finalElizaWeights": True}
+                for it in text_files
+            ],
+            "drafter": None,
+            "acceptanceWindow": None,
+            "acceptanceRate": None,
+            "kernelCaps": {"required": required_kernels, "optional": []},
+            "disabledPolicy": {
+                "path": policy_rel,
+                "sha256": sha256_file(policy_path),
+                "releaseMode": "fail-open-no-drafter",
+                "requiresDrafter": False,
+                "releaseEligibleWithoutDrafter": True,
+            },
+            "publishBlockingReasons": list(reasons),
+        })
+        return
+    if drafter_file is None:
+        raise ValueError(f"_write_target_meta requires a drafter for DFlash tier {tier}")
     drafter_target_sha = _read_drafter_target_checkpoint_sha256(Path(drafter_file.destination))
     drafter_matches = drafter_target_sha is not None and drafter_target_sha == primary_text.sha256
     _json_write(bundle_dir / "dflash" / "target-meta.json", {
@@ -375,12 +428,12 @@ def _write_eval_files(*, bundle_dir: Path, tier: str, generated_at: str, reasons
                       has_asr: bool, has_vad: bool, has_embedding: bool) -> dict[str, Any]:
     results = {
         "text_eval": None, "voice_rtf": None, "asr_wer": None, "vad_latency_ms": None,
-        "vad_boundary_ms": None, "vad_endpoint_ms": None,
-        "vad_false_barge_in_rate": None,
+        "vad_boundary_mae_ms": None, "vad_endpoint_p95_ms": None,
+        "vad_false_bargein_per_hour": None,
         "first_token_latency_ms": None, "first_audio_latency_ms": None, "barge_in_cancel_ms": None,
         "thirty_turn_ok": False, "e2e_loop_ok": False, "dflash_acceptance": None,
         "expressive_tag_faithfulness": None, "expressive_mos": None, "expressive_tag_leakage": None,
-        "mobile_peak_rss_mb": None, "mobile_thermal_ok": None, "embed_mteb": None,
+        "peak_rss_mb": None, "thermal_throttle_pct": None, "embed_mteb": None,
     }
     aggregate = {
         "schemaVersion": 1, "tier": tier, "generatedAt": generated_at,
@@ -446,12 +499,14 @@ def _write_platform_evidence(*, bundle_dir: Path, generated_at: str, git_sha: st
 
 
 def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]:
-    def entries(subdir: str, *, text: bool = False) -> list[FileEntry]:
+    def entries(subdir: str, *, text: bool = False, gguf_only: bool = False) -> list[FileEntry]:
         root = bundle_dir / subdir
         if not root.is_dir():
             return []
         out: list[FileEntry] = []
         for path in sorted(p for p in root.iterdir() if p.is_file()):
+            if gguf_only and path.suffix != ".gguf":
+                continue
             out.append(FileEntry(
                 path=str(path.relative_to(bundle_dir)),
                 sha256=sha256_file(path),
@@ -464,7 +519,7 @@ def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]
         "voice": entries("tts"),
         "asr": entries("asr"),
         "vision": entries("vision"),
-        "dflash": entries("dflash"),
+        "dflash": entries("dflash", gguf_only=True) if tier in DFLASH_TIERS else [],
         "cache": entries("cache"),
         "vad": entries("vad"),
     }
@@ -481,7 +536,7 @@ _LINEAGE_SLOT_DIR: Final[Mapping[str, str]] = {
 
 def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str, text_note: str,
                    drafter_target_sha: str | None, drafter_stamp_only: bool,
-                   has_embedding: bool, has_vision: bool) -> dict[str, LineageEntry]:
+                   has_embedding: bool, has_vision: bool, has_drafter: bool) -> dict[str, LineageEntry]:
     path = bundle_dir / "lineage.json"
     data: dict[str, Any] = {}
     if path.is_file():
@@ -502,13 +557,16 @@ def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str
         # in the bundle's lineage.json for provenance.
         "note": text_note,
     }
-    data["drafter"] = {
-        "base": (
-            f"dflash-{tier}-drafter (stamped against text checkpoint sha256={drafter_target_sha})"
-            if drafter_stamp_only else f"dflash-{tier}-drafter (distilled against {text_base})"
-        ),
-        "license": "apache-2.0",
-    }
+    if has_drafter:
+        data["drafter"] = {
+            "base": (
+                f"dflash-{tier}-drafter (stamped against text checkpoint sha256={drafter_target_sha})"
+                if drafter_stamp_only else f"dflash-{tier}-drafter (distilled against {text_base})"
+            ),
+            "license": "apache-2.0",
+        }
+    else:
+        data.pop("drafter", None)
     if has_vision and "vision" not in data:
         data["vision"] = {"base": f"{text_repo}-vision-tower@{text_rev}", "license": "apache-2.0"}
     if has_embedding:
@@ -631,7 +689,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
     bundle_dir = args.bundle_dir.resolve()
     recipes_dir = args.recipes_dir.resolve()
     text_gguf = args.text_gguf.resolve()
-    drafter_gguf = args.drafter_gguf.resolve()
+    drafter_gguf = args.drafter_gguf.resolve() if args.drafter_gguf is not None else None
     generated_at = args.generated_at or _now_iso()
     git_sha = _git_short_sha()
     _ensure_release_dirs(bundle_dir, tier=tier)
@@ -686,11 +744,15 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
                     provenance=f"eliza-1-text:{TEXT_QUANT_BY_TIER[tier]}", force=args.force)
         for ctx in contexts
     ]
-    # 4. Drafter GGUF.
-    drafter_staged = _stage_file(role="dflash", source=drafter_gguf,
-                                 destination=bundle_dir / "dflash" / f"drafter-{tier}.gguf",
-                                 provenance=("dflash-drafter:stamp-only" if drafter_stamp_only
-                                             else "dflash-drafter:distilled"), force=args.force)
+    # 4. Drafter GGUF for tiers that ship DFlash.
+    drafter_staged: StagedFile | None = None
+    if tier in DFLASH_TIERS:
+        if drafter_gguf is None:
+            raise SystemExit(f"--drafter-gguf is required for DFlash-enabled tier {tier}")
+        drafter_staged = _stage_file(role="dflash", source=drafter_gguf,
+                                     destination=bundle_dir / "dflash" / f"drafter-{tier}.gguf",
+                                     provenance=("dflash-drafter:stamp-only" if drafter_stamp_only
+                                                 else "dflash-drafter:distilled"), force=args.force)
     # 5. Vision (mmproj) for vision tiers.
     vision_staged: StagedFile | None = None
     if tier in VISION_TIERS and args.vision_gguf is not None:
@@ -698,18 +760,25 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
                                     destination=bundle_dir / "vision" / f"mmproj-{tier}.gguf",
                                     provenance="eliza-1-vision", force=args.force)
 
-    staged: list[StagedFile] = [*text_staged, drafter_staged]
+    staged: list[StagedFile] = [*text_staged]
+    if drafter_staged is not None:
+        staged.append(drafter_staged)
     if vision_staged is not None:
         staged.append(vision_staged)
     # 6. Quantization recipe sidecars (+ polar artifacts).
     staged.extend(_stage_recipe_sidecars(bundle_dir, recipes_dir, force=args.force))
 
-    drafter_target_sha = _read_drafter_target_checkpoint_sha256(Path(drafter_staged.destination))
+    drafter_target_sha = (
+        _read_drafter_target_checkpoint_sha256(Path(drafter_staged.destination))
+        if drafter_staged is not None
+        else None
+    )
     _write_licenses(bundle_dir, tier=tier, text_lineage_repo=args.text_lineage_repo, force=args.force)
     lineage = _write_lineage(bundle_dir=bundle_dir, tier=tier, text_repo=args.text_lineage_repo,
                              text_rev=args.text_lineage_rev, text_note=args.text_lineage_note,
                              drafter_target_sha=drafter_target_sha, drafter_stamp_only=drafter_stamp_only,
-                             has_embedding=has_embedding, has_vision=vision_staged is not None)
+                             has_embedding=has_embedding, has_vision=vision_staged is not None,
+                             has_drafter=drafter_staged is not None)
     _write_target_meta(bundle_dir=bundle_dir, tier=tier, text_files=text_staged,
                        drafter_file=drafter_staged, reasons=reasons)
     files = _collect_files(bundle_dir, tier=tier)
@@ -767,8 +836,12 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         "textBackbone": {"repo": args.text_lineage_repo, "revision": args.text_lineage_rev,
                          "quant": TEXT_QUANT_BY_TIER[tier], "substituted": text_substituted,
                          "note": args.text_lineage_note},
-        "drafter": {"path": str(Path(drafter_staged.destination).relative_to(bundle_dir)),
-                    "targetCheckpointSha256": drafter_target_sha, "stampOnly": drafter_stamp_only},
+        "drafter": (
+            {"path": str(Path(drafter_staged.destination).relative_to(bundle_dir)),
+             "targetCheckpointSha256": drafter_target_sha, "stampOnly": drafter_stamp_only}
+            if drafter_staged is not None
+            else {"status": "disabled", "requiresDrafter": False, "targetMeta": "dflash/target-meta.json"}
+        ),
         "staged": [asdict(it) for it in staged],
         "generatedBundleFiles": sorted(str(p.relative_to(bundle_dir)) for p in bundle_dir.rglob("*")
                                        if p.is_file()
@@ -799,8 +872,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--bundle-dir", required=True, type=Path)
     ap.add_argument("--text-gguf", required=True, type=Path,
                     help="Quantized text GGUF at the tier's release quant.")
-    ap.add_argument("--drafter-gguf", required=True, type=Path,
-                    help="DFlash drafter GGUF (stamped with dflash-draft.target_checkpoint_sha256).")
+    ap.add_argument("--drafter-gguf", type=Path,
+                    help="DFlash drafter GGUF (required for DFlash-enabled tiers; omitted for 0_8b disabled-policy bundles).")
     ap.add_argument("--recipes-dir", required=True, type=Path,
                     help="Directory with turbo/, fused/, qjl/, polar/ subdirs holding recipe sidecars.")
     ap.add_argument("--vision-gguf", type=Path, default=None, help="mmproj GGUF for vision tiers.")

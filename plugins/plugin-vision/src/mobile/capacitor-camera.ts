@@ -93,7 +93,9 @@ interface RegistryHost {
 
 export function registerMobileCameraSource(source: MobileCameraSource): void {
   (globalThis as unknown as RegistryHost)[REGISTRY_KEY] = source;
-  logger.info(`[MobileCameraSource] registered (${source.constructor.name})`);
+  logger.info(
+    `[MobileCameraSource] registered (${source.constructor?.name ?? "anonymous"})`,
+  );
 }
 
 export function getMobileCameraSource(): MobileCameraSource | null {

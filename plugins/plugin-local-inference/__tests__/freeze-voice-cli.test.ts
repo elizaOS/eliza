@@ -38,11 +38,11 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 const SCRIPT = path.join(
 	REPO_ROOT,
 	"packages",
-	"app-core",
-	"scripts",
-	"omnivoice-fuse",
-	"freeze-voice.mjs",
-);
+		"app-core",
+		"scripts",
+		"voice",
+		"freeze-voice.mjs",
+	);
 
 interface RunResult {
 	stdout: string;

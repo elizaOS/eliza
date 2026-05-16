@@ -626,7 +626,7 @@ def _canonicalize_action(action: Action) -> Action:
     # kwargs the agent already provided.
     if name == "PERSONAL_ASSISTANT_BOOK_TRAVEL":
         return Action(name="BOOK_TRAVEL", kwargs=dict(action.kwargs))
-    if name == "ARCHIVE_EMAIL_THREAD":
+    if name in {"ARCHIVE_EMAIL_THREAD", "ARCHIVE_THREAD"}:
         new_kwargs = dict(action.kwargs)
         new_kwargs.setdefault("source", "gmail")
         new_kwargs.setdefault("operation", "manage")

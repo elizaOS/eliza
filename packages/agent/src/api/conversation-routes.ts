@@ -287,7 +287,8 @@ function createRequestDisconnectAbortTracker({
     registrations.push({ source, event, listener });
   };
 
-  const onClientGone = () => abort(new Error(`${operation} client disconnected`));
+  const onClientGone = () =>
+    abort(new Error(`${operation} client disconnected`));
   const onResponseClose = () => {
     const ended = Boolean(
       (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,

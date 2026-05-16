@@ -188,7 +188,7 @@ resource "helm_release" "eliza_operator" {
   name             = "eliza-operator"
   namespace        = "pepr-system"
   create_namespace = true
-  chart            = "${path.module}/../../../../services/operator/dist/eliza-operator-chart"
+  chart            = "${path.module}/../../../../cloud-services/operator/dist/eliza-operator-chart"
   wait             = true
   timeout          = 180
 

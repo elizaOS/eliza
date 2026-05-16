@@ -87,10 +87,7 @@ jobs:
             rm -f .git/index.lock
 
             # Discard local drift, preserve env files.
-            git clean -ffdx -e .env -e .env.local -e .env.* -e node_modules || true
-            if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
-              rm -f bun.lock
-            fi
+            git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
             git checkout -- . 2>/dev/null || true
 
             # Use a refspec so a single-branch / shallow clone still creates
@@ -128,16 +125,8 @@ jobs:
             # The daemons run under Node/tsx rather than Bun. Node resolves
             # linked workspace packages through their built `node` exports, so
             # refresh linked package dist files after installing dependencies.
-            if [ -f cloud/package.json ] && jq -e '.scripts["build:linked-core"]' cloud/package.json >/dev/null; then
-              bun run --cwd cloud build:linked-core
-            else
-              bun run build:core
-            fi
-            if [ -f cloud/package.json ] && jq -e '.scripts["build:linked-billing"]' cloud/package.json >/dev/null; then
-              bun run --cwd cloud build:linked-billing
-            else
-              bun run --cwd packages/cloud-shared typecheck
-            fi
+            bun run --cwd cloud build:linked-core
+            bun run --cwd cloud build:linked-billing
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core

@@ -29,7 +29,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import { RapidOCRService } from "./ocr-service-rapid";
+import { OCRService } from "./ocr-service";
 import type { BoundingBox } from "./types";
 
 /** Coarse 3x3 location of a text element relative to the source tile. */
@@ -169,7 +169,7 @@ export function getOcrWithCoordsService(): OcrWithCoordsService | null {
 export class RapidOcrCoordAdapter implements OcrWithCoordsService {
   readonly name = "rapid-coord-adapter (transitional, replace with doctr-cpp)";
 
-  constructor(private readonly impl: RapidOCRService = new RapidOCRService()) {}
+  constructor(private readonly impl: Pick<OCRService, "extractText"> = new OCRService()) {}
 
   async describe(input: OcrWithCoordsInput): Promise<OcrWithCoordsResult> {
     if (input.pngBytes.byteLength === 0) {

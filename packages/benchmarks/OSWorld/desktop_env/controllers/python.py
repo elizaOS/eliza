@@ -74,7 +74,9 @@ class PythonController:
 
         for _ in range(self.retry_times):
             try:
-                response: requests.Response = requests.get(self.http_server + "/accessibility")
+                response: requests.Response = requests.get(
+                    self.http_server + "/accessibility", timeout=10
+                )
                 if response.status_code == 200:
                     logger.info("Got accessibility tree successfully")
                     return response.json()["AT"]
@@ -96,7 +98,7 @@ class PythonController:
 
         for _ in range(self.retry_times):
             try:
-                response = requests.get(self.http_server + "/terminal")
+                response = requests.get(self.http_server + "/terminal", timeout=10)
                 if response.status_code == 200:
                     logger.info("Got terminal output successfully")
                     return response.json()["output"]
