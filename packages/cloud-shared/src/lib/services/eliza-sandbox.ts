@@ -628,6 +628,12 @@ export class ElizaSandboxService {
   }> {
     const result = await this.deleteAgent(agentId, orgId);
     if (!result.success) {
+      // If the row is already gone, treat as success. This covers the retry
+      // case where a prior attempt deleted the row but failed before updating
+      // the job status to "completed", causing the runner to retry.
+      if (result.error === "Agent not found") {
+        return { success: true, containerStopped: true };
+      }
       return {
         success: false,
         containerStopped: false,

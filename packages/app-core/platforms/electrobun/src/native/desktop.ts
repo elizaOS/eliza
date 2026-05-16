@@ -118,6 +118,11 @@ interface ShowItemInFolderOptions {
 	path: string;
 }
 
+const FALLBACK_TRAY_MENU_ITEMS: TrayMenuItem[] = [
+	{ id: "tray-show-window", label: "Show Window" },
+	{ id: "quit", label: "Quit" },
+];
+
 type ElectrobunEventHandler = (...args: unknown[]) => void;
 
 interface ElectrobunEventTarget {
@@ -573,9 +578,7 @@ export class DesktopManager {
 			this.tray.setTitle(options.title);
 		}
 
-		if (options.menu) {
-			this.setTrayMenu({ menu: options.menu });
-		}
+		this.setTrayMenu({ menu: options.menu ?? FALLBACK_TRAY_MENU_ITEMS });
 
 		this.setupTrayEvents();
 	}
@@ -609,11 +612,14 @@ export class DesktopManager {
 	setTrayMenu(options: { menu: TrayMenuItem[] }): void {
 		if (!this.tray) return;
 
+		const menu =
+			options.menu.length > 0 ? options.menu : FALLBACK_TRAY_MENU_ITEMS;
+
 		// Store menu items for action matching
 		this.trayMenuItems.clear();
-		this.indexMenuItems(options.menu);
+		this.indexMenuItems(menu);
 
-		const template = this.buildMenuTemplate(options.menu);
+		const template = this.buildMenuTemplate(menu);
 		this.tray.setMenu(template);
 	}
 

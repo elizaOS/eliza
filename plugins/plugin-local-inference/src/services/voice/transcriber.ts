@@ -801,9 +801,11 @@ export interface CreateStreamingTranscriberOptions {
 	 */
 	prefer?: AsrBackendPreference;
 	/**
-	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
-	 * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
-	 * to keep the OpenVINO Whisper tier when the fused build is unavailable.
+	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Enabled by
+	 * default when worker/model artifacts are installed so auto mode can fall
+	 * back after fused streaming/batch ASR. Set to false to require fused ASR
+	 * only, or use `prefer: "openvino-whisper"` /
+	 * `ELIZA_LOCAL_ASR_BACKEND=openvino-whisper` to require OpenVINO.
 	 */
 	allowOpenVinoWhisper?: boolean;
 }
