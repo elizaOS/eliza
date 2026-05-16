@@ -34,4 +34,8 @@ const proc = Bun.spawn(
 
 await proc.exited;
 
+if (proc.exitCode !== 0) {
+  process.exit(proc.exitCode ?? 1);
+}
+
 console.log("Types generated.");

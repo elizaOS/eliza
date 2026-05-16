@@ -893,13 +893,23 @@ function visitFiles(rootDir: string, visit: (filePath: string) => void): void {
     return;
   }
 
-  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(rootDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  for (const entry of entries) {
     const entryPath = path.join(rootDir, entry.name);
     if (entry.isDirectory()) {
       visitFiles(entryPath, visit);
       continue;
     }
-    if (entry.isFile()) {
+    if (entry.isFile() && fs.existsSync(entryPath)) {
       visit(entryPath);
     }
   }
@@ -979,6 +989,9 @@ function patchCopiedElevenLabsTarSafePaths(
 
   visitFiles(packageDir, (filePath) => {
     if (!filePath.endsWith(".js")) {
+      return;
+    }
+    if (!fs.existsSync(filePath)) {
       return;
     }
 
