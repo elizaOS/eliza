@@ -47,7 +47,6 @@ function parseArgs() {
 
 const WORKSPACE_GLOBS = [
   "packages",
-  "packages/native-plugins",
   "plugins",
   "cloud/packages",
 ];

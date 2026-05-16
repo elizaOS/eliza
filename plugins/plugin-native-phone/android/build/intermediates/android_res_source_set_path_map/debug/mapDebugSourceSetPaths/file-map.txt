@@ -1,0 +1,9 @@
+ai.eliza.plugins.phone.elizaos-capacitor-phone-pngs-0 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/build/generated/res/pngs/debug
+ai.eliza.plugins.phone.elizaos-capacitor-phone-updated_navigation_xml-1 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/build/generated/updated_navigation_xml/debug
+ai.eliza.plugins.phone.elizaos-capacitor-phone-mergeDebugResources-2 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+ai.eliza.plugins.phone.elizaos-capacitor-phone-mergeDebugResources-3 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+ai.eliza.plugins.phone.elizaos-capacitor-phone-debug-4 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/build/intermediates/merged_res/debug/mergeDebugResources
+ai.eliza.plugins.phone.elizaos-capacitor-phone-debug-5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/build/intermediates/packaged_res/debug/packageDebugResources
+ai.eliza.plugins.phone.elizaos-capacitor-phone-debug-6 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/debug/res
+ai.eliza.plugins.phone.elizaos-capacitor-phone-main-7 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/res
+gradleHome-0 /Users/shawwalters/.gradle

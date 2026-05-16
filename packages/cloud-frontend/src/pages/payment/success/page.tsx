@@ -64,7 +64,7 @@ function PaymentSuccessContent() {
         </div>
         <div className="space-y-2">
           <h1 className="text-xl font-mono text-white">Payment Received</h1>
-          <p className="text-sm text-white/60 font-mono">
+          <p className="text-sm text-white/74 font-mono">
             Redirecting to your dashboard...
           </p>
         </div>

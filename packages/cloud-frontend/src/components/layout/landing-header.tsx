@@ -23,7 +23,7 @@ export default function LandingHeader() {
         <Link to="/" className="flex items-center gap-3">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
-            alt="eliza cloud"
+            alt="Eliza Cloud"
             className="h-7 w-auto sm:h-8"
             draggable={false}
           />

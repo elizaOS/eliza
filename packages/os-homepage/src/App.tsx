@@ -6,7 +6,7 @@ import {
 } from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
@@ -107,7 +107,7 @@ const hardwareProducts: Product[] = [
     name: "Chibi USB key",
     price: "$49",
     ships: "Ships October 2026",
-    image: "/brand/concepts/chibi_usb_concept.jpg",
+    image: CONCEPT_PRODUCT_IMAGES.chibiUsb,
     imageAlt: "Chibi ElizaOS USB key concept",
     summary: "Same boot key. Smaller mascot shell.",
     detail: "ElizaOS USB in a collector enclosure.",
@@ -211,7 +211,7 @@ function Header({ solid = false }: { solid?: boolean }) {
     <header className={solid ? "site-header site-header-solid" : "site-header"}>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
-          src="/brand/logos/elizaOS_text_white.svg"
+          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
           alt="elizaOS"
           draggable={false}
         />
@@ -228,7 +228,7 @@ function Footer() {
   return (
     <footer className="site-footer">
       <img
-        src="/brand/logos/elizaOS_text_white.svg"
+        src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
         alt="elizaOS"
         draggable={false}
       />
@@ -501,12 +501,12 @@ function CheckoutPage() {
                     style={{
                       backgroundColor:
                         color === "Orange"
-                          ? "#FF5800"
+                          ? BRAND_COLORS.orange
                           : color.startsWith("Blue")
-                            ? "#0B35F1"
+                            ? BRAND_COLORS.blue
                             : color === "Black"
-                              ? "#000000"
-                              : "#FFFFFF",
+                              ? BRAND_COLORS.black
+                              : BRAND_COLORS.white,
                     }}
                     onClick={() => setSelectedColor(color)}
                     aria-label={`Select ${color}`}
@@ -569,14 +569,14 @@ function HomePage() {
         <section className="band band-blue hero-os">
           <div className="band-inner hero-os-inner">
             <img
-              src="/brand/logos/logo_white_bluebg.svg"
+              src={`${BRAND_PATHS.logos}/${LOGO_FILES.markWhiteBlueBg}`}
               alt=""
               aria-hidden="true"
               className="hero-mark"
               draggable={false}
             />
             <h1>The agentic operating system.</h1>
-            <p className="hero-copy">For devices that run themselves.</p>
+            <p className="hero-copy">Open source. Local first.</p>
             <div className="hero-actions">
               <a href="#download" className="button">
                 Download
@@ -622,10 +622,7 @@ function HomePage() {
         <section className="band band-orange">
           <div className="band-inner punch-band">
             <h2>Local first.</h2>
-            <p>
-              Your agent runs on your device. No account required. Supported Mac
-              hardware is limited.
-            </p>
+            <p>Runs on your device. No account required.</p>
           </div>
         </section>
 

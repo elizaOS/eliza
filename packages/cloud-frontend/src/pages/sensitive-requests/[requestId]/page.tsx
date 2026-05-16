@@ -299,7 +299,7 @@ export default function SensitiveRequestPage() {
               Eliza Cloud
             </p>
             <h1 className="mt-1 text-lg font-semibold">{copy.title}</h1>
-            <p className="mt-1 text-sm leading-relaxed text-white/60">
+            <p className="mt-1 text-sm leading-relaxed text-white/74">
               {copy.body}
             </p>
           </div>

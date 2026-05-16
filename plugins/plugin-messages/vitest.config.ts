@@ -9,11 +9,11 @@ export default defineConfig({
     alias: {
       "@elizaos/capacitor-messages": resolve(
         rootDir,
-        "../../packages/native-plugins/messages/src/index.ts",
+        "../../plugins/plugin-native-messages/src/index.ts",
       ),
       "@elizaos/capacitor-system": resolve(
         rootDir,
-        "../../packages/native-plugins/system/src/index.ts",
+        "../../plugins/plugin-native-system/src/index.ts",
       ),
     },
   },

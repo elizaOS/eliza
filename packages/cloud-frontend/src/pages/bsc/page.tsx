@@ -40,7 +40,7 @@ export default function BscPromoPage() {
           content="Buy $10 or more in Eliza Cloud credit with BSC and receive $5 extra credit."
         />
       </Helmet>
-      <main className="min-h-screen bg-[#050505] text-white">
+      <main id="main" className="min-h-screen bg-[#050505] text-white">
         <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-5 py-10">
           <Link
             to="/"

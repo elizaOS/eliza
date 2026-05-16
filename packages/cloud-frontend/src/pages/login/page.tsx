@@ -42,7 +42,7 @@ export default function LoginPage() {
         <div className="space-y-2 text-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
-            alt="eliza cloud"
+            alt="Eliza Cloud"
             className="mx-auto h-8 w-auto"
             draggable={false}
           />
@@ -54,7 +54,7 @@ export default function LoginPage() {
         <Suspense fallback={<StewardLoginSectionFallback />}>
           <StewardLoginSection />
         </Suspense>
-        <p className="border-t border-white/14 pt-4 text-center text-xs text-white/60">
+        <p className="border-t border-white/14 pt-4 text-center text-xs text-white/74">
           By signing in, you agree to the{" "}
           <Link
             to="/terms-of-service"

@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /**
  * Workaround for a Bun workspace bug: packages declared via the
- * `packages/native-plugins/*` workspace glob are recognised by
- * `bun pm ls` but never symlinked into `node_modules/@elizaos/...`,
- * even on a fresh `bun install --ignore-scripts` against a deleted
- * node_modules tree. The same pattern works for `plugins/*` and
- * `packages/*` — only `packages/native-plugins/*` is affected.
+ * `plugins/plugin-native-*` workspace glob (formerly
+ * `packages/native-plugins/*`) are recognised by `bun pm ls` but
+ * never symlinked into `node_modules/@elizaos/...`, even on a fresh
+ * `bun install --ignore-scripts` against a deleted node_modules tree.
  *
  * Symptom downstream: `bun run --cwd packages/agent build:mobile`
  * fails with `Could not resolve: "@elizaos/capacitor-contacts"`
- * (and the other 19 native-plugin packages) because the agent's
+ * (and the other native-plugin packages) because the agent's
  * static imports can't be linked at bundle time.
  *
  * This script runs after `bun install` (wired into the root
  * `postinstall`) and explicitly creates the missing
- * `node_modules/@elizaos/<name>` → `../../packages/native-plugins/<dir>`
+ * `node_modules/@elizaos/<name>` → `../../plugins/plugin-native-<dir>`
  * symlinks. Idempotent: existing correct symlinks are left alone.
  */
 
@@ -23,10 +22,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const nativePluginsRoot = path.join(repoRoot, "packages", "native-plugins");
+const pluginsRoot = path.join(repoRoot, "plugins");
 const nodeModulesRoot = path.join(repoRoot, "node_modules");
 
-if (!existsSync(nativePluginsRoot)) {
+if (!existsSync(pluginsRoot)) {
   process.exit(0);
 }
 
@@ -34,8 +33,9 @@ let linked = 0;
 let alreadyOk = 0;
 let skipped = 0;
 
-for (const dirName of readdirSync(nativePluginsRoot)) {
-  const pkgDir = path.join(nativePluginsRoot, dirName);
+for (const dirName of readdirSync(pluginsRoot)) {
+  if (!dirName.startsWith("plugin-native-")) continue;
+  const pkgDir = path.join(pluginsRoot, dirName);
   const pkgJsonPath = path.join(pkgDir, "package.json");
   if (!existsSync(pkgJsonPath)) {
     skipped += 1;

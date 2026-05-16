@@ -19,10 +19,10 @@
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/capacitor-messages": [
-        "../../packages/native-plugins/messages/src/index.ts"
+        "../../plugins/plugin-native-messages/src/index.ts"
       ],
       "@elizaos/capacitor-system": [
-        "../../packages/native-plugins/system/src/index.ts"
+        "../../plugins/plugin-native-system/src/index.ts"
       ],
       "lucide-react": ["../plugin-companion/node_modules/lucide-react"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],

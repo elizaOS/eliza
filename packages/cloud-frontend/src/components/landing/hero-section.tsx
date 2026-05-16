@@ -22,12 +22,12 @@ export default function HeroSection() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
         <img
           src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
-          alt="eliza cloud"
+          alt="Eliza Cloud"
           className="mb-10 h-9 w-auto sm:h-11"
           draggable={false}
         />
         <h1
-          className="max-w-4xl text-[clamp(4rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+          className="max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
           Run in Cloud.

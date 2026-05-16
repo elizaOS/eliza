@@ -224,6 +224,7 @@ export default function ConnectedPage() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              aria-label="Open user menu"
               className="focus:outline-none focus:ring-2 focus:ring-black/30 rounded-full"
             >
               {user.avatar ? (
@@ -322,6 +323,7 @@ export default function ConnectedPage() {
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy Telegram link"
+                aria-label="Copy Telegram link"
               >
                 {copiedTelegram ? (
                   <Check className="size-5 text-green-400" />
@@ -372,6 +374,7 @@ export default function ConnectedPage() {
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
                 title="Copy number"
+                aria-label="Copy phone number"
               >
                 {copiedPhone ? (
                   <Check className="size-5 text-green-400" />

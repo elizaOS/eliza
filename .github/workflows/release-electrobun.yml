@@ -736,7 +736,7 @@ jobs:
         run: |
           out_dir="$RUNNER_TEMP/electrobun-entry-probe"
           rm -rf "$out_dir"
-          bun build src/index.ts --target=bun --outdir "$out_dir"
+          bun build src/index.ts --target=bun --packages=external --outdir "$out_dir"
 
       - name: Build patched Electrobun CLI
         shell: bash

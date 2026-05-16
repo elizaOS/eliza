@@ -9,7 +9,7 @@ export default defineConfig({
     alias: {
       "@elizaos/capacitor-phone": resolve(
         rootDir,
-        "../../packages/native-plugins/phone/src/index.ts",
+        "../../plugins/plugin-native-phone/src/index.ts",
       ),
     },
   },

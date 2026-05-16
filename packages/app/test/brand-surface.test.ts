@@ -7,7 +7,7 @@
  * orchestration; this test asserts the shell-owned surfaces this package
  * actually controls.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -19,6 +19,20 @@ const BRAND_ORANGE = "#FF5800";
 function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
 }
+
+function exists(rel: string): boolean {
+  return existsSync(join(root, rel));
+}
+
+// Native iOS/Android directories are gitignored — they're materialized at
+// build time from packages/app-core/platforms via `cap:sync` and patched by
+// our brand pipeline. They exist on dev machines and in mobile build jobs,
+// but NOT in vanilla Client Tests CI checkouts. Gate the asserts so the
+// shell-owned brand checks above still run.
+const HAS_ANDROID_RES = exists("android/app/src/main/res/values/colors.xml");
+const HAS_IOS_STORYBOARD = exists(
+  "ios/App/App/Base.lproj/LaunchScreen.storyboard",
+);
 
 describe("brand surfaces", () => {
   it("app.config web/theme colors are brand orange", () => {
@@ -35,7 +49,7 @@ describe("brand surfaces", () => {
     expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
   });
 
-  it("Android colors.xml + styles.xml use brand orange for splash + status bar", () => {
+  it.skipIf(!HAS_ANDROID_RES)("Android colors.xml + styles.xml use brand orange for splash + status bar", () => {
     const colors = read("android/app/src/main/res/values/colors.xml");
     expect(colors).toContain("<color name=\"eliza_orange\">#FF5800</color>");
     expect(colors).toContain("<color name=\"splash_background\">#FF5800</color>");
@@ -46,7 +60,7 @@ describe("brand surfaces", () => {
     expect(styles).toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
   });
 
-  it("iOS LaunchScreen.storyboard backdrop is brand orange", () => {
+  it.skipIf(!HAS_IOS_STORYBOARD)("iOS LaunchScreen.storyboard backdrop is brand orange", () => {
     const xml = read("ios/App/App/Base.lproj/LaunchScreen.storyboard");
     // 1.0 / 0.345 / 0.0 is #FF5800 in sRGB to 3 decimals.
     expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);

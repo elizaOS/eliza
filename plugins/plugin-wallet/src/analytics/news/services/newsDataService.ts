@@ -30,10 +30,6 @@ export class NewsDataService extends Service {
     return "Provides real-world cryptocurrency news and events from Brave New Coin RSS feed";
   }
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   /**
    * Start the NewsData service (static method for framework)
    */

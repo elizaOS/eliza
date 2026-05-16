@@ -251,7 +251,7 @@ const nativeStubs = {
   // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
   // directly via aosp-llama-adapter.ts, never this package — but Bun.build
   // still has to resolve the dynamic import in
-  // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
+  // plugins/plugin-native-llama/src/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   mammoth: path.join(stubsDir, "mammoth.cjs"),

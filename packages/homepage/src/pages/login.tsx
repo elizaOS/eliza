@@ -1,3 +1,4 @@
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/context/auth-context";
@@ -21,7 +22,7 @@ export default function LoginPage() {
       <header className="app-header">
         <a href="/" aria-label="Eliza home" className="app-brand">
           <img
-            src="/brand/logos/eliza_text_black.svg"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaBlack}`}
             alt="Eliza"
             draggable={false}
             className="app-brand-mark"

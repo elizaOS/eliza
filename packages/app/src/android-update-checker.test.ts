@@ -92,8 +92,8 @@ describe("AndroidUpdateChecker.check()", () => {
     const result = await AndroidUpdateChecker.check("stable");
 
     expect(result).not.toBeNull();
-    expect(result!.updateAvailable).toBe(false);
-    expect(result!.currentVersionCode).toBe(10);
+    expect(result?.updateAvailable).toBe(false);
+    expect(result?.currentVersionCode).toBe(10);
   });
 
   it("returns updateAvailable: true when manifest versionCode is higher than current build", async () => {
@@ -110,8 +110,8 @@ describe("AndroidUpdateChecker.check()", () => {
     const result = await AndroidUpdateChecker.check("stable");
 
     expect(result).not.toBeNull();
-    expect(result!.updateAvailable).toBe(true);
-    expect(result!.manifest.versionCode).toBe(11);
+    expect(result?.updateAvailable).toBe(true);
+    expect(result?.manifest.versionCode).toBe(11);
   });
 
   it("returns null and does not throw on network error", async () => {

@@ -1,0 +1,9 @@
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-pngs-0 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/build/generated/res/pngs/debug
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-updated_navigation_xml-1 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/build/generated/updated_navigation_xml/debug
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-mergeDebugResources-2 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-mergeDebugResources-3 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-debug-4 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/build/intermediates/merged_res/debug/mergeDebugResources
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-debug-5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/build/intermediates/packaged_res/debug/packageDebugResources
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-debug-6 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/src/debug/res
+ai.eliza.plugins.mobilesignals.elizaos-capacitor-mobile-signals-main-7 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/android/src/main/res
+gradleHome-0 /Users/shawwalters/.gradle

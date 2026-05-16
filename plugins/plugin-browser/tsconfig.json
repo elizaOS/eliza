@@ -35,10 +35,10 @@
       "@elizaos/plugin-lifeops": ["../../plugins/plugin-lifeops/src/index.ts"],
       "@elizaos/plugin-companion": ["../../plugins/plugin-companion/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
-        "../../packages/native-plugins/appblocker/src/index.ts"
+        "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "../../packages/native-plugins/mobile-signals/src/index.ts"
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ]
     }
   },

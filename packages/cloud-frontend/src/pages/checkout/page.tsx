@@ -254,22 +254,22 @@ export default function CheckoutPage() {
         />
       </Helmet>
       <LandingHeader />
-      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12">
+      <main id="main" className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12">
         <section className="self-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
-            alt="eliza cloud"
+            alt="Eliza Cloud"
             className="mb-8 h-9 w-auto"
             draggable={false}
           />
           <p className="text-xs font-bold uppercase text-[#FF5800]">preorder</p>
-          <h1 className="mt-3 max-w-xl text-5xl font-extrabold leading-[0.9] text-white md:text-7xl">
+          <h1 className="mt-3 max-w-xl break-words text-4xl font-extrabold leading-[0.9] text-white sm:text-5xl md:text-7xl">
             {product.name}
           </h1>
           <p className="mt-5 max-w-lg text-lg font-medium leading-snug text-white/72">
             Reserve with your Eliza Cloud account.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase text-white/60">
+          <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase text-white/74">
             <span>{product.price}</span>
             <span>{product.subtitle}</span>
           </div>
@@ -288,7 +288,7 @@ export default function CheckoutPage() {
                     <h2 className="text-2xl font-semibold text-white">
                       {product.name}
                     </h2>
-                    <p className="text-sm text-white/60">{product.subtitle}</p>
+                    <p className="text-sm text-white/74">{product.subtitle}</p>
                   </div>
                 </div>
                 <div className="mt-6 flex flex-wrap gap-2">

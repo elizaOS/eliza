@@ -10,7 +10,9 @@ test("homepage hardware tile links to /hardware/:slug detail page", async ({
 
   const hardwareSection = page.locator("#hardware");
   await hardwareSection.scrollIntoViewIfNeeded();
-  await expect(hardwareSection.getByRole("heading", { name: "Hardware." })).toBeVisible();
+  await expect(
+    hardwareSection.getByRole("heading", { name: "Hardware." }),
+  ).toBeVisible();
 
   const usbTile = page.locator(`a.hw-tile[href="/hardware/usb"]`);
   await expect(usbTile).toBeVisible();
@@ -31,7 +33,9 @@ test("product detail page shows ElizaOS USB hero, price, and pre-order CTA point
 
   // Price + ships meta
   await expect(page.locator(".detail-meta")).toContainText("$49");
-  await expect(page.locator(".detail-meta")).toContainText("Ships October 2026");
+  await expect(page.locator(".detail-meta")).toContainText(
+    "Ships October 2026",
+  );
 
   // Pre-order CTA exists and points at elizaos.ai/checkout?sku=elizaos-usb
   const preorderCta = page.getByRole("link", {

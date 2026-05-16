@@ -1,3 +1,4 @@
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ElizaOsImage,
@@ -334,7 +335,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         <div>
           <img
             className="brand-logo"
-            src="/brand/logos/elizaOS_text_white.svg"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
             alt="elizaOS"
           />
           <p className="eyebrow">elizaOS media tool</p>
@@ -969,7 +970,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
       <section className="footer-band">
         <img
           className="brand-logo"
-          src="/brand/logos/elizaOS_text_white.svg"
+          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
           alt="elizaOS"
         />
         <a
