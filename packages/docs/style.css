@@ -203,3 +203,108 @@ a[href*="discord.gg"]:hover * {
   color: #0b35f1;
   background-color: currentColor;
 }
+
+/* ===== elizaOS brand theme — Poppins, sharp corners, bold black ===== */
+
+body,
+html,
+button,
+input,
+select,
+textarea,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+li,
+a,
+span,
+div {
+  font-family:
+    "Poppins",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif !important;
+}
+
+code,
+pre,
+kbd,
+samp,
+.font-mono,
+[class*="font-mono"] {
+  font-family:
+    "Poppins",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace !important;
+}
+
+/* Sharp corners across cards, buttons, callouts, code blocks */
+button,
+.btn,
+[class*="rounded"],
+[data-component-part="card"],
+[data-component-part^="card-"],
+[class*="Card"],
+[class*="callout"],
+pre,
+code,
+.cta-button,
+[role="button"] {
+  border-radius: 0 !important;
+}
+
+/* Code block: solid black bg, white text */
+pre,
+pre code,
+pre[class*="language-"],
+code[class*="language-"],
+.prose pre,
+[class*="code-block"] pre,
+div[class*="codeblock"] pre {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+}
+
+pre .token,
+pre code .token {
+  color: inherit;
+}
+
+/* Inline code keeps subtle contrast but no rounding */
+:not(pre) > code {
+  background: rgba(11, 53, 241, 0.08);
+  color: inherit;
+  border-radius: 0 !important;
+  padding: 0.1em 0.35em;
+}
+
+/* Blockquote: orange left bar */
+blockquote,
+.prose blockquote {
+  border-left: 4px solid #ff5800 !important;
+  border-radius: 0 !important;
+  padding-left: 1rem;
+}
+
+/* Mintlify callouts: sharp + orange accent on Tip/Info */
+[data-callout],
+.callout,
+[class*="Callout"],
+div[role="note"] {
+  border-radius: 0 !important;
+}
+
+[data-callout="tip"],
+[data-callout="info"] {
+  border-left: 4px solid #ff5800 !important;
+}

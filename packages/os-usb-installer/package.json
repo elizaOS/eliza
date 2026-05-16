@@ -14,13 +14,16 @@
     }
   },
   "scripts": {
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
     "dev": "vite",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts"
   },
   "dependencies": {
+    "@elizaos/shared-brand": "workspace:*",
     "@fontsource-variable/open-sans": "^5.2.7",
     "vite": "^8.0.0"
   },

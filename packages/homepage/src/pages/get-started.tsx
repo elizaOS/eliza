@@ -81,7 +81,7 @@ function getDiscordBotApplicationId(): string {
   return getDiscordClientId();
 }
 
-const MONO = "'Open Sans', Arial, system-ui, sans-serif";
+const MONO = "Poppins, system-ui, sans-serif";
 
 function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
   const { messages, sendMessage, containerStatus, isLoading, isReady } =
@@ -758,8 +758,8 @@ export default function GetStartedPage() {
 
   if (authLoading) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Loading...</div>
+      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
+        <div className="text-black/70 animate-pulse font-semibold">Loading…</div>
       </main>
     );
   }
@@ -773,17 +773,17 @@ export default function GetStartedPage() {
     step !== "PROVISIONING_CHAT"
   ) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Redirecting...</div>
+      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
+        <div className="text-black/70 animate-pulse font-semibold">Redirecting…</div>
       </main>
     );
   }
 
   if (isRedirectingToOAuth) {
     return (
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">
-          Redirecting to Discord...
+      <main className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4" style={{ fontFamily: "Poppins, system-ui, sans-serif" }}>
+        <div className="text-black/70 animate-pulse font-semibold">
+          Redirecting to Discord…
         </div>
       </main>
     );

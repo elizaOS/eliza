@@ -8,8 +8,20 @@
     "light": "#FF5800",
     "dark": "#0B35F1"
   },
+  "background": {
+    "color": {
+      "light": "#ffffff",
+      "dark": "#000000"
+    }
+  },
+  "appearance": {
+    "default": "dark"
+  },
   "fonts": {
     "family": "Poppins"
+  },
+  "styling": {
+    "eyebrows": "section"
   },
   "favicon": "/favicon.svg",
   "logo": {
@@ -26,7 +38,12 @@
         "label": "Discord",
         "href": "https://discord.gg/eliza"
       }
-    ]
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Open Cloud",
+      "href": "https://elizacloud.ai"
+    }
   },
   "navigation": {
     "tabs": [

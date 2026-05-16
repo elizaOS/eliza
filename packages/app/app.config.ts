@@ -36,9 +36,11 @@ const config = {
 
   web: {
     shortName: "Eliza",
-    themeColor: "#08080a",
-    backgroundColor: "#0a0a0a",
-    shareImagePath: "/og-image.png",
+    // Eliza brand orange — used by manifest theme_color, <meta name="theme-color">,
+    // and (via build placeholders) the splash/launch surfaces.
+    themeColor: "#FF5800",
+    backgroundColor: "#FF5800",
+    shareImagePath: "/brand/logos/logo_white_orangebg.svg",
   },
 
   branding: {

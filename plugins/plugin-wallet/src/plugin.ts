@@ -1,7 +1,4 @@
-import {
-  resolveCloudRoute,
-  toRuntimeSettings,
-} from "@elizaos/cloud-routing";
+import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
   type Plugin,

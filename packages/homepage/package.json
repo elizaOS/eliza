@@ -3,9 +3,9 @@
   "version": "2.0.0-beta.2",
   "type": "module",
   "scripts": {
-    "predev": "node ../app-core/scripts/write-homepage-release-data.mjs",
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public && node ../app-core/scripts/write-homepage-release-data.mjs",
     "dev": "bun --bun vite",
-    "prebuild": "node ../app-core/scripts/write-homepage-release-data.mjs",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public && node ../app-core/scripts/write-homepage-release-data.mjs",
     "build": "bun --bun vite build",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && ../../node_modules/.bin/playwright test",
@@ -17,6 +17,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
+    "@elizaos/shared-brand": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/open-sans": "^5.2.7",
     "@fontsource/poppins": "^5.2.7",

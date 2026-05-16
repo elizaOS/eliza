@@ -217,6 +217,7 @@
         "@elizaos/plugin-wifi": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@pixiv/three-vrm": "^3.4.5",
         "llama-cpp-capacitor": "^0.1.5",
@@ -488,6 +489,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/inter": "^5.2.8",
         "@fontsource-variable/open-sans": "^5.2.7",
@@ -1550,6 +1552,7 @@
       "name": "eliza-app",
       "version": "2.0.0-beta.2",
       "dependencies": {
+        "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
@@ -1924,6 +1927,7 @@
       "name": "@elizaos/os-homepage",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
@@ -2029,6 +2033,10 @@
       "optionalDependencies": {
         "figlet": "^1.11.0",
       },
+    },
+    "packages/shared-brand": {
+      "name": "@elizaos/shared-brand",
+      "version": "0.1.0",
     },
     "packages/skills": {
       "name": "@elizaos/skills",
@@ -5076,6 +5084,8 @@
     "@elizaos/scenario-schema": ["@elizaos/scenario-schema@workspace:packages/scenario-schema"],
 
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
+
+    "@elizaos/shared-brand": ["@elizaos/shared-brand@workspace:packages/shared-brand"],
 
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
 

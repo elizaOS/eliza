@@ -11,8 +11,15 @@ const GetStartedPage = lazy(() => import("@/pages/get-started"));
 
 function RouteFallback() {
   return (
-    <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-      <div className="text-white/60 animate-pulse">Loading...</div>
+    <main
+      className="theme-app min-h-screen flex flex-col items-center justify-center px-4"
+      style={{
+        background: "#000",
+        color: "#fff",
+        fontFamily: "Poppins, system-ui, sans-serif",
+      }}
+    >
+      <div className="opacity-60 animate-pulse">Loading...</div>
     </main>
   );
 }

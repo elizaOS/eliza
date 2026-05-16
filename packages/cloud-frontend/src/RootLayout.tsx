@@ -81,7 +81,7 @@ export default function RootLayout() {
           <CreditsProvider>
             <ThemeProvider
               attribute="class"
-              defaultTheme="light"
+              defaultTheme="dark"
               enableSystem={false}
               disableTransitionOnChange
             >
@@ -89,17 +89,16 @@ export default function RootLayout() {
               <Outlet />
               <Toaster
                 richColors
-                theme="light"
+                theme="dark"
                 position="top-right"
                 toastOptions={{
                   style: {
-                    background: "rgba(255, 255, 255, 0.82)",
-                    border: "1px solid rgba(255, 255, 255, 0.34)",
-                    color: "#06131f",
-                    backdropFilter: "blur(12px)",
-                    borderRadius: "18px",
+                    background: "#000000",
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    color: "#FFFFFF",
+                    borderRadius: "0",
                   },
-                  className: "font-open-sans",
+                  className: "font-poppins",
                 }}
               />
             </ThemeProvider>

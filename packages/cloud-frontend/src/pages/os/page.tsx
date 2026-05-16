@@ -1,4 +1,4 @@
-import { CloudSkyBackground, ElizaCloudLockup } from "@elizaos/ui";
+import { ElizaCloudLockup } from "@elizaos/ui";
 import {
   ArrowRight,
   Boxes,
@@ -111,13 +111,13 @@ function CtaLink({
 }) {
   const className =
     variant === "primary"
-      ? "bg-primary text-primary-fg shadow-[0_18px_46px_rgba(217,95,22,0.32)] hover:bg-accent-hover"
-      : "border border-white/42 bg-white/18 text-white shadow-[0_18px_46px_rgba(4,49,93,0.18)] backdrop-blur-xl hover:bg-white/28";
+      ? "bg-[#FF5800] text-white hover:bg-[#FF5800]/85"
+      : "border border-white/20 bg-transparent text-white hover:bg-white/10";
 
   return (
     <a
       href={href}
-      className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 py-3 font-[family-name:var(--font-body)] text-sm font-semibold transition-colors sm:text-base ${className}`}
+      className={`inline-flex min-h-12 items-center justify-center gap-2 px-6 py-3 font-poppins text-sm font-semibold transition-colors sm:text-base ${className}`}
     >
       {children}
     </a>
@@ -136,7 +136,7 @@ function SectionHeader({
   return (
     <div className="mx-auto max-w-3xl text-center">
       <p className="mb-3 text-sm font-bold uppercase text-accent">{eyebrow}</p>
-      <h2 className="text-3xl font-bold leading-tight text-white drop-shadow-[0_8px_34px_rgba(4,49,93,0.24)] sm:text-5xl">
+      <h2 className="text-3xl font-bold leading-tight text-white sm:text-5xl">
         {title}
       </h2>
       {children ? (
@@ -158,11 +158,7 @@ export default function ElizaOsPage() {
           content="Install ElizaOS natively, boot from USB, run VM bundles, or use Android and developer builds."
         />
       </Helmet>
-      <CloudSkyBackground
-        className="min-h-screen"
-        contentClassName="min-h-screen w-full"
-        intensity="hero"
-      >
+      <div className="theme-cloud min-h-screen bg-black font-poppins text-white">
         <div className="relative min-h-screen overflow-x-hidden">
           <LandingHeader />
 
@@ -172,10 +168,10 @@ export default function ElizaOsPage() {
                 <p className="mb-4 text-sm font-bold uppercase text-accent">
                   ElizaOS Platform / Operating System
                 </p>
-                <h1 className="max-w-4xl text-4xl font-bold leading-tight text-white drop-shadow-[0_8px_34px_rgba(4,49,93,0.34)] sm:text-6xl md:text-7xl">
+                <h1 className="max-w-4xl text-4xl font-bold leading-tight text-white sm:text-6xl md:text-7xl">
                   The agentic operating system for devices that run themselves.
                 </h1>
-                <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/84 drop-shadow-[0_2px_14px_rgba(4,49,93,0.2)] sm:text-xl">
+                <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/84 sm:text-xl">
                   Install ElizaOS natively on supported PCs and Android devices,
                   or run it in a first-party VM launcher on macOS, Windows, and
                   Linux. This is a serious OS build, not a normal Mac app.
@@ -197,7 +193,7 @@ export default function ElizaOsPage() {
                     Release artifacts
                   </CtaLink>
                 </div>
-                <p className="mt-6 max-w-2xl border-l-4 border-accent bg-white/18 px-4 py-3 text-sm leading-relaxed text-white shadow-sm backdrop-blur-xl sm:text-base">
+                <p className="mt-6 max-w-2xl border-l-4 border-[#FF5800] bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-white sm:text-base">
                   Supported Mac hardware is limited. Apple Silicon support
                   currently targets selected M1/M2 devices. Newer Macs may not
                   be supported. Mac hosts can run the VM launcher; native Mac
@@ -218,7 +214,7 @@ image: elizaos-linux-arm64.iso
 verify: sha256 passed
 write: ready for confirmation`}</pre>
                 </div>
-                <div className="rounded-lg border border-white/32 bg-white/24 p-6 text-white shadow-[0_18px_54px_rgba(3,28,58,0.16)] backdrop-blur-2xl">
+                <div className="border border-white/14 bg-black p-6 text-white">
                   <ElizaCloudLockup logoClassName="h-6" />
                   <h2 className="mt-5 text-3xl font-bold">OS / App / Cloud</h2>
                   <p className="mt-3 text-sm leading-6 text-white/78">
@@ -230,7 +226,7 @@ write: ready for confirmation`}</pre>
                       <a
                         key={item.target}
                         href={item.href}
-                        className="flex items-center justify-between gap-3 rounded-lg bg-white/16 px-3 py-2 text-sm transition-colors hover:bg-white/26"
+                        className="flex items-center justify-between gap-3 border border-white/14 bg-transparent px-3 py-2 text-sm transition-colors hover:bg-white/10"
                       >
                         <span>{item.cta}</span>
                         <ArrowRight className="h-4 w-4" />
@@ -269,7 +265,7 @@ write: ready for confirmation`}</pre>
                               : item.target.toLowerCase().split(" ")[0]
                       }
                       key={item.target}
-                      className="rounded-lg border border-white/32 bg-white/24 p-5 text-white shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl"
+                      className="border border-white/14 bg-black p-5 text-white"
                     >
                       <Icon className="h-7 w-7 text-accent" />
                       <h3 className="mt-4 text-lg font-bold">{item.target}</h3>
@@ -371,7 +367,7 @@ write: ready for confirmation`}</pre>
                     return (
                       <article
                         key={item.title}
-                        className="rounded-lg border border-white/32 bg-white/24 p-5 text-white shadow-[0_18px_54px_rgba(3,28,58,0.14)] backdrop-blur-2xl"
+                        className="border border-white/14 bg-black p-5 text-white"
                       >
                         <Icon className="h-7 w-7 text-accent" />
                         <h3 className="mt-4 font-bold">{item.title}</h3>
@@ -439,7 +435,7 @@ write: ready for confirmation`}</pre>
 
           <Footer />
         </div>
-      </CloudSkyBackground>
+      </div>
     </>
   );
 }

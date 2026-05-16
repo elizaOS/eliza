@@ -37,11 +37,19 @@ html {
 
 body {
   margin: 0;
-  font-family: "Poppins", system-ui, -apple-system, sans-serif;
+  font-family: "Poppins", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
   background: var(--brand-blue);
   color: var(--brand-white);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 a {
@@ -121,13 +129,19 @@ a {
   font-size: 0.8rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 600;
   margin: 0 0 0.75rem;
   opacity: 0.85;
 }
 .os-eyebrow--dark {
   color: var(--brand-blue);
   opacity: 1;
+  font-weight: 700;
+}
+.os-eyebrow--ink {
+  color: var(--brand-black);
+  opacity: 1;
+  font-weight: 700;
 }
 
 .os-display {
@@ -279,10 +293,12 @@ a {
   color: var(--brand-white);
   padding: 0.875rem 1rem;
   margin: 0;
-  font-family: "Poppins", monospace;
+  font-family: "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
   font-size: 0.85rem;
   font-weight: 500;
   overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 /* ─── Hardware grid ──────────────────────────────────────────── */
@@ -359,8 +375,79 @@ a {
 .os-footer-nav a:hover {
   color: var(--brand-orange);
 }
+.os-footer-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start;
+}
+@media (min-width: 768px) {
+  .os-footer-right {
+    align-items: flex-end;
+  }
+}
+.os-footer-socials {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+.os-footer-socials a {
+  color: var(--brand-white);
+  display: inline-flex;
+  transition: color 0.15s ease;
+}
+.os-footer-socials a:hover {
+  color: var(--brand-orange);
+}
+.os-social-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: block;
+}
 .os-footer-copy {
   margin: 0;
   opacity: 0.6;
   font-size: 0.85rem;
+}
+
+/* ─── Cloud video band ───────────────────────────────────────── */
+.os-clouds-band {
+  display: block;
+  width: 100%;
+  background: var(--brand-white);
+}
+.os-clouds-band-inner {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: clamp(5rem, 14vw, 12rem) clamp(1.25rem, 4vw, 3rem);
+  text-align: center;
+  color: var(--brand-black);
+}
+.os-clouds-headline {
+  font-size: clamp(3rem, 9vw, 7rem);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--brand-black);
+}
+.os-clouds-sub {
+  margin: 1.5rem auto 0;
+  max-width: 36rem;
+  font-size: clamp(1rem, 1.4vw, 1.25rem);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--brand-black);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

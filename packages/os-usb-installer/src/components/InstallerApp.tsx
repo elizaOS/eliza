@@ -105,8 +105,13 @@ export function InstallerApp({ backend }: InstallerAppProps) {
     <main className="installer-shell">
       <section className="header-band">
         <div>
+          <img
+            className="brand-logo"
+            src="/brand/logos/elizaOS_text_white.svg"
+            alt="elizaOS"
+          />
           <p className="eyebrow">elizaOS media tool</p>
-          <h1>USB Installer</h1>
+          <h1>USB installer</h1>
         </div>
         <span className="status-pill">Dry-run only</span>
       </section>
@@ -268,6 +273,16 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             </p>
           )}
         </div>
+      </section>
+      <section className="footer-band">
+        <img
+          className="brand-logo"
+          src="/brand/logos/elizaOS_text_white.svg"
+          alt="elizaOS"
+        />
+        <a className="cta-link" href="https://elizaos.ai" target="_blank" rel="noreferrer">
+          elizaOS docs
+        </a>
       </section>
     </main>
   );
