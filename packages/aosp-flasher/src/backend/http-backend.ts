@@ -93,9 +93,7 @@ export class HttpAospFlasherBackend implements AospFlasherBackend {
       buffer = frames.pop() ?? "";
 
       for (const frame of frames) {
-        const dataLine = frame
-          .split("\n")
-          .find((l) => l.startsWith("data: "));
+        const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
         if (!dataLine) continue;
 
         const json = dataLine.slice("data: ".length);

@@ -34,7 +34,10 @@ const RUNNER_COMMANDS: Record<ElizaOsCapabilityOp, string> = {
 
 function normalizeOp(value: unknown): ElizaOsCapabilityOp | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return (OPS as readonly string[]).includes(normalized)
     ? (normalized as ElizaOsCapabilityOp)
     : undefined;

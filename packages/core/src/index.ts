@@ -9,12 +9,17 @@
  * correctly during builds when bundlers resolve against source files.
  */
 
+// Phase 5A transition shim: keep non-overlapping type contracts available from
+// @elizaos/core while consumers migrate to @elizaos/contracts. The full
+// contracts barrel overlaps with long-standing core exports, so keep this list
+// explicit to avoid declaration-generation ambiguity.
+export type {
+	CharacterLanguage,
+	DeploymentTargetRuntime,
+	ElizaCloudService,
+	MessageExampleContent,
+	ResolvedElizaCloudTopology,
+} from "@elizaos/contracts";
 // Re-export everything from the Node.js entry point
 // This ensures that imports from "@elizaos/core" resolve correctly during builds
 export * from "./index.node";
-
-// Phase 5A transition shim: re-export type contracts from @elizaos/contracts so
-// consumers migrating off `@elizaos/core` keep working while imports are moved
-// over to the dedicated types-only package. Duplicate names from `./index.node`
-// take precedence; `export type *` silently excludes overlapping identifiers.
-export type * from "@elizaos/contracts";

@@ -76,8 +76,6 @@ test.describe("deprovision", () => {
 
     // Hetzner mock servers map should be empty (or at least not contain this sandbox)
     const hetznerServers = [...stack.mocks.hetzner.store.servers.values()];
-    expect(
-      hetznerServers.filter((s) => s.status !== "deleted").length,
-    ).toBeLessThanOrEqual(0);
+    expect(hetznerServers).toHaveLength(0);
   });
 });

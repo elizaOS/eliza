@@ -226,6 +226,7 @@ export function VoicePill(props: VoicePillProps) {
     : "elizaos-voice-pill-chat is-collapsed";
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: this wrapper contains nested chat input controls, so it cannot be a native button.
     <div
       className={wrapperClassName}
       role="button"

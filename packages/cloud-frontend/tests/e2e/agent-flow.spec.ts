@@ -122,7 +122,10 @@ test("agent flow: landing → login → create agent → chat", async ({ page })
 
   // ── 3. Empty state → click "New Agent" ─────────────────────────────────
   await expect(page.getByText(/no agents yet/i)).toBeVisible();
-  await page.getByRole("button", { name: /new agent/i }).first().click();
+  await page
+    .getByRole("button", { name: /new agent/i })
+    .first()
+    .click();
 
   // ── 4. Fill form, deploy ───────────────────────────────────────────────
   const dialog = page.getByRole("dialog");

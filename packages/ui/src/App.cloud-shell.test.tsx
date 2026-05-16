@@ -37,10 +37,7 @@ beforeAll(() => {
 
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 
-const APP_TSX = readFileSync(
-  resolve(__dirname, "./App.tsx"),
-  "utf8",
-);
+const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 
 describe("App pre-agent cloud wiring", () => {
   it("wraps the pre-agent StartupShell in CloudVideoBackground", () => {
@@ -51,7 +48,9 @@ describe("App pre-agent cloud wiring", () => {
       'import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground"',
     );
     expect(APP_TSX).toContain('data-testid="pre-agent-cloud-shell"');
-    expect(APP_TSX).toMatch(/<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/);
+    expect(APP_TSX).toMatch(
+      /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
+    );
     // Brand rules: 8x speed, /clouds basePath, light scrim, black text.
     expect(APP_TSX).toMatch(/speed="8x"/);
     expect(APP_TSX).toMatch(/basePath="\/clouds"/);
@@ -81,8 +80,8 @@ describe("App pre-agent cloud wiring", () => {
     expect(srcAttrs.some((s) => s?.includes("/clouds/clouds_8x_"))).toBe(true);
 
     // children still rendered above the video
-    expect(container.querySelector('[data-testid="welcome"]')?.textContent).toBe(
-      "welcome",
-    );
+    expect(
+      container.querySelector('[data-testid="welcome"]')?.textContent,
+    ).toBe("welcome");
   });
 });

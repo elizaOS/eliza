@@ -1,14 +1,9 @@
 import { describe, expect, test } from "vitest";
-import {
-  calculateCreditMarkup,
-  DEFAULT_PLATFORM_FEE_RATE,
-} from "./credit-markup";
+import { calculateCreditMarkup, DEFAULT_PLATFORM_FEE_RATE } from "./credit-markup";
 
 describe("calculateCreditMarkup", () => {
   test("applies basic creator markup with no platform fee", () => {
-    expect(
-      calculateCreditMarkup({ baseCredits: 10, markupPercent: 25 }),
-    ).toEqual({
+    expect(calculateCreditMarkup({ baseCredits: 10, markupPercent: 25 })).toEqual({
       baseCredits: 10,
       markupCredits: 2.5,
       platformFeeCredits: 0,
@@ -17,9 +12,7 @@ describe("calculateCreditMarkup", () => {
   });
 
   test("zero markup leaves base unchanged", () => {
-    expect(
-      calculateCreditMarkup({ baseCredits: 7.5, markupPercent: 0 }),
-    ).toEqual({
+    expect(calculateCreditMarkup({ baseCredits: 7.5, markupPercent: 0 })).toEqual({
       baseCredits: 7.5,
       markupCredits: 0,
       platformFeeCredits: 0,
@@ -80,12 +73,8 @@ describe("calculateCreditMarkup", () => {
   });
 
   test("rejects negative or non-finite inputs", () => {
-    expect(() =>
-      calculateCreditMarkup({ baseCredits: -1, markupPercent: 10 }),
-    ).toThrow(RangeError);
-    expect(() =>
-      calculateCreditMarkup({ baseCredits: 1, markupPercent: -5 }),
-    ).toThrow(RangeError);
+    expect(() => calculateCreditMarkup({ baseCredits: -1, markupPercent: 10 })).toThrow(RangeError);
+    expect(() => calculateCreditMarkup({ baseCredits: 1, markupPercent: -5 })).toThrow(RangeError);
     expect(() =>
       calculateCreditMarkup({
         baseCredits: 1,
@@ -93,9 +82,9 @@ describe("calculateCreditMarkup", () => {
         platformFeeRate: -0.1,
       }),
     ).toThrow(RangeError);
-    expect(() =>
-      calculateCreditMarkup({ baseCredits: Number.NaN, markupPercent: 10 }),
-    ).toThrow(RangeError);
+    expect(() => calculateCreditMarkup({ baseCredits: Number.NaN, markupPercent: 10 })).toThrow(
+      RangeError,
+    );
     expect(() =>
       calculateCreditMarkup({
         baseCredits: 1,

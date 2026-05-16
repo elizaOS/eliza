@@ -53,14 +53,10 @@ interface InstallerAppProps {
 
 function SafetyBadge({ safety }: { safety: RemovableDrive["safety"] }) {
   if (safety === "safe-removable") {
-    return (
-      <span className="badge badge-safe">Safe to write</span>
-    );
+    return <span className="badge badge-safe">Safe to write</span>;
   }
   if (safety === "blocked-system") {
-    return (
-      <span className="badge badge-blocked">SYSTEM DISK — BLOCKED</span>
-    );
+    return <span className="badge badge-blocked">SYSTEM DISK — BLOCKED</span>;
   }
   return <span className="badge badge-unknown">Unknown</span>;
 }
@@ -197,10 +193,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   // Specs check builder
   // ---------------------------------------------------------------------------
 
-  function buildSpecs(
-    drive: RemovableDrive,
-    image: ElizaOsImage,
-  ): SpecItem[] {
+  function buildSpecs(drive: RemovableDrive, image: ElizaOsImage): SpecItem[] {
     const meetsSize = drive.sizeBytes >= image.minUsbSizeBytes;
     const isUsb = drive.bus === "usb";
     const isSafe = drive.safety === "safe-removable";
@@ -311,7 +304,8 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   // ---------------------------------------------------------------------------
 
   const allSpecsPass =
-    specs.length > 0 && specs.every((s) => s.status === "pass" || s.status === "warn");
+    specs.length > 0 &&
+    specs.every((s) => s.status === "pass" || s.status === "warn");
 
   const overallProgress =
     writePlan && Object.keys(stepProgress).length > 0
@@ -430,7 +424,11 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                 No drives detected. Connect a USB drive and click Refresh.
               </p>
             ) : (
-              <div className="drive-list" role="radiogroup" aria-label="Target drive">
+              <div
+                className="drive-list"
+                role="radiogroup"
+                aria-label="Target drive"
+              >
                 {drives.map((drive) => (
                   <label
                     key={drive.id}
@@ -467,7 +465,9 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             <div className="panel-actions">
               <button
                 type="button"
-                disabled={!selectedDrive || selectedDrive.safety !== "safe-removable"}
+                disabled={
+                  !selectedDrive || selectedDrive.safety !== "safe-removable"
+                }
                 onClick={goToImageSelection}
               >
                 Next: Select Image →
@@ -508,7 +508,11 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           <div className="panel image-panel">
             <h2>Select elizaOS Image</h2>
 
-            <div className="image-list" role="radiogroup" aria-label="elizaOS image">
+            <div
+              className="image-list"
+              role="radiogroup"
+              aria-label="elizaOS image"
+            >
               {images.map((image) => {
                 const fits =
                   selectedDrive &&
@@ -602,198 +606,211 @@ export function InstallerApp({ backend }: InstallerAppProps) {
       {/* ------------------------------------------------------------------ */}
       {/* Step 3: Specs check                                                 */}
       {/* ------------------------------------------------------------------ */}
-      {dataLoaded && !loadError && appStep === "specs-check" && selectedDrive && selectedImage && (
-        <section className="workspace-grid">
-          <div className="panel specs-panel">
-            <h2>Specs Check</h2>
-            <p className="muted">
-              Checking compatibility of{" "}
-              <strong>{selectedDrive.name}</strong> ({selectedDrive.devicePath})
-              → <strong>{selectedImage.label}</strong>{" "}
-              <ChannelBadge channel={selectedImage.channel} />
-            </p>
-
-            <ul className="spec-list">
-              {specs.map((item) => (
-                <SpecRow key={item.key} item={item} />
-              ))}
-            </ul>
-
-            {!allSpecsPass && (
-              <p className="error">
-                Some checks failed. Resolve the issues above before writing.
+      {dataLoaded &&
+        !loadError &&
+        appStep === "specs-check" &&
+        selectedDrive &&
+        selectedImage && (
+          <section className="workspace-grid">
+            <div className="panel specs-panel">
+              <h2>Specs Check</h2>
+              <p className="muted">
+                Checking compatibility of <strong>{selectedDrive.name}</strong>{" "}
+                ({selectedDrive.devicePath}) →{" "}
+                <strong>{selectedImage.label}</strong>{" "}
+                <ChannelBadge channel={selectedImage.channel} />
               </p>
-            )}
 
-            <div className="panel-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setAppStep("selecting-image")}
-              >
-                ← Back
-              </button>
-              <button
-                type="button"
-                disabled={!allSpecsPass}
-                onClick={goToConfirm}
-              >
-                Next: Confirm & Write →
-              </button>
+              <ul className="spec-list">
+                {specs.map((item) => (
+                  <SpecRow key={item.key} item={item} />
+                ))}
+              </ul>
+
+              {!allSpecsPass && (
+                <p className="error">
+                  Some checks failed. Resolve the issues above before writing.
+                </p>
+              )}
+
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setAppStep("selecting-image")}
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  disabled={!allSpecsPass}
+                  onClick={goToConfirm}
+                >
+                  Next: Confirm & Write →
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div className="panel notes-panel">
-            <h2>Image Details</h2>
-            <dl className="image-details">
-              <div>
-                <dt>Image</dt>
-                <dd>{selectedImage.label}</dd>
-              </div>
-              <div>
-                <dt>Version</dt>
-                <dd>{selectedImage.version}</dd>
-              </div>
-              <div>
-                <dt>Channel</dt>
-                <dd>
-                  <ChannelBadge channel={selectedImage.channel} />
-                </dd>
-              </div>
-              <div>
-                <dt>Architecture</dt>
-                <dd>{selectedImage.architecture}</dd>
-              </div>
-              <div>
-                <dt>Size</dt>
-                <dd>{formatBytes(selectedImage.sizeBytes)}</dd>
-              </div>
-              <div>
-                <dt>Published</dt>
-                <dd>{new Date(selectedImage.publishedAt).toLocaleDateString()}</dd>
-              </div>
-              <div>
-                <dt>SHA-256</dt>
-                <dd className="hash-value">{selectedImage.checksumSha256}</dd>
-              </div>
-            </dl>
-          </div>
-        </section>
-      )}
+            <div className="panel notes-panel">
+              <h2>Image Details</h2>
+              <dl className="image-details">
+                <div>
+                  <dt>Image</dt>
+                  <dd>{selectedImage.label}</dd>
+                </div>
+                <div>
+                  <dt>Version</dt>
+                  <dd>{selectedImage.version}</dd>
+                </div>
+                <div>
+                  <dt>Channel</dt>
+                  <dd>
+                    <ChannelBadge channel={selectedImage.channel} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>Architecture</dt>
+                  <dd>{selectedImage.architecture}</dd>
+                </div>
+                <div>
+                  <dt>Size</dt>
+                  <dd>{formatBytes(selectedImage.sizeBytes)}</dd>
+                </div>
+                <div>
+                  <dt>Published</dt>
+                  <dd>
+                    {new Date(selectedImage.publishedAt).toLocaleDateString()}
+                  </dd>
+                </div>
+                <div>
+                  <dt>SHA-256</dt>
+                  <dd className="hash-value">{selectedImage.checksumSha256}</dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Step 4: Confirm & Write                                             */}
       {/* ------------------------------------------------------------------ */}
-      {dataLoaded && !loadError && appStep === "confirming" && selectedDrive && selectedImage && (
-        <section className="workspace-grid">
-          <div className="panel confirm-panel">
-            <h2>Confirm Write</h2>
+      {dataLoaded &&
+        !loadError &&
+        appStep === "confirming" &&
+        selectedDrive &&
+        selectedImage && (
+          <section className="workspace-grid">
+            <div className="panel confirm-panel">
+              <h2>Confirm Write</h2>
 
-            <div className="erase-warning">
-              <p>
-                This will <strong>completely erase</strong>{" "}
-                <strong>
-                  {selectedDrive.name} ({selectedDrive.devicePath},{" "}
-                  {formatBytes(selectedDrive.sizeBytes)})
-                </strong>{" "}
-                and write{" "}
-                <strong>
-                  {selectedImage.label} {selectedImage.version}
-                </strong>
-                .
-              </p>
-              <p className="muted">
-                This cannot be undone. All data on the drive will be
-                permanently lost.
-              </p>
-            </div>
-
-            <label className="ack-row">
-              <input
-                type="checkbox"
-                checked={acknowledgeDataLoss}
-                onChange={(e) => setAcknowledgeDataLoss(e.target.checked)}
-              />
-              <span>
-                I understand the drive will be <strong>completely erased</strong>.
-              </span>
-            </label>
-
-            {writePlan ? (
-              <div className="preview-plan">
-                <h3>Write Plan Preview</h3>
-                <ol className="step-list">
-                  {writePlan.steps.map((step) => (
-                    <li key={step.id} className={step.status}>
-                      <strong>{step.label}</strong>
-                      <span>{step.detail}</span>
-                    </li>
-                  ))}
-                </ol>
+              <div className="erase-warning">
+                <p>
+                  This will <strong>completely erase</strong>{" "}
+                  <strong>
+                    {selectedDrive.name} ({selectedDrive.devicePath},{" "}
+                    {formatBytes(selectedDrive.sizeBytes)})
+                  </strong>{" "}
+                  and write{" "}
+                  <strong>
+                    {selectedImage.label} {selectedImage.version}
+                  </strong>
+                  .
+                </p>
+                <p className="muted">
+                  This cannot be undone. All data on the drive will be
+                  permanently lost.
+                </p>
               </div>
-            ) : null}
 
-            <div className="panel-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setAppStep("specs-check")}
-              >
-                ← Back
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => void handlePreviewPlan()}
-              >
-                Preview Plan
-              </button>
-              {backend.executeWritePlan ? (
+              <label className="ack-row">
+                <input
+                  type="checkbox"
+                  checked={acknowledgeDataLoss}
+                  onChange={(e) => setAcknowledgeDataLoss(e.target.checked)}
+                />
+                <span>
+                  I understand the drive will be{" "}
+                  <strong>completely erased</strong>.
+                </span>
+              </label>
+
+              {writePlan ? (
+                <div className="preview-plan">
+                  <h3>Write Plan Preview</h3>
+                  <ol className="step-list">
+                    {writePlan.steps.map((step) => (
+                      <li key={step.id} className={step.status}>
+                        <strong>{step.label}</strong>
+                        <span>{step.detail}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null}
+
+              <div className="panel-actions">
                 <button
                   type="button"
-                  className="btn-danger"
-                  disabled={!acknowledgeDataLoss}
-                  title={
-                    !acknowledgeDataLoss
-                      ? "Check the acknowledgement box first"
-                      : undefined
-                  }
-                  onClick={() => void handleWrite()}
+                  className="btn-secondary"
+                  onClick={() => setAppStep("specs-check")}
                 >
-                  Write to Drive
+                  ← Back
                 </button>
-              ) : (
-                <span className="muted">
-                  Live write not available in this environment.
-                </span>
-              )}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void handlePreviewPlan()}
+                >
+                  Preview Plan
+                </button>
+                {backend.executeWritePlan ? (
+                  <button
+                    type="button"
+                    className="btn-danger"
+                    disabled={!acknowledgeDataLoss}
+                    title={
+                      !acknowledgeDataLoss
+                        ? "Check the acknowledgement box first"
+                        : undefined
+                    }
+                    onClick={() => void handleWrite()}
+                  >
+                    Write to Drive
+                  </button>
+                ) : (
+                  <span className="muted">
+                    Live write not available in this environment.
+                  </span>
+                )}
+              </div>
+
+              {writeError ? <p className="error">{writeError}</p> : null}
             </div>
 
-            {writeError ? <p className="error">{writeError}</p> : null}
-          </div>
-
-          <div className="panel notes-panel">
-            <h2>What Happens Next</h2>
-            <ol className="walkthrough-list">
-              <li>The image URL is resolved and downloaded (if not cached).</li>
-              <li>SHA-256 checksum is verified.</li>
-              <li>
-                macOS will prompt for your administrator password to write the
-                image.
-              </li>
-              <li>
-                <code>dd</code> writes the image to{" "}
-                <code>{selectedDrive.devicePath}</code> via raw disk access.
-              </li>
-              <li>The drive is verified and ejected.</li>
-            </ol>
-            <p className="muted">
-              Do not unplug the drive during writing. This may take several
-              minutes depending on image size and drive speed.
-            </p>
-          </div>
-        </section>
-      )}
+            <div className="panel notes-panel">
+              <h2>What Happens Next</h2>
+              <ol className="walkthrough-list">
+                <li>
+                  The image URL is resolved and downloaded (if not cached).
+                </li>
+                <li>SHA-256 checksum is verified.</li>
+                <li>
+                  macOS will prompt for your administrator password to write the
+                  image.
+                </li>
+                <li>
+                  <code>dd</code> writes the image to{" "}
+                  <code>{selectedDrive.devicePath}</code> via raw disk access.
+                </li>
+                <li>The drive is verified and ejected.</li>
+              </ol>
+              <p className="muted">
+                Do not unplug the drive during writing. This may take several
+                minutes depending on image size and drive speed.
+              </p>
+            </div>
+          </section>
+        )}
 
       {/* ------------------------------------------------------------------ */}
       {/* Step 5: Writing                                                     */}
@@ -838,11 +855,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                   <li
                     key={step.id}
                     className={
-                      isDone
-                        ? "complete"
-                        : isRunning
-                          ? "running"
-                          : step.status
+                      isDone ? "complete" : isRunning ? "running" : step.status
                     }
                   >
                     <span className="step-icon">
@@ -884,12 +897,12 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           <div className="panel notes-panel">
             <h2>In Progress</h2>
             <p>
-              Writing to a USB SSD typically takes 5–20 minutes depending on
-              the image size and drive speed.
+              Writing to a USB SSD typically takes 5–20 minutes depending on the
+              image size and drive speed.
             </p>
             <p className="muted">
-              A macOS password prompt may have appeared — check your Dock if
-              the UI appears frozen.
+              A macOS password prompt may have appeared — check your Dock if the
+              UI appears frozen.
             </p>
           </div>
         </section>

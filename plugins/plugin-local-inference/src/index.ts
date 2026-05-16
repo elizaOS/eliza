@@ -22,12 +22,6 @@ export {
 	type LocalInferenceCommandIntent,
 } from "./local-inference-routes.js";
 export {
-	handleLocalInferenceTtsRoute,
-	normalizeAudioBytes,
-	sanitizeLocalInferenceSpeechText,
-	sniffAudioContentType,
-} from "./routes/local-inference-tts-route.js";
-export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 	LOCAL_INFERENCE_MODEL_TYPES,
@@ -39,6 +33,12 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
+export {
+	handleLocalInferenceTtsRoute,
+	normalizeAudioBytes,
+	sanitizeLocalInferenceSpeechText,
+	sniffAudioContentType,
+} from "./routes/local-inference-tts-route.js";
 // === Phase 4A: embedding-presets extracted from packages/agent ===
 export {
 	detectEmbeddingPreset,

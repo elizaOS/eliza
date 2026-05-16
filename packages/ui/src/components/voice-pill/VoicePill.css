@@ -15,12 +15,7 @@
   align-items: center;
   gap: 9px;
   font-family:
-    "Poppins",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Arial,
-    sans-serif;
+    "Poppins", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   /* Generous invisible hit zone around the tiny pill (the prototype's `.pill-hit`). */
   padding: 18px 24px;
   background: transparent;

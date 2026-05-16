@@ -6,7 +6,7 @@ import {
 } from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const appUrl = "https://eliza.app";
 const cloudUrl = "https://elizacloud.ai/login?intent=launch";
@@ -182,28 +182,6 @@ function ProductImage({ product }: { product: Product }) {
   );
 }
 
-function CloudHero({ children }: { children: ReactNode }) {
-  return (
-    <section className="band hero-cloud" data-hero="cloud">
-      <video
-        className="cloud-video"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        poster="/clouds/poster.jpg"
-        data-testid="cloud-video"
-      >
-        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
-        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
-      </video>
-      <div className="cloud-scrim" aria-hidden="true" />
-      <div className="band-inner hero-cloud-inner">{children}</div>
-    </section>
-  );
-}
-
 function HardwareTiles() {
   return (
     <div className="hw-grid">
@@ -239,7 +217,7 @@ function Header({ solid = false }: { solid?: boolean }) {
       </a>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
-          src={`${BRAND_PATHS.logos}/${solid ? LOGO_FILES.osWhite : LOGO_FILES.osBlack}`}
+          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
           alt="elizaOS"
           draggable={false}
         />
@@ -594,14 +572,17 @@ function HomePage() {
     <div className="os-shell">
       <Header />
       <main id="main">
-        <CloudHero>
-          <div className="hero-os-inner">
+        <section className="band band-blue hero-os">
+          <div className="band-inner hero-os-inner">
+            <img
+              src="/brand/logos/logo_white_bluebg.svg"
+              alt=""
+              aria-hidden="true"
+              className="hero-mark"
+              draggable={false}
+            />
             <h1>The agentic operating system.</h1>
             <p className="hero-copy">For devices that run themselves.</p>
-            <p className="hero-copy">
-              Local first. Open source. Runs on your phone, your laptop, a USB
-              stick, or a mini PC.
-            </p>
             <div className="hero-actions">
               <a href="#download" className="button">
                 Download
@@ -613,7 +594,7 @@ function HomePage() {
               </a>
             </div>
           </div>
-        </CloudHero>
+        </section>
 
         <section id="download" className="band band-white">
           <div className="band-inner split-band">

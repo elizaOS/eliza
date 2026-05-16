@@ -20,7 +20,7 @@ import type {
 const ELIZAOS_SUPPORTED_CODENAMES = new Set([
   "caiman", // Pixel 9 Pro XL
   "komodo", // Pixel 9 Pro
-  "tokay",  // Pixel 9
+  "tokay", // Pixel 9
   "bluejay", // Pixel 6a
 ]);
 
@@ -290,11 +290,13 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         const blocks1k = parseInt(cols[1] ?? "0", 10);
         const available1k = parseInt(cols[3] ?? "0", 10);
         if (!Number.isNaN(blocks1k)) storageTotalBytes = blocks1k * 1024;
-        if (!Number.isNaN(available1k)) storageAvailableBytes = available1k * 1024;
+        if (!Number.isNaN(available1k))
+          storageAvailableBytes = available1k * 1024;
       }
     }
 
-    const supportedByElizaOs = codename !== "" && ELIZAOS_SUPPORTED_CODENAMES.has(codename);
+    const supportedByElizaOs =
+      codename !== "" && ELIZAOS_SUPPORTED_CODENAMES.has(codename);
 
     return {
       storageAvailableBytes,

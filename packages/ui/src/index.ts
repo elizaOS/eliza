@@ -2,6 +2,7 @@
 // imported by Node-side plugin loaders without forcing a CSS evaluation
 // (Node refuses ".css" extensions). Renderers must opt-in explicitly.
 
+export { resolveAppBranding } from "@elizaos/shared";
 export * from "./App";
 export type {
   AppLaunchDiagnostic,
@@ -181,11 +182,6 @@ export {
 } from "./components/pages/vector-browser-utils";
 export * from "./components/primitives/index";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
-export { VoicePill } from "./components/voice-pill";
-export type {
-  VoicePillMessage,
-  VoicePillProps,
-} from "./components/voice-pill";
 export { Switch } from "./components/ui/switch";
 export {
   Tabs,
@@ -195,6 +191,11 @@ export {
 } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
 export { IconTooltip } from "./components/ui/tooltip-extended";
+export type {
+  VoicePillMessage,
+  VoicePillProps,
+} from "./components/voice-pill";
+export { VoicePill } from "./components/voice-pill";
 export type {
   ActionConfirm,
   ActionDefinition,
@@ -282,7 +283,6 @@ export {
   getByPath,
   interpolateString,
   parseAllowedHostEnv,
-  resolveAppBranding,
   resolveCharacterCatalog,
   resolveDynamic,
   resolveFields,

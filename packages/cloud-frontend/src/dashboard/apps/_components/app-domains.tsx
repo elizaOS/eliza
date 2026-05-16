@@ -806,9 +806,7 @@ function DnsConfigPanel({
           <>
             <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-green-300 font-medium">
-                DNS Verified
-              </p>
+              <p className="text-xs text-green-300 font-medium">DNS Verified</p>
               <p className="text-xs text-green-300/70">
                 SSL certificate is being provisioned
               </p>

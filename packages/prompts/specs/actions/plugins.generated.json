@@ -2,6 +2,91 @@
   "version": "1.0.0",
   "actions": [
     {
+      "name": "ALARM",
+      "description": "Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
+      "parameters": [
+        {
+          "name": "subaction",
+          "description": "Operation to perform: set, cancel, or list. Inferred from message text when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["set", "cancel", "list"]
+          }
+        },
+        {
+          "name": "timeIso",
+          "description": "For subaction=set: ISO-8601 timestamp when the alarm should fire.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "title",
+          "description": "For subaction=set: short title displayed in the notification.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "body",
+          "description": "For subaction=set: optional longer body text for the notification.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sound",
+          "description": "For subaction=set: optional notification sound name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "description": "For subaction=set: optional explicit alarm id; for subaction=cancel: required alarm id returned from a previous set operation.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "macOS alarm: set / cancel / list (UNUserNotificationCenter).",
+      "similes": [
+        "SET_ALARM_MACOS",
+        "CANCEL_ALARM_MACOS",
+        "LIST_ALARMS_MACOS",
+        "schedule macos alarm",
+        "create mac alarm",
+        "set a mac alarm",
+        "wake me up on mac",
+        "cancel macos alarm",
+        "remove mac alarm",
+        "list macos alarms",
+        "show pending alarms"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use ALARM with the provided parameters.",
+          "actions": ["ALARM"],
+          "params": {
+            "ALARM": {
+              "subaction": "set",
+              "timeIso": "example",
+              "title": "example",
+              "body": "example",
+              "sound": "example",
+              "id": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "BLOCK",
       "description": "Block/unblock phone apps or desktop websites. ",
       "parameters": [
@@ -1222,6 +1307,45 @@
               "itemId": "example",
               "limit": 1,
               "confirmed": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ELIZAOS",
+      "description": "Call the local elizaOS Live capability broker. Supported actions: status, privacy_mode, root_status, open_persistent_storage. This is a constrained OS bridge for the Tails-based live USB; destructive root actions are intentionally not exposed.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation: status, privacy_mode, root_status, open_persistent_storage.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "status",
+              "privacy_mode",
+              "root_status",
+              "open_persistent_storage"
+            ]
+          }
+        }
+      ],
+      "descriptionCompressed": "elizaOS Live broker: status|privacy_mode|root_status|open_persistent_storage via constrained local OS bridge",
+      "similes": [
+        "ELIZAOS_STATUS",
+        "ELIZAOS_PRIVACY_MODE",
+        "ELIZAOS_ROOT_STATUS",
+        "ELIZAOS_PERSISTENT_STORAGE",
+        "OPEN_PERSISTENT_STORAGE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use ELIZAOS with the provided parameters.",
+          "actions": ["ELIZAOS"],
+          "params": {
+            "ELIZAOS": {
+              "action": "status"
             }
           }
         }

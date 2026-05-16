@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="packages/shared-brand/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
   <h1>elizaOS</h1>
   <p><strong>An open-source framework for building autonomous AI agents.</strong></p>
 </div>
@@ -61,19 +62,19 @@ plugins/         ← runtime plugins and app plugins
 packages/elizaos/templates/   ← CLI scaffolds + min-project / min-plugin for APP/PLUGIN create
 ```
 
-A *plugin* sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are listed at [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
+A _plugin_ sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are listed at [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
 
 ## Pick your starting point
 
-| You want to… | Start here |
-|---|---|
-| Try an agent in 5 minutes | [CLI quick start](#cli-quick-start) |
-| Use the runtime from your own TypeScript code (no CLI, no UI) | [Standalone usage](#standalone-usage) |
-| Build a new deployable product | [Create a new project](#create-a-new-project) |
-| Build a runtime plugin (action / provider / service) | [Create a new plugin](#create-a-new-plugin) |
-| See how others did it | [Examples](#examples) |
-| Evaluate or benchmark an agent | [Benchmarks](#benchmarks) |
-| Read the docs | [docs.elizaos.ai](https://docs.elizaos.ai/) |
+| You want to…                                                  | Start here                                    |
+| ------------------------------------------------------------- | --------------------------------------------- |
+| Try an agent in 5 minutes                                     | [CLI quick start](#cli-quick-start)           |
+| Use the runtime from your own TypeScript code (no CLI, no UI) | [Standalone usage](#standalone-usage)         |
+| Build a new deployable product                                | [Create a new project](#create-a-new-project) |
+| Build a runtime plugin (action / provider / service)          | [Create a new plugin](#create-a-new-plugin)   |
+| See how others did it                                         | [Examples](#examples)                         |
+| Evaluate or benchmark an agent                                | [Benchmarks](#benchmarks)                     |
+| Read the docs                                                 | [docs.elizaos.ai](https://docs.elizaos.ai/)   |
 
 ## CLI quick start
 
@@ -140,7 +141,7 @@ For first-party app plugin references, browse [`plugins/app-*`](plugins). A few 
 
 ## Create a new plugin
 
-A *plugin* extends the runtime with actions, providers, or services — no UI required.
+A _plugin_ extends the runtime with actions, providers, or services — no UI required.
 
 ```bash
 elizaos create my-plugin -t plugin
@@ -157,30 +158,30 @@ Once typecheck, lint, and tests pass, publish to npm. Community plugins are list
 
 [`packages/examples/`](packages/examples) — 30+ runnable references covering connectors, integrations, hosting targets, and gameplay. Each subdirectory is independently buildable and has its own README.
 
-| Category | Examples |
-|---|---|
-| Conversational | [`chat`](packages/examples/chat), [`discord`](packages/examples/discord), [`telegram`](packages/examples/telegram), [`farcaster`](packages/examples/farcaster), [`farcaster-miniapp`](packages/examples/farcaster-miniapp), [`twitter-xai`](packages/examples/twitter-xai), [`bluesky`](packages/examples/bluesky) |
-| Web frameworks | [`next`](packages/examples/next), [`react`](packages/examples/react), [`html`](packages/examples/html), [`browser-extension`](packages/examples/browser-extension), [`rest-api`](packages/examples/rest-api) |
-| Hosting / serverless | [`vercel`](packages/examples/vercel), [`cloudflare`](packages/examples/cloudflare), [`gcp`](packages/examples/gcp), [`aws`](packages/examples/aws), [`supabase`](packages/examples/supabase), [`convex`](packages/examples/convex) |
-| Protocols | [`mcp`](packages/examples/mcp), [`a2a`](packages/examples/a2a) |
-| On-chain / trading | [`polymarket`](packages/examples/polymarket), [`trader`](packages/examples/trader), [`lp-manager`](packages/examples/lp-manager) |
-| Fun / games | [`tic-tac-toe`](packages/examples/tic-tac-toe), [`text-adventure`](packages/examples/text-adventure), [`game-of-life`](packages/examples/game-of-life), [`roblox`](packages/examples/roblox), [`elizagotchi`](packages/examples/elizagotchi) |
-| Other | [`autonomous`](packages/examples/autonomous), [`avatar`](packages/examples/avatar), [`code`](packages/examples/code), [`form`](packages/examples/form), [`moltbook`](packages/examples/moltbook), [`_plugin`](packages/examples/_plugin) |
+| Category             | Examples                                                                                                                                                                                                                                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Conversational       | [`chat`](packages/examples/chat), [`discord`](packages/examples/discord), [`telegram`](packages/examples/telegram), [`farcaster`](packages/examples/farcaster), [`farcaster-miniapp`](packages/examples/farcaster-miniapp), [`twitter-xai`](packages/examples/twitter-xai), [`bluesky`](packages/examples/bluesky) |
+| Web frameworks       | [`next`](packages/examples/next), [`react`](packages/examples/react), [`html`](packages/examples/html), [`browser-extension`](packages/examples/browser-extension), [`rest-api`](packages/examples/rest-api)                                                                                                       |
+| Hosting / serverless | [`vercel`](packages/examples/vercel), [`cloudflare`](packages/examples/cloudflare), [`gcp`](packages/examples/gcp), [`aws`](packages/examples/aws), [`supabase`](packages/examples/supabase), [`convex`](packages/examples/convex)                                                                                 |
+| Protocols            | [`mcp`](packages/examples/mcp), [`a2a`](packages/examples/a2a)                                                                                                                                                                                                                                                     |
+| On-chain / trading   | [`polymarket`](packages/examples/polymarket), [`trader`](packages/examples/trader), [`lp-manager`](packages/examples/lp-manager)                                                                                                                                                                                   |
+| Fun / games          | [`tic-tac-toe`](packages/examples/tic-tac-toe), [`text-adventure`](packages/examples/text-adventure), [`game-of-life`](packages/examples/game-of-life), [`roblox`](packages/examples/roblox), [`elizagotchi`](packages/examples/elizagotchi)                                                                       |
+| Other                | [`autonomous`](packages/examples/autonomous), [`avatar`](packages/examples/avatar), [`code`](packages/examples/code), [`form`](packages/examples/form), [`moltbook`](packages/examples/moltbook), [`_plugin`](packages/examples/_plugin)                                                                           |
 
 ## Benchmarks
 
 [`packages/benchmarks/`](packages/benchmarks) — 30+ evaluation suites for measuring agent capability. Each lives in its own subdirectory with its own harness and README.
 
-| Category | Benchmarks |
-|---|---|
-| General agent | [`gaia`](packages/benchmarks/gaia), [`agentbench`](packages/benchmarks/agentbench), [`tau-bench`](packages/benchmarks/tau-bench), [`gauntlet`](packages/benchmarks/gauntlet), [`realm`](packages/benchmarks/realm), [`trust`](packages/benchmarks/trust), [`experience`](packages/benchmarks/experience) |
-| Coding | [`swe_bench`](packages/benchmarks/swe_bench), [`bfcl`](packages/benchmarks/bfcl), [`mint`](packages/benchmarks/mint) |
-| OS / desktop | [`OSWorld`](packages/benchmarks/OSWorld), [`terminal-bench`](packages/benchmarks/terminal-bench) |
-| Web | [`mind2web`](packages/benchmarks/mind2web), [`webshop`](packages/benchmarks/webshop) |
-| On-chain / trading | [`HyperliquidBench`](packages/benchmarks/HyperliquidBench), [`solana`](packages/benchmarks/solana), [`evm`](packages/benchmarks/evm), [`vending-bench`](packages/benchmarks/vending-bench) |
-| Voice / multimodal | [`voicebench`](packages/benchmarks/voicebench) |
-| Specialized | [`adhdbench`](packages/benchmarks/adhdbench), [`clawbench`](packages/benchmarks/clawbench), [`openclaw-benchmark`](packages/benchmarks/openclaw-benchmark), [`woobench`](packages/benchmarks/woobench), [`rlm-bench`](packages/benchmarks/rlm-bench), [`social-alpha`](packages/benchmarks/social-alpha) |
-| elizaOS-specific | [`app-eval`](packages/benchmarks/app-eval), [`configbench`](packages/benchmarks/configbench), [`context-bench`](packages/benchmarks/context-bench), [`framework`](packages/benchmarks/framework), [`orchestrator`](packages/benchmarks/orchestrator), [`orchestrator_lifecycle`](packages/benchmarks/orchestrator_lifecycle) |
+| Category           | Benchmarks                                                                                                                                                                                                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| General agent      | [`gaia`](packages/benchmarks/gaia), [`agentbench`](packages/benchmarks/agentbench), [`tau-bench`](packages/benchmarks/tau-bench), [`gauntlet`](packages/benchmarks/gauntlet), [`realm`](packages/benchmarks/realm), [`trust`](packages/benchmarks/trust), [`experience`](packages/benchmarks/experience)                     |
+| Coding             | [`swe_bench`](packages/benchmarks/swe_bench), [`bfcl`](packages/benchmarks/bfcl), [`mint`](packages/benchmarks/mint)                                                                                                                                                                                                         |
+| OS / desktop       | [`OSWorld`](packages/benchmarks/OSWorld), [`terminal-bench`](packages/benchmarks/terminal-bench)                                                                                                                                                                                                                             |
+| Web                | [`mind2web`](packages/benchmarks/mind2web), [`webshop`](packages/benchmarks/webshop)                                                                                                                                                                                                                                         |
+| On-chain / trading | [`HyperliquidBench`](packages/benchmarks/HyperliquidBench), [`solana`](packages/benchmarks/solana), [`evm`](packages/benchmarks/evm), [`vending-bench`](packages/benchmarks/vending-bench)                                                                                                                                   |
+| Voice / multimodal | [`voicebench`](packages/benchmarks/voicebench)                                                                                                                                                                                                                                                                               |
+| Specialized        | [`adhdbench`](packages/benchmarks/adhdbench), [`clawbench`](packages/benchmarks/clawbench), [`openclaw-benchmark`](packages/benchmarks/openclaw-benchmark), [`woobench`](packages/benchmarks/woobench), [`rlm-bench`](packages/benchmarks/rlm-bench), [`social-alpha`](packages/benchmarks/social-alpha)                     |
+| elizaOS-specific   | [`app-eval`](packages/benchmarks/app-eval), [`configbench`](packages/benchmarks/configbench), [`context-bench`](packages/benchmarks/context-bench), [`framework`](packages/benchmarks/framework), [`orchestrator`](packages/benchmarks/orchestrator), [`orchestrator_lifecycle`](packages/benchmarks/orchestrator_lifecycle) |
 
 The runbook for orchestrator-driven benchmark runs is [`packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md). The Eliza adapter that lets a benchmark drive an Eliza agent lives at [`packages/benchmarks/eliza-adapter`](packages/benchmarks/eliza-adapter). A combined results viewer is at [`packages/benchmarks/viewer`](packages/benchmarks/viewer).
 

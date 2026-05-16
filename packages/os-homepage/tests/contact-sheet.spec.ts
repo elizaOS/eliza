@@ -14,7 +14,7 @@ const desktopViewport = { width: 1440, height: 900 };
 const mobileViewport = { width: 390, height: 844 };
 
 const desktopFrames: Array<{ name: string; selector: string }> = [
-  { name: "01-hero", selector: ".hero-cloud" },
+  { name: "01-hero", selector: ".hero-os" },
   { name: "02-install", selector: "#download" },
   { name: "03-local-first", selector: ".band-orange" },
   { name: "04-hardware-top", selector: "#hardware" },
@@ -22,7 +22,7 @@ const desktopFrames: Array<{ name: string; selector: string }> = [
 ];
 
 const mobileFrames: Array<{ name: string; selector: string }> = [
-  { name: "m01-hero", selector: ".hero-cloud" },
+  { name: "m01-hero", selector: ".hero-os" },
   { name: "m02-install", selector: "#download" },
   { name: "m03-hardware-top", selector: "#hardware" },
   { name: "m04-hardware-bottom", selector: "footer" },
@@ -39,7 +39,7 @@ test.describe("contact sheet", () => {
   test("desktop @1440x900", async ({ page }) => {
     await page.setViewportSize(desktopViewport);
     await page.goto("/");
-    await page.waitForSelector(".hero-cloud");
+    await page.waitForSelector(".hero-os");
     await page.waitForTimeout(400);
 
     for (const frame of desktopFrames) {
@@ -57,7 +57,7 @@ test.describe("contact sheet", () => {
   test("mobile @390x844", async ({ page }) => {
     await page.setViewportSize(mobileViewport);
     await page.goto("/");
-    await page.waitForSelector(".hero-cloud");
+    await page.waitForSelector(".hero-os");
     await page.waitForTimeout(400);
 
     for (const frame of mobileFrames) {

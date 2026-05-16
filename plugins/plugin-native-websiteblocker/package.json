@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "test:android:manual": "cd android && gradle test",
     "prepublishOnly": "bun run build"
   },

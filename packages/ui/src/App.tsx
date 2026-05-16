@@ -26,11 +26,11 @@ import {
   useMemo,
   useState,
 } from "react";
+import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
-import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";

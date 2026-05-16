@@ -10,10 +10,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "bun-types": "^1.3.13",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
   }

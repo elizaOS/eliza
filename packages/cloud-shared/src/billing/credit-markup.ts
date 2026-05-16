@@ -60,9 +60,7 @@ function assertFiniteNonNegative(value: number, fieldName: string): void {
  * precision and only formatted (e.g. `toFixed(4)`) at the persistence /
  * display boundary.
  */
-export function calculateCreditMarkup(
-  input: CreditMarkupInput,
-): CreditMarkupBreakdown {
+export function calculateCreditMarkup(input: CreditMarkupInput): CreditMarkupBreakdown {
   const { baseCredits, markupPercent, platformFeeRate = 0 } = input;
 
   assertFiniteNonNegative(baseCredits, "baseCredits");

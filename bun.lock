@@ -531,11 +531,13 @@
       "name": "@elizaos/cloud-e2e",
       "version": "0.0.0",
       "dependencies": {
+        "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/cloud-test-mocks": "workspace:*",
       },
       "devDependencies": {
         "@playwright/test": "^1.59.1",
         "@types/node": "^22.0.0",
+        "bun-types": "^1.3.13",
         "typescript": "^5.5.0",
       },
     },

@@ -59,7 +59,11 @@ type Screen =
 // ---------------------------------------------------------------------------
 
 function Spinner() {
-  return <span className="spinner" aria-hidden>⏳</span>;
+  return (
+    <span className="spinner" aria-hidden>
+      ⏳
+    </span>
+  );
 }
 
 // ---- Screen 1: Device Detection ----
@@ -83,30 +87,39 @@ function DetectingScreen({
     <div className="screen">
       <div className="screen-header">
         <h2>Connect your device</h2>
-        <button type="button" className="btn-small" onClick={onRefresh} disabled={loading}>
+        <button
+          type="button"
+          className="btn-small"
+          onClick={onRefresh}
+          disabled={loading}
+        >
           {loading ? "Scanning..." : "Refresh"}
         </button>
       </div>
 
       {loading && (
-        <p className="muted"><Spinner /> Searching for connected Android devices...</p>
+        <p className="muted">
+          <Spinner /> Searching for connected Android devices...
+        </p>
       )}
 
-      {!loading && error && (
-        <p className="error">{error}</p>
-      )}
+      {!loading && error && <p className="error">{error}</p>}
 
       {!loading && devices.length === 0 && !error && (
         <div className="notice">
           <p className="muted">No Android devices found.</p>
-          <p className="muted">Enable USB debugging in <strong>Settings → Developer Options</strong>, then connect your device.</p>
+          <p className="muted">
+            Enable USB debugging in{" "}
+            <strong>Settings → Developer Options</strong>, then connect your
+            device.
+          </p>
         </div>
       )}
 
       {!loading && devices.length > 0 && (
-        <div className="device-list" role="list">
+        <ul className="device-list">
           {devices.map((device) => (
-            <div key={device.serial} className="device-card" role="listitem">
+            <li key={device.serial} className="device-card">
               <div className="device-card-info">
                 <strong className="device-name">📱 {device.model}</strong>
                 <span className="muted">Serial: {device.serial}</span>
@@ -121,20 +134,24 @@ function DetectingScreen({
                   <span className="tag tag-warn">🔒 Bootloader locked</span>
                 )}
                 {device.state === "unauthorized" && (
-                  <span className="tag tag-error">Unauthorized — accept the prompt on device</span>
+                  <span className="tag tag-error">
+                    Unauthorized — accept the prompt on device
+                  </span>
                 )}
               </div>
               <button
                 type="button"
                 className="btn-primary"
                 onClick={() => onSelect(device)}
-                disabled={device.state === "unauthorized" || device.state === "offline"}
+                disabled={
+                  device.state === "unauthorized" || device.state === "offline"
+                }
               >
                 Select this device
               </button>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -163,33 +180,66 @@ function DeviceSpecsScreen({
     <div className="screen">
       <div className="screen-header">
         <h2>Checking {device.model}</h2>
-        <button type="button" className="btn-small btn-ghost" onClick={onBack}>← Back</button>
+        <button type="button" className="btn-small btn-ghost" onClick={onBack}>
+          ← Back
+        </button>
       </div>
 
-      {loading && <p className="muted"><Spinner /> Checking device specs...</p>}
+      {loading && (
+        <p className="muted">
+          <Spinner /> Checking device specs...
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
 
       {specs && (
         <>
           <ul className="spec-list">
             <li className={specs.abi === "arm64-v8a" ? "spec-ok" : "spec-warn"}>
-              <span className="spec-icon">{specs.abi === "arm64-v8a" ? "✅" : "⚠️"}</span>
-              <span><strong>CPU Architecture:</strong> {specs.abi || "unknown"}{specs.abi === "arm64-v8a" ? " — compatible" : " — may not be compatible"}</span>
+              <span className="spec-icon">
+                {specs.abi === "arm64-v8a" ? "✅" : "⚠️"}
+              </span>
+              <span>
+                <strong>CPU Architecture:</strong> {specs.abi || "unknown"}
+                {specs.abi === "arm64-v8a"
+                  ? " — compatible"
+                  : " — may not be compatible"}
+              </span>
             </li>
             <li className="spec-ok">
               <span className="spec-icon">✅</span>
-              <span><strong>Android Version:</strong> {specs.androidVersion || "unknown"} — supported</span>
-            </li>
-            <li className={specs.storageAvailableBytes >= 8 * 1024 ** 3 ? "spec-ok" : "spec-warn"}>
-              <span className="spec-icon">{specs.storageAvailableBytes >= 8 * 1024 ** 3 ? "✅" : "⚠️"}</span>
               <span>
-                <strong>Storage available:</strong>{" "}
-                {formatBytes(specs.storageAvailableBytes)} free of {formatBytes(specs.storageTotalBytes)}
-                {specs.storageAvailableBytes < 8 * 1024 ** 3 ? " — may be tight (need ~8 GB)" : ""}
+                <strong>Android Version:</strong>{" "}
+                {specs.androidVersion || "unknown"} — supported
               </span>
             </li>
-            <li className={specs.bootloaderLocked === false ? "spec-ok" : "spec-locked"}>
-              <span className="spec-icon">{specs.bootloaderLocked === false ? "✅" : "🔒"}</span>
+            <li
+              className={
+                specs.storageAvailableBytes >= 8 * 1024 ** 3
+                  ? "spec-ok"
+                  : "spec-warn"
+              }
+            >
+              <span className="spec-icon">
+                {specs.storageAvailableBytes >= 8 * 1024 ** 3 ? "✅" : "⚠️"}
+              </span>
+              <span>
+                <strong>Storage available:</strong>{" "}
+                {formatBytes(specs.storageAvailableBytes)} free of{" "}
+                {formatBytes(specs.storageTotalBytes)}
+                {specs.storageAvailableBytes < 8 * 1024 ** 3
+                  ? " — may be tight (need ~8 GB)"
+                  : ""}
+              </span>
+            </li>
+            <li
+              className={
+                specs.bootloaderLocked === false ? "spec-ok" : "spec-locked"
+              }
+            >
+              <span className="spec-icon">
+                {specs.bootloaderLocked === false ? "✅" : "🔒"}
+              </span>
               <span>
                 <strong>Bootloader:</strong>{" "}
                 {specs.bootloaderLocked === true
@@ -201,10 +251,14 @@ function DeviceSpecsScreen({
             </li>
             <li className="spec-ok">
               <span className="spec-icon">✅</span>
-              <span><strong>USB Debugging:</strong> enabled</span>
+              <span>
+                <strong>USB Debugging:</strong> enabled
+              </span>
             </li>
             <li className={specs.supportedByElizaOs ? "spec-ok" : "spec-warn"}>
-              <span className="spec-icon">{specs.supportedByElizaOs ? "✅" : "⚠️"}</span>
+              <span className="spec-icon">
+                {specs.supportedByElizaOs ? "✅" : "⚠️"}
+              </span>
               <span>
                 <strong>Device recognized:</strong>{" "}
                 {specs.supportedByElizaOs
@@ -254,16 +308,22 @@ function SelectBuildScreen({
     <div className="screen">
       <div className="screen-header">
         <h2>Select a build</h2>
-        <button type="button" className="btn-small btn-ghost" onClick={onBack}>← Back</button>
+        <button type="button" className="btn-small btn-ghost" onClick={onBack}>
+          ← Back
+        </button>
       </div>
 
       {compatibleBuilds.length === 0 ? (
         <div className="notice">
-          <p className="muted">No builds found for <strong>{device.codename}</strong>.</p>
+          <p className="muted">
+            No builds found for <strong>{device.codename}</strong>.
+          </p>
         </div>
       ) : (
         <>
-          <p className="muted">Showing builds compatible with your {device.model}.</p>
+          <p className="muted">
+            Showing builds compatible with your {device.model}.
+          </p>
           <div className="build-list">
             {compatibleBuilds.map((build) => (
               <label
@@ -281,9 +341,15 @@ function SelectBuildScreen({
                   <strong>{build.label}</strong>
                   <span className="muted">v{build.version}</span>
                   <div className="build-meta">
-                    <span className={`channel-badge channel-${build.channel}`}>{build.channel}</span>
-                    <span className="muted">{formatBytes(build.sizeBytes)}</span>
-                    <span className="muted">{new Date(build.publishedAt).toLocaleDateString()}</span>
+                    <span className={`channel-badge channel-${build.channel}`}>
+                      {build.channel}
+                    </span>
+                    <span className="muted">
+                      {formatBytes(build.sizeBytes)}
+                    </span>
+                    <span className="muted">
+                      {new Date(build.publishedAt).toLocaleDateString()}
+                    </span>
                   </div>
                   {build.targetDevice === device.codename && (
                     <span className="tag tag-ok">For your {device.model}</span>
@@ -295,7 +361,11 @@ function SelectBuildScreen({
 
           {selectedBuild && (
             <div className="action-row">
-              <button type="button" className="btn-primary" onClick={onContinue}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={onContinue}
+              >
                 Continue with {selectedBuild.label} →
               </button>
             </div>
@@ -316,7 +386,13 @@ interface SpecsCheckScreenProps {
   onBack: () => void;
 }
 
-function SpecsCheckScreen({ device, build, specs, onContinue, onBack }: SpecsCheckScreenProps) {
+function SpecsCheckScreen({
+  device,
+  build,
+  specs,
+  onContinue,
+  onBack,
+}: SpecsCheckScreenProps) {
   const storageOk = specs.storageAvailableBytes >= 8 * 1024 ** 3;
   const bootloaderUnlocked = specs.bootloaderLocked === false;
 
@@ -324,23 +400,35 @@ function SpecsCheckScreen({ device, build, specs, onContinue, onBack }: SpecsChe
     <div className="screen">
       <div className="screen-header">
         <h2>Compatibility check</h2>
-        <button type="button" className="btn-small btn-ghost" onClick={onBack}>← Back</button>
+        <button type="button" className="btn-small btn-ghost" onClick={onBack}>
+          ← Back
+        </button>
       </div>
 
       <ul className="spec-list">
         <li className={specs.supportedByElizaOs ? "spec-ok" : "spec-warn"}>
-          <span className="spec-icon">{specs.supportedByElizaOs ? "✅" : "⚠️"}</span>
-          <span><strong>Device:</strong> {device.model} ({device.codename}) {specs.supportedByElizaOs ? "supports elizaOS" : "— not officially supported"}</span>
+          <span className="spec-icon">
+            {specs.supportedByElizaOs ? "✅" : "⚠️"}
+          </span>
+          <span>
+            <strong>Device:</strong> {device.model} ({device.codename}){" "}
+            {specs.supportedByElizaOs
+              ? "supports elizaOS"
+              : "— not officially supported"}
+          </span>
         </li>
         <li className="spec-ok">
           <span className="spec-icon">✅</span>
-          <span><strong>Build:</strong> {build.label} matches {build.architecture}</span>
+          <span>
+            <strong>Build:</strong> {build.label} matches {build.architecture}
+          </span>
         </li>
         <li className={storageOk ? "spec-ok" : "spec-warn"}>
           <span className="spec-icon">{storageOk ? "✅" : "⚠️"}</span>
           <span>
-            <strong>Storage:</strong> {formatBytes(specs.storageAvailableBytes)} free —
-            elizaOS needs ~8 GB minimum {storageOk ? "(OK)" : "(may be tight)"}
+            <strong>Storage:</strong> {formatBytes(specs.storageAvailableBytes)}{" "}
+            free — elizaOS needs ~8 GB minimum{" "}
+            {storageOk ? "(OK)" : "(may be tight)"}
           </span>
         </li>
         <li className={bootloaderUnlocked ? "spec-ok" : "spec-locked"}>
@@ -356,7 +444,9 @@ function SpecsCheckScreen({ device, build, specs, onContinue, onBack }: SpecsChe
 
       <div className="action-row">
         <button type="button" className="btn-primary" onClick={onContinue}>
-          {bootloaderUnlocked ? "Continue to confirm →" : "Continue to bootloader unlock →"}
+          {bootloaderUnlocked
+            ? "Continue to confirm →"
+            : "Continue to bootloader unlock →"}
         </button>
       </div>
     </div>
@@ -479,13 +569,16 @@ function BootloaderGuideScreen({
     <div className="screen">
       <div className="screen-header">
         <h2>🔒 Unlock Your Bootloader</h2>
-        <button type="button" className="btn-small btn-ghost" onClick={onBack}>← Back</button>
+        <button type="button" className="btn-small btn-ghost" onClick={onBack}>
+          ← Back
+        </button>
       </div>
 
       <div className="unlock-warning">
         <p>
           Your <strong>{device.model}</strong> bootloader is currently locked.
-          You <strong>MUST</strong> unlock it before flashing elizaOS. This will:
+          You <strong>MUST</strong> unlock it before flashing elizaOS. This
+          will:
         </p>
         <ul>
           <li>ERASE ALL DATA on your phone</li>
@@ -499,9 +592,9 @@ function BootloaderGuideScreen({
           Step {step + 1} of {UNLOCK_STEPS.length}
         </p>
         <div className="step-dots">
-          {UNLOCK_STEPS.map((_, i) => (
+          {UNLOCK_STEPS.map((unlockStep, i) => (
             <span
-              key={i}
+              key={unlockStep.title}
               className={`step-dot ${i < step ? "done" : i === step ? "active" : ""}`}
             />
           ))}
@@ -511,8 +604,8 @@ function BootloaderGuideScreen({
       <div className="unlock-step-card">
         <h3>{currentStep.title}</h3>
         <ol className="unlock-instructions">
-          {currentStep.instructions.map((line, i) => (
-            <li key={i}>{line}</li>
+          {currentStep.instructions.map((line) => (
+            <li key={line}>{line}</li>
           ))}
         </ol>
 
@@ -520,9 +613,18 @@ function BootloaderGuideScreen({
 
         {waitingConfirm && currentStep.action === "unlock-bootloader" ? (
           <div className="waiting-confirm">
-            <p className="muted"><Spinner /> Waiting for you to confirm on device...</p>
-            <p className="muted">Use VOLUME KEYS to highlight "UNLOCK THE BOOTLOADER" then press POWER.</p>
-            <button type="button" className="btn-primary" onClick={handleUnlockConfirmed}>
+            <p className="muted">
+              <Spinner /> Waiting for you to confirm on device...
+            </p>
+            <p className="muted">
+              Use VOLUME KEYS to highlight "UNLOCK THE BOOTLOADER" then press
+              POWER.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleUnlockConfirmed}
+            >
               ✅ I confirmed on device — bootloader is unlocked
             </button>
           </div>
@@ -531,7 +633,9 @@ function BootloaderGuideScreen({
             type="button"
             className="btn-primary"
             disabled={actionRunning}
-            onClick={() => void handleAction(currentStep.action!)}
+            onClick={() => {
+              if (currentStep.action) void handleAction(currentStep.action);
+            }}
           >
             {actionRunning
               ? "Running..."
@@ -543,7 +647,9 @@ function BootloaderGuideScreen({
           <button
             type="button"
             className="btn-primary"
-            onClick={() => setStep((s) => Math.min(s + 1, UNLOCK_STEPS.length - 1))}
+            onClick={() =>
+              setStep((s) => Math.min(s + 1, UNLOCK_STEPS.length - 1))
+            }
           >
             {currentStep.done}
           </button>
@@ -562,7 +668,12 @@ interface ConfirmingScreenProps {
   onCancel: () => void;
 }
 
-function ConfirmingScreen({ device, build, onFlash, onCancel }: ConfirmingScreenProps) {
+function ConfirmingScreen({
+  device,
+  build,
+  onFlash,
+  onCancel,
+}: ConfirmingScreenProps) {
   const [checkedErase, setCheckedErase] = useState(false);
   const [checkedBackup, setCheckedBackup] = useState(false);
 
@@ -577,11 +688,15 @@ function ConfirmingScreen({ device, build, onFlash, onCancel }: ConfirmingScreen
         <dl className="confirm-details">
           <div>
             <dt>Device</dt>
-            <dd>{device.model} ({device.serial})</dd>
+            <dd>
+              {device.model} ({device.serial})
+            </dd>
           </div>
           <div>
             <dt>Build</dt>
-            <dd>{build.label} v{build.version}</dd>
+            <dd>
+              {build.label} v{build.version}
+            </dd>
           </div>
           <div>
             <dt>Size</dt>
@@ -591,7 +706,9 @@ function ConfirmingScreen({ device, build, onFlash, onCancel }: ConfirmingScreen
 
         <p className="confirm-warning">This will:</p>
         <ul className="confirm-list">
-          <li>Erase all existing data (already erased during bootloader unlock)</li>
+          <li>
+            Erase all existing data (already erased during bootloader unlock)
+          </li>
           <li>Flash system, boot, vendor, and all required partitions</li>
           <li>Reboot into elizaOS</li>
         </ul>
@@ -616,7 +733,9 @@ function ConfirmingScreen({ device, build, onFlash, onCancel }: ConfirmingScreen
         </div>
 
         <div className="action-row action-row-split">
-          <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
           <button
             type="button"
             className="btn-danger"
@@ -641,7 +760,8 @@ interface FlashingScreenProps {
 function FlashingScreen({ steps, terminalLines }: FlashingScreenProps) {
   const runningStep = steps.find((s) => s.status === "running");
   const completedCount = steps.filter((s) => s.status === "complete").length;
-  const progress = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
+  const progress =
+    steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
 
   return (
     <div className="screen">
@@ -650,17 +770,24 @@ function FlashingScreen({ steps, terminalLines }: FlashingScreenProps) {
       </div>
 
       <div className="flash-progress-bar">
-        <div className="flash-progress-fill" style={{ width: `${progress}%` }} />
+        <div
+          className="flash-progress-fill"
+          style={{ width: `${progress}%` }}
+        />
       </div>
 
       {runningStep && (
-        <p className="muted"><Spinner /> {runningStep.label}...</p>
+        <p className="muted">
+          <Spinner /> {runningStep.label}...
+        </p>
       )}
 
       <ol className="step-list">
         {steps.map((step) => (
           <li key={step.id} className={`step step-${step.status}`}>
-            <span className="step-icon" aria-hidden>{stepIcon(step.status)}</span>
+            <span className="step-icon" aria-hidden>
+              {stepIcon(step.status)}
+            </span>
             <div className="step-body">
               <strong className="step-label">{step.label}</strong>
               {step.status === "waiting-user" && step.userAction ? (
@@ -675,8 +802,10 @@ function FlashingScreen({ steps, terminalLines }: FlashingScreenProps) {
 
       {terminalLines.length > 0 && (
         <div className="terminal-output">
-          {terminalLines.map((line, i) => (
-            <div key={i} className="terminal-line">{line}</div>
+          {terminalLines.map((line) => (
+            <div key={line} className="terminal-line">
+              {line}
+            </div>
           ))}
         </div>
       )}
@@ -697,11 +826,16 @@ function CompleteScreen({ device, onFlashAnother }: CompleteScreenProps) {
       <div className="complete-banner">
         <p className="complete-icon">✅</p>
         <h2>elizaOS successfully flashed!</h2>
-        <p>Your <strong>{device.model}</strong> is now running elizaOS Android Beta.</p>
+        <p>
+          Your <strong>{device.model}</strong> is now running elizaOS Android
+          Beta.
+        </p>
       </div>
 
       <div className="complete-next">
-        <p><strong>What's next:</strong></p>
+        <p>
+          <strong>What's next:</strong>
+        </p>
         <ul>
           <li>Complete initial setup on your phone</li>
           <li>Connect to your elizaOS account</li>
@@ -761,7 +895,9 @@ export function FlasherApp({ backend }: FlasherAppProps) {
   const [screen, setScreen] = useState<Screen>("detecting");
   const [devices, setDevices] = useState<ConnectedDevice[]>([]);
   const [builds, setBuilds] = useState<AospBuild[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<ConnectedDevice | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<ConnectedDevice | null>(
+    null,
+  );
   const [selectedBuildId, setSelectedBuildId] = useState("");
   const [specs, setSpecs] = useState<DeviceSpecs | null>(null);
   const [specsLoading, setSpecsLoading] = useState(false);
@@ -784,7 +920,9 @@ export function FlasherApp({ backend }: FlasherAppProps) {
     try {
       const [nextDevices, nextBuilds] = await Promise.all([
         backend.listConnectedDevices(),
-        buildsLoadedRef.current ? Promise.resolve(builds) : backend.listBuilds(),
+        buildsLoadedRef.current
+          ? Promise.resolve(builds)
+          : backend.listBuilds(),
       ]);
       setDevices(nextDevices);
       if (!buildsLoadedRef.current) {
@@ -799,8 +937,7 @@ export function FlasherApp({ backend }: FlasherAppProps) {
     } finally {
       setDetectLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend]);
+  }, [backend, builds, selectedBuildId]);
 
   useEffect(() => {
     void loadDevices();
@@ -849,7 +986,9 @@ export function FlasherApp({ backend }: FlasherAppProps) {
     }
   }
 
-  async function handleUnlockAction(action: "reboot-bootloader" | "unlock-bootloader") {
+  async function handleUnlockAction(
+    action: "reboot-bootloader" | "unlock-bootloader",
+  ) {
     if (!selectedDevice) return;
     if (action === "reboot-bootloader") {
       const plan = await backend.createFlashPlan({
@@ -977,15 +1116,18 @@ export function FlasherApp({ backend }: FlasherAppProps) {
           />
         )}
 
-        {screen === "specs-check" && selectedDevice && specs && selectedBuild && (
-          <SpecsCheckScreen
-            device={selectedDevice}
-            build={selectedBuild}
-            specs={specs}
-            onContinue={handleSpecsCheckContinue}
-            onBack={() => setScreen("select-build")}
-          />
-        )}
+        {screen === "specs-check" &&
+          selectedDevice &&
+          specs &&
+          selectedBuild && (
+            <SpecsCheckScreen
+              device={selectedDevice}
+              build={selectedBuild}
+              specs={specs}
+              onContinue={handleSpecsCheckContinue}
+              onBack={() => setScreen("select-build")}
+            />
+          )}
 
         {screen === "bootloader-guide" && selectedDevice && (
           <BootloaderGuideScreen
@@ -1010,11 +1152,17 @@ export function FlasherApp({ backend }: FlasherAppProps) {
         )}
 
         {screen === "complete" && selectedDevice && (
-          <CompleteScreen device={selectedDevice} onFlashAnother={handleReset} />
+          <CompleteScreen
+            device={selectedDevice}
+            onFlashAnother={handleReset}
+          />
         )}
 
         {screen === "error" && (
-          <ErrorScreen message={globalError ?? "Unknown error"} onRetry={handleReset} />
+          <ErrorScreen
+            message={globalError ?? "Unknown error"}
+            onRetry={handleReset}
+          />
         )}
       </section>
 

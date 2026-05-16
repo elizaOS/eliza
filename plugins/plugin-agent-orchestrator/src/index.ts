@@ -23,11 +23,11 @@ import {
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
 
+import { elizaOsCapabilityAction } from "./actions/elizaos-capability.js";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
-import { elizaOsCapabilityAction } from "./actions/elizaos-capability.js";
 import { tasksAction } from "./actions/tasks.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
@@ -171,7 +171,7 @@ export type {
   ToolCategory,
   WriteMemoryOptions,
 } from "coding-agent-adapters";
-
+export { elizaOsCapabilityAction } from "./actions/elizaos-capability.js";
 // TASKS action surface.
 export {
   archiveCodingTaskAction,
@@ -195,7 +195,6 @@ export {
   taskShareAction,
   tasksAction,
 } from "./actions/tasks.js";
-export { elizaOsCapabilityAction } from "./actions/elizaos-capability.js";
 // API routes
 export {
   createCodingAgentRouteHandler,

@@ -1043,11 +1043,13 @@ function attachMainWindow(
 			const closeEvent = event as { preventDefault?: () => void } | undefined;
 			if (typeof closeEvent?.preventDefault === "function") {
 				closeEvent.preventDefault();
-				void getDesktopManager().hideWindow().catch((err: unknown) => {
-					logger.warn(
-						`[Main] Failed to minimize window on close: ${err instanceof Error ? err.message : String(err)}`,
-					);
-				});
+				void getDesktopManager()
+					.hideWindow()
+					.catch((err: unknown) => {
+						logger.warn(
+							`[Main] Failed to minimize window on close: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					});
 				logger.info("[Main] Window close requested - minimized to tray");
 				showBackgroundRunNoticeOnce();
 				return;

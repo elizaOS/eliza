@@ -45,7 +45,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "watch": "tsc --watch",
     "prepublishOnly": "bun run build"
   },

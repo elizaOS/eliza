@@ -176,9 +176,7 @@ export function AppMonetizationSettings({
             <div
               className={cn(
                 "p-2 rounded-lg mt-0.5",
-                settings.monetizationEnabled
-                  ? "bg-green-500/10"
-                  : "bg-white/5",
+                settings.monetizationEnabled ? "bg-green-500/10" : "bg-white/5",
               )}
             >
               <DollarSign

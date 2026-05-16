@@ -43,13 +43,17 @@ export async function startHetznerMock(
     hostname: options.hostname ?? "127.0.0.1",
     fetch: root.fetch,
   });
+  const port = server.port;
+  if (typeof port !== "number") {
+    throw new Error("Hetzner mock server did not bind to a numeric port");
+  }
 
   return {
     stop: async () => {
       await server.stop(true);
     },
-    url: `http://${server.hostname}:${server.port}/v1`,
-    port: server.port,
+    url: `http://${server.hostname}:${port}/v1`,
+    port,
     store,
   };
 }

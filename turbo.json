@@ -18,6 +18,7 @@
         "@elizaos/shared#build",
         "@elizaos/skills#build",
         "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-browser#build",
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/plugin-pdf#build",
@@ -182,7 +183,12 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/plugin-commands#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-app-manager#build",
+        "^build"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/plugin-discord#build": {

@@ -515,7 +515,11 @@ export async function handleSlashCommand(
 				roomId: context.roomId,
 				content: { text: `/${command.name}`, source: "discord" },
 			};
-			const allowed = await hasRoleAccess(runtime, memory, command.requiredRole);
+			const allowed = await hasRoleAccess(
+				runtime,
+				memory,
+				command.requiredRole,
+			);
 			if (!allowed) {
 				await interaction.reply({
 					content: `You need at least **${command.requiredRole}** role to use \`/${command.name}\`.`,

@@ -67,10 +67,7 @@ import {
   type UiTheme,
   useApp,
 } from "../../state";
-import {
-  getElizaApiBase,
-  preOpenWindow,
-} from "../../utils";
+import { getElizaApiBase, preOpenWindow } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";

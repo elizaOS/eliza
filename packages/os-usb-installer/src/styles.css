@@ -668,8 +668,14 @@ dd {
 
 /* Spinner animation */
 @keyframes spin {
-  from { display: inline-block; transform: rotate(0deg); }
-  to { display: inline-block; transform: rotate(360deg); }
+  from {
+    display: inline-block;
+    transform: rotate(0deg);
+  }
+  to {
+    display: inline-block;
+    transform: rotate(360deg);
+  }
 }
 
 .spinner {

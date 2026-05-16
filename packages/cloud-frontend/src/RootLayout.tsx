@@ -1,4 +1,8 @@
-import { BRAND_FAVICONS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import {
+  BRAND_FAVICONS,
+  BRAND_PATHS,
+  OG_EMBED_FILES,
+} from "@elizaos/shared-brand";
 import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
@@ -7,7 +11,7 @@ import { StewardWalletProviders } from "@/pages/login/steward-wallet-providers";
 import { CreditsProvider } from "@/providers/CreditsProvider";
 import { StewardAuthProvider } from "@/providers/StewardProvider";
 
-const ogImage = `${BRAND_PATHS.logos}/${LOGO_FILES.markWhiteBlackBg}`;
+const ogImage = `${BRAND_PATHS.ogembeds}/${OG_EMBED_FILES.cloud}`;
 
 const baseUrl =
   import.meta.env.VITE_APP_URL ||

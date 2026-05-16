@@ -1,8 +1,5 @@
 import { test, expect } from "../src/helpers/test-fixtures";
-import {
-  getSandboxState,
-  tickCleanupStuck,
-} from "../src/helpers/provisioning";
+import { getSandboxState, tickCleanupStuck } from "../src/helpers/provisioning";
 
 test.describe("stuck-cleanup", () => {
   test("provisioning sandbox without a job transitions to error after timeout", async ({
@@ -12,7 +9,6 @@ test.describe("stuck-cleanup", () => {
     // Insert a stuck sandbox directly via cloud-shared repository so we don't
     // depend on the API's create-flow timing. Backdate created_at to be older
     // than the cleanup cutoff (default 10min in the route).
-    const { dbWrite } = await import("@elizaos/cloud-shared/db/helpers");
     const { agentSandboxesRepository } = await import(
       "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
     );
@@ -26,20 +22,15 @@ test.describe("stuck-cleanup", () => {
       agent_name: "stuck-e2e-agent",
       bridge_url: "http://127.0.0.1:65535",
       health_url: "http://127.0.0.1:65535/health",
-      database_status: "pending",
+      database_status: "provisioning",
       environment_vars: {},
     });
 
-    // Backdate via raw drizzle update for created_at — repository.create may
-    // not accept it as a field.
-    const { agent_sandboxes } = await import(
-      "@elizaos/cloud-shared/db/schemas/agent-sandboxes"
-    );
-    const { eq } = await import("drizzle-orm");
-    await dbWrite
-      .update(agent_sandboxes)
-      .set({ created_at: past, updated_at: past })
-      .where(eq(agent_sandboxes.id, sandbox.id));
+    // Backdate after create so cleanup sees the row as older than the cutoff.
+    await agentSandboxesRepository.update(sandbox.id, {
+      created_at: past,
+      updated_at: past,
+    });
 
     const cleanupRes = await tickCleanupStuck({ apiUrl: stack.urls.api });
     expect([200, 202]).toContain(cleanupRes.status);

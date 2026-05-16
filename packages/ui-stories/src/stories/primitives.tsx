@@ -160,6 +160,58 @@ const scrollAreaEvents = Array.from({ length: 14 }, (_, i) => ({
   label: `Event #${i + 1}`,
 }));
 
+const miniChartData = [
+  { day: "Mon", tokens: 1320 },
+  { day: "Tue", tokens: 1480 },
+  { day: "Wed", tokens: 1210 },
+  { day: "Thu", tokens: 1760 },
+  { day: "Fri", tokens: 1650 },
+];
+
+function MiniChart() {
+  return (
+    <div
+      aria-label="Local inference throughput chart"
+      role="img"
+      style={{
+        alignItems: "end",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        display: "flex",
+        gap: 10,
+        height: 180,
+        padding: 16,
+        width: 320,
+      }}
+    >
+      {miniChartData.map((point) => (
+        <div
+          key={point.day}
+          style={{
+            alignItems: "center",
+            display: "flex",
+            flex: 1,
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--accent-primary)",
+              borderRadius: 4,
+              height: `${Math.round(point.tokens / 18)}px`,
+              width: "100%",
+            }}
+          />
+          <span style={{ color: "var(--muted-foreground)", fontSize: 12 }}>
+            {point.day}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export const primitiveStories: StoryDefinition[] = [
   {
     id: "p-accordion",
@@ -588,10 +640,10 @@ export const primitiveStories: StoryDefinition[] = [
       'import { StatusBadge, StatusDot } from "@elizaos/ui/components/ui/status-badge"',
     render: () => (
       <>
-        <StatusBadge tone="success">Connected</StatusBadge>
-        <StatusBadge tone="warning">Pending</StatusBadge>
-        <StatusBadge tone="danger">Offline</StatusBadge>
-        <StatusBadge tone="info">Cloud</StatusBadge>
+        <StatusBadge label="Connected" tone="success" />
+        <StatusBadge label="Pending" tone="warning" />
+        <StatusBadge label="Offline" tone="danger" />
+        <StatusBadge label="Cloud" tone="info" />
         <StatusDot tone="success" />
         <StatusDot tone="danger" />
       </>

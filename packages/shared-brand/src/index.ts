@@ -56,6 +56,8 @@ export const FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
  */
 export const BRAND_PATHS = {
   logos: "/brand/logos",
+  banners: "/brand/banners",
+  ogembeds: "/brand/ogembeds",
   concepts: "/brand/concepts",
   background: "/brand/background",
   favicons: "/brand/favicons",
@@ -152,3 +154,15 @@ export const LOGO_FILES = {
 } as const;
 
 export type LogoVariant = keyof typeof LOGO_FILES;
+
+export const BANNER_FILES = {
+  eliza: "eliza_banner.svg",
+  cloud: "elizacloud_banner.svg",
+  os: "elizaos_banner.svg",
+} as const;
+
+export const OG_EMBED_FILES = {
+  eliza: "eliza_ogembed.svg",
+  cloud: "elizacloud_ogembed.svg",
+  os: "elizaos_ogembed.svg",
+} as const;

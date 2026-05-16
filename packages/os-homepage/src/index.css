@@ -69,7 +69,7 @@ img {
   gap: 1.5rem;
   padding: 1rem clamp(1rem, 4vw, 3rem);
   background: transparent;
-  color: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .site-header-solid {
