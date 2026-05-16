@@ -518,7 +518,14 @@ export class SubAgentRouter extends Service {
             subAgentTargetRoomId: target.roomId,
             subAgentTargetRoomRole: target.roles[0],
             subAgentTargetRoomRoles: target.roles,
-            subAgentSwarmRooms: origin.swarmRooms,
+            // Cast: swarmRoomsMetadata returns
+            // `Array<Record<string, string | string[]>>` which is structurally
+            // a JsonValue but TypeScript widens it to SwarmRoomTarget[] when
+            // inlined into the Content.metadata literal. Cast to the
+            // metadata-shape type-checked sibling fields use.
+            subAgentSwarmRooms: swarmRoomsMetadata(
+              origin.swarmRooms,
+            ) as unknown as Array<{ [key: string]: string | string[] }>,
             taskRoomId: origin.taskRoomId,
             ...(origin.worktreeRoomId
               ? { worktreeRoomId: origin.worktreeRoomId }
@@ -813,6 +820,15 @@ interface OriginInfo {
 interface SwarmRoomTarget {
   roomId: UUID;
   roles: string[];
+}
+
+function swarmRoomsMetadata(
+  rooms: SwarmRoomTarget[],
+): Array<Record<string, string | string[]>> {
+  return rooms.map((room) => ({
+    roomId: room.roomId,
+    roles: room.roles,
+  }));
 }
 
 function readOrigin(session: SessionInfo): OriginInfo | null {
