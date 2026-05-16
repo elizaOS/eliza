@@ -154,3 +154,18 @@ The TypeScript-only surfaces for I and J have landed under `packages/app-core/sr
 - See `packages/app-core/src/services/voice-profiles/IMPL_NOTES.md`.
 
 Both directories explicitly avoid the active swarm workspaces (kokoro, emotion, turn-intl, diarizer-*, voice-classifier, wakeword, vad). They wire in once those interfaces stabilize.
+
+### C — Cloud setup-agent session and container handoff
+
+Scaffolds landed in this pass:
+- `packages/cloud-sdk/src/cloud-setup-session/` — `types.ts`, `policy.ts` (`DEFAULT_SETUP_POLICY`, `isActionAllowed`), `service-interface.ts` (`CloudSetupSessionService`), `mock-service.ts` (`MockCloudSetupSessionService`), `index.ts`.
+- `packages/ui/src/api/cloud-setup.ts` — `useCloudSetupSession` hook with mock-by-default service injection, `getStatus` polling, and one-shot `onHandoff` emission.
+- `StateCloudChat` now opts into the live hook when a `service` prop is supplied; falls back to the static string otherwise.
+
+Still missing:
+- Real tenant-isolated agent runtime in cloud — not a mock. Per-tenant sandbox, model routing, action allow-listing on the server side.
+- Real OAuth → tenant resolution flow that turns an Eliza Cloud login into a `TenantId` for `startSession`.
+- Real container provisioner under `cloud/services/operator` (or equivalent) that drives the `provisioning → ready → failed` lifecycle the hook polls today against the mock.
+- Real memory + transcript transfer: the container side of `finalizeHandoff` — receiving the `ContainerHandoffEnvelope`, materializing memories with the supplied `memoryIds`, and rehydrating the chat surface without a visible cut.
+- Server-side enforcement of `SetupActionPolicy.allowList` and `budgets` (token-per-turn, tool-calls-per-turn, max-turns). The policy ships as a contract only; nothing enforces it until the cloud runtime exists.
+- HTTP client implementation of `CloudSetupSessionService` for `useCloudSetupSession({ service })`. Today only the in-memory mock satisfies the contract.
