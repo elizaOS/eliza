@@ -90,9 +90,14 @@ function checkIMessage() {
   addCheck(
     "imessage",
     "BlueBubbles relay URL",
-    hasAny(["BLUEBUBBLES_RELAY_URL", "IMESSAGE_RELAY_URL", "ELIZA_APP_BLOOIO_API_URL"]),
-    "BlueBubbles relay URL is configured",
-    "Register the Mac relay and set BLUEBUBBLES_RELAY_URL.",
+    hasAny([
+      "BLUEBUBBLES_RELAY_URL",
+      "IMESSAGE_RELAY_URL",
+      "ELIZA_APP_BLOOIO_API_URL",
+      "ELIZA_APP_BLOOIO_API_KEY",
+    ]),
+    "BlueBubbles relay URL or hosted Blooio API key is configured",
+    "Register the Mac relay and set BLUEBUBBLES_RELAY_URL, or configure ELIZA_APP_BLOOIO_API_KEY for the hosted iMessage bridge.",
   );
   addCheck(
     "imessage",
