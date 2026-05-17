@@ -21,6 +21,7 @@
     "@cloudflare/workers-types": "^4.20260429.1",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/hardware-catalog": "workspace:*",
+    "@elizaos/steward-session-client": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
     "@neondatabase/serverless": "^1.1.0",

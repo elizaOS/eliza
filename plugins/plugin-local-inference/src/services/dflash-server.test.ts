@@ -1,4 +1,3 @@
-import type { SpawnSyncReturns } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,11 +35,6 @@ import {
 	shouldRequireActiveDflashForRequest,
 	validateDflashDrafterCompatibility,
 } from "./dflash-server";
-import {
-	__resetGpuDetectionCacheForTests,
-	__setGpuDetectionSpawnSyncForTests,
-	detectGpu,
-} from "./gpu-detect";
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -48,7 +42,6 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
 	process.env = { ...originalEnv };
 	__resetLlamaServerHelpTextForTests();
-	__resetGpuDetectionCacheForTests();
 	const vitestGlobals = vi as unknown as {
 		restoreAllMocks?: () => void;
 		unstubAllGlobals?: () => void;
@@ -77,14 +70,6 @@ function makeManagedBinary(root: string): string {
 	fs.writeFileSync(managed, "#!/bin/sh\n", "utf8");
 	fs.chmodSync(managed, 0o755);
 	return managed;
-}
-
-async function waitForFile(file: string): Promise<string> {
-	for (let i = 0; i < 50; i += 1) {
-		if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
-	throw new Error(`Timed out waiting for ${file}`);
 }
 
 function u32(value: number): Buffer {
@@ -436,148 +421,6 @@ describe("DflashLlamaServer runtime load config", () => {
 	});
 });
 
-describe("DflashLlamaServer CUDA GPU autotune", () => {
-	it("applies a matched H200 profile before launching llama-server", async () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gpu-autotune-"));
-		const argsFile = path.join(root, "args.txt");
-		const binary = path.join(root, "llama-server");
-		fs.writeFileSync(
-			binary,
-			[
-				"#!/bin/sh",
-				'if [ "$1" = "--help" ]; then',
-				'  echo "--cache-type-k f16 q8_0 qjl1_256"',
-				'  echo "--cache-type-v f16 q4_0 q4_polar"',
-				"  exit 0",
-				"fi",
-				`printf '%s\\n' "$@" > '${argsFile}'`,
-				"trap 'exit 0' TERM INT",
-				"while true; do sleep 1; done",
-				"",
-			].join("\n"),
-			"utf8",
-		);
-		fs.chmodSync(binary, 0o755);
-		__resetGpuDetectionCacheForTests();
-		__setGpuDetectionSpawnSyncForTests((command) => {
-			if (command !== "nvidia-smi") {
-				throw new Error(`unexpected GPU probe command: ${command}`);
-			}
-			return {
-				status: 0,
-				signal: null,
-				error: undefined,
-				pid: 0,
-				output: [null, "NVIDIA H200, 141248\n", ""],
-				stdout: "NVIDIA H200, 141248\n",
-				stderr: "",
-			} as SpawnSyncReturns<string>;
-		});
-		expect(detectGpu({ force: true }).profile?.id).toBe("h200");
-		process.env.ELIZA_STATE_DIR = root;
-		process.env.ELIZA_DFLASH_ENABLED = "1";
-		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
-		__setCtxCheckpointsProbeCacheForTests(binary, false);
-		__setLlamaServerHelpTextForTests(
-			binary,
-			"--cache-type-k f16 q8_0 qjl1_256\n--cache-type-v f16 q4_0 q4_polar\n",
-		);
-		installDflashFetchMock((url) =>
-			url.pathname === "/health"
-				? new Response("{}", { status: 200 })
-				: notFoundResponse(),
-		);
-
-		const server = new DflashLlamaServer();
-		try {
-			await server.start({
-				targetModelPath: path.join(root, "target.gguf"),
-				drafterModelPath: path.join(root, "drafter.gguf"),
-				contextSize: 128,
-				draftContextSize: 64,
-				draftMin: 1,
-				draftMax: 4,
-				gpuLayers: "auto",
-				draftGpuLayers: "auto",
-				disableThinking: false,
-				disableDrafter: true,
-			});
-
-			const args = (await waitForFile(argsFile)).trim().split(/\r?\n/);
-			const argPair = (flag: string) =>
-				args.slice(args.indexOf(flag), args.indexOf(flag) + 2);
-			expect(argPair("--cache-type-k")).toEqual(["--cache-type-k", "qjl1_256"]);
-			expect(argPair("--cache-type-v")).toEqual(["--cache-type-v", "q4_polar"]);
-			expect(argPair("--parallel")).toEqual(["--parallel", "16"]);
-			expect(argPair("--batch-size")).toEqual(["--batch-size", "4096"]);
-			expect(argPair("--ubatch-size")).toEqual(["--ubatch-size", "2048"]);
-			expect(args).toContain("-fa");
-			expect(args).toContain("--mlock");
-		} finally {
-			await server.stop();
-		}
-	});
-});
-
-describe("DflashLlamaServer runtime load config", () => {
-	it("reports the normalized target GPU layers passed to llama-server", async () => {
-		const root = fs.mkdtempSync(
-			path.join(os.tmpdir(), "eliza-runtime-config-"),
-		);
-		const binary = path.join(root, "llama-server");
-		fs.writeFileSync(
-			binary,
-			[
-				"#!/bin/sh",
-				'if [ "$1" = "--help" ]; then',
-				'  echo "--n-gpu-layers N"',
-				"  exit 0",
-				"fi",
-				"trap 'exit 0' TERM INT",
-				"while true; do sleep 1; done",
-				"",
-			].join("\n"),
-			"utf8",
-		);
-		fs.chmodSync(binary, 0o755);
-		process.env.ELIZA_STATE_DIR = root;
-		process.env.ELIZA_DFLASH_ENABLED = "1";
-		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
-		__setCtxCheckpointsProbeCacheForTests(binary, false);
-		installDflashFetchMock((url) =>
-			url.pathname === "/health"
-				? new Response("{}", { status: 200 })
-				: notFoundResponse(),
-		);
-
-		const server = new DflashLlamaServer();
-		try {
-			await server.start({
-				targetModelPath: path.join(root, "target.gguf"),
-				drafterModelPath: path.join(root, "drafter.gguf"),
-				contextSize: 128,
-				draftContextSize: 64,
-				draftMin: 1,
-				draftMax: 4,
-				gpuLayers: "auto",
-				draftGpuLayers: "auto",
-				disableThinking: false,
-				disableDrafter: true,
-			});
-
-			expect(server.currentRuntimeLoadConfig()).toMatchObject({
-				contextSize: 128,
-				cacheTypeK: null,
-				cacheTypeV: null,
-				gpuLayers: 99,
-				binaryPath: binary,
-			});
-		} finally {
-			await server.stop();
-		}
-	});
-});
-
 describe("DFlash draft CLI flag drift", () => {
 	it("prefers --reasoning off over deprecated chat-template kwargs when both are advertised", () => {
 		const bin = "/tmp/reasoning-llama-server";
@@ -628,59 +471,6 @@ describe("DFlash draft CLI flag drift", () => {
 		appendBackendSafeStartupFlags(args, binary);
 
 		expect(args).toEqual(["-fit", "off"]);
-	});
-
-	it("forces Flash Attention and CPU KV when experimental Metal compressed KV is allowed", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-safe-"));
-		const binary = path.join(root, "llama-server");
-		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
-		fs.chmodSync(binary, 0o755);
-		fs.writeFileSync(
-			path.join(root, "CAPABILITIES.json"),
-			JSON.stringify({
-				target: "darwin-arm64-metal-fused",
-				backend: "metal",
-				kernels: { dflash: true, qjl_full: true, turbo3: true },
-			}),
-			"utf8",
-		);
-		__setLlamaServerHelpTextForTests(binary, "-fit,  --fit [on|off]\n");
-		const args = ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"];
-
-		appendBackendSafeStartupFlags(args, binary);
-
-		expect(args).toEqual([
-			"--cache-type-k",
-			"qjl1_256",
-			"--cache-type-v",
-			"tbq3_0",
-			"-fit",
-			"off",
-			"-fa",
-			"on",
-			"--no-kv-offload",
-		]);
-	});
-
-	it("does not add compressed-KV safety flags for stock fallback cache types", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-stock-"));
-		const binary = path.join(root, "llama-server");
-		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
-		fs.chmodSync(binary, 0o755);
-		fs.writeFileSync(
-			path.join(root, "CAPABILITIES.json"),
-			JSON.stringify({
-				target: "darwin-arm64-metal-fused",
-				backend: "metal",
-				kernels: { dflash: true, qjl_full: true, turbo3: true },
-			}),
-			"utf8",
-		);
-		const args = ["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"];
-
-		appendBackendSafeStartupFlags(args, binary);
-
-		expect(args).toEqual(["--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]);
 	});
 
 	for (const backend of ["metal", "vulkan"] as const) {
@@ -1360,51 +1150,6 @@ describe("DFlash streaming callbacks", () => {
 		}
 	});
 
-	it("cancels the streaming response body when SSE parsing fails", async () => {
-		let cancelled = false;
-		installDflashFetchMock((url) => {
-			if (url.pathname === "/metrics") return metricsResponse();
-			if (url.pathname === "/v1/chat/completions") {
-				const encoder = new TextEncoder();
-				return new Response(
-					new ReadableStream<Uint8Array>({
-						start(controller) {
-							controller.enqueue(encoder.encode("data: {not-json}\n\n"));
-						},
-						cancel() {
-							cancelled = true;
-						},
-					}),
-					{ status: 200, headers: { "content-type": "text/event-stream" } },
-				);
-			}
-			return notFoundResponse();
-		});
-		const target = dflashLlamaServer as unknown as {
-			baseUrl: string | null;
-			cacheParallel: number;
-		};
-		const previous = {
-			baseUrl: target.baseUrl,
-			cacheParallel: target.cacheParallel,
-		};
-		target.baseUrl = "http://dflash.test";
-		target.cacheParallel = 4;
-		try {
-			await expect(
-				dflashLlamaServer.generateWithUsage({
-					prompt: "say hello",
-					onTextChunk: () => {},
-				}),
-			).rejects.toThrow();
-
-			expect(cancelled).toBe(true);
-		} finally {
-			target.baseUrl = previous.baseUrl;
-			target.cacheParallel = previous.cacheParallel;
-		}
-	});
-
 	it("uses final streaming timings as DFlash evidence when metrics counters lag", async () => {
 		installDflashFetchMock((url) => {
 			if (url.pathname === "/metrics") {
@@ -1810,22 +1555,6 @@ describe("llama-server optimization flags", () => {
 		});
 
 		expect(args).toEqual(["--cache-reuse", "64", "--no-cont-batching"]);
-	});
-
-	it("uses current llama.cpp ngram speculative flags", () => {
-		const args: string[] = [];
-		appendOptimizationFlags(args, {
-			ngramDraft: { min: 4, max: 8, minProb: 0.5 },
-		});
-
-		expect(args).toEqual([
-			"--spec-type",
-			"ngram-mod",
-			"--spec-ngram-mod-n-min",
-			"4",
-			"--spec-ngram-mod-n-max",
-			"8",
-		]);
 	});
 });
 

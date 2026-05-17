@@ -32,6 +32,10 @@ export default defineConfig({
     alias: [
       { find: "@", replacement: path.resolve(__dirname, "./src") },
       {
+        find: "@elizaos/ui/cloud-ui",
+        replacement: path.resolve(__dirname, "../ui/src/cloud-ui/index.ts"),
+      },
+      {
         find: "@elizaos/ui/button",
         replacement: path.resolve(
           __dirname,

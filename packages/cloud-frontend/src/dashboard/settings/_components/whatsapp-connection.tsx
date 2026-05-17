@@ -14,8 +14,9 @@ import {
   Label,
 } from "@elizaos/ui";
 import { ExternalLink, Loader2, MessageSquare, Phone } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useConnectionStatus } from "@/hooks/use-connection-status";
 
 interface WhatsAppStatus {
   connected: boolean;
@@ -27,8 +28,14 @@ interface WhatsAppStatus {
 }
 
 export function WhatsAppConnection() {
-  const [status, setStatus] = useState<WhatsAppStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    status,
+    isLoading,
+    refetch: fetchStatus,
+  } = useConnectionStatus<WhatsAppStatus>(
+    "/api/v1/whatsapp/status",
+    "Failed to fetch WhatsApp status",
+  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [accessToken, setAccessToken] = useState("");
@@ -36,30 +43,6 @@ export function WhatsAppConnection() {
   const [appSecret, setAppSecret] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
-
-  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/v1/whatsapp/status", { signal });
-      if (!signal?.aborted) {
-        setStatus(await response.json());
-      }
-    } catch {
-      if (!signal?.aborted) {
-        toast.error("Failed to fetch WhatsApp status");
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchStatus(controller.signal);
-    return () => controller.abort();
-  }, [fetchStatus]);
 
   const handleConnect = async () => {
     if (isConnecting) return;

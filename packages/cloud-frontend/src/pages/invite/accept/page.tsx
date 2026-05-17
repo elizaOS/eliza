@@ -50,7 +50,7 @@ function InviteAcceptContent() {
     const validateInvite = async () => {
       setIsValidating(true);
       const response = await fetch(
-        `/api/invites/validate?token=${encodeURIComponent(token!)}`,
+        `/api/invites/validate?token=${encodeURIComponent(token ?? "")}`,
       );
       const data = await response.json();
 
@@ -75,9 +75,9 @@ function InviteAcceptContent() {
   const handleAcceptInvite = async () => {
     if (!authenticated) {
       // Store the token in localStorage to retrieve after login (backup for OAuth flows)
-      localStorage.setItem("pending-invite-token", token!);
+      localStorage.setItem("pending-invite-token", token ?? "");
       // Use returnTo to redirect back to this page after login
-      const currentUrl = `/invite/accept?token=${encodeURIComponent(token!)}`;
+      const currentUrl = `/invite/accept?token=${encodeURIComponent(token ?? "")}`;
       navigate(`/login?returnTo=${encodeURIComponent(currentUrl)}`);
       return;
     }

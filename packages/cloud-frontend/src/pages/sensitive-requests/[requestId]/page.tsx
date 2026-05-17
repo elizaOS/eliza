@@ -345,13 +345,19 @@ export default function SensitiveRequestPage() {
                   field.input === "secret" ? "password" : field.input;
                 const useTextarea =
                   field.input === "text" && field.name.length > 24;
+                const inputId = `field-${field.name}`;
                 return (
-                  <label className="block space-y-2" key={field.name}>
+                  <label
+                    htmlFor={inputId}
+                    className="block space-y-2"
+                    key={field.name}
+                  >
                     <span className="text-sm font-medium text-white/85">
                       {field.label}
                     </span>
                     {useTextarea ? (
                       <Textarea
+                        id={inputId}
                         name={field.name}
                         required={field.required}
                         disabled={submitting}
@@ -362,6 +368,7 @@ export default function SensitiveRequestPage() {
                       />
                     ) : (
                       <Input
+                        id={inputId}
                         name={field.name}
                         type={type}
                         required={field.required}

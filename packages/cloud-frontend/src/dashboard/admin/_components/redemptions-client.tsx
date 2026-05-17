@@ -126,7 +126,6 @@ export function AdminRedemptionsClient() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Fetch redemptions
   const fetchRedemptions = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -144,7 +143,6 @@ export function AdminRedemptionsClient() {
     setLoading(false);
   }, [statusFilter, networkFilter, searchQuery]);
 
-  // Fetch system status
   const fetchSystemStatus = useCallback(async () => {
     const res = await fetch("/api/v1/redemptions/status");
     if (res.ok) {

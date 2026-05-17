@@ -75,7 +75,7 @@
       "default": "./dist/api/index.js"
     },
     "./api/*": {
-      "types": "./src/api/*.d.ts",
+      "types": "./src/api/*.ts",
       "eliza-source": {
         "types": "./src/api/*.ts",
         "import": "./src/api/*.ts",
@@ -89,23 +89,20 @@
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
-    "./diagnostics/*": {
-      "types": "./src/diagnostics/*.d.ts",
-      "eliza-source": {
-        "types": "./src/diagnostics/*.ts",
-        "import": "./src/diagnostics/*.ts",
-        "default": "./src/diagnostics/*.ts"
-      },
+    "./config/character-schema": "./src/config/character-schema.ts",
+    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
+    "./runtime": {
+      "types": "./src/runtime/index.ts",
       "bun": {
-        "types": "./src/diagnostics/*.ts",
-        "import": "./src/diagnostics/*.ts",
-        "default": "./src/diagnostics/*.ts"
+        "types": "./src/runtime/index.ts",
+        "import": "./src/runtime/index.ts",
+        "default": "./src/runtime/index.ts"
       },
-      "import": "./dist/diagnostics/*.js",
-      "default": "./dist/diagnostics/*.js"
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
     },
     "./runtime/*": {
-      "types": "./src/runtime/*.d.ts",
+      "types": "./src/runtime/*.ts",
       "eliza-source": {
         "types": "./src/runtime/*.ts",
         "import": "./src/runtime/*.ts",
@@ -118,18 +115,6 @@
       },
       "import": "./dist/runtime/*.js",
       "default": "./dist/runtime/*.js"
-    },
-    "./config/character-schema": "./src/config/character-schema.ts",
-    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
-    "./runtime": {
-      "types": "./src/runtime/index.ts",
-      "bun": {
-        "types": "./src/runtime/index.ts",
-        "import": "./src/runtime/index.ts",
-        "default": "./src/runtime/index.ts"
-      },
-      "import": "./dist/runtime/index.js",
-      "default": "./dist/runtime/index.js"
     },
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",

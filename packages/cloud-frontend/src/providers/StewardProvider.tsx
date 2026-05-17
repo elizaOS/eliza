@@ -1,6 +1,12 @@
 "use client";
 
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
+import {
+  clearStoredStewardToken,
+  STEWARD_REFRESH_TOKEN_KEY,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/steward-session-client";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardAuth, StewardClient } from "@stwd/sdk";
 import { createContext, useEffect, useMemo, useRef } from "react";
@@ -54,9 +60,6 @@ function isPlaywrightTestAuthEnabled(): boolean {
  * Inner wrapper that syncs the Steward JWT to a global API client
  * so authenticated requests outside React components work correctly.
  */
-const STEWARD_TOKEN_KEY = "steward_session_token";
-const STEWARD_REFRESH_TOKEN_KEY = "steward_refresh_token";
-const STEWARD_SESSION_ENDPOINT = "/api/auth/steward-session";
 const ELIZA_CLOUD_COOKIE_HOSTS = new Set([
   "elizacloud.ai",
   "www.elizacloud.ai",
@@ -203,12 +206,7 @@ function tokenSecsRemaining(token: string): number | null {
  */
 export function clearStaleStewardSession(): void {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.removeItem(STEWARD_TOKEN_KEY);
-    localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
-  } catch {
-    // ignore
-  }
+  clearStoredStewardToken();
   // Server-side cookies (HttpOnly — JS can't touch them directly).
   clearServerStewardSessionCookies();
   // Notify any in-tab listeners; the "storage" event covers cross-tab.

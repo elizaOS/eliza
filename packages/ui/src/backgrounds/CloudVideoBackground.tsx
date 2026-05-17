@@ -1,14 +1,31 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
+import {
+  BRAND_PATHS,
+  CLOUD_VIDEO_VARIANTS,
+  type CloudVideoSpeed,
+} from "@elizaos/shared-brand";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export type CloudVideoBackgroundProps = {
   /** Path prefix where the optimized cloud video files are hosted. */
   basePath?: string;
   /** Playback speed variant. Slower variants are perceived as more cinematic. */
-  speed?: "1x" | "4x" | "8x";
-  /** When false, render the poster as a static background instead of decoding video. */
-  animated?: boolean;
-  /** Static image shown before the video can play. */
+  speed?: CloudVideoSpeed;
+  /** Static image shown before the video can play. Prefer WebP. */
   poster?: string;
+  /** Responsive poster candidates for the real image layer. */
+  posterSrcSet?: string;
+  /** Sizes descriptor for the poster image. */
+  posterSizes?: string;
+  /** Whether to add a high-priority image preload hint for the poster. */
+  preloadPoster?: boolean;
+  /** Whether to load and play the video layer. */
+  animated?: boolean;
   /** Optional dark/light overlay scrim over the video (0–1). */
   scrim?: number;
   /** Scrim color. Default black; switch to white over the blue/orange themes. */
@@ -20,33 +37,6 @@ export type CloudVideoBackgroundProps = {
   className?: string;
   style?: CSSProperties;
 };
-
-const SOURCE_SETS = {
-  "1x": [
-    { src: "clouds_1x_1080p.webm", type: "video/webm", minWidth: 1280 },
-    { src: "clouds_1x_1080p.mp4", type: "video/mp4", minWidth: 1280 },
-    { src: "clouds_1x_720p.webm", type: "video/webm", minWidth: 768 },
-    { src: "clouds_1x_720p.mp4", type: "video/mp4", minWidth: 768 },
-    { src: "clouds_1x_480p.webm", type: "video/webm" },
-    { src: "clouds_1x_480p.mp4", type: "video/mp4" },
-  ],
-  "4x": [
-    { src: "clouds_4x_1080p.webm", type: "video/webm", minWidth: 1280 },
-    { src: "clouds_4x_1080p.mp4", type: "video/mp4", minWidth: 1280 },
-    { src: "clouds_4x_720p.webm", type: "video/webm", minWidth: 768 },
-    { src: "clouds_4x_720p.mp4", type: "video/mp4", minWidth: 768 },
-    { src: "clouds_4x_480p.webm", type: "video/webm" },
-    { src: "clouds_4x_480p.mp4", type: "video/mp4" },
-  ],
-  "8x": [
-    { src: "clouds_8x_1080p.webm", type: "video/webm", minWidth: 1280 },
-    { src: "clouds_8x_1080p.mp4", type: "video/mp4", minWidth: 1280 },
-    { src: "clouds_8x_720p.webm", type: "video/webm", minWidth: 768 },
-    { src: "clouds_8x_720p.mp4", type: "video/mp4", minWidth: 768 },
-    { src: "clouds_8x_480p.webm", type: "video/webm" },
-    { src: "clouds_8x_480p.mp4", type: "video/mp4" },
-  ],
-} as const;
 
 /**
  * Full-bleed background that plays the optimized cloud loop video.
@@ -60,8 +50,11 @@ const SOURCE_SETS = {
 export function CloudVideoBackground({
   basePath = "/clouds",
   speed = "4x",
+  poster = BRAND_PATHS.poster,
+  posterSrcSet,
+  posterSizes = "100vw",
+  preloadPoster = true,
   animated = true,
-  poster,
   scrim = 0,
   scrimColor = "rgba(0, 0, 0, 1)",
   overlay,
@@ -70,30 +63,82 @@ export function CloudVideoBackground({
   style,
 }: CloudVideoBackgroundProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [loadVideo, setLoadVideo] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const base = basePath.replace(/\/$/, "");
+  const resolvedPosterSrcSet =
+    posterSrcSet ??
+    `${base}/poster-640.jpg 640w, ${base}/poster-960.jpg 960w`;
 
   useEffect(() => {
-    const v = videoRef.current;
-    if (!animated || !v) return;
+    if (!preloadPoster || typeof document === "undefined" || !poster) return;
+    const existing = document.head.querySelector<HTMLLinkElement>(
+      `link[rel="preload"][as="image"][href="${poster}"]`,
+    );
+    if (existing) return;
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.href = poster;
+    link.setAttribute("fetchpriority", "high");
+    if (resolvedPosterSrcSet) {
+      link.setAttribute("imagesrcset", resolvedPosterSrcSet);
+    }
+    if (posterSizes) {
+      link.setAttribute("imagesizes", posterSizes);
+    }
+    document.head.appendChild(link);
+    return () => {
+      link.remove();
+    };
+  }, [poster, posterSizes, preloadPoster, resolvedPosterSrcSet]);
+
+  useEffect(() => {
+    if (!animated) {
+      setLoadVideo(false);
+      setVideoReady(false);
+      videoRef.current?.pause();
+      return;
+    }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frame = 0;
     const apply = () => {
       if (reduced.matches) {
-        v.pause();
+        setLoadVideo(false);
+        setVideoReady(false);
+        videoRef.current?.pause();
       } else {
-        const p = v.play();
-        if (p && typeof (p as Promise<void>).catch === "function") {
-          (p as Promise<void>).catch(() => {
-            /* autoplay blocked; the poster will remain visible */
-          });
-        }
+        frame = window.requestAnimationFrame(() => setLoadVideo(true));
       }
     };
     apply();
     reduced.addEventListener("change", apply);
-    return () => reduced.removeEventListener("change", apply);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      reduced.removeEventListener("change", apply);
+    };
   }, [animated]);
 
-  const sources = SOURCE_SETS[speed];
-  const base = basePath.replace(/\/$/, "");
+  useEffect(() => {
+    setVideoReady(false);
+  }, [base, speed]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!loadVideo || !v) return;
+    try {
+      const p = v.play();
+      if (p && typeof (p as Promise<void>).catch === "function") {
+        (p as Promise<void>).catch(() => {
+          /* autoplay blocked; the poster image stays visible */
+        });
+      }
+    } catch {
+      /* jsdom and some browsers can reject media playback synchronously. */
+    }
+  }, [loadVideo]);
+
+  const sources = CLOUD_VIDEO_VARIANTS[speed];
 
   return (
     <div
@@ -105,17 +150,17 @@ export function CloudVideoBackground({
         ...style,
       }}
     >
-      {animated ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          poster={poster}
-          disableRemotePlayback
-          disablePictureInPicture
+      {poster ? (
+        <img
+          src={poster}
+          srcSet={resolvedPosterSrcSet}
+          sizes={posterSizes}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          fetchPriority="high"
+          draggable={false}
           style={{
             position: "absolute",
             inset: 0,
@@ -123,6 +168,31 @@ export function CloudVideoBackground({
             height: "100%",
             objectFit: "cover",
             zIndex: 0,
+          }}
+        />
+      ) : null}
+      {animated ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload={loadVideo ? "metadata" : "none"}
+          poster={poster}
+          disableRemotePlayback
+          disablePictureInPicture
+          onCanPlay={() => setVideoReady(true)}
+          onLoadedData={() => setVideoReady(true)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: videoReady ? 1 : 0,
+            transition: "opacity 700ms ease",
+            zIndex: 1,
           }}
         >
           {sources.map((s) => (
@@ -138,20 +208,6 @@ export function CloudVideoBackground({
             />
           ))}
         </video>
-      ) : poster ? (
-        <img
-          src={poster}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            zIndex: 0,
-          }}
-        />
       ) : null}
       {scrim > 0 ? (
         <div

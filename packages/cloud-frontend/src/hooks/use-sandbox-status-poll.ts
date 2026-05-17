@@ -188,7 +188,10 @@ export function useSandboxListPoll(
       if (!previousStatusesRef.current.has(sb.id)) {
         statusMap.set(sb.id, sb.status);
       } else {
-        statusMap.set(sb.id, previousStatusesRef.current.get(sb.id)!);
+        statusMap.set(
+          sb.id,
+          previousStatusesRef.current.get(sb.id) ?? sb.status,
+        );
       }
     }
     previousStatusesRef.current = statusMap;

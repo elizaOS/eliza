@@ -45,18 +45,15 @@ function ShaderPlane() {
     );
     mat.uniforms.uClickPos.value.copy(clickPos.current);
 
-    // Smooth the mouse position so it trails behind the cursor
     const prev = mouseSmooth.current.clone();
     mouseSmooth.current.lerp(mouseRaw.current, 0.08);
     mat.uniforms.uMouse.value.copy(mouseSmooth.current);
 
-    // Compute velocity from smoothed position delta
     const safeDelta = Math.max(delta, 0.001);
     mouseVel.current.set(
       (mouseSmooth.current.x - prev.x) / safeDelta,
       (mouseSmooth.current.y - prev.y) / safeDelta,
     );
-    // Smooth velocity so it doesn't jitter
     velSmooth.current.lerp(mouseVel.current, 0.1);
     mat.uniforms.uMouseVel.value.copy(velSmooth.current);
 

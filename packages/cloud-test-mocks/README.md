@@ -43,9 +43,23 @@ await mock.stop();
 - `MOCK_HETZNER_LATENCY=0` — disable simulated latency entirely.
 - `MOCK_HETZNER_ACTION_MS=<n>` — override the action lifecycle duration (default 2000ms; tests use 50ms).
 
-### Static catalog (Mockoon)
+## Mockoon environments
 
-`mockoon/hetzner-static.json` is a Mockoon v6 environment with stub responses
-for the read-only catalog endpoints (`/locations`, `/server_types`, `/images`,
-`/pricing`). Import it in Mockoon Desktop / CLI when you need a long-lived
-catalog mock alongside the stateful Hono mock.
+Stateless stub environments for read-only endpoints, suitable for designer
+workflows and quick demos that don't need the stateful Hono mocks running.
+
+- `mockoon/hetzner-static.json` — Hetzner read-only catalog (`/locations`,
+  `/server_types`, `/images`, `/pricing`).
+- `mockoon/control-plane-static.json` — Control-plane read-only endpoints:
+  `GET /api/v1/admin/warm-pool`, `GET /api/v1/admin/warm-pool/rollout-status`,
+  `GET /api/v1/admin/docker-nodes`,
+  `POST /api/v1/admin/docker-nodes/:id/health-check`,
+  `GET /api/v1/cron/deployment-monitor`, `GET /api/v1/cron/agent-hot-pool`,
+  `GET /api/v1/cron/node-autoscale`, `GET /api/compat/agents/:id`.
+
+Import either file in Mockoon Desktop, or run via Mockoon CLI:
+
+```bash
+mockoon-cli start --data mockoon/control-plane-static.json
+mockoon-cli start --data mockoon/hetzner-static.json
+```

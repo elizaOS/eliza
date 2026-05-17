@@ -214,7 +214,7 @@ export interface WalletPrimaryUpdateResponse {
 	warnings?: string[];
 }
 
-export type TradePermissionMode = 'user-sign-only' | 'manual-local-key' | 'agent-auto';
+export type TradePermissionMode = 'user-sign-only' | 'manual-local-key' | 'agent-auto' | 'disabled';
 
 export type BscTradeSide = 'buy' | 'sell';
 export type BscTradeRouteProvider = 'pancakeswap-v2' | '0x';

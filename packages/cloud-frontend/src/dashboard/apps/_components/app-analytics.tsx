@@ -1,5 +1,6 @@
 "use client";
 
+import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Button,
   DashboardStatCard,
@@ -295,6 +296,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             const Icon = tab.icon;
             return (
               <button
+                type="button"
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
                 className={cn(
@@ -519,8 +521,8 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                             paddingAngle={2}
                             dataKey="value"
                           >
-                            {sourceData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            {sourceData.map((entry) => (
+                              <Cell key={entry.color} fill={entry.color} />
                             ))}
                           </Pie>
                         </PieChart>
@@ -575,7 +577,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                                 <div
                                   className="h-full rounded-full"
                                   style={{
-                                    width: `${(count / requestStats.totalRequests) * 100}%`,
+                                    width: `${toRatePercent(count, requestStats.totalRequests)}%`,
                                     backgroundColor:
                                       TYPE_COLORS[type] || "#FF5800",
                                   }}

@@ -1403,14 +1403,14 @@ export function App() {
   // view for each coordinator phase: loading, pairing, onboarding, or error).
   if (startupCoordinator.phase !== "ready" || !onboardingComplete) {
     // Pre-agent / home-screen surface: ORANGE theme over CLOUDS, BLACK text per
-    // brand. Keep this static until the app is ready; WebKitGTK video decode can
-    // starve startup polling on lower-power integrated GPUs.
+    // brand. xs corners. The CloudVideoBackground itself handles
+    // prefers-reduced-motion (pauses video, leaves poster). No glass overlay.
     return (
       <BugReportProvider value={bugReport}>
         <CloudVideoBackground
           speed="8x"
           basePath="/clouds"
-          poster="/clouds/poster.jpg"
+          poster="/clouds/poster-960.jpg"
           animated={false}
           scrim={0.05}
           style={{ minHeight: "100vh" }}

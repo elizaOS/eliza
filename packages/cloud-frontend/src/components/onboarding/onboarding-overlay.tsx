@@ -174,14 +174,13 @@ export function OnboardingOverlay() {
   return createPortal(
     <div className="fixed inset-0 z-[9999] pointer-events-none">
       {/* Backdrop with spotlight cutout */}
-      <div
-        className="absolute inset-0 bg-black/70 pointer-events-auto transition-all duration-300"
+      <button
+        type="button"
+        aria-label="Skip tour"
+        className="absolute inset-0 bg-black/70 pointer-events-auto transition-all duration-300 cursor-default"
         style={{ clipPath }}
         onClick={skipTour}
         onKeyDown={(e) => e.key === "Escape" && skipTour()}
-        role="button"
-        tabIndex={0}
-        aria-label="Skip tour"
       />
 
       {/* Clickable highlight area - clicking advances the tour */}

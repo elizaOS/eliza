@@ -23,8 +23,8 @@ export { ConversationsSidebar } from "./components/conversations/ConversationsSi
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 export { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 export { AppsPageView } from "./components/pages/AppsPageView";
-export { AutomationsFeed } from "./components/pages/AutomationsFeed";
-export { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
+// AutomationsFeed, BrowserWorkspaceView removed: App.tsx lazy-loads them and
+// re-exporting from a barrel folds the lazy boundary back into main.
 export { ChatView } from "./components/pages/ChatView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
 export { DocumentsView } from "./components/pages/DocumentsView";
@@ -37,12 +37,11 @@ export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";
 export { RelationshipsView } from "./components/pages/RelationshipsView";
 export { RuntimeView } from "./components/pages/RuntimeView";
-export { SettingsView } from "./components/pages/SettingsView";
+// SettingsView, StreamView removed: App.tsx lazy-loads them.
 export { SkillsView } from "./components/pages/SkillsView";
-export { StreamView } from "./components/pages/StreamView";
 export { TasksPageView } from "./components/pages/TasksPageView";
 export { TrajectoriesView } from "./components/pages/TrajectoriesView";
-export { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
+// DesktopWorkspaceSection removed: App.tsx lazy-loads it.
 export { BugReportModal } from "./components/shell/BugReportModal";
 export { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 export { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";

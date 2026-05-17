@@ -178,7 +178,7 @@ img {
   color: var(--brand-white);
 }
 
-.cloud-video,
+.cloud-background,
 .cloud-scrim {
   position: absolute;
   inset: 0;
@@ -186,11 +186,12 @@ img {
   height: 100%;
 }
 
-.cloud-video {
-  object-fit: cover;
+.cloud-background {
+  z-index: 0;
 }
 
 .cloud-scrim {
+  z-index: 2;
   background:
     linear-gradient(
       90deg,
@@ -203,7 +204,7 @@ img {
 
 .hero-cloud-inner {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   max-width: 56rem;
 }
 

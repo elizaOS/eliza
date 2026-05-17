@@ -141,13 +141,11 @@ function iMessageBubble(
   flatBR = false,
   flatBL = false,
 ) {
-  // Draw rounded rect body
   roundRect(ctx, x, y, w, h, r, r, flatBR ? 0 : r, flatBL ? 0 : r);
   ctx.fill();
 
   if (noTail) return;
 
-  // Draw tail as separate shape overlapping the corner
   const ts = tailShift;
   ctx.beginPath();
   if (isUser) {
@@ -204,7 +202,6 @@ function get2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return ctx;
 }
 
-/** Returns the height of a message bubble in unscaled pixels (divide by SCALE not needed — already in logical px). */
 export function measureBubbleHeight(text: string): number {
   const canvas = document.createElement("canvas");
   const ctx = get2dContext(canvas);
@@ -414,7 +411,6 @@ function renderLoginCard(
   drawStatusBar(ctx);
   drawBackButton(ctx, "Home");
 
-  // Title text just below the back button
   const textY = s(59) + s(15) + s(20) + s(60);
   ctx.fillStyle = "#000";
   ctx.font = `600 ${s(22)}px "Open Sans", Arial, system-ui, sans-serif`;
@@ -422,7 +418,6 @@ function renderLoginCard(
   ctx.textBaseline = "top";
   ctx.fillText(title, W / 2, textY);
 
-  // Subtitle below title
   if (subtitle) {
     ctx.fillStyle = "#8e8e93";
     ctx.font = `400 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
@@ -471,13 +466,10 @@ export function renderChatToCanvas(
   canvas.height = H;
   const ctx = get2dContext(canvas);
 
-  // Enable subpixel antialiasing
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  // ── App switcher mode ──
   if (switcherProgress > 0) {
-    // Wallpaper background
     if (wallpaperImg?.complete && wallpaperImg.naturalWidth > 0) {
       ctx.drawImage(wallpaperImg, 0, 0, W, H);
     } else {
@@ -485,8 +477,7 @@ export function renderChatToCanvas(
       ctx.fillRect(0, 0, W, H);
     }
 
-    // Shared values
-    const contentScale = 1 - 0.25 * switcherProgress; // 1 → 0.75
+    const contentScale = 1 - 0.25 * switcherProgress;
     const shiftX = (60 / 100) * W * switcherShiftProgress;
     const finalShiftX = (60 / 100) * W * switcherFinalProgress;
     const cardR = s(60);
@@ -496,7 +487,6 @@ export function renderChatToCanvas(
       leftCardX - W / 2 + (W / 2 - leftCardX) * switcherShiftProgress;
     const leftScale = contentScale + (1 - contentScale) * switcherFinalProgress;
 
-    // Render both card canvases
     const chatCanvas = renderChatContent(
       visibleCount,
       avatarImg,
@@ -509,7 +499,6 @@ export function renderChatToCanvas(
     const leftContent = switcherReversed ? chatCanvas : loginCanvas;
     const frontContent = switcherReversed ? loginCanvas : chatCanvas;
 
-    // ── Left card (behind): login when opening, chat when closing ──
     ctx.save();
     ctx.globalAlpha = switcherProgress;
     ctx.translate(leftShiftX, 0);
@@ -521,8 +510,6 @@ export function renderChatToCanvas(
     ctx.drawImage(leftContent, 0, 0, W, H);
     ctx.restore();
 
-    // ── Front card (on top): chat when opening, login when closing ──
-    // Shadow
     ctx.save();
     ctx.translate(shiftX + finalShiftX, 0);
     ctx.translate(W / 2, H / 2);
@@ -551,7 +538,6 @@ export function renderChatToCanvas(
     return canvas;
   }
 
-  // ── Background with rounded corners ──
   const screenR = s(60);
   ctx.save();
   roundRect(ctx, 0, 0, W, H, screenR, screenR, screenR, screenR);
@@ -568,7 +554,6 @@ export function renderChatToCanvas(
     ctx.fillRect(0, 0, W, H);
   }
 
-  // ── Dynamic Island / notch area (top padding) ──
   const topInset = s(59);
   const now = new Date();
   const statusTime = now.toLocaleTimeString([], {
@@ -576,20 +561,17 @@ export function renderChatToCanvas(
     minute: "2-digit",
   });
 
-  // ── Compute positions ──
   const navY = topInset;
   const contactY = navY + s(40);
   const sepY = contactY + s(90);
   const scrollOffset = s(scrollY);
   const headerShift = Math.min(scrollOffset * 0.15, s(40));
 
-  // ── Scrollable content (date + messages) — clipped below header ──
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, W, H);
   ctx.clip();
 
-  // ── Date (appears with first message) ──
   if (visibleCount >= 1) {
     const dateProgress =
       visibleCount === 1 && lastMsgProgress < 1 ? lastMsgProgress : 1;
@@ -638,7 +620,6 @@ export function renderChatToCanvas(
     ctx.restore();
   }
 
-  // ── Messages ──
   const isTGMsg = currentRenderPlatform === "telegram";
   let msgY = sepY + s(32) - scrollOffset - (isTGMsg ? s(60) : 0);
   const msgFontSize = s(16);
@@ -682,7 +663,6 @@ export function renderChatToCanvas(
     const bubbleH = textBlockH + padY * 2;
     const bubbleX = isUser ? W - marginX - bubbleW : marginX;
 
-    // iMessage slide-up + scale animation for newest message
     const slideOffset = isLast ? s(30) * (1 - lastMsgProgress) : 0;
     const scale = isLast ? 0.7 + 0.3 * lastMsgProgress : 1;
     const alpha = isLast ? lastMsgProgress : 1;
@@ -697,7 +677,6 @@ export function renderChatToCanvas(
       ctx.translate(-ox, -oy);
     }
 
-    // Subtle shadow for depth
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.06)";
     ctx.shadowBlur = s(4);
@@ -725,7 +704,6 @@ export function renderChatToCanvas(
     );
     ctx.restore();
 
-    // Text — thinner weight on blue to match visual weight of black-on-grey
     ctx.fillStyle = isUser ? (isTG ? "#000000" : "#ffffff") : "#000000";
     ctx.font =
       isUser && !isTG
@@ -744,14 +722,12 @@ export function renderChatToCanvas(
     msgY += bubbleH + s(10);
   }
 
-  // ── Extra messages (user-sent and bot responses) ──
   for (let e = 0; e < extraMessages.length; e++) {
     const extra = extraMessages[e];
     const isUser = extra.from === "user";
     const isLast = e === extraMessages.length - 1 && extra.progress < 1;
 
     if (extra.typing) {
-      // ── Typing indicator (three dots in gray bubble) ──
       const typingW = s(75);
       const typingH = s(40);
       const typingX = marginX;
@@ -814,7 +790,6 @@ export function renderChatToCanvas(
       ctx.restore();
       msgY += typingH + s(10);
     } else {
-      // ── Text message (user or bot) ──
       ctx.font = msgFont;
 
       const words = extra.text.split(" ");
@@ -945,14 +920,12 @@ export function renderChatToCanvas(
     ctx.fillText("Log In", s(36), chevCy + s(2));
     ctx.textBaseline = "alphabetic";
 
-    // Centered name "Eliza"
     ctx.fillStyle = "#000";
     ctx.font = `700 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("Eliza", W / 2, chevCy - s(12));
 
-    // "online" subtitle centered (blue)
     ctx.fillStyle = "#007AFF";
     ctx.font = `400 ${s(13)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.textAlign = "center";
@@ -961,7 +934,6 @@ export function renderChatToCanvas(
     ctx.textBaseline = "alphabetic";
     ctx.textAlign = "left";
 
-    // Avatar circle (right side)
     const tgAvatarR = s(20);
     const tgAvatarCx = W - s(36);
     const tgAvatarCy = chevCy;
@@ -991,8 +963,6 @@ export function renderChatToCanvas(
     }
     ctx.restore();
   } else {
-    // ── iMessage-style header ──
-    // Back button — pill with chevron + "Log In"
     const backBtnFont = `700 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
     ctx.font = backBtnFont;
     const backLabel = "Log In";
@@ -1016,7 +986,6 @@ export function renderChatToCanvas(
     ctx.fill();
     ctx.restore();
 
-    // Chevron
     const chevronCx = backX + backPadL;
     ctx.strokeStyle = "#3c3c43";
     ctx.lineWidth = s(2.2);
@@ -1030,7 +999,6 @@ export function renderChatToCanvas(
     ctx.lineCap = "butt";
     ctx.lineJoin = "miter";
 
-    // Label
     ctx.fillStyle = "#3c3c43";
     ctx.font = backBtnFont;
     ctx.textAlign = "left";
@@ -1038,7 +1006,6 @@ export function renderChatToCanvas(
     ctx.fillText(backLabel, chevronCx + backChevronW + backGap, backCy);
     ctx.textBaseline = "alphabetic";
 
-    // Video button — circle with camera icon
     const vidCx = W - s(37);
     const vidCy = backCy;
     const vidR = s(20);
@@ -1070,12 +1037,10 @@ export function renderChatToCanvas(
     ctx.lineCap = "butt";
     ctx.lineJoin = "miter";
 
-    // ── Contact area ──
     const avatarCx = W / 2;
     const avatarCy = contactY + s(26) + s(contentYOffset) - headerShift;
     const avatarR = s(26);
 
-    // Name with background pill and shadow
     ctx.font = `800 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
     const nameText = "Eliza";
     const nameTextW = ctx.measureText(nameText).width;
@@ -1103,7 +1068,6 @@ export function renderChatToCanvas(
     ctx.textAlign = "center";
     ctx.fillText(nameText, textCenterX, nameY + nameH / 2 + s(5.5));
 
-    // Small chevron arrow after name
     if (arrowProgress > 0) {
       const arrowX = textCenterX + nameTextW / 2 + s(8);
       const arrowY = nameY + nameH / 2;
@@ -1121,7 +1085,6 @@ export function renderChatToCanvas(
       ctx.restore();
     }
 
-    // Avatar circle with image
     ctx.save();
     ctx.beginPath();
     ctx.arc(avatarCx, avatarCy, avatarR, 0, Math.PI * 2);
@@ -1149,8 +1112,6 @@ export function renderChatToCanvas(
     ctx.restore();
   }
 
-  // ── Bottom input bar ──
-  // Separator
   ctx.strokeStyle = "#e5e5ea";
   ctx.lineWidth = s(0.5);
   ctx.beginPath();
@@ -1160,7 +1121,6 @@ export function renderChatToCanvas(
 
   const inputBarY = H - s(50);
 
-  // Plus circle button
   ctx.fillStyle = "#007AFF";
   ctx.beginPath();
   ctx.arc(s(26), inputBarY + s(18), s(15), 0, Math.PI * 2);
@@ -1176,7 +1136,6 @@ export function renderChatToCanvas(
   ctx.stroke();
   ctx.lineCap = "butt";
 
-  // Input field
   const inputX = s(52);
   const inputW = W - s(64);
   const inputH = s(36);
@@ -1191,7 +1150,6 @@ export function renderChatToCanvas(
   ctx.textAlign = "left";
   ctx.fillText("iMessage", inputX + s(16), inputFieldY + s(23));
 
-  // Home indicator
   ctx.fillStyle = "#000";
   const indW = s(134);
   roundRect(

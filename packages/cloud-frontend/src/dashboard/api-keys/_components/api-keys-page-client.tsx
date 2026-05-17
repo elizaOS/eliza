@@ -19,6 +19,8 @@ import {
   AlertDialogHeader as AlertDialogHeaderComp,
   AlertDialogTitle as AlertDialogTitleComp,
   ApiKeyEmptyState,
+  ApiKeysSummary,
+  ApiKeysTable,
   BrandButton,
   DashboardPageContainer,
   Dialog,
@@ -44,8 +46,6 @@ import {
   copyApiKeyToClipboard,
   getClientApiKeySecret,
 } from "@/lib/client/api-keys";
-import { ApiKeysSummary } from "./api-keys-summary";
-import { ApiKeysTable } from "./api-keys-table";
 import type { ApiKeyDisplay, ApiKeysSummaryData } from "./types";
 
 interface ApiKeysPageClientProps {
@@ -337,9 +337,9 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
             </div>
 
             <div className="grid gap-2">
-              <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
+              <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
                 Permissions
-              </label>
+              </p>
               <div className="grid gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
                 {permissionGroups.map((group) => (
                   <div key={group.title} className="space-y-2">
@@ -377,9 +377,9 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
             </div>
 
             <div className="grid gap-2">
-              <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
+              <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
                 Rate limit
-              </label>
+              </p>
               <Select
                 value={rateLimitPreset}
                 onValueChange={(value) =>
@@ -465,17 +465,17 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid gap-2">
-                <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
+                <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
                   Key name
-                </label>
+                </p>
                 <div className="font-mono text-sm font-semibold text-white">
                   {createdKey.name}
                 </div>
               </div>
               <div className="grid gap-2">
-                <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
+                <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
                   API Key
-                </label>
+                </p>
                 <div className="flex gap-2">
                   <Input
                     value={createdKey.plainKey}

@@ -64,7 +64,7 @@ describe("App pre-agent cloud wiring", () => {
       <CloudVideoBackground
         speed="8x"
         basePath="/clouds"
-        poster="/clouds/poster.jpg"
+        poster="/clouds/poster-960.jpg"
         scrim={0.05}
       >
         <div data-testid="welcome">welcome</div>
@@ -73,7 +73,10 @@ describe("App pre-agent cloud wiring", () => {
 
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
-    expect(video?.getAttribute("poster")).toBe("/clouds/poster.jpg");
+    expect(video?.getAttribute("poster")).toBe("/clouds/poster-960.jpg");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "/clouds/poster-960.jpg",
+    );
 
     const sources = container.querySelectorAll("video > source");
     expect(sources.length).toBeGreaterThan(0);

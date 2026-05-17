@@ -28,6 +28,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import dotenv from "dotenv";
+import { warnMissingUpstash as warnMissingUpstashImpl } from "./bootstrap-warn-missing-upstash.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const cloudRoot = resolve(scriptDir, "..", "..");
@@ -196,22 +197,7 @@ function validateRuntimeEnv(env) {
  * but the operator must opt-in to that silent path.
  */
 function warnMissingUpstash(env) {
-  const missing = ["KV_REST_API_URL", "KV_REST_API_TOKEN"].filter(
-    (key) => !env[key]?.trim(),
-  );
-  if (missing.length === 0) return;
-  process.stderr.write(
-    [
-      "",
-      "[bootstrap-provisioning-worker-host] WARNING:",
-      `  Runtime env is missing ${missing.join(" + ")}.`,
-      "  Sandboxes provisioned by this worker will not self-register in Upstash,",
-      "  so the shared gateways cannot route inbound Discord / WhatsApp /",
-      "  Telegram / SMS messages to them.",
-      "  Add both keys to the env file and re-run if platform routing is needed.",
-      "",
-    ].join("\n"),
-  );
+  return warnMissingUpstashImpl(env, (s) => process.stderr.write(s));
 }
 
 function ensureSshKey() {

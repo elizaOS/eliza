@@ -1,30 +1,125 @@
 <div align="center">
   <img src="packages/shared-brand/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
+  <h1>elizaOS</h1>
+  <p><strong>An open-source framework for building autonomous AI agents.</strong></p>
 </div>
 
-# elizaOS
+## ✨ What is Eliza?
 
-**elizaOS** is an agentic operating system built on Linux and Android Open Source Project (AOSP). Also available as an app for Mac, Windows, Linux, iOS and Android.
+elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, Eliza provides the tools you need to get started quickly and scale effectively.
 
-## See it live
+It combines a modular architecture, a powerful CLI, and a rich web interface to give you full control over your agents' development, deployment, and management lifecycle.
 
-- elizaos.ai
-- elizacloud.ai
-- eliza.app
+For complete guides and API references, visit our official **[documentation](https://docs.elizaos.ai/)**.
 
-## Agent Quickstart
+## 🚀 Key Features
 
-```bash
-bun install            # workspace install
-bun run dev            # API + Vite UI for apps/app
-bun run build          # turbo build across the workspace
-bun run lint           # turbo lint across the workspace
-bun run test           # full test suite (packages/scripts/run-all-tests.mjs)
+- 🔌 **Rich Connectivity**: Out-of-the-box connectors for Discord, Telegram, Farcaster, and more.
+- 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, and Grok.
+- 🖥️ **Modern Web UI**: A professional dashboard for managing agents, groups, and conversations in real-time.
+- 🤖 **Multi-Agent Architecture**: Designed from the ground up for creating and orchestrating groups of specialized agents.
+- 📄 **Document Ingestion**: Easily ingest documents and allow agents to retrieve information and answer questions from your data (RAG).
+- 🛠️ **Highly Extensible**: Build your own functionality with a powerful plugin system.
+- 📦 **It Just Works**: A seamless setup and development experience from day one.
+
+> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
+
+## Framework, Projects, And App Plugins
+
+elizaOS is a framework plus packages built on top of it. Knowing which layer
+you're working with keeps projects, plugins, and app surfaces from getting
+mixed together.
+
+**The framework** is the runtime: `@elizaos/core`, the agent loop, the plugin model (actions, providers, services), the message/memory/state primitives, and the model-agnostic LLM layer. If you depend on `@elizaos/core` from your own code, you are using the framework.
+
+**A project** is a deployable product workspace built on the framework. A
+generated project owns its branded app shell, usually under `apps/app` inside
+that project workspace.
+
+**An app plugin** is a runtime plugin that also contributes an app surface inside
+Eliza. First-party app plugins live under [`plugins/app-*`](plugins), keep npm
+names like `@elizaos/plugin-companion`, and are loaded by package name. They are
+plugins, not top-level repo applications.
+
+The same split shows up in the directory tree:
+
+```
+packages/        ← framework and shared packages
+  core/          # @elizaos/core — runtime, types, agent loop
+  agent/         # @elizaos/agent — AgentRuntime + plugin loader
+  app-core/      # API + dashboard host
+  elizaos/       # the `elizaos` CLI
+  prompts/       # shared prompt scaffolding
+  ui/            # shared React component library
+  examples/      # standalone examples (chat, discord, mcp, ...)
+  benchmarks/    # evaluation suites (gaia, swe_bench, tau-bench, ...)
+
+plugins/         ← runtime plugins and app plugins
+  app-companion/ app-browser/ app-documents/ app-phone/
+  app-task-coordinator/ app-training/ plugin-form/ ...
+  plugin-discord/ plugin-openai/ plugin-sql/ ...
+
+packages/elizaos/templates/   ← CLI scaffolds + min-project / min-plugin for APP/PLUGIN create
 ```
 
-## You can whitelabel this
+A _plugin_ sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are listed at [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
 
-elizaOS is designed to power your app or operating system. While you can fork this repo, we've tried to make it easy for you to build your own agent and application at any level of the stack-- use the low level @elizaos/core framework, or power your backend with @elizaos/agent. Or build an entire application or operating system. It's all here, and we're happy to share it with you.
+## Pick your starting point
+
+| You want to…                                                  | Start here                                    |
+| ------------------------------------------------------------- | --------------------------------------------- |
+| Try an agent in 5 minutes                                     | [CLI quick start](#cli-quick-start)           |
+| Use the runtime from your own TypeScript code (no CLI, no UI) | [Standalone usage](#standalone-usage)         |
+| Build a new deployable product                                | [Create a new project](#create-a-new-project) |
+| Build a runtime plugin (action / provider / service)          | [Create a new plugin](#create-a-new-plugin)   |
+| See how others did it                                         | [Examples](#examples)                         |
+| Evaluate or benchmark an agent                                | [Benchmarks](#benchmarks)                     |
+| Read the docs                                                 | [docs.elizaos.ai](https://docs.elizaos.ai/)   |
+
+## CLI quick start
+
+**Prerequisites:** [Node.js v24+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
+
+```bash
+bun add -g elizaos
+elizaos create my-first-agent --template project
+cd my-first-agent
+# add OPENAI_API_KEY=... to .env (or your provider's key)
+bun install
+bun run dev
+```
+
+The generated project exposes the runtime scripts you'll use day-to-day: `bun run dev`, `bun run build`, `bun run test`, `bun run typecheck`, `bun run lint`, `bun run verify`. The `elizaos` CLI itself is intentionally minimal — its job is scaffolding (`elizaos create`) and template upgrades (`elizaos upgrade`). For a list of available templates, run `elizaos info`.
+
+Full reference: `elizaos --help` or `elizaos <command> --help`.
+
+## Local mock stack
+
+One command boots the full local cloud stack with mocks (Hetzner + control-plane + cloud-api with `MOCK_REDIS` + PGlite, plus cloud-frontend):
+
+```bash
+bun run cloud:mock          # boot with existing PGlite data
+bun run cloud:mock:fresh    # wipe PGlite + re-run migrations first
+```
+
+Ports are auto-picked and printed in a ready banner; logs stream to `./.logs/<service>.log`. Pass `--help` to `bun scripts/cloud/mock-stack-up.mjs` for flags (skip individual services, pin ports, etc.). Ctrl+C tears the stack down in reverse order.
+
+## Standalone usage
+
+Use `@elizaos/core` directly — no CLI, no dashboard, just the runtime in your code.
+
+```bash
+git clone --filter=blob:none https://github.com/elizaos/eliza.git
+cd eliza
+bun install
+
+# Interactive REPL against a real agent
+OPENAI_API_KEY=your_key bun run packages/examples/chat/chat.ts
+```
+
+Nearly every surface has a working example in [`packages/examples/`](packages/examples) — 30+ in total. Each one has its own README and runs independently. They are the fastest way to see the framework standing on its own. See [Examples](#examples) below for the highlights.
+
+> **About the partial clone.** `--filter=blob:none` gives you the full history but fetches file contents on demand — about 10× smaller. `git log`, branches, and `git checkout` work normally; `git blame` and `git log -p` will fetch on first use. To upgrade later: `git config --unset remote.origin.partialclonefilter && git fetch --refetch`. For one-off CI, `--depth=1 --single-branch` is even smaller.
 
 ## Create a new project
 
@@ -100,6 +195,16 @@ Once typecheck, lint, and tests pass, publish to npm. Community plugins are list
 | elizaOS-specific   | [`app-eval`](packages/benchmarks/app-eval), [`configbench`](packages/benchmarks/configbench), [`context-bench`](packages/benchmarks/context-bench), [`framework`](packages/benchmarks/framework), [`orchestrator`](packages/benchmarks/orchestrator), [`orchestrator_lifecycle`](packages/benchmarks/orchestrator_lifecycle) |
 
 The runbook for orchestrator-driven benchmark runs is [`packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md). The Eliza adapter that lets a benchmark drive an Eliza agent lives at [`packages/benchmarks/eliza-adapter`](packages/benchmarks/eliza-adapter). A combined results viewer is at [`packages/benchmarks/viewer`](packages/benchmarks/viewer).
+
+## Working in the monorepo
+
+```bash
+bun install            # workspace install
+bun run dev            # API + Vite UI for apps/app
+bun run build          # turbo build across the workspace
+bun run lint           # turbo lint across the workspace
+bun run test           # full test suite (packages/scripts/run-all-tests.mjs)
+```
 
 Key framework packages:
 

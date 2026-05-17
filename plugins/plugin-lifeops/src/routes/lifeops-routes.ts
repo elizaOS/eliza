@@ -1,9 +1,9 @@
 import type http from "node:http";
 import {
   checkRateLimit,
+  createIntegrationTelemetrySpan,
   type RateLimitConfig,
-} from "@elizaos/agent/api/rate-limiter";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+} from "@elizaos/agent";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {

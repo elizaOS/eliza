@@ -15,13 +15,14 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds"
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x"
   },
   "dependencies": {
     "@elizaos/checkout-shared": "workspace:*",
     "@elizaos/hardware-catalog": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",
+    "@elizaos/steward-session-client": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/open-sans": "^5.2.7",
     "@fontsource/poppins": "^5.2.7",

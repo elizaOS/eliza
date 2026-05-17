@@ -360,7 +360,7 @@ function processSSEMessage(
       break;
     }
     default:
-      console.debug(`[Stream] Unhandled event type: ${eventType}`, data);
+      break;
   }
 }
 

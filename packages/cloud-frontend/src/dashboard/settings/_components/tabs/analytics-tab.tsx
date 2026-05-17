@@ -8,6 +8,7 @@
 
 "use client";
 
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   BrandCard,
   CornerBrackets,
@@ -44,7 +45,7 @@ interface AnalyticsData {
   periodEnd: string;
 }
 
-export function AnalyticsTab({ user }: AnalyticsTabProps) {
+export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
   const [cadence, setCadence] = useState<Cadence>("day");
   const [timeRange, setTimeRange] = useState<TimeRange>("7days");
   const [focusMetric, setFocusMetric] = useState<FocusMetric>("requests");
@@ -258,7 +259,7 @@ export function AnalyticsTab({ user }: AnalyticsTabProps) {
             <>
               <p className="text-xl md:text-2xl font-mono text-white tracking-tight">
                 {analyticsData?.successRate !== undefined
-                  ? (analyticsData.successRate * 100).toFixed(1)
+                  ? toSuccessRatePercent(analyticsData.successRate).toFixed(1)
                   : "0.0"}
                 %
               </p>

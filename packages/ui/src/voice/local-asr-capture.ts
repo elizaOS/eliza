@@ -3,11 +3,6 @@ export interface LocalAsrRecorder {
   cancel(): void;
 }
 
-export interface PcmAudioStats {
-  rms: number;
-  peak: number;
-}
-
 type AudioContextConstructor = typeof AudioContext;
 
 type WindowWithAudioContext = Window & {
@@ -51,25 +46,32 @@ function clampPcm16(value: number): number {
   return Math.max(-1, Math.min(1, value));
 }
 
+export type PcmAudioStats = {
+  rms: number;
+  peak: number;
+};
+
 export function measurePcmAudio(pcm: Float32Array): PcmAudioStats {
+  if (pcm.length === 0) return { rms: 0, peak: 0 };
+
   let sumSquares = 0;
   let peak = 0;
+
   for (const sample of pcm) {
-    if (!Number.isFinite(sample)) continue;
-    const abs = Math.abs(sample);
-    peak = Math.max(peak, abs);
-    sumSquares += sample * sample;
+    const value = Number.isFinite(sample) ? sample : 0;
+    const abs = Math.abs(value);
+    sumSquares += value * value;
+    if (abs > peak) peak = abs;
   }
 
   return {
-    rms: Math.sqrt(sumSquares / Math.max(1, pcm.length)),
+    rms: Math.sqrt(sumSquares / pcm.length),
     peak,
   };
 }
 
 export function isSilentPcmAudio(pcm: Float32Array): boolean {
-  const { rms, peak } = measurePcmAudio(pcm);
-  return peak < 0.0001 && rms < 0.00001;
+  return measurePcmAudio(pcm).peak < 0.0005;
 }
 
 export function encodeMonoPcm16Wav(
@@ -180,11 +182,6 @@ export async function startLocalAsrRecorder(): Promise<LocalAsrRecorder> {
       const pcm = concatPcm(chunks);
       if (pcm.length === 0) {
         throw new Error("No microphone audio was captured for local ASR");
-      }
-      if (isSilentPcmAudio(pcm)) {
-        throw new Error(
-          "Microphone audio was silent; check the selected input device and try again",
-        );
       }
       return encodeMonoPcm16Wav(pcm, sampleRate);
     },

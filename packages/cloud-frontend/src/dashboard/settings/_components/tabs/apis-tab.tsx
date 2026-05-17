@@ -59,7 +59,7 @@ interface FormState {
   description: string;
 }
 
-export function ApisTab({ user }: ApisTabProps) {
+export function ApisTab({ user: _user }: ApisTabProps) {
   const [apiKeys, setApiKeys] = useState<ClientApiKey[]>([]);
 
   const [modalState, setModalState] = useState<ModalState>({

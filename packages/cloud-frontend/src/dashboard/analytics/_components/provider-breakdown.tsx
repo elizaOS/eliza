@@ -8,6 +8,7 @@
 
 "use client";
 
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Badge,
   Card,
@@ -91,7 +92,8 @@ export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
                       {numberFormatter.format(provider.totalTokens)} tokens
                     </span>
                     <span className="text-green-600 dark:text-green-400">
-                      {(provider.successRate * 100).toFixed(1)}% success
+                      {toSuccessRatePercent(provider.successRate).toFixed(1)}%
+                      success
                     </span>
                   </div>
                 </div>

@@ -4,6 +4,7 @@ import type {
 	ContextGate,
 	RoleGate,
 } from "./contexts";
+import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type { Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -405,13 +406,11 @@ export interface Action {
 	 * tool calls.
 	 */
 	connectorAccountPolicy?:
-		| import("../connectors/account-manager").ConnectorAccountPolicy
-		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
+		| ConnectorAccountPolicy
+		| readonly ConnectorAccountPolicy[];
 
 	/** Compatibility alias for early adopters of connectorAccountPolicy. */
-	accountPolicy?:
-		| import("../connectors/account-manager").ConnectorAccountPolicy
-		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
+	accountPolicy?: ConnectorAccountPolicy | readonly ConnectorAccountPolicy[];
 
 	/** Child tool/action names or inline definitions exposed beneath this action. */
 	subActions?: Array<string | Action>;

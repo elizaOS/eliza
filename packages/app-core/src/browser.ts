@@ -1,5 +1,5 @@
 export { resolveAppBranding } from "@elizaos/shared";
-export * from "@elizaos/ui";
+export * from "@elizaos/ui/browser";
 export {
   client,
   type AppRunSummary,

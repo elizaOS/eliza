@@ -16,13 +16,14 @@
  * instead of crashing the process.
  */
 
-import path from "node:path";
 import {
 	logger,
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared";
+import path from "node:path";
+import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
@@ -47,12 +48,7 @@ import {
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 } from "./dflash-server";
-import {
-	getDflashDrafterBlockReason,
-	getDflashTargetMetaBlockReason,
-} from "./dflash-target-meta";
 import type { LocalUsageBlock } from "./llama-server-metrics";
-import type { LocalInferenceLoadArgs } from "./load-args";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import {
@@ -102,7 +98,7 @@ import type {
 	VerifierStreamEvent,
 } from "./voice/types";
 
-export { getDflashTargetMetaBlockReason };
+export { getDflashTargetMetaBlockReason } from "./dflash-target-meta";
 
 /**
  * Default DFlash draft window per round for voice turns. Small (≤8) so a
@@ -831,7 +827,6 @@ export class LocalInferenceEngine {
 	 * a hard error.
 	 */
 	private voiceBridge: EngineVoiceBridge | null = null;
-	private voiceBridgeActiveBundleRoot: string | null = null;
 	private voiceReadyPromise: Promise<EngineVoiceBridge> | null = null;
 
 	/**
@@ -1073,27 +1068,20 @@ export class LocalInferenceEngine {
 			this.embeddingServer = null;
 		}
 		this.activeEliza1Bundle = null;
-		await this.disposeVoiceBridge();
-		await this.dispatcher.unload();
-	}
-
-	private async disposeVoiceBridge(
-		bridge: EngineVoiceBridge | null = this.voiceBridge,
-	): Promise<void> {
-		if (!bridge) return;
-		// Drop voice resources before tearing down or switching text. Disarm is
-		// a no-op when the lifecycle is already in voice-off, so this is safe
-		// even if the caller never explicitly armed voice.
-		try {
-			await bridge.disarm();
-			await bridge.settle();
-		} finally {
-			bridge.dispose();
-			if (this.voiceBridge === bridge) {
-				this.voiceBridge = null;
-				this.voiceBridgeActiveBundleRoot = null;
+		const bridge = this.voiceBridge;
+		if (bridge) {
+			// Drop voice resources before tearing down text. Disarm is a
+			// no-op when the lifecycle is already in voice-off, so this is
+			// safe even if the caller never called startVoice().
+			try {
+				await bridge.disarm();
+				await bridge.settle();
+			} finally {
+				bridge.dispose();
+				if (this.voiceBridge === bridge) this.voiceBridge = null;
 			}
 		}
+		await this.dispatcher.unload();
 	}
 
 	async load(
@@ -1109,15 +1097,7 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it (the local embedding handler then falls
 		// through to the operator-configured provider).
-		const nextActiveBundle = resolveActiveEliza1Bundle(target, catalog);
-		const nextVoiceRoot = nextActiveBundle?.root ?? null;
-		const currentVoiceRoot = this.voiceBridge
-			? this.voiceBridgeActiveBundleRoot
-			: null;
-		if (this.voiceBridge && currentVoiceRoot !== nextVoiceRoot) {
-			await this.disposeVoiceBridge();
-		}
-		this.activeEliza1Bundle = nextActiveBundle;
+		this.activeEliza1Bundle = resolveActiveEliza1Bundle(target, catalog);
 		if (this.embeddingServer) {
 			void this.embeddingServer.stop();
 			this.embeddingServer = null;
@@ -1482,7 +1462,6 @@ export class LocalInferenceEngine {
 			...opts,
 			sharedResources: this.sharedResources,
 		});
-		this.voiceBridgeActiveBundleRoot = opts.bundleRoot || null;
 		return this.voiceBridge;
 	}
 
@@ -1539,12 +1518,8 @@ export class LocalInferenceEngine {
 
 	private async ensureActiveBundleVoiceReadyOnce(): Promise<EngineVoiceBridge> {
 		let bridge = this.voiceBridge;
-		const bundle = this.activeEliza1Bundle;
-		if (bridge && bundle && this.voiceBridgeActiveBundleRoot !== bundle.root) {
-			await this.disposeVoiceBridge(bridge);
-			bridge = null;
-		}
 		if (!bridge) {
+			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
 				const kokoro =
@@ -1630,9 +1605,6 @@ export class LocalInferenceEngine {
 					kokoroOnly: kokoro,
 				});
 			}
-		}
-		if (this.voiceBridge === bridge) {
-			this.voiceBridgeActiveBundleRoot = bundle?.root ?? null;
 		}
 		await bridge.arm();
 		return bridge;
@@ -2049,10 +2021,7 @@ export class LocalInferenceEngine {
 			await bridge.settle();
 		} finally {
 			bridge.dispose();
-			if (this.voiceBridge === bridge) {
-				this.voiceBridge = null;
-				this.voiceBridgeActiveBundleRoot = null;
-			}
+			if (this.voiceBridge === bridge) this.voiceBridge = null;
 		}
 	}
 
@@ -2564,13 +2533,6 @@ export class LocalInferenceEngine {
 			const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
 			if (status.required) throw new Error(message);
 			console.warn(`${message} Falling back to node-llama-cpp.`);
-			return null;
-		}
-		const drafterBlockReason = await getDflashDrafterBlockReason(drafter);
-		if (drafterBlockReason) {
-			const message = `[dflash] ${catalog.displayName} companion drafter ${dflash.drafterModelId} is not eligible for DFlash: ${drafterBlockReason}.`;
-			if (status.required) throw new Error(message);
-			console.warn(`${message} Falling back to target-only llama-server.`);
 			return null;
 		}
 

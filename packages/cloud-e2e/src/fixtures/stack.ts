@@ -12,7 +12,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createServer, type AddressInfo } from "node:net";
+import { createConnection, createServer, type AddressInfo } from "node:net";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,6 +60,42 @@ async function pickFreePort(): Promise<number> {
       server.close(() => resolvePort(port));
     });
   });
+}
+
+async function waitForTcp(
+  host: string,
+  port: number,
+  opts: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
+): Promise<void> {
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  const intervalMs = opts.intervalMs ?? 250;
+  const label = opts.label ?? `${host}:${port}`;
+  const start = Date.now();
+  let lastErr: unknown;
+  while (Date.now() - start < timeoutMs) {
+    const ok = await new Promise<boolean>((res) => {
+      const sock = createConnection({ host, port });
+      sock.setTimeout(1_000);
+      sock.once("connect", () => {
+        sock.end();
+        res(true);
+      });
+      sock.once("timeout", () => {
+        sock.destroy();
+        res(false);
+      });
+      sock.once("error", (e) => {
+        lastErr = e;
+        sock.destroy();
+        res(false);
+      });
+    });
+    if (ok) return;
+    await delay(intervalMs);
+  }
+  throw new Error(
+    `[stack] ${label} TCP did not open within ${timeoutMs}ms: ${String(lastErr)}`,
+  );
 }
 
 async function waitForHttpOk(
@@ -190,9 +226,37 @@ export async function startCloudStack(
 
   const procs: SpawnedProc[] = [];
 
-  // 2. cloud-api worker subprocess. cloud-api-dev.mjs spins up the PGlite TCP
-  //    bridge, runs migrations, and execs wrangler dev. We let it manage PGlite
-  //    so we don't have to duplicate that logic.
+  // 2. PGlite TCP bridge. We start it directly (rather than letting
+  //    cloud-api-dev.mjs manage it) because cloud-api-dev only spawns PGlite
+  //    when DATABASE_URL is empty or `pglite://...`, and we set it to a
+  //    real postgres URL pointing at this very bridge.
+  const pgliteEnv = {
+    ...sharedEnv,
+    PGLITE_HOST: "127.0.0.1",
+    PGLITE_PORT: String(pglitePort),
+    PGLITE_DATA_DIR: pgDataDir,
+    PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
+  };
+  procs.push(
+    spawnLogged(
+      "pglite",
+      "bun",
+      ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
+      {
+        env: pgliteEnv,
+        cwd: REPO_ROOT,
+        logFile: join(LOG_DIR, "pglite.log"),
+      },
+    ),
+  );
+  await waitForTcp("127.0.0.1", pglitePort, {
+    timeoutMs: 60_000,
+    label: "pglite",
+  });
+
+  // 3. cloud-api worker subprocess. cloud-api-dev.mjs will see DATABASE_URL is
+  //    a real postgres URL, skip its own PGlite, run migrations, and exec
+  //    wrangler dev on `apiPort`.
   const apiEnv = {
     ...sharedEnv,
     DEV_CLOUD_SKIP_MIGRATE: opts.skipMigrate ? "1" : "0",
@@ -200,8 +264,8 @@ export async function startCloudStack(
   procs.push(
     spawnLogged(
       "cloud-api",
-      "bun",
-      ["run", "packages/scripts/cloud/admin/dev/cloud-api-dev.mjs"],
+      "node",
+      ["packages/scripts/cloud/admin/dev/cloud-api-dev.mjs"],
       {
         env: apiEnv,
         cwd: REPO_ROOT,

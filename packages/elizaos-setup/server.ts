@@ -1,9 +1,4 @@
 import type { Server } from "bun";
-import {
-  createServer as createNodeHttpServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
 import { AdbFlasherBackend } from "./src/backend/adb-backend";
 import { SideloaderIosBackend } from "./src/backend/ios-backend";
 import type {
@@ -47,94 +42,27 @@ export interface CreateServerOptions {
   depManager?: DependencyManager;
 }
 
-async function readNodeBody(req: IncomingMessage): Promise<Buffer | null> {
-  if (req.method === "GET" || req.method === "HEAD") {
-    return null;
-  }
+export type FetchHandler = (req: Request) => Promise<Response>;
 
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return chunks.length > 0 ? Buffer.concat(chunks) : null;
+export interface CreateFetchHandlerDeps {
+  backend?: AdbFlasherBackend;
+  iosBackend?: SideloaderIosBackend;
+  depManager?: DependencyManager;
 }
 
-async function writeNodeResponse(
-  webResponse: Response,
-  res: ServerResponse,
-): Promise<void> {
-  res.statusCode = webResponse.status;
-  webResponse.headers.forEach((value, key) => res.setHeader(key, value));
+/**
+ * Build the route handler in isolation from `Bun.serve`. Exported so tests
+ * (running under vitest/node, where `globalThis.Bun` is absent) can wrap it
+ * with `node:http` and exercise the real wire with `fetch`.
+ */
+export function createFetchHandler(
+  deps: CreateFetchHandlerDeps = {},
+): FetchHandler {
+  const backend = deps.backend ?? new AdbFlasherBackend();
+  const iosBackend = deps.iosBackend ?? new SideloaderIosBackend();
+  const depManager = deps.depManager ?? new DependencyManager();
 
-  if (!webResponse.body) {
-    res.end();
-    return;
-  }
-
-  const reader = webResponse.body.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(Buffer.from(value));
-    }
-    res.end();
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function createNodeServer(
-  port: number,
-  fetchHandler: (req: Request) => Response | Promise<Response>,
-): Server<undefined> {
-  const listenPort =
-    port === 0 ? 30_000 + Math.floor(Math.random() * 10_000) : port;
-  const nodeServer = createNodeHttpServer(async (req, res) => {
-    try {
-      const host = req.headers.host ?? `127.0.0.1:${listenPort}`;
-      const body = await readNodeBody(req);
-      const requestBody = body
-        ? (body.buffer.slice(
-            body.byteOffset,
-            body.byteOffset + body.byteLength,
-          ) as ArrayBuffer)
-        : null;
-      const request = new Request(`http://${host}${req.url ?? "/"}`, {
-        method: req.method ?? "GET",
-        headers: req.headers as HeadersInit,
-        body: requestBody,
-      });
-      await writeNodeResponse(await fetchHandler(request), res);
-    } catch (err) {
-      res.statusCode = 500;
-      res.end(String(err));
-    }
-  });
-
-  nodeServer.listen(listenPort, "127.0.0.1");
-
-  return {
-    get port() {
-      const address = nodeServer.address();
-      return typeof address === "object" && address ? address.port : listenPort;
-    },
-    stop(force?: boolean) {
-      void force;
-      nodeServer.close();
-    },
-  } as Server<undefined>;
-}
-
-export function createServer(
-  options: CreateServerOptions = {},
-): Server<undefined> {
-  const backend = options.backend ?? new AdbFlasherBackend();
-  const iosBackend = options.iosBackend ?? new SideloaderIosBackend();
-  const depManager = options.depManager ?? new DependencyManager();
-  const port = options.port ?? Number(process.env.ELIZA_SETUP_PORT ?? 3743);
-
-  const fetchHandler = async (req: Request): Promise<Response> => {
+  return async function fetchHandler(req: Request): Promise<Response> {
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") {
@@ -345,21 +273,24 @@ export function createServer(
 
     return new Response("Not found", { status: 404, headers: cors });
   };
+}
+
+export function createServer(options: CreateServerOptions = {}): Server<undefined> {
+  const port = options.port ?? Number(process.env.ELIZA_SETUP_PORT ?? 3743);
+  const deps: CreateFetchHandlerDeps = {};
+  if (options.backend) deps.backend = options.backend;
+  if (options.iosBackend) deps.iosBackend = options.iosBackend;
+  if (options.depManager) deps.depManager = options.depManager;
+  const handler = createFetchHandler(deps);
 
   // Use Bun.serve via the global so this file can be imported by toolchains
-  // that do not resolve the bare "bun" module specifier. Vitest runs under
-  // Node, so it gets a small HTTP fallback around the same fetch handler.
-  const bunGlobal = (globalThis as {
-    Bun?: { serve: typeof import("bun").serve };
-  }).Bun;
+  // (vitest/node) that don't resolve the bare "bun" module specifier. The
+  // factory still requires the Bun runtime to actually call it.
+  const bunGlobal = (globalThis as { Bun?: { serve: typeof import("bun").serve } }).Bun;
   if (!bunGlobal) {
-    return createNodeServer(port, fetchHandler);
+    throw new Error("createServer requires the Bun runtime (globalThis.Bun)");
   }
-
-  return bunGlobal.serve({
-    port,
-    fetch: fetchHandler,
-  });
+  return bunGlobal.serve({ port, fetch: handler });
 }
 
 // Run as a script: `bun server.ts` boots the production server on PORT.

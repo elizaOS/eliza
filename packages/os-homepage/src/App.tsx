@@ -12,6 +12,16 @@ import {
   EXTERNAL_URLS,
   LOGO_FILES,
 } from "@elizaos/shared-brand";
+import {
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TENANT_ID,
+  syncStewardSession,
+  writeStoredStewardRefreshToken,
+  writeStoredStewardToken,
+} from "@elizaos/steward-session-client";
+import { CloudVideoBackground } from "@elizaos/ui";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -22,7 +32,7 @@ const checkoutBaseUrl = `${EXTERNAL_URLS.os}/checkout`;
 const cloudApiUrl =
   import.meta.env.VITE_ELIZA_CLOUD_API_URL || "https://api.elizacloud.ai";
 const stewardApiUrl = `${cloudApiUrl.replace(/\/$/, "")}/steward`;
-const stewardTenantId = "elizacloud";
+const stewardTenantId = STEWARD_TENANT_ID;
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
 
 type ReleaseArtifact = {
@@ -124,35 +134,68 @@ function buildOAuthUrl(provider: "google" | "discord" | "github") {
 }
 
 function getStoredStewardToken() {
-  try {
-    return localStorage.getItem("steward_session_token");
-  } catch {
-    return null;
-  }
+  return readStoredStewardToken();
 }
 
-async function syncStewardSession(token: string, refreshToken?: string | null) {
-  const response = await fetch(`${cloudApiUrl}/api/auth/steward-session`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, refreshToken }),
-  });
+const stewardSessionEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_SESSION_ENDPOINT}`;
 
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error || "Could not sync Eliza Cloud session.");
+/**
+ * Parse Steward tokens from the URL hash fragment. The hash never leaves the
+ * browser — it is not sent to the server, not written to access logs, not
+ * passed via Referer, and not stored in browser history beyond what the SPA
+ * sees on first paint. Strips the hash from `location` immediately after
+ * reading so it cannot be re-read or copy-pasted out of the address bar.
+ *
+ * Returns null when no `#token=` is present so the caller can fall through to
+ * the legacy `?token=` query parser during the rollout window.
+ */
+function consumeStewardTokensFromHash(): {
+  token: string;
+  refreshToken: string | null;
+} | null {
+  // The inline pre-init script in index.html snapshots and removes any
+  // `#token=...` fragment before React mounts and stores it on
+  // window.__stewardOAuthHash. Prefer that so we never depend on the
+  // fragment still being in `location.hash` by the time React boots
+  // (analytics, Sentry, etc. may have already read `location.href`).
+  const stewardWindow = window as Window & { __stewardOAuthHash?: string };
+  const snapshotted = stewardWindow.__stewardOAuthHash;
+  const hash = snapshotted || window.location.hash;
+  if (snapshotted) {
+    delete stewardWindow.__stewardOAuthHash;
   }
+  if (!hash || hash.length < 2) return null;
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const token = params.get("token");
+  if (!token) return null;
+  const refreshToken = params.get("refreshToken");
+  if (!snapshotted) {
+    // Fallback path (legacy browsers without the inline script): strip the
+    // hash now. `replaceState` keeps pathname + search intact.
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+  }
+  return { token, refreshToken };
 }
 
-function ProductImage({ product }: { product: Product }) {
+function ProductImage({
+  product,
+  priority = false,
+}: {
+  product: Product;
+  priority?: boolean;
+}) {
   return (
     <img
       src={product.image}
       alt={product.imageAlt}
       className="product-image"
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      fetchPriority={priority ? "high" : "low"}
       draggable={false}
     />
   );
@@ -235,19 +278,19 @@ function ReleaseDownloads() {
 function CloudHero({ children }: { children: ReactNode }) {
   return (
     <section className="band hero-cloud" data-hero="cloud">
-      <video
-        className="cloud-video"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        poster="/clouds/poster.jpg"
-        data-testid="cloud-video"
-      >
-        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
-        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
-      </video>
+      <CloudVideoBackground
+        basePath={BRAND_PATHS.clouds}
+        speed="4x"
+        poster={BRAND_PATHS.poster}
+        posterSrcSet={`${BRAND_PATHS.poster480} 640w, ${BRAND_PATHS.poster} 960w`}
+        className="cloud-background"
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+        }}
+      />
       <div className="cloud-scrim" aria-hidden="true" />
       <div className="band-inner hero-cloud-inner">{children}</div>
     </section>
@@ -348,7 +391,7 @@ function ProductDetail({ product }: { product: Product }) {
               </div>
               <p className="detail-note">Checkout stays on elizaos.ai.</p>
             </div>
-            <ProductImage product={product} />
+            <ProductImage product={product} priority />
           </div>
         </section>
       </main>
@@ -403,38 +446,45 @@ function CheckoutPage() {
   );
 
   useEffect(() => {
+    // Preferred path: tokens arrive in the URL hash fragment (#token=...).
+    // Hash is browser-only — never sent to the server, no Referer leak,
+    // never written to access logs. Legacy `?token=` query is still accepted
+    // during the rollout window but stripped from history immediately.
+    const fromHash = consumeStewardTokensFromHash();
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const refreshToken = params.get("refreshToken");
+    const queryToken = params.get("token");
+    const queryRefreshToken = params.get("refreshToken");
+    const token = fromHash?.token ?? queryToken;
+    const refreshToken =
+      fromHash?.refreshToken ?? queryRefreshToken ?? undefined;
     if (!token) {
-      setIsAuthed(
-        Boolean(getStoredStewardToken()) ||
-          document.cookie.includes("steward-authed=1"),
-      );
+      setIsAuthed(Boolean(getStoredStewardToken()) || hasStewardAuthedCookie());
       return;
     }
 
     setStatus("syncing");
-    try {
-      localStorage.setItem("steward_session_token", token);
-      if (refreshToken) {
-        localStorage.setItem("steward_refresh_token", refreshToken);
-      }
-    } catch {}
+    writeStoredStewardToken(token);
+    if (refreshToken) {
+      writeStoredStewardRefreshToken(refreshToken);
+    }
 
-    syncStewardSession(token, refreshToken)
+    syncStewardSession(token, refreshToken ?? null, {
+      endpoint: stewardSessionEndpoint,
+    })
       .then(() => {
         setIsAuthed(true);
-        params.delete("token");
-        params.delete("refreshToken");
-        const query = params.toString();
-        window.history.replaceState(
-          null,
-          "",
-          query
-            ? `${window.location.pathname}?${query}`
-            : window.location.pathname,
-        );
+        if (queryToken || queryRefreshToken) {
+          params.delete("token");
+          params.delete("refreshToken");
+          const query = params.toString();
+          window.history.replaceState(
+            null,
+            "",
+            query
+              ? `${window.location.pathname}?${query}`
+              : window.location.pathname,
+          );
+        }
       })
       .catch((error: unknown) => {
         setMessage(
@@ -510,7 +560,7 @@ function CheckoutPage() {
               </div>
             </div>
             <div className="checkout-product-shot">
-              <ProductImage product={product} />
+              <ProductImage product={product} priority />
             </div>
           </div>
         </section>

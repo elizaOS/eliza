@@ -443,7 +443,13 @@ export function CreateElizaAgentDialog({
   return (
     <>
       {trigger ? (
-        <div onClick={() => phase === "form" && setOpen(true)}>{trigger}</div>
+        <button
+          type="button"
+          className="contents"
+          onClick={() => phase === "form" && setOpen(true)}
+        >
+          {trigger}
+        </button>
       ) : (
         <BrandButton size="sm" onClick={() => setOpen(true)} disabled={busy}>
           <Plus className="h-4 w-4" />
@@ -466,11 +472,11 @@ export function CreateElizaAgentDialog({
             </DialogTitle>
           </DialogHeader>
 
-          {isProvisioningPhase ? (
+          {isProvisioningPhase && createdAgentId ? (
             <ProvisioningProgress
               status={pollResult.status}
               error={pollResult.error}
-              agentId={createdAgentId!}
+              agentId={createdAgentId}
               elapsedSec={elapsedSec}
               onClose={handleClose}
               onRetry={handleRetryProvision}

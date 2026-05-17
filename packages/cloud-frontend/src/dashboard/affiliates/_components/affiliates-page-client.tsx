@@ -9,10 +9,10 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { COPY_FEEDBACK_DURATION_MS } from "@/lib/constants/copy-feedback";
+import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 import { getAppUrl } from "@/lib/utils/app-url";
 import { copyTextToClipboard } from "@/lib/utils/copy-to-clipboard";
 import { buildReferralInviteLoginUrl } from "@/lib/utils/referral-invite-url";
@@ -33,14 +33,9 @@ export function AffiliatesPageClient() {
 
   const [markupPercent, setMarkupPercent] = useState<string>("20.00");
   const [isSaving, setIsSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [referralCopied, setReferralCopied] = useState(false);
-  const affiliateCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const referralCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const { copied, markCopied: markAffiliateCopied } = useCopyFeedback();
+  const { copied: referralCopied, markCopied: markReferralCopied } =
+    useCopyFeedback();
   const {
     referralMe,
     loadingReferral,
@@ -88,32 +83,13 @@ export function AffiliatesPageClient() {
     fetchAffiliateData();
   }, [fetchAffiliateData]);
 
-  useEffect(
-    () => () => {
-      if (affiliateCopyTimerRef.current) {
-        clearTimeout(affiliateCopyTimerRef.current);
-      }
-      if (referralCopyTimerRef.current) {
-        clearTimeout(referralCopyTimerRef.current);
-      }
-    },
-    [],
-  );
-
   const handleCopyLink = async () => {
     if (!affiliateData) return;
     const url = `${window.location.origin}/login?affiliate=${affiliateData.code}`;
     const ok = await copyTextToClipboard(url);
     if (ok) {
-      setCopied(true);
+      markAffiliateCopied();
       toast.success("Link copied to clipboard!");
-      if (affiliateCopyTimerRef.current) {
-        clearTimeout(affiliateCopyTimerRef.current);
-      }
-      affiliateCopyTimerRef.current = setTimeout(
-        () => setCopied(false),
-        COPY_FEEDBACK_DURATION_MS,
-      );
     } else {
       toast.error("Could not copy to clipboard");
     }
@@ -278,15 +254,8 @@ export function AffiliatesPageClient() {
                     );
                     const ok = await copyTextToClipboard(url);
                     if (ok) {
-                      setReferralCopied(true);
+                      markReferralCopied();
                       toast.success("Invite link copied!");
-                      if (referralCopyTimerRef.current) {
-                        clearTimeout(referralCopyTimerRef.current);
-                      }
-                      referralCopyTimerRef.current = setTimeout(
-                        () => setReferralCopied(false),
-                        COPY_FEEDBACK_DURATION_MS,
-                      );
                     } else {
                       toast.error("Could not copy to clipboard");
                     }
@@ -364,10 +333,14 @@ export function AffiliatesPageClient() {
 
         <div className="flex items-end gap-4 max-w-md mt-6">
           <div className="flex-1">
-            <label className="text-sm text-white/60 mb-2 block">
+            <label
+              htmlFor="affiliate-markup-percent"
+              className="text-sm text-white/60 mb-2 block"
+            >
               Your Markup Percentage (0 - 1000%)
             </label>
             <Input
+              id="affiliate-markup-percent"
               type="number"
               value={markupPercent}
               onChange={(e) => setMarkupPercent(e.target.value)}

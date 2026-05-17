@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  STEWARD_AUTHED_COOKIE,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { LocalStewardAuthContext } from "@/providers/StewardProvider";
 
@@ -21,8 +25,6 @@ const STEWARD_AUTH_FALLBACK = {
   getToken: () => null,
 } as const;
 
-const STEWARD_TOKEN_KEY = "steward_session_token";
-const STEWARD_AUTHED_COOKIE = "steward-authed";
 const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE = "eliza-test-auth";
 const PLAYWRIGHT_TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
 const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";

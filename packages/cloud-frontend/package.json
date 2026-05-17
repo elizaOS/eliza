@@ -17,14 +17,15 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write src",
     "verify": "bun run lint && bun run typecheck && bun run build",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds"
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x"
   },
   "dependencies": {
     "@elizaos/checkout-shared": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/hardware-catalog": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",
+    "@elizaos/steward-session-client": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/open-sans": "^5.2.7",

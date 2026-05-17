@@ -21,7 +21,11 @@ import {
 import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { UserWithOrganizationDto } from "@/types/cloud-api";
+import type {
+  OrgInviteDto,
+  OrgMemberDto,
+  UserWithOrganizationDto,
+} from "@/types/cloud-api";
 import { InviteMemberDialog } from "./invite-member-dialog";
 import { MembersList } from "./members-list";
 import { PendingInvitesList } from "./pending-invites-list";
@@ -30,33 +34,10 @@ interface MembersTabProps {
   user: UserWithOrganizationDto;
 }
 
-interface OrganizationMember {
-  id: string;
-  user_id: string;
-  organization_id: string;
-  role: string;
-  user?: {
-    id: string;
-    email: string;
-    name: string | null;
-    avatar_url: string | null;
-  };
-  created_at: string;
-}
-
-interface OrganizationInvite {
-  id: string;
-  email: string;
-  role: string;
-  status: string;
-  expires_at: string;
-  created_at: string;
-}
-
 export function MembersTab({ user }: MembersTabProps) {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
-  const [invites, setInvites] = useState<OrganizationInvite[]>([]);
+  const [members, setMembers] = useState<OrgMemberDto[]>([]);
+  const [invites, setInvites] = useState<OrgInviteDto[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [isLoadingInvites, setIsLoadingInvites] = useState(true);
   const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
@@ -200,16 +181,7 @@ export function MembersTab({ user }: MembersTabProps) {
           </div>
         ) : (
           <MembersList
-            members={members.map((member) => ({
-              id: member.user?.id ?? member.user_id,
-              name: member.user?.name ?? null,
-              email: member.user?.email ?? null,
-              wallet_address: null,
-              wallet_chain_type: null,
-              role: member.role,
-              is_active: true,
-              created_at: member.created_at,
-            }))}
+            members={members}
             currentUserId={user.id}
             currentUserRole={user.role}
             isOwner={isOwner}
@@ -230,11 +202,7 @@ export function MembersTab({ user }: MembersTabProps) {
               </div>
             ) : (
               <PendingInvitesList
-                invites={invites.map((invite) => ({
-                  ...invite,
-                  inviter: null,
-                  accepted_at: null,
-                }))}
+                invites={invites}
                 onRevoke={handleRevokeInvite}
               />
             )}

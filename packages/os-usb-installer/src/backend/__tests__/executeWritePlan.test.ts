@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   NoPrivilegeEscalatorError,
   UnmountFailedError,
@@ -90,6 +90,29 @@ function createFakeDd(): FakeDd {
   return ee;
 }
 
+/**
+ * Returns a spawn mock and a promise that resolves with the dd instance once
+ * the backend actually calls `spawn`. Tests can `await spawned` before pushing
+ * progress lines, avoiding races on the multi-await execute path.
+ */
+function deferredSpawn(): {
+  spawn: () => ChildProcess;
+  spawned: Promise<FakeDd>;
+} {
+  let resolveSpawn!: (dd: FakeDd) => void;
+  const spawned = new Promise<FakeDd>((r) => {
+    resolveSpawn = r;
+  });
+  return {
+    spawn: () => {
+      const dd = createFakeDd();
+      resolveSpawn(dd);
+      return dd as unknown as ChildProcess;
+    },
+    spawned,
+  };
+}
+
 // lsblk JSON returning the drive with a mounted child partition
 function lsblkChildJson(mounted: boolean): string {
   return JSON.stringify({
@@ -132,17 +155,6 @@ function makeExecMock(opts: ExecMockOptions) {
     if (handler) return handler(args);
     return { stdout: "", stderr: "" };
   };
-}
-
-function deferred<T = void>(): {
-  promise: Promise<T>;
-  resolve: (value: T | PromiseLike<T>) => void;
-} {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
 }
 
 // --- tests -----------------------------------------------------------------
@@ -219,21 +231,17 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
       },
     });
 
-    const dd = createFakeDd();
-    const spawned = deferred();
+    const { spawn, spawned } = deferredSpawn();
     const backend = new LinuxUsbInstallerBackend({
       execFile,
       findEscalator: async () => escalator,
       resolveImage: async () => {},
       verifyChecksum: async () => {},
-      spawn: () => {
-        spawned.resolve();
-        return dd as unknown as ChildProcess;
-      },
+      spawn,
     });
 
     const runPromise = backend.executeWritePlan(makePlan(), () => {});
-    await spawned.promise;
+    const dd = await spawned;
     // dd writes full image, exits 0
     dd.emitProgress(`${IMAGE_SIZE} bytes (1.0 GB, 0.9 GiB) copied, 1 s`);
     dd.finish(0);
@@ -252,21 +260,17 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
       },
     });
 
-    const dd = createFakeDd();
-    const spawned = deferred();
+    const { spawn, spawned } = deferredSpawn();
     const backend = new LinuxUsbInstallerBackend({
       execFile,
       findEscalator: async () => escalator,
       resolveImage: async () => {},
       verifyChecksum: async () => {},
-      spawn: () => {
-        spawned.resolve();
-        return dd as unknown as ChildProcess;
-      },
+      spawn,
     });
 
     const runPromise = backend.executeWritePlan(makePlan(), () => {});
-    await spawned.promise;
+    const dd = await spawned;
 
     const partial = Math.floor(IMAGE_SIZE * 0.9);
     dd.emitProgress(`${Math.floor(IMAGE_SIZE * 0.5)} bytes copied, 1 s`);
@@ -297,24 +301,20 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
       },
     });
 
-    const dd = createFakeDd();
-    const spawned = deferred();
+    const { spawn, spawned } = deferredSpawn();
     const backend = new LinuxUsbInstallerBackend({
       execFile,
       findEscalator: async () => escalator,
       resolveImage: async () => {},
       verifyChecksum: async () => {},
-      spawn: () => {
-        spawned.resolve();
-        return dd as unknown as ChildProcess;
-      },
+      spawn,
     });
 
     const progress: Array<{ step: InstallerStepId; pct: number }> = [];
     const runPromise = backend.executeWritePlan(makePlan(), (step, pct) =>
       progress.push({ step, pct }),
     );
-    await spawned.promise;
+    const dd = await spawned;
 
     // Stream up to 99% (which the parser will clamp to 0.99), then exit 0
     // with a final summary line matching expected bytes.
@@ -331,56 +331,50 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
   });
 
   it("Test 5: dd buffered-output heartbeat re-emits last progress while stalled", async () => {
-    vi.useFakeTimers();
-    try {
-      const execCalls: MockExecCall[] = [];
-      const execFile = makeExecMock({
-        calls: execCalls,
-        handlers: {
-          lsblk: async () => ({ stdout: lsblkChildJson(false), stderr: "" }),
-        },
-      });
+    const execCalls: MockExecCall[] = [];
+    const execFile = makeExecMock({
+      calls: execCalls,
+      handlers: {
+        lsblk: async () => ({ stdout: lsblkChildJson(false), stderr: "" }),
+      },
+    });
 
-      const dd = createFakeDd();
-      const spawned = deferred();
-      const backend = new LinuxUsbInstallerBackend({
-        execFile,
-        findEscalator: async () => escalator,
-        resolveImage: async () => {},
-        verifyChecksum: async () => {},
-        spawn: () => {
-          spawned.resolve();
-          return dd as unknown as ChildProcess;
-        },
-        heartbeatIntervalMs: 1_000,
-        heartbeatStallMs: 5_000,
-      });
+    const { spawn, spawned } = deferredSpawn();
+    // Use very short real intervals so the test stays fast and doesn't need
+    // fake timers (which conflict with awaiting the spawn deferred above).
+    const HEARTBEAT_INTERVAL = 5;
+    const HEARTBEAT_STALL = 20;
+    const backend = new LinuxUsbInstallerBackend({
+      execFile,
+      findEscalator: async () => escalator,
+      resolveImage: async () => {},
+      verifyChecksum: async () => {},
+      spawn,
+      heartbeatIntervalMs: HEARTBEAT_INTERVAL,
+      heartbeatStallMs: HEARTBEAT_STALL,
+    });
 
-      const progress: Array<{ step: InstallerStepId; pct: number }> = [];
-      const runPromise = backend.executeWritePlan(makePlan(), (step, pct) =>
-        progress.push({ step, pct }),
-      );
+    const progress: Array<{ step: InstallerStepId; pct: number }> = [];
+    const runPromise = backend.executeWritePlan(makePlan(), (step, pct) =>
+      progress.push({ step, pct }),
+    );
 
-      await spawned.promise;
+    const dd = await spawned;
 
-      // Emit ONE progress line at ~50%.
-      dd.emitProgress(`${Math.floor(IMAGE_SIZE * 0.5)} bytes copied, 1 s`);
+    // Emit ONE progress line at ~50%.
+    dd.emitProgress(`${Math.floor(IMAGE_SIZE * 0.5)} bytes copied, 1 s`);
+    const writeBefore = progress.filter((p) => p.step === "write").length;
 
-      const writeBefore = progress.filter((p) => p.step === "write").length;
+    // Wait long enough (>stall) for heartbeat to fire at least once.
+    await new Promise((r) => setTimeout(r, HEARTBEAT_STALL * 4));
 
-      // Advance >5s with no further dd output: heartbeat should fire.
-      await vi.advanceTimersByTimeAsync(6_500);
+    const writeAfter = progress.filter((p) => p.step === "write").length;
+    expect(writeAfter).toBeGreaterThan(writeBefore);
 
-      const writeAfter = progress.filter((p) => p.step === "write").length;
-      expect(writeAfter).toBeGreaterThan(writeBefore);
-
-      // Cleanly finish so we don't leak intervals.
-      dd.emitProgress(`${IMAGE_SIZE} bytes copied, 10 s`);
-      dd.finish(0);
-      await runPromise;
-    } finally {
-      vi.useRealTimers();
-    }
+    // Cleanly finish so we don't leak intervals.
+    dd.emitProgress(`${IMAGE_SIZE} bytes copied, 10 s`);
+    dd.finish(0);
+    await runPromise;
   });
 
   it("Test 6: NoPrivilegeEscalatorError aborts before umount or dd", async () => {

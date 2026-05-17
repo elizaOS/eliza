@@ -210,7 +210,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
     [previewUrl],
   );
 
-  // Handle file input change
   const handleAvatarSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];

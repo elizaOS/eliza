@@ -59,7 +59,7 @@ export function DocumentsPageClient({
     activeTab: "documents",
     isMounted: false,
     selectedCharacterId:
-      initialCharacters.length > 0 ? initialCharacters[0].id! : null,
+      initialCharacters.length > 0 ? (initialCharacters[0].id ?? null) : null,
   });
 
   const updatePageState = useCallback((updates: Partial<PageState>) => {
@@ -185,11 +185,13 @@ export function DocumentsPageClient({
               <SelectValue placeholder="Select agent..." />
             </SelectTrigger>
             <SelectContent>
-              {initialCharacters.map((char) => (
-                <SelectItem key={char.id} value={char.id!}>
-                  {char.name}
-                </SelectItem>
-              ))}
+              {initialCharacters.map((char) =>
+                char.id ? (
+                  <SelectItem key={char.id} value={char.id}>
+                    {char.name}
+                  </SelectItem>
+                ) : null,
+              )}
             </SelectContent>
           </Select>
         )}

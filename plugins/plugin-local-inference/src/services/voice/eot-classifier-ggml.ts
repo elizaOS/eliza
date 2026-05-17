@@ -34,6 +34,41 @@
  * formatting is re-implemented here using the same template upstream
  * uses (single-turn user message wrapped in `<|im_start|>user\n... \n`)
  * — see `applyQwenUserTemplate` below.
+ *
+ * --- Future: LoRA hot-swap path ---
+ *
+ * The LiveKit GGUF is a separate 66 MB (EN) or 396 MB (intl) resident
+ * model. The chat target model (eliza-1-{0_8b,2b,4b}) is already
+ * loaded for conversation — its next-token distribution after the
+ * chat-template-formatted partial transcript provides exactly the
+ * same `P(<|im_end|>)` signal. A LoRA adapter (rank 8, ~5-10 MB)
+ * trained on `(transcript, eot_label)` pairs can shape that signal
+ * to match or beat the LiveKit baseline.
+ *
+ * The training pipeline lives at
+ * `packages/training/scripts/voice/eot/RUNBOOK.md`. The publish gates
+ * (AUROC ≥ 0.85, ECE ≤ 0.05, p95 ≤ 50 ms) are in
+ * `packages/training/benchmarks/eot_gates.md`.
+ *
+ * Integration sketch (deferred — implement when an adapter ships):
+ *
+ *   1. Bundle ships `voice/eot-lora/eliza-1-<tier>-eot-lora.bin`
+ *      alongside the chat target GGUF, with a manifest sidecar binding
+ *      the adapter to the target's SHA256 (refuse to load if mismatched).
+ *   2. Runtime detects the adapter via the bundle catalog. When present
+ *      AND the chat target is already loaded, the EOT resolver prefers
+ *      LoRA hot-swap over standing up the LiveKit GGUF process.
+ *   3. The hot-swap path uses llama.cpp's `--lora` flag on the chat
+ *      target. A single forward pass against the chat-template-formatted
+ *      transcript yields the next-token logits; read `<|im_end|>`'s
+ *      probability and return it.
+ *   4. Fail-closed: if adapter load fails or the SHA binding mismatches,
+ *      throw `EotGgmlUnavailableError("model-load-failed", ...)`. No
+ *      silent fallback to the un-adapted target (the un-adapted logits
+ *      would be the chat-model's own prior, not a calibrated EOT
+ *      classifier).
+ *
+ * Until that lands, this binding remains the canonical EOT path.
  */
 
 import { access } from "node:fs/promises";

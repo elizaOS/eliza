@@ -3,6 +3,12 @@
  * DELETE /api/auth/steward-session — clear steward cookies (logout).
  */
 
+import {
+  STEWARD_AUTHED_COOKIE,
+  type StewardSessionErrorCode,
+  type StewardSessionRequest,
+  type StewardSessionResponse,
+} from "@elizaos/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
@@ -19,6 +25,85 @@ function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
 }
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+const STEWARD_TOKEN_COOKIE = "steward-token";
+const STEWARD_REFRESH_TOKEN_COOKIE = "steward-refresh-token";
+
+/**
+ * Origins permitted to set / clear Steward session cookies. Anything else
+ * gets a 403 — same-origin XHR and the elizaos.ai checkout are the only two
+ * legitimate callers.
+ */
+const PERMITTED_ORIGIN_HOSTS = new Set<string>([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+  "staging.elizacloud.ai",
+  "elizaos.ai",
+  "www.elizaos.ai",
+]);
+
+function originHost(rawOrigin: string | undefined): string | null {
+  if (!rawOrigin) return null;
+  try {
+    return new URL(rawOrigin).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate Origin / Referer against the request host to block cross-site
+ * POST/DELETE. localhost and Cloudflare Pages preview hosts (`*.pages.dev`)
+ * are allowed for development. The cookie is SameSite=Lax (and the route is
+ * called via XHR, which makes Lax effectively Strict for these requests), so
+ * this header check is a belt-and-suspenders layer specifically for the
+ * cross-origin POST case (elizaos.ai -> api.elizacloud.ai).
+ */
+function isPermittedOrigin(
+  origin: string | null,
+  requestHost: string | null,
+): boolean {
+  if (!origin) return false;
+  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
+  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
+    return true;
+  }
+  if (origin.endsWith(".pages.dev")) return true; // CF Pages previews
+  if (
+    origin === "localhost" ||
+    origin === "127.0.0.1" ||
+    origin === "0.0.0.0"
+  ) {
+    return true;
+  }
+  if (requestHost && origin === requestHost) return true;
+  return false;
+}
+
+/**
+ * CSRF check. Modern browsers always send Origin on cross-origin POST/DELETE
+ * and on same-origin POST too (since ~2020). If Origin is present we require
+ * it to be in the allowlist. If it's absent, this is not a browser request
+ * (curl, server-to-server, e2e tests, native app), and CSRF is not possible
+ * — fall through. Referer is a fallback when present but Origin is not.
+ */
+function checkOrigin(c: {
+  req: { header: (name: string) => string | undefined };
+}): { ok: true } | { ok: false; reason: string } {
+  const rawOrigin = c.req.header("origin");
+  const rawReferer = c.req.header("referer");
+  const origin = originHost(rawOrigin);
+  const referer = originHost(rawReferer);
+  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
+  if (!rawOrigin && !rawReferer) return { ok: true };
+  if (origin && isPermittedOrigin(origin, host)) return { ok: true };
+  if (!origin && referer && isPermittedOrigin(referer, host))
+    return { ok: true };
+  return {
+    ok: false,
+    reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
+  };
+}
 
 let stewardAuthMetricCounter = 0;
 function logStewardAuth(outcome: string, ttl: number | null) {
@@ -31,20 +116,40 @@ function logStewardAuth(outcome: string, ttl: number | null) {
   });
 }
 
+function errorBody(
+  message: string,
+  code: StewardSessionErrorCode,
+): { error: string; code: StewardSessionErrorCode } {
+  return { error: message, code };
+}
+
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    const body = (await c.req.json().catch(() => ({}))) as {
-      token?: string;
-      refreshToken?: string;
-    };
+    const originCheck = checkOrigin(c);
+    if (!originCheck.ok) {
+      logStewardAuth("forbidden-origin", null);
+      logger.warn("[steward-auth] rejected cross-origin POST", {
+        detail: originCheck.reason,
+      });
+      return c.json(
+        { error: "Forbidden", code: "forbidden_origin" as const },
+        403,
+      );
+    }
+
+    const body = (await c.req
+      .json()
+      .catch(
+        () => ({}) as Partial<StewardSessionRequest>,
+      )) as Partial<StewardSessionRequest>;
     const token = body.token;
     const refreshToken = body.refreshToken;
 
     if (!token || typeof token !== "string") {
       logStewardAuth("missing-token", null);
-      return c.json({ error: "Token required", code: "missing_token" }, 400);
+      return c.json(errorBody("Token required", "missing_token"), 400);
     }
 
     if (!stewardSecretConfigured(c.env)) {
@@ -53,10 +158,10 @@ app.post("/", async (c) => {
       // so the client doesn't treat it as a revocation and wipe localStorage.
       logStewardAuth("server-secret-missing", null);
       return c.json(
-        {
-          error: "Steward verification not configured on server",
-          code: "server_secret_missing",
-        },
+        errorBody(
+          "Steward verification not configured on server",
+          "server_secret_missing",
+        ),
         503,
       );
     }
@@ -64,7 +169,7 @@ app.post("/", async (c) => {
     const claims = await verifyStewardTokenCached(c.env, token);
     if (!claims) {
       logStewardAuth("invalid-token", null);
-      return c.json({ error: "Invalid token", code: "invalid_token" }, 401);
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
 
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
@@ -85,10 +190,7 @@ app.post("/", async (c) => {
         },
       );
       return c.json(
-        {
-          error: "Could not sync Steward user",
-          code: "steward_user_sync_failed",
-        },
+        errorBody("Could not sync Steward user", "steward_user_sync_failed"),
         500,
       );
     }
@@ -100,7 +202,7 @@ app.post("/", async (c) => {
     const secure = c.env.NODE_ENV === "production";
     const domain = cookieDomainForHost(c.req.header("host"));
 
-    setCookie(c, "steward-token", token, {
+    setCookie(c, STEWARD_TOKEN_COOKIE, token, {
       httpOnly: true,
       secure,
       sameSite: "Lax",
@@ -110,7 +212,7 @@ app.post("/", async (c) => {
     });
 
     if (typeof refreshToken === "string" && refreshToken.length > 0) {
-      setCookie(c, "steward-refresh-token", refreshToken, {
+      setCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, refreshToken, {
         httpOnly: true,
         secure,
         sameSite: "Lax",
@@ -120,7 +222,7 @@ app.post("/", async (c) => {
       });
     }
 
-    setCookie(c, "steward-authed", "1", {
+    setCookie(c, STEWARD_AUTHED_COOKIE, "1", {
       httpOnly: false,
       secure,
       sameSite: "Lax",
@@ -130,23 +232,29 @@ app.post("/", async (c) => {
     });
 
     logStewardAuth("ok", ttl);
-    return c.json({
+    const response: StewardSessionResponse = {
       ok: true,
       userId: cloudUser.id,
       stewardUserId: claims.userId,
-    });
+    };
+    return c.json(response);
   } catch {
     logStewardAuth("error", null);
-    return c.json({ error: "Internal error" }, 500);
+    return c.json(errorBody("Internal error", "internal_error"), 500);
   }
 });
 
 app.delete("/", (c) => {
+  const originCheck = checkOrigin(c);
+  if (!originCheck.ok) {
+    logStewardAuth("forbidden-origin-delete", null);
+    return c.json({ error: "Forbidden" }, 403);
+  }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };
-  deleteCookie(c, "steward-token", opts);
-  deleteCookie(c, "steward-refresh-token", opts);
-  deleteCookie(c, "steward-authed", opts);
+  deleteCookie(c, STEWARD_TOKEN_COOKIE, opts);
+  deleteCookie(c, STEWARD_REFRESH_TOKEN_COOKIE, opts);
+  deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
 });

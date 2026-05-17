@@ -9,6 +9,7 @@
  */
 
 import { execFile } from "node:child_process";
+import nodeCrypto from "node:crypto";
 import { existsSync, rmSync } from "node:fs";
 import { promisify } from "node:util";
 
@@ -200,6 +201,15 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       rewrittenEnv[k] = rewriteForContainer(v);
     }
 
+    // Drop the cloud's DATABASE_URL — local PGlite TCP bridge can't reliably
+    // serve concurrent in-container plugin-sql clients on top of the host
+    // wrangler workload, and connection storms cause container-side ECONNs.
+    // Without DATABASE_URL the elizaOS plugin-sql cleanly falls back to a
+    // per-container bundled PGlite, which is the right default for local dev
+    // (each agent gets its own isolated DB).
+    delete rewrittenEnv.DATABASE_URL;
+    delete rewrittenEnv.POSTGRES_URL;
+
     // Generate a shared token used for both the cloud-agent /bridge auth
     // (BRIDGE_SECRET) and the elizaOS REST API auth (ELIZA_API_TOKEN). Keeping
     // them the same lets `getAgentJsonHeaders()` on the cloud-api side use a
@@ -209,7 +219,30 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       rewrittenEnv.BRIDGE_SECRET ||
       crypto.randomUUID().replace(/-/g, "");
 
+    // Pass through LLM provider keys from the host env so any agent the
+    // cloud-api spawns can actually answer. Without these, the elizaOS
+    // runtime crashes the container's process on the first message.send
+    // (NoModelProviderConfiguredError). Allow per-sandbox overrides via
+    // environmentVars to win.
+    const hostEnv = process.env;
+    const llmPassthrough: Record<string, string> = {};
+    for (const key of [
+      "ELIZAOS_CLOUD_API_KEY",
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "OPENROUTER_API_KEY",
+      "GOOGLE_API_KEY",
+      "XAI_API_KEY",
+      "GROQ_API_KEY",
+    ]) {
+      const value = hostEnv[key];
+      if (typeof value === "string" && value.length > 0 && !rewrittenEnv[key]) {
+        llmPassthrough[key] = value;
+      }
+    }
+
     const allEnv: Record<string, string> = {
+      ...llmPassthrough,
       ...rewrittenEnv,
       AGENT_NAME: agentName,
       AGENT_ID: agentId,
@@ -226,6 +259,12 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
         rewrittenEnv.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID().replace(/-/g, ""),
       ELIZA_API_TOKEN: apiToken,
       BRIDGE_SECRET: apiToken,
+      // plugin-sql throws under NODE_ENV=production without a SECRET_SALT.
+      // Generate a per-sandbox value so two agents on the same host don't
+      // share encrypted-state keys. Stable per agentId so restarts decrypt.
+      SECRET_SALT:
+        rewrittenEnv.SECRET_SALT ||
+        nodeCrypto.createHash("sha256").update(`local-docker-secret-salt:${agentId}`).digest("hex"),
     };
 
     for (const [key, value] of Object.entries(allEnv)) {

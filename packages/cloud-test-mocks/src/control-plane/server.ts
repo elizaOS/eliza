@@ -29,6 +29,21 @@ export interface ControlPlaneMockOptions {
   containerActionMs?: number;
   /** ms between SSE events on the bridge stream. Default 5. */
   bridgeStreamIntervalMs?: number;
+  /**
+   * When set, requests must also include `x-container-control-plane-token` with this value
+   * in addition to the bearer token. Mirrors the real impl's dual-token auth, which is
+   * enabled by `CONTAINER_CONTROL_PLANE_TOKEN` env var. Default reads that env var; pass
+   * an empty string or `undefined` to disable.
+   */
+  expectedAuxToken?: string;
+  /** Whether the warm pool is enabled (admin GET reports this). Default true. */
+  warmPoolEnabled?: boolean;
+  /** Warm-pool min size (admin GET reports this). Default 0. */
+  warmPoolMin?: number;
+  /** Warm-pool max size (admin GET reports this). Default 10. */
+  warmPoolMax?: number;
+  /** Warm-pool image label (admin GET reports this). Default `elizaos/agent:latest`. */
+  warmPoolImage?: string;
 }
 
 interface HetznerActionResponse {
@@ -43,7 +58,7 @@ interface HetznerServerResponse {
 export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app: Hono;
   store: ControlPlaneStore;
-  tick: () => Promise<{ processed: number; failed: number }>;
+  tick: (limit?: number) => Promise<{ processed: number; failed: number; skipped: number }>;
   cleanupStuck: () => Promise<{ failed: number }>;
 } {
   const token = options.token ?? process.env.CONTAINER_CONTROL_PLANE_TOKEN ?? "test-token";
@@ -62,6 +77,22 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   const adminToken = options.adminToken ?? "test-admin-token";
   const containerActionMs = options.containerActionMs ?? 30;
   const bridgeStreamIntervalMs = options.bridgeStreamIntervalMs ?? 5;
+  const expectedAuxToken =
+    options.expectedAuxToken !== undefined
+      ? options.expectedAuxToken || undefined
+      : process.env.CONTAINER_CONTROL_PLANE_TOKEN || undefined;
+  const warmPoolEnabled = options.warmPoolEnabled ?? true;
+  const warmPoolMin = options.warmPoolMin ?? 0;
+  const warmPoolMax = options.warmPoolMax ?? 10;
+  const warmPoolImage = options.warmPoolImage ?? defaultAgentImage;
+
+  store.setWarmPoolState({
+    enabled: warmPoolEnabled,
+    minSize: warmPoolMin,
+    maxSize: warmPoolMax,
+    image: warmPoolImage,
+    targetImage: warmPoolImage,
+  });
 
   store.setHotPoolTarget(hotPoolSize);
 
@@ -76,6 +107,12 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
     if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() !== token) {
       return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+    if (expectedAuxToken) {
+      const aux = c.req.header("x-container-control-plane-token")?.trim();
+      if (aux !== expectedAuxToken) {
+        return c.json({ success: false, error: "Unauthorized (aux token)" }, 401);
+      }
     }
     await next();
   });
@@ -141,15 +178,26 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     return c.json({ success: true, data: sandbox });
   });
 
-  app.post("/cron/process-provisioning-jobs", async (c) => {
-    const result = await tick();
+  const processProvisioningJobsHandler = async (c: Context) => {
+    const rawLimit = c.req.query("limit");
+    const parsed = rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
+    const result = await tick(limit);
     return c.json({ success: true, data: result });
-  });
+  };
+  app.post("/cron/process-provisioning-jobs", processProvisioningJobsHandler);
+  app.get("/cron/process-provisioning-jobs", processProvisioningJobsHandler);
+  app.post("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsHandler);
+  app.get("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsHandler);
 
-  app.post("/cron/cleanup-stuck-provisioning", async (c) => {
+  const cleanupStuckHandler = async (c: Context) => {
     const result = await cleanupStuck();
     return c.json({ success: true, data: result });
-  });
+  };
+  app.post("/cron/cleanup-stuck-provisioning", cleanupStuckHandler);
+  app.get("/cron/cleanup-stuck-provisioning", cleanupStuckHandler);
+  app.post("/api/v1/cron/cleanup-stuck-provisioning", cleanupStuckHandler);
+  app.get("/api/v1/cron/cleanup-stuck-provisioning", cleanupStuckHandler);
 
   // ── Latency injection ─────────────────────────────────────────────────
   async function latency(): Promise<void> {
@@ -386,17 +434,55 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     });
   });
 
-  // ── Hot pool / autoscale crons ───────────────────────────────────────
-  app.post("/api/v1/cron/deployment-monitor", async (c) => {
-    await latency();
-    const count = store.incrementCron("deployment-monitor-tick");
-    return c.json({
-      success: true,
-      data: { count, timestamp: now().toISOString() },
+  // Real impl: POST /api/v1/eliza/agents/:id/stream takes a JSON-RPC body
+  // (method must be "message.send") and returns SSE.
+  app.post("/api/v1/eliza/agents/:agentId/stream", async (c) => {
+    const authResult = requireForwardedAuth(c);
+    if (authResult instanceof Response) return authResult;
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const streamHeaders = {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    };
+    if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+      return new Response(
+        `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
+        { status: 400, headers: streamHeaders },
+      );
+    }
+    const rpcId = body.id ?? null;
+    const agentId = c.req.param("agentId");
+    return streamSSE(c, async (stream) => {
+      for (let i = 1; i <= 2; i += 1) {
+        await stream.sleep(bridgeStreamIntervalMs);
+        await stream.writeSSE({
+          event: "progress",
+          data: JSON.stringify({ jsonrpc: "2.0", method: "progress", params: { step: i } }),
+        });
+      }
+      await stream.sleep(bridgeStreamIntervalMs);
+      await stream.writeSSE({
+        event: "response",
+        data: JSON.stringify({ jsonrpc: "2.0", id: rpcId, result: { agentId, accepted: true } }),
+      });
     });
   });
 
-  app.post("/api/v1/cron/agent-hot-pool", async (c) => {
+  // ── Hot pool / autoscale crons ───────────────────────────────────────
+  const deploymentMonitorHandler = async (_c: Context) => {
+    await latency();
+    const count = store.incrementCron("deployment-monitor-tick");
+    return _c.json({
+      success: true,
+      data: { count, timestamp: now().toISOString() },
+    });
+  };
+  app.post("/api/v1/cron/deployment-monitor", deploymentMonitorHandler);
+  app.get("/api/v1/cron/deployment-monitor", deploymentMonitorHandler);
+
+  const agentHotPoolHandler = async (c: Context) => {
     await latency();
     const count = store.incrementCron("agent-hot-pool-tick");
     const added = store.replenishWarmPool(defaultAgentImage, store.getHotPoolTarget());
@@ -411,20 +497,24 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         timestamp: now().toISOString(),
       },
     });
-  });
+  };
+  app.post("/api/v1/cron/agent-hot-pool", agentHotPoolHandler);
+  app.get("/api/v1/cron/agent-hot-pool", agentHotPoolHandler);
 
-  app.post("/api/v1/cron/node-autoscale", async (c) => {
+  const nodeAutoscaleHandler = async (c: Context) => {
     await latency();
     const count = store.incrementCron("node-autoscale-tick");
     return c.json({
       success: true,
       data: { count, action: "noop", timestamp: now().toISOString() },
     });
-  });
+  };
+  app.post("/api/v1/cron/node-autoscale", nodeAutoscaleHandler);
+  app.get("/api/v1/cron/node-autoscale", nodeAutoscaleHandler);
 
   // Hono parameters do not match partial-segment patterns like `pool-:rest`,
   // so use a single catchall handler that inspects the suffix.
-  app.post("/api/v1/cron/:name", async (c) => {
+  const poolCatchallHandler = async (c: Context) => {
     const name = c.req.param("name");
     if (!name.startsWith("pool-")) {
       return c.json({ success: false, error: "Not found" }, 404);
@@ -435,9 +525,45 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       success: true,
       data: { kind: name, count, timestamp: now().toISOString() },
     });
-  });
+  };
+  app.post("/api/v1/cron/:name", poolCatchallHandler);
+  app.get("/api/v1/cron/:name", poolCatchallHandler);
 
   // ── Admin endpoints ──────────────────────────────────────────────────
+  app.get("/api/v1/admin/warm-pool", async (c) => {
+    const unauthorized = requireAdmin(c);
+    if (unauthorized) return unauthorized;
+    await latency();
+    const state = store.getWarmPoolState();
+    return c.json({
+      success: true,
+      data: {
+        image: state.image,
+        enabled: state.enabled,
+        minSize: state.minSize,
+        maxSize: state.maxSize,
+        currentSize: store.warmPoolSnapshot().length,
+        rolloutState: state.rolloutState,
+      },
+    });
+  });
+
+  app.get("/api/v1/admin/warm-pool/rollout-status", async (c) => {
+    const unauthorized = requireAdmin(c);
+    if (unauthorized) return unauthorized;
+    await latency();
+    const state = store.getWarmPoolState();
+    return c.json({
+      success: true,
+      data: {
+        status: state.rolloutState,
+        targetImage: state.targetImage,
+        completedSandboxes: state.completedSandboxes,
+        totalSandboxes: state.totalSandboxes,
+      },
+    });
+  });
+
   app.post("/api/v1/admin/warm-pool", async (c) => {
     const unauthorized = requireAdmin(c);
     if (unauthorized) return unauthorized;
@@ -464,6 +590,29 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   });
 
   // ── Compat ───────────────────────────────────────────────────────────
+  app.delete("/api/compat/agents/:id", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const id = c.req.param("id");
+    // Find a sandbox associated with this agentId (best-effort match).
+    const sandbox = store
+      .allSandboxes()
+      .find((s) => s.agentId === id && s.organizationId === auth.organizationId);
+    if (!sandbox) {
+      return c.json({ error: "agent_not_found" }, 404);
+    }
+    store.updateSandbox(sandbox.id, { status: "deletion_pending" });
+    const job = store.createJob({
+      type: "agent_delete",
+      sandboxId: sandbox.id,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      payload: { agentId: id },
+    });
+    return c.json({ ok: true, jobId: job.id });
+  });
+
   app.get("/api/compat/agents/:id", async (c) => {
     await latency();
     const id = c.req.param("id");
@@ -600,11 +749,17 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     store.updateJob(job.id, { status: "failed", errorReason: reason, finishedAt: now() });
   }
 
-  async function tick(): Promise<{ processed: number; failed: number }> {
+  async function tick(limit = Number.POSITIVE_INFINITY): Promise<{
+    processed: number;
+    failed: number;
+    skipped: number;
+  }> {
     const pending = store.pendingJobs();
+    const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : pending.length;
+    const slice = pending.slice(0, cap);
     let processed = 0;
     let failed = 0;
-    for (const job of pending) {
+    for (const job of slice) {
       store.updateJob(job.id, { status: "in_progress", startedAt: now() });
       const fresh = store.getJob(job.id);
       if (!fresh) continue;
@@ -617,7 +772,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       if (after?.status === "completed") processed += 1;
       else if (after?.status === "failed") failed += 1;
     }
-    return { processed, failed };
+    const skipped = store.pendingJobCount();
+    return { processed, failed, skipped };
   }
 
   async function cleanupStuck(): Promise<{ failed: number }> {

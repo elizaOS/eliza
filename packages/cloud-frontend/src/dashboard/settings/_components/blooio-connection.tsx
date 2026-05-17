@@ -15,8 +15,9 @@ import {
   Label,
 } from "@elizaos/ui";
 import { ExternalLink, Loader2, MessageCircle, Smartphone } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useConnectionStatus } from "@/hooks/use-connection-status";
 
 interface BlooioStatus {
   connected: boolean;
@@ -28,8 +29,14 @@ interface BlooioStatus {
 }
 
 export function BlooioConnection() {
-  const [status, setStatus] = useState<BlooioStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    status,
+    isLoading,
+    refetch: fetchStatus,
+  } = useConnectionStatus<BlooioStatus>(
+    "/api/v1/blooio/status",
+    "Failed to fetch Blooio status",
+  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [apiKey, setApiKey] = useState("");
@@ -37,30 +44,6 @@ export function BlooioConnection() {
   const [webhookSecret, setWebhookSecret] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [isSavingSecret, setIsSavingSecret] = useState(false);
-
-  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/v1/blooio/status", { signal });
-      if (!signal?.aborted) {
-        setStatus(await response.json());
-      }
-    } catch {
-      if (!signal?.aborted) {
-        toast.error("Failed to fetch Blooio status");
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchStatus(controller.signal);
-    return () => controller.abort();
-  }, [fetchStatus]);
 
   const handleConnect = async () => {
     if (isConnecting) return;

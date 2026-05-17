@@ -349,7 +349,7 @@ export function ApiTester({
         responseHeaders[key] = value;
       });
 
-      let responseData;
+      let responseData: unknown;
       const contentType = fetchResponse.headers.get("content-type");
 
       // Handle audio responses (TTS endpoint)
@@ -848,7 +848,7 @@ export function ApiTester({
                       <div className="space-y-2">
                         {uploadedFiles.map((file, index) => (
                           <div
-                            key={index}
+                            key={file.name}
                             className="flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border/40"
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">

@@ -52,7 +52,10 @@ function createHandler() {
             .optional()
             .default("UTC")
             .describe("IANA timezone or alias (e.g. 'PST', 'JST')"),
-          format: z.enum(["iso", "unix", "readable", "all"]).optional().default("all"),
+          format: z
+            .enum(["iso", "unix", "readable", "all"])
+            .optional()
+            .default("all"),
         },
         async ({ timezone = "UTC", format = "all" }) => {
           const tz = resolveTimezone(timezone);
@@ -61,7 +64,9 @@ function createHandler() {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify({ error: `Invalid timezone: ${timezone}` }),
+                  text: JSON.stringify({
+                    error: `Invalid timezone: ${timezone}`,
+                  }),
                 },
               ],
               isError: true,
@@ -84,7 +89,9 @@ function createHandler() {
                   ? { readable, timezone: tz }
                   : { iso, unix, readable, timezone: tz };
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+            content: [
+              { type: "text" as const, text: JSON.stringify(payload, null, 2) },
+            ],
           };
         },
       );

@@ -14,8 +14,9 @@ import {
   Label,
 } from "@elizaos/ui";
 import { ExternalLink, Loader2, MessageSquare, Phone } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useConnectionStatus } from "@/hooks/use-connection-status";
 
 interface TwilioStatus {
   connected: boolean;
@@ -26,52 +27,20 @@ interface TwilioStatus {
 }
 
 export function TwilioConnection() {
-  const [status, setStatus] = useState<TwilioStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    status,
+    isLoading,
+    refetch: fetchStatus,
+  } = useConnectionStatus<TwilioStatus>(
+    "/api/v1/twilio/status",
+    "Failed to fetch Twilio status",
+  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
-
-  const fetchStatus = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/v1/twilio/status");
-      const data: TwilioStatus = await response.json();
-      setStatus(data);
-    } catch {
-      toast.error("Failed to fetch Twilio status");
-    }
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const loadStatus = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/v1/twilio/status", {
-          signal: controller.signal,
-        });
-        if (!controller.signal.aborted) {
-          const data: TwilioStatus = await response.json();
-          setStatus(data);
-          setIsLoading(false);
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadStatus();
-
-    return () => controller.abort();
-  }, []);
 
   const handleConnect = async () => {
     if (isConnecting) return;

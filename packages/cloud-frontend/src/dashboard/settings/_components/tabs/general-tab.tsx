@@ -82,7 +82,6 @@ export function GeneralTab({ user }: GeneralTabProps) {
     updateForm({ saving: false });
   };
 
-  // Get user initials for avatar
   const getInitials = (name: string) => {
     return name
       .split(" ")

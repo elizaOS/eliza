@@ -15,6 +15,9 @@ import {
 import { tokenMatches } from "./auth/tokens.js";
 import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
+// AuthStore is statically imported elsewhere in the package; the dynamic
+// import below was INEFFECTIVE_DYNAMIC_IMPORT.
+import { AuthStore } from "../services/auth-store.js";
 
 export { tokenMatches } from "./auth/tokens.js";
 
@@ -375,7 +378,6 @@ export async function ensureRouteAuthorized(
   if (!db) {
     return ensureCompatApiAuthorized(req, res);
   }
-  const { AuthStore } = await import("../services/auth-store");
   const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
   return ensureCompatApiAuthorizedAsync(req, res, {
     store,

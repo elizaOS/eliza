@@ -52,6 +52,15 @@ export function toSuccessRatePercent(rate: number): number {
   return round1dp(rate * 100);
 }
 
+/**
+ * Compute `(numerator / denominator) * 100` rounded to one decimal.
+ * Returns 0 when `denominator <= 0` so callers never divide by zero.
+ */
+export function toRatePercent(numerator: number, denominator: number): number {
+  if (denominator <= 0) return 0;
+  return round1dp((numerator / denominator) * 100);
+}
+
 export interface DistributionEntry {
   key: string;
   count: number;

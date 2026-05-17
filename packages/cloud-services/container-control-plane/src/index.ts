@@ -1,8 +1,11 @@
-import { type Context, Hono } from "hono";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
 import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
 import type { DockerNode } from "@elizaos/cloud-shared/db/schemas/docker-nodes";
-import { envelope, errorEnvelope, toCompatOpResult } from "@elizaos/cloud-shared/lib/api/compat-envelope";
+import {
+  envelope,
+  errorEnvelope,
+  toCompatOpResult,
+} from "@elizaos/cloud-shared/lib/api/compat-envelope";
 import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { WarmPoolManager } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool";
@@ -18,14 +21,20 @@ import {
 import { getNodeAutoscaler } from "@elizaos/cloud-shared/lib/services/containers/node-autoscaler";
 import { dockerNodeManager } from "@elizaos/cloud-shared/lib/services/docker-node-manager";
 import { reusesExistingElizaCharacter } from "@elizaos/cloud-shared/lib/services/eliza-agent-config";
-import { type BridgeRequest, elizaSandboxService } from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
+import {
+  type BridgeRequest,
+  elizaSandboxService,
+} from "@elizaos/cloud-shared/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { type Context, Hono } from "hono";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {
   if (!cachedWarmPoolManager) {
-    cachedWarmPoolManager = new WarmPoolManager(getHetznerPoolContainerCreator());
+    cachedWarmPoolManager = new WarmPoolManager(
+      getHetznerPoolContainerCreator(),
+    );
   }
   return cachedWarmPoolManager;
 }
@@ -60,7 +69,10 @@ function errorStatus(error: unknown): number {
 function errorBody(error: unknown) {
   return {
     success: false,
-    code: error instanceof HetznerClientError ? error.code : "container_control_plane_error",
+    code:
+      error instanceof HetznerClientError
+        ? error.code
+        : "container_control_plane_error",
     error: error instanceof Error ? error.message : String(error),
   };
 }
@@ -87,10 +99,13 @@ function requireInternalToken(c: Context): void {
   if (expectedToken) {
     const supplied = c.req.header("x-container-control-plane-token")?.trim();
     if (supplied !== expectedToken) {
-      throw new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      });
+      throw new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        },
+      );
     }
   }
 }
@@ -98,12 +113,18 @@ function requireInternalToken(c: Context): void {
 function asRecordOfStrings(value: unknown): Record<string, string> | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new HetznerClientError("invalid_input", "environment_vars must be an object");
+    throw new HetznerClientError(
+      "invalid_input",
+      "environment_vars must be an object",
+    );
   }
   const out: Record<string, string> = {};
   for (const [key, rawValue] of Object.entries(value)) {
     if (typeof rawValue !== "string") {
-      throw new HetznerClientError("invalid_input", `environment_vars.${key} must be a string`);
+      throw new HetznerClientError(
+        "invalid_input",
+        `environment_vars.${key} must be a string`,
+      );
     }
     out[key] = rawValue;
   }
@@ -118,12 +139,19 @@ function readString(body: Record<string, unknown>, key: string): string {
   return value.trim();
 }
 
-function readOptionalString(body: Record<string, unknown>, key: string): string | undefined {
+function readOptionalString(
+  body: Record<string, unknown>,
+  key: string,
+): string | undefined {
   const value = body[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function readNumber(body: Record<string, unknown>, key: string, fallback: number): number {
+function readNumber(
+  body: Record<string, unknown>,
+  key: string,
+  fallback: number,
+): number {
   const value = body[key];
   if (value === undefined || value === null) return fallback;
   const parsed = typeof value === "number" ? value : Number(value);
@@ -133,7 +161,10 @@ function readNumber(body: Record<string, unknown>, key: string, fallback: number
   return parsed;
 }
 
-function readBoolean(body: Record<string, unknown>, key: string): boolean | undefined {
+function readBoolean(
+  body: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
   const value = body[key];
   if (value === undefined || value === null) return undefined;
   if (typeof value === "boolean") return value;
@@ -142,11 +173,16 @@ function readBoolean(body: Record<string, unknown>, key: string): boolean | unde
   throw new HetznerClientError("invalid_input", `${key} must be a boolean`);
 }
 
-function readVolumeMountPath(body: Record<string, unknown>): string | undefined {
+function readVolumeMountPath(
+  body: Record<string, unknown>,
+): string | undefined {
   const value = body.volume_mount_path;
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "string" || !value.trim()) {
-    throw new HetznerClientError("invalid_input", "volume_mount_path must be a string");
+    throw new HetznerClientError(
+      "invalid_input",
+      "volume_mount_path must be a string",
+    );
   }
   const trimmed = value.trim();
   if (!trimmed.startsWith("/") || trimmed.includes("\0")) {
@@ -156,16 +192,24 @@ function readVolumeMountPath(body: Record<string, unknown>): string | undefined 
     );
   }
   if (trimmed === "/" || trimmed.includes("/../") || trimmed.endsWith("/..")) {
-    throw new HetznerClientError("invalid_input", "volume_mount_path cannot escape its root");
+    throw new HetznerClientError(
+      "invalid_input",
+      "volume_mount_path cannot escape its root",
+    );
   }
   return trimmed.replace(/\/+/g, "/").replace(/\/$/, "");
 }
 
-function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapSource | undefined {
+function readBootstrapSource(
+  body: Record<string, unknown>,
+): ContainerBootstrapSource | undefined {
   const value = body.bootstrap_source;
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new HetznerClientError("invalid_input", "bootstrap_source must be an object");
+    throw new HetznerClientError(
+      "invalid_input",
+      "bootstrap_source must be an object",
+    );
   }
   const source = value as Record<string, unknown>;
   if (
@@ -180,7 +224,10 @@ function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapS
   }
   const rawFiles = source.files;
   if (rawFiles !== undefined && !Array.isArray(rawFiles)) {
-    throw new HetznerClientError("invalid_input", "bootstrap_source.files must be an array");
+    throw new HetznerClientError(
+      "invalid_input",
+      "bootstrap_source.files must be an array",
+    );
   }
 
   const files =
@@ -206,7 +253,11 @@ function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapS
           `bootstrap_source.files.${index}.contents is required`,
         );
       }
-      if (file.encoding !== undefined && file.encoding !== "base64" && file.encoding !== "utf-8") {
+      if (
+        file.encoding !== undefined &&
+        file.encoding !== "base64" &&
+        file.encoding !== "utf-8"
+      ) {
         throw new HetznerClientError(
           "invalid_input",
           `bootstrap_source.files.${index}.encoding must be utf-8 or base64`,
@@ -214,10 +265,13 @@ function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapS
       }
       const encoding = file.encoding === "base64" ? "base64" : "utf-8";
       const size =
-        typeof file.size === "number" && Number.isFinite(file.size) ? file.size : undefined;
+        typeof file.size === "number" && Number.isFinite(file.size)
+          ? file.size
+          : undefined;
       const sha256 = typeof file.sha256 === "string" ? file.sha256 : undefined;
       const mode = typeof file.mode === "string" ? file.mode : undefined;
-      const mtimeMs = typeof file.mtimeMs === "number" ? file.mtimeMs : undefined;
+      const mtimeMs =
+        typeof file.mtimeMs === "number" ? file.mtimeMs : undefined;
       return {
         path: path.trim(),
         contents,
@@ -231,31 +285,52 @@ function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapS
 
   return {
     sourceKind: source.sourceKind === "workspace" ? "workspace" : "project",
-    ...(typeof source.projectId === "string" ? { projectId: source.projectId } : {}),
-    ...(typeof source.workspaceId === "string" ? { workspaceId: source.workspaceId } : {}),
-    ...(typeof source.rootPath === "string" ? { rootPath: source.rootPath } : {}),
-    ...(typeof source.snapshotId === "string" ? { snapshotId: source.snapshotId } : {}),
-    ...(typeof source.revision === "string" ? { revision: source.revision } : {}),
+    ...(typeof source.projectId === "string"
+      ? { projectId: source.projectId }
+      : {}),
+    ...(typeof source.workspaceId === "string"
+      ? { workspaceId: source.workspaceId }
+      : {}),
+    ...(typeof source.rootPath === "string"
+      ? { rootPath: source.rootPath }
+      : {}),
+    ...(typeof source.snapshotId === "string"
+      ? { snapshotId: source.snapshotId }
+      : {}),
+    ...(typeof source.revision === "string"
+      ? { revision: source.revision }
+      : {}),
     ...(files.length ? { files } : {}),
-    ...(source.manifest && typeof source.manifest === "object" && !Array.isArray(source.manifest)
+    ...(source.manifest &&
+    typeof source.manifest === "object" &&
+    !Array.isArray(source.manifest)
       ? { manifest: source.manifest as ContainerBootstrapSource["manifest"] }
       : {}),
-    ...(source.metadata && typeof source.metadata === "object" && !Array.isArray(source.metadata)
+    ...(source.metadata &&
+    typeof source.metadata === "object" &&
+    !Array.isArray(source.metadata)
       ? { metadata: source.metadata as Record<string, unknown> }
       : {}),
   };
 }
 
-function readWorkspaceSyncRequest(body: Record<string, unknown>): ContainerWorkspaceSyncRequest {
+function readWorkspaceSyncRequest(
+  body: Record<string, unknown>,
+): ContainerWorkspaceSyncRequest {
   const directionRaw = body.direction;
   const direction =
     directionRaw === undefined || directionRaw === null
       ? undefined
-      : directionRaw === "pull" || directionRaw === "push" || directionRaw === "roundtrip"
+      : directionRaw === "pull" ||
+          directionRaw === "push" ||
+          directionRaw === "roundtrip"
         ? directionRaw
         : null;
   if (direction === null) {
-    throw new HetznerClientError("invalid_input", "direction must be pull, push, or roundtrip");
+    throw new HetznerClientError(
+      "invalid_input",
+      "direction must be pull, push, or roundtrip",
+    );
   }
 
   const source = readBootstrapSource({
@@ -263,16 +338,25 @@ function readWorkspaceSyncRequest(body: Record<string, unknown>): ContainerWorks
   });
   const rawDeleted = body.deletedFiles;
   if (rawDeleted !== undefined && !Array.isArray(rawDeleted)) {
-    throw new HetznerClientError("invalid_input", "deletedFiles must be an array");
+    throw new HetznerClientError(
+      "invalid_input",
+      "deletedFiles must be an array",
+    );
   }
   const deletedFiles =
     rawDeleted?.map((rawFile, index) => {
       if (!rawFile || typeof rawFile !== "object" || Array.isArray(rawFile)) {
-        throw new HetznerClientError("invalid_input", `deletedFiles.${index} must be an object`);
+        throw new HetznerClientError(
+          "invalid_input",
+          `deletedFiles.${index} must be an object`,
+        );
       }
       const file = rawFile as Record<string, unknown>;
       if (typeof file.path !== "string" || !file.path.trim()) {
-        throw new HetznerClientError("invalid_input", `deletedFiles.${index}.path is required`);
+        throw new HetznerClientError(
+          "invalid_input",
+          `deletedFiles.${index}.path is required`,
+        );
       }
       return {
         path: file.path.trim(),
@@ -286,19 +370,33 @@ function readWorkspaceSyncRequest(body: Record<string, unknown>): ContainerWorks
   }
   const patches =
     rawPatches?.map((rawPatch, index) => {
-      if (!rawPatch || typeof rawPatch !== "object" || Array.isArray(rawPatch)) {
-        throw new HetznerClientError("invalid_input", `patches.${index} must be an object`);
+      if (
+        !rawPatch ||
+        typeof rawPatch !== "object" ||
+        Array.isArray(rawPatch)
+      ) {
+        throw new HetznerClientError(
+          "invalid_input",
+          `patches.${index} must be an object`,
+        );
       }
       const patch = rawPatch as Record<string, unknown>;
       if (typeof patch.path !== "string" || !patch.path.trim()) {
-        throw new HetznerClientError("invalid_input", `patches.${index}.path is required`);
+        throw new HetznerClientError(
+          "invalid_input",
+          `patches.${index}.path is required`,
+        );
       }
       if (typeof patch.patch !== "string") {
-        throw new HetznerClientError("invalid_input", `patches.${index}.patch is required`);
+        throw new HetznerClientError(
+          "invalid_input",
+          `patches.${index}.patch is required`,
+        );
       }
       return {
         path: patch.path.trim(),
-        format: typeof patch.format === "string" ? patch.format : "unified-diff",
+        format:
+          typeof patch.format === "string" ? patch.format : "unified-diff",
         patch: patch.patch,
       };
     }) ?? [];
@@ -308,7 +406,9 @@ function readWorkspaceSyncRequest(body: Record<string, unknown>): ContainerWorks
     changedFiles: source?.files ?? [],
     deletedFiles,
     patches,
-    ...(body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+    ...(body.metadata &&
+    typeof body.metadata === "object" &&
+    !Array.isArray(body.metadata)
       ? { metadata: body.metadata as Record<string, unknown> }
       : {}),
   };
@@ -316,7 +416,9 @@ function readWorkspaceSyncRequest(body: Record<string, unknown>): ContainerWorks
 
 function buildBridgeStreamFallbackText(body: BridgeRequest): string | null {
   const params =
-    body.params && typeof body.params === "object" ? (body.params as Record<string, unknown>) : {};
+    body.params && typeof body.params === "object"
+      ? (body.params as Record<string, unknown>)
+      : {};
   const text = typeof params.text === "string" ? params.text.trim() : "";
   if (!text) return null;
 
@@ -338,7 +440,10 @@ async function readJsonObject(c: Context): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
-function toCreateInput(body: Record<string, unknown>, auth: ForwardedAuth): CreateContainerInput {
+function toCreateInput(
+  body: Record<string, unknown>,
+  auth: ForwardedAuth,
+): CreateContainerInput {
   return {
     name: readString(body, "name"),
     projectName: readString(body, "project_name"),
@@ -361,16 +466,22 @@ function toCreateInput(body: Record<string, unknown>, auth: ForwardedAuth): Crea
   };
 }
 
-async function handle(c: Context, fn: (auth: ForwardedAuth) => Promise<Response>) {
+async function handle(
+  c: Context,
+  fn: (auth: ForwardedAuth) => Promise<Response>,
+) {
   try {
     const auth = requireForwardedAuth(c);
     const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
     if (databaseUrl) {
       const controlPlaneNodes = await dockerNodesRepository.findAll();
-      return await runWithCloudBindingsAsync({ DATABASE_URL: databaseUrl }, async () => {
-        await mirrorControlPlaneNodes(controlPlaneNodes);
-        return await fn(auth);
-      });
+      return await runWithCloudBindingsAsync(
+        { DATABASE_URL: databaseUrl },
+        async () => {
+          await mirrorControlPlaneNodes(controlPlaneNodes);
+          return await fn(auth);
+        },
+      );
     }
     return await fn(auth);
   } catch (error) {
@@ -388,10 +499,13 @@ async function handleInternal(c: Context, fn: () => Promise<Response>) {
     const databaseUrl = c.req.header("x-eliza-cloud-database-url")?.trim();
     if (databaseUrl) {
       const controlPlaneNodes = await dockerNodesRepository.findAll();
-      return await runWithCloudBindingsAsync({ DATABASE_URL: databaseUrl }, async () => {
-        await mirrorControlPlaneNodes(controlPlaneNodes);
-        return await fn();
-      });
+      return await runWithCloudBindingsAsync(
+        { DATABASE_URL: databaseUrl },
+        async () => {
+          await mirrorControlPlaneNodes(controlPlaneNodes);
+          return await fn();
+        },
+      );
     }
     return await fn();
   } catch (error) {
@@ -430,7 +544,9 @@ async function mirrorControlPlaneNodes(nodes: DockerNode[]): Promise<void> {
   }
 }
 
-app.get("/health", (c) => c.json({ success: true, service: "container-control-plane" }));
+app.get("/health", (c) =>
+  c.json({ success: true, service: "container-control-plane" }),
+);
 
 function deploymentMonitorResponse(c: Context) {
   return handleInternal(c, async () => {
@@ -448,7 +564,12 @@ app.post("/api/v1/cron/deployment-monitor", deploymentMonitorResponse);
 
 function agentHotPoolResponse(c: Context) {
   return handleInternal(c, async () => {
-    const healthChecks = await dockerNodeManager.healthCheckAll();
+    // Node health checks moved to the provisioning-worker daemon — see
+    // `packages/scripts/cloud/admin/daemons/provisioning-worker.ts:processNodeHealthCheckCycle`.
+    // The orchestrator host runs them now because it's the one with a valid
+    // CONTAINERS_SSH_KEY against the cores; leaving the call here too would
+    // race with the daemon and flip status every 5 min depending on which
+    // writer landed last.
     const syncChanges = await dockerNodeManager.syncAllocatedCounts();
     const image = containersEnv.defaultAgentImage();
     const prePullEnabled = process.env.ELIZA_AGENT_HOT_POOL_PREPULL !== "false";
@@ -458,7 +579,9 @@ function agentHotPoolResponse(c: Context) {
     const capacity = await dockerNodeManager.getCapacityReport();
     const failedPrePulls = nodes.filter((node) => node.status === "failed");
     const noSuccessfulPrePulls =
-      prePullEnabled && nodes.length > 0 && failedPrePulls.length === nodes.length;
+      prePullEnabled &&
+      nodes.length > 0 &&
+      failedPrePulls.length === nodes.length;
 
     return c.json(
       {
@@ -466,13 +589,13 @@ function agentHotPoolResponse(c: Context) {
         ...(noSuccessfulPrePulls
           ? {
               code: "AGENT_HOT_POOL_PREPULL_FAILED",
-              error: "Agent image pre-pull failed on every eligible Docker node.",
+              error:
+                "Agent image pre-pull failed on every eligible Docker node.",
             }
           : {}),
         data: {
           image,
           prePullEnabled,
-          healthChecks: Object.fromEntries(healthChecks),
           syncedAllocatedCounts: Object.fromEntries(syncChanges),
           capacity,
           nodes,
@@ -498,7 +621,10 @@ function nodeAutoscaleResponse(c: Context) {
       timestamp: new Date().toISOString(),
     };
 
-    if (!decision.shouldScaleUp && decision.shouldScaleDownNodeIds.length === 0) {
+    if (
+      !decision.shouldScaleUp &&
+      decision.shouldScaleDownNodeIds.length === 0
+    ) {
       return c.json({
         success: true,
         data: { ...result, action: "noop" },
@@ -572,7 +698,9 @@ app.post("/api/v1/cron/node-autoscale", nodeAutoscaleResponse);
 function processProvisioningJobsResponse(c: Context) {
   return handleInternal(c, async () => {
     const rawLimit = Number(c.req.query("limit") ?? "5");
-    const batchSize = Number.isFinite(rawLimit) ? Math.max(1, Math.min(25, rawLimit)) : 5;
+    const batchSize = Number.isFinite(rawLimit)
+      ? Math.max(1, Math.min(25, rawLimit))
+      : 5;
     const result = await provisioningJobService.processPendingJobs(batchSize);
     return c.json({
       success: true,
@@ -585,9 +713,15 @@ function processProvisioningJobsResponse(c: Context) {
   });
 }
 
-app.get("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsResponse);
+app.get(
+  "/api/v1/cron/process-provisioning-jobs",
+  processProvisioningJobsResponse,
+);
 
-app.post("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsResponse);
+app.post(
+  "/api/v1/cron/process-provisioning-jobs",
+  processProvisioningJobsResponse,
+);
 
 // ── Warm pool ─────────────────────────────────────────────────────────────
 
@@ -653,7 +787,12 @@ function poolImageRolloutResponse(c: Context) {
     const after = await getWarmPoolManager().rolloutStatus(image);
     return c.json({
       success: true,
-      data: { image, ...result, rollout: after, timestamp: new Date().toISOString() },
+      data: {
+        image,
+        ...result,
+        rollout: after,
+        timestamp: new Date().toISOString(),
+      },
     });
   });
 }
@@ -674,7 +813,10 @@ function poolImageRolloutStatusResponse(c: Context) {
     });
   });
 }
-app.get("/api/v1/admin/warm-pool/rollout-status", poolImageRolloutStatusResponse);
+app.get(
+  "/api/v1/admin/warm-pool/rollout-status",
+  poolImageRolloutStatusResponse,
+);
 
 function poolStateResponse(c: Context) {
   return handleInternal(c, async () => {
@@ -702,7 +844,10 @@ app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
     const nodeId = c.req.param("nodeId");
     const node = await dockerNodesRepository.findByNodeId(nodeId);
     if (!node) {
-      return c.json({ success: false, error: `Node '${nodeId}' not found` }, 404);
+      return c.json(
+        { success: false, error: `Node '${nodeId}' not found` },
+        404,
+      );
     }
 
     const status = await dockerNodeManager.healthCheckNode(node);
@@ -721,7 +866,10 @@ app.post("/api/v1/admin/docker-nodes/:nodeId/health-check", (c) =>
 app.delete("/api/compat/agents/:id", (c) =>
   handle(c, async (auth) => {
     const agentId = c.req.param("id");
-    const deleted = await elizaSandboxService.deleteAgent(agentId, auth.organizationId);
+    const deleted = await elizaSandboxService.deleteAgent(
+      agentId,
+      auth.organizationId,
+    );
     if (!deleted.success) {
       const status =
         deleted.error === "Agent not found"
@@ -733,7 +881,10 @@ app.delete("/api/compat/agents/:id", (c) =>
     }
 
     const characterId = deleted.deletedSandbox.character_id;
-    const sandboxConfig = deleted.deletedSandbox.agent_config as Record<string, unknown> | null;
+    const sandboxConfig = deleted.deletedSandbox.agent_config as Record<
+      string,
+      unknown
+    > | null;
     const reusesExistingCharacter = reusesExistingElizaCharacter(sandboxConfig);
 
     if (characterId && !reusesExistingCharacter) {
@@ -759,7 +910,12 @@ app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
   handle(c, async (auth) => {
     const agentId = c.req.param("id");
     const body = (await c.req.json().catch(() => null)) as BridgeRequest | null;
-    if (!body || typeof body !== "object" || body.jsonrpc !== "2.0" || !body.method) {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      body.jsonrpc !== "2.0" ||
+      !body.method
+    ) {
       return c.json(
         {
           jsonrpc: "2.0",
@@ -769,7 +925,11 @@ app.post("/api/v1/eliza/agents/:id/bridge", (c) =>
       );
     }
 
-    const response = await elizaSandboxService.bridge(agentId, auth.organizationId, body);
+    const response = await elizaSandboxService.bridge(
+      agentId,
+      auth.organizationId,
+      body,
+    );
     return c.json(response);
   }),
 );
@@ -797,16 +957,24 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
       );
     }
 
-    const response = await elizaSandboxService.bridgeStream(agentId, auth.organizationId, body);
+    const response = await elizaSandboxService.bridgeStream(
+      agentId,
+      auth.organizationId,
+      body,
+    );
     if (!response?.body) {
       const fallbackText = buildBridgeStreamFallbackText(body);
       if (fallbackText) {
-        const status = await elizaSandboxService.bridge(agentId, auth.organizationId, {
-          jsonrpc: "2.0",
-          id: typeof body.id === "undefined" ? "stream-status" : body.id,
-          method: "heartbeat",
-          params: {},
-        });
+        const status = await elizaSandboxService.bridge(
+          agentId,
+          auth.organizationId,
+          {
+            jsonrpc: "2.0",
+            id: typeof body.id === "undefined" ? "stream-status" : body.id,
+            method: "heartbeat",
+            params: {},
+          },
+        );
         if (!status.error) {
           return new Response(
             `data: ${JSON.stringify({ text: fallbackText })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
@@ -841,7 +1009,8 @@ app.post("/api/v1/containers", (c) =>
       );
     });
 
-    const data = (await client.getContainer(created.id, auth.organizationId)) ?? created;
+    const data =
+      (await client.getContainer(created.id, auth.organizationId)) ?? created;
     return c.json(
       {
         success: true,
@@ -859,7 +1028,10 @@ app.post("/api/v1/containers", (c) =>
 
 app.get("/api/v1/containers/:id", (c) =>
   handle(c, async (auth) => {
-    const data = await client.getContainer(c.req.param("id"), auth.organizationId);
+    const data = await client.getContainer(
+      c.req.param("id"),
+      auth.organizationId,
+    );
     if (!data) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
@@ -899,12 +1071,19 @@ app.patch("/api/v1/containers/:id", (c) =>
       return c.json({ success: true, data });
     }
     if (body.desired_count !== undefined) {
-      await client.setScale(containerId, auth.organizationId, readNumber(body, "desired_count", 1));
+      await client.setScale(
+        containerId,
+        auth.organizationId,
+        readNumber(body, "desired_count", 1),
+      );
       const data = await client.getContainer(containerId, auth.organizationId);
       return c.json({ success: true, data });
     }
     if (body.action === "restart" || body.status === "restarting") {
-      const data = await client.restartContainer(containerId, auth.organizationId);
+      const data = await client.restartContainer(
+        containerId,
+        auth.organizationId,
+      );
       return c.json({ success: true, data });
     }
     throw new HetznerClientError(
@@ -917,24 +1096,36 @@ app.patch("/api/v1/containers/:id", (c) =>
 app.get("/api/v1/containers/:id/logs", (c) =>
   handle(c, async (auth) => {
     const tail = Number(c.req.query("tail") ?? "200");
-    const logs = await client.tailLogs(c.req.param("id"), auth.organizationId, tail);
+    const logs = await client.tailLogs(
+      c.req.param("id"),
+      auth.organizationId,
+      tail,
+    );
     return c.text(logs, 200, { "content-type": "text/plain; charset=utf-8" });
   }),
 );
 
 app.get("/api/v1/containers/:id/metrics", (c) =>
   handle(c, async (auth) => {
-    const data = await client.getMetrics(c.req.param("id"), auth.organizationId);
+    const data = await client.getMetrics(
+      c.req.param("id"),
+      auth.organizationId,
+    );
     return c.json({ success: true, data });
   }),
 );
 
 app.all("*", (c) => c.json({ success: false, error: "Not found" }, 404));
 
-const port = Number(process.env.PORT ?? process.env.CONTAINER_CONTROL_PLANE_PORT ?? 8791);
+const port = Number(
+  process.env.PORT ?? process.env.CONTAINER_CONTROL_PLANE_PORT ?? 8791,
+);
 const idleTimeout = Math.min(
   255,
-  Math.max(1, Number(process.env.CONTAINER_CONTROL_PLANE_IDLE_TIMEOUT_SECONDS ?? 255)),
+  Math.max(
+    1,
+    Number(process.env.CONTAINER_CONTROL_PLANE_IDLE_TIMEOUT_SECONDS ?? 255),
+  ),
 );
 Bun.serve({
   fetch: app.fetch,
@@ -943,4 +1134,6 @@ Bun.serve({
   port,
 });
 
-logger.info(`[container-control-plane] listening on ${process.env.HOST ?? "127.0.0.1"}:${port}`);
+logger.info(
+  `[container-control-plane] listening on ${process.env.HOST ?? "127.0.0.1"}:${port}`,
+);

@@ -76,8 +76,9 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/shared": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
+		"@elizaos/plugin-aosp-local-inference": "workspace:*",
+		"@elizaos/shared": "workspace:*",
 		"phonemizer": "^1.2.1"
 	},
 	"optionalDependencies": {

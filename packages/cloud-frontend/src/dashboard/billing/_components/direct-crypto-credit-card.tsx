@@ -11,7 +11,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
 import { useAccount, useConfig, useSwitchChain } from "wagmi";
@@ -27,6 +27,7 @@ interface DirectCryptoCreditCardProps {
   accountWalletAddress: string | null;
   onSuccess: () => Promise<void> | void;
   surface?: "default" | "cloud";
+  lockedNetwork?: DirectNetwork;
 }
 
 type DirectNetworkConfig = NonNullable<
@@ -95,9 +96,10 @@ export function DirectCryptoCreditCard({
   accountWalletAddress,
   onSuccess,
   surface = "default",
+  lockedNetwork,
 }: DirectCryptoCreditCardProps) {
   const [network, setNetwork] = useState<DirectNetwork>(
-    promoCode === "bsc" ? "bsc" : "base",
+    lockedNetwork ?? (promoCode === "bsc" ? "bsc" : "base"),
   );
   const [busy, setBusy] = useState(false);
   const evm = useAccount();
@@ -108,7 +110,10 @@ export function DirectCryptoCreditCard({
   const { setVisible: setSolanaModalVisible } = useWalletModal();
 
   const networks = status?.directWallet?.networks ?? [];
-  const enabledNetworks = networks.filter((item) => item.enabled);
+  const enabledNetworks = networks.filter(
+    (item) =>
+      item.enabled && (!lockedNetwork || item.network === lockedNetwork),
+  );
   const selected =
     enabledNetworks.find((item) => item.network === network) ??
     enabledNetworks[0];
@@ -120,8 +125,8 @@ export function DirectCryptoCreditCard({
   const connectedAddress = useMemo(() => {
     if (selected?.network === "solana")
       return solana.publicKey?.toBase58() ?? null;
-    return evm.address ?? null;
-  }, [evm.address, selected?.network, solana.publicKey]);
+    return evm.isConnected ? (evm.address ?? null) : null;
+  }, [evm.address, evm.isConnected, selected?.network, solana.publicKey]);
 
   const walletMatches =
     connectedAddress &&
@@ -244,38 +249,42 @@ export function DirectCryptoCreditCard({
 
   const isCloudSurface = surface === "cloud";
   const cardClassName = isCloudSurface
-    ? "border-white/12 bg-black/78 text-white shadow-2xl backdrop-blur-xl"
+    ? "rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md"
     : "border-border bg-card text-card-fg";
-  const mutedTextClassName = isCloudSurface ? "text-white/60" : "text-muted";
-  const titleClassName = isCloudSurface ? "text-white" : "text-txt-strong";
+  const mutedTextClassName = isCloudSurface ? "text-black/62" : "text-muted";
+  const titleClassName = isCloudSurface ? "text-black" : "text-txt-strong";
   const dividerClassName = isCloudSurface
-    ? "border-t border-white/10"
+    ? "border-t border-black/10"
     : "border-t border-border/60";
   const iconBoxClassName = isCloudSurface
-    ? "border-white/12 bg-white/[0.06] text-[#FF5800]"
+    ? "rounded-xs border-black/12 bg-black text-white"
     : "border-accent/20 bg-accent-subtle text-accent";
   const segmentClassName = isCloudSurface
-    ? "border-white/10 bg-white/[0.04]"
+    ? "border-black/10 bg-black/[0.03]"
     : "border-border bg-bg-muted";
   const selectedSegmentClassName = isCloudSurface
-    ? "bg-[#FF5800] text-black"
+    ? "bg-black text-white"
     : "bg-accent text-accent-foreground";
   const unselectedSegmentClassName = isCloudSurface
-    ? "text-white/58 hover:bg-white/[0.06] hover:text-white"
+    ? "text-black/58 hover:bg-black/[0.06] hover:text-black"
     : "text-muted-foreground hover:bg-bg-hover hover:text-txt";
   const infoTileClassName = isCloudSurface
-    ? "border-white/10 bg-white/[0.05]"
+    ? "border-black/10 bg-black/[0.03]"
     : "border-border bg-bg-muted";
-  const infoValueClassName = isCloudSurface ? "text-white" : "text-txt-strong";
+  const infoValueClassName = isCloudSurface ? "text-black" : "text-txt-strong";
   const promoClassName = isCloudSurface
-    ? "border-[#FF5800]/30 bg-[#FF5800]/12 text-[#FFB087]"
+    ? "border-black/12 bg-black/[0.04] text-black/72"
     : "border-warn/25 bg-warn-subtle text-warn";
   const surfaceButtonClassName = isCloudSurface
-    ? "border-white/14 bg-white/[0.06] text-white hover:bg-white/10"
+    ? "rounded-xs border-black bg-black text-white hover:bg-black/82"
     : undefined;
   const payButtonClassName = isCloudSurface
-    ? "min-w-[172px] bg-[#FF5800] text-black hover:bg-white"
+    ? "min-w-[172px] rounded-xs bg-black text-white hover:bg-black/82"
     : "min-w-[172px]";
+  const cloudButtonStyle: CSSProperties | undefined = isCloudSurface
+    ? { backgroundColor: "#000", borderColor: "#000", color: "#fff" }
+    : undefined;
+  const showNetworkSelector = !lockedNetwork && enabledNetworks.length > 1;
 
   if (!status?.directWallet?.enabled) {
     return (
@@ -307,41 +316,43 @@ export function DirectCryptoCreditCard({
         </div>
       </CardHeader>
       <CardContent className={`space-y-4 p-5 ${dividerClassName}`}>
-        <div
-          className={`grid grid-cols-3 gap-2 rounded-sm border p-1 text-xs sm:gap-3 ${segmentClassName}`}
-        >
-          {enabledNetworks.map((item) => (
-            <button
-              key={item.network}
-              type="button"
-              onClick={() => setNetwork(item.network)}
-              className={`min-h-10 rounded-sm px-3 py-2 font-medium transition-colors ${
-                selected?.network === item.network
-                  ? selectedSegmentClassName
-                  : unselectedSegmentClassName
-              }`}
-            >
-              {NETWORK_LABELS[item.network]}
-            </button>
-          ))}
-        </div>
+        {showNetworkSelector ? (
+          <div
+            className={`grid grid-cols-3 gap-2 rounded-xs border p-1 text-xs sm:gap-3 ${segmentClassName}`}
+          >
+            {enabledNetworks.map((item) => (
+              <button
+                key={item.network}
+                type="button"
+                onClick={() => setNetwork(item.network)}
+                className={`min-h-10 rounded-xs px-3 py-2 font-medium transition-colors ${
+                  selected?.network === item.network
+                    ? selectedSegmentClassName
+                    : unselectedSegmentClassName
+                }`}
+              >
+                {NETWORK_LABELS[item.network]}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div
           className={`grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 sm:gap-3 ${mutedTextClassName}`}
         >
-          <div className={`border p-3 ${infoTileClassName}`}>
+          <div className={`rounded-xs border p-3 ${infoTileClassName}`}>
             <div>Token</div>
             <div className={`mt-1 ${infoValueClassName}`}>
               {selected?.tokenSymbol ?? "-"}
             </div>
           </div>
-          <div className={`border p-3 ${infoTileClassName}`}>
+          <div className={`rounded-xs border p-3 ${infoTileClassName}`}>
             <div>Wallet</div>
             <div className={`mt-1 truncate ${infoValueClassName}`}>
               {formatAddress(connectedAddress) || "Not connected"}
             </div>
           </div>
-          <div className={`border p-3 ${infoTileClassName}`}>
+          <div className={`rounded-xs border p-3 ${infoTileClassName}`}>
             <div>Cloud credit</div>
             <div className={`mt-1 ${infoValueClassName}`}>
               ${expectedCredits.toFixed(2)}
@@ -351,7 +362,7 @@ export function DirectCryptoCreditCard({
 
         {bscPromo && (
           <div
-            className={`flex items-center gap-2 border px-3 py-2 text-xs font-medium ${promoClassName}`}
+            className={`flex items-center gap-2 rounded-xs border px-3 py-2 text-xs font-medium ${promoClassName}`}
           >
             <Coins className="h-4 w-4" />
             BSC promotion applied: +$5 cloud credit
@@ -359,7 +370,9 @@ export function DirectCryptoCreditCard({
         )}
 
         {!walletMatches && connectedAddress && accountWalletAddress && (
-          <div className={`border px-3 py-2 text-xs ${promoClassName}`}>
+          <div
+            className={`rounded-xs border px-3 py-2 text-xs ${promoClassName}`}
+          >
             Connected wallet must match your account wallet (
             {formatAddress(accountWalletAddress)}).
           </div>
@@ -372,21 +385,35 @@ export function DirectCryptoCreditCard({
               variant="surface"
               onClick={() => setSolanaModalVisible(true)}
               className={surfaceButtonClassName}
+              style={cloudButtonStyle}
             >
               {solana.publicKey ? "Solana connected" : "Connect Solana"}
             </Button>
           ) : (
-            <ConnectButton
-              showBalance={false}
-              chainStatus="icon"
-              accountStatus="address"
-            />
+            <ConnectButton.Custom>
+              {({ account, chain, openAccountModal, openConnectModal }) => (
+                <Button
+                  type="button"
+                  variant={isCloudSurface ? "default" : "surface"}
+                  onClick={account ? openAccountModal : openConnectModal}
+                  className={surfaceButtonClassName}
+                  style={cloudButtonStyle}
+                >
+                  {account
+                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                    : chain?.unsupported
+                      ? "Wrong network"
+                      : "Connect Wallet"}
+                </Button>
+              )}
+            </ConnectButton.Custom>
           )}
           <Button
             type="button"
             onClick={handlePay}
             disabled={!canPay || busy}
             className={payButtonClassName}
+            style={cloudButtonStyle}
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />

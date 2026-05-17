@@ -177,7 +177,6 @@ export function ElizaChatInterface({
     anonymousSessionToken,
   } = useChatStore();
 
-  // Check authentication status for features that require it
   const { authenticated } = useSessionAuth();
 
   const [messages, setMessages] = useState<Message[]>([]);

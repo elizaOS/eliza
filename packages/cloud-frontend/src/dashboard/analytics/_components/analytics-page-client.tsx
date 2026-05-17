@@ -9,13 +9,16 @@
 
 "use client";
 
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import type { TabItem } from "@elizaos/ui";
 import {
   BrandCard,
   BrandTabsContent,
   BrandTabsResponsive,
   CornerBrackets,
+  CostInsightsCard,
   DashboardPageContainer,
+  ExportButton,
   KeyMetricsGrid,
   useSetPageHeader,
 } from "@elizaos/ui";
@@ -32,8 +35,6 @@ import type {
   EnhancedAnalyticsDataDto,
   ProjectionsDataDto,
 } from "@/types/cloud-api";
-import { CostInsightsCard } from "./cost-insights-card";
-import { ExportButton } from "./export-button";
 import { AnalyticsFilters } from "./filters";
 import { ModelBreakdown } from "./model-breakdown";
 import { ProjectionsChart } from "./projections-chart";
@@ -138,7 +139,7 @@ export function AnalyticsPageClient({
     },
     {
       label: "Success rate",
-      value: `${(data.overallStats.successRate * 100).toFixed(1)}%`,
+      value: `${toSuccessRatePercent(data.overallStats.successRate).toFixed(1)}%`,
       helper: `Ratio of successful completions across ${data.timeSeriesData.length.toLocaleString()} data points`,
       delta:
         trendDelta.successRate !== 0

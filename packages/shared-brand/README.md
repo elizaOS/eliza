@@ -3,11 +3,15 @@
 Canonical brand assets shared across every elizaOS surface.
 
 - **Logos** (`assets/logos/*.svg`) — every color/variant combo, sourced from the design master in `~/Desktop/brand/logos/`.
-- **Cloud video** (`assets/clouds/*.{mp4,webm}` + `poster.jpg`) — the cloud loop in three playback speeds (1x, 4x, 8x), four resolutions (1080p/720p/480p/360p), and two codecs (H.264 MP4 with `+faststart`, VP9 WebM). `<an>` stripped, CRF-tuned for low-bandwidth streaming.
+- **Cloud video** (`assets/clouds/*.{mp4,webm}` + poster images) — the cloud loop in three playback speeds (1x, 4x, 8x), four resolutions (1080p/720p/480p/360p), and two codecs (H.264 MP4 with `+faststart`, VP9 WebM). `<an>` stripped, CRF-tuned for low-bandwidth streaming.
 - **Cloud backgrounds** (`assets/background/*`) — the source cloud loop exports, optimized variants, and still background from `~/Desktop/brand/background/`.
 - **Concept products** (`assets/concepts/*.jpg`) — product/concept imagery from `~/Desktop/brand/concepts/`.
 - **Favicons** (`assets/favicons/*`) — canonical web app icon files mirrored under `/brand/favicons`.
 - **Tokens** (`src/index.ts`, `src/brand.css`) — brand colors, surface themes, font stack, asset URL constants, CSS custom properties, and the cloud-video manifest used by `<CloudVideoBackground>` in `@elizaos/ui`.
+
+The default cloud poster pair is intentionally small: `poster-960.jpg` for
+desktop/tablet and `poster-640.jpg` as the lower responsive candidate. The
+video fades in over this image after it can play.
 
 ## How consumers use this
 
@@ -16,15 +20,16 @@ Asset bytes have to live inside each consumer's served `public/` tree (Vite, Min
 ```sh
 # from a consumer package directory
 node ../shared-brand/scripts/sync-to-public.mjs ./public
+node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x
 ```
 
 That drops these paths into the consumer:
 
 - `public/brand/logos/*`
 - `public/brand/concepts/*`
-- `public/brand/background/*`
+- `public/brand/background/*` (still images by default; pass `--background-videos` only for packages that serve the legacy source loops)
 - `public/brand/favicons/*`
-- `public/clouds/*`
+- `public/clouds/*` when `--clouds` is passed. Use `--clouds=4x` to copy only the speed variants a consumer actually renders.
 
 The consumer wires its `predev` / `prebuild` scripts to run that command so the bytes are always fresh:
 

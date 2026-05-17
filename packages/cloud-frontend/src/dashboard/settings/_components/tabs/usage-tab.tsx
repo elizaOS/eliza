@@ -13,7 +13,11 @@ import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { DollarSign, Info, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { UserWithOrganizationDto } from "@/types/cloud-api";
+import type {
+  QuotaUsageDto,
+  SessionStatsDto,
+  UserWithOrganizationDto,
+} from "@/types/cloud-api";
 import type { SettingsTab } from "../types";
 
 interface UsageTabProps {
@@ -21,38 +25,14 @@ interface UsageTabProps {
   onTabChange: (tab: SettingsTab) => void;
 }
 
-interface SessionStats {
-  credits_used: number;
-  requests_made: number;
-  tokens_consumed: number;
-}
-
-interface QuotaUsage {
-  global: {
-    used: number;
-    limit: number | null;
-    periodEnd: string | null;
-    usedPercent: number | null;
-    usedPercentClamped: number;
-  };
-  modelSpecific: Record<
-    string,
-    {
-      used: number;
-      limit: number;
-      periodEnd: string;
-      usedPercent: number;
-      usedPercentClamped: number;
-    }
-  >;
-}
-
 export function UsageTab({ user, onTabChange }: UsageTabProps) {
   const [loading, setLoading] = useState(false);
   const [dailyBurn, setDailyBurn] = useState(0);
-  const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const [sessionStats, setSessionStats] = useState<SessionStatsDto | null>(
+    null,
+  );
   const [sessionLoading, setSessionLoading] = useState(false);
-  const [quotaUsage, setQuotaUsage] = useState<QuotaUsage | null>(null);
+  const [quotaUsage, setQuotaUsage] = useState<QuotaUsageDto | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
 
   const creditsRemaining = Number(user.organization?.credit_balance || 0);

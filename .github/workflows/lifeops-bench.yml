@@ -128,8 +128,21 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: bun run lifeops:verify-cerebras
 
+      - name: Check OpenClaw CLI
+        if: steps.gate.outputs.skip != 'true' && matrix.agent == 'openclaw'
+        id: openclaw
+        run: |
+          set -euo pipefail
+          OPENCLAW_BIN="${OPENCLAW_BIN:-$HOME/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw}"
+          if [ ! -x "$OPENCLAW_BIN" ]; then
+            echo "::notice::OpenClaw CLI not installed at $OPENCLAW_BIN; skipping optional openclaw benchmark leg."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run lifeops multi-agent bench (matrix leg)
-        if: steps.gate.outputs.skip != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.openclaw.outputs.skip != 'true'
         id: run
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -235,3 +248,8 @@ jobs:
         if: steps.gate.outputs.skip == 'true'
         run: |
           echo "::notice::LifeOps benchmark skipped — CEREBRAS_API_KEY is not configured for this repo."
+
+      - name: OpenClaw skipped notice
+        if: steps.gate.outputs.skip != 'true' && matrix.agent == 'openclaw' && steps.openclaw.outputs.skip == 'true'
+        run: |
+          echo "::notice::LifeOps openclaw benchmark skipped — OpenClaw CLI is not installed in this runner."

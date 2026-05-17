@@ -36,6 +36,7 @@ import { AlertCircle, Check, Copy, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -51,7 +52,7 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
     appId: string;
     apiKey: string;
   } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, markCopied } = useCopyFeedback();
 
   // Name availability check — keeps the existing /api/v1/apps/check-name
   // debounce so the submit button reflects collisions before the user clicks.
@@ -108,7 +109,6 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
     setName("");
     setAppUrl("");
     setCreatedApp(null);
-    setCopied(false);
     setNameAvailable(null);
     setCheckingName(false);
   };
@@ -146,9 +146,8 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
   const copyApiKey = async () => {
     if (!createdApp) return;
     await navigator.clipboard.writeText(createdApp.apiKey);
-    setCopied(true);
+    markCopied();
     toast.success("API key copied");
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleClose = () => {

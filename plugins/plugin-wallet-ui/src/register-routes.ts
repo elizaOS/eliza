@@ -9,11 +9,17 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 import { registerAppShellPage, registerBuiltinWidgets } from "@elizaos/ui";
 import { InventoryView } from "./InventoryView.tsx";
+// These were previously dynamic imports, but `./index.ts` re-exports both as
+// static bindings so the dynamic import never produced a separate chunk
+// (INEFFECTIVE_DYNAMIC_IMPORT). Collapse to static imports to silence the
+// warning; bundle size is unchanged because the static path was already used.
+import { walletAppPlugin } from "./plugin.ts";
+import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status.tsx";
 
-registerAppRoutePluginLoader("@elizaos/plugin-wallet-ui", async () => {
-  const { walletAppPlugin } = await import("./plugin.ts");
-  return walletAppPlugin;
-});
+registerAppRoutePluginLoader(
+  "@elizaos/plugin-wallet-ui",
+  async () => walletAppPlugin,
+);
 
 registerAppShellPage({
   id: "wallet.inventory",
@@ -25,13 +31,4 @@ registerAppShellPage({
   Component: InventoryView,
 });
 
-queueMicrotask(async () => {
-  try {
-    const { WALLET_STATUS_WIDGET } = await import(
-      "./widgets/wallet-status.tsx"
-    );
-    registerBuiltinWidgets([WALLET_STATUS_WIDGET]);
-  } catch {
-    // Widget registration is best-effort; route registration above is the critical path.
-  }
-});
+registerBuiltinWidgets([WALLET_STATUS_WIDGET]);

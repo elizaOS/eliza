@@ -40,65 +40,13 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import type { AdminMetricsOverviewDto } from "@/lib/types/cloud-api";
 
 // ---------------------------------------------------------------------------
-// Types
+// Local type aliases for readability within this component
 // ---------------------------------------------------------------------------
 
-interface DailyMetricRow {
-  date: string;
-  platform: string | null;
-  dau: number;
-  new_signups: number;
-  total_messages: number;
-  messages_per_user: string;
-}
-
-interface RetentionCohortRow {
-  cohort_date: string;
-  platform: string | null;
-  cohort_size: number;
-  d1_retained: number | null;
-  d7_retained: number | null;
-  d30_retained: number | null;
-}
-
-interface OAuthRate {
-  total_users: number;
-  connected_users: number;
-  rate: number;
-  ratePercent: number;
-  byService: Record<string, number>;
-}
-
-interface PlatformDistributionEntry {
-  key: string;
-  count: number;
-  percent: number;
-}
-
-interface RetentionRatePoint {
-  cohortDate: string;
-  cohortSize: number;
-  d1: number | null;
-  d7: number | null;
-  d30: number | null;
-}
-
-interface MetricsOverview {
-  dau: number;
-  wau: number;
-  mau: number;
-  newSignupsToday: number;
-  newSignups7d: number;
-  avgMessagesPerUser: number;
-  platformBreakdown: Record<string, number>;
-  platformDistribution: PlatformDistributionEntry[];
-  oauthRate: OAuthRate;
-  dailyTrend: DailyMetricRow[];
-  retentionCohorts: RetentionCohortRow[];
-  retentionRates: RetentionRatePoint[];
-}
+type MetricsOverview = AdminMetricsOverviewDto;
 
 // ---------------------------------------------------------------------------
 // Constants

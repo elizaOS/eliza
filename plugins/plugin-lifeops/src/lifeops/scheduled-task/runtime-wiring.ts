@@ -8,7 +8,7 @@
  */
 
 import crypto from "node:crypto";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { getAgentEventService } from "@elizaos/agent";
 import { getHostExecutionCapabilities } from "@elizaos/app-core/services/task-host-capabilities";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getChannelRegistry } from "../channels/index.js";

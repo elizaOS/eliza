@@ -1,5 +1,6 @@
 "use client";
 
+import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Badge,
   Button,
@@ -381,7 +382,7 @@ function NodeStatusBadge({ status }: { status: string }) {
 
 function LiveHealthBadge({
   health,
-  severity,
+  severity: _severity,
 }: {
   health: string;
   severity: string;
@@ -1300,8 +1301,9 @@ export function InfrastructureDashboard() {
   const nodesUnknown = nodes.filter((n) => n.status === "unknown").length;
   const totalCapacity = nodes.reduce((s, n) => s + n.capacity, 0);
   const totalAllocated = nodes.reduce((s, n) => s + n.allocatedCount, 0);
-  const utilizationPct =
-    totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0;
+  const utilizationPct = Math.round(
+    toRatePercent(totalAllocated, totalCapacity),
+  );
 
   // ---------------------------------------------------------------------------
   // Refresh all
@@ -1540,8 +1542,11 @@ export function InfrastructureDashboard() {
                 )}
                 {incidentsExpanded && (
                   <div className="space-y-1 mt-2">
-                    {visibleIncidents.map((incident, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
+                    {visibleIncidents.map((incident) => (
+                      <div
+                        key={incident.title}
+                        className="flex items-center gap-2 text-sm"
+                      >
                         <Badge
                           variant={
                             incident.severity === "critical"

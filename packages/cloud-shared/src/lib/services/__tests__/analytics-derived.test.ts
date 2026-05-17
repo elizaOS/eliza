@@ -3,6 +3,7 @@ import {
   deriveCostTrendingFields,
   deriveQuotaUsage,
   toDistribution,
+  toRatePercent,
   toRetentionRates,
   toSuccessRatePercent,
 } from "../analytics-derived";
@@ -41,6 +42,20 @@ describe("toSuccessRatePercent", () => {
     expect(toSuccessRatePercent(0.943)).toBe(94.3);
     expect(toSuccessRatePercent(0)).toBe(0);
     expect(toSuccessRatePercent(1)).toBe(100);
+  });
+});
+
+describe("toRatePercent", () => {
+  test("computes percent of denominator", () => {
+    expect(toRatePercent(50, 100)).toBe(50);
+  });
+
+  test("returns zero when denominator is zero", () => {
+    expect(toRatePercent(5, 0)).toBe(0);
+  });
+
+  test("rounds to one decimal place", () => {
+    expect(toRatePercent(1, 3)).toBe(33.3);
   });
 });
 

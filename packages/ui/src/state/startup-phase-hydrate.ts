@@ -16,6 +16,10 @@ import {
 } from "../api";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
+// DynamicViewLoader (statically imported by App.tsx) pulls
+// view-interact-registry in already, so the dynamic import below was
+// INEFFECTIVE_DYNAMIC_IMPORT. Switch to a static import.
+import { dispatchViewInteract } from "../components/views/view-interact-registry";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   getWindowNavigationPath,

@@ -155,7 +155,6 @@ export function EarningsPageClient() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch balance
   const fetchBalance = useCallback(async () => {
     const res = await fetch("/api/v1/redemptions/balance");
     if (res.ok) {
@@ -165,7 +164,6 @@ export function EarningsPageClient() {
     setLoading(false);
   }, []);
 
-  // Fetch redemptions
   const fetchRedemptions = useCallback(async () => {
     const res = await fetch("/api/v1/redemptions?limit=10");
     if (res.ok) {
@@ -175,7 +173,6 @@ export function EarningsPageClient() {
     setRedemptionsLoading(false);
   }, []);
 
-  // Fetch system status
   const fetchSystemStatus = useCallback(async () => {
     const res = await fetch("/api/v1/redemptions/status");
     if (res.ok) {
@@ -198,7 +195,6 @@ export function EarningsPageClient() {
     };
   }, [fetchBalance, fetchRedemptions, fetchSystemStatus]);
 
-  // Fetch quote when amount or network changes
   useEffect(() => {
     const amount = parseFloat(redeemAmount);
     const shouldFetch = amount > 0 && redeemNetwork;
@@ -599,10 +595,14 @@ export function EarningsPageClient() {
           <div className="space-y-4 py-4">
             {/* Amount Input */}
             <div>
-              <label className="text-sm text-white/60 mb-2 block">
+              <label
+                htmlFor="redeem-amount"
+                className="text-sm text-white/60 mb-2 block"
+              >
                 Amount to Redeem (USD)
               </label>
               <Input
+                id="redeem-amount"
                 type="number"
                 placeholder="Enter amount"
                 value={redeemAmount}
@@ -632,9 +632,7 @@ export function EarningsPageClient() {
 
             {/* Network Select */}
             <div>
-              <label className="text-sm text-white/60 mb-2 block">
-                Network
-              </label>
+              <p className="text-sm text-white/60 mb-2 block">Network</p>
               <Select value={redeemNetwork} onValueChange={setRedeemNetwork}>
                 <SelectTrigger className="bg-white/5 border-white/10 text-white">
                   <SelectValue />
@@ -668,10 +666,14 @@ export function EarningsPageClient() {
 
             {/* Wallet Address */}
             <div>
-              <label className="text-sm text-white/60 mb-2 block">
+              <label
+                htmlFor="redeem-wallet-address"
+                className="text-sm text-white/60 mb-2 block"
+              >
                 {redeemNetwork === "solana" ? "Solana" : "EVM"} Wallet Address
               </label>
               <Input
+                id="redeem-wallet-address"
                 type="text"
                 placeholder={
                   redeemNetwork === "solana"

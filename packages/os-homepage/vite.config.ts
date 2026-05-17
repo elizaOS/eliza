@@ -22,12 +22,51 @@ function spa404Fallback(): Plugin {
   };
 }
 
+function pruneStaticAssets(): Plugin {
+  return {
+    name: "prune-os-homepage-static-assets",
+    apply: "build",
+    closeBundle() {
+      const outDir = path.resolve(packageDir, "dist");
+      const removePatterns = [
+        /^clouds\/clouds_(?:1x|8x)_/,
+        /^clouds\/poster(?:-480p|-720p)?\.(?:jpg|webp)$/,
+        /^brand\/background\/Clouds_Loop_/,
+        /^brand\/concepts\/(?:billboard_concept|chibi_usb_concept|concept_minipc|concept_phone|concept_usbdrive)\.jpg$/,
+      ];
+
+      const walk = (dir: string) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(fullPath);
+            continue;
+          }
+          const relativePath = path
+            .relative(outDir, fullPath)
+            .replace(/\\/g, "/");
+          if (removePatterns.some((pattern) => pattern.test(relativePath))) {
+            fs.rmSync(fullPath, { force: true });
+          }
+        }
+      };
+
+      walk(outDir);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), spa404Fallback()],
+  plugins: [react(), tailwindcss(), spa404Fallback(), pruneStaticAssets()],
   resolve: {
     dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": path.resolve(packageDir, "./src"),
+      "@elizaos/ui": path.resolve(
+        packageDir,
+        "../ui/src/backgrounds/CloudVideoBackground.tsx",
+      ),
       "@elizaos/ui/button": path.resolve(
         packageDir,
         "../ui/src/cloud-ui/components/button.tsx",
@@ -47,5 +86,12 @@ export default defineConfig({
   },
   preview: {
     port: 4455,
+  },
+  build: {
+    rolldownOptions: {
+      checks: {
+        pluginTimings: false,
+      },
+    },
   },
 });

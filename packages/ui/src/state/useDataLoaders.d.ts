@@ -46,13 +46,13 @@ export declare function useDataLoaders(deps: DataLoadersDeps): {
     getBscTradeQuote: (request: BscTradeQuoteRequest) => Promise<BscTradeQuoteResponse>;
     getBscTradeTxStatus: (hash: string) => Promise<BscTradeTxStatusResponse>;
     getStewardStatus: () => Promise<import("..").StewardStatusResponse>;
-    getStewardAddresses: () => Promise<import("@elizaos/shared").StewardWalletAddressesResponse>;
-    getStewardBalance: (chainId?: number) => Promise<import("@elizaos/shared").StewardBalanceResponse>;
-    getStewardTokens: (chainId?: number) => Promise<import("@elizaos/shared").StewardTokenBalancesResponse>;
+    getStewardAddresses: () => Promise<import("@elizaos/contracts").StewardWalletAddressesResponse>;
+    getStewardBalance: (chainId?: number) => Promise<import("@elizaos/contracts").StewardBalanceResponse>;
+    getStewardTokens: (chainId?: number) => Promise<import("@elizaos/contracts").StewardTokenBalancesResponse>;
     getStewardWebhookEvents: (opts?: {
         event?: StewardWebhookEventType;
         since?: number;
-    }) => Promise<import("@elizaos/shared").StewardWebhookEventsResponse>;
+    }) => Promise<import("@elizaos/contracts").StewardWebhookEventsResponse>;
     getStewardHistory: (opts?: {
         status?: string;
         limit?: number;

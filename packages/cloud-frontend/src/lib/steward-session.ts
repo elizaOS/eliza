@@ -1,17 +1,18 @@
+import {
+  readStoredStewardRefreshToken,
+  STEWARD_SESSION_ENDPOINT,
+} from "@elizaos/steward-session-client";
 import { apiFetch } from "./api-client";
 
-const STEWARD_SESSION_ENDPOINT = "/api/auth/steward-session";
-const STEWARD_REFRESH_TOKEN_KEY = "steward_refresh_token";
-
-function readStoredRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(STEWARD_REFRESH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * Same-origin Steward JWT -> HttpOnly cookie sync. Uses `apiFetch` so the
+ * call inherits the SPA's API base-URL + credential plumbing.
+ *
+ * The shared `syncStewardSession()` from `@elizaos/steward-session-client`
+ * speaks to global `fetch` and is correct for os-homepage. cloud-frontend
+ * goes through `apiFetch` instead — we still use the shared constants and
+ * storage helpers so the contract stays in one place.
+ */
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
@@ -21,7 +22,10 @@ export async function syncStewardSessionCookie(
     skipAuth: true,
     json: {
       token,
-      refreshToken: refreshToken ?? readStoredRefreshToken(),
+      refreshToken:
+        refreshToken === undefined
+          ? readStoredStewardRefreshToken()
+          : refreshToken,
     },
   });
 

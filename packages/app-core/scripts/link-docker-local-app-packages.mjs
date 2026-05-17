@@ -180,39 +180,61 @@ function removePath(filePath) {
   }
 }
 
-function resolveRootPackageDir(packageName) {
-  const packageDir = path.join(
-    repoRoot,
-    "node_modules",
-    ...packageName.split("/"),
-  );
-  if (fs.existsSync(path.join(packageDir, "package.json"))) {
-    return packageDir;
+function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
+  const packageSegments = packageName.split("/");
+  for (const baseDir of baseDirs) {
+    const packageDir = path.join(
+      baseDir,
+      "node_modules",
+      ...packageSegments,
+    );
+    if (fs.existsSync(path.join(packageDir, "package.json"))) {
+      return packageDir;
+    }
   }
 
-  const bunStoreDir = path.join(repoRoot, "node_modules", ".bun");
-  if (pathExists(bunStoreDir)) {
-    const packageSegments = packageName.split("/");
-    for (const entry of fs.readdirSync(bunStoreDir).sort().reverse()) {
-      const candidate = path.join(
-        bunStoreDir,
-        entry,
-        "node_modules",
-        ...packageSegments,
-      );
-      if (fs.existsSync(path.join(candidate, "package.json"))) {
-        return candidate;
+  for (const baseDir of baseDirs) {
+    const bunStoreDir = path.join(baseDir, "node_modules", ".bun");
+    if (pathExists(bunStoreDir)) {
+      for (const entry of fs.readdirSync(bunStoreDir).sort().reverse()) {
+        const candidate = path.join(
+          bunStoreDir,
+          entry,
+          "node_modules",
+          ...packageSegments,
+        );
+        if (fs.existsSync(path.join(candidate, "package.json"))) {
+          return candidate;
+        }
       }
     }
   }
 
   throw new Error(
-    `Missing root package manifest: node_modules/${packageName}/package.json`,
+    `Missing package manifest: ${baseDirs
+      .map((baseDir) =>
+        path.relative(
+          repoRoot,
+          path.join(baseDir, "node_modules", ...packageSegments, "package.json"),
+        ),
+      )
+      .join(" or ")}`,
   );
+}
+
+function resolveRootPackageDir(packageName) {
+  return resolveDependencyPackageDir(packageName);
 }
 
 function linkRootDependency({ packageName, target }) {
   const packageDir = resolveRootPackageDir(packageName);
+  linkDependencyPackage({ packageDir, target });
+}
+
+function linkDependencyPackage({ packageDir, target }) {
+  if (path.resolve(packageDir) === path.resolve(target)) {
+    return;
+  }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   removePath(target);
   fs.symlinkSync(
@@ -220,6 +242,11 @@ function linkRootDependency({ packageName, target }) {
     target,
     "dir",
   );
+}
+
+function linkDependency({ packageName, target, baseDirs = [repoRoot] }) {
+  const packageDir = resolveDependencyPackageDir(packageName, baseDirs);
+  linkDependencyPackage({ packageDir, target });
 }
 
 function resolveLocalPackageDir(packagePath) {
@@ -325,15 +352,17 @@ for (const packagePath of localPackages) {
 
   if (pkg.name === "@elizaos/app-core") {
     for (const rootDep of ["@node-rs/argon2", "jose"]) {
-      linkRootDependency({
+      linkDependency({
         packageName: rootDep,
         target: path.join(packageDir, "node_modules", rootDep),
+        baseDirs: [packageDir, repoRoot],
       });
       // Also ensure root-level node_modules has it so ESM resolution always
       // finds the package regardless of which symlink depth Node traverses.
-      linkRootDependency({
+      linkDependency({
         packageName: rootDep,
         target: path.join(repoRoot, "node_modules", rootDep),
+        baseDirs: [packageDir, repoRoot],
       });
     }
   }

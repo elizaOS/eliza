@@ -30,14 +30,12 @@ const GradientWaveMaterial = shaderMaterial(
 
     varying vec2 vUv;
 
-    // Simplex-style hash
     vec2 hash(vec2 p) {
       p = vec2(dot(p, vec2(127.1, 311.7)),
                dot(p, vec2(269.5, 183.3)));
       return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
     }
 
-    // Gradient noise
     float noise(vec2 p) {
       vec2 i = floor(p);
       vec2 f = fract(p);
@@ -49,7 +47,6 @@ const GradientWaveMaterial = shaderMaterial(
                      dot(hash(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
     }
 
-    // Fractal Brownian Motion
     float fbm(vec2 p) {
       float value = 0.0;
       float amplitude = 0.5;
@@ -68,7 +65,6 @@ const GradientWaveMaterial = shaderMaterial(
       float pScale = 1.4;
       vec2 p = vec2(uv.x * aspect, uv.y) * pScale;
 
-      // Click — expanding ring of scale distortion (no snap: ring starts at r=0)
       vec2 clickNorm = vec2(uClickPos.x * aspect, uClickPos.y) * pScale;
       vec2 toClick = p - clickNorm;
       float clickDist = length(toClick);
@@ -81,24 +77,20 @@ const GradientWaveMaterial = shaderMaterial(
       float scale = 1.0 + ring * fade * radiusFade * 1.2;
       p = clickNorm + toClick * scale;
 
-      // Mouse — inner zone flows with cursor, outer zone parts radially
       vec2 mouseNorm = vec2(uMouse.x * aspect, uMouse.y) * pScale;
       vec2 vel = vec2(uMouseVel.x * aspect, uMouseVel.y) * pScale;
       float speed = length(vel);
       vec2 toPoint = p - mouseNorm;
       float mouseDist = length(toPoint);
 
-      // Inner: gaussian falloff, no hard edge
       float inner = exp(-mouseDist * mouseDist / 0.008);
       vec2 flow = vel * inner * 0.2;
 
-      // Outer: wider gaussian for radial push
       float outer = exp(-mouseDist * mouseDist / 0.025);
       vec2 radialPush = normalize(toPoint + 0.001) * outer * min(speed, 2.0) * 0.06;
 
       vec2 warp = flow + radialPush;
 
-      // Time-evolving coordinates — circular paths so it morphs in place, no drift
       float t = uTime * 0.1;
       vec2 drift1 = vec2(sin(t * 0.7) * 0.4, cos(t * 0.5) * 0.4);
       vec2 drift2 = vec2(cos(t * 0.6) * 0.3, sin(t * 0.8) * 0.3);
@@ -115,12 +107,11 @@ const GradientWaveMaterial = shaderMaterial(
 
       float f = fbm(p + 4.0 * s);
 
-      // Soft pastel palette — lighter but still visible
-      vec3 col1 = vec3(0.94, 0.92, 0.98);  // light lavender
-      vec3 col2 = vec3(0.65, 0.75, 0.95);  // soft blue
-      vec3 col3 = vec3(0.88, 0.60, 0.80);  // soft pink
-      vec3 col4 = vec3(0.55, 0.85, 0.82);  // soft teal
-      vec3 col5 = vec3(0.96, 0.72, 0.58);  // soft peach
+      vec3 col1 = vec3(0.94, 0.92, 0.98);
+      vec3 col2 = vec3(0.65, 0.75, 0.95);
+      vec3 col3 = vec3(0.88, 0.60, 0.80);
+      vec3 col4 = vec3(0.55, 0.85, 0.82);
+      vec3 col5 = vec3(0.96, 0.72, 0.58);
 
       float ff = clamp((f + 0.5) * 0.7, 0.0, 1.0);
       vec3 color = mix(col1, col2, ff);

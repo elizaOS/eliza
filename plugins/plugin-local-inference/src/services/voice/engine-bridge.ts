@@ -54,7 +54,6 @@ import {
 	VoiceLifecycleError,
 	type VoiceLifecycleLoaders,
 } from "./lifecycle";
-import { loadOnnxRuntime } from "./onnx-runtime";
 import {
 	OptimisticGenerationPolicy,
 	type OptimisticPolicyOptions,
@@ -94,10 +93,8 @@ import {
 } from "./speaker-preset-cache";
 import {
 	ASR_SAMPLE_RATE,
-	type AsrBackendPreference,
 	AsrUnavailableError,
 	createStreamingTranscriber,
-	readAsrBackendPreferenceFromEnv,
 	resampleLinear,
 } from "./transcriber";
 import type {
@@ -686,7 +683,6 @@ export function createKokoroTtsBackend(
 		onnx: {
 			layout: kokoro.layout,
 			expectedSha256: null,
-			loadOrt: loadOnnxRuntime,
 		},
 	});
 	logger.info(
@@ -1481,17 +1477,14 @@ export class EngineVoiceBridge {
 	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
 	 *   fused `libelizainference` streaming ASR (final path, gated on a
 	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → OpenVINO Whisper when its worker/model artifacts
-	 *   are present → `AsrUnavailableError`. The whisper.cpp interim fallback
-	 *   has been removed.
+	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
+	 *   only the fused path; the whisper.cpp interim fallback has been removed.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
 	 */
 	createStreamingTranscriber(opts?: {
 		vad?: VadEventSource;
-		prefer?: AsrBackendPreference;
-		allowOpenVinoWhisper?: boolean;
 	}): StreamingTranscriber {
 		this.assertVoiceOn("create streaming transcriber");
 		const contextRef = this.ffiContextRef;
@@ -1500,8 +1493,6 @@ export class EngineVoiceBridge {
 			getContext: contextRef ? () => contextRef.ensure() : undefined,
 			asrBundlePresent: this.asrAvailable,
 			vad: opts?.vad,
-			prefer: opts?.prefer,
-			allowOpenVinoWhisper: opts?.allowOpenVinoWhisper,
 		});
 	}
 
@@ -1523,36 +1514,6 @@ export class EngineVoiceBridge {
 			throw signal.reason instanceof Error
 				? signal.reason
 				: new DOMException("Aborted", "AbortError");
-		}
-		const transcribeWithStreaming = async (
-			prefer?: AsrBackendPreference,
-		): Promise<string> => {
-			const transcriber = this.createStreamingTranscriber(
-				prefer ? { prefer } : undefined,
-			);
-			const abort = () => transcriber.dispose();
-			try {
-				signal?.addEventListener("abort", abort, { once: true });
-				transcriber.feed({
-					pcm: args.pcm,
-					sampleRate: args.sampleRate,
-					timestampMs: 0,
-				});
-				const final = await transcriber.flush();
-				if (signal?.aborted) {
-					throw signal.reason instanceof Error
-						? signal.reason
-						: new DOMException("Aborted", "AbortError");
-				}
-				return final.partial;
-			} finally {
-				signal?.removeEventListener("abort", abort);
-				transcriber.dispose();
-			}
-		};
-		const asrPreference = readAsrBackendPreferenceFromEnv();
-		if (asrPreference === "openvino-whisper") {
-			return await transcribeWithStreaming("openvino-whisper");
 		}
 		const backendBatch = this.backend as OmniVoiceBackend & {
 			transcribe?: (args: TranscriptionAudio) => Promise<string>;
@@ -1590,7 +1551,26 @@ export class EngineVoiceBridge {
 			}
 			return transcript;
 		}
-		return await transcribeWithStreaming(asrPreference ?? undefined);
+		const transcriber = this.createStreamingTranscriber();
+		const abort = () => transcriber.dispose();
+		try {
+			signal?.addEventListener("abort", abort, { once: true });
+			transcriber.feed({
+				pcm: args.pcm,
+				sampleRate: args.sampleRate,
+				timestampMs: 0,
+			});
+			const final = await transcriber.flush();
+			if (signal?.aborted) {
+				throw signal.reason instanceof Error
+					? signal.reason
+					: new DOMException("Aborted", "AbortError");
+			}
+			return final.partial;
+		} finally {
+			signal?.removeEventListener("abort", abort);
+			transcriber.dispose();
+		}
 	}
 
 	/**

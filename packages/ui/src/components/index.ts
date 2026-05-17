@@ -48,6 +48,17 @@ export {
   DashboardDataListMobile,
   type DashboardDataListMobileProps,
   type DashboardDataListProps,
+  ApiKeysSummary,
+  type ApiKeysSummaryData,
+  type ApiKeysSummaryProps,
+  ApiKeysTable,
+  type ApiKeyDisplay,
+  type ApiKeysTableProps,
+  type ApiKeyStatus,
+  AppsListView,
+  type AppsListItem,
+  type AppsListLinkRenderProps,
+  type AppsListViewProps,
   DashboardTableSkeleton,
   type DashboardTableSkeletonColumn,
   type DashboardTableSkeletonProps,
@@ -135,6 +146,25 @@ export {
   type LogViewerStructuredEntry,
 } from "../cloud-ui/components/log-viewer";
 export {
+  CostAlerts,
+  type CostAlertsProps,
+  type CostAlertsTrending,
+  CostInsightsCard,
+  type CostInsightsCardProps,
+  type AnalyticsExportFormat,
+  type AnalyticsExportType,
+  ExportButton,
+  type ExportButtonProps,
+} from "../cloud-ui/components/analytics";
+export {
+  AppsEmptyState,
+  type AppsEmptyStateProps,
+  AppsSkeleton,
+  ContainersEmptyState,
+  ContainersSkeleton,
+  DashboardActionCards,
+  type DashboardActionCardsProps,
+  DashboardActionCardsSkeleton,
   DashboardEndpointPending,
   DashboardErrorState,
   DashboardLoadingState,
@@ -189,8 +219,7 @@ export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
 export * from "./pages/AutomationsChatPane";
-export * from "./pages/AutomationsFeed";
-export * from "./pages/BrowserWorkspaceView";
+// AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
 export * from "./pages/ConfigPageView";
@@ -210,9 +239,8 @@ export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
 export * from "./pages/SecretsView";
-export * from "./pages/SettingsView";
+// SettingsView, StreamView omitted — App.tsx lazy-loads them.
 export * from "./pages/SkillsView";
-export * from "./pages/StreamView";
 export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
 export * from "./pages/TrajectoriesView";
@@ -221,7 +249,7 @@ export * from "./pages/VectorBrowserView";
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 export * from "./settings/ApiKeyConfig";
-export * from "./settings/DesktopWorkspaceSection";
+// DesktopWorkspaceSection omitted — App.tsx lazy-loads it.
 export * from "./settings/PermissionsSection";
 export * from "./settings/PolicyControlsView";
 export * from "./settings/ProviderSwitcher";

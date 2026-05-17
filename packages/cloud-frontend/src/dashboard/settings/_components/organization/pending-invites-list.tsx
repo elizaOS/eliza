@@ -31,24 +31,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-
-interface Invite {
-  id: string;
-  email: string;
-  role: string;
-  status: string;
-  expires_at: string;
-  created_at: string;
-  inviter: {
-    id: string;
-    name: string | null;
-    email: string | null;
-  } | null;
-  accepted_at: string | null;
-}
+import type { OrgInviteDto } from "@/types/cloud-api";
 
 interface PendingInvitesListProps {
-  invites: Invite[];
+  invites: OrgInviteDto[];
   onRevoke: (inviteId: string) => void;
 }
 
@@ -79,7 +65,7 @@ export function PendingInvitesList({
     }
   };
 
-  const getStatusBadge = (invite: Invite) => {
+  const getStatusBadge = (invite: OrgInviteDto) => {
     const now = new Date();
     const expiresAt = new Date(invite.expires_at);
 
@@ -123,7 +109,7 @@ export function PendingInvitesList({
     }
   };
 
-  const getInviterName = (invite: Invite) => {
+  const getInviterName = (invite: OrgInviteDto) => {
     if (!invite.inviter) return "Unknown";
     return invite.inviter.name || invite.inviter.email || "Unknown";
   };

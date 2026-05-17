@@ -45,6 +45,7 @@
 #   MAS_INSTALLER_KEY_PASSWORD          installer cert password
 #   APP_STORE_API_KEY_ID                App Store Connect API key ID
 #   APP_STORE_API_ISSUER_ID             App Store Connect API issuer ID
+#   APP_STORE_API_KEY_P8                App Store Connect API private key content (.p8)
 #
 # ============================================================
 
@@ -131,6 +132,7 @@ jobs:
       channel: ${{ steps.parse.outputs.channel }}
       tag: ${{ steps.parse.outputs.tag }}
       android_track: ${{ steps.parse.outputs.android_track }}
+      android_version_code: ${{ steps.parse.outputs.android_version_code }}
       apple_track: ${{ steps.parse.outputs.apple_track }}
       build_desktop: ${{ steps.parse.outputs.build_desktop }}
       build_android: ${{ steps.parse.outputs.build_android }}
@@ -267,11 +269,34 @@ jobs:
             echo "Created GitHub release $TAG (draft=$DRAFT)"
           fi
 
+          # ── Android version_code ─────────────────────────────────────
+          # Must exactly match the Node.js formula in android-release.yml
+          # so the sideload manifest references the same versionCode that
+          # was published to the Play Store.
+          ANDROID_VERSION_CODE=$(node - "$VERSION" <<'NODE'
+          const version = process.argv[2];
+          const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+)(?:\.(\d+))?)?$/);
+          if (!match) { console.error('Invalid semver: ' + version); process.exit(1); }
+          const [, majorRaw, minorRaw, patchRaw, prerelease, prereleaseRaw = '0'] = match;
+          const major = Number(majorRaw);
+          const minor = Number(minorRaw);
+          const patch = Number(patchRaw);
+          const prereleaseNumber = Number(prereleaseRaw);
+          const channelOffsets = { alpha: 1000, beta: 3000, rc: 5000, nightly: 7000 };
+          const channelOffset = prerelease ? (channelOffsets[prerelease] ?? 8000) : 9000;
+          const code = major * 100000000 + minor * 1000000 + patch * 10000 + channelOffset + prereleaseNumber;
+          if (code > 2100000000) { console.error('versionCode ' + code + ' exceeds Play Store limit'); process.exit(1); }
+          console.log(code);
+          NODE
+          )
+          echo "Android version_code: $ANDROID_VERSION_CODE"
+
           # ── Write outputs ─────────────────────────────────────────────
           echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL"       >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
           echo "android_track=$ANDROID_TRACK" >> "$GITHUB_OUTPUT"
+          echo "android_version_code=$ANDROID_VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "apple_track=$APPLE_TRACK"     >> "$GITHUB_OUTPUT"
           echo "build_desktop=$BUILD_DESKTOP" >> "$GITHUB_OUTPUT"
           echo "build_android=$BUILD_ANDROID" >> "$GITHUB_OUTPUT"
@@ -413,40 +438,26 @@ jobs:
   # ─────────────────────────────────────────────
   # 9. ANDROID SIDELOAD MANIFEST — publish after
   #    Android build succeeds.
-  #    version_code is computed from the semver:
-  #    MAJOR*10000 + MINOR*100 + PATCH (pre-release
-  #    suffix stripped) so it is deterministic from
-  #    the version string alone.
-  #    Uses gh workflow run because version_code
-  #    must be derived at runtime and reusable
-  #    workflow calls do not support computed inputs.
+  #    version_code is computed in the validate job
+  #    using the same Node.js formula as
+  #    android-release.yml so the manifest always
+  #    references the exact versionCode that was
+  #    built and submitted to the Play Store.
+  #    Called via workflow_call (not gh workflow run)
+  #    so the orchestrator can track completion and
+  #    surface failures in the summary job.
   # ─────────────────────────────────────────────
   android-update-manifest:
     name: Android Sideload Manifest
     needs: [validate, android]
     if: needs.validate.outputs.build_android == 'true' && needs.android.result == 'success'
-    runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Compute version_code and dispatch manifest publish
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          TAG="${{ needs.validate.outputs.tag }}"
-          CHANNEL="${{ needs.validate.outputs.channel }}"
-
-          # Strip pre-release suffix (e.g. 2.0.1-beta.0 → 2.0.1) before arithmetic
-          BASE_VERSION="${VERSION%%-*}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-          VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
-          echo "version_code=$VERSION_CODE for version $VERSION (channel: $CHANNEL)"
-
-          gh workflow run publish-android-update-manifest.yml \
-            --ref "$TAG" \
-            -f version="$VERSION" \
-            -f version_code="$VERSION_CODE" \
-            -f channel="$CHANNEL" \
-            -f tag="$TAG"
+    uses: ./.github/workflows/publish-android-update-manifest.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      version_code: ${{ needs.validate.outputs.android_version_code }}
+      channel: ${{ needs.validate.outputs.channel }}
+      tag: ${{ needs.validate.outputs.tag }}
+    secrets: inherit
 
   # ─────────────────────────────────────────────
   # 10. AOSP MANIFEST — publish after Linux OS
@@ -479,12 +490,27 @@ jobs:
     secrets: inherit
 
   # ─────────────────────────────────────────────
-  # 12. SUMMARY — report all results; optionally
+  # 12. FLATPAK — submit to Flathub (if listed).
+  #    The workflow self-guards: if the app is not
+  #    yet listed on Flathub it warns and exits 0.
+  # ─────────────────────────────────────────────
+  flatpak:
+    name: Flathub
+    needs: validate
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/flatpak-publish.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      tag: ${{ needs.validate.outputs.tag }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 13. SUMMARY — report all results; optionally
   #    publish the GitHub release draft.
   # ─────────────────────────────────────────────
   summary:
     name: Release Summary
-    needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap, windows-store, android-update-manifest, aosp-update-manifest, apt-repo]
+    needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap, windows-store, android-update-manifest, aosp-update-manifest, apt-repo, flatpak]
     if: always()
     runs-on: ubuntu-24.04
     env:
@@ -538,6 +564,7 @@ jobs:
             echo "| Android sideload manifest    | $(result_icon '${{ needs.android-update-manifest.result }}') |"
             echo "| AOSP update manifest         | $(result_icon '${{ needs.aosp-update-manifest.result }}') |"
             echo "| apt repository               | $(result_icon '${{ needs.apt-repo.result }}') |"
+            echo "| Flathub                      | $(result_icon '${{ needs.flatpak.result }}') |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish GitHub release (if all succeeded and not draft)

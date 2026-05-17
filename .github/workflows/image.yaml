@@ -40,6 +40,34 @@ jobs:
           sudo docker image prune -a -f
           echo "=== After cleanup ==="
           df -h
+
+      # Dockerfile.ci is a pruner-style image that expects pre-built artifacts
+      # in `packages/agent/dist/` already produced by the host (see the comment
+      # in the Dockerfile itself: "Pre-built artifacts come from GHA"). Without
+      # this step the very first RUN inside the Docker build fails with
+      # `Missing compiled package manifest for @elizaos/agent`. We only run
+      # the minimum needed to produce `packages/agent/dist/package.json` —
+      # the more elaborate docker-ci-smoke.sh path is reserved for the smoke
+      # workflow.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-ubuntu-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-ubuntu-
+
+      - name: Install workspace deps
+        run: bun install --no-save --ignore-scripts
+
+      - name: Pre-build packages/agent dist (required by Dockerfile.ci)
+        run: bun run --cwd packages/agent build:docker-dist
+
       # Uses the `docker/login-action` action to log in to the Container registry using the account and password that will publish the packages. Once published, the packages are scoped to the account defined here.
       - name: Log in to the Container registry
         uses: docker/login-action@v4

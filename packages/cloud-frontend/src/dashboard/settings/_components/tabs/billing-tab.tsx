@@ -104,7 +104,6 @@ export function BillingTab({ user }: BillingTabProps) {
   useEffect(() => {
     queueMicrotask(() => {
       fetchInvoices();
-      // Fetch fresh balance on billing tab load (user may have just returned from payment)
       fetchBalance(true);
       fetchCryptoStatus();
     });

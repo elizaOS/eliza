@@ -1,4 +1,8 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
+import {
+  writeStoredStewardRefreshToken,
+  writeStoredStewardToken,
+} from "@elizaos/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
@@ -158,13 +162,9 @@ export default function StewardLoginSection() {
     const refreshToken = searchParams.get("refreshToken");
     if (!token) return;
 
-    try {
-      localStorage.setItem("steward_session_token", token);
-      if (refreshToken) {
-        localStorage.setItem("steward_refresh_token", refreshToken);
-      }
-    } catch (err) {
-      console.warn("[steward] Failed to persist OAuth tokens", err);
+    writeStoredStewardToken(token);
+    if (refreshToken) {
+      writeStoredStewardRefreshToken(refreshToken);
     }
 
     syncStewardSessionCookie(token, refreshToken)

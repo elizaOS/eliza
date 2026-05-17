@@ -8,6 +8,7 @@
 
 "use client";
 
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Alert,
   AlertDescription,
@@ -159,7 +160,8 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
                         <span
                           className={`text-sm font-mono ${getSimilarityColor(result.similarity)}`}
                         >
-                          {(result.similarity * 100).toFixed(1)}% match
+                          {toSuccessRatePercent(result.similarity).toFixed(1)}%
+                          match
                         </span>
                       </div>
                     </CardHeader>

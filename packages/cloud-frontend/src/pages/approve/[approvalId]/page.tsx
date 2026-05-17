@@ -296,8 +296,14 @@ export default function ApprovalPage() {
 
         {!isTerminal && !submitResult ? (
           <div className="mt-6 space-y-3">
-            <label className="block text-sm font-medium">Signature</label>
+            <label
+              htmlFor="approval-signature"
+              className="block text-sm font-medium"
+            >
+              Signature
+            </label>
             <textarea
+              id="approval-signature"
               value={signature}
               onChange={(event) => setSignature(event.target.value)}
               placeholder={

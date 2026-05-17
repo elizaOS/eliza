@@ -1,0 +1,223 @@
+/**
+ * Shared Steward session client.
+ *
+ * Single source of truth for:
+ *  - the storage / cookie / endpoint key names used across os-homepage
+ *    (`elizaos.ai`), cloud-frontend (`elizacloud.ai`), and the cloud-api
+ *    `/api/auth/steward-session` route handler;
+ *  - the request / response / error shapes the route exchanges with the
+ *    browser;
+ *  - the small set of helpers each consumer needs (sync, clear, read).
+ *
+ * Browser-only helpers no-op cleanly under SSR (`typeof window === "undefined"`).
+ */
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** localStorage key for the Steward access token (JWT). */
+export const STEWARD_TOKEN_KEY = "steward_session_token";
+
+/** localStorage key for the Steward refresh token. */
+export const STEWARD_REFRESH_TOKEN_KEY = "steward_refresh_token";
+
+/** Non-HttpOnly cookie set to "1" while the server-side session is live. */
+export const STEWARD_AUTHED_COOKIE = "steward-authed";
+
+/** Steward multi-tenant identifier for Eliza Cloud. */
+export const STEWARD_TENANT_ID = "elizacloud";
+
+/** Same-origin endpoint that exchanges the JWT for HttpOnly cookies. */
+export const STEWARD_SESSION_ENDPOINT = "/api/auth/steward-session";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface StewardSessionRequest {
+  token: string;
+  refreshToken?: string | null;
+}
+
+export interface StewardSessionResponse {
+  ok: true;
+  userId: string;
+  stewardUserId: string;
+}
+
+/**
+ * Distinct outcomes the cloud-api route returns. The client uses these to
+ * decide whether to wipe localStorage (`invalid_token`) or hold steady
+ * (`server_secret_missing`).
+ */
+export type StewardSessionErrorCode =
+  | "missing_token"
+  | "invalid_token"
+  | "server_secret_missing"
+  | "steward_user_sync_failed"
+  | "internal_error";
+
+export class StewardSessionError extends Error {
+  readonly status: number;
+  readonly code: StewardSessionErrorCode | string | null;
+
+  constructor(
+    message: string,
+    status: number,
+    code: StewardSessionErrorCode | string | null,
+  ) {
+    super(message);
+    this.name = "StewardSessionError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export interface SyncOpts {
+  /**
+   * Absolute or relative URL to POST to. Defaults to STEWARD_SESSION_ENDPOINT
+   * (same-origin). Pass an absolute URL when crossing origins
+   * (e.g. elizaos.ai -> api.elizacloud.ai).
+   */
+  endpoint?: string;
+  /**
+   * Override the global fetch (mainly for tests and SSR shims).
+   */
+  fetchImpl?: typeof fetch;
+}
+
+export interface ClearOpts {
+  /** Endpoints to DELETE. Defaults to [STEWARD_SESSION_ENDPOINT]. */
+  endpoints?: string[];
+  fetchImpl?: typeof fetch;
+}
+
+// ---------------------------------------------------------------------------
+// localStorage helpers
+// ---------------------------------------------------------------------------
+
+export function readStoredStewardToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STEWARD_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeStoredStewardToken(token: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+  } catch {
+    // localStorage may be disabled (private mode, quota, sandboxed iframe);
+    // callers that need durability should detect this themselves.
+  }
+}
+
+export function readStoredStewardRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STEWARD_REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeStoredStewardRefreshToken(token: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STEWARD_REFRESH_TOKEN_KEY, token);
+  } catch {
+    // see writeStoredStewardToken
+  }
+}
+
+export function clearStoredStewardToken(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+    window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Returns true when the non-HttpOnly `steward-authed=1` marker cookie is
+ * present. The JWT cookie itself is HttpOnly, so JS uses this hint to know
+ * "there is a server session" without ever touching the token.
+ */
+export function hasStewardAuthedCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie
+    .split(";")
+    .some((part) => part.trim().startsWith(`${STEWARD_AUTHED_COOKIE}=1`));
+}
+
+// ---------------------------------------------------------------------------
+// Network helpers
+// ---------------------------------------------------------------------------
+
+async function readErrorBody(
+  response: Response,
+): Promise<{ error?: string; code?: string } | null> {
+  try {
+    return (await response.json()) as { error?: string; code?: string };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POSTs the Steward JWT (+ optional refresh token) to the session endpoint
+ * so the server can set HttpOnly cookies. Throws `StewardSessionError` on
+ * non-2xx; caller decides whether to wipe localStorage based on `error.code`.
+ */
+export async function syncStewardSession(
+  token: string,
+  refreshToken?: string | null,
+  opts: SyncOpts = {},
+): Promise<StewardSessionResponse> {
+  const endpoint = opts.endpoint ?? STEWARD_SESSION_ENDPOINT;
+  const f = opts.fetchImpl ?? fetch;
+  const body: StewardSessionRequest = {
+    token,
+    refreshToken:
+      refreshToken === undefined
+        ? readStoredStewardRefreshToken()
+        : refreshToken,
+  };
+  const response = await f(endpoint, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errBody = await readErrorBody(response);
+    throw new StewardSessionError(
+      errBody?.error || "Could not establish an Eliza Cloud session.",
+      response.status,
+      errBody?.code ?? null,
+    );
+  }
+  return (await response.json()) as StewardSessionResponse;
+}
+
+/**
+ * Best-effort DELETE of every configured session endpoint. Failures are
+ * swallowed — the caller has already wiped localStorage and there's nothing
+ * useful to do about a cookie that won't clear.
+ */
+export function clearStewardSession(opts: ClearOpts = {}): void {
+  const endpoints = opts.endpoints ?? [STEWARD_SESSION_ENDPOINT];
+  const f = opts.fetchImpl ?? (typeof fetch !== "undefined" ? fetch : null);
+  if (!f) return;
+  for (const url of endpoints) {
+    f(url, { method: "DELETE", credentials: "include" }).catch(() => {
+      // ignore — see jsdoc
+    });
+  }
+}

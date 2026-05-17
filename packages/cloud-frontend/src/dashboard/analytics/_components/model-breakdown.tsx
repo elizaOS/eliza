@@ -8,6 +8,7 @@
 
 "use client";
 
+import { toSuccessRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Badge,
   Button,
@@ -131,7 +132,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
                     </td>
                     <td className="py-3 text-right tabular-nums">
                       <span className="text-green-600 dark:text-green-400">
-                        {(model.successRate * 100).toFixed(1)}%
+                        {toSuccessRatePercent(model.successRate).toFixed(1)}%
                       </span>
                     </td>
                   </tr>

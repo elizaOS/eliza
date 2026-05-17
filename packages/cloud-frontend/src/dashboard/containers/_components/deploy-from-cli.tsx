@@ -2,23 +2,24 @@
 
 import { Check, ChevronDown, ChevronUp, Copy, Terminal } from "lucide-react";
 import { useState } from "react";
+import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 import { cn } from "@/lib/utils";
 
 export function DeployFromCLI() {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, markCopied } = useCopyFeedback();
 
   const command = "elizaos deploy";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    markCopied();
   };
 
   return (
     <div className="bg-neutral-900 rounded-sm overflow-hidden">
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex w-full items-start justify-between gap-3 p-4 text-left transition-colors hover:bg-white/5 sm:items-center"
       >
@@ -51,6 +52,7 @@ export function DeployFromCLI() {
               {command}
             </code>
             <button
+              type="button"
               onClick={handleCopy}
               className="text-neutral-500 hover:text-white transition-colors"
             >

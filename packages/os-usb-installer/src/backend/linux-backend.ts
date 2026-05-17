@@ -204,12 +204,15 @@ function parseDdBytesWritten(line: string): number | null {
   return null;
 }
 
-function parseLastDdBytesWritten(text: string): number | null {
-  let last: number | null = null;
-  for (const match of text.matchAll(/(\d+)\s+bytes/g)) {
-    last = Number(match[1]);
-  }
-  return last;
+// For a multi-line buffer (entire dd stderr), grab the LAST "<n> bytes" count.
+// The single-line parser above only matches the first occurrence, which would
+// return a stale early-progress value when applied to the full transcript.
+function parseDdLastBytesWritten(buffer: string): number | null {
+  const matches = buffer.match(/(\d+)\s+bytes/g);
+  if (!matches || matches.length === 0) return null;
+  const last = matches[matches.length - 1];
+  const m = last?.match(/(\d+)/);
+  return m?.[1] ? Number(m[1]) : null;
 }
 
 export interface PrivilegeEscalator {
@@ -593,7 +596,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         clearInterval(heartbeat);
         // Final dd summary line lives in stderrBuf or stderrAll.
         const tailBytes =
-          parseDdBytesWritten(stderrBuf) ?? parseLastDdBytesWritten(stderrAll);
+          parseDdBytesWritten(stderrBuf) ?? parseDdLastBytesWritten(stderrAll);
         if (tailBytes !== null) {
           finalBytesWritten = tailBytes;
         }

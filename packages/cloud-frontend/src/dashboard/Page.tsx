@@ -1,10 +1,14 @@
 import {
+  DashboardActionCards,
+  DashboardActionCardsSkeleton,
   DashboardLoadingState,
   DashboardPageContainer,
+  DashboardPageWrapper,
   DashboardPageStack,
 } from "@elizaos/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
+import { Link } from "react-router-dom";
 import type { DashboardAgentStats } from "@/lib/types/dashboard-agent-stats";
 import { api } from "../lib/api-client";
 import { useRequireAuth } from "../lib/auth-hooks";
@@ -13,11 +17,6 @@ import {
   AgentsSection,
   AgentsSectionSkeleton,
 } from "./_components/agents-section";
-import {
-  DashboardActionCards,
-  DashboardActionCardsSkeleton,
-} from "./_components/dashboard-action-cards";
-import { DashboardPageWrapper } from "./_components/dashboard-page-wrapper";
 
 interface DashboardAgent {
   id: string;
@@ -93,7 +92,14 @@ export default function DashboardPage() {
               {credits.isLoading ? (
                 <DashboardActionCardsSkeleton />
               ) : (
-                <DashboardActionCards creditBalance={creditBalance} />
+                <DashboardActionCards
+                  creditBalance={creditBalance}
+                  renderLink={({ to, className, children }) => (
+                    <Link to={to} className={className}>
+                      {children}
+                    </Link>
+                  )}
+                />
               )}
             </section>
 

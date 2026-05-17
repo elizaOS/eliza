@@ -33,10 +33,6 @@ function bunExecutable() {
   return "bun";
 }
 
-function nodeExecutable() {
-  return process.env.NODE || process.env.ELIZA_TEST_NODE || "node";
-}
-
 function parsePGliteDataDir(url) {
   if (!url?.startsWith("pglite://")) return null;
   const dataDir = url.slice("pglite://".length);
@@ -149,16 +145,16 @@ async function main() {
   const wranglerArgs =
     args.length > 0 ? args : ["dev", "--port", apiPort, "--local"];
 
-  const wranglerBin = path.join(
-    repoRoot,
-    "packages",
-    "cloud-api",
-    "node_modules",
-    "wrangler",
-    "bin",
-    "wrangler.js",
-  );
-  const wrangler = spawn(nodeExecutable(), [wranglerBin, ...wranglerArgs], {
+  // Cloud-e2e harness (NODE_ENV=test + CLOUD_E2E=1) runs wrangler under Node
+  // to avoid bun-runtime incompatibilities (wrangler's InspectorProxyWorker
+  // WebSocket and dev:inspector flag don't work on the bun runtime).
+  const useNodeWrangler =
+    process.env.CLOUD_E2E === "1" && process.env.NODE_ENV === "test";
+  const wranglerCmd = useNodeWrangler ? "npx" : bun;
+  const wranglerSpawnArgs = useNodeWrangler
+    ? ["wrangler", ...wranglerArgs]
+    : ["run", "wrangler", ...wranglerArgs];
+  const wrangler = spawn(wranglerCmd, wranglerSpawnArgs, {
     cwd: path.join(repoRoot, "packages", "cloud-api"),
     env,
     stdio: "inherit",

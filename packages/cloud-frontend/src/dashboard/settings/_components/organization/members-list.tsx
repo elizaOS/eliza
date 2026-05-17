@@ -31,20 +31,10 @@ import {
 } from "@elizaos/ui";
 import { format } from "date-fns";
 import { Crown, Mail, Shield, User, UserMinus, Wallet } from "lucide-react";
-
-interface Member {
-  id: string;
-  name: string | null;
-  email: string | null;
-  wallet_address: string | null;
-  wallet_chain_type: string | null;
-  role: string;
-  is_active: boolean;
-  created_at: string;
-}
+import type { OrgMemberDto } from "@/types/cloud-api";
 
 interface MembersListProps {
-  members: Member[];
+  members: OrgMemberDto[];
   currentUserId: string;
   currentUserRole: string;
   isOwner: boolean;
@@ -91,7 +81,7 @@ export function MembersList({
     }
   };
 
-  const getInitials = (member: Member) => {
+  const getInitials = (member: OrgMemberDto) => {
     if (member.name) {
       return member.name
         .split(" ")
@@ -109,7 +99,7 @@ export function MembersList({
     return "??";
   };
 
-  const getDisplayName = (member: Member) => {
+  const getDisplayName = (member: OrgMemberDto) => {
     if (member.name) return member.name;
     if (member.email) return member.email;
     if (member.wallet_address) {
@@ -118,11 +108,11 @@ export function MembersList({
     return "Unknown";
   };
 
-  const canUpdateRole = (member: Member) => {
+  const canUpdateRole = (member: OrgMemberDto) => {
     return isOwner && member.id !== currentUserId && member.role !== "owner";
   };
 
-  const canRemove = (member: Member) => {
+  const canRemove = (member: OrgMemberDto) => {
     if (member.id === currentUserId) return false;
     if (member.role === "owner") return false;
     if (currentUserRole === "owner") return true;

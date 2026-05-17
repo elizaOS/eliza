@@ -164,19 +164,16 @@ export default function Leaderboard() {
 
   useEffect(() => {
     if (!measured) return;
-    // Phase 1: scale up to 1.05 (0-500ms)
     lScaleApi.start({
       scale: 1.15,
       config: { duration: 500, easing: (t: number) => 1 - (1 - t) ** 3 },
     });
-    // Phase 2: scale down to 0.8 (500-1000ms)
     const t1 = setTimeout(() => {
       lScaleApi.start({
         scale: 0.85,
         config: { mass: 1, tension: 200, friction: 12 },
       });
     }, 500);
-    // Phase 3: swap #l -> #fl at 800ms, scale back to 1.0
     const t2 = setTimeout(() => {
       setLSwapped(true);
       lScaleApi.start({
@@ -190,26 +187,22 @@ export default function Leaderboard() {
     };
   }, [measured, lScaleApi]);
 
-  // Whole SVG scales down from larger to final size
   const svgScaleSpring = useSpring({
     scale: measured ? 1 : 1.3,
     config: { mass: 1, tension: 20, friction: 20 },
   });
 
-  // #i1 (dot) -- pops in first, bouncier
   const i1Spring = useSpring({
     scale: measured ? 1 : 0,
     config: { mass: 0.8, tension: 250, friction: 10 },
     delay: 100,
   });
-  // #i2 (body) -- scales up after dot
   const i2Spring = useSpring({
     scale: measured ? 1 : 0,
     config: { mass: 1, tension: 200, friction: 12 },
     delay: 250,
   });
 
-  // scaleX squeeze/expand to swap #i -> #fi
   const [iSwapped, setISwapped] = useState(false);
   const [iSquashSpring, iSquashApi] = useSpring(() => ({
     scaleX: 1,
@@ -219,7 +212,6 @@ export default function Leaderboard() {
 
   useEffect(() => {
     if (!measured) return;
-    // Wait for entrance animations to settle, then squeeze X / stretch Y
     const t1 = setTimeout(() => {
       iSquashApi.start({
         scaleX: 0,
@@ -227,7 +219,6 @@ export default function Leaderboard() {
         config: { duration: 250, easing: (t: number) => t * t * t },
       });
     }, 600);
-    // At peak squash, swap and expand back (300ms later)
     const t2 = setTimeout(() => {
       setISwapped(true);
       iSquashApi.start({
@@ -242,7 +233,6 @@ export default function Leaderboard() {
     };
   }, [measured, iSquashApi]);
 
-  // #e splatter entrance -> jitter -> shake-to-still swap to #fe
   const eDisplaceRef = useRef<SVGFEDisplacementMapElement>(null);
   const [eSwapped, setESwapped] = useState(false);
 
@@ -251,7 +241,6 @@ export default function Leaderboard() {
     let raf: number;
     let t0 = performance.now();
 
-    // Phase 1: splatter in (800 -> 14) over 700ms
     const phase1 = () => {
       const elapsed = performance.now() - t0;
       const progress = Math.min(elapsed / 400, 1);
@@ -261,23 +250,20 @@ export default function Leaderboard() {
       if (progress < 1) {
         raf = requestAnimationFrame(phase1);
       }
-      // Phase 1 done -- jitter stays at 14 via seed animation, wait then ramp up
     };
     raf = requestAnimationFrame(phase1);
 
-    // Phase 2: ramp jitter up (14 -> 150) over 200ms
     const t1 = setTimeout(() => {
       t0 = performance.now();
       const phase2 = () => {
         const elapsed = performance.now() - t0;
         const progress = Math.min(elapsed / 200, 1);
-        const s = progress * progress; // ease-in
+        const s = progress * progress;
         const scale = 14 + (150 - 14) * s;
         eDisplaceRef.current?.setAttribute("scale", String(scale));
         if (progress < 1) {
           raf = requestAnimationFrame(phase2);
         } else {
-          // At peak chaos -- snap to clean #fe
           setESwapped(true);
         }
       };
@@ -290,7 +276,6 @@ export default function Leaderboard() {
     };
   }, [measured]);
 
-  // #a blur entrance with bounce + swap to #fa at peak + scale down
   const aBlurRef = useRef<SVGFEGaussianBlurElement>(null);
   const faScaleRef = useRef<SVGGElement>(null);
   const [aSwapped, setASwapped] = useState(false);
@@ -303,12 +288,10 @@ export default function Leaderboard() {
     const startBlur = 40;
     const bouncePeak = 25;
     const bounceDuration = 400;
-    // #fa scale: 1.2 -> 1 from bottom-right origin (988, 372)
     const ox = 988,
       oy = 372;
     const startScale = 1.5;
 
-    // Phase 1: blur 40 -> 0
     const phase1 = () => {
       const elapsed = performance.now() - t0;
       const progress = Math.min(elapsed / blurDuration, 1);
@@ -321,7 +304,6 @@ export default function Leaderboard() {
     };
     raf = requestAnimationFrame(phase1);
 
-    // Phase 2: bounce blur 0 -> 25 -> 0, swap at peak, scale #fa 1.2 -> 1
     const t1 = setTimeout(() => {
       t0 = performance.now();
       let swapped = false;
@@ -330,12 +312,10 @@ export default function Leaderboard() {
         const progress = Math.min(elapsed / bounceDuration, 1);
         const blur = bouncePeak * Math.sin(progress * Math.PI);
         aBlurRef.current?.setAttribute("stdDeviation", String(blur));
-        // Swap at the peak (halfway)
         if (!swapped && progress >= 0.5) {
           swapped = true;
           setASwapped(true);
         }
-        // Scale #fa from 1.2 -> 1 (ease-out cubic, starts from swap point)
         if (progress >= 0.5) {
           const scaleProgress = Math.min((progress - 0.5) / 0.5, 1);
           const ease = 1 - (1 - scaleProgress) ** 3;
@@ -356,7 +336,6 @@ export default function Leaderboard() {
     };
   }, [measured]);
 
-  // Left-to-right mask wipe to swap #z -> #fz
   const clipOldRef = useRef<SVGPolygonElement>(null);
   const clipNewRef = useRef<SVGPolygonElement>(null);
 
@@ -370,7 +349,6 @@ export default function Leaderboard() {
       const tick = () => {
         const elapsed = performance.now() - t0;
         const progress = Math.min(elapsed / duration, 1);
-        // ease-out cubic
         const w = 1 - (1 - progress) ** 3;
         const wipeX = 315 + w * 475;
         clipOldRef.current?.setAttribute(
@@ -540,7 +518,6 @@ export default function Leaderboard() {
     };
   }, []);
 
-  // Staggered tab bar appear animations: bg -> icons -> indicator
   const tabBarBgSpring = useSpring({
     reveal: showUI ? 120 : -20,
     delay: showUI ? 200 : 0,
@@ -689,7 +666,7 @@ export default function Leaderboard() {
   const switchPlatform = useCallback(
     (dir: -1 | 1) => {
       const idx = platforms.indexOf(platform);
-      const next = idx - dir; // swipe left (dir=-1) -> next, swipe right (dir=1) -> prev
+      const next = idx - dir;
       if (next < 0 || next > 3) return;
       changePlatform(platforms[next]);
     },

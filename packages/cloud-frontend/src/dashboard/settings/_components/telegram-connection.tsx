@@ -13,8 +13,9 @@ import {
   Label,
 } from "@elizaos/ui";
 import { Bot, ExternalLink, Loader2, MessageSquare } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useConnectionStatus } from "@/hooks/use-connection-status";
 
 interface TelegramStatus {
   configured: boolean;
@@ -25,36 +26,18 @@ interface TelegramStatus {
 }
 
 export function TelegramConnection() {
-  const [status, setStatus] = useState<TelegramStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    status,
+    isLoading,
+    refetch: fetchStatus,
+  } = useConnectionStatus<TelegramStatus>(
+    "/api/v1/telegram/status",
+    "Failed to fetch Telegram status",
+  );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [botToken, setBotToken] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
-
-  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/v1/telegram/status", { signal });
-      if (!signal?.aborted) {
-        setStatus(await response.json());
-      }
-    } catch {
-      if (!signal?.aborted) {
-        toast.error("Failed to fetch Telegram status");
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchStatus(controller.signal);
-    return () => controller.abort();
-  }, [fetchStatus]);
 
   const handleConnect = async () => {
     if (isConnecting) return;

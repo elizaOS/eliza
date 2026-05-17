@@ -564,3 +564,128 @@ export interface AdminModerationActionResponse {
   message: string;
   admin?: Pick<AdminUserDto, "id" | "walletAddress" | "role">;
 }
+
+// ---------------------------------------------------------------------------
+// Admin engagement metrics DTOs
+// Shapes returned by GET /api/v1/admin/metrics
+// ---------------------------------------------------------------------------
+
+export interface AdminDailyMetricDto {
+  date: string;
+  platform: string | null;
+  dau: number;
+  new_signups: number;
+  total_messages: number;
+  messages_per_user: string;
+}
+
+export interface AdminRetentionCohortDto {
+  cohort_date: string;
+  platform: string | null;
+  cohort_size: number;
+  d1_retained: number | null;
+  d7_retained: number | null;
+  d30_retained: number | null;
+}
+
+export interface AdminPlatformDistributionDto {
+  key: string;
+  count: number;
+  percent: number;
+}
+
+export interface AdminRetentionRatePointDto {
+  cohortDate: string;
+  cohortSize: number;
+  d1: number | null;
+  d7: number | null;
+  d30: number | null;
+}
+
+export interface AdminOAuthRateDto {
+  total_users: number;
+  connected_users: number;
+  rate: number;
+  /** rate rendered as 0..100 percent, rounded to one decimal. */
+  ratePercent: number;
+  byService: Record<string, number>;
+}
+
+export interface AdminMetricsOverviewDto {
+  dau: number;
+  wau: number;
+  mau: number;
+  newSignupsToday: number;
+  newSignups7d: number;
+  avgMessagesPerUser: number;
+  platformBreakdown: Record<string, number>;
+  platformDistribution: AdminPlatformDistributionDto[];
+  oauthRate: AdminOAuthRateDto;
+  dailyTrend: AdminDailyMetricDto[];
+  retentionCohorts: AdminRetentionCohortDto[];
+  retentionRates: AdminRetentionRatePointDto[];
+}
+
+// ---------------------------------------------------------------------------
+// Organization member and invite DTOs
+// Shapes returned by GET /api/organizations/members and /api/organizations/invites
+// ---------------------------------------------------------------------------
+
+export interface OrgMemberDto {
+  id: string;
+  name: string | null;
+  email: string | null;
+  wallet_address: string | null;
+  wallet_chain_type: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrgInviteDto {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
+  expires_at: string;
+  created_at: string;
+  inviter: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+  accepted_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Session and quota usage DTOs
+// Shapes returned by GET /api/sessions/current and /api/quotas/usage
+// ---------------------------------------------------------------------------
+
+export interface SessionStatsDto {
+  credits_used: number;
+  requests_made: number;
+  tokens_consumed: number;
+}
+
+export interface QuotaGlobalDto {
+  used: number;
+  limit: number | null;
+  periodEnd: string | null;
+  usedPercent: number | null;
+  usedPercentClamped: number;
+}
+
+export interface QuotaModelDto {
+  used: number;
+  limit: number;
+  periodEnd: string;
+  usedPercent: number;
+  usedPercentClamped: number;
+}
+
+export interface QuotaUsageDto {
+  global: QuotaGlobalDto;
+  modelSpecific: Record<string, QuotaModelDto>;
+}

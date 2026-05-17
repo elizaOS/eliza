@@ -70,7 +70,6 @@ import {
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
-import { shouldCreateDesktopPill } from "./desktop-pill-config";
 import { createPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
@@ -78,10 +77,7 @@ import {
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
 } from "./renderer-api-proxy";
-import {
-  getRendererAssetContentType,
-  resolveRendererAsset,
-} from "./renderer-static";
+import { resolveRendererAsset } from "./renderer-static";
 import {
   buildBunRpcHandlers,
   wireBrowserWorkspaceCaller,
@@ -682,6 +678,23 @@ async function startRendererServer(): Promise<string> {
 
   const port = await getPort(5174);
 
+  const mimeTypes: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript",
+    ".mjs": "application/javascript",
+    ".css": "text/css",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".json": "application/json",
+    ".gz": "application/octet-stream",
+    ".wasm": "application/wasm",
+    ".glb": "model/gltf-binary",
+    ".gltf": "model/gltf+json",
+    ".vrm": "model/gltf-binary",
+  };
+
   // Seed the api-base-owner singleton with the initial value so the
   // HTML-inject path and the RPC push path both read the same source of
   // truth. Without this seeding, the static server would inject one value
@@ -802,7 +815,7 @@ async function startRendererServer(): Promise<string> {
         }
 
         const headers: Record<string, string> = {
-          "Content-Type": getRendererAssetContentType(mimeExt),
+          "Content-Type": mimeTypes[mimeExt] ?? "application/octet-stream",
           "Access-Control-Allow-Origin": "*",
           "Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
         };
@@ -2136,14 +2149,15 @@ async function main(): Promise<void> {
       /* non-fatal */
     }
     getFloatingChatManager().configure(url, preload);
-    if (shouldCreateDesktopPill()) {
-      try {
-        createPillWindow({ rendererUrl: url, preload });
-      } catch (err) {
-        logger.warn(
-          `[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+    // Spawn the always-on-top voice pill overlay alongside the main window.
+    // The pill loads the same renderer with `?shell=pill`, which routes to
+    // a minimal <VoicePill> mount in apps/app/src/main.tsx.
+    try {
+      createPillWindow({ rendererUrl: url, preload });
+    } catch (err) {
+      logger.warn(
+        `[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   });
 

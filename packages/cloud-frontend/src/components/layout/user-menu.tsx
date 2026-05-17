@@ -8,6 +8,7 @@
 
 "use client";
 
+import { STEWARD_SESSION_ENDPOINT } from "@elizaos/steward-session-client";
 import {
   Avatar,
   AvatarFallback,
@@ -333,7 +334,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
 
       if (stewardAuthenticated) {
         stewardSignOut();
-        await fetch("/api/auth/steward-session", { method: "DELETE" }).catch(
+        await fetch(STEWARD_SESSION_ENDPOINT, { method: "DELETE" }).catch(
           () => {},
         );
       }

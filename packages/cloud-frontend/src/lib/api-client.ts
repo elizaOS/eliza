@@ -13,7 +13,7 @@
  *   await api("/api/v1/apps/123", { method: "DELETE" });
  */
 
-const STEWARD_TOKEN_KEY = "steward_session_token";
+import { STEWARD_TOKEN_KEY } from "@elizaos/steward-session-client";
 
 export class ApiError extends Error {
   constructor(

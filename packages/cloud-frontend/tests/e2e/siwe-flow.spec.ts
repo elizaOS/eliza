@@ -88,7 +88,7 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
   //    `request({ method: "personal_sign", params: [hex, address] })` and gets
   //    a real, recoverable signature back.
   await context.addInitScript(
-    ({ pk, addr }) => {
+    ({ pk: _pk, addr }) => {
       // viem can't run in addInitScript (no bundler), so we use a tiny
       // implementation. The wallet-buttons code calls personal_sign with
       // the EIP-4361 message as a 0x-prefixed hex string of UTF-8 bytes.
@@ -173,13 +173,13 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
     .toContain(`Nonce: ${nonce}`);
 
   // 7. Validate it carried a real EIP-4361 message + recoverable signature.
-  expect(captured.message!).toContain(account.address);
-  expect(captured.message!).toMatch(
+  expect(captured.message ?? "").toContain(account.address);
+  expect(captured.message ?? "").toMatch(
     /wants you to sign in with your Ethereum account/,
   );
   expect(captured.signature, "signature missing on /auth/verify").toBeTruthy();
   const recovered = await recoverMessageAddress({
-    message: captured.message!,
+    message: captured.message ?? "",
     signature: captured.signature as `0x${string}`,
   });
   expect(recovered.toLowerCase()).toBe(account.address.toLowerCase());

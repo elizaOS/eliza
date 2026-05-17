@@ -322,9 +322,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
 
   return (
     <main id="main" className="installer-shell">
-      {/* ------------------------------------------------------------------ */}
       {/* Header                                                              */}
-      {/* ------------------------------------------------------------------ */}
       <section className="header-band">
         <div>
           <img
@@ -379,9 +377,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </nav>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
       {/* Loading / error state                                               */}
-      {/* ------------------------------------------------------------------ */}
       {!dataLoaded && (
         <section className="workspace-single">
           <div className="panel">
@@ -401,9 +397,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Step 1: Drive selection                                             */}
-      {/* ------------------------------------------------------------------ */}
       {dataLoaded && !loadError && appStep === "selecting-drive" && (
         <section className="workspace-grid">
           <div className="panel drive-panel">
@@ -500,9 +494,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Step 2: Image selection                                             */}
-      {/* ------------------------------------------------------------------ */}
       {dataLoaded && !loadError && appStep === "selecting-image" && (
         <section className="workspace-grid">
           <div className="panel image-panel">
@@ -603,9 +595,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Step 3: Specs check                                                 */}
-      {/* ------------------------------------------------------------------ */}
       {dataLoaded &&
         !loadError &&
         appStep === "specs-check" &&
@@ -691,9 +681,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           </section>
         )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Step 4: Confirm & Write                                             */}
-      {/* ------------------------------------------------------------------ */}
       {dataLoaded &&
         !loadError &&
         appStep === "confirming" &&
@@ -812,9 +800,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
           </section>
         )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Step 5: Writing                                                     */}
-      {/* ------------------------------------------------------------------ */}
       {appStep === "writing" && writePlan && (
         <section className="workspace-grid">
           <div className="panel writing-panel">
@@ -908,9 +894,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Complete                                                            */}
-      {/* ------------------------------------------------------------------ */}
       {appStep === "complete" && writePlan && (
         <section className="workspace-single">
           <div className="panel complete-panel">
@@ -941,9 +925,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Error                                                               */}
-      {/* ------------------------------------------------------------------ */}
       {appStep === "error" && (
         <section className="workspace-single">
           <div className="panel error-panel">
@@ -977,9 +959,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         </section>
       )}
 
-      {/* ------------------------------------------------------------------ */}
       {/* Footer                                                              */}
-      {/* ------------------------------------------------------------------ */}
       <section className="footer-band">
         <img
           className="brand-logo"

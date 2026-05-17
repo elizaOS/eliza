@@ -164,29 +164,20 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
     }
 
     try {
+      const voice = optionalString(body.voiceId) ?? optionalString(body.voice);
+      const model = optionalString(body.model);
+      const modelId = optionalString(body.modelId);
+      const speed = optionalPositiveNumber(body.speed);
+      const sampleRate = optionalPositiveNumber(body.sampleRate);
+      const format = optionalString(body.format);
       const audio = await useLocalInferenceTts(runtime, {
         text,
-        ...(optionalString(body.voice)
-          ? { voice: optionalString(body.voice) }
-          : {}),
-        ...(optionalString(body.voiceId)
-          ? { voice: optionalString(body.voiceId) }
-          : {}),
-        ...(optionalString(body.model)
-          ? { model: optionalString(body.model) }
-          : {}),
-        ...(optionalString(body.modelId)
-          ? { modelId: optionalString(body.modelId) }
-          : {}),
-        ...(optionalPositiveNumber(body.speed)
-          ? { speed: optionalPositiveNumber(body.speed) }
-          : {}),
-        ...(optionalPositiveNumber(body.sampleRate)
-          ? { sampleRate: optionalPositiveNumber(body.sampleRate) }
-          : {}),
-        ...(optionalString(body.format)
-          ? { format: optionalString(body.format) }
-          : {}),
+        ...(voice ? { voice } : {}),
+        ...(model ? { model } : {}),
+        ...(modelId ? { modelId } : {}),
+        ...(speed ? { speed } : {}),
+        ...(sampleRate ? { sampleRate } : {}),
+        ...(format ? { format } : {}),
       });
       const bytes = normalizeAudioBytes(audio);
       if (bytes.length === 0) {

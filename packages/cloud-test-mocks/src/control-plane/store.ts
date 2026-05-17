@@ -88,6 +88,19 @@ export interface WarmSandbox {
   createdAt: Date;
 }
 
+export type WarmPoolRolloutState = "idle" | "in-progress" | "complete";
+
+export interface WarmPoolState {
+  enabled: boolean;
+  minSize: number;
+  maxSize: number;
+  image: string;
+  rolloutState: WarmPoolRolloutState;
+  targetImage: string;
+  completedSandboxes: number;
+  totalSandboxes: number;
+}
+
 export class ControlPlaneStore {
   private readonly jobs = new Map<string, Job>();
   private readonly sandboxes = new Map<string, Sandbox>();
@@ -95,6 +108,16 @@ export class ControlPlaneStore {
   private readonly warmPool = new Map<string, WarmSandbox>();
   private readonly cronCounters = new Map<string, number>();
   private hotPoolTarget = 0;
+  private warmPoolState: WarmPoolState = {
+    enabled: true,
+    minSize: 0,
+    maxSize: 10,
+    image: "elizaos/agent:latest",
+    rolloutState: "idle",
+    targetImage: "elizaos/agent:latest",
+    completedSandboxes: 0,
+    totalSandboxes: 0,
+  };
   private idSeq = 0;
 
   constructor(private readonly nowFn: () => Date = () => new Date()) {}
@@ -128,6 +151,15 @@ export class ControlPlaneStore {
       added += 1;
     }
     return added;
+  }
+
+  // ── Warm-pool state ──────────────────────────────────────────────────
+  getWarmPoolState(): WarmPoolState {
+    return { ...this.warmPoolState };
+  }
+  setWarmPoolState(patch: Partial<WarmPoolState>): WarmPoolState {
+    this.warmPoolState = { ...this.warmPoolState, ...patch };
+    return { ...this.warmPoolState };
   }
 
   // ── Containers ────────────────────────────────────────────────────────
@@ -297,6 +329,13 @@ export class ControlPlaneStore {
     return [...this.jobs.values()]
       .filter((j) => j.status === "pending")
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  /** Count of pending jobs (used to compute skipped after limit). */
+  pendingJobCount(): number {
+    let n = 0;
+    for (const j of this.jobs.values()) if (j.status === "pending") n += 1;
+    return n;
   }
 
   /** Sandboxes still in `provisioning` whose `createdAt` is older than the cutoff. */

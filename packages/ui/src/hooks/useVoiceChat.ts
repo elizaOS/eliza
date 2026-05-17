@@ -29,7 +29,6 @@ import {
 import {
   getTalkModePlugin,
   type TalkModeErrorEvent,
-  type TalkModePlaybackStartEvent,
   type TalkModeStateEvent,
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
@@ -83,7 +82,6 @@ import {
   type SpeechRecognitionResultEvent,
   TALKMODE_STOP_SETTLE_MS,
   toArrayBuffer,
-  type VoiceAssistantSpeechTelemetry,
   type VoiceCaptureMode,
   type VoiceChatOptions,
   type VoiceChatState,
@@ -149,14 +147,6 @@ function shouldPreferNativeTalkMode(): boolean {
   return Capacitor.isNativePlatform() || !!getElectrobunRendererRpc();
 }
 
-function shouldUseNativeAndroidLocalInferenceTts(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    Capacitor.isNativePlatform() &&
-    Capacitor.getPlatform() === "android"
-  );
-}
-
 function isWindowsElectrobunRenderer(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -208,7 +198,6 @@ interface VoiceTranscriptUpdateMetadata {
 export const __voiceChatInternals = {
   isWindowsElectrobunRenderer,
   shouldPreferNativeTalkMode,
-  shouldUseNativeAndroidLocalInferenceTts,
   shouldAutoRestartBrowserRecognition,
   shouldUseLocalInferenceAsr,
   resumeAudioContextForPlayback,
@@ -402,14 +391,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   // ── Init ──────────────────────────────────────────────────────────
 
-  const localAsrProvider = effectiveVoiceConfig?.asr?.provider;
   useEffect(() => {
     let cancelled = false;
 
     const syncVoiceSupport = async () => {
       const browserSpeechSupported = !!getSpeechRecognitionCtor();
       const localAsrSupported =
-        localAsrProvider === "local-inference" && isLocalAsrCaptureSupported();
+        shouldUseLocalInferenceAsr(voiceConfigRef.current) &&
+        isLocalAsrCaptureSupported();
       if (localAsrSupported) {
         if (!cancelled) {
           setSupported(true);
@@ -445,7 +434,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     return () => {
       cancelled = true;
     };
-  }, [localAsrProvider]);
+  }, [effectiveVoiceConfig?.asr?.provider]);
 
   // ── Mouth animation loop ──────────────────────────────────────────
 
@@ -662,18 +651,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeLocalInferenceAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      const res = await fetchWithCsrf(
-        resolveApiUrl("/api/asr/local-inference"),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "audio/wav",
-            Accept: "application/json",
-          },
-          body: new Uint8Array(audio).buffer,
-          signal,
+      const audioBody = new ArrayBuffer(audio.byteLength);
+      new Uint8Array(audioBody).set(audio);
+      const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/wav",
+          Accept: "application/json",
         },
-      );
+        body: audioBody,
+        signal,
+      });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         throw new Error(
@@ -934,11 +922,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const recorder = localAsrRecorderRef.current;
         localAsrRecorderRef.current = null;
         if (recorder) {
-          if (!submit) {
-            recorder.cancel();
-            finalizeRecognition(false);
-            return;
-          }
           try {
             const audio = await recorder.stop();
             const transcript = await transcribeLocalInferenceAudio(audio);
@@ -993,13 +976,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     // Browser TTS
     synthRef.current?.cancel();
     utteranceRef.current = null;
-    if (Capacitor.isNativePlatform()) {
-      void getTalkModePlugin()
-        .stopSpeaking()
-        .catch(() => {
-          /* native plugin may not be registered in web/unit tests */
-        });
-    }
 
     // ElevenLabs audio
     if (audioSourceRef.current) {
@@ -1321,63 +1297,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const speakLocalInference = useCallback(
     async (text: string, task: SpeakTask, generation: number) => {
-      if (shouldUseNativeAndroidLocalInferenceTts()) {
-        if (generation !== generationRef.current) return;
-        const talkMode = getTalkModePlugin();
-        let playbackStarted = false;
-        let playbackHandle: PluginListenerHandle | null = null;
-        try {
-          playbackHandle = await talkMode.addListener(
-            "playbackStart",
-            (event: TalkModePlaybackStartEvent) => {
-              if (
-                playbackStarted ||
-                generation !== generationRef.current ||
-                event.provider !== "local-inference"
-              ) {
-                return;
-              }
-              playbackStarted = true;
-              emitPlaybackStart({
-                text,
-                segment: task.segment,
-                provider: "local-inference",
-                cached: false,
-                startedAtMs: performance.now(),
-                ...task.telemetry,
-              });
-            },
-          );
-        } catch {
-          playbackHandle = null;
-        }
-        ttsDebug("play:talkmode:local-inference:dispatch", {
-          segment: task.segment,
-          append: task.append,
-          textChars: text.length,
-          preview: ttsDebugTextPreview(text),
-          engine: "native-talkmode-local-inference",
-        });
-        try {
-          const result = await talkMode.speak({
-            text,
-            useLocalInferenceTts: true,
-          });
-          if (generation === generationRef.current) {
-            if (!result.completed && !result.interrupted) {
-              throw new Error(
-                result.error || "Native local inference TTS failed",
-              );
-            }
-          }
-        } finally {
-          await playbackHandle?.remove().catch(() => {
-            /* ignore */
-          });
-        }
-        return;
-      }
-
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext();
@@ -1914,13 +1833,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // ── Public speak APIs ─────────────────────────────────────────────
 
   const speak = useCallback(
-    (
-      text: string,
-      speakOptions?: {
-        append?: boolean;
-        telemetry?: VoiceAssistantSpeechTelemetry;
-      },
-    ) => {
+    (text: string, speakOptions?: { append?: boolean }) => {
       if (assistantTtsDebounceRef.current != null) {
         clearTimeout(assistantTtsDebounceRef.current);
         assistantTtsDebounceRef.current = null;
@@ -1930,7 +1843,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         text,
         append: Boolean(speakOptions?.append),
         segment: "full",
-        telemetry: speakOptions?.telemetry,
       });
     },
     [enqueueSpeech],
@@ -2013,7 +1925,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           latestSpeakable: "",
           finalQueued: false,
           replacePlaybackOnFirstClip: queueOptions?.replace !== false,
-          telemetry: { messageId, ...queueOptions?.telemetry },
+          telemetry: queueOptions?.telemetry,
         };
       } else if (queueOptions?.telemetry) {
         current.telemetry = {
