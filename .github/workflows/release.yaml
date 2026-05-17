@@ -513,7 +513,7 @@ jobs:
             packages/agent/dist/package.json \
             packages/app-core/dist/package.json \
             packages/elizaos/dist/index.js \
-            packages/prompts/dist/typescript/index.ts \
+            packages/prompts/specs/actions/plugins.generated.json \
             packages/shared/dist/package.json \
             packages/skills/dist/index.js \
             packages/core/dist/index.node.js \
