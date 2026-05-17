@@ -19,11 +19,30 @@ import type { BootProgressSnapshot, EmbeddedAgentStatus } from "./rpc-schema";
 export type AgentHealthSnapshot = Pick<
   BootProgressSnapshot,
   "phase" | "lastError" | "pluginsLoaded" | "pluginsFailed" | "database"
->;
+> & {
+  agentState?: BootProgressSnapshot["state"] | null;
+};
 
 export type AgentHealthReader = (
   port: number,
 ) => Promise<AgentHealthSnapshot | null>;
+
+const BOOT_PROGRESS_STATES: readonly BootProgressSnapshot["state"][] = [
+  "not_started",
+  "starting",
+  "running",
+  "stopped",
+  "error",
+];
+
+function parseBootProgressState(
+  value: unknown,
+): BootProgressSnapshot["state"] | null {
+  return typeof value === "string" &&
+    BOOT_PROGRESS_STATES.some((state) => state === value)
+    ? value
+    : null;
+}
 
 /** Default reader: in-process HTTP fetch against the agent child's /api/health. */
 export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
@@ -39,6 +58,7 @@ export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
       database?: unknown;
       plugins?: { loaded?: unknown; failed?: unknown };
       startup?: { phase?: unknown; lastError?: unknown };
+      agentState?: unknown;
     };
     const phaseRaw = raw.startup?.phase;
     const lastErrorRaw = raw.startup?.lastError;
@@ -46,6 +66,7 @@ export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
     const failedRaw = raw.plugins?.failed;
     const databaseRaw = raw.database;
     return {
+      agentState: parseBootProgressState(raw.agentState),
       phase: typeof phaseRaw === "string" ? phaseRaw : null,
       lastError: typeof lastErrorRaw === "string" ? lastErrorRaw : null,
       pluginsLoaded: typeof loadedRaw === "number" ? loadedRaw : null,
@@ -76,7 +97,7 @@ export async function composeBootProgressSnapshot(
   const port = status.port;
   const health = port !== null ? await readHealth(port) : null;
   return {
-    state: status.state,
+    state: health?.agentState ?? status.state,
     phase: health?.phase ?? null,
     lastError: health?.lastError ?? status.error ?? null,
     pluginsLoaded: health?.pluginsLoaded ?? null,
