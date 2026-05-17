@@ -250,13 +250,42 @@ grep -q 'ELIZAOS_LIVE_EMBEDDING_FALLBACK.*:-1' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_DISABLE_PROACTIVE_AGENT.*:-1' \
     tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZAOS_CLOSE_MINIMIZES_TO_TRAY.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZAOS_CEF_PROFILE_COMPAT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'normalize_tcp_port' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'normalize_loopback_bind' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_API_PORT.*:-31337' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_DESKTOP_API_BASE.*127.0.0.1' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_API_BASE.*ELIZA_DESKTOP_API_BASE' \
     tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZA_API_STRICT_PORT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZA_API_STRICT_PORT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
+grep -q 'strictPortBindingEnabled' \
+    "${REPO_ROOT}/packages/agent/src/api/server.ts"
+grep -q 'Strict port binding is enabled' \
+    "${REPO_ROOT}/packages/agent/src/api/server.ts"
+grep -q '"Feather"' scripts/prepare-milady-app-overlay.mjs
+grep -q 'Resources/app' scripts/prepare-milady-app-overlay.mjs
+grep -q 'matchAll(namedImportRe)' scripts/prepare-milady-app-overlay.mjs
+grep -q 'matchAll(destructuredImportRe)' scripts/prepare-milady-app-overlay.mjs
+grep -q 'shouldWriteLiveFallbackPackage' scripts/prepare-milady-app-overlay.mjs
+grep -q 'elizaos-live-overlay-manifest.json' scripts/prepare-milady-app-overlay.mjs
+grep -q 'closeMinimizesToTray: true' scripts/prepare-milady-app-overlay.mjs
+grep -Fq 'runtime["closeMinimizesToTray"] = True' \
+    tails/config/chroot_local-hooks/9100-install-milady
 grep -q 'prepare_cef_profile' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'safe_cache_component' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'archive_cef_path' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ln -sfn . "${cef_root}/partitions"' \
     tails/config/chroot_local-includes/usr/local/bin/milady
@@ -270,6 +299,11 @@ if grep -q 'mkdir -p.*partitions/default' \
     exit 1
 fi
 if grep -q 'rm -rf.*partitions/default' \
+    tails/config/chroot_local-includes/usr/local/bin/milady; then
+    echo "Milady launcher must not wipe the persistent CEF profile on every start." >&2
+    exit 1
+fi
+if grep -q 'rm -rf.*Partitions/default' \
     tails/config/chroot_local-includes/usr/local/bin/milady; then
     echo "Milady launcher must not wipe the persistent CEF profile on every start." >&2
     exit 1
@@ -339,7 +373,9 @@ for launcher in \
 do
     grep -q 'persistence-maintenance wait' "${launcher}"
 done
-grep -q '/run/elizaos/persistence-maintenance' \
+grep -q 'run_dir=/run/elizaos' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+grep -Fq 'flag="${run_dir}/persistence-maintenance"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
 grep -q 'pkill -TERM -u amnesia' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
@@ -395,7 +431,7 @@ if [ -e tails/chroot/etc/systemd/system/display-manager.service ]; then
 fi
 grep -q 'clear_user_unit_override' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
-grep -q 'rm -rf "${path}"' \
+grep -Fq 'rm -rf -- "${path}"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block milady.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
@@ -604,12 +640,14 @@ for (const packageName of [
     const packagePath = `${root}/Resources/app/eliza-dist/node_modules/${packageName}/package.json`;
     const indexPath = `${root}/Resources/app/eliza-dist/node_modules/${packageName}/index.js`;
     const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-    if (pkg.version !== "0.0.0-elizaos-live-stub" || pkg.type !== "module") {
-      throw new Error(`${packagePath}: optional desktop connector must be an elizaOS Live stub`);
-    }
-    const index = fs.readFileSync(indexPath, "utf8");
-    if (!index.includes("export default undefined")) {
-      throw new Error(`${indexPath}: optional desktop connector stub is malformed`);
+    if (pkg.version === "0.0.0-elizaos-live-stub") {
+      if (pkg.type !== "module") {
+        throw new Error(`${packagePath}: optional desktop connector stub must be ESM`);
+      }
+      const index = fs.readFileSync(indexPath, "utf8");
+      if (!index.includes("export default undefined")) {
+        throw new Error(`${indexPath}: optional desktop connector stub is malformed`);
+      }
     }
   }
 }
@@ -640,9 +678,13 @@ for (const root of [
     }
   }
   const googleStubPath = `${nodeModules}/@elizaos/plugin-google/index.js`;
-  const googleStub = fs.readFileSync(googleStubPath, "utf8");
-  if (!googleStub.includes("googlePlugin")) {
-    throw new Error(`${googleStubPath}: Google connector stub is malformed`);
+  const googlePackagePath = `${nodeModules}/@elizaos/plugin-google/package.json`;
+  const googlePackage = JSON.parse(fs.readFileSync(googlePackagePath, "utf8"));
+  if (googlePackage.version === "0.0.0-elizaos-live-stub") {
+    const googleStub = fs.readFileSync(googleStubPath, "utf8");
+    if (!googleStub.includes("googlePlugin")) {
+      throw new Error(`${googleStubPath}: Google connector stub is malformed`);
+    }
   }
 
   const rendererRoot = `${root}/Resources/app/renderer`;
@@ -710,18 +752,18 @@ for (const root of [
   const lucidePackagePath = `${root}/Resources/app/eliza-dist/node_modules/lucide-react/package.json`;
   const lucideIndexPath = `${root}/Resources/app/eliza-dist/node_modules/lucide-react/index.js`;
   const lucidePackage = JSON.parse(fs.readFileSync(lucidePackagePath, "utf8"));
-  if (lucidePackage.version !== "0.0.0-elizaos-live-stub") {
-    throw new Error(`${lucidePackagePath}: lucide-react must be an elizaOS Live stub`);
-  }
-  const lucideIndex = fs.readFileSync(lucideIndexPath, "utf8");
-  for (const expected of [
-    "export function Icon()",
-    "export const createLucideIcon",
-    "export const Loader2",
-    "export const Settings",
-  ]) {
-    if (!lucideIndex.includes(expected)) {
-      throw new Error(`${lucideIndexPath}: missing ${expected}`);
+  if (lucidePackage.version === "0.0.0-elizaos-live-stub") {
+    const lucideIndex = fs.readFileSync(lucideIndexPath, "utf8");
+    for (const expected of [
+      "export function Icon()",
+      "export const createLucideIcon",
+      "export const Feather",
+      "export const Loader2",
+      "export const Settings",
+    ]) {
+      if (!lucideIndex.includes(expected)) {
+        throw new Error(`${lucideIndexPath}: missing ${expected}`);
+      }
     }
   }
 
@@ -771,6 +813,9 @@ if (JSON.stringify(build.availableRenderers) !== JSON.stringify(["native"])) {
 }
 if (build.runtime?.exitOnLastWindowClosed !== false) {
   throw new Error(`${path}: runtime.exitOnLastWindowClosed must be false`);
+}
+if (build.runtime?.closeMinimizesToTray !== true) {
+  throw new Error(`${path}: runtime.closeMinimizesToTray must be true`);
 }
 if (
   build.chromiumFlags?.["user-data-dir"] !==

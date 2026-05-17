@@ -1,4 +1,4 @@
-# ElizaOS installer release plan
+# elizaOS installer release plan
 
 > Status: first-pass planning artifact. This document defines release
 > requirements and validation gates for installer artifacts. It does not claim
@@ -6,8 +6,9 @@
 
 This plan covers the install and boot surfaces that ship outside package
 managers: cross-platform USB self-installers, VM bundles, Android flashing
-images, validation evidence, and GitHub release assets. Platform implementation
-details stay in their platform directories:
+images, validation evidence, and GitHub release assets. It is production
+planning, not a claim that the current demo branch already satisfies every
+gate. Platform implementation details stay in their platform directories:
 
 - Linux live USB / VM mechanics: `packages/os/linux/`
 - Android system image and vendor layer: `packages/os/android/`
@@ -15,22 +16,24 @@ details stay in their platform directories:
 
 ## Release goals
 
-- Give users a path to run ElizaOS without modifying their primary host OS.
+- Give users a path to run elizaOS without modifying their primary host OS.
 - Make release artifacts deterministic enough to validate, checksum, and
   reproduce from CI.
 - Keep installer UX explicit about destructive operations, especially USB
   writes and Android flashing.
 - Publish enough metadata for users and downstream builders to select the
   correct artifact without guessing CPU architecture or target device.
+- Keep the Linux live-USB product visibly branded as elizaOS Live while
+  preserving required upstream attribution in credits and license materials.
 
 ## Cross-platform USB self-installer requirements
 
-The USB self-installer writes a bootable ElizaOS live image to removable media.
-It is not an internal-disk installer.
+The USB self-installer writes a bootable elizaOS Live image to removable
+media. It is not an internal-disk installer.
 
 ### Shared requirements
 
-- Input artifact: signed or checksummed ElizaOS live image, plus detached
+- Input artifact: signed or checksummed elizaOS Live image, plus detached
   metadata containing version, build commit, image size, and SHA-256.
 - Output target: removable USB mass-storage device only.
 - Host disk safety:
@@ -55,6 +58,11 @@ It is not an internal-disk installer.
     setup;
   - persistence setup must happen on the USB device, never on a host disk;
   - destructive resizing or repartitioning requires a second confirmation.
+- Updates:
+  - installer should support writing a fresh USB from a full signed image;
+  - in-place OS updates should prefer the signed updater path when available;
+  - app/runtime/model updates should not invoke the USB writer unless the
+    user explicitly wants a new boot drive.
 
 ### macOS host requirements
 
@@ -179,7 +187,7 @@ global script. Pixel and Cuttlefish targets may diverge.
 
 ### Post-flash validation
 
-- Device boots to setup or Eliza first-run surface.
+- Device boots to setup or elizaOS first-run surface.
 - `ai.elizaos.app` is installed under the expected system or product path.
 - Assistant role holder resolves to the Eliza package.
 - Privileged permissions declared in the product image are granted.

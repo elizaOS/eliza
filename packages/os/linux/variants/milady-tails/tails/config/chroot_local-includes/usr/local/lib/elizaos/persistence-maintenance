@@ -2,11 +2,19 @@
 
 set -eu
 
-flag=/run/elizaos/persistence-maintenance
+run_dir=/run/elizaos
+flag="${run_dir}/persistence-maintenance"
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
 units="elizaos-agent.service elizaos-renderer.service milady.service"
 patterns='/opt/milady/bin/bun|/opt/milady/bin/launcher|/usr/local/lib/elizaos/elizaos-webkit-shell|/usr/local/lib/elizaos/start-elizaos-|renderer-server[.]mjs|eliza-dist/entry[.]js'
+
+require_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "persistence-maintenance ${1} must run as root." >&2
+        exit 77
+    fi
+}
 
 user_systemctl() {
     [ -S "${runtime_dir}/bus" ] || return 0
@@ -34,12 +42,16 @@ start_elizaos_units() {
 
 case "${1:-}" in
     enter)
-        mkdir -p /run/elizaos
+        require_root enter
+        install -d -o root -g root -m 0755 "${run_dir}"
         printf 'persistent-storage\n' > "${flag}"
+        chown root:root "${flag}"
+        chmod 0644 "${flag}"
         kill_elizaos_processes
         ;;
     leave)
-        rm -f "${flag}"
+        require_root leave
+        rm -f -- "${flag}"
         start_elizaos_units
         ;;
     wait)

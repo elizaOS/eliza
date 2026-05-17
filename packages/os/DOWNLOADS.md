@@ -1,51 +1,87 @@
 # elizaOS Distribution Channels
 
-## Linux Desktop
+This page describes planned OS distribution channels and the current
+release metadata flow. It should not be read as proof that every artifact
+is already published or production-ready.
 
-### Live USB (recommended for new users)
-- **ISO download**: Build via CI, flash to 8 GB+ USB with the USB installer app
-- **Debian package**: For installing elizaOS on an existing Debian/Ubuntu system
+## Linux Live USB
 
-### Virtual Machine
-- **OVA image**: Import into VirtualBox, VMware Fusion, or UTM (Mac)
-- **QCOW2 image**: For QEMU/KVM on Linux hosts
+The primary Linux artifact is **elizaOS Live**: a USB-bootable distro built
+on Tails live-OS plumbing and presented to users as elizaOS Live. The main
+download should be a signed live image with checksums, release notes, known
+gaps, and a hardware-support matrix.
+
+Current hardening status:
+
+- Demo builds may still be ISO/raw-image candidates until QEMU and real-USB
+  validation are attached.
+- v1 is USB-only; internal-disk install is deferred.
+- A guarded developer writer exists in the live-USB variant. Production
+  still needs a signed GUI/CLI flasher for macOS, Windows, and Linux.
+- App/runtime/model updates should not require a new full image once the
+  signed update channels are implemented. OS/base changes can use signed
+  deltas where safe and a full-image fallback where necessary.
+
+## Virtual Machines
+
+VM bundles are for evaluation, development, and CI smoke tests. They do not
+replace real USB boot validation.
+
+Planned formats:
+
+- QEMU/KVM `qcow2` for Linux and conversion workflows
+- UTM or Apple Virtualization bundles for Apple Silicon macOS
+- Optional OVA compatibility bundle after smoke coverage exists
 
 ## Android
 
-### elizaOS AOSP (full OS replacement)
-- **AOSP Flasher app**: GUI tool for Mac/Linux/Windows to flash your Pixel device
-- Supported devices: Pixel 9 Pro (caiman), others via community builds
-- Requires: USB debugging enabled, bootloader unlocked
+Android artifacts live under `packages/os/android/` and are separate from
+elizaOS Live USB:
 
-### elizaOS Android App (no AOSP required)
-- **APK sideload**: Install on any Android device without AOSP flashing
+- elizaOS AOSP system images for manifest-listed devices
+- Cuttlefish images for validation
+- Flash tools that verify device identity before destructive operations
+- APK sideload path where a full AOSP replacement is not required
 
 ## Install Tools
 
-### USB Installer
-Cross-platform app for creating elizaOS USB boot drives:
-- macOS: uses diskutil + dd with native authorization
-- Linux: uses lsblk + dd via pkexec
-- Windows: uses PowerShell disk management
+### USB Flasher
+
+Production flasher requirements:
+
+- show only eligible removable drives
+- display device path, model, serial, capacity, partitions, and mounts
+- verify image checksum/signature before writing
+- require destructive confirmation with the exact target device
+- refuse internal/root disks
+- write, sync, verify, and save a non-secret local install log
+
+Host packaging targets are a signed/notarized macOS package, a signed
+Windows installer, and a Linux AppImage or distro-neutral archive plus CLI.
 
 ### AOSP Flasher
-Cross-platform GUI for flashing elizaOS AOSP onto Pixel devices:
-- Detects connected devices via ADB
-- Downloads elizaOS AOSP build artifacts
-- Guides through bootloader unlock + flashing
+
+The Android flasher must:
+
+- detect connected devices with ADB/fastboot
+- verify the connected product against the release manifest
+- guide bootloader unlock and flashing with destructive warnings
+- collect post-flash validation evidence
 
 ## Release Channels
 
-| Channel | Cadence | Stability |
-|---------|---------|-----------|
-| `stable` | Major releases | Production-ready |
-| `beta` | Pre-release | Feature complete, may have bugs |
-| `nightly` | Daily automated builds | Latest, may break |
+| Channel | Purpose | Promotion bar |
+|---|---|---|
+| `alpha` / nightly | Internal and developer testing | Test-signed or unsigned, not for secrets |
+| `beta` | Public candidate with known gaps | Signed artifacts, checksums, validation evidence |
+| `stable` | Production release | Signed release, SBOM, license bundle, update/rollback path, hardware evidence |
+| Enterprise | Managed fleet release | Rings, policy pins, revocation, internal mirrors, audit evidence |
 
-## Generating homepage artifact data
+## Generating Homepage Artifact Data
 
-The OS artifact list shown on the homepage is generated from the release manifest at
-`packages/os/release/<date>/manifest.json`. To regenerate the data for a new manifest:
+The OS artifact list shown on the homepage is generated from the release
+manifest at `packages/os/release/<date>/manifest.json`. To regenerate the
+data for a new manifest:
 
 ```sh
 node packages/os/scripts/generate-os-homepage-data.mjs \
@@ -53,6 +89,6 @@ node packages/os/scripts/generate-os-homepage-data.mjs \
   --output packages/os-homepage/src/generated/os-artifacts.ts
 ```
 
-The `write-homepage-release-data.mjs` script also reads the manifest directly at build
-time and merges manifest artifacts with the static artifact list before writing
-`packages/homepage/src/generated/release-data.ts`.
+The `write-homepage-release-data.mjs` script also reads the manifest
+directly at build time and merges manifest artifacts with the static
+artifact list before writing `packages/homepage/src/generated/release-data.ts`.

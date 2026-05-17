@@ -22,6 +22,11 @@ function tokenMatches(expected: string, provided: string): boolean {
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
+function strictPortBindingEnabled(): boolean {
+  const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 import os from "node:os";
 import path from "node:path";
 import {
@@ -4441,17 +4446,23 @@ export async function startApiServer(opts?: {
   }
   return new Promise((resolve, reject) => {
     let currentPort = port;
+    const strictPortBinding = strictPortBindingEnabled();
 
     server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
         logger.warn(
           `[eliza-api] Port ${currentPort} is already in use. Checking fallback...`,
         );
-        if (currentPort !== 0) {
+        if (currentPort !== 0 && !strictPortBinding) {
           logger.warn(`[eliza-api] Retrying with dynamic port (0)...`);
           currentPort = 0;
           server.listen(0, host);
           return;
+        }
+        if (strictPortBinding) {
+          logger.error(
+            `[eliza-api] Strict port binding is enabled; refusing dynamic fallback from ${currentPort}.`,
+          );
         }
       } else {
         logger.error(

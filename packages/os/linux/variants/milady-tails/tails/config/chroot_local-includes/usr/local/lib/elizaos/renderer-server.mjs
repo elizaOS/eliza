@@ -2,7 +2,7 @@
 
 import { extname, join, normalize, resolve } from "node:path";
 
-const host = process.env.ELIZAOS_RENDERER_HOST || "127.0.0.1";
+const host = "127.0.0.1";
 const port = Number.parseInt(process.env.ELIZAOS_RENDERER_PORT || "5174", 10);
 const rendererRoot = resolve(
   process.env.ELIZAOS_RENDERER_ROOT || "/opt/milady/Resources/app/renderer",

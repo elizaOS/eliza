@@ -9,10 +9,14 @@ The product requirement is that the same capabilities are available in all
 four combinations. Mode changes can affect speed, persistence, and trace
 footprint, but they must not silently remove features.
 
-Status as of 2026-05-16: the Phase 3-7 overlays are present in source and
+Status as of 2026-05-17: the Phase 3-7 overlays are present in source and
 a full rebuild/test pass is in progress. Treat the table below as the
 target acceptance matrix until Phase 8 produces evidence from the rebuilt
 ISO.
+
+Evidence rule: mark a row as production-ready only after it is exercised
+in QEMU and on a real USB boot. Until then, "Yes" means required product
+behavior, not completed validation.
 
 ## Matrix
 
@@ -25,7 +29,7 @@ ISO.
 | Voice stack | Yes | Yes | Yes | Yes |
 | SET_WM / wallpaper / shell actions | Yes | Yes | Yes | Yes |
 | GPU acceleration | Yes | Yes | Yes | Yes |
-| Cloud APIs | Fast | Fast | Slow | Slow |
+| Cloud APIs | Fast | Fast | Slow or provider-blocked | Slow or provider-blocked |
 | OAuth flows | Expected | Expected | May be blocked by provider | May be blocked by provider |
 | Chromium browser windows | Yes | Yes | Known v1.0 gap | Known v1.0 gap |
 | Chat history survives reboot | No | Yes | No | Yes |

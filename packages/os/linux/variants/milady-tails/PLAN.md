@@ -16,7 +16,7 @@ turn-by-turn directions.
 
 ---
 
-## Current status (2026-05-16)
+## Current status (2026-05-17)
 
 | | |
 |---|---|
@@ -42,7 +42,7 @@ What exists right now:
 - **Complete file-level specs** for every implementation phase (2–9) plus a
   product hardening plan for distribution, updates, and production readiness.
 - **elizaOS OS-branding overlays** for boot menus, Plymouth, greeter,
-  dark GNOME defaults, wallpaper, identity strings, and Tails credits.
+  dark GNOME defaults, wallpaper, identity strings, and Tails attribution.
 - The **elizaOS desktop app** builds and is staged into the Tails
   overlay. The ISO install hook copies it to `/opt/milady`, fixes
   permissions, and removes the staging copy. `/opt/milady` is an internal
@@ -80,7 +80,8 @@ fully-working demo.
 ### Privacy mode (independent of storage mode)
 
 - **Normal (default)** — Tor routing OFF, direct internet, fast.
-- **Privacy Mode (opt-in)** — Tor routing ON, behaves like stock Tails.
+- **Privacy Mode (opt-in)** — Tor routing ON, using the preserved
+  upstream Tor plumbing.
 
 Both axes combine freely: 4 valid configurations.
 
@@ -89,21 +90,25 @@ Both axes combine freely: 4 valid configurations.
 | **Normal** | "Burner laptop with AI" | "Portable AI computer" |
 | **Privacy** | "Burner with full anonymity" | "Encrypted portable + anonymity" |
 
-### Mode parity guarantees (no gaps)
+### Mode parity contract
 
-**Same features work in ALL FOUR configurations.** The only differences:
+The product target is that the same features work in all four
+configurations. The only intended differences are:
 - Speed (Tor is slower than direct internet)
-- Trace footprint (amnesia leaves nothing, persistent leaves encrypted data on USB)
+- Trace footprint (amnesia writes no user state, persistent leaves encrypted
+  data on USB)
 
 See `docs/mode-parity.md` for the exhaustive feature matrix. Anything that
-doesn't work in one mode gets a documented "known gap" entry — no silent
-feature loss. Phase 8 builds the harness that proves this.
+doesn't work in one mode gets a documented known-gap entry; no silent
+feature loss. Phase 8 builds the harness that proves this. Until the
+rebuilt ISO passes QEMU and real-USB validation, the matrix is an
+acceptance target, not production evidence.
 
 The one **known v1.0 gap**: Electrobun's CEF Chromium WebView doesn't
-auto-inherit the SOCKS proxy. In Privacy Mode, Milady's agent (Bun
-fetch) routes through Tor correctly, but Chromium *windows* may
-leak. Documented in `docs/privacy-mode-v1-gap.md`. Closing this is
-v1.1 work (patch Electrobun to inject `--proxy-server`).
+auto-inherit the SOCKS proxy. In Privacy Mode, the elizaOS agent path is
+intended to route through Tor, but Chromium *windows* may leak until
+Electrobun injects an explicit proxy setting. Documented in
+`docs/privacy-mode-v1-gap.md`. Closing this is v1.1 work.
 
 ---
 
@@ -113,10 +118,13 @@ v1.1 work (patch Electrobun to inject `--proxy-server`).
 
 - Tails source lives in `tails/` at this directory's root (~6000
   tracked files, copied from a Tails `stable` clone).
-- We **never delete** Tails code. All elizaOS/Milady additions are overlays,
+- We **never delete** Tails code. All elizaOS additions are overlays,
   hooks, package-list additions, and replacement files inside Tails'
   tree. Tor, AppArmor, MAC spoofing, Persistent Storage, Plymouth — all
   stay intact.
+- Primary user-facing strings should say elizaOS Live. Tails is credited
+  in legal/about surfaces, while upstream names remain in engineering
+  paths where they are required by the live-OS plumbing.
 - Matches `packages/os/android/vendor/eliza/` precedent in this
   monorepo (brand vendor tree inside system structure).
 
@@ -129,7 +137,7 @@ ISO. The earlier Vagrant attempt is documented (and buried) in
 [`docs/build-infrastructure.md`](./docs/build-infrastructure.md); don't
 resurrect it.
 
-### First-boot UX: elizaOS-branded greeter + Milady chat for personal choices
+### First-boot UX: elizaOS-branded greeter + elizaOS app
 
 Tails uses a GTK greeter (`tails-greeter`) at first boot. We **keep
 this UX** — it's battle-tested for live-USB scenarios — and rebrand it.
@@ -143,20 +151,22 @@ Boot sequence:
    - MAC spoofing on/off
    - **Persistent Storage**: "Unlock" (if exists) / "Create" (first time)
 4. **GNOME loads** (Tails default DE, kept)
-5. **Milady Electrobun app auto-launches as the always-on home window** —
+5. **The elizaOS app auto-launches as the always-on home window** —
    chat-driven onboarding for personal choices (name, what to build
-   first, claude signin). It is not a kiosk: the normal Tails/GNOME
-   desktop stays usable, and the app is supervised by a root-owned
-   systemd service so closing/crashing it relaunches it.
+   first, provider sign-in). It is not a kiosk: the normal GNOME desktop
+   stays usable, and the app is supervised by a root-owned systemd service
+   so closing/crashing it relaunches it.
 
 System-level choices go through the GTK greeter. Personal/AI choices
-go through Milady chat (matches the v36 onboarding pattern).
+go through the elizaOS app.
 
 ### Branding
 
 - Full elizaOS brand in OS UI: boot splash, greeter title + colors, GNOME
   theme, wallpaper. Tails onion logo replaced with elizaOS artwork.
-- **Tails credit** in:
+- No visible derivative branding in the primary boot/greeter/desktop
+  path. Attribution is visible in credits/about/license surfaces.
+- **Tails attribution** in:
   - `/usr/share/doc/elizaos-tails/CREDITS`
   - About elizaOS page (system)
   - License/credits docs shipped with the image
@@ -241,9 +251,10 @@ sources, and the hard "do not rename" list (apt sources, `/usr/share/doc/tails`,
 - [x] Default wallpaper + screensaver background → elizaOS
 - [x] `/etc/os-release` → `elizaos-tails` identity (keep all `TAILS_*` keys)
 - [x] `/etc/issue` MOTD → elizaOS
-- [x] **Tails credit**: greeter footer, `tails-about` "Based on Tails" line,
+- [x] **Tails attribution**: About/legal credits and
   `/usr/share/doc/elizaos-tails/CREDITS`
-- [ ] Boot ISO in QEMU, confirm branded everywhere + Tails credit visible
+- [ ] Boot ISO in QEMU, confirm elizaOS primary branding and legal/about
+  attribution
 
 Brand assets are pre-rendered (greeter logo, about logo, Plymouth wordmark,
 wallpaper, screensaver bg) from real elizaOS sources.
@@ -252,8 +263,8 @@ wallpaper, screensaver bg) from real elizaOS sources.
 
 ## Phase 3 — Privacy-mode toggle (boot-menu pick) 🔨 OVERLAY IMPLEMENTED
 
-Goal: Two boot menu entries flip Tor routing on/off. Both produce an
-identical Milady experience minus speed.
+Goal: Two boot menu entries flip Tor routing on/off. Both produce the same
+elizaOS product surface, with speed/provider caveats documented.
 
 **Spec:** [`docs/specs/phase-3-privacy-mode.md`](./docs/specs/phase-3-privacy-mode.md)
 
@@ -270,7 +281,7 @@ identical Milady experience minus speed.
 
 ---
 
-## Phase 4 — Bake the Milady Electrobun app into the ISO 🔨 OVERLAY IMPLEMENTED
+## Phase 4 — Bake the elizaOS app into the ISO 🔨 OVERLAY IMPLEMENTED
 
 Goal: `/opt/milady/` exists in the chroot, contains a runnable binary.
 
@@ -278,7 +289,7 @@ Goal: `/opt/milady/` exists in the chroot, contains a runnable binary.
 — the real (fragile) build sequence, the `9100-install-milady` hook
 design, and the `ldd`-derived `milady-runtime.list`.
 
-- [x] `just milady-app` recipe — builds the Milady Linux app on the host
+- [x] `just milady-app` recipe — builds the current desktop app package on the host
   (the build needs the `eliza`-first install + `setup-upstreams.mjs` +
   `MILADY_ELIZA_SOURCE=local` dance — a naive `bun run build:desktop` fails)
 - [x] Stage the app tree into `tails/config/chroot_local-includes/usr/share/elizaos/milady-app/`
@@ -290,7 +301,7 @@ design, and the `ldd`-derived `milady-runtime.list`.
   CEF/Electrobun runtime libs (NOT `libwebkit2gtk-4.1` — Electrobun bundles
   its own CEF)
 - [x] Static `usr/share/applications/milady.desktop`
-- [ ] Build ISO, boot, launch Milady, confirm chat UI renders
+- [ ] Build ISO, boot, launch the elizaOS app, confirm chat UI renders
 
 ⚠ **Top risk**: the app tree is ~2.9 GB uncompressed (`eliza-dist/` alone is
 2.2 GB) — much larger than first estimated. The resulting ISO could be
@@ -300,11 +311,11 @@ documented). See the spec + ROADMAP risk section.
 
 ---
 
-## Phase 5 — Auto-launch Milady on greeter exit 🔨 OVERLAY IMPLEMENTED
+## Phase 5 — Auto-launch the elizaOS app on greeter exit 🔨 OVERLAY IMPLEMENTED
 
-Goal: after the greeter exits, GNOME comes up with Milady as the first
-window and keeps it available as the home agent without hiding the normal
-desktop.
+Goal: after the greeter exits, GNOME comes up with the elizaOS app as the
+first window and keeps it available as the home agent without hiding the
+normal desktop.
 
 **Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md)
 — mostly config, not code: Tails honors `/etc/xdg/autostart/`, and the
@@ -312,7 +323,7 @@ current implementation adds a root-owned systemd path/service supervisor.
 
 - [x] `etc/systemd/system/milady.path` + `milady.service` — root-owned
   system service starts when the live user session bus appears, runs
-  Milady as `amnesia`, and restarts it if it exits
+  the app as `amnesia`, and restarts it if it exits
 - [x] `etc/xdg/autostart/milady.desktop` — backup/session launch entry
   using `/usr/local/bin/milady`
 - [x] `/usr/local/bin/milady` — pins `ELIZA_STATE_DIR=/home/amnesia/.eliza`
@@ -321,13 +332,13 @@ current implementation adds a root-owned systemd path/service supervisor.
 - [x] `etc/dconf/db/local.d/00_Tails_defaults` — dark theme, wallpaper,
   disable GNOME welcome dialog (don't clobber Tails' `enabled-extensions`)
 - [x] chroot hook runs `dconf update`
-- [ ] Verify in QEMU: boot → greeter → Start → GNOME → Milady
+- [ ] Verify in QEMU: boot → greeter → Start → GNOME → elizaOS app
 
 ---
 
-## Phase 6 — Wire Milady's onboarding + agent on elizaOS Live 🔨 PARTIAL OS OVERLAY
+## Phase 6 — Wire app onboarding + agent on elizaOS Live 🔨 PARTIAL OS OVERLAY
 
-Goal: the same Milady that runs on macOS desktop runs on this live USB.
+Goal: the same elizaOS app stack that runs on desktop runs on this live USB.
 
 **Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md).
 
@@ -351,7 +362,7 @@ security review of every privileged capability.
 
 ## Phase 7 — Persistent USB integration (Tails-native) 🔨 OVERLAY IMPLEMENTED
 
-Goal: user opts into LUKS persistence via the greeter; Milady's data
+Goal: user opts into LUKS persistence via the greeter; elizaOS app data
 survives reboots; **no Tails persistence code is modified, only added
 configuration**.
 
@@ -389,7 +400,7 @@ paths.
 ## Phase 9 — Rice / customization actions 📋 SPEC'D
 
 Goal: "Install i3", "switch tiling", "swipe-down-for-notis" — all through
-chat with Milady orchestrating Linux underneath.
+chat with elizaOS orchestrating Linux underneath.
 
 **Spec:** [`docs/specs/phase-9-customization-actions.md`](./docs/specs/phase-9-customization-actions.md)
 — most substrate already exists (`INSTALL_PACKAGE` + its confirmation
@@ -448,13 +459,13 @@ inherits the same forensic protection. Tails users picked Tails
 specifically because there's no disk install option — adding one
 without thought betrays that choice.
 
-**That said**: Milady's target audience is broader than Tails'. Many
+**That said**: elizaOS Live's target audience is broader than Tails'. Many
 users want "AI Linux as my daily driver" without needing
 amnesia-on-laptop. For them, install-to-disk would be a real product.
 
 Before we add it, we need a real design RFC covering: the threat model
 when installed, default full-disk encryption, the dual-boot story, the
-install UX (Calamares vs. Milady-chat-driven), and the Tails community
+install UX (Calamares vs. an elizaOS app flow), and the Tails community
 pulse on the derivative. **Planned target: v2.0**, after v1.0 ships and
 real users tell us what they want. **For now: don't add it.**
 
@@ -482,25 +493,26 @@ the product.
    Trixie-compat bug. 6 found + fixed; more may surface in the chroot
    hooks / binary stage. The containerized loop + `apt-cacher-ng` cache
    makes each iteration fast.
-2. **ISO size** — the Milady app tree is ~2.9 GB uncompressed. On top of
+2. **ISO size** — the current app tree is ~2.9 GB uncompressed. On top of
    Tails (~1.3 GB squashfs) the ISO could be 3–4 GB. Mitigations: the
    `9100` hook must `rm -rf` the staging copy; consider a slimmer build
    profile; re-measure and budget. See Phase 4 spec.
 3. **`chrome-sandbox` under AppArmor + squashfs** — the likely "boots but
-   Milady won't render" failure. `--no-sandbox` is the documented fallback.
+   the elizaOS app won't render" failure. `--no-sandbox` is the documented
+   fallback.
 4. **Phase 6 is real product integration** — not a quick edit. CEF,
    embedded Bun, bundled plugins, model/provider defaults, state dirs, and
    supervised OS capabilities all have to agree inside the live-user
    session. The in-session model helps, but it still needs proof.
-5. **Milady build fragility** — the desktop build needs a specific
+5. **Desktop app build fragility** — the desktop build needs a specific
    `eliza`-first + `setup-upstreams.mjs` + `MILADY_ELIZA_SOURCE=local`
    sequence; a naive `bun run build:desktop` fails. Encoded in `just milady-app`.
 6. **Large monorepo bloat** — the vendored `tails/` tree is ~6000 files.
    PR maintainers may push back; submodule pattern is the fallback.
 7. **Tor blocking cloud APIs** — Anthropic/OpenAI often refuse Tor exit
    IPs. In Privacy Mode cloud chat may fail; local LLM still works.
-8. **Chromium proxy gap (v1.0)** — WebView windows leak in Privacy Mode.
-   Real security gap, fixed in v1.1.
+8. **Chromium proxy gap (v1.0)** — WebView windows can leak in Privacy
+   Mode. Real security gap, targeted for v1.1.
 9. **Cold-boot RAM attacks** — theoretical threat against amnesia. Tails'
    `memlockd` zeros RAM on shutdown; we keep it.
 
@@ -515,7 +527,7 @@ the product.
   the build works either way. Long-term: keep as committed files, or
   convert to a submodule of an elizaOS Tails fork. Decide before v1.0.
 - **Default browser in Normal Mode** — Tor Browser doesn't fit direct
-  internet. Or: no browser, Milady opens links in app-mode windows.
+  internet. Or: no browser, elizaOS opens links in app-mode windows.
 - **Canonical state dir + env prefix** — elizaOS Live should standardize
   on `~/.eliza` for product state while supporting existing app/runtime
   paths (`MILADY_*`, `~/.milady`) until the app package is renamed.
