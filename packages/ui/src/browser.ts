@@ -7,22 +7,24 @@
 
 export type { RestartHandler } from "@elizaos/shared";
 export {
+  parsePositiveFloat,
+  parsePositiveInteger,
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
 } from "@elizaos/shared";
 export { App } from "./App.tsx";
-export { registerAppShellPage } from "./app-shell-registry.ts";
-export * from "./api/index.ts";
 export * from "./api/android-native-agent-transport.ts";
+export * from "./api/index.ts";
 export * from "./api/response.ts";
 export { sendJson, sendJsonError } from "./api/response.ts";
+export { registerAppShellPage } from "./app-shell-registry.ts";
 export * from "./bridge/index.ts";
 export * from "./chat/index.ts";
+export * from "./components/apps/AppWindowRenderer.tsx";
 export * from "./components/apps/extensions/registry.ts";
 export * from "./components/apps/extensions/surface.tsx";
 export * from "./components/apps/extensions/types.ts";
-export * from "./components/apps/AppWindowRenderer.tsx";
 export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
 export * from "./components/apps/surfaces/GameOperatorShell.tsx";
@@ -31,6 +33,15 @@ export * from "./components/apps/surfaces/types.ts";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/chat/widgets/shared.tsx";
+export {
+  EmptyWidgetState,
+  WidgetSection,
+} from "./components/chat/widgets/shared.tsx";
+export { PagePanel } from "./components/composites/page-panel/index.ts";
+export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
+export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel.tsx";
+export { Sidebar } from "./components/composites/sidebar/sidebar-root.tsx";
+export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region.tsx";
 export * from "./components/config-ui/config-renderer.tsx";
 export {
   evaluateUiVisibility,
@@ -42,25 +53,11 @@ export {
 } from "./components/config-ui/ui-renderer.tsx";
 export * from "./components/pages/ChatModalView.tsx";
 export * from "./components/pages/PageScopedChatPane.tsx";
+export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
-export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
 export { LoadingScreen } from "./components/shell/LoadingScreen.tsx";
-export type {
-  VoicePillMessage,
-  VoicePillProps,
-} from "./components/voice-pill/index.ts";
-export { VoicePill } from "./components/voice-pill/index.ts";
-export {
-  EmptyWidgetState,
-  WidgetSection,
-} from "./components/chat/widgets/shared.tsx";
-export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
-export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel.tsx";
-export { Sidebar } from "./components/composites/sidebar/sidebar-root.tsx";
-export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region.tsx";
-export { PagePanel } from "./components/composites/page-panel/index.ts";
 export * from "./components/ui/accordion.tsx";
 export * from "./components/ui/alert.tsx";
 export * from "./components/ui/alert-dialog.tsx";
@@ -73,10 +70,9 @@ export * from "./components/ui/collapsible.tsx";
 export { ConfirmDialog } from "./components/ui/confirm-dialog.tsx";
 export * from "./components/ui/dialog.tsx";
 export * from "./components/ui/dropdown-menu.tsx";
+export { ErrorBoundary } from "./components/ui/error-boundary.tsx";
 export * from "./components/ui/form.tsx";
 export * from "./components/ui/hover-card.tsx";
-export { ErrorBoundary } from "./components/ui/error-boundary.tsx";
-export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
 export { Input } from "./components/ui/input.tsx";
 export * from "./components/ui/label.tsx";
 export * from "./components/ui/popover.tsx";
@@ -101,6 +97,12 @@ export { TagEditor } from "./components/ui/tag-editor.tsx";
 export { Textarea } from "./components/ui/textarea.tsx";
 export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
+export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
+export type {
+  VoicePillMessage,
+  VoicePillProps,
+} from "./components/voice-pill/index.ts";
+export { VoicePill } from "./components/voice-pill/index.ts";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";
@@ -124,17 +126,17 @@ export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";
 export * from "./hooks/useChatAvatarVoiceBridge.ts";
 export * from "./hooks/useContextMenu.ts";
+export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility.ts";
 export { COMMON_SHORTCUTS } from "./hooks/useKeyboardShortcuts.ts";
 export * from "./hooks/useMediaQuery.ts";
 export * from "./hooks/useRenderGuard.ts";
 export * from "./hooks/useSignalPairing.ts";
 export { useTimeout } from "./hooks/useTimeout.ts";
-export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility.ts";
 export * from "./hooks/useVoiceChat.ts";
 export * from "./hooks/useWhatsAppPairing.ts";
 export * from "./i18n/index.ts";
-export { PageLayout } from "./layouts/page-layout/page-layout.tsx";
 export { ContentLayout } from "./layouts/content-layout/content-layout.tsx";
+export { PageLayout } from "./layouts/page-layout/page-layout.tsx";
 export { Z_GLOBAL_EMOTE, Z_SYSTEM_CRITICAL } from "./lib/floating-layers.ts";
 export { cn } from "./lib/utils.ts";
 export * from "./navigation/index.ts";
@@ -154,20 +156,16 @@ export * from "./state/index.ts";
 export * from "./themes/index.ts";
 export * from "./types/index.ts";
 export { resolveAppAssetUrl } from "./utils/asset-url.ts";
-export { modelLooksLikeElizaCloudHosted } from "./utils/eliza-cloud-model-route.ts";
 export { copyTextToClipboard } from "./utils/clipboard.ts";
-export { loadDesktopWorkspaceSnapshot } from "./utils/desktop-workspace.ts";
 export { confirmDesktopAction } from "./utils/desktop-dialogs.ts";
+export { loadDesktopWorkspaceSnapshot } from "./utils/desktop-workspace.ts";
+export { modelLooksLikeElizaCloudHosted } from "./utils/eliza-cloud-model-route.ts";
+export * from "./utils/format.ts";
 export {
   navigatePreOpenedWindow,
   openExternalUrl,
   preOpenWindow,
 } from "./utils/openExternalUrl.ts";
-export * from "./utils/format.ts";
-export {
-  parsePositiveFloat,
-  parsePositiveInteger,
-} from "@elizaos/shared";
 export * from "./voice/index.ts";
-export { registerBuiltinWidgets } from "./widgets/registry-store.ts";
 export * from "./widgets/index.ts";
+export { registerBuiltinWidgets } from "./widgets/registry-store.ts";

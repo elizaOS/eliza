@@ -13,6 +13,9 @@
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "echo 'no tests'"
+  },
   "dependencies": {
     "@elizaos/shared-brand": "workspace:*"
   }

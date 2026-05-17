@@ -1655,9 +1655,11 @@ async function handleRequest(
     return;
   }
 
-  const { handleLocalInferenceRoutes } = await getLocalInferenceServerApi();
-  if (await handleLocalInferenceRoutes(req, res)) return;
   const localInferenceServerApi = await getLocalInferenceServerApi();
+  if (
+    await localInferenceServerApi.handleLocalInferenceRoutes(req, res)
+  )
+    return;
   if (
     localInferenceServerApi.handleLocalInferenceTtsRoute &&
     (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {

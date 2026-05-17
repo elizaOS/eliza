@@ -1,6 +1,17 @@
 // Re-export primitives from local modules (avoid `from "@elizaos/ui"` here — it
 // creates a barrel cycle and breaks consumers' type resolution for the package root).
 
+export {
+  type AnalyticsExportFormat,
+  type AnalyticsExportType,
+  CostAlerts,
+  type CostAlertsProps,
+  type CostAlertsTrending,
+  CostInsightsCard,
+  type CostInsightsCardProps,
+  ExportButton,
+  type ExportButtonProps,
+} from "../cloud-ui/components/analytics";
 export type {
   BrandButtonProps,
   KeyMetric,
@@ -38,6 +49,17 @@ export {
   MonacoEditorSkeleton,
 } from "../cloud-ui/components/code";
 export {
+  type ApiKeyDisplay,
+  type ApiKeyStatus,
+  ApiKeysSummary,
+  type ApiKeysSummaryData,
+  type ApiKeysSummaryProps,
+  ApiKeysTable,
+  type ApiKeysTableProps,
+  type AppsListItem,
+  type AppsListLinkRenderProps,
+  AppsListView,
+  type AppsListViewProps,
   DashboardDataList,
   DashboardDataListCard,
   type DashboardDataListCardProps,
@@ -48,17 +70,6 @@ export {
   DashboardDataListMobile,
   type DashboardDataListMobileProps,
   type DashboardDataListProps,
-  ApiKeysSummary,
-  type ApiKeysSummaryData,
-  type ApiKeysSummaryProps,
-  ApiKeysTable,
-  type ApiKeyDisplay,
-  type ApiKeysTableProps,
-  type ApiKeyStatus,
-  AppsListView,
-  type AppsListItem,
-  type AppsListLinkRenderProps,
-  type AppsListViewProps,
   DashboardTableSkeleton,
   type DashboardTableSkeletonColumn,
   type DashboardTableSkeletonProps,
@@ -145,17 +156,6 @@ export {
   type LogViewerStreamingStatus,
   type LogViewerStructuredEntry,
 } from "../cloud-ui/components/log-viewer";
-export {
-  CostAlerts,
-  type CostAlertsProps,
-  type CostAlertsTrending,
-  CostInsightsCard,
-  type CostInsightsCardProps,
-  type AnalyticsExportFormat,
-  type AnalyticsExportType,
-  ExportButton,
-  type ExportButtonProps,
-} from "../cloud-ui/components/analytics";
 export {
   AppsEmptyState,
   type AppsEmptyStateProps,

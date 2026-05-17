@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 9.2.0" type="incidents">
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.camera:camera-core than 1.3.1 is available: 1.6.1">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="51"
+            column="20"
+            startOffset="2130"
+            endLine="51"
+            endColumn="65"
+            endOffset="2175"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.camera:camera-camera2 than 1.3.1 is available: 1.6.1">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="52"
+            column="20"
+            startOffset="2195"
+            endLine="52"
+            endColumn="68"
+            endOffset="2243"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.camera:camera-lifecycle than 1.3.1 is available: 1.6.1">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="53"
+            column="20"
+            startOffset="2263"
+            endLine="53"
+            endColumn="70"
+            endOffset="2313"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.camera:camera-video than 1.3.1 is available: 1.6.1">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="54"
+            column="20"
+            startOffset="2333"
+            endLine="54"
+            endColumn="66"
+            endOffset="2379"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.camera:camera-view than 1.3.1 is available: 1.6.1">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="55"
+            column="20"
+            startOffset="2399"
+            endLine="55"
+            endColumn="65"
+            endOffset="2444"/>
+    </incident>
+
+    <incident
+        id="GradleDependency"
+        severity="warning"
+        message="A newer version of androidx.camera:camera-extensions than 1.3.1 is available: 1.6.1">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="56"
+            column="20"
+            startOffset="2464"
+            endLine="56"
+            endColumn="71"
+            endOffset="2515"/>
+    </incident>
+
+    <incident
+        id="NewerVersionAvailable"
+        severity="warning"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.10.2 is available: 1.11.0">
+        <location
+            file="${:elizaos-capacitor-camera*projectDir}/build.gradle"
+            line="47"
+            column="20"
+            startOffset="1957"
+            endLine="47"
+            endColumn="89"
+            endOffset="2026"/>
+    </incident>
+
+    <incident
+        id="UseKtx"
+        severity="warning"
+        message="Use the KTX extension function `Bitmap.scale` instead?">
+        <fix-replace
+            description="Replace with the scale extension function"
+            family="Replace with the scale extension function"
+            robot="true"
+            independent="true"
+            oldString="Bitmap.createScaledBitmap(&#xA;                                bitmap, targetWidth, targetHeight, true&#xA;                            )"
+            replacement="bitmap.scale(targetWidth, targetHeight)"
+            reformat="value"
+            imports="androidx.core.graphics.scale"
+            priority="0">
+            <range
+                file="${:elizaos-capacitor-camera*debug*MAIN*sourceProvider*0*javaDir*0}/ai/eliza/plugins/camera/CameraPlugin.kt"
+                startOffset="16496"
+                endOffset="16624"/>
+        </fix-replace>
+        <location
+            file="${:elizaos-capacitor-camera*debug*MAIN*sourceProvider*0*javaDir*0}/ai/eliza/plugins/camera/CameraPlugin.kt"
+            line="427"
+            column="38"
+            startOffset="16496"
+            endLine="429"
+            endColumn="30"
+            endOffset="16624"/>
+    </incident>
+
+</incidents>

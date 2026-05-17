@@ -6,8 +6,8 @@ import {
   savePersistedActiveServer,
 } from "./persistence";
 import {
-  runRestoringSession,
   type RestoringSessionDeps,
+  runRestoringSession,
 } from "./startup-phase-restore";
 
 const bridgeMock = vi.hoisted(() => ({

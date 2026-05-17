@@ -4,7 +4,17 @@ import path from "node:path";
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
 
 const APP_CORE_ROOT = path.resolve(import.meta.dirname, "..");
-const REPO_ROOT = resolveRepoRoot(APP_CORE_ROOT);
+const LOCAL_ELIZA_ROOT = path.resolve(APP_CORE_ROOT, "..", "..");
+const REPO_ROOT = fs.existsSync(
+  path.join(LOCAL_ELIZA_ROOT, "packages", "agent", "package.json"),
+)
+  ? LOCAL_ELIZA_ROOT
+  : resolveRepoRoot(APP_CORE_ROOT);
+const WRITE_BUILD_INFO_SCRIPT = fs.existsSync(
+  path.join(REPO_ROOT, "packages", "scripts", "write-build-info.ts"),
+)
+  ? "packages/scripts/write-build-info.ts"
+  : "scripts/write-build-info.ts";
 
 const releaseContractTests = [
   "eliza/packages/app-core/scripts/asset-cdn.test.ts",
@@ -129,7 +139,7 @@ fs.writeFileSync(
   path.join(REPO_ROOT, "dist", "package.json"),
   '{"type":"module"}\n',
 );
-run("node", ["--import", "tsx", "scripts/write-build-info.ts"], REPO_ROOT);
+run("node", ["--import", "tsx", WRITE_BUILD_INFO_SCRIPT], REPO_ROOT);
 run(
   "node",
   ["packages/app-core/scripts/write-homepage-release-data.mjs"],

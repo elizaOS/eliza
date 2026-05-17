@@ -7,11 +7,11 @@
 5-->INJECTED
 6    <!-- Microphone permission for speech recognition -->
 7    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/talkmode/android/src/main/AndroidManifest.xml:4:5-71
-7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/talkmode/android/src/main/AndroidManifest.xml:4:22-68
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-native-talkmode/android/src/main/AndroidManifest.xml:4:5-71
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-native-talkmode/android/src/main/AndroidManifest.xml:4:22-68
 8    <!-- Internet permission for ElevenLabs TTS API -->
 9    <uses-permission android:name="android.permission.INTERNET" />
-9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/talkmode/android/src/main/AndroidManifest.xml:6:5-67
-9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/talkmode/android/src/main/AndroidManifest.xml:6:22-64
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-native-talkmode/android/src/main/AndroidManifest.xml:6:5-67
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-native-talkmode/android/src/main/AndroidManifest.xml:6:22-64
 10
 11</manifest>

@@ -14,7 +14,6 @@ import {
   isElectrobunRuntime,
   scanProviderCredentials,
 } from "../bridge";
-import type { ExistingElizaInstallInfo } from "../types";
 import type { UiLanguage } from "../i18n";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -27,6 +26,7 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../onboarding/mobile-runtime-mode";
 import { isAndroid, isForceFreshOnboardingEnabled, isIOS } from "../platform";
+import type { ExistingElizaInstallInfo } from "../types";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
 import {

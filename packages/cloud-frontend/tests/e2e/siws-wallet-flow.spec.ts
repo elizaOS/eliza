@@ -367,6 +367,50 @@ test.describe("SIWS (Solana) wallet flow", () => {
     const bridgeSecret = envLine?.slice("BRIDGE_SECRET=".length) ?? "";
 
     // Chat — the echo-mode image responds with "[echo] <text>".
+    // Wait for the bridge server to be reachable AND for the agent runtime
+    // to be fully initialized. The container's HEALTHCHECK probe goes green
+    // as soon as /health (port 2138) responds — but the /bridge HTTP server
+    // (port 18790) binds a few hundred ms later, and the runtime itself
+    // takes ~5-10s to load plugin-sql, migrations, and elizaOS plugins.
+    // Sending message.send before runtime is ready returns 503 with
+    // {"error":"Agent runtime not ready"}. Poll status.get until
+    // result.status === "running".
+    const bridgeDeadline = Date.now() + 120_000;
+    let runtimeReady = false;
+    while (Date.now() < bridgeDeadline) {
+      try {
+        const ping = await fetch(`http://127.0.0.1:${bridgePort}/bridge`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${bridgeSecret}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "ping",
+            method: "status.get",
+            params: {},
+          }),
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (ping.ok) {
+          const pingBody = (await ping.json()) as {
+            result?: { status?: string };
+          };
+          if (pingBody.result?.status === "running") {
+            runtimeReady = true;
+            break;
+          }
+        } else {
+          await ping.body?.cancel();
+        }
+      } catch {
+        // socket error / TCP refused — bridge not bound yet, retry
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    expect(runtimeReady, "agent runtime initialized within 120s").toBe(true);
+
     // Chat — proves the bridge route is reachable and authenticated. The
     // cloud-agent image ships with @elizaos/core + plugin-sql, so the
     // runtime is real (not echo). Reply content depends on whether an LLM
@@ -406,5 +450,145 @@ test.describe("SIWS (Solana) wallet flow", () => {
     } else {
       expect(chatBody.error, "error envelope when no result").toBeTruthy();
     }
+  });
+
+  /**
+   * End-to-end through the user-facing cloud-api bridge proxy
+   * (`POST /api/v1/eliza/agents/{id}/bridge`). This is the path the
+   * dashboard frontend uses to chat — it forwards via control-plane to
+   * elizaSandboxService.bridge(), which now tries the cloud-agent's
+   * native /bridge JSON-RPC first (bridgeNativeJsonRpcSend) before
+   * falling back to legacy REST attempts.
+   *
+   * Gated by E2E_FULL_PROVISION=1 (same as the direct-bridge test).
+   */
+  test("chat via cloud-api bridge proxy /api/v1/eliza/agents/{id}/bridge", async () => {
+    test.skip(
+      process.env.E2E_FULL_PROVISION !== "1",
+      "E2E_FULL_PROVISION=1 not set — skipping live-container test",
+    );
+
+    const { apiKey } = await signInWithFreshSolanaKey();
+
+    const createRes = await fetch(`${apiBaseUrl}/api/v1/eliza/agents`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ agentName: `siws-proxy-${Date.now()}` }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect(createRes.status).toBe(201);
+    const { data: created } = (await createRes.json()) as {
+      data: { id: string };
+    };
+    const agentId = created.id;
+    const containerName = `agent-${agentId}`;
+
+    const provRes = await fetch(
+      `${apiBaseUrl}/api/v1/eliza/agents/${agentId}/provision`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    expect([200, 202]).toContain(provRes.status);
+
+    // Wait for the container's bridge to be runtime-ready (same logic as
+    // the direct-bridge test, but here we don't have the secret — we hit
+    // /bridge via the cloud-api proxy which carries auth in-band).
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      try {
+        const { stdout } = await execFileAsync("docker", [
+          "inspect",
+          "--format",
+          "{{.State.Status}} {{.State.Health.Status}}",
+          containerName,
+        ]);
+        if (stdout.includes("healthy")) break;
+      } catch {
+        // not yet
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // Poll the cloud-api bridge proxy with status.get until the runtime is
+    // "running" — same race window as the direct test, just routed through
+    // the proxy. status.get doesn't depend on an LLM provider.
+    const proxyDeadline = Date.now() + 120_000;
+    let runtimeReady = false;
+    while (Date.now() < proxyDeadline) {
+      try {
+        const ping = await fetch(
+          `${apiBaseUrl}/api/v1/eliza/agents/${agentId}/bridge`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: "ready-ping",
+              method: "status.get",
+              params: {},
+            }),
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+        if (ping.ok) {
+          const body = (await ping.json()) as {
+            result?: { status?: string };
+          };
+          if (body.result?.status === "running") {
+            runtimeReady = true;
+            break;
+          }
+        } else {
+          await ping.body?.cancel();
+        }
+      } catch {
+        // retry
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    expect(runtimeReady, "runtime ready via proxy within 120s").toBe(true);
+
+    const chatRes = await fetch(
+      `${apiBaseUrl}/api/v1/eliza/agents/${agentId}/bridge`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 42,
+          method: "message.send",
+          params: { text: "hello via proxy" },
+        }),
+        signal: AbortSignal.timeout(60_000),
+      },
+    );
+    expect(chatRes.status).toBe(200);
+    const body = (await chatRes.json()) as {
+      jsonrpc?: string;
+      id?: number | string | null;
+      result?: { text?: string };
+      error?: { code?: number; message?: string };
+    };
+    expect(body.jsonrpc).toBe("2.0");
+    // Cloud-api may normalize the id (string→number etc.) so just assert
+    // SOMETHING came back in the envelope.
+    expect(
+      body.result || body.error,
+      "JSON-RPC envelope has result or error",
+    ).toBeTruthy();
   });
 });

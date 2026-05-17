@@ -497,3 +497,14 @@ body.platform-android * {
   background: var(--brand-gray);
   color: var(--brand-black);
 }
+
+@keyframes shell-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(8%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -68,6 +68,15 @@ must stay visible:
   release blockers in strict security smoke
 - generated optional-plugin stubs and live embedding fallback are demo
   compatibility glue, not final production packaging
+- residual visible upstream help/support/update links still exist in
+  low-frequency inherited surfaces, including Tor Connection Assistant, USB
+  Cloner help, WhisperBack, low-RAM/UEFI/error notifications, and inherited
+  updater/security messages. These should be rebranded or routed to elizaOS
+  support/update infrastructure before a polished public release.
+- Phase 9's earlier passwordless apt/sudoers direction is superseded by the
+  capability-broker security model. Privileged package, service, network,
+  and device actions need exact broker schemas, user approval or enterprise
+  policy, and audit events.
 
 ## AI OS Product Direction
 

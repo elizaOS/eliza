@@ -65,6 +65,12 @@ export function shouldBuildPluginForHost(pkg, hostPlatform) {
 }
 
 const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
+const WORKSPACE_RUNTIME_PACKAGES = new Map([
+  [
+    "@elizaos/core",
+    path.resolve(NATIVE_PLUGINS_ROOT, "..", "packages", "core"),
+  ],
+]);
 
 function pluginDirFor(pluginsDir, name) {
   return path.join(pluginsDir, `${NATIVE_PLUGIN_DIR_PREFIX}${name}`);
@@ -114,6 +120,51 @@ function logVerbose(message) {
   }
 }
 
+function hasPackageDependency(pkg, packageName) {
+  if (!pkg || typeof pkg !== "object") return false;
+  for (const field of [
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+    "optionalDependencies",
+  ]) {
+    const deps = pkg[field];
+    if (deps && typeof deps === "object" && packageName in deps) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries) {
+  const requiredPackages = new Set();
+  for (const { pkg } of pluginEntries) {
+    for (const packageName of WORKSPACE_RUNTIME_PACKAGES.keys()) {
+      if (hasPackageDependency(pkg, packageName)) {
+        requiredPackages.add(packageName);
+      }
+    }
+  }
+
+  for (const packageName of requiredPackages) {
+    const packageDir = WORKSPACE_RUNTIME_PACKAGES.get(packageName);
+    const packageJsonPath = path.join(packageDir, "package.json");
+    if (!fs.existsSync(packageJsonPath)) {
+      throw new Error(
+        `[plugins] ${packageName} dependency is required but ${packageJsonPath} does not exist`,
+      );
+    }
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    if (!pkg?.scripts?.build) {
+      throw new Error(
+        `[plugins] ${packageName} dependency is required but has no build script`,
+      );
+    }
+    console.log(`[plugins] building workspace dependency ${packageName}`);
+    await run("bun", ["run", "build"], packageDir);
+  }
+}
+
 async function main() {
   const pluginsDir = NATIVE_PLUGINS_ROOT;
   const pluginNames = CAPACITOR_PLUGIN_NAMES;
@@ -128,28 +179,31 @@ async function main() {
     return;
   }
 
-  const buildablePluginNames = pluginNames.filter((name) => {
-    const pkg = readPluginPackageJson(pluginsDir, name);
-    // Type-only / source-consumed packages (e.g. shared-types) have no build
-    // script. Skip them so `bun run build` does not abort the whole batch.
-    if (!pkg?.scripts?.build) {
-      logVerbose(`[plugin:${name}] skipping — no build script declared`);
+  const buildablePlugins = pluginNames
+    .map((name) => ({ name, pkg: readPluginPackageJson(pluginsDir, name) }))
+    .filter(({ name, pkg }) => {
+      // Type-only / source-consumed packages (e.g. shared-types) have no build
+      // script. Skip them so `bun run build` does not abort the whole batch.
+      if (!pkg?.scripts?.build) {
+        logVerbose(`[plugin:${name}] skipping — no build script declared`);
+        return false;
+      }
+      if (shouldBuildPluginForHost(pkg, process.platform)) {
+        return true;
+      }
+      const platforms = pkg?.elizaos?.platforms;
+      logVerbose(
+        `[plugin:${name}] skipping — declares platforms=${JSON.stringify(
+          platforms,
+        )}, host is ${process.platform}`,
+      );
       return false;
-    }
-    if (shouldBuildPluginForHost(pkg, process.platform)) {
-      return true;
-    }
-    const platforms = pkg?.elizaos?.platforms;
-    logVerbose(
-      `[plugin:${name}] skipping — declares platforms=${JSON.stringify(
-        platforms,
-      )}, host is ${process.platform}`,
-    );
-    return false;
-  });
+    });
+
+  await buildWorkspaceRuntimePackagesForPlugins(buildablePlugins);
 
   await Promise.all(
-    buildablePluginNames.map(async (name) => {
+    buildablePlugins.map(async ({ name }) => {
       logVerbose(`[plugin:${name}] building...`);
       await run("bun", ["run", "build"], pluginDirFor(pluginsDir, name));
       logVerbose(`[plugin:${name}] done`);

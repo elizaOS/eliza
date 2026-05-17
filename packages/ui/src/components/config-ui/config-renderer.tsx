@@ -690,7 +690,10 @@ import { Button } from "../ui/button";
 import { defaultRenderers } from "./config-field";
 
 /** The default registry wiring defaultCatalog → defaultRenderers. */
-export const defaultRegistry = defineRegistry(defaultCatalog, defaultRenderers);
+export const defaultRegistry: FieldRegistry = defineRegistry(
+  defaultCatalog,
+  defaultRenderers,
+);
 
 // ── useConfigValidation hook ────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -76,8 +77,14 @@ const pluginWorkflowSrc = path.join(
   "plugins/plugin-workflow/src",
 );
 const pluginX402Src = path.join(monorepoRoot, "plugins/plugin-x402/src");
-const reactPkg = path.join(fileDir, "node_modules/react");
-const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
+// Resolve react/react-dom from the location of this config file so the alias
+// works whether react is hoisted to the monorepo root or installed locally.
+// createRequire resolves through the normal Node resolution algorithm (walks up
+// node_modules directories), so it finds the correct copy regardless of where
+// the package manager decided to hoist it.
+const _require = createRequire(import.meta.url);
+const reactPkg = path.dirname(_require.resolve("react/package.json"));
+const reactDomPkg = path.dirname(_require.resolve("react-dom/package.json"));
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
 
 /**

@@ -15,7 +15,8 @@ import {
   syncElizaEnvAliases,
 } from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
+import { visualizer } from "rollup-plugin-visualizer";
 import {
   createLogger,
   defineConfig,
@@ -1043,6 +1044,7 @@ export default defineConfig({
     react(),
     desktopCorsPlugin(),
     appDevSettingsBannerPlugin(),
+    visualizer({ filename: "dist/stats.html", template: "treemap", gzipSize: true, brotliSize: true, emitFile: false }) as Plugin,
   ],
   oxc: {
     // Override tsconfig target so generated workspace configs cannot push the
@@ -1288,6 +1290,13 @@ export default defineConfig({
             replacement: path.join(
               appCoreSrcRoot,
               "onboarding/onboarding-config.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "api/ios-local-agent-transport.ts",
             ),
           },
           {

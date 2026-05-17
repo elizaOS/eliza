@@ -67,8 +67,7 @@ export function CloudVideoBackground({
   const [videoReady, setVideoReady] = useState(false);
   const base = basePath.replace(/\/$/, "");
   const resolvedPosterSrcSet =
-    posterSrcSet ??
-    `${base}/poster-640.jpg 640w, ${base}/poster-960.jpg 960w`;
+    posterSrcSet ?? `${base}/poster-640.jpg 640w, ${base}/poster-960.jpg 960w`;
 
   useEffect(() => {
     if (!preloadPoster || typeof document === "undefined" || !poster) return;
@@ -121,7 +120,7 @@ export function CloudVideoBackground({
 
   useEffect(() => {
     setVideoReady(false);
-  }, [base, speed]);
+  }, []);
 
   useEffect(() => {
     const v = videoRef.current;

@@ -16,13 +16,13 @@
  * instead of crashing the process.
  */
 
+import path from "node:path";
 import {
 	logger,
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared";
-import path from "node:path";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,

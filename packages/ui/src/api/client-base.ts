@@ -930,9 +930,9 @@ export class ElizaClient {
         : { index: crlfBreak, length: 4 };
     };
 
-    const parseDataLine = (line: string): void => {
+    const parseDataLine = (line: string): boolean => {
       const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
-      if (!payload) return;
+      if (!payload) return false;
 
       let parsed: {
         type?: string;
@@ -953,7 +953,7 @@ export class ElizaClient {
       try {
         parsed = JSON.parse(payload) as typeof parsed;
       } catch {
-        return;
+        return false;
       }
 
       if (!parsed.type && typeof parsed.text === "string") {
@@ -968,10 +968,10 @@ export class ElizaClient {
             : chunk
               ? mergeStreamingText(fullText, chunk)
               : fullText;
-        if (nextFullText === fullText) return;
+        if (nextFullText === fullText) return false;
         fullText = nextFullText;
         onToken(chunk, fullText);
-        return;
+        return false;
       }
 
       if (parsed.type === "done") {
@@ -1003,12 +1003,13 @@ export class ElizaClient {
         // Terminal event: stop reading immediately instead of waiting for the
         // server to close the body (some stacks leave the stream open briefly).
         void reader.cancel("elizaos-sse-terminal-done").catch(() => {});
-        return;
+        return true;
       }
 
       if (parsed.type === "error") {
         throw new Error(parsed.message ?? "generation failed");
       }
+      return false;
     };
 
     // Contract: the API must emit `data: {"type":"done",...}` or
@@ -1043,13 +1044,18 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          parseDataLine(line);
+          if (parseDataLine(line)) {
+            buffer = "";
+            break;
+          }
         }
+        if (receivedDone) break;
         eventBreak = findSseEventBreak(buffer);
       }
+      if (receivedDone) break;
     }
 
-    if (buffer.trim()) {
+    if (!receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
         if (line.startsWith("data:")) parseDataLine(line);
       }

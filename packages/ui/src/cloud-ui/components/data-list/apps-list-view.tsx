@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import {
   Activity,
   Copy,
@@ -8,6 +7,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Badge } from "../badge";
 import { StatusBadge } from "../status-badge";

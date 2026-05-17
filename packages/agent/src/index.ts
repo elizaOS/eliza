@@ -82,10 +82,7 @@ export {
   readBundledPluginPackageMetadata,
 } from "./api/plugin-discovery-helpers.ts";
 export * from "./api/plugin-runtime-apply.ts";
-export {
-  type PluginParamInfo,
-  validatePluginConfig,
-} from "./api/plugin-validation.ts";
+export type { PluginParamInfo } from "./api/plugin-validation.ts";
 export {
   applyCanonicalOnboardingConfig,
   clearPersistedOnboardingConfig,

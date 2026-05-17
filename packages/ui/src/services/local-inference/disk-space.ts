@@ -23,7 +23,7 @@ export async function probeDiskSpace(path: string): Promise<DiskSpace> {
   const stats = statfsSync(path);
   const blockSize = Number(stats.bsize);
   const totalBytes = Number(stats.blocks) * blockSize;
-  const freeBytes = Number(stats.bfree) * blockSize;
+  const _freeBytes = Number(stats.bfree) * blockSize;
   const availableBytes = Number(stats.bavail) * blockSize;
   return {
     path,

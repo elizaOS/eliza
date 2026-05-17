@@ -5,6 +5,22 @@ const DEFAULT_STEWARD_TENANT_ID =
 
 export type StewardOAuthProvider = "google" | "discord" | "github";
 
+/**
+ * Build the redirect_uri we hand to Steward. Kept as a single function so the
+ * value we send at /authorize time exactly matches the value we send at
+ * /exchange time — Steward rejects the exchange if they differ.
+ */
+export function buildStewardOAuthRedirectUri(
+  origin: string,
+  redirectSearch?: string,
+): string {
+  let normalizedSearch = redirectSearch ?? "";
+  if (normalizedSearch && !normalizedSearch.startsWith("?")) {
+    normalizedSearch = `?${normalizedSearch}`;
+  }
+  return `${origin}/login${normalizedSearch}`;
+}
+
 export function buildStewardOAuthAuthorizeUrl(
   provider: StewardOAuthProvider,
   origin: string,
@@ -14,14 +30,17 @@ export function buildStewardOAuthAuthorizeUrl(
     stewardTenantId?: string;
   },
 ): string {
-  let redirectSearch = options?.redirectSearch ?? "";
-  if (redirectSearch && !redirectSearch.startsWith("?")) {
-    redirectSearch = `?${redirectSearch}`;
-  }
-  const redirectUri = `${origin}/login${redirectSearch}`;
+  const redirectUri = buildStewardOAuthRedirectUri(
+    origin,
+    options?.redirectSearch,
+  );
   const params = new URLSearchParams({
     redirect_uri: redirectUri,
     tenant_id: options?.stewardTenantId ?? DEFAULT_STEWARD_TENANT_ID,
+    // Opt into the nonce-exchange flow: Steward redirects back with
+    // `?code=<nonce>` (no tokens in the URL) and we trade the code for
+    // tokens server-side via /api/auth/steward-nonce-exchange.
+    response_type: "code",
   });
 
   const stewardApiUrl =

@@ -49,7 +49,7 @@ const JsonRpcRequestSchema = z.object({
   id: z.union([z.string(), z.number()]),
 });
 
-function generateAgentCard(character: UserCharacter, baseUrl: string) {
+export function generateAgentCard(character: UserCharacter, baseUrl: string) {
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;

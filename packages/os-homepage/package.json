@@ -9,14 +9,15 @@
     "deploy": "bunx wrangler pages deploy dist --project-name elizaos-homepage --branch main",
     "preview": "bun --bun vite preview --port 4455",
     "typecheck": "tsc -b",
+    "test": "node --test tests/smoke.node.test.mjs",
     "test:e2e": "../../node_modules/.bin/playwright test",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds=4x"
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --concepts --clouds=4x",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --concepts --clouds=4x"
   },
   "dependencies": {
     "@elizaos/checkout-shared": "workspace:*",

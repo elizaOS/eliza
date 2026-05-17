@@ -109,11 +109,11 @@ function resolveViteCli() {
 const tsdownCli = resolveTsdownCli();
 const viteCli = resolveViteCli();
 const pluginBuildScript = path.join(scriptDir, "build-native-plugins.mjs");
-const writeBuildInfoScript = path.join(
-  rootDir,
-  "scripts",
-  "write-build-info.ts",
-);
+const writeBuildInfoScript = fs.existsSync(
+  path.join(rootDir, "packages", "scripts", "write-build-info.ts"),
+)
+  ? path.join(rootDir, "packages", "scripts", "write-build-info.ts")
+  : path.join(rootDir, "scripts", "write-build-info.ts");
 const bunForScripts = resolveBunForScripts();
 const pruneCdnAssetsScript = path.join(scriptDir, "prune-cdn-local-assets.mjs");
 const { appAssetBaseUrl } = resolveElizaAssetBaseUrls();

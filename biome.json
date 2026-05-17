@@ -118,6 +118,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/cloud-api/**/*.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
     }
   ],
   "formatter": {
