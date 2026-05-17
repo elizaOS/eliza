@@ -21,13 +21,21 @@
  * The dialog is provider-aware: subscription providers are intentionally
  * constrained to their first-party coding surfaces.
  */
-import type { LinkedAccountConfig, LinkedAccountProviderId } from "@elizaos/shared";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+} from "@elizaos/shared";
+
 interface AddAccountDialogProps {
-    open: boolean;
-    providerId: LinkedAccountProviderId;
-    onClose: () => void;
-    onCreated: (account: LinkedAccountConfig) => void;
+  open: boolean;
+  providerId: LinkedAccountProviderId;
+  onClose: () => void;
+  onCreated: (account: LinkedAccountConfig) => void;
 }
-export declare function AddAccountDialog({ open, providerId, onClose, onCreated, }: AddAccountDialogProps): import("react/jsx-runtime").JSX.Element;
-export {};
+export declare function AddAccountDialog({
+  open,
+  providerId,
+  onClose,
+  onCreated,
+}: AddAccountDialogProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=AddAccountDialog.d.ts.map

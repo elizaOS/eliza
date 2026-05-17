@@ -1,7 +1,9 @@
 interface JobDetailPanelProps {
-    jobId: string;
-    onClose: () => void;
+  jobId: string;
+  onClose: () => void;
 }
-export declare function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps): import("react/jsx-runtime").JSX.Element;
-export {};
+export declare function JobDetailPanel({
+  jobId,
+  onClose,
+}: JobDetailPanelProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=JobDetailPanel.d.ts.map

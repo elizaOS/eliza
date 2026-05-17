@@ -9,10 +9,10 @@
 export type RuntimeMode = "local" | "local-only" | "cloud" | "remote";
 export type RuntimeDeploymentRuntime = "local" | "cloud" | "remote";
 export interface RuntimeModeSnapshot {
-    mode: RuntimeMode;
-    deploymentRuntime: RuntimeDeploymentRuntime;
-    isRemoteController: boolean;
-    remoteApiBaseConfigured: boolean;
+  mode: RuntimeMode;
+  deploymentRuntime: RuntimeDeploymentRuntime;
+  isRemoteController: boolean;
+  remoteApiBaseConfigured: boolean;
 }
 /**
  * Fetch the runtime-mode snapshot. Returns `null` when the endpoint is

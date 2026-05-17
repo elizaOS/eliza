@@ -15,12 +15,22 @@ import type { CatalogModel } from "./types";
  * Search HuggingFace for GGUF repos matching `query`, returning
  * catalog-shaped entries ready for the Model Hub UI.
  */
-export declare function searchHuggingFaceGguf(query: string, limit?: number): Promise<CatalogModel[]>;
+export declare function searchHuggingFaceGguf(
+  query: string,
+  limit?: number,
+): Promise<CatalogModel[]>;
 /**
  * Search ModelScope for GGUF repos. ModelScope exposes reliable owner-list
  * and repo-file APIs, so this accepts either `owner/model` or an owner name
  * and filters the returned repos for GGUF files.
  */
-export declare function searchModelScopeGguf(query: string, limit?: number): Promise<CatalogModel[]>;
-export declare function searchModelHubGguf(query: string, hub?: "huggingface" | "modelscope", limit?: number): Promise<CatalogModel[]>;
+export declare function searchModelScopeGguf(
+  query: string,
+  limit?: number,
+): Promise<CatalogModel[]>;
+export declare function searchModelHubGguf(
+  query: string,
+  hub?: "huggingface" | "modelscope",
+  limit?: number,
+): Promise<CatalogModel[]>;
 //# sourceMappingURL=hf-search.d.ts.map

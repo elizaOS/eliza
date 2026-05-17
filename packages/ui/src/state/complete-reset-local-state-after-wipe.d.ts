@@ -33,20 +33,23 @@ import type { AgentStatus, OnboardingOptions } from "../api/client";
  * Ports for `completeResetLocalStateAfterServerWipe` (all side effects explicit).
  */
 export type CompleteResetLocalStateDeps = {
-    setAgentStatus: (status: AgentStatus | null) => void;
-    resetClientConnection: () => void;
-    clearPersistedActiveServer: () => void;
-    clearPersistedAvatarIndex: () => void;
-    setClientBaseUrl: (url: string | null) => void;
-    setClientToken: (token: string | null) => void;
-    clearElizaCloudSessionUi: () => void;
-    markOnboardingReset: () => void;
-    resetAvatarSelection: () => void;
-    clearConversationLists: () => void;
-    fetchOnboardingOptions: () => Promise<OnboardingOptions>;
-    setOnboardingOptions: (options: OnboardingOptions) => void;
-    logResetDebug: (message: string, detail?: Record<string, unknown>) => void;
-    logResetWarn: (message: string, detail?: unknown) => void;
+  setAgentStatus: (status: AgentStatus | null) => void;
+  resetClientConnection: () => void;
+  clearPersistedActiveServer: () => void;
+  clearPersistedAvatarIndex: () => void;
+  setClientBaseUrl: (url: string | null) => void;
+  setClientToken: (token: string | null) => void;
+  clearElizaCloudSessionUi: () => void;
+  markOnboardingReset: () => void;
+  resetAvatarSelection: () => void;
+  clearConversationLists: () => void;
+  fetchOnboardingOptions: () => Promise<OnboardingOptions>;
+  setOnboardingOptions: (options: OnboardingOptions) => void;
+  logResetDebug: (message: string, detail?: Record<string, unknown>) => void;
+  logResetWarn: (message: string, detail?: unknown) => void;
 };
-export declare function completeResetLocalStateAfterServerWipe(postResetAgentStatus: AgentStatus | null, d: CompleteResetLocalStateDeps): Promise<void>;
+export declare function completeResetLocalStateAfterServerWipe(
+  postResetAgentStatus: AgentStatus | null,
+  d: CompleteResetLocalStateDeps,
+): Promise<void>;
 //# sourceMappingURL=complete-reset-local-state-after-wipe.d.ts.map

@@ -8,7 +8,7 @@
  */
 import type { CodingAgentSession } from "../api/client";
 export interface PtySessionsValue {
-    ptySessions: CodingAgentSession[];
+  ptySessions: CodingAgentSession[];
 }
 export declare const PtySessionsCtx: import("react").Context<PtySessionsValue>;
 export declare function usePtySessions(): PtySessionsValue;

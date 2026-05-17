@@ -16,9 +16,13 @@
  * binding maps any non-default value to a `gpuLayers` override or warns
  * loudly when the value cannot be honoured.
  */
-export type KvOffloadMode = "cpu" | "gpu" | "split" | {
-    gpuLayers: number;
-};
+export type KvOffloadMode =
+  | "cpu"
+  | "gpu"
+  | "split"
+  | {
+      gpuLayers: number;
+    };
 /**
  * Per-load overrides accepted by `localInferenceLoader.loadModel(...)` and
  * `POST /api/local-inference/active`. Catalog defaults are merged in
@@ -26,35 +30,35 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | {
  * caller win over both catalog metadata and env-var fallbacks.
  */
 export interface LocalInferenceLoadArgs {
-    modelPath: string;
-    contextSize?: number;
-    useGpu?: boolean;
-    maxThreads?: number;
-    draftModelPath?: string;
-    draftContextSize?: number;
-    draftMin?: number;
-    draftMax?: number;
-    speculativeSamples?: number;
-    mobileSpeculative?: boolean;
-    cacheTypeK?: string;
-    cacheTypeV?: string;
-    disableThinking?: boolean;
-    /**
-     * Number of model layers to offload to the GPU. `"auto"` and `"max"` are
-     * resolved by the backend's own probing — keep the explicit number type
-     * here so the API surface accepts the most common `gpuLayers: 32` shape
-     * without an extra string branch.
-     */
-    gpuLayers?: number;
-    /**
-     * Where to place the KV cache. See `KvOffloadMode`. node-llama-cpp does
-     * not expose this distinct from `gpuLayers`; the backend translates
-     * the request to a `gpuLayers` override or throws when the value
-     * cannot be honoured.
-     */
-    kvOffload?: KvOffloadMode;
-    flashAttention?: boolean;
-    mmap?: boolean;
-    mlock?: boolean;
+  modelPath: string;
+  contextSize?: number;
+  useGpu?: boolean;
+  maxThreads?: number;
+  draftModelPath?: string;
+  draftContextSize?: number;
+  draftMin?: number;
+  draftMax?: number;
+  speculativeSamples?: number;
+  mobileSpeculative?: boolean;
+  cacheTypeK?: string;
+  cacheTypeV?: string;
+  disableThinking?: boolean;
+  /**
+   * Number of model layers to offload to the GPU. `"auto"` and `"max"` are
+   * resolved by the backend's own probing — keep the explicit number type
+   * here so the API surface accepts the most common `gpuLayers: 32` shape
+   * without an extra string branch.
+   */
+  gpuLayers?: number;
+  /**
+   * Where to place the KV cache. See `KvOffloadMode`. node-llama-cpp does
+   * not expose this distinct from `gpuLayers`; the backend translates
+   * the request to a `gpuLayers` override or throws when the value
+   * cannot be honoured.
+   */
+  kvOffload?: KvOffloadMode;
+  flashAttention?: boolean;
+  mmap?: boolean;
+  mlock?: boolean;
 }
 //# sourceMappingURL=load-args.d.ts.map

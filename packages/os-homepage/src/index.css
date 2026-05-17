@@ -55,6 +55,11 @@ a {
   text-decoration: none;
 }
 
+.rounded-full,
+[class*="rounded-full"] {
+  border-radius: var(--radius-full, 9999px);
+}
+
 img {
   max-width: 100%;
 }

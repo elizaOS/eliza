@@ -7,10 +7,10 @@
  */
 import { type VisibilityCandidate } from "./visibility";
 export interface ChatSidebarVisibilityHook {
-    overrides: Record<string, boolean>;
-    isVisible(candidate: VisibilityCandidate): boolean;
-    setVisible(candidate: VisibilityCandidate, next: boolean): void;
-    reset(): void;
+  overrides: Record<string, boolean>;
+  isVisible(candidate: VisibilityCandidate): boolean;
+  setVisible(candidate: VisibilityCandidate, next: boolean): void;
+  reset(): void;
 }
 export declare function useChatSidebarVisibility(): ChatSidebarVisibilityHook;
 //# sourceMappingURL=useChatSidebarVisibility.d.ts.map

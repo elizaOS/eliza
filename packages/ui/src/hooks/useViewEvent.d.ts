@@ -18,11 +18,19 @@ import { type ViewEvent, type ViewEventPayload } from "../views/view-event-bus";
  * @param handler Called each time an event of that type is received.
  * @param deps    Additional deps that should trigger re-subscription (optional).
  */
-export declare function useViewEvent(type: string, handler: (event: ViewEvent) => void, deps?: DependencyList): void;
+export declare function useViewEvent(
+  type: string,
+  handler: (event: ViewEvent) => void,
+  deps?: DependencyList,
+): void;
 /**
  * Returns a stable `emit` function that components can call to broadcast a
  * view event. The returned function reference is memoised and does not change
  * between renders.
  */
-export declare function useEmitViewEvent(): (type: string, payload?: ViewEventPayload, sourceViewId?: string) => void;
+export declare function useEmitViewEvent(): (
+  type: string,
+  payload?: ViewEventPayload,
+  sourceViewId?: string,
+) => void;
 //# sourceMappingURL=useViewEvent.d.ts.map

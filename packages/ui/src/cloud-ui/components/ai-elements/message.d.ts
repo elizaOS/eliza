@@ -8,18 +8,32 @@ import { Avatar } from "../avatar";
  * @param props.from - Message role (user or assistant)
  */
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
-    from: UIMessage["role"];
+  from: UIMessage["role"];
 };
-export declare const Message: ({ className, from, ...props }: MessageProps) => import("react/jsx-runtime").JSX.Element;
-declare const messageContentVariants: (props?: ({
-    variant?: "flat" | "contained" | null | undefined;
-} & import("class-variance-authority/types").ClassProp) | undefined) => string;
+export declare const Message: ({
+  className,
+  from,
+  ...props
+}: MessageProps) => import("react/jsx-runtime").JSX.Element;
+declare const messageContentVariants: (
+  props?:
+    | ({
+        variant?: "flat" | "contained" | null | undefined;
+      } & import("class-variance-authority/types").ClassProp)
+    | undefined,
+) => string;
 /**
  * Message content container with variant styling (contained or flat).
  *
  */
-export type MessageContentProps = HTMLAttributes<HTMLDivElement> & VariantProps<typeof messageContentVariants>;
-export declare const MessageContent: ({ children, className, variant, ...props }: MessageContentProps) => import("react/jsx-runtime").JSX.Element;
+export type MessageContentProps = HTMLAttributes<HTMLDivElement> &
+  VariantProps<typeof messageContentVariants>;
+export declare const MessageContent: ({
+  children,
+  className,
+  variant,
+  ...props
+}: MessageContentProps) => import("react/jsx-runtime").JSX.Element;
 /**
  * Avatar component for message display.
  *
@@ -27,9 +41,13 @@ export declare const MessageContent: ({ children, className, variant, ...props }
  * @param props.name - Optional name for alt text
  */
 export type MessageAvatarProps = ComponentProps<typeof Avatar> & {
-    src: string;
-    name?: string;
+  src: string;
+  name?: string;
 };
-export declare const MessageAvatar: ({ src, name, className, ...props }: MessageAvatarProps) => import("react/jsx-runtime").JSX.Element;
-export {};
+export declare const MessageAvatar: ({
+  src,
+  name,
+  className,
+  ...props
+}: MessageAvatarProps) => import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=message.d.ts.map

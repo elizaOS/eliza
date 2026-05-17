@@ -13,10 +13,10 @@
 import type { RegistryAppInfo } from "@elizaos/shared";
 /** Result of main-tab discovery. */
 export interface MainTabApp {
-    /** The shell tab id — derived from the app's route slug. */
-    tabId: string;
-    /** The app's npm package name. */
-    appName: string;
+  /** The shell tab id — derived from the app's route slug. */
+  tabId: string;
+  /** The app's npm package name. */
+  appName: string;
 }
 /**
  * Fallback tab when no installed app declares `elizaos.app.mainTab=true`.
@@ -37,7 +37,9 @@ export declare const MAIN_TAB_FALLBACK: "chat";
  * If multiple apps declare `mainTab: true`, returns the first one ordered
  * alphabetically by package name.
  */
-export declare function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null;
+export declare function getMainTabApp(
+  apps: RegistryAppInfo[],
+): MainTabApp | null;
 /**
  * Resolve the shell's default landing tab.
  *
@@ -52,5 +54,7 @@ export declare function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | nul
  * Optional `apps` argument lets callers supply an already-loaded
  * catalog (post-hydrate) without going through the cache.
  */
-export declare function resolveDefaultLandingTab(apps?: RegistryAppInfo[]): string;
+export declare function resolveDefaultLandingTab(
+  apps?: RegistryAppInfo[],
+): string;
 //# sourceMappingURL=main-tab.d.ts.map

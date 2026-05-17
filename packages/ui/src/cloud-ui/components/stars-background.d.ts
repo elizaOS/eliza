@@ -1,12 +1,12 @@
 import type React from "react";
+
 interface StarBackgroundProps {
-    starDensity?: number;
-    allStarsTwinkle?: boolean;
-    twinkleProbability?: number;
-    minTwinkleSpeed?: number;
-    maxTwinkleSpeed?: number;
-    className?: string;
+  starDensity?: number;
+  allStarsTwinkle?: boolean;
+  twinkleProbability?: number;
+  minTwinkleSpeed?: number;
+  maxTwinkleSpeed?: number;
+  className?: string;
 }
 export declare const StarsBackground: React.FC<StarBackgroundProps>;
-export {};
 //# sourceMappingURL=stars-background.d.ts.map

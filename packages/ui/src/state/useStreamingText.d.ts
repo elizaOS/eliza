@@ -26,47 +26,58 @@
  */
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatFailureKind, ConversationMessage } from "../api";
-export type StreamingTextSetter = Dispatch<SetStateAction<ConversationMessage[]>>;
+export type StreamingTextSetter = Dispatch<
+  SetStateAction<ConversationMessage[]>
+>;
 /**
  * One streaming-text mutation against a single in-flight assistant turn.
  *
  * `messageId` always identifies the assistant turn being modified. All other
  * fields are mode-specific.
  */
-export type StreamingTextModification = {
-    messageId: string;
-    mode: "append";
-    /** Raw delta token from the SSE stream. */
-    token: string;
-} | {
-    messageId: string;
-    mode: "replace";
-    /** Cumulative snapshot text from the SSE stream. */
-    fullText: string;
-} | {
-    messageId: string;
-    mode: "complete";
-    /** Final reconciled assistant text from the server. */
-    fullText: string;
-    /** Optional server-flagged failure class to stamp alongside the text. */
-    failureKind?: ChatFailureKind;
-} | {
-    messageId: string;
-    mode: "fail";
-    /** Server-flagged failure class. Text is left untouched. */
-    failureKind: ChatFailureKind;
-} | {
-    messageId: string;
-    mode: "interrupt";
-} | {
-    messageId: string;
-    mode: "drop";
-};
+export type StreamingTextModification =
+  | {
+      messageId: string;
+      mode: "append";
+      /** Raw delta token from the SSE stream. */
+      token: string;
+    }
+  | {
+      messageId: string;
+      mode: "replace";
+      /** Cumulative snapshot text from the SSE stream. */
+      fullText: string;
+    }
+  | {
+      messageId: string;
+      mode: "complete";
+      /** Final reconciled assistant text from the server. */
+      fullText: string;
+      /** Optional server-flagged failure class to stamp alongside the text. */
+      failureKind?: ChatFailureKind;
+    }
+  | {
+      messageId: string;
+      mode: "fail";
+      /** Server-flagged failure class. Text is left untouched. */
+      failureKind: ChatFailureKind;
+    }
+  | {
+      messageId: string;
+      mode: "interrupt";
+    }
+  | {
+      messageId: string;
+      mode: "drop";
+    };
 /**
  * Apply one streaming-text modification to the chat-message reducer.
  *
  * Returns referentially-equal `prev` when the modification is a no-op
  * (target id missing, text already matches, failureKind already set, etc.).
  */
-export declare function applyStreamingTextModification(setMessages: StreamingTextSetter, mod: StreamingTextModification): void;
+export declare function applyStreamingTextModification(
+  setMessages: StreamingTextSetter,
+  mod: StreamingTextModification,
+): void;
 //# sourceMappingURL=useStreamingText.d.ts.map

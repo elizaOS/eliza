@@ -8,5 +8,7 @@
  *
  * Non-loading phases (error, pairing, onboarding) delegate to their views.
  */
-export declare function StartupShell(): import("react/jsx-runtime").JSX.Element | null;
+export declare function StartupShell():
+  | import("react/jsx-runtime").JSX.Element
+  | null;
 //# sourceMappingURL=StartupShell.d.ts.map

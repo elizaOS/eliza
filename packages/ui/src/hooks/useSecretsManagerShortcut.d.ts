@@ -31,6 +31,7 @@ export declare function matchesShortcut(event: KeyboardEvent): boolean;
 /** Human-readable label for the shortcut, suitable for UI hints. */
 export declare function getShortcutLabel(): string;
 /** Electron-style accelerator string for the menu item. */
-export declare const SECRETS_MANAGER_MAC_ACCELERATOR = "Command+Option+Control+V";
+export declare const SECRETS_MANAGER_MAC_ACCELERATOR =
+  "Command+Option+Control+V";
 export declare const SECRETS_MANAGER_OTHER_ACCELERATOR = "Ctrl+Alt+Shift+V";
 //# sourceMappingURL=useSecretsManagerShortcut.d.ts.map

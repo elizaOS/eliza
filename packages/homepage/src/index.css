@@ -17,6 +17,21 @@ body {
   font-family: var(--font-sans);
 }
 
+button,
+input,
+select,
+textarea,
+a,
+div,
+article {
+  border-radius: var(--radius-xs);
+}
+
+.rounded-full,
+[class*="rounded-full"] {
+  border-radius: var(--radius-full, 9999px);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

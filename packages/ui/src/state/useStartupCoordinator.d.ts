@@ -13,28 +13,44 @@
  * Persistent WS bindings and navigation listeners are set up via bindReadyPhase
  * in a "ready" effect that only cleans up on unmount (not on phase transitions).
  */
-import { type PlatformPolicy, type RuntimeTarget, type StartupEvent, type StartupState } from "./startup-coordinator";
-import { type HydratingDeps, type ReadyPhaseDeps } from "./startup-phase-hydrate";
+import {
+  type PlatformPolicy,
+  type RuntimeTarget,
+  type StartupEvent,
+  type StartupState,
+} from "./startup-coordinator";
+import {
+  type HydratingDeps,
+  type ReadyPhaseDeps,
+} from "./startup-phase-hydrate";
 import { type PollingBackendDeps } from "./startup-phase-poll";
 import { type RestoringSessionDeps } from "./startup-phase-restore";
 import { type StartingRuntimeDeps } from "./startup-phase-runtime";
-export type StartupCoordinatorDeps = RestoringSessionDeps & PollingBackendDeps & StartingRuntimeDeps & HydratingDeps & ReadyPhaseDeps & {
+export type StartupCoordinatorDeps = RestoringSessionDeps &
+  PollingBackendDeps &
+  StartingRuntimeDeps &
+  HydratingDeps &
+  ReadyPhaseDeps & {
     /** Legacy lifecycle setter — driven by the coordinator sync effect. */
-    setStartupPhase: (v: "starting-backend" | "initializing-agent" | "ready") => void;
-};
+    setStartupPhase: (
+      v: "starting-backend" | "initializing-agent" | "ready",
+    ) => void;
+  };
 export interface StartupCoordinatorHandle {
-    state: StartupState;
-    dispatch: (event: StartupEvent) => void;
-    retry: () => void;
-    reset: () => void;
-    pairingSuccess: () => void;
-    onboardingComplete: () => void;
-    policy: PlatformPolicy;
-    legacyPhase: "starting-backend" | "initializing-agent" | "ready";
-    loading: boolean;
-    terminal: boolean;
-    target: RuntimeTarget | null;
-    phase: StartupState["phase"];
+  state: StartupState;
+  dispatch: (event: StartupEvent) => void;
+  retry: () => void;
+  reset: () => void;
+  pairingSuccess: () => void;
+  onboardingComplete: () => void;
+  policy: PlatformPolicy;
+  legacyPhase: "starting-backend" | "initializing-agent" | "ready";
+  loading: boolean;
+  terminal: boolean;
+  target: RuntimeTarget | null;
+  phase: StartupState["phase"];
 }
-export declare function useStartupCoordinator(deps?: StartupCoordinatorDeps): StartupCoordinatorHandle;
+export declare function useStartupCoordinator(
+  deps?: StartupCoordinatorDeps,
+): StartupCoordinatorHandle;
 //# sourceMappingURL=useStartupCoordinator.d.ts.map
