@@ -17,6 +17,15 @@ on:
       - "packages/cloud-e2e/**"
       - ".github/workflows/cloud-e2e.yml"
   workflow_dispatch:
+    inputs:
+      spec:
+        description: "Spec path/glob to run (default: all)"
+        required: false
+        default: "tests/**.spec.ts"
+      headed:
+        description: "Run headed (debug — slow)"
+        type: boolean
+        default: false
 
 concurrency:
   group: cloud-e2e-${{ github.event.pull_request.number || github.ref }}
@@ -150,7 +159,6 @@ jobs:
 
       - name: Run cloud E2E (full suite)
         id: run-full
-        run: bun run cloud:e2e
         env:
           CI: "true"
           MOCK_REDIS: "1"
@@ -161,6 +169,15 @@ jobs:
           HCLOUD_TOKEN: "test-token"
           CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
           CRON_SECRET: "test-cron-secret"
+          INPUT_SPEC: ${{ inputs.spec }}
+          INPUT_HEADED: ${{ inputs.headed }}
+        run: |
+          SPEC="${INPUT_SPEC:-tests/**.spec.ts}"
+          if [ "${INPUT_HEADED}" = "true" ]; then
+            bun run cloud:e2e -- "$SPEC" --headed
+          else
+            bun run cloud:e2e -- "$SPEC"
+          fi
 
       - name: Failure summary
         if: failure() && steps.run-full.outcome == 'failure'
