@@ -87,9 +87,9 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
 
   return (
     <div className="grid gap-4">
-      {alerts.map((alert, index) => (
+      {alerts.map((alert) => (
         <div
-          key={`${alert.title}-${index}`}
+          key={alert.title}
           className={cn(
             "rounded-sm border bg-background/80 p-5 text-sm shadow-sm",
             toneClasses[alert.type],

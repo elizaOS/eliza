@@ -364,10 +364,11 @@ export function AffiliatesPageClient() {
 
         <div className="flex items-end gap-4 max-w-md mt-6">
           <div className="flex-1">
-            <label className="text-sm text-white/60 mb-2 block">
+            <label htmlFor="affiliate-markup-percent" className="text-sm text-white/60 mb-2 block">
               Your Markup Percentage (0 - 1000%)
             </label>
             <Input
+              id="affiliate-markup-percent"
               type="number"
               value={markupPercent}
               onChange={(e) => setMarkupPercent(e.target.value)}
