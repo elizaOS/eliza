@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { AuthStore } from "../services/auth-store";
 import {
   createMachineSession,
   findActiveSession,
@@ -231,7 +232,6 @@ export async function handleAuthPairingCompatRoutes(
     let passwordConfigured = false;
     let sessionAuthenticated = false;
     if (db) {
-      const { AuthStore } = await import("../services/auth-store");
       const store = new AuthStore(
         db as ConstructorParameters<typeof AuthStore>[0],
       );
@@ -353,7 +353,6 @@ export async function handleAuthPairingCompatRoutes(
     const db = getCompatDrizzleDb(state);
     if (db) {
       try {
-        const { AuthStore } = await import("../services/auth-store");
         const store = new AuthStore(
           db as ConstructorParameters<typeof AuthStore>[0],
         );

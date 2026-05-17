@@ -3,6 +3,7 @@ export * from "./accordion";
 export * from "./ai-elements";
 export * from "./alert";
 export * from "./alert-dialog";
+export * from "./analytics";
 export * from "./animated-icons";
 export { AnimatedTabs } from "./animated-tabs";
 export { ApiKeyEmptyState } from "./api-key-empty-state";
