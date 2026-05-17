@@ -28,6 +28,26 @@ ARG APP_DIR
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
   @elizaos/agent
 
+# Some relinked local packages expect selected runtime dependencies to be
+# resolvable from root node_modules. Host node_modules is excluded from the
+# Docker context, so install only this small runtime set in-image.
+RUN mkdir -p /tmp/docker-runtime-deps \
+  && cd /tmp/docker-runtime-deps \
+  && npm init -y >/dev/null \
+  && npm install --omit=dev --ignore-scripts --no-package-lock \
+    @electric-sql/pglite@0.4.5 \
+    @neondatabase/serverless@1.1.0 \
+    @node-rs/argon2@2.0.2 \
+    dotenv@17.2.3 \
+    drizzle-orm@0.45.2 \
+    jose@6.2.2 \
+    pg@8.20.0 \
+    uuid@14.0.0 \
+    ws@8.20.0 \
+  && mkdir -p /app/node_modules \
+  && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
+  && rm -rf /tmp/docker-runtime-deps
+
 RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs"
 
 RUN node "${APP_CORE_DIR}/scripts/ensure-generated-core-proto-js.mjs"

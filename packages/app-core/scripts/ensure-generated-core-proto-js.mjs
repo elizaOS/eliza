@@ -2,7 +2,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
@@ -83,6 +82,7 @@ if (files.length === 0) {
 }
 
 let written = 0;
+const { default: ts } = await import("typescript");
 for (const file of files) {
   const inputPath = path.join(generatedDir, file);
   const outputPath = inputPath.replace(/\.ts$/, ".js");

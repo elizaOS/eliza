@@ -2956,6 +2956,7 @@
       "version": "2.0.0-beta.2",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-aosp-local-inference": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "phonemizer": "^1.2.1",
