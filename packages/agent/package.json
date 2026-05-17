@@ -1,0 +1,290 @@
+{
+  "name": "@elizaos/agent",
+  "version": "2.0.0-beta.2",
+  "description": "Standalone elizaOS-based agent and backend server package.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaos/eliza",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git",
+    "directory": "packages/agent"
+  },
+  "keywords": [
+    "eliza",
+    "agent",
+    "backend",
+    "runtime",
+    "elizaos"
+  ],
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "eliza-autonomous": "./src/bin.ts"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "start": "bun run src/bin.ts",
+    "dev": "bun --hot src/bin.ts",
+    "prepublishOnly": "bun run build:dist",
+    "build": "bun run build:dist",
+    "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
+    "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
+    "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
+    "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
+    "lint": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
+    "lint:check": "bun run lint",
+    "lint:fix": "bunx @biomejs/biome check --write ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src",
+    "pack:dry-run": "cd dist && npm pack --dry-run",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./api": {
+      "types": "./src/api/index.ts",
+      "bun": {
+        "types": "./src/api/index.ts",
+        "import": "./src/api/index.ts",
+        "default": "./src/api/index.ts"
+      },
+      "import": "./dist/api/index.js",
+      "default": "./dist/api/index.js"
+    },
+    "./config/character-schema": "./src/config/character-schema.ts",
+    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
+    "./runtime": {
+      "types": "./src/runtime/index.ts",
+      "bun": {
+        "types": "./src/runtime/index.ts",
+        "import": "./src/runtime/index.ts",
+        "default": "./src/runtime/index.ts"
+      },
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
+    "./services/app-session-gate": {
+      "types": "./src/services/app-session-gate.d.ts",
+      "eliza-source": {
+        "types": "./src/services/app-session-gate.ts",
+        "import": "./src/services/app-session-gate.ts",
+        "default": "./src/services/app-session-gate.ts"
+      },
+      "bun": {
+        "types": "./src/services/app-session-gate.ts",
+        "import": "./src/services/app-session-gate.ts",
+        "default": "./src/services/app-session-gate.ts"
+      },
+      "import": "./dist/services/app-session-gate.js",
+      "default": "./dist/services/app-session-gate.js"
+    },
+    "./services/permissions/probers/index": {
+      "types": "./src/services/permissions/probers/index.d.ts",
+      "eliza-source": {
+        "types": "./src/services/permissions/probers/index.ts",
+        "import": "./src/services/permissions/probers/index.ts",
+        "default": "./src/services/permissions/probers/index.ts"
+      },
+      "bun": {
+        "types": "./src/services/permissions/probers/index.ts",
+        "import": "./src/services/permissions/probers/index.ts",
+        "default": "./src/services/permissions/probers/index.ts"
+      },
+      "import": "./dist/services/permissions/probers/index.js",
+      "default": "./dist/services/permissions/probers/index.js"
+    },
+    "./services/permissions/probers/*": {
+      "types": "./src/services/permissions/probers/*.d.ts",
+      "eliza-source": {
+        "types": "./src/services/permissions/probers/*.ts",
+        "import": "./src/services/permissions/probers/*.ts",
+        "default": "./src/services/permissions/probers/*.ts"
+      },
+      "bun": {
+        "types": "./src/services/permissions/probers/*.ts",
+        "import": "./src/services/permissions/probers/*.ts",
+        "default": "./src/services/permissions/probers/*.ts"
+      },
+      "import": "./dist/services/permissions/probers/*.js",
+      "default": "./dist/services/permissions/probers/*.js"
+    },
+    "./security/*": {
+      "types": "./src/security/*.d.ts",
+      "eliza-source": {
+        "types": "./src/security/*.ts",
+        "import": "./src/security/*.ts",
+        "default": "./src/security/*.ts"
+      },
+      "bun": {
+        "types": "./src/security/*.ts",
+        "import": "./src/security/*.ts",
+        "default": "./src/security/*.ts"
+      },
+      "import": "./dist/security/*.js",
+      "default": "./dist/security/*.js"
+    },
+    "./services/*": {
+      "types": "./src/services/*.d.ts",
+      "eliza-source": {
+        "types": "./src/services/*.ts",
+        "import": "./src/services/*.ts",
+        "default": "./src/services/*.ts"
+      },
+      "bun": {
+        "types": "./src/services/*.ts",
+        "import": "./src/services/*.ts",
+        "default": "./src/services/*.ts"
+      },
+      "import": "./dist/services/*.js",
+      "default": "./dist/services/*.js"
+    },
+    "./config/*": {
+      "types": "./src/config/*.d.ts",
+      "eliza-source": {
+        "types": "./src/config/*.ts",
+        "import": "./src/config/*.ts",
+        "default": "./src/config/*.ts"
+      },
+      "bun": {
+        "types": "./src/config/*.ts",
+        "import": "./src/config/*.ts",
+        "default": "./src/config/*.ts"
+      },
+      "import": "./dist/config/*.js",
+      "default": "./dist/config/*.js"
+    },
+    "./utils/*": {
+      "types": "./src/utils/*.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/*.ts",
+        "import": "./src/utils/*.ts",
+        "default": "./src/utils/*.ts"
+      },
+      "bun": {
+        "types": "./src/utils/*.ts",
+        "import": "./src/utils/*.ts",
+        "default": "./src/utils/*.ts"
+      },
+      "import": "./dist/utils/*.js",
+      "default": "./dist/utils/*.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.13",
+    "@clack/prompts": "^1.0.0",
+    "@elizaos/plugin-contacts": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/plugin-phone": "workspace:*",
+    "@elizaos/plugin-wifi": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-agent-skills": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-aosp-local-inference": "workspace:*",
+    "@elizaos/plugin-app-manager": "workspace:*",
+    "@elizaos/plugin-background-runner": "workspace:*",
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-capacitor-bridge": "workspace:*",
+    "@elizaos/plugin-coding-tools": "workspace:*",
+    "@elizaos/plugin-commands": "workspace:*",
+    "@elizaos/plugin-computeruse": "workspace:*",
+    "@elizaos/plugin-discord": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-imessage": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-mlx": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-registry": "workspace:*",
+    "@elizaos/plugin-shell": "workspace:*",
+    "@elizaos/plugin-signal": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-streaming": "workspace:*",
+    "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/plugin-whatsapp": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
+    "@elizaos/plugin-x402": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/skills": "workspace:*",
+    "@elizaos/vault": "workspace:*",
+    "@noble/curves": "2.2.0",
+    "@noble/hashes": "2.2.0",
+    "@solana/web3.js": "1.98.4",
+    "async-lock": "^1.4.1",
+    "clean-git-ref": "^2.0.1",
+    "crc-32": "^1.2.0",
+    "diff3": "0.0.3",
+    "drizzle-orm": "0.45.2",
+    "esbuild": "^0.28.0",
+    "ethers": "^6.16.0",
+    "git-workspace-service": "0.4.5",
+    "hono": "^4.12.18",
+    "ignore": "^5.1.4",
+    "isomorphic-git": "^1.35.0",
+    "jsdom": "^29.0.0",
+    "json5": "^2.2.3",
+    "minimisted": "^2.0.0",
+    "pako": "^1.0.10",
+    "pg": "^8.16.3",
+    "pify": "^4.0.1",
+    "readable-stream": "^4.0.0",
+    "sha.js": "^2.4.12",
+    "simple-get": "^4.0.1",
+    "ws": "^8.19.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.12",
+    "@types/jsdom": "^28.0.0",
+    "@types/node": "^25.2.0",
+    "@types/pg": "^8.15.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "ai": "^6.0.134",
+    "bun-types": "^1.3.12",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.8",
+    "vitest": "^4.0.18"
+  }
+}
