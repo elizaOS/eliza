@@ -703,6 +703,20 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // routes UX through whichever surface the target connector supports,
   // falling back gracefully when a capability is missing (e.g. Twitter/X
   // has no threads, terminal stdio has neither threads nor reactions).
+  // Mark every orchestrator-emitted Content block as transient: the
+  // recentMessages provider skips Memory entries with metadata.transient
+  // when building the planner's conversation window, so past 🚀/💬/⏳/✅/❌
+  // status posts cannot resurface as text the planner LLM paraphrases on
+  // later turns. Cross-platform: the flag rides on the persisted Memory
+  // regardless of which connector surface delivered the post (thread,
+  // edit-in-place, or fresh send).
+  function transientContent(
+    text: string,
+    source: "sub_agent_progress" | "sub_agent_complete",
+  ): { text: string; source: string; metadata: { transient: true } } {
+    return { text, source, metadata: { transient: true } };
+  }
+
   function hasCap(source: string, capability: string): boolean {
     const connectors = runtime.getMessageConnectors?.();
     if (!Array.isArray(connectors)) return false;
@@ -771,10 +785,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // `💬 Reading file...`. See PROGRESS_PREFIX_REGEX above for the
         // (subtle) reason this can't use a `[...]` character class.
         const threadText = stripProgressLabelPrefix(text);
-        await runtime.postToThreadOnTarget(target, state.thread, {
-          text: threadText,
-          source: "sub_agent_progress",
-        });
+        await runtime.postToThreadOnTarget(
+          target,
+          state.thread,
+          transientContent(threadText, "sub_agent_progress"),
+        );
         state.lastText = text;
         return;
       }
@@ -785,10 +800,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         typeof runtime.editMessageOnTarget === "function"
       ) {
         if (state.lastText === text) return;
-        await runtime.editMessageOnTarget(target, state.mainMessageId, {
-          text,
-          source: "sub_agent_progress",
-        });
+        await runtime.editMessageOnTarget(
+          target,
+          state.mainMessageId,
+          transientContent(text, "sub_agent_progress"),
+        );
         state.lastText = text;
         return;
       }
@@ -826,10 +842,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         return;
       }
       const initialText = state ? text : `🚀 [${sessionLabel}] running`;
-      const sent = await runtime.sendMessageToTarget(target, {
-        text: initialText,
-        source: "sub_agent_progress",
-      });
+      const sent = await runtime.sendMessageToTarget(
+        target,
+        transientContent(initialText, "sub_agent_progress"),
+      );
       const platformId = (sent?.metadata as Record<string, unknown> | undefined)
         ?.platformMessageId;
       if (
@@ -890,10 +906,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
               typeof runtime.postToThreadOnTarget === "function"
             ) {
               try {
-                await runtime.postToThreadOnTarget(target, thread, {
-                  text,
-                  source: "sub_agent_progress",
-                });
+                await runtime.postToThreadOnTarget(
+                  target,
+                  thread,
+                  transientContent(text, "sub_agent_progress"),
+                );
                 newState.lastText = text;
               } catch {
                 // best-effort: cached thread may have been archived; on next
@@ -925,10 +942,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     const completionText = `✅ [${state.label}] ${summary}`;
     if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
       try {
-        await runtime.editMessageOnTarget(target, state.mainMessageId, {
-          text: completionText,
-          source: "sub_agent_complete",
-        });
+        await runtime.editMessageOnTarget(
+          target,
+          state.mainMessageId,
+          transientContent(completionText, "sub_agent_complete"),
+        );
       } catch {
         // ignore: reaction below is the secondary signal
       }
@@ -937,10 +955,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       // mid-task — post the final summary as a fresh message so the user
       // actually sees the outcome.
       try {
-        await runtime.sendMessageToTarget(target, {
-          text: completionText,
-          source: "sub_agent_complete",
-        });
+        await runtime.sendMessageToTarget(
+          target,
+          transientContent(completionText, "sub_agent_complete"),
+        );
       } catch {
         // best-effort
       }
@@ -964,10 +982,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     // the user knows the sub-agent ended on a non-success state.
     if (!state.canEdit) {
       try {
-        await runtime.sendMessageToTarget(target, {
-          text: `❌ [${state.label}] failed`,
-          source: "sub_agent_complete",
-        });
+        await runtime.sendMessageToTarget(
+          target,
+          transientContent(`❌ [${state.label}] failed`, "sub_agent_complete"),
+        );
       } catch {
         // best-effort
       }
