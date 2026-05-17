@@ -122,6 +122,9 @@ function makeGitRouter(
       readText: async () => {
         throw new Error("fs unavailable");
       },
+      writeText: async () => {
+        throw new Error("fs unavailable");
+      },
     },
     pty: {
       runCommand: async () => {

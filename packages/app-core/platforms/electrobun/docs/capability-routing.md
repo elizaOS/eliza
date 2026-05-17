@@ -41,12 +41,13 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. A
 
 ## Routed Paths
 
-`plugin-coding-tools` FILE read now prefers `capability-router.fs.readText()` when the runtime has a `capability-router` service. The action still owns:
+`plugin-coding-tools` FILE read now prefers `capability-router.fs.readText()` when the runtime has a `capability-router` service. FILE write now prefers `capability-router.fs.writeText()`. The action still owns:
 
 - the FILE semantic action
 - path validation through its sandbox service
 - read-state tracking for write/edit safety
 - numbered-line output formatting
+- secret-pattern rejection before write
 
 If the router is absent or explicitly unavailable, the previous local implementation remains the fallback.
 
@@ -56,7 +57,7 @@ If the router is absent or explicitly unavailable, the previous local implementa
 
 ## Remaining Work
 
-- Route remaining `plugin-coding-tools` write/edit/search file operations through `eliza.fs` where the Satellite has matching primitives.
+- Route remaining `plugin-coding-tools` edit/search/list file operations through `eliza.fs` where the Satellite has matching primitives.
 - Route local file reads/search in documents/browser-adjacent plugins through `eliza.fs` where desktop-only.
 - Keep GitHub API, provider APIs, app semantics, and voice semantics plugin-owned.
 - Decide whether `eliza.computer` is justified before changing computer-use, browser, or native screen/camera/canvas implementation.

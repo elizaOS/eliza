@@ -8,17 +8,17 @@ Plugins remain the elizaOS runtime extension layer. They own agent-facing action
 
 Satellites own desktop/system implementation behind the Electrobun host boundary. A plugin should use a shared capability router when it needs local filesystem, terminal, local Git, or local model host coordination in the desktop shell. The router targets `eliza.runtime`, and `eliza.runtime` brokers to the concrete Satellite.
 
-The first implemented routes are narrow `plugin-coding-tools` paths: FILE read prefers `eliza.fs`, SHELL command execution prefers `eliza.pty`, and WORKTREE local Git helpers prefer `eliza.git` through the shared capability router. If the router is absent or explicitly unavailable, the existing local implementation remains the fallback.
+The first implemented routes are narrow `plugin-coding-tools` paths: FILE read/write prefers `eliza.fs`, SHELL command execution prefers `eliza.pty`, and WORKTREE local Git helpers prefer `eliza.git` through the shared capability router. If the router is absent or explicitly unavailable, the existing local implementation remains the fallback.
 
 ## Collapse Immediately Candidates
 
 | Plugin | Capability | Route | Mode | Risk |
 | --- | --- | --- | --- | --- |
-| `plugin-coding-tools` | filesystem read | `eliza.fs` | facade-over-satellite | low |
+| `plugin-coding-tools` | filesystem read/write | `eliza.fs` | facade-over-satellite | low |
 | `plugin-coding-tools` | terminal | `eliza.pty` | facade-over-satellite | medium |
 | `plugin-coding-tools` | local Git | `eliza.git` | facade-over-satellite | medium |
 
-These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTREE actions still own agent-facing semantics, policy, output formatting, history/session state, and worktree stack behavior. Host filesystem, terminal, and local Git execution can come from Satellites through the capability router.
+These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTREE actions still own agent-facing semantics, policy, output formatting, history/session state, secret rejection, and worktree stack behavior. Host filesystem, terminal, and local Git execution can come from Satellites through the capability router.
 
 ## Facade-Over-Satellite Candidates
 
@@ -78,10 +78,10 @@ These are not Phase 19 implementation targets. They need overlap review before a
 The routed paths are:
 
 ```text
-plugin-coding-tools FILE read
+plugin-coding-tools FILE read/write
   -> runtime.getService("capability-router")
-  -> router.fs.readText()
-  -> eliza.runtime fs.readText
+  -> router.fs.readText() / router.fs.writeText()
+  -> eliza.runtime fs.readText / fs.writeText
   -> eliza.fs
 
 plugin-coding-tools SHELL
@@ -105,7 +105,7 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. P
 
 ## Remaining Conflicts
 
-- `plugin-coding-tools` still has direct local write/edit/search paths that need per-operation Satellite parity before routing.
+- `plugin-coding-tools` still has direct local edit/search/list paths that need per-operation Satellite parity before routing.
 - `plugin-browser` and `plugin-computeruse` overlap with possible future `eliza.computer` scope.
 - `plugin-local-inference` must keep provider ownership while `eliza.local-model` controls desktop status/routing.
 - `plugin-native-system` needs owner review before any implementation collapse.

@@ -12,7 +12,7 @@
       "nonDesktopBehavior": "existing-plugin-fallback",
       "firstRoutingCandidate": true,
       "risk": "low",
-      "notes": "FILE read/write/edit/list/search remains the coding tool semantic surface. Desktop file content reads should prefer the capability router and fall back to the existing sandboxed path when no router is registered."
+      "notes": "FILE read/write/edit/list/search remains the coding tool semantic surface. Desktop file content reads and writes prefer the capability router and fall back to the existing sandboxed path when no router is registered or FS is explicitly unavailable."
     },
     {
       "pluginId": "plugin-coding-tools",

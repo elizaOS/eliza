@@ -62,6 +62,42 @@ describe("capability router", () => {
 		]);
 	});
 
+	it("routes desktop file writes through the runtime broker", async () => {
+		const calls: Array<{ method: string; params?: object }> = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method, params) => {
+				calls.push({ method, params });
+				return {
+					path: "/tmp/file.txt",
+					bytesWritten: 5,
+				};
+			},
+		});
+
+		await expect(
+			router.fs.writeText({
+				path: "/tmp/file.txt",
+				text: "hello",
+				createDirectories: true,
+				overwrite: true,
+			}),
+		).resolves.toEqual({
+			path: "/tmp/file.txt",
+			bytesWritten: 5,
+		});
+		expect(calls).toEqual([
+			{
+				method: "fs.writeText",
+				params: {
+					path: "/tmp/file.txt",
+					text: "hello",
+					createDirectories: true,
+					overwrite: true,
+				},
+			},
+		]);
+	});
+
 	it("wraps broker failures as capability request failures", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => {

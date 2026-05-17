@@ -99,6 +99,7 @@ function makeShellRouter(
     }),
     fs: {
       readText: async () => unavailableCapability("fs", "fs.readText"),
+      writeText: async () => unavailableCapability("fs", "fs.writeText"),
     },
     pty: { runCommand },
     git: {

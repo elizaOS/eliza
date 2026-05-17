@@ -112,6 +112,14 @@ describe("READ", () => {
             truncated: false,
           };
         },
+        writeText: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "fs unavailable",
+            capability: "fs",
+            method: "fs.writeText",
+          });
+        },
       },
       pty: {
         runCommand: async () => {

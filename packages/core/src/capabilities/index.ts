@@ -71,6 +71,19 @@ export type FileReadTextResult = {
 	truncated: boolean;
 };
 
+export type FileWriteTextParams = {
+	path: string;
+	text: string;
+	createDirectories?: boolean;
+	overwrite?: boolean;
+	traceSessionId?: string;
+};
+
+export type FileWriteTextResult = {
+	path: string;
+	bytesWritten: number;
+};
+
 export type TerminalRunParams = {
 	command: string;
 	args?: string[];
@@ -146,6 +159,7 @@ export type LocalModelStatusResult = {
 
 export interface FileCapability {
 	readText(params: FileReadTextParams): Promise<FileReadTextResult>;
+	writeText(params: FileWriteTextParams): Promise<FileWriteTextResult>;
 }
 
 export interface TerminalCapability {
@@ -173,6 +187,7 @@ export interface ElizaCapabilityRouter {
 
 export type RuntimeBrokerCapabilityMethod =
 	| "fs.readText"
+	| "fs.writeText"
 	| "pty.command.run"
 	| "git.status"
 	| "git.diff"
@@ -202,6 +217,8 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 		this.fs = {
 			readText: (params) =>
 				this.unavailable("fs", "fs.readText", { path: params.path }),
+			writeText: (params) =>
+				this.unavailable("fs", "fs.writeText", { path: params.path }),
 		};
 		this.pty = {
 			runCommand: (params) =>
@@ -269,6 +286,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		this.invokeRuntime = options.invokeRuntime;
 		this.fs = {
 			readText: (params) => this.readText(params),
+			writeText: (params) => this.writeText(params),
 		};
 		this.pty = {
 			runCommand: (params) => this.runCommand(params),
@@ -312,6 +330,27 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			text: requireString(object, "text", "fs.readText"),
 			size: requireNumber(object, "size", "fs.readText"),
 			truncated: requireBoolean(object, "truncated", "fs.readText"),
+		};
+	}
+
+	private async writeText(
+		params: FileWriteTextParams,
+	): Promise<FileWriteTextResult> {
+		const result = await this.request("fs", "fs.writeText", {
+			path: params.path,
+			text: params.text,
+			...(params.createDirectories === undefined
+				? {}
+				: { createDirectories: params.createDirectories }),
+			...(params.overwrite === undefined ? {} : { overwrite: params.overwrite }),
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "fs.writeText");
+		return {
+			path: requireString(object, "path", "fs.writeText"),
+			bytesWritten: requireNumber(object, "bytesWritten", "fs.writeText"),
 		};
 	}
 
@@ -449,10 +488,11 @@ function isElizaCapabilityRouter(
 }
 
 function isFileCapability(value: unknown): value is FileCapability {
+	if (typeof value !== "object" || value === null) return false;
+	const candidate = value as Partial<FileCapability>;
 	return (
-		typeof value === "object" &&
-		value !== null &&
-		typeof (value as Partial<FileCapability>).readText === "function"
+		typeof candidate.readText === "function" &&
+		typeof candidate.writeText === "function"
 	);
 }
 
