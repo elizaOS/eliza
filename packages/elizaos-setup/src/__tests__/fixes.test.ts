@@ -143,9 +143,7 @@ describe("downloadAndVerifyArtifacts", () => {
       };
 
       const fetchImpl = vi.fn(async (url: string) => {
-        const body = url.endsWith("boot.img")
-          ? contentA
-          : contentB;
+        const body = url.endsWith("/boot.img") ? contentA : contentB;
         return new Response(body);
       }) as unknown as typeof fetch;
 
