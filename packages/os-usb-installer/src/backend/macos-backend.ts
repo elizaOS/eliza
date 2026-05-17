@@ -48,6 +48,9 @@ interface DiskUtilInfoPlist {
   TotalSize?: number;
   Removable?: boolean;
   RemovableMediaOrExternalDevice?: boolean;
+  // Ejectable covers USB-NVMe enclosures (e.g. Samsung T7) that may not set
+  // Removable=true but do report themselves as ejectable external devices.
+  Ejectable?: boolean;
   Internal?: boolean;
   OSInternalMedia?: boolean;
   VirtualOrPhysical?: string;
@@ -319,9 +322,15 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
       const isVirtual = info.VirtualOrPhysical === "Virtual";
       const isRemovable =
         info.Removable === true || info.RemovableMediaOrExternalDevice === true;
+      const isEjectable = info.Ejectable === true;
       const busProtocol = (info.BusProtocol ?? "").toLowerCase();
       const isUsb = busProtocol === "usb";
       const isDiskImage = busProtocol === "disk image" || isVirtual;
+
+      // USB-NVMe enclosures (e.g. Samsung T7) report BusProtocol=USB and
+      // Ejectable=true but may not set Removable=true. They must never have
+      // Internal=true — that flag alone blocks the drive regardless of other fields.
+      const isExternalUsbEnclosure = isEjectable && !isInternal;
 
       const content = disk.Content ?? "";
       const isApfsOrHfs =
@@ -329,12 +338,13 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
 
       let safety: RemovableDrive["safety"] = "unknown";
       if (isInternal || isApfsOrHfs) {
+        // Internal flag takes absolute priority — never treat as removable.
         safety = "blocked-system";
       } else if (isDiskImage) {
         // Disk images (mounted .dmg, simulator runtimes, etc.) are not real USB drives.
         // Skip them entirely — they are not writable installer targets.
         continue;
-      } else if (isUsb || isRemovable) {
+      } else if (isUsb || isRemovable || isExternalUsbEnclosure) {
         safety = "safe-removable";
       }
 

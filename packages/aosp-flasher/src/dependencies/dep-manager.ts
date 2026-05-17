@@ -106,12 +106,15 @@ function checkDependency(id: DependencyId): DependencyCheckResult {
   const primaryPath = paths[0]!;
   const version = getVersion(def.commands[0]!, primaryPath);
 
-  return {
+  const result: DependencyCheckResult = {
     id,
     status: "found",
     foundPath: primaryPath,
-    version,
   };
+  if (version !== undefined) {
+    result.version = version;
+  }
+  return result;
 }
 
 function getManualInstructions(id: DependencyId): ManualInstallInstructions {
