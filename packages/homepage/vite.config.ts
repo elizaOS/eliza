@@ -60,7 +60,10 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.resolve(__dirname, "../ui/src/index.ts"),
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/backgrounds/CloudVideoBackground.tsx",
+        ),
       },
     ],
   },
