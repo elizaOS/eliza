@@ -70,7 +70,7 @@ export default function DashboardPage() {
             <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
                 <p className="text-sm font-medium uppercase tracking-normal text-[#FF5800]">
-                  ElizaOS Platform / Eliza Cloud
+                  elizaOS Platform / Eliza Cloud
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl">
                   Run your Eliza agent on the hosted runtime

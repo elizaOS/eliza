@@ -1,15 +1,15 @@
 /**
  * Worker-targeted e2e preload.
  *
- * Mirrors `cloud/packages/tests/e2e/preload.ts` but does NOT boot the legacy
- * Next.js dev server — the Worker-targeted suite expects an already-running
- * Worker (typically `wrangler dev` on :8787) and just needs:
+ * The Worker-targeted suite expects an already-running Worker
+ * (typically `wrangler dev` on :8787) and just needs:
  *
  *   1. Env loaded from .env / .env.local / .env.test.
  *   2. Local Postgres seeded with the test org/user/api-key, which exports
  *      TEST_API_KEY into process.env.
  *
- * Run with: bun test --preload <this-file> apps/api/test/e2e
+ * Run with: bun test --preload packages/cloud-api/test/e2e/preload.ts \
+ *           packages/cloud-api/test/e2e
  */
 
 import { createHash } from "node:crypto";

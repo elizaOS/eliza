@@ -46,7 +46,7 @@ export function StewardWalletProviders({
       getDefaultConfig({
         appName: "Eliza Cloud",
         appDescription:
-          "Sign in to chat with your Eliza cloud agent and manage your account",
+          "Sign in to chat with your Eliza Cloud agent and manage your account",
         appUrl,
         projectId: walletConnectProjectId,
         chains: [mainnet, base, bsc],

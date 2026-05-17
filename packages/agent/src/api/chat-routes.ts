@@ -3276,7 +3276,7 @@ export async function handleChatRoutes(
 
   // ── POST /api/agents/:id/message ───────────────────────────────────────
   // Local-mode mirror of the cloud agent-server's per-agent message
-  // endpoint (`cloud/services/agent-server/src/routes.ts`). Shares the
+  // endpoint (`packages/cloud-services/agent-server/src/routes.ts`). Shares the
   // same `generateChatResponse` path as `/v1/chat/completions` so model
   // routing (incl. local-inference TEXT_LARGE handlers) is identical.
   if (method === "POST" && /^\/api\/agents\/[^/]+\/message$/.test(pathname)) {

@@ -1,7 +1,7 @@
 .wallet-adapter-button {
   background-color: transparent;
   border: none;
-  color: #fff;
+  color: var(--brand-white);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -105,7 +105,7 @@
   font-size: 14px;
   font-weight: 600;
   height: 37px;
-  color: #fff;
+  color: var(--brand-white);
 }
 
 .wallet-adapter-dropdown-list-item:not([disabled]):hover {
@@ -164,7 +164,7 @@
 }
 
 .wallet-adapter-modal-button-close:hover svg {
-  fill: #fff;
+  fill: var(--brand-white);
 }
 
 .wallet-adapter-modal-overlay {
@@ -217,7 +217,7 @@
   margin: 0;
   padding: 64px 48px 48px 48px;
   text-align: center;
-  color: #fff;
+  color: var(--brand-white);
 }
 
 @media (max-width: 374px) {
@@ -261,7 +261,7 @@
   display: flex;
   align-items: center;
   background-color: transparent;
-  color: #fff;
+  color: var(--brand-white);
 }
 
 .wallet-adapter-modal-list-more svg {
@@ -293,5 +293,5 @@
   font-size: 18px;
   border: none;
   border-radius: 8px;
-  color: #fff;
+  color: var(--brand-white);
 }

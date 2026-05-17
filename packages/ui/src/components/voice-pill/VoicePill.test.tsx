@@ -13,7 +13,7 @@ describe("VoicePill", () => {
     const { container, getByRole } = render(<VoicePill />);
     const hit = getByRole("button", { name: "Eliza" });
     expect(hit.getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector(".elizaos-voice-pill-pill")).not.toBeNull();
+    expect(container.querySelector(".elizaos-voice-pill__pill")).not.toBeNull();
   });
 
   it("toggles aria-expanded when the hit area is clicked", () => {
@@ -86,7 +86,7 @@ describe("VoicePill", () => {
     expect(mic.getAttribute("aria-pressed")).toBe("true");
     expect(onRecordingChange).toHaveBeenCalledWith(true);
     expect(
-      container.querySelector(".elizaos-voice-pill-pill.is-recording"),
+      container.querySelector(".elizaos-voice-pill__pill--recording"),
     ).not.toBeNull();
   });
 
@@ -110,10 +110,10 @@ describe("VoicePill", () => {
       />,
     );
     expect(
-      container.querySelectorAll(".elizaos-voice-pill-msg.is-agent").length,
+      container.querySelectorAll(".elizaos-voice-pill__msg--agent").length,
     ).toBe(1);
     expect(
-      container.querySelectorAll(".elizaos-voice-pill-msg.is-user").length,
+      container.querySelectorAll(".elizaos-voice-pill__msg--user").length,
     ).toBe(1);
   });
 
