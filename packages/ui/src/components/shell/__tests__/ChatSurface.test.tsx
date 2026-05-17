@@ -106,4 +106,35 @@ describe("ChatSurface", () => {
     expect(onSend).toHaveBeenCalledWith("From keyboard");
     expect(input.value).toBe("");
   });
+
+  it("does not submit on Shift+Enter", () => {
+    const onSend = vi.fn();
+    render(<ChatSurface messages={[]} onSend={onSend} canSend={true} />);
+    const input = screen.getByPlaceholderText(/ask eliza/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Draft" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(input.value).toBe("Draft");
+  });
+
+  it("renders a typing indicator for an empty assistant placeholder", () => {
+    const messages: ShellMessage[] = [
+      { id: "u", role: "user", content: "Hi", createdAt: 0 },
+      { id: "a", role: "assistant", content: "", createdAt: 1 },
+    ];
+    render(<ChatSurface messages={messages} onSend={() => {}} canSend={true} />);
+    const typing = screen.getByLabelText(/eliza is typing/i);
+    expect(typing).toBeTruthy();
+  });
+
+  it("marks the conversation list as a polite aria-live region for streaming announcements", () => {
+    const messages: ShellMessage[] = [
+      { id: "u", role: "user", content: "Hi", createdAt: 0 },
+      { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
+    ];
+    render(<ChatSurface messages={messages} onSend={() => {}} canSend={true} />);
+    const list = screen.getByRole("list");
+    expect(list.getAttribute("aria-live")).toBe("polite");
+    expect(list.getAttribute("aria-atomic")).toBe("false");
+  });
 });

@@ -42,20 +42,41 @@ export function ChatSurface({
         {messages.length === 0 ? (
           <p className="text-sm text-muted">{greeting ?? "Ask Eliza anything."}</p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {messages.map((message) => (
-              <li
-                key={message.id}
-                className={cn(
-                  "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
-                  message.role === "user"
-                    ? "self-end bg-accent/20 text-txt"
-                    : "self-start bg-card/60 text-txt",
-                )}
-              >
-                {message.content}
-              </li>
-            ))}
+          <ul
+            role="list"
+            aria-live="polite"
+            aria-atomic="false"
+            aria-label="Conversation"
+            className="flex flex-col gap-2"
+          >
+            {messages.map((message) => {
+              const isEmptyAssistant =
+                message.role === "assistant" && message.content === "";
+              return (
+                <li
+                  key={message.id}
+                  className={cn(
+                    "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
+                    message.role === "user"
+                      ? "self-end bg-accent/20 text-txt"
+                      : "self-start bg-card/60 text-txt",
+                  )}
+                >
+                  {isEmptyAssistant ? (
+                    <span
+                      aria-label="Eliza is typing"
+                      className="inline-flex gap-0.5"
+                    >
+                      <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted" />
+                      <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted [animation-delay:120ms]" />
+                      <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted [animation-delay:240ms]" />
+                    </span>
+                  ) : (
+                    message.content
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
