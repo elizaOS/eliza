@@ -46,10 +46,7 @@ import {
 	type DflashVerifyStats,
 	parseDflashVerifyEventsFromSseChunk,
 } from "./dflash-verify-event";
-import {
-	selectGpuConfig,
-	type SelectedGpuConfig,
-} from "./gpu-autotune";
+import { type SelectedGpuConfig, selectGpuConfig } from "./gpu-autotune";
 import { detectGpu } from "./gpu-detect";
 import { probeHardware } from "./hardware";
 import { inferenceTelemetry } from "./inference-telemetry";
@@ -2771,9 +2768,7 @@ export function applyGpuProfile(args: string[], profile: GpuProfile): string[] {
 	return args;
 }
 
-function selectCudaGpuAutotune(
-	bundleId?: string,
-): SelectedGpuConfig | null {
+function selectCudaGpuAutotune(bundleId?: string): SelectedGpuConfig | null {
 	const detected = detectGpu();
 	if (!detected.nvidiaPresent || !detected.gpu || !detected.profile) {
 		return null;

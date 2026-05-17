@@ -506,14 +506,8 @@ describe("DflashLlamaServer CUDA GPU autotune", () => {
 			const args = (await waitForFile(argsFile)).trim().split(/\r?\n/);
 			const argPair = (flag: string) =>
 				args.slice(args.indexOf(flag), args.indexOf(flag) + 2);
-			expect(argPair("--cache-type-k")).toEqual([
-				"--cache-type-k",
-				"qjl1_256",
-			]);
-			expect(argPair("--cache-type-v")).toEqual([
-				"--cache-type-v",
-				"q4_polar",
-			]);
+			expect(argPair("--cache-type-k")).toEqual(["--cache-type-k", "qjl1_256"]);
+			expect(argPair("--cache-type-v")).toEqual(["--cache-type-v", "q4_polar"]);
 			expect(argPair("--parallel")).toEqual(["--parallel", "16"]);
 			expect(argPair("--batch-size")).toEqual(["--batch-size", "4096"]);
 			expect(argPair("--ubatch-size")).toEqual(["--ubatch-size", "2048"]);

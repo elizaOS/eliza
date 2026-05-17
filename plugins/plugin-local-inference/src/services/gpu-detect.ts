@@ -14,7 +14,7 @@
  * laptop dock — unusual but possible).
  */
 
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import {
 	GPU_PROFILES,
 	type GpuProfile,

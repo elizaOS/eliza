@@ -10,9 +10,9 @@
  * without the trusted-dependency flag).
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
-import { execFileSync } from "node:child_process";
 import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
 import type {
 	CpuFeatureProbe,
