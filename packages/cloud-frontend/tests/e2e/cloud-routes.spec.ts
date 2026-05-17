@@ -287,7 +287,10 @@ test.beforeEach(async ({ page }) => {
 for (const route of publicRoutes) {
   test(`public route renders: ${route}`, async ({ page }) => {
     const captured = attachFailureCollectors(page);
-    await page.goto(route);
+    // networkidle so lazy route chunks finish loading before we sample the
+    // page title (otherwise sub-pages still on the Suspense fallback show
+    // the global RootLayout <title> and trip the homepage-leak assertion).
+    await page.goto(route, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toBeVisible();
     await expect(page.locator("text=Not found")).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
@@ -297,15 +300,18 @@ for (const route of publicRoutes) {
     // must not silently fall back to the homepage title.
     const pathKey = route.split("?")[0];
     const titleRule = ROUTE_TITLE_RULES[pathKey];
+    if (pathKey !== "/") {
+      // Wait up to 5s for Helmet on the actual page to win over the global
+      // RootLayout title. Lazy-loaded routes (Suspense + dynamic import)
+      // need a beat after networkidle before their <Helmet> applies.
+      await expect
+        .poll(async () => page.title(), { timeout: 5_000 })
+        .not.toMatch(HOMEPAGE_TITLE_FALLBACK);
+    }
     const title = await page.title();
     if (titleRule) {
       expect(title, `unexpected title on ${route}: ${title}`).toMatch(
         titleRule,
-      );
-    }
-    if (pathKey !== "/") {
-      expect(title, `${route} fell back to homepage title`).not.toMatch(
-        HOMEPAGE_TITLE_FALLBACK,
       );
     }
     expect(title, `missing title on ${route}`).not.toHaveLength(0);
