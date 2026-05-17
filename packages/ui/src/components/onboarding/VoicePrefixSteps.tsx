@@ -111,6 +111,13 @@ export function VoicePrefixSteps(
   const stepIndex = allSteps.indexOf(props.step);
   const progressLabel = `Step ${stepIndex + 1} of ${allSteps.length}`;
 
+  // Lifted state: per-step readiness for Continue. WelcomeStep reports back
+  // when the user has either granted mic permission or explicitly been denied
+  // (denial is still "ready" — the user has made a choice). Other steps don't
+  // report and default to ready=true.
+  const [welcomeReady, setWelcomeReady] = React.useState(false);
+  const continueDisabled = props.step === "welcome" && !welcomeReady;
+
   return (
     <div
       className="flex w-full flex-col gap-4"
@@ -151,7 +158,7 @@ export function VoicePrefixSteps(
 
       <main className="rounded-lg border border-border/35 bg-card/40 p-4">
         {props.step === "welcome" ? (
-          <WelcomeStep {...props} />
+          <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
         ) : props.step === "tier" ? (
           <TierStep {...props} tier={tier} tierSummary={props.tierSummary} />
         ) : props.step === "models" ? (
@@ -199,13 +206,22 @@ export function VoicePrefixSteps(
           ) : null}
           <Button
             size="sm"
+            disabled={continueDisabled}
             onClick={() =>
               props.onAdvance(nextVoicePrefixStep(props.step, tier))
             }
             data-testid="voice-prefix-continue"
+            aria-describedby={
+              continueDisabled ? "voice-prefix-continue-help" : undefined
+            }
           >
             Continue
           </Button>
+          {continueDisabled ? (
+            <span id="voice-prefix-continue-help" className="sr-only">
+              Grant or deny microphone access first.
+            </span>
+          ) : null}
         </div>
       </footer>
     </div>
@@ -214,18 +230,27 @@ export function VoicePrefixSteps(
 
 // ── Step 1 — Welcome + permissions ────────────────────────────────────────
 
-function WelcomeStep(props: VoicePrefixStepsProps): React.ReactElement {
+function WelcomeStep(
+  props: VoicePrefixStepsProps & {
+    onPermissionResolved?: (resolved: boolean) => void;
+  },
+): React.ReactElement {
   const [permissionGranted, setPermissionGranted] = React.useState<
     boolean | null
   >(null);
   const onRequest = React.useCallback(async () => {
     if (!props.onRequestMicPermission) {
       setPermissionGranted(true);
+      props.onPermissionResolved?.(true);
       return;
     }
     const granted = await props.onRequestMicPermission();
     setPermissionGranted(granted);
-  }, [props.onRequestMicPermission]);
+    // Either outcome counts as "user has decided" — Continue unlocks. The
+    // denial path keeps the warning message visible so the user knows they
+    // can still proceed but voice features will be limited.
+    props.onPermissionResolved?.(true);
+  }, [props.onRequestMicPermission, props.onPermissionResolved]);
 
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-welcome">
