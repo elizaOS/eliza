@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runStartingRuntime } from "./startup-phase-runtime";
 
 const clientMock = vi.hoisted(() => ({
+  getLaunchProgress: vi.fn(),
   getBootProgress: vi.fn(),
   getStatus: vi.fn(),
   getAuthStatus: vi.fn(),
@@ -30,7 +31,80 @@ function createDeps() {
 describe("runStartingRuntime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clientMock.getLaunchProgress.mockResolvedValue(null);
     clientMock.getBootProgress.mockResolvedValue(null);
+  });
+
+  it("uses desktop launch progress before boot progress", async () => {
+    clientMock.getLaunchProgress.mockResolvedValue({
+      phase: "ready",
+      agent: {
+        state: "running",
+        port: 31337,
+        apiBase: "http://127.0.0.1:31337",
+        startedAt: Date.now() - 1_000,
+        error: null,
+      },
+      boot: {
+        runtimePhase: "running",
+        pluginsLoaded: 22,
+        pluginsFailed: 0,
+        database: "ok",
+      },
+      auth: {
+        checked: true,
+        required: false,
+      },
+      onboarding: {
+        checked: true,
+        complete: true,
+        requiredGate: null,
+      },
+      satellites: {
+        seeded: true,
+        requiredStarted: true,
+        errors: [],
+      },
+      localModel: {
+        backgroundDownloadQueued: false,
+        blocking: false,
+      },
+      diagnostics: {
+        logPath: "/tmp/agent.log",
+        statusPath: "/tmp/status.json",
+      },
+      recovery: {
+        canRetry: true,
+        canOpenLogs: true,
+        canCreateBugReport: true,
+      },
+      updatedAt: new Date().toISOString(),
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getBootProgress).not.toHaveBeenCalled();
+    expect(clientMock.getStatus).not.toHaveBeenCalled();
+    expect(deps.setAgentStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: "running",
+        agentName: "Eliza",
+        port: 31337,
+        startup: expect.objectContaining({ phase: "ready", attempt: 0 }),
+      }),
+    );
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
   });
 
   it("uses desktop boot progress to leave the startup shell without /api/status", async () => {

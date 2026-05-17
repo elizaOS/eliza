@@ -30,6 +30,12 @@ import type {
   DynamicViewUnregisterParams,
 } from "./dynamic-views/types";
 import type {
+  LaunchBugReportBundleInfo,
+  LaunchEventsTailParams,
+  LaunchEventsTailResult,
+  LaunchSnapshot,
+} from "./launch/types";
+import type {
   TraceEvent,
   TraceRecordEventParams,
   TraceSearchParams,
@@ -1283,6 +1289,20 @@ export type ElizaDesktopRPCSchema = {
        * no port shifts, no schema drift.
        */
       bootProgress: { params: undefined; response: BootProgressSnapshot };
+      launchProgress: { params: undefined; response: LaunchSnapshot };
+      launchEventsTail: {
+        params: LaunchEventsTailParams | undefined;
+        response: LaunchEventsTailResult;
+      };
+      launchRetry: { params: undefined; response: LaunchSnapshot };
+      launchOpenDiagnosticsView: {
+        params: undefined;
+        response: { sessionId: string };
+      };
+      launchCreateBugReportBundle: {
+        params: undefined;
+        response: LaunchBugReportBundleInfo;
+      };
       /**
        * Typed counterpart to `client.getOnboardingStatus()` — the
        * renderer's first-boot gate. Same data as
@@ -2428,6 +2448,11 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:setDockIconVisibility": "desktopSetDockIconVisibility",
   "desktop:getPath": "desktopGetPath",
   "desktop:getStartupDiagnostics": "desktopGetStartupDiagnostics",
+  "launch:progress": "launchProgress",
+  "launch:eventsTail": "launchEventsTail",
+  "launch:retry": "launchRetry",
+  "launch:openDiagnosticsView": "launchOpenDiagnosticsView",
+  "launch:createBugReportBundle": "launchCreateBugReportBundle",
   "desktop:getRuntimeMode": "desktopGetRuntimeMode",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",
   "desktop:createBugReportBundle": "desktopCreateBugReportBundle",

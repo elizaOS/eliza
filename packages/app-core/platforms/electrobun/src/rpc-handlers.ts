@@ -74,8 +74,16 @@ import {
   readInboxSourcesViaHttp,
 } from "./inbox-rpc";
 import { logger } from "./logger";
-import { setFirstPartySatelliteDisabled } from "./first-party-satellites";
-import { getAgentManager } from "./native/agent";
+import {
+  getFirstPartySatelliteDefinitions,
+  setFirstPartySatelliteDisabled,
+} from "./first-party-satellites";
+import { LaunchOrchestrator } from "./launch";
+import {
+  getAgentManager,
+  getStartupDiagnosticLogTail,
+  getStartupDiagnosticsSnapshot,
+} from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
@@ -316,6 +324,35 @@ export function buildBunRpcHandlers({
   carrots.setTraceHost(createTraceHostForRuntime(traceService));
   const voiceService = new VoiceService({ traceService });
   carrots.setVoiceHost(createVoiceHostForRuntime(voiceService));
+  const launchOrchestrator = new LaunchOrchestrator({
+    agent,
+    readBootProgress: async () => {
+      const status = agent.getStatus();
+      return composeBootProgressSnapshot(
+        { ...status, port: resolveRpcAgentPort(status.port) },
+        readAgentHealthSnapshotViaHttp,
+      );
+    },
+    readAuthStatus: readAuthStatusViaHttp,
+    readOnboardingStatus: readOnboardingStatusViaHttp,
+    readDiagnostics: getStartupDiagnosticsSnapshot,
+    readDiagnosticLogTail: getStartupDiagnosticLogTail,
+    listSatelliteStatuses: () =>
+      getFirstPartySatelliteDefinitions({ includeDev: true }).map(
+        (definition) => {
+          const status = carrots.getWorkerStatus(definition.id);
+          return {
+            id: definition.id,
+            state: status?.state ?? "stopped",
+            error: status?.error ?? null,
+            required: definition.kind === "required",
+          };
+        },
+      ),
+    createBugReportBundle: (params) => desktop.createBugReportBundle(params),
+    dynamicViewRegistry,
+    dynamicViewSessions,
+  });
   configureCarrotManagerEvents(sendToWebview);
 
   return {
@@ -411,6 +448,13 @@ export function buildBunRpcHandlers({
         readAgentHealthSnapshotViaHttp,
       );
     },
+    launchProgress: async () => launchOrchestrator.getProgress(),
+    launchEventsTail: async (params) => launchOrchestrator.tailEvents(params),
+    launchRetry: async () => launchOrchestrator.retry(),
+    launchOpenDiagnosticsView: async () =>
+      launchOrchestrator.openDiagnosticsView(),
+    launchCreateBugReportBundle: async () =>
+      launchOrchestrator.createBugReport(),
     /**
      * Typed counterpart to renderer `client.getOnboardingStatus()` —
      * the polling-backend startup phase calls this. See

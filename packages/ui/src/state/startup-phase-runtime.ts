@@ -9,6 +9,7 @@ import {
   type AgentBootProgress,
   type AgentStartupDiagnostics,
   type AgentStatus,
+  type LaunchSnapshot,
   client,
 } from "../api";
 import {
@@ -73,6 +74,40 @@ function mapBootProgressToAgentStatus(
 
 function isRuntimeReadyFromBootProgress(progress: AgentBootProgress): boolean {
   return progress.state === "running" && progress.phase === "running";
+}
+
+function mapLaunchProgressToAgentStatus(progress: LaunchSnapshot): AgentStatus {
+  const startup: AgentStartupDiagnostics = {
+    phase: progress.phase,
+    attempt: 0,
+  };
+  const lastError =
+    progress.agent.error ||
+    progress.auth.error ||
+    progress.onboarding.error ||
+    progress.localModel.error ||
+    null;
+  if (lastError) startup.lastError = lastError;
+  return {
+    state: progress.agent.state,
+    agentName: "Eliza",
+    model: undefined,
+    uptime:
+      typeof progress.agent.startedAt === "number"
+        ? Math.max(0, Date.now() - progress.agent.startedAt)
+        : undefined,
+    startedAt: progress.agent.startedAt ?? undefined,
+    port: progress.agent.port ?? undefined,
+    startup,
+  };
+}
+
+function isRuntimeReadyFromLaunchProgress(progress: LaunchSnapshot): boolean {
+  return (
+    progress.phase === "ready" ||
+    (progress.agent.state === "running" &&
+      progress.boot.runtimePhase === "running")
+  );
 }
 
 /**
@@ -156,6 +191,62 @@ export async function runStartingRuntime(
       return;
     }
     try {
+      const launchProgress = await client.getLaunchProgress().catch(() => null);
+      if (launchProgress) {
+        const launchStatus = mapLaunchProgressToAgentStatus(launchProgress);
+        deps.setAgentStatus(launchStatus);
+        lastDiag = launchStatus.startup;
+
+        if (launchProgress.phase === "pairing-required") {
+          deps.setAuthRequired(true);
+          deps.setPairingEnabled(launchProgress.auth.pairingEnabled === true);
+          deps.setPairingExpiresAt(null);
+          deps.setOnboardingLoading(false);
+          dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+          return;
+        }
+
+        if (isRuntimeReadyFromLaunchProgress(launchProgress)) {
+          deps.setConnected(true);
+          dispatch({ type: "AGENT_RUNNING" });
+          return;
+        }
+
+        if (
+          launchProgress.agent.state === "not_started" ||
+          launchProgress.agent.state === "stopped"
+        ) {
+          try {
+            const status = await client.startAgent();
+            deps.setAgentStatus(status);
+            lastDiag = status.startup;
+          } catch (e: unknown) {
+            lastErr = e;
+          }
+        } else if (launchProgress.phase === "error") {
+          deps.setStartupError(
+            describeAgentFailure(lastErr, false, launchStatus.startup),
+          );
+          deps.setOnboardingLoading(false);
+          dispatch({
+            type: "AGENT_ERROR",
+            message: launchStatus.startup?.lastError ?? "Agent failed to start",
+          });
+          return;
+        } else {
+          deadline = computeAgentDeadlineExtensions({
+            agentWaitStartedAt: started,
+            agentDeadlineAt: deadline,
+            state: launchStatus.state,
+          });
+        }
+
+        await new Promise<void>((r) => {
+          tidRef.current = setTimeout(r, 500);
+        });
+        continue;
+      }
+
       const bootProgress = await client.getBootProgress().catch(() => null);
       if (bootProgress) {
         const bootStatus = mapBootProgressToAgentStatus(bootProgress);
