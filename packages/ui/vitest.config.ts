@@ -21,6 +21,7 @@ const reactDomPath = dirname(_require.resolve("react-dom/package.json"));
 
 export default defineConfig({
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
       {
         find: /^@elizaos\/ui$/,
