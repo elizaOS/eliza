@@ -109,6 +109,11 @@ interface RawPlannerOutput {
 	toolCalls?: unknown;
 	messageToUser?: unknown;
 	text?: unknown;
+	// Optional explicit completion signal. When emitted as a boolean,
+	// `tryGateEvaluator` honors `completed=false` to fall through to the
+	// full evaluator instead of synthesizing a FINISH. See gate
+	// preconditions in `tryGateEvaluator`.
+	completed?: unknown;
 }
 
 export async function runPlannerLoop(
@@ -126,8 +131,6 @@ export async function runPlannerLoop(
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
 	let requiredToolMisses = 0;
-	let unavailableToolCallRetries = 0;
-	let silentFailedFinishRecoveries = 0;
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
@@ -163,6 +166,13 @@ export async function runPlannerLoop(
 	// rather than a final answer). The gate refuses ambiguous signals to avoid
 	// surfacing a thought as the user-facing reply.
 	let lastPlannerExplicitMessageToUser: string | undefined;
+	// Tracks the most recent planner output's explicit `completed` flag, when
+	// emitted as a boolean. The gate (`tryGateEvaluator`) treats
+	// `completed === false` as a hard veto on synthesizing a FINISH — the
+	// planner is explicitly signaling that this turn's tool calls do not yet
+	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
+	// field is absent the gate's other preconditions are honored as before.
+	let lastPlannerExplicitCompleted: boolean | undefined;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -193,6 +203,14 @@ export async function runPlannerLoop(
 				typeof explicit === "string" && explicit.trim().length > 0
 					? explicit
 					: undefined;
+			// Capture the planner's explicit `completed` boolean when present.
+			// Any non-boolean (string "false", number, null, missing) is treated
+			// as "unspecified" and does not influence the gate — only an actual
+			// `false` boolean blocks. This keeps backward compat with planner
+			// outputs that don't carry the field.
+			const completedRaw = plannerOutput.raw.completed;
+			lastPlannerExplicitCompleted =
+				typeof completedRaw === "boolean" ? completedRaw : undefined;
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -200,19 +218,27 @@ export async function runPlannerLoop(
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					requiredToolMisses++;
-					assertTrajectoryLimit({
-						kind: "required_tool_misses",
-						max: config.maxRequiredToolMisses,
-						observed: requiredToolMisses,
-					});
-					handleRequiredToolPlannerMiss({
-						trajectory,
-						iteration,
-						plannerOutput,
-						reason: "no_tool_calls",
-						logger: params.runtime.logger,
-					});
-					continue;
+					if (requiredToolMisses > config.maxRequiredToolMisses) {
+						params.runtime.logger?.warn?.(
+							{
+								src: "planner-loop",
+								iteration,
+								misses: requiredToolMisses,
+								max: config.maxRequiredToolMisses,
+								messageToUser: plannerOutput.messageToUser,
+							},
+							"required_tool_misses budget exhausted; honoring planner's terminal reply instead of throwing",
+						);
+					} else {
+						handleRequiredToolPlannerMiss({
+							trajectory,
+							iteration,
+							plannerOutput,
+							reason: "no_tool_calls",
+							logger: params.runtime.logger,
+						});
+						continue;
+					}
 				}
 				trajectory.steps.push({
 					iteration,
@@ -300,19 +326,27 @@ export async function runPlannerLoop(
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					requiredToolMisses++;
-					assertTrajectoryLimit({
-						kind: "required_tool_misses",
-						max: config.maxRequiredToolMisses,
-						observed: requiredToolMisses,
-					});
-					handleRequiredToolPlannerMiss({
-						trajectory,
-						iteration,
-						plannerOutput,
-						reason: "terminal_only_tool_calls",
-						logger: params.runtime.logger,
-					});
-					continue;
+					if (requiredToolMisses > config.maxRequiredToolMisses) {
+						params.runtime.logger?.warn?.(
+							{
+								src: "planner-loop",
+								iteration,
+								misses: requiredToolMisses,
+								max: config.maxRequiredToolMisses,
+								messageToUser: plannerOutput.messageToUser,
+							},
+							"required_tool_misses budget exhausted; honoring planner's terminal tool-call reply instead of throwing",
+						);
+					} else {
+						handleRequiredToolPlannerMiss({
+							trajectory,
+							iteration,
+							plannerOutput,
+							reason: "terminal_only_tool_calls",
+							logger: params.runtime.logger,
+						});
+						continue;
+					}
 				}
 				const finalMessage = terminalMessageFromToolCalls(
 					plannerOutput.toolCalls,
@@ -325,28 +359,24 @@ export async function runPlannerLoop(
 					terminalOnly: true,
 				});
 				const terminalEvaluator = terminalToolCallFinish(finalMessage);
-				const shouldRecordTerminalEvaluation =
-					trajectory.evaluatorOutputs.length > 0;
 				trajectory.evaluatorOutputs.push(terminalEvaluator);
 				trajectory.context = appendEvaluationEvent({
 					context: trajectory.context,
 					iteration,
 					evaluator: terminalEvaluator,
 				});
-				if (shouldRecordTerminalEvaluation) {
-					const terminalEvalStartedAt = Date.now();
-					await recordGatedEvaluationStage({
-						recorder: params.recorder,
-						trajectoryId: params.trajectoryId,
-						parentStageId: params.parentStageId,
-						iteration,
-						startedAt: terminalEvalStartedAt,
-						endedAt: Date.now(),
-						output: terminalEvaluator,
-						reason: "terminal_tool_call",
-						logger: params.runtime.logger,
-					});
-				}
+				const terminalEvalStartedAt = Date.now();
+				await recordGatedEvaluationStage({
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: terminalEvalStartedAt,
+					endedAt: Date.now(),
+					output: terminalEvaluator,
+					reason: "terminal_tool_call",
+					logger: params.runtime.logger,
+				});
 				return {
 					status: "finished",
 					trajectory,
@@ -358,43 +388,12 @@ export async function runPlannerLoop(
 			const nonTerminalCalls = plannerOutput.toolCalls
 				.filter((toolCall) => !isTerminalToolCall(toolCall))
 				.map((toolCall, index) => ensureToolCallId(toolCall, iteration, index));
-			const unavailable = splitUnavailableToolCalls(
-				nonTerminalCalls,
-				params.tools,
-			);
-			if (unavailable.invalid.length > 0) {
-				params.runtime.logger?.warn?.(
-					{
-						iteration,
-						invalidToolCalls: unavailable.invalid.map(
-							(toolCall) => toolCall.name,
-						),
-					},
-					"Planner called unavailable tools; retrying without executing them",
-				);
-				trajectory.context = appendUnavailableToolCallEvent({
-					context: trajectory.context,
-					iteration,
-					invalidToolCalls: unavailable.invalid,
-					tools: params.tools,
-				});
-				if (unavailable.valid.length === 0) {
-					unavailableToolCallRetries++;
-					assertTrajectoryLimit({
-						kind: "unavailable_tool_calls",
-						max: config.maxUnavailableToolCallRetries,
-						observed: unavailableToolCallRetries,
-					});
-					continue;
-				}
-			}
-			const validNonTerminalCalls = unavailable.valid;
-			trajectory.plannedQueue.push(...validNonTerminalCalls);
+			trajectory.plannedQueue.push(...nonTerminalCalls);
 			trajectory.context = {
 				...trajectory.context,
 				plannedQueue: [
 					...(trajectory.context.plannedQueue ?? []),
-					...validNonTerminalCalls.map((toolCall) => ({
+					...nonTerminalCalls.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
 						args: stringifyForModel(toolCall.params ?? {}),
@@ -403,7 +402,7 @@ export async function runPlannerLoop(
 					})),
 				],
 			};
-			for (const toolCall of validNonTerminalCalls) {
+			for (const toolCall of nonTerminalCalls) {
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
 					type: "planned_tool_call",
@@ -463,6 +462,7 @@ export async function runPlannerLoop(
 			trajectory,
 			failures,
 			lastPlannerExplicitMessageToUser,
+			lastPlannerExplicitCompleted,
 		});
 		if (gated) {
 			trajectory.evaluatorOutputs.push(gated);
@@ -497,32 +497,12 @@ export async function runPlannerLoop(
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
 
 		if (evaluator.decision === "FINISH") {
-			if (
-				shouldRecoverSilentFailedFinish({
-					evaluator,
-					trajectory,
-					recoveryCount: silentFailedFinishRecoveries,
-				})
-			) {
-				silentFailedFinishRecoveries++;
-				trajectory.context = appendSilentFailedFinishRecoveryEvent({
-					context: trajectory.context,
-					iteration,
-					evaluator,
-					trajectory,
-				});
-				continue;
-			}
 			return {
 				status: "finished",
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					evaluator.messageToUser ??
-						latestToolResultText(trajectory) ??
-						(evaluator.success === false
-							? failedToolFallbackMessage(trajectory)
-							: undefined),
+					evaluator.messageToUser ?? latestToolResultText(trajectory),
 					trajectory,
 				),
 			};
@@ -739,9 +719,6 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
-	const explicitMessageToUser = getNonEmptyString(
-		(raw as unknown as Record<string, unknown>).messageToUser,
-	);
 
 	// gpt-oss-class models narrate planner calls in the text channel. There
 	// are two observed shapes:
@@ -785,13 +762,10 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: (explicitMessageToUser ?? text),
+				: text,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
-			...(explicitMessageToUser
-				? { messageToUser: explicitMessageToUser }
-				: {}),
 			...(recoverySource ? { textRecoverySource: recoverySource } : {}),
 		} as Record<string, unknown>,
 	};
@@ -1606,67 +1580,6 @@ function appendTerminalContinuationEvent(args: {
 	});
 }
 
-function appendUnavailableToolCallEvent(args: {
-	context: ContextObject;
-	iteration: number;
-	invalidToolCalls: readonly PlannerToolCall[];
-	tools?: ToolDefinition[];
-}): ContextObject {
-	const createdAt = Date.now();
-	const exposed = Array.from(exposedToolNameSet(args.tools) ?? []).sort();
-	const invalid = args.invalidToolCalls.map((toolCall) => toolCall.name);
-	const content = [
-		"planner_retry_instruction:",
-		`unavailable_tool_calls: ${JSON.stringify(invalid)}`,
-		`available_tools: ${JSON.stringify(exposed)}`,
-		"The previous planner output called tools that were not exposed for this turn. Retry using only available_tools, or return a terminal REPLY if no exposed tool fits.",
-	].join("\n");
-	return appendContextEvent(args.context, {
-		id: `unavailable-tool-call-retry:${args.iteration}:${createdAt}`,
-		type: "instruction",
-		source: "planner-loop",
-		createdAt,
-		content,
-		metadata: {
-			iteration: args.iteration,
-			invalidToolCalls: invalid,
-			availableTools: exposed,
-		},
-	});
-}
-
-function appendSilentFailedFinishRecoveryEvent(args: {
-	context: ContextObject;
-	iteration: number;
-	evaluator: EvaluatorOutput;
-	trajectory: PlannerTrajectory;
-}): ContextObject {
-	const createdAt = Date.now();
-	const failedStep = latestFailedToolStep(args.trajectory);
-	const failedToolName = failedStep?.toolCall?.name;
-	const content = [
-		"planner_retry_instruction:",
-		"silent_failed_finish: true",
-		failedToolName ? `failed_tool: ${failedToolName}` : null,
-		"The latest tool step failed, and the evaluator finished without a user-visible message. Retry once with a different available approach if possible; otherwise return a concise user-visible blocker instead of ending silently.",
-	]
-		.filter((line): line is string => line !== null)
-		.join("\n");
-	return appendContextEvent(args.context, {
-		id: `silent-failed-finish-retry:${args.iteration}:${createdAt}`,
-		type: "instruction",
-		source: "planner-loop",
-		createdAt,
-		content,
-		metadata: {
-			iteration: args.iteration,
-			evaluatorDecision: args.evaluator.decision,
-			evaluatorSuccess: args.evaluator.success,
-			failedToolName,
-		},
-	});
-}
-
 async function executeQueuedToolCall(params: {
 	params: PlannerLoopParams;
 	trajectory: PlannerTrajectory;
@@ -1717,7 +1630,6 @@ async function executeQueuedToolCall(params: {
 		toolName: params.toolCall.name,
 		success: result.success,
 		error: result.error,
-		repeatKey: toolFailureRepeatKey(params.toolCall),
 	};
 	if (!result.success || result.error != null) {
 		params.failures.push(failure);
@@ -1770,10 +1682,6 @@ async function executeQueuedToolCall(params: {
 		endedAt,
 		logger: params.params.runtime.logger,
 	});
-}
-
-function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
-	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
 }
 
 async function recordToolStage(args: {
@@ -2064,35 +1972,6 @@ function hasExposedNonTerminalTool(
 	);
 }
 
-function exposedToolNameSet(
-	tools: ToolDefinition[] | undefined,
-): Set<string> | null {
-	if (!Array.isArray(tools) || tools.length === 0) return null;
-	const names = tools
-		.map(getToolDefinitionName)
-		.filter((name): name is string => Boolean(name))
-		.map((name) => name.toUpperCase());
-	return names.length > 0 ? new Set(names) : null;
-}
-
-function splitUnavailableToolCalls(
-	toolCalls: PlannerToolCall[],
-	tools: ToolDefinition[] | undefined,
-): { valid: PlannerToolCall[]; invalid: PlannerToolCall[] } {
-	const exposed = exposedToolNameSet(tools);
-	if (!exposed) return { valid: toolCalls, invalid: [] };
-	const valid: PlannerToolCall[] = [];
-	const invalid: PlannerToolCall[] = [];
-	for (const toolCall of toolCalls) {
-		if (exposed.has(toolCall.name.toUpperCase())) {
-			valid.push(toolCall);
-		} else {
-			invalid.push(toolCall);
-		}
-	}
-	return { valid, invalid };
-}
-
 function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 	return trajectory.steps.some(
 		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
@@ -2182,32 +2061,6 @@ function latestToolResultText(
 	return undefined;
 }
 
-function latestFailedToolStep(
-	trajectory: PlannerTrajectory,
-): PlannerStep | undefined {
-	return [...trajectory.steps]
-		.reverse()
-		.find((step) => step.result && step.result.success === false);
-}
-
-function shouldRecoverSilentFailedFinish(args: {
-	evaluator: EvaluatorOutput;
-	trajectory: PlannerTrajectory;
-	recoveryCount: number;
-}): boolean {
-	if (args.recoveryCount >= 1) return false;
-	if (args.evaluator.success !== false) return false;
-	if (getNonEmptyString(args.evaluator.messageToUser)) return false;
-	return latestFailedToolStep(args.trajectory) !== undefined;
-}
-
-function failedToolFallbackMessage(
-	trajectory: PlannerTrajectory,
-): string | undefined {
-	if (!latestFailedToolStep(trajectory)) return undefined;
-	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
-}
-
 /**
  * Decide whether the planner-loop can synthesize a FINISH evaluator output and
  * skip ONLY the in-loop LLM trajectory-decision call (`runEvaluator`) for the
@@ -2241,6 +2094,15 @@ function failedToolFallbackMessage(
  *   5. That `messageToUser` is not a tool/function-syntax leak (the evaluator's
  *      own prompt rules say leaked syntax should force CONTINUE; we honor the
  *      same constraint by reusing `isUnsafeUserVisibleText`).
+ *   6. The planner did NOT explicitly set `completed: false` on this output.
+ *      When that flag is present and false, the planner is signaling that
+ *      this turn's tool calls do not yet achieve the goal (read-then-act,
+ *      multi-step deploy, verification pending) — and `messageToUser` is
+ *      a pre-tool intent rather than a final answer. We fall through to
+ *      the full evaluator so it can decide CONTINUE vs FINISH from the
+ *      actual tool result rather than synthesizing a FINISH the planner
+ *      explicitly disclaimed. Absent or `true` preserves the gate's
+ *      original behavior (backward compat).
  *
  * On any single ambiguity the function returns `null` and the caller falls
  * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
@@ -2261,6 +2123,7 @@ function tryGateEvaluator(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitMessageToUser: string | undefined;
+	lastPlannerExplicitCompleted: boolean | undefined;
 }): EvaluatorOutput | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
@@ -2270,6 +2133,8 @@ function tryGateEvaluator(args: {
 	const message = args.lastPlannerExplicitMessageToUser?.trim();
 	if (!message) return null;
 	if (isUnsafeUserVisibleText(message)) return null;
+	// Precondition 6: respect the planner's own completion disclaimer.
+	if (args.lastPlannerExplicitCompleted === false) return null;
 
 	return {
 		success: true,
