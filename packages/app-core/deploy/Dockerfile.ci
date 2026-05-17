@@ -25,7 +25,7 @@ ARG APP_CORE_DIR
 ARG AGENT_DIR
 ARG APP_DIR
 
-RUN cd "${AGENT_DIR}" && bun run build:docker-dist
+RUN cd "${AGENT_DIR}" && npm run build:docker-dist
 
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
   @elizaos/agent
