@@ -173,9 +173,7 @@ function consumeStewardCodeFromQuery(): string | null {
   window.history.replaceState(
     null,
     "",
-    query
-      ? `${window.location.pathname}?${query}`
-      : window.location.pathname,
+    query ? `${window.location.pathname}?${query}` : window.location.pathname,
   );
   return code;
 }
