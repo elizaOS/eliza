@@ -187,6 +187,7 @@ if command -v identify >/dev/null 2>&1; then
         tails/config/chroot_local-includes/usr/share/tails/elizaos-about-logo.png \
         tails/config/chroot_local-includes/usr/share/plymouth/themes/elizaos/elizaos-wordmark.png \
         tails/config/chroot_local-includes/usr/share/tails-installer/tails-liveusb-header.png \
+        tails/config/chroot_local-includes/usr/share/tails/bootx64.png \
         tails/config/chroot_local-includes/usr/share/pixmaps/elizaos.png \
     )
     if [ "${SOURCE_ONLY}" != "1" ]; then
